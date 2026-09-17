@@ -203,8 +203,7 @@ private:
     publishPose(estimate, cloud.header.stamp);
     bool published = false;
     if (publish_to_autopilot_ && estimate.healthy) {
-      odometry_pub_->publish(px4VisualOdometryFromEstimate(
-          estimate, static_cast<std::uint64_t>(stamp_ns / 1000)));
+      odometry_pub_->publish(px4VisualOdometryFromEstimate(estimate));
       published = true;
       ++published_scans_;
     }

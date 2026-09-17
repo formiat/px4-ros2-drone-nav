@@ -136,11 +136,10 @@ px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) no
 }
 
 px4_msgs::msg::VehicleOdometry
-px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
-                              const std::uint64_t timestamp_sample_us) noexcept {
+px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate) noexcept {
   px4_msgs::msg::VehicleOdometry odometry;
-  odometry.timestamp = timestamp_sample_us;
-  odometry.timestamp_sample = timestamp_sample_us;
+  odometry.timestamp = 0U;
+  odometry.timestamp_sample = 0U;
   odometry.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
   odometry.position = {static_cast<float>(estimate.position_ned_m.x()),
                        static_cast<float>(estimate.position_ned_m.y()),

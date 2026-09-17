@@ -35,7 +35,9 @@ px4_parameter_stream() {
     echo "param set EKF2_MAG_TYPE 5"
     echo "param set EKF2_HGT_REF 0"
     echo "param set EKF2_EV_CTRL 11"
-    echo "param set EKF2_EV_DELAY 0"
+    # The sample is dated at receipt; the registration behind it took 48 to
+    # 54 ms at p50 on r364 to r366, and the transport a millisecond.
+    echo "param set EKF2_EV_DELAY 50"
     echo "param set EKF2_EV_NOISE_MD 0"
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"

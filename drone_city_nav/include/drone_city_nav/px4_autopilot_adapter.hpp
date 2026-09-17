@@ -30,10 +30,13 @@ px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) no
 px4TimesyncToAutopilotClockSync(const px4_msgs::msg::TimesyncStatus& message) noexcept;
 
 // The lidar-inertial estimate as PX4's external odometry: NED pose, NED
-// velocity, the estimator's variances, and its health as the quality.
+// velocity, the estimator's variances, and its health as the quality. The
+// stamps are zero and the autopilot dates the sample at receipt, as the
+// simulation heading source does: a stamp on the simulation's clock is on
+// no clock the autopilot knows, and r368 hovered at its start with every
+// sample refused, its heading never good for control.
 [[nodiscard]] px4_msgs::msg::VehicleOdometry
-px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
-                              std::uint64_t timestamp_sample_us) noexcept;
+px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate) noexcept;
 
 [[nodiscard]] AutopilotStatus
 px4VehicleStatusToAutopilotStatus(const px4_msgs::msg::VehicleStatus& message) noexcept;
