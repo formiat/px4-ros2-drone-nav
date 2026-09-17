@@ -540,9 +540,14 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   const Eigen::Vector3d prior_position = impl.holding && impl.has_registered
                                              ? impl.carriedPosition(stamp_ns)
                                              : propagated.position;
+  const double interval_s =
+      impl.has_registered && stamp_ns > impl.registered_stamp_ns
+          ? 1.0e-9 * static_cast<double>(stamp_ns - impl.registered_stamp_ns)
+          : 0.0;
   bool healthy = false;
   Eigen::Vector3d corrected_position = prior_position;
   Eigen::Quaterniond corrected_rotation = prior_rotation;
+  Eigen::Vector3d corrected_velocity = propagated.velocity;
   if (impl.submap.empty()) {
     healthy = !thinned.empty();
     estimate.matched_fraction = healthy ? 1.0 : 0.0;
@@ -550,9 +555,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     const auto assess = [&impl](const RegistrationResult& registration) {
       return registration.converged &&
              registration.matched_fraction >= impl.config.minimum_matched_fraction &&
-             registration.residual_rms_m <= impl.config.maximum_residual_rms_m &&
-             registration.information_per_point >=
-                 impl.config.minimum_information_per_point;
+             registration.residual_rms_m <= impl.config.maximum_residual_rms_m;
     };
     RegistrationResult registration =
         registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config);
@@ -572,48 +575,65 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     estimate.information_per_point = registration.information_per_point;
     estimate.iterations = registration.iterations;
     if (healthy) {
-      corrected_position = registration.position;
+      // The registration is believed along the axes it observed. Along a
+      // degenerate axis the correction is discarded, the IMU's motion
+      // stands, and the variance says so.
+      const Eigen::Matrix3d translational =
+          registration.information.bottomRightCorner<3, 3>();
+      const double matched_points = std::max(
+          1.0, registration.matched_fraction * static_cast<double>(thinned.size()));
+      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
+      Eigen::Matrix3d projector = Eigen::Matrix3d::Zero();
+      Eigen::Vector3d axis_variance = Eigen::Vector3d::Zero();
+      const double residual_variance =
+          std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
+      for (int axis = 0; axis < 3; ++axis) {
+        const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+        const double information = solver.eigenvalues()(axis);
+        if (information / matched_points < impl.config.minimum_information_per_point) {
+          ++estimate.degenerate_axes;
+          axis_variance +=
+              impl.config.degenerate_axis_variance_m2 * direction.cwiseAbs2();
+          continue;
+        }
+        projector += direction * direction.transpose();
+        axis_variance += (residual_variance / information) * direction.cwiseAbs2();
+      }
+      const Eigen::Vector3d correction =
+          projector * (registration.position - prior_position);
+      corrected_position = prior_position + correction;
       corrected_rotation = registration.rotation;
+      if (interval_s > 0.0) {
+        corrected_velocity =
+            propagated.velocity +
+            impl.config.velocity_correction_gain * correction / interval_s;
+      }
+      estimate.position_variance_m2 = axis_variance.cwiseMax(1.0e-4).cwiseMin(
+          impl.config.degenerate_axis_variance_m2);
+      const Eigen::Matrix3d rotational = registration.information.topLeftCorner<3, 3>();
+      const Eigen::Matrix3d orientation_covariance =
+          residual_variance *
+          (rotational + 1.0e-6 * Eigen::Matrix3d::Identity()).inverse();
+      estimate.orientation_variance_rad2 =
+          orientation_covariance.diagonal().cwiseMax(1.0e-6).cwiseMin(0.1);
       // A share of the rotation the IMU missed over the interval goes to
       // the gyroscope bias.
       const Eigen::Vector3d attitude_error =
           logRotation(prior_rotation.conjugate() * registration.rotation);
-      if (impl.has_registered && stamp_ns > impl.registered_stamp_ns) {
-        const double dt =
-            1.0e-9 * static_cast<double>(stamp_ns - impl.registered_stamp_ns);
-        impl.gyro_bias += impl.config.gyro_bias_gain * attitude_error / dt;
+      if (interval_s > 0.0) {
+        impl.gyro_bias += impl.config.gyro_bias_gain * attitude_error / interval_s;
         const double bias_norm = impl.gyro_bias.norm();
         if (bias_norm > impl.config.maximum_gyro_bias_radps) {
           impl.gyro_bias *= impl.config.maximum_gyro_bias_radps / bias_norm;
         }
       }
-      const Eigen::Matrix3d translational =
-          registration.information.bottomRightCorner<3, 3>();
-      const Eigen::Matrix3d rotational = registration.information.topLeftCorner<3, 3>();
-      const double residual_variance =
-          std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
-      const Eigen::Matrix3d position_covariance =
-          residual_variance *
-          (translational + 1.0e-6 * Eigen::Matrix3d::Identity()).inverse();
-      const Eigen::Matrix3d orientation_covariance =
-          residual_variance *
-          (rotational + 1.0e-6 * Eigen::Matrix3d::Identity()).inverse();
-      estimate.position_variance_m2 =
-          position_covariance.diagonal().cwiseMax(1.0e-4).cwiseMin(1.0);
-      estimate.orientation_variance_rad2 =
-          orientation_covariance.diagonal().cwiseMax(1.0e-6).cwiseMin(0.1);
     }
   }
   if (healthy) {
-    // The velocity is the registered motion since the last registered scan.
-    if (impl.has_registered && stamp_ns > impl.registered_stamp_ns) {
-      const double dt =
-          1.0e-9 * static_cast<double>(stamp_ns - impl.registered_stamp_ns);
-      impl.velocity = (corrected_position - impl.registered_position) / dt;
-    }
     impl.stamp_ns = stamp_ns;
     impl.position = corrected_position;
     impl.rotation = corrected_rotation;
+    impl.velocity = corrected_velocity;
     impl.dropImuUpTo(stamp_ns);
     const bool keyframe_due =
         !impl.has_keyframe ||

@@ -126,6 +126,67 @@ TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
   EXPECT_LT((estimate.position_ned_m - position).norm(), 0.1);
 }
 
+// A corridor whose end walls are out of range leaves its own axis free: the
+// registration observes nothing along it, says so, and the IMU carries the
+// motion there. Flown at 3 m/s with a true IMU the estimate stays within
+// half a metre over fifteen seconds; before this the position froze at the
+// first scan's velocity and fell forty metres behind.
+TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
+  std::vector<Eigen::Vector3d> corridor;
+  for (double x = -40.0; x <= 40.0; x += 0.25) {
+    for (double z = -4.0; z <= 0.0; z += 0.25) {
+      corridor.emplace_back(x, 3.0, z);
+      corridor.emplace_back(x, -3.0, z);
+    }
+    for (double y = -3.0; y <= 3.0; y += 0.25) {
+      corridor.emplace_back(x, y, 0.0);
+      corridor.emplace_back(x, y, -4.0);
+    }
+  }
+  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  const Eigen::Vector3d start{-30.0, 0.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 100; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  const double speed = 3.0;
+  const std::int64_t first_scan = kSecond;
+  LidarInertialEstimate estimate;
+  std::size_t degenerate_scans = 0U;
+  for (int k = 0; k <= 150; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    const double seconds = 1.0e-9 * static_cast<double>(stamp - first_scan);
+    // Two seconds of constant acceleration, then cruise.
+    const double along =
+        seconds < 2.0 ? 0.25 * speed * seconds * seconds : speed * (seconds - 1.0);
+    if (k > 0) {
+      for (int i = 1; i <= 10; ++i) {
+        const std::int64_t imu_stamp = stamp - kSecond / 10 + i * kSecond / 100;
+        const double imu_seconds = 1.0e-9 * static_cast<double>(imu_stamp - first_scan);
+        LidarInertialImuSample sample = restSample(imu_stamp, level);
+        sample.accelerometer_mps2.x() += imu_seconds < 2.0 ? speed / 2.0 : 0.0;
+        odometry.addImu(sample);
+      }
+    }
+    const Eigen::Vector3d truth = start + Eigen::Vector3d{along, 0.0, 0.0};
+    std::vector<Eigen::Vector3d> scan;
+    for (const Eigen::Vector3d& point : corridor) {
+      if ((point - truth).norm() <= 30.0) {
+        scan.push_back(point - truth);
+      }
+    }
+    estimate = odometry.addScan(stamp, scan);
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
+    degenerate_scans += estimate.degenerate_axes > 0U ? 1U : 0U;
+    EXPECT_LT((estimate.position_ned_m - truth).norm(), 0.6) << "scan " << k;
+  }
+  EXPECT_GT(degenerate_scans, 100U);
+  EXPECT_NEAR(estimate.velocity_ned_mps.x(), speed, 0.2);
+  EXPECT_GE(estimate.position_variance_m2.x(), 0.5);
+  EXPECT_LT(estimate.position_variance_m2.y(), 0.1);
+}
+
 // A scan that matches nothing does not send the estimate away: the
 // position holds at the last registered pose while the IMU keeps the
 // attitude, and the next scan that fits registers again from there.

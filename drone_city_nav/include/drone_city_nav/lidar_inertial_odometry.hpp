@@ -59,12 +59,18 @@ struct LidarInertialOdometryConfig {
   // the gyroscope, so a lost scan cannot send the estimate running.
   double recovery_correspondence_factor{3.0};
   // The registration is healthy when at least this share of the scan
-  // matched, the residual stayed under this width and the translational
-  // information along its weakest axis, per matched point, stayed above
-  // this floor (a smooth facade or a bare corridor leaves an axis free).
+  // matched and the residual stayed under this width. A translational axis
+  // whose information per matched point falls under the floor is
+  // degenerate: a bare corridor leaves its own axis free, and along it the
+  // registration is not believed; the IMU carries the motion there and the
+  // variance reported for that axis is the degenerate one.
   double minimum_matched_fraction{0.3};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.02};
+  double degenerate_axis_variance_m2{1.0};
+  // The share of a scan's position correction, spread over the interval
+  // since the last scan, that corrects the IMU-integrated velocity.
+  double velocity_correction_gain{0.5};
   double gravity_mps2{9.80665};
   // The share of the rotation the IMU missed over a scan interval that is
   // attributed to the gyroscope bias, per scan, and the bias the estimator
@@ -90,6 +96,8 @@ struct LidarInertialEstimate {
   double matched_fraction{0.0};
   double residual_rms_m{0.0};
   double information_per_point{0.0};
+  // Translational axes the registration could not observe this scan.
+  std::size_t degenerate_axes{0U};
   std::size_t iterations{0U};
   std::size_t scan_points{0U};
   std::size_t submap_points{0U};
