@@ -33,7 +33,14 @@ px4_parameter_stream() {
     # IMU and the fused position.
     echo "param set EKF2_GPS_CTRL 0"
     echo "param set EKF2_MAG_TYPE 5"
-    echo "param set EKF2_HGT_REF 0"
+    # The height reference is the vision, not the barometer. The obstacle
+    # memory and the planner fly in the estimator's frame, and PX4's altitude
+    # on a barometer reference drifted from it: altitude against the true
+    # pose held +0.30 to +0.37 m (the scenario's start offset) on the GNSS
+    # flight r366, and on the lidar-inertial flights ran to +1.04 on r376,
+    # +0.48 to +0.96 on r378 and +0.98 from takeoff on r379, which flew into
+    # the starting-area base a metre below where it held itself.
+    echo "param set EKF2_HGT_REF 3"
     echo "param set EKF2_EV_CTRL 11"
     # The odometry carries the scan's own moment in the synchronised clock,
     # so no delay is added on top. The filter fuses on a delayed horizon
@@ -46,6 +53,7 @@ px4_parameter_stream() {
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"
     echo "param show EKF2_EV_CTRL"
+    echo "param show EKF2_HGT_REF"
   fi
   if bool_is_true "${enable_simulation_heading_source}"; then
     # The simulated magnetometer's heading sits five to six degrees off the

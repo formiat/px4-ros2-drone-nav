@@ -310,7 +310,7 @@ class RuntimeManifestTest(unittest.TestCase):
             self) -> None:
         log = self._flight_log(540.0, 200.0)
         px4 = ("x * EKF2_GPS_CTRL [1,2] : 0.0000\nx * EKF2_MAG_TYPE [1,2] : 5.0000\n"
-               "x * EKF2_EV_CTRL [1,2] : 11.0000\n")
+               "x * EKF2_EV_CTRL [1,2] : 11.0000\nx * EKF2_HGT_REF [1,2] : 3.0000\n")
         estimator = ("[1.0] [lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY "
                      "healthy=true published=true scans=2000 healthy_scans=1990 "
                      "published_scans=1990 unmapped_imu=0\n")
