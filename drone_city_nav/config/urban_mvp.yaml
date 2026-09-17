@@ -855,33 +855,29 @@ lidar_inertial_odometry_node:
     maximum_residual_rms_m: 0.5
     # An axis with less information than this per matched point is
     # degenerate: the registration is no measurement along it and the IMU
-    # carries the motion there. Over r376 to r380 the estimate's error grew
-    # 0.41 m per second at p90 below 0.02 and 0.07 m at 0.02 to 0.04, where
-    # a corridor still registered the scans and slid along its own axis; at
-    # 0.04 to 0.06 it grew 0.02 m, the same as against well-lit walls above
-    # 0.16. r380 left the estimate 0.98 m p95 off the track at 0.02. On r382,
-    # with the IMU integrated to each scan's stamp, the velocity still left
-    # the truth by 0.33 m/s within 0.25 s entering that corridor, where the
-    # weakest axis fell from 0.10 through 0.05 to 0.007, and the estimate
-    # ended 0.40 m ahead at 0.04.
-    minimum_information_per_point: 0.06
+    # carries the motion there. The flights that set 0.02 to 0.06 lost the
+    # stretch of each scan interval after the last IMU sample, and the
+    # velocity scattered 0.55 m/s about the scans (r381). With the IMU
+    # integrated to each scan's stamp, the estimator was replayed offline
+    # over the lidar and IMU recorded on r391 to r393, three times each with
+    # the IMU delivered 0, 4 and 8 ms early, against the true pose. At 0.06
+    # the cross-track error at p95 reached 0.71 m, at 0.03 0.31, at 0.02
+    # 0.25 and at 0.01 and 0.005 0.19 to 0.20, and with no degenerate axis at
+    # all 0.63.
+    minimum_information_per_point: 0.01
     # Each registered position updates position and velocity in a Kalman
     # step: the IMU's motion since the last registered scan is the prior,
     # with the uncertainty white acceleration noise of this density adds over
     # the interval, and the registration is the measurement, its variance
     # from the registration's information floored at the second value. A
     # fixed share of the correction divided by the interval rang at 0.5 on
-    # r374 and lagged at 0.1 on r376, where a corridor axis the registration
-    # could not observe carried a 0.45 m/s velocity error for 1.3 s and left
-    # the estimate 0.6 m behind for the rest of the flight. The floor sets how
-    # far the filter follows the scans over the IMU: at 5 cm the steady
-    # position gain is 0.36, and on r377 the error grew with speed, 0.03 m per
-    # second at 4 to 5 m/s and 0.10 above 5; at 1 cm it is 0.63, and a
-    # synthetic corridor with an accelerometer bias of 0.05 m/s^2 drifts
-    # 0.50 m along its unobserved axis against 0.21 m at 2 and 5 cm. 2 cm,
-    # with a steady position gain of 0.50.
+    # r374 and lagged at 0.1 on r376. The floor sets how far the filter
+    # follows the scans over the IMU. Over the same replays at a threshold of
+    # 0.02, the cross-track error at p95 reached 0.25 m at 2 cm, 0.20 at
+    # 2.5 and 3.2 cm, 0.21 at 3.9 and 0.20 at 5 cm, and the acceleration noise
+    # 0.21 m at 0.3 and 0.37 at 1.0 against 0.25 at 0.5.
     acceleration_noise_mps2: 0.5
-    minimum_position_variance_m2: 0.0004
+    minimum_position_variance_m2: 0.001
     # The share of the rotation the IMU missed over a scan interval that is
     # attributed to gyroscope bias. r357 flew with ten times this and the
     # heading ran away within ten seconds of takeoff.

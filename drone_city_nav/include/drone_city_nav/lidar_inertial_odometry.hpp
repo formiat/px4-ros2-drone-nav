@@ -66,7 +66,7 @@ struct LidarInertialOdometryConfig {
   // its uncertainty grows there.
   double minimum_matched_fraction{0.3};
   double maximum_residual_rms_m{0.5};
-  double minimum_information_per_point{0.06};
+  double minimum_information_per_point{0.01};
   // The registered position updates position and velocity together in a
   // Kalman step: the IMU's motion since the last registered scan is the
   // prior, with the uncertainty white acceleration noise of this density
@@ -75,7 +75,7 @@ struct LidarInertialOdometryConfig {
   // floored at this variance, and along an axis it could not observe it
   // carried none.
   double acceleration_noise_mps2{0.5};
-  double minimum_position_variance_m2{4.0e-4};
+  double minimum_position_variance_m2{1.0e-3};
   double gravity_mps2{9.80665};
   // The share of the rotation the IMU missed over a scan interval that is
   // attributed to the gyroscope bias, per scan, and the bias the estimator
