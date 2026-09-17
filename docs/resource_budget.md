@@ -39,6 +39,7 @@ exist there.
 |---|---|---|---|---|---|---|---|
 | `production_mppi_node` | 1.81 | 2.38 | 2.57 | 592 MiB | +128 MiB | 33 | 206 MiB |
 | `obstacle_memory_3d_node` | 0.83 | 1.08 | 1.10 | 135 MiB | +53 MiB | 19 | |
+| `lidar_inertial_odometry_node` (lidar-inertial profile only, r405 and r418) | 0.52 to 0.54 | 0.80 to 0.84 | 0.92 to 1.01 | 59 MiB | +2 to +3 MiB | 16 | |
 | `mppi_offboard_node` | 0.04 | 0.05 | 0.05 | 44 MiB | 0 | 16 | |
 | `MicroXRCEAgent` | 0.03 | 0.04 | 0.05 | 28 MiB | 0 | 53 | |
 | **Onboard together** | **2.73** | **3.36** | | **798 MiB** | | | **206 MiB** |
@@ -146,8 +147,11 @@ measurement:
   the guaranteed detection range the braking contract rests on
   ([navigation_pipeline.md](navigation_pipeline.md)).
 
-Not in these figures at all: the sensor driver, a lidar-inertial
-localization stack (roadmap item 13; the flights use PX4's EKF with
-simulated GNSS), and the flight controller link. Nothing here was run on an
+The lidar-inertial estimator (roadmap item 13, [localization.md](localization.md))
+is not in r345's figures, which flew on GNSS; on the `lidar_inertial`
+profile it adds 0.5 cores at p50, 0.8 at p95 and 59 MiB, and the onboard set
+reads 3.5 to 3.8 cores at p50 and 4.4 to 4.7 at p95, 810 to 880 MiB at p95
+(r405 to r434). Not in these figures at all: the sensor driver and the
+flight controller link. Nothing here was run on an
 Orin: there is no arm64 build, and the only confirmation is a recorded
 flight on the device itself.

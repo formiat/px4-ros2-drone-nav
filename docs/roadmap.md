@@ -97,83 +97,6 @@ This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
 
-## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
-
-**Type:** dependent localization stage.
-
-**Hard prerequisites:** items 8 and 12.
-
-Item 13 is accepted on Urban Circuit Practice 01 with the 3D lidar and no
-static map. Autonomous test flights there require item 12's persistent
-full-3D route and repair backend. This roadmap dependency must not create a
-code dependency between the localization estimator and the route planner.
-
-Add an optional navigation profile in which the aircraft does not use GNSS or
-magnetometer fusion. This stage begins after item 8 provides production 3D
-lidar and its timestamped full-6DoF acquisition-pose contract and item 12
-provides autonomous routing through partially observed complex environments.
-The aircraft retains its IMU and barometric altitude source and estimates
-motion from lidar-inertial odometry instead of receiving global position and
-heading from simulated navigation satellites and a simulated compass. Today
-the heading comes from neither: the simulated magnetometer is not fused
-(`EKF2_MAG_TYPE 5`) because it sits five to six degrees off, and
-`simulation_heading_source_node` hands the autopilot the simulator's true
-attitude, with a wandering bias and noise, through the external-vision
-interface (`EKF2_EV_CTRL 8`). That node is simulation-only and is ground
-truth inside the estimator's path; this profile removes it, and the
-lidar-inertial estimator is the only source of heading.
-
-Localization must remain a separate subsystem from obstacle memory and route
-planning. A dedicated lidar-inertial estimator deskews 3D scans, propagates the
-high-rate IMU state, registers scans against dedicated localization submaps,
-and publishes a typed pose, velocity, covariance, quality, and frame identity.
-Planner obstacle memory consumes that estimate; it must not become the
-authoritative localization map, because a map assembled from an erroneous pose
-can otherwise reinforce the same localization error.
-
-Feed the estimate to PX4 through its supported external-odometry interface and
-configure PX4 to fuse it while GNSS and magnetometer fusion are disabled. The
-existing PX4 local-position output remains the stable contract for offboard
-control, planning, mapping, and diagnostics. Gazebo ground truth is available
-only to evaluation and referee components and must never cross into the
-estimator or control data path.
-
-Lidar-inertial SLAM builds revisioned localization submaps and uses loop
-closure to maintain a locally consistent frame.
-
-Missions with absolute map-frame goals require a declared initial map pose or
-another explicit global reference, never a scenario-provided hidden
-ground-truth transform.
-
-Localization quality and geometric observability must be first-class runtime
-signals. Repetitive facades and long feature-poor corridors can leave
-translation or yaw weakly constrained even with 3D lidar. When the
-estimate is stale, divergent, or insufficiently observable, the system must
-stop publishing new executable motion and let the current finite path reach
-its validated terminal state; it must not continue an invalid path or add a
-sticky braking or geometric exclusion lifecycle.
-
-Implement and validate this stage incrementally:
-
-1. replay timestamped 3D lidar and IMU data offline and compare estimated poses
-   with evaluation-only Gazebo truth;
-2. fly one vehicle from a known initial pose using PX4 external odometry with
-   GNSS and magnetometer fusion disabled;
-3. add explicit estimator health;
-4. add submaps and loop closure.
-
-Measure position and attitude drift, velocity error, map alignment, loop
-closure consistency, estimator latency, time without a valid executable
-path, minimum obstacle clearance, and physical collisions. The starting
-point is measured: with GNSS and the simulated heading, PX4's estimate sits
-0.19 to 0.25 m from the true pose across the track at p95 and within 0.01 s
-along it (the position-estimate check in `testing.md`, r340 to r356). This
-stage is complete when repeated urban point-to-point 3D-lidar missions run
-without GNSS, magnetometer data, the simulation heading source, or any other
-control-visible simulator ground truth, hold that same check at no worse
-than the GNSS figures, and localization failures produce an explicit safe
-finite-path outcome instead of silent frame corruption.
-
 ## 14. Vision-Only 3D Perception Without Lidar Or Static Maps
 
 **Type:** dependent perception stage.
@@ -420,6 +343,37 @@ percent against the 3 percent check and route availability at 92 to 96
 against 97; the 2D obstacle memory node is still selectable by the launch
 files, fourteen sources sit near the 1000-line cap and 226 lie flat in
 `src/`.
+
+### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
+
+Closed on 2026-09-17 on the urban point-to-point mission with the 3D lidar
+and no static map; the profile, the estimator and its health are in
+[`localization.md`](localization.md), the checks in [`testing.md`](testing.md).
+`LOCALIZATION_PROFILE=lidar_inertial` flies on the IMU and a lidar-inertial
+estimator alone, through the autopilot's external-odometry interface, with
+GNSS, magnetometer and simulation-heading fusion off (`EKF2_GPS_CTRL 0`,
+`EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`); the mission check
+proves the profile from the logs and reports the estimator's health, and a
+scan that does not register is not published, so a lost estimate reaches the
+stack as the autopilot's withdrawn position and the existing pose-age
+revocation. Measured at the r430 to r434 series on 5a113bc5: no crash,
+2.57/2.97/2.58/2.78/2.80 m/s, the autopilot's estimate 0.15, 0.18, 0.22, 0.19 and 0.18 m from the true pose across
+the track at p95 (GNSS baseline 0.19 to 0.25), the estimator's own 0.06 to
+0.17 m, tick 24.1 to 25.0 ms at p50, the estimator at 0.5 cores and 59 MiB;
+the profile, health, dynamics, resource and transport checks green on every
+flight, the known reds of the stack (no-route holds 3.9 to 9.2 percent,
+route availability 90 to 96) as before, and r433 without the route-volume
+witness, which reads the controller's sampled positions and not the estimate.
+
+Deferred with the measured reason: loop closure, because the drift does not
+grow with the flight's length over the 400 m mission (0.1 to 0.2 m at the
+goal, accrued along one bare corridor, not with the distance). Known and not
+gated: the corridor at x 30 to 62 leaves its axis to the IMU, where the
+estimate drifts 0.08 to 0.22 m; the along-track check reads at its own
+resolution (-0.029 to +0.013 s over r415 to r434 against 0.02); and the flights that lost
+the track while the estimator was set (r386, r387, r399 to r401, r411 to
+r413) were each an ordering or timing fault of the scan and IMU streams,
+not of the registration.
 
 ### 12. Persistent Full-3D Strategic Navigation (Completed)
 

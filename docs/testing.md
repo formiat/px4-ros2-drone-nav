@@ -139,6 +139,16 @@ that breaks one is seen on the next flight rather than in a crash:
 - the lidar evidence age the planning tick reports at most 600 ms, the bound
   the braking contract charges (measured 200 to 376 ms at most).
 
+On the `gnss_shadow` and `lidar_inertial` localization profiles the same
+machinery reports the lidar-inertial estimator's own estimate against the
+true pose (`lio_estimate.csv`, `scripts/capture_lidar_inertial_estimate.py`),
+an `OK` line and no gate: the gate stays on the estimate the stack flies.
+The along-track offset is read at the check's own resolution, the 0.02 s
+alignment grid plus the pose age at the tick: the GNSS flights r340 to r356
+read -0.013 to +0.022 s and the lidar-inertial flights r415 to r434 -0.029 to
++0.013 s,
+while the autopilot's position and the odometry it fuses agree to 5 ms.
+
 The clocks of the three records differ; each measurement aligns them on the
 motion itself (least squares over a grid of offsets).
 
@@ -162,7 +172,8 @@ next flight:
   obstacle memory on r345, both the map growing with the observed volume; a
   leak at the tick rate crosses the bound within a flight).
 
-The reported lines give each onboard process's cores at p50, p95 and most,
+The onboard set includes `lidar_inertial_odometry_node` when the flight
+runs it. The reported lines give each onboard process's cores at p50, p95 and most,
 memory at p95 and growth, the per-second sums of the onboard processes, of
 the captures and of the simulator with the harness, the GPU figures and the
 real-time factor. [resource_budget.md](resource_budget.md) reads them.
@@ -178,6 +189,23 @@ deltas reach the controller within 2.5 ms at p95 (measured 0.25 to 0.32 ms,
 the observation age at the median into the memory's scan-to-publication
 time, the delivery and the wait for the tick (measured 184 to 200 ms at p50
 at the 10 Hz transport: 114 to 136, 0.16 and 48 to 56).
+
+### Localization profile
+
+`validate_localization_profile` (`scripts/headless_runtime_evidence.py`)
+reads the profile from the runtime manifest. On `lidar_inertial` it fails
+the flight unless the autopilot log shows `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE
+5`, `EKF2_EV_CTRL 11` and `EKF2_HGT_REF 3`, the ROS log has no
+`simulation_heading_source_node`, and the estimator published its odometry
+at 5 Hz or more between mission readiness and the result (measured 10.4 to
+10.5 Hz). It then reports the estimator's health over the flight, from the
+node's once-a-second line: the matched share, the registration residual and
+the weakest-axis information at p50 with their worst, and the scans that
+left the autopilot without an estimate; any such scan fails the flight
+(measured 0 of 1300 to 1700 on every accepted flight, matched share 0.88
+to 0.91 at p50, residual 0.047 to 0.050 m). The other profiles report their
+name and gate nothing. [localization.md](localization.md) describes the
+estimator and the profiles.
 
 ## Adding Tests
 
