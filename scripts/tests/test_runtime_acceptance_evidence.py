@@ -314,19 +314,44 @@ class RuntimeManifestTest(unittest.TestCase):
         estimator = ("[1.0] [lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY "
                      "healthy=true published=true scans=2000 healthy_scans=1990 "
                      "published_scans=1990 unmapped_imu=0\n")
+        health = "".join(
+            f"[{stamp:.1f}] [lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY "
+            f"healthy=true published=true matched={matched} residual_m={residual} "
+            f"information={information} degenerate_axes=0 imu_samples=1 scans={scans} "
+            f"healthy_scans={healthy}\n"
+            for stamp, matched, residual, information, scans, healthy in (
+                (99.0, 0.10, 0.900, 0.001, 900, 890),
+                (110.0, 0.80, 0.050, 0.200, 1000, 990),
+                (200.0, 0.70, 0.060, 0.050, 1900, 1890),
+                (300.0, 0.90, 0.040, 0.150, 2900, 2890)))
         errors: list[str] = []
         output = io.StringIO()
         with redirect_stdout(output):
             validator.validate_localization_profile(self._manifest("lidar_inertial"),
-                                                    log + estimator, px4, errors)
+                                                    log + estimator + health, px4, errors)
         self.assertEqual(errors, [])
         self.assertIn("the estimator's odometry at 9.9 Hz", output.getvalue())
+        # The report before readiness is left out of the flight.
+        self.assertIn("OK: lidar-inertial estimator health: matched share p50 0.80 min "
+                      "0.70, residual p50 0.050 m max 0.060 m, weakest-axis information "
+                      "p50 0.150 min 0.050, 0 of 1900 scans without a valid estimate",
+                      output.getvalue())
 
         errors = []
         with redirect_stdout(io.StringIO()):
             validator.validate_localization_profile(
                 self._manifest("lidar_inertial"),
-                log + estimator + "[2.0] [simulation_heading_source_node]: ready\n",
+                log + estimator + health.replace("healthy_scans=2890", "healthy_scans=2887"),
+                px4, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("stays valid through the flight", errors[0])
+        self.assertIn("3 of 1900 scans without a valid estimate", errors[0])
+
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            validator.validate_localization_profile(
+                self._manifest("lidar_inertial"),
+                log + estimator + health + "[2.0] [simulation_heading_source_node]: ready\n",
                 px4.replace("EKF2_GPS_CTRL [1,2] : 0.0000", "EKF2_GPS_CTRL [1,2] : 7.0000"),
                 errors)
         self.assertEqual(len(errors), 2)
@@ -337,7 +362,8 @@ class RuntimeManifestTest(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             validator.validate_localization_profile(
                 self._manifest("lidar_inertial"),
-                log + estimator.replace("published_scans=1990", "published_scans=400"), px4,
+                log + health + estimator.replace("published_scans=1990", "published_scans=400"),
+                px4,
                 errors)
         self.assertEqual(len(errors), 1)
         self.assertIn("5 Hz or more (2.0 Hz)", errors[0])

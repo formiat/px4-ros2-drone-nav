@@ -84,6 +84,23 @@ TEST(Px4AutopilotAdapter, AnUnusableHeadingOrAccelerationIsReportedAsSuch) {
   EXPECT_TRUE(std::isnan(state.acceleration.z));
 }
 
+// Without an aiding source the autopilot dead-reckons for EKF2_NOAID_TOUT
+// and then withdraws its horizontal estimate. On the lidar-inertial profile
+// that source is the estimator's odometry, published only while a scan
+// registers; the withdrawn estimate reaches the stack as an invalid state,
+// which the controller revokes execution on and the offboard holds for.
+TEST(Px4AutopilotAdapter, AnEstimateTheAutopilotWithdrewIsNotAPosition) {
+  px4_msgs::msg::VehicleLocalPosition message = validLocalPosition();
+  message.xy_valid = false;
+  message.v_xy_valid = false;
+  const AutopilotLocalState state =
+      px4LocalPositionToAutopilotState(message, enuTransform());
+
+  EXPECT_FALSE(state.position_valid);
+  EXPECT_FALSE(state.velocity_valid);
+  EXPECT_TRUE(state.altitude_valid);
+}
+
 TEST(Px4AutopilotAdapter, TheFingerprintTellsSamplesApartByContentNotStamps) {
   const px4_msgs::msg::VehicleLocalPosition first = validLocalPosition();
   px4_msgs::msg::VehicleLocalPosition restamped = first;

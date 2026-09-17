@@ -503,6 +503,13 @@ PX4_PARAMETER_SHOWN_PATTERN = r"{name} \[\d+,\d+\] : (-?[\d.]+)"
 LIDAR_INERTIAL_PUBLISHED_PATTERN = re.compile(
     r"LIDAR_INERTIAL_ODOMETRY .*?published_scans=(\d+)")
 MINIMUM_LIDAR_INERTIAL_PUBLISH_HZ = 5.0
+# The estimator's health once a second: the share of the scan that matched
+# the submap, the registration's residual, the information along its weakest
+# axis per matched point, and the running counts of scans and healthy ones.
+LIDAR_INERTIAL_HEALTH_PATTERN = re.compile(
+    r"\[(\d+\.\d+)\] \[lidar_inertial_odometry_node\]: LIDAR_INERTIAL_ODOMETRY "
+    r".*?matched=([\d.]+) residual_m=([\d.]+) information=([\d.]+) "
+    r".*? scans=(\d+) healthy_scans=(\d+)")
 
 
 def shown_px4_parameter(px4_log: str, name: str) -> float | None:
@@ -559,4 +566,34 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     else:
         print("OK: localization profile is lidar_inertial (the odometry rate is not "
               "measured without a successful flight)")
+    if readiness is not None and result is not None:
+        validate_lidar_inertial_health(ros_log, float(readiness.group(1)),
+                                       float(result.group(1)), errors)
+
+
+def validate_lidar_inertial_health(ros_log: str, start_s: float, end_s: float,
+                                   errors: list[str]) -> None:
+    """The estimator's quality over the flight, and the scans that left the
+    autopilot without an estimate: an unhealthy scan is not published, so in
+    a clean flight there are none."""
+    samples = [match for match in LIDAR_INERTIAL_HEALTH_PATTERN.finditer(ros_log)
+               if start_s <= float(match.group(1)) <= end_s]
+    if len(samples) < 2:
+        errors.append("FAIL: lidar-inertial estimator health is reported over the flight "
+                      f"({len(samples)} reports)")
+        return
+    column = lambda index: sorted(float(match.group(index)) for match in samples)
+    matched, residual, information = column(2), column(3), column(4)
+    scans = int(samples[-1].group(5)) - int(samples[0].group(5))
+    unhealthy = scans - (int(samples[-1].group(6)) - int(samples[0].group(6)))
+    median = lambda values: values[len(values) // 2]
+    summary = (f"matched share p50 {median(matched):.2f} min {matched[0]:.2f}, residual "
+               f"p50 {median(residual):.3f} m max {residual[-1]:.3f} m, weakest-axis "
+               f"information p50 {median(information):.3f} min {information[0]:.3f}, "
+               f"{unhealthy} of {scans} scans without a valid estimate")
+    if unhealthy > 0:
+        errors.append(f"FAIL: lidar-inertial estimate stays valid through the flight "
+                      f"({summary})")
+    else:
+        print(f"OK: lidar-inertial estimator health: {summary}")
 
