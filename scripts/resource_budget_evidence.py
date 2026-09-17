@@ -42,7 +42,7 @@ HORIZON_TRANSPORT_PATTERN = re.compile(
 # agent. PX4 lives on the flight controller, the simulator and the
 # visualisation do not exist there, and the captures are the harness.
 ONBOARD_PROCESSES = ("production_mppi_node", "obstacle_memory_3d_node",
-                     "mppi_offboard_node", "MicroXRCEAgent")
+                     "lidar_inertial_odometry_node", "mppi_offboard_node", "MicroXRCEAgent")
 MINIMUM_RECORD_COVERAGE = 0.90
 SAMPLE_PERIOD_S = 1.0
 # The resident memory an onboard process may gain over a flight, the last

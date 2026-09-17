@@ -65,6 +65,9 @@ struct CellKeyHash {
 struct SubmapCell {
   std::vector<Eigen::Vector3d> points;
   Eigen::Vector3d normal{Eigen::Vector3d::Zero()};
+  // The plane's anchor: the mean of the points the normal was fitted over,
+  // which sits on the surface where a single thinned centroid need not.
+  Eigen::Vector3d anchor{Eigen::Vector3d::Zero()};
   bool normal_valid{false};
   bool normal_stale{true};
 };
@@ -144,6 +147,9 @@ public:
       fitNormal(*best_cell, point);
     }
     normal = best_cell->normal;
+    if (best_cell->normal_valid) {
+      point = best_cell->anchor;
+    }
     return best_cell->normal_valid;
   }
 
@@ -202,6 +208,7 @@ private:
     covariance /= static_cast<double>(count);
     const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{covariance};
     const Eigen::Vector3d values = solver.eigenvalues();
+    cell.anchor = mean;
     // A plane: the smallest spread is well below the middle one.
     if (!(values(0) < 0.25 * values(1))) {
       return;
