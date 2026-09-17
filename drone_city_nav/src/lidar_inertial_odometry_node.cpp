@@ -66,6 +66,8 @@ public:
         "maximum_residual_rms_m", config.maximum_residual_rms_m);
     config.minimum_information_per_point = declare_parameter<double>(
         "minimum_information_per_point", config.minimum_information_per_point);
+    config.innovation_gate_sigma = declare_parameter<double>(
+        "innovation_gate_sigma", config.innovation_gate_sigma);
     config.gyro_bias_gain =
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
     config.maximum_gyro_bias_radps = declare_parameter<double>(
@@ -240,7 +242,8 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "LIDAR_INERTIAL_ODOMETRY healthy=%s published=%s matched=%.2f residual_m=%.3f "
-        "information=%.3f degenerate_axes=%zu correction_along_m=%.3f speed_mps=%.2f "
+        "information=%.3f degenerate_axes=%zu gated_axes=%zu correction_along_m=%.3f "
+        "speed_mps=%.2f "
         "iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
         "imu_samples=%" PRIu64 " scans=%" PRIu64 " healthy_scans=%" PRIu64
@@ -248,7 +251,7 @@ private:
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
-        estimate.information_per_point, estimate.degenerate_axes,
+        estimate.information_per_point, estimate.degenerate_axes, estimate.gated_axes,
         estimate.correction_along_track_m, estimate.velocity_ned_mps.norm(),
         estimate.iterations, estimate.scan_points, estimate.submap_points,
         estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),

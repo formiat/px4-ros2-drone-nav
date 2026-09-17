@@ -865,6 +865,15 @@ lidar_inertial_odometry_node:
     # 0.25 and at 0.01 and 0.005 0.19 to 0.20, and with no degenerate axis at
     # all 0.63.
     minimum_information_per_point: 0.01
+    # An observed axis whose registered position lies farther from the prior
+    # than this many standard deviations of the prior and the measurement
+    # together is no measurement for that scan either. On r399, at the
+    # threshold above, the registration slid along the corridor at x -1 to
+    # 12 by about 0.3 m a scan against a spread of 4 to 5 cm, the estimate
+    # ended 14.5 m behind and the vehicle crashed. Over the replays of r391
+    # to r393 no axis passed a gate of 3, 5 or 8, and the error at p95 stayed
+    # at 0.19 m.
+    innovation_gate_sigma: 5.0
     # Each registered position updates position and velocity in a Kalman
     # step: the IMU's motion since the last registered scan is the prior,
     # with the uncertainty white acceleration noise of this density adds over

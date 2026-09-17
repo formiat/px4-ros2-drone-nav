@@ -93,6 +93,39 @@ TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
             LidarInertialOdometryConfig{}.minimum_information_per_point);
 }
 
+// A scan that registers far from where the IMU carried the vehicle, beyond
+// the spread of both, is no measurement: a registration that slid into
+// another fit does not drag the estimate along.
+TEST(LidarInertialOdometryTest, ARegistrationFarBeyondThePriorIsNoMeasurement) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  const Eigen::Vector3d start{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  const std::int64_t first_scan = kSecond / 2;
+  LidarInertialEstimate estimate;
+  for (int k = 0; k <= 30; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    if (k > 0) {
+      for (int i = 1; i <= 10; ++i) {
+        odometry.addImu(restSample(stamp - kSecond / 10 + i * kSecond / 100, level));
+      }
+    }
+    // The vehicle rests; one scan reads as if it stood 0.6 m farther along x.
+    const Eigen::Vector3d seen =
+        k == 20 ? start + Eigen::Vector3d{0.6, 0.0, 0.0} : start;
+    estimate = odometry.addScan(stamp, scanFrom(room, seen, level));
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
+    if (k == 20) {
+      EXPECT_GT(estimate.gated_axes, 0U);
+    }
+    EXPECT_LT((estimate.position_ned_m - start).norm(), 0.05) << "scan " << k;
+  }
+}
+
 TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};

@@ -615,24 +615,6 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
       const double residual_variance =
           std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
-      Eigen::Matrix3d measurement_covariance = Eigen::Matrix3d::Zero();
-      Eigen::Matrix3d observed = Eigen::Matrix3d::Zero();
-      for (int axis = 0; axis < 3; ++axis) {
-        const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
-        const double information = solver.eigenvalues()(axis);
-        // An axis the registration could not observe carries no measurement:
-        // the registration slides freely along it, and any finite variance
-        // there lets that slide pull the prior along.
-        double variance = kUnobservedVarianceM2;
-        if (information / matched_points < impl.config.minimum_information_per_point) {
-          ++estimate.degenerate_axes;
-        } else {
-          variance = std::max(residual_variance / information,
-                              impl.config.minimum_position_variance_m2);
-          observed += direction * direction.transpose();
-        }
-        measurement_covariance += variance * direction * direction.transpose();
-      }
       // The prior: the IMU's motion since the last registered scan, with the
       // uncertainty white acceleration noise adds over that interval.
       const double interval = std::max(0.0, interval_s);
@@ -650,6 +632,38 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
           acceleration_variance * interval * interval * Eigen::Matrix3d::Identity();
       const Matrix6d prior_covariance =
           transition * impl.covariance * transition.transpose() + process;
+      Eigen::Matrix3d measurement_covariance = Eigen::Matrix3d::Zero();
+      Eigen::Matrix3d observed = Eigen::Matrix3d::Zero();
+      for (int axis = 0; axis < 3; ++axis) {
+        const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+        const double information = solver.eigenvalues()(axis);
+        // An axis the registration could not observe carries no measurement:
+        // the registration slides freely along it, and any finite variance
+        // there lets that slide pull the prior along. Neither does an axis
+        // whose registered position lies beyond the gate of the prior and
+        // the measurement's own spread: a registration that slid along a
+        // weak axis into another fit.
+        double variance = kUnobservedVarianceM2;
+        if (information / matched_points < impl.config.minimum_information_per_point) {
+          ++estimate.degenerate_axes;
+        } else {
+          const double observed_variance =
+              std::max(residual_variance / information,
+                       impl.config.minimum_position_variance_m2);
+          const double along = direction.dot(registration.position - prior_position);
+          const double spread =
+              direction.dot(prior_covariance.topLeftCorner<3, 3>() * direction) +
+              observed_variance;
+          if (along * along > impl.config.innovation_gate_sigma *
+                                  impl.config.innovation_gate_sigma * spread) {
+            ++estimate.gated_axes;
+          } else {
+            variance = observed_variance;
+            observed += direction * direction.transpose();
+          }
+        }
+        measurement_covariance += variance * direction * direction.transpose();
+      }
       const Eigen::Vector3d prior_velocity =
           impl.holding ? impl.registered_velocity : propagated.velocity;
       // The Kalman step on the position measurement.

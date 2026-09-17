@@ -67,6 +67,10 @@ struct LidarInertialOdometryConfig {
   double minimum_matched_fraction{0.3};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.01};
+  // An observed axis whose registered position lies farther from the prior
+  // than this many standard deviations of the prior and the measurement
+  // together is no measurement for that scan either.
+  double innovation_gate_sigma{5.0};
   // The registered position updates position and velocity together in a
   // Kalman step: the IMU's motion since the last registered scan is the
   // prior, with the uncertainty white acceleration noise of this density
@@ -103,6 +107,7 @@ struct LidarInertialEstimate {
   double information_per_point{0.0};
   // Translational axes the registration could not observe this scan.
   std::size_t degenerate_axes{0U};
+  std::size_t gated_axes{0U};
   // The position correction the registration applied to the IMU's guess,
   // along the direction of motion (positive ahead); a constant value here
   // is a stamp offset between the scan and the IMU, not motion.
