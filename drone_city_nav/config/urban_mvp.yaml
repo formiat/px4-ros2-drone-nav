@@ -855,8 +855,12 @@ lidar_inertial_odometry_node:
     maximum_residual_rms_m: 0.5
     # An axis with less information than this per matched point is
     # degenerate: the registration is no measurement along it and the IMU
-    # carries the motion there.
-    minimum_information_per_point: 0.02
+    # carries the motion there. Over r376 to r380 the estimate's error grew
+    # 0.41 m per second at p90 below 0.02 and 0.07 m at 0.02 to 0.04, where
+    # a corridor still registered the scans and slid along its own axis; at
+    # 0.04 to 0.06 it grew 0.02 m, the same as against well-lit walls above
+    # 0.16. r380 left the estimate 0.98 m p95 off the track at 0.02.
+    minimum_information_per_point: 0.04
     # Each registered position updates position and velocity in a Kalman
     # step: the IMU's motion since the last registered scan is the prior,
     # with the uncertainty white acceleration noise of this density adds over
