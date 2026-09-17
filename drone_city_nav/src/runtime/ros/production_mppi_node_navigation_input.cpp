@@ -135,7 +135,7 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
                 .vz = navigation.vz_reset_counter,
                 .heading = navigation.heading_reset_counter,
             },
-            navigation_.revision != 0U, angular_derivative.timestamp_epoch_reset);
+            navigation_baseline_established_, angular_derivative.timestamp_epoch_reset);
     const bool execution_lineage_discontinuity =
         !navigation_frame_reset_unresolved_ &&
         (state_reset.state_lineage_reset || state_reset.frame_compensation_required);
@@ -235,6 +235,7 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
         navigation.full_state_authoritative && !navigation_frame_reset_unresolved_;
     navigation.revision = navigation_.revision + 1U;
     navigation_ = navigation;
+    navigation_baseline_established_ = true;
     latest_prediction_error_ = {};
     if (execution_lineage_discontinuity) {
       invalidateAppliedControlWitnessLocked();

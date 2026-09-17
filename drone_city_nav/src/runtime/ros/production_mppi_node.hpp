@@ -405,6 +405,15 @@ private:
   // Cleared only by node restart. Safe recovery needs one coordinated
   // planner/offboard/world transform handoff, not a callback-local correction.
   bool navigation_frame_reset_unresolved_{false};
+  // The autopilot's reset counters are held against the first state the
+  // stack accepted as authoritative, not the first message: an autopilot
+  // aligning its estimator to a source it is still admitting resets its
+  // frame before any state is good for control, and no frame the stack uses
+  // exists yet. On the lidar-inertial profile the autopilot reset its
+  // position to the external odometry four seconds after this node started
+  // and, held against the first non-authoritative message, that reset kept
+  // the navigation unavailable for the whole of r369.
+  bool navigation_baseline_established_{false};
   ProductionMppiVehicleStatus vehicle_status_{};
   Px4TimestampEpochAdmissionState vehicle_status_timestamp_admission_{};
   bool vehicle_status_epoch_probation_{false};
