@@ -258,6 +258,129 @@ unchanged, and the same mission gates as the 3D-lidar profile: mission
 complete, collision-free, route availability at the threshold item 9 stage A
 derives, planner p95 below 200 ms, and the routes through both shafts flown
 at the speed the lidar profile flies them.
+
+## 15. Realistic Cooperative Communication
+
+**Type:** dependent realism stage.
+
+**Hard prerequisites:** items 6 and 13.
+
+**Validation environment:** Urban Circuit Practice 01, the cooperative
+traffic scenario.
+
+The cooperative traffic of item 6 works, but its exchange is not one a
+real fleet has. Four vehicles publish a `CooperativeFlightIntent` twenty
+times a second into one shared DDS topic on one host: 1 to 2 KB per
+message, 20 to 40 KB/s per vehicle, every vehicle receiving every message
+with no latency, no loss, no range and no partition. That is a test bench
+for the separation algorithm, not a model of the air. This item replaces the
+channel with one that behaves like radio, cuts the exchange to what such a
+channel carries, and makes the separation survive what the channel does. The
+navigation invariants hold throughout: a peer the vehicle does not hear of
+is unknown, not an obstacle and not a prohibition; nothing here adds a
+latch, a penalty on free space or a restriction of motion.
+
+### Stage 0: Remove The Interception Missions And The Radar
+
+The interception missions (items 1 to 5 and 6.1) and the airborne radar
+they rest on leave the repository first. The radar is the one sensor of the
+stack modelled from Gazebo truth with no physical counterpart on this class
+of vehicle: an ideal sphere of range, bearing, elevation and radial velocity
+to 100 m, where a real radar an x500 could lift is a sector with degrees of
+angular error, multipath in streets and a detection range on a 0.01 m²
+target that starts at a few hundred metres. The cooperative traffic does not
+use it. What goes: the radar simulators, trackers, guidance, the evader and
+interceptor referees and truth boundaries, the intercept launches,
+scenarios, scripts, messages, tests and documentation, and the
+non-cooperative avoidance parameters of the controller; 56 files and about
+8 700 non-blank lines by name, plus the interception branches woven into the
+multi-vehicle launch (55 references), the Makefile (19), the simulation
+script (14), README (57) and `architecture.md` (43). What stays: the
+multi-vehicle launch and spectator infrastructure, the cooperative agents
+and referee, and the `Completed` entries 1 to 5 and 6.1 as history, each
+with the line that this stage removed the feature. The removal is complete
+when the cooperative acceptance series (three flights) passes unchanged,
+every unit and script test passes with the interception ones deleted rather
+than skipped, and no document names a removed node, scenario or command.
+
+### Stage 1: A Link Model Between Vehicles
+
+A link simulator is a simulation component like the lidar: it may read the
+simulator's true vehicle positions and the world to decide what radio does,
+and it hands each vehicle only the messages that arrive. Every message a
+vehicle sends enters the link simulator on the vehicle's own output topic
+and leaves on the receiving vehicle's input topic; a contract test holds
+that no agent subscribes to another vehicle's output directly, as the radar
+anti-leak test held its graph. Three channel classes, each a parameter set
+of the same component, chosen per mission:
+
+- **mesh** (Wi-Fi 802.11s or batman-adv class): a pair is linked in line
+  of sight within about 150 m and behind a building within tens of metres,
+  line of sight read from the world; a message reaches a vehicle out of
+  direct range through peers that hear both, each hop adding 5 to 20 ms;
+  loss rises with range and the mesh partitions when the vehicles spread;
+- **cellular** (LTE class over a SIM): every vehicle reaches every other
+  through a relay with 50 to 150 ms of latency and jitter of the same
+  order, no direct links, and coverage that ends where the location goes
+  indoors, in the shafts and under the covered passages;
+- **telemetry radio** (900 MHz class): range over the whole location, a
+  shared budget of about 100 kbit/s, latency tens of milliseconds, so the
+  rate of the fleet's messages is what the budget allows.
+
+Real fleets combine a cellular link for command with a local broadcast for
+deconfliction; a mission may run two classes at once, each carrying what it
+is for. The parameters of each class are stated with their source, the
+channel's delivery latency, loss and partition are logged per message, and
+the mission check reports them per flight.
+
+### Stage 2: An Intent That Fits The Channel
+
+The intent shrinks to what the channels carry: position, velocity, the
+footprint, the maneuver state and a coarse predicted trajectory over the
+5 s the conflict prediction already uses, within about 200 bytes, sent at 1
+to 5 Hz, faster only while a conflict is predicted. The bounded validity and
+the predicted trajectory that item 6 already sends are what make the low
+rate sufficient: a peer is extrapolated along its last intent until the
+intent expires, and an expired intent is no knowledge at all. The bandwidth
+the fleet uses is measured per class against the class's budget.
+
+### Stage 3: Separation That Survives The Channel
+
+The separation cost and the maneuver selection are given the channel's
+failures as ordinary input: a peer whose intent is late, lost, expired or
+never heard; an asymmetric link where one vehicle hears and the other does
+not; a partition that hides half the fleet; a message that arrives after
+the vehicle it describes has moved. Complementary maneuver choice must stay
+deterministic under asymmetric knowledge. The referee's separation gates of
+item 6 are held under each channel class and under scripted outages of the
+link simulator (an evaluation component; no fault injection enters
+production code).
+
+### Stage 4: A Shared Frame Without GNSS
+
+The cooperative missions still fly the `gnss` profile, and the exchange of
+positions works because GNSS gives every vehicle one frame. On the default
+lidar-inertial profile each vehicle has its own frame with its own drift,
+and a peer's "I am at X" means nothing without a common anchor. The options
+are measured against each other on the cooperative scenario: a GNSS anchor
+where the sky is open, relative observation of peers by each vehicle's own
+lidar (a vehicle at 10 to 30 m is a return the obstacle memory already
+sees), and alignment of frames through the shared world. This stage is
+complete when the cooperative acceptance series flies on the lidar-inertial
+profile with the multi-vehicle launch running one estimator per vehicle.
+
+### Measurement And Completion
+
+Measure, per flight and per channel class: message rate and bytes per
+vehicle, delivery latency and loss, the share of flight time each vehicle
+spends with each peer unknown, minimum separation and its margin over the
+gate, maneuver decisions taken under asymmetric knowledge, and the frame
+error between vehicles on the lidar-inertial profile. This item is complete
+when stage 0 has landed, the cooperative acceptance series passes under the
+mesh and cellular classes with the intent within the channel's budget, the
+referee's separation gates hold under scripted outages, and the series
+flies on the lidar-inertial profile.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
