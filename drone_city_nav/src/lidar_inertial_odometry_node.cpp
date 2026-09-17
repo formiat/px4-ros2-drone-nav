@@ -150,7 +150,7 @@ public:
         declare_parameter<std::string>("lidar_3d_topic", "/lidar_3d/points"),
         rclcpp::SensorDataQoS{}.keep_last(3),
         [this](const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
-          onCloud(*cloud);
+          onCloudReceived(cloud);
         });
     RCLCPP_INFO(get_logger(),
                 "LIDAR_INERTIAL_ODOMETRY ready publish_to_autopilot=%s "
@@ -186,6 +186,35 @@ private:
             Eigen::Vector3d{sample.accelerometer_mps2.x, sample.accelerometer_mps2.y,
                             sample.accelerometer_mps2.z}});
     ++imu_samples_;
+    if (pending_cloud_ &&
+        last_imu_stamp_ns_ >=
+            rclcpp::Time{pending_cloud_->header.stamp}.nanoseconds()) {
+      const sensor_msgs::msg::PointCloud2::SharedPtr cloud = std::move(pending_cloud_);
+      pending_cloud_.reset();
+      onCloud(*cloud);
+    }
+  }
+
+  // A scan waits for the IMU up to its own stamp. The executor serves the
+  // queued scans and IMU samples in no fixed order, and after a long
+  // registration a scan was registered with the IMU as much as 590 ms behind
+  // it (r400; at most 92 ms before the queues were deepened): the stretch
+  // was carried at one held sample and the samples that came after were
+  // discarded, and on r400 and r401 the estimate diverged and the vehicle
+  // crashed. A scan still waiting when the next one arrives is registered
+  // with the IMU there is.
+  void onCloudReceived(const sensor_msgs::msg::PointCloud2::SharedPtr& cloud) {
+    if (pending_cloud_) {
+      const sensor_msgs::msg::PointCloud2::SharedPtr waiting =
+          std::move(pending_cloud_);
+      pending_cloud_.reset();
+      onCloud(*waiting);
+    }
+    if (last_imu_stamp_ns_ < rclcpp::Time{cloud->header.stamp}.nanoseconds()) {
+      pending_cloud_ = cloud;
+      return;
+    }
+    onCloud(*cloud);
   }
 
   void onCloud(const sensor_msgs::msg::PointCloud2& cloud) {
@@ -294,6 +323,7 @@ private:
   std::unique_ptr<LidarInertialOdometry> odometry_;
   std::unique_ptr<AutopilotStateSource> autopilot_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+  sensor_msgs::msg::PointCloud2::SharedPtr pending_cloud_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   Px4MapFrameTransform transform_;
