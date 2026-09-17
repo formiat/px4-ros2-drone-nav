@@ -859,8 +859,12 @@ lidar_inertial_odometry_node:
     # 0.41 m per second at p90 below 0.02 and 0.07 m at 0.02 to 0.04, where
     # a corridor still registered the scans and slid along its own axis; at
     # 0.04 to 0.06 it grew 0.02 m, the same as against well-lit walls above
-    # 0.16. r380 left the estimate 0.98 m p95 off the track at 0.02.
-    minimum_information_per_point: 0.04
+    # 0.16. r380 left the estimate 0.98 m p95 off the track at 0.02. On r382,
+    # with the IMU integrated to each scan's stamp, the velocity still left
+    # the truth by 0.33 m/s within 0.25 s entering that corridor, where the
+    # weakest axis fell from 0.10 through 0.05 to 0.007, and the estimate
+    # ended 0.40 m ahead at 0.04.
+    minimum_information_per_point: 0.06
     # Each registered position updates position and velocity in a Kalman
     # step: the IMU's motion since the last registered scan is the prior,
     # with the uncertainty white acceleration noise of this density adds over

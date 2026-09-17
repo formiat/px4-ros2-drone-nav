@@ -66,7 +66,7 @@ struct LidarInertialOdometryConfig {
   // its uncertainty grows there.
   double minimum_matched_fraction{0.3};
   double maximum_residual_rms_m{0.5};
-  double minimum_information_per_point{0.04};
+  double minimum_information_per_point{0.06};
   // The registered position updates position and velocity together in a
   // Kalman step: the IMU's motion since the last registered scan is the
   // prior, with the uncertainty white acceleration noise of this density
