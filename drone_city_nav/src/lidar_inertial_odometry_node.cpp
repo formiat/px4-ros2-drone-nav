@@ -23,6 +23,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -186,11 +187,11 @@ private:
             Eigen::Vector3d{sample.accelerometer_mps2.x, sample.accelerometer_mps2.y,
                             sample.accelerometer_mps2.z}});
     ++imu_samples_;
-    if (pending_cloud_ &&
+    if (!pending_clouds_.empty() &&
         last_imu_stamp_ns_ >=
-            rclcpp::Time{pending_cloud_->header.stamp}.nanoseconds()) {
-      const sensor_msgs::msg::PointCloud2::SharedPtr cloud = std::move(pending_cloud_);
-      pending_cloud_.reset();
+            rclcpp::Time{pending_clouds_.front()->header.stamp}.nanoseconds()) {
+      const sensor_msgs::msg::PointCloud2::SharedPtr cloud = pending_clouds_.front();
+      pending_clouds_.pop_front();
       onCloud(*cloud);
     }
   }
@@ -201,20 +202,17 @@ private:
   // it (r400; at most 92 ms before the queues were deepened): the stretch
   // was carried at one held sample and the samples that came after were
   // discarded, and on r400 and r401 the estimate diverged and the vehicle
-  // crashed. A scan still waiting when the next one arrives is registered
-  // with the IMU there is.
+  // crashed. Waiting scans keep their order and each is registered once the
+  // IMU reaches it; registering the waiting one whenever the next arrived
+  // put the IMU 440 to 500 ms behind again on r411 to r413, where
+  // registrations ran to 160 to 208 ms.
   void onCloudReceived(const sensor_msgs::msg::PointCloud2::SharedPtr& cloud) {
-    if (pending_cloud_) {
-      const sensor_msgs::msg::PointCloud2::SharedPtr waiting =
-          std::move(pending_cloud_);
-      pending_cloud_.reset();
-      onCloud(*waiting);
-    }
-    if (last_imu_stamp_ns_ < rclcpp::Time{cloud->header.stamp}.nanoseconds()) {
-      pending_cloud_ = cloud;
+    if (pending_clouds_.empty() &&
+        last_imu_stamp_ns_ >= rclcpp::Time{cloud->header.stamp}.nanoseconds()) {
+      onCloud(*cloud);
       return;
     }
-    onCloud(*cloud);
+    pending_clouds_.push_back(cloud);
   }
 
   void onCloud(const sensor_msgs::msg::PointCloud2& cloud) {
@@ -323,7 +321,7 @@ private:
   std::unique_ptr<LidarInertialOdometry> odometry_;
   std::unique_ptr<AutopilotStateSource> autopilot_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  sensor_msgs::msg::PointCloud2::SharedPtr pending_cloud_;
+  std::deque<sensor_msgs::msg::PointCloud2::SharedPtr> pending_clouds_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   Px4MapFrameTransform transform_;
