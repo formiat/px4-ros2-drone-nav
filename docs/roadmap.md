@@ -124,9 +124,9 @@ sensor is swapped or lost.
 
 ### What The Simulator Provides
 
-The simulator provides a calibrated stereo pair of RGB cameras rigidly
-mounted on the airframe, their intrinsics and baseline, the IMU, and a pose
-source that does not need the lidar: the `gnss` localization profile, kept
+The simulator provides three calibrated stereo pairs of RGB cameras rigidly
+mounted on the airframe, looking forward, up and down, their intrinsics and
+baselines, the IMU, and a pose source that does not need the lidar: the `gnss` localization profile, kept
 for this stage, since the default `lidar_inertial` estimator of item 13
 registers lidar scans and has nothing to register without them. It provides no depth camera, no RGB-D
 sensor and no point cloud in the control path: depth from a simulated depth
@@ -135,12 +135,32 @@ Gazebo truth occupancy are available to evaluation and referee components
 only, as item 13 treated ground-truth pose, and must never cross into the
 perception, planning or control data path.
 
-Environments used for acceptance must carry surface texture. A stereo matcher
-recovers depth from texture; an untextured flat wall is exactly where it
-fails, and a wall that yields no depth is unobserved, not absent. Environment
-candidates that render as uniform flat colour are textured before they are
-used for this stage; the geometry, spawn points and mission goals do not
-change.
+Three pairs and not one, because a multirotor can turn about yaw before it
+moves but cannot tilt to look where it climbs or descends. The speed policy
+never moves the vehicle faster than it can stop within the range at which an
+obstacle is guaranteed to be detected in that direction, so a forward pair
+alone gives every vertical motion a detection range of zero: the two shafts
+of Urban Circuit Practice 01, which item 12's routes climb and descend
+regularly, would be crawled through or not entered, against the rule that
+vertical motion is free. The up and down pairs give the shafts their walls
+at the periphery of the image and their floors; sky in the up pair yields no
+depth and is unobserved, which is the honest answer. Backward and sideways
+pairs are not needed: the gaze policy below turns the vehicle before such
+motion. The baseline is chosen for the shafts, whose walls stand 0.5 to 1 m
+from the vehicle: the nearest range a pair resolves is its baseline times
+the focal length over the largest disparity, so a baseline around 10 cm at
+640 px keeps that range under 0.5 m; a longer baseline sees farther and
+loses the shaft. Lenses around 90 degrees leave the diagonals between the
+three cones at the edge of every frustum; the directional detection range
+accounts for that, and wider lenses close the gaps at the cost of distortion
+and disparity at the edge, a choice stage 1 measures.
+
+Environments used for acceptance must carry surface texture, on shaft walls
+and floors as much as on facades. A stereo matcher recovers depth from
+texture; an untextured flat wall is exactly where it fails, and a wall that
+yields no depth is unobserved, not absent. Environment candidates that
+render as uniform flat colour are textured before they are used for this
+stage; the geometry, spawn points and mission goals do not change.
 
 ### Depth Recovery
 
@@ -176,16 +196,18 @@ policy already applies: the vehicle never moves faster than it can stop within
 the range at which it is guaranteed to detect an obstacle. The lidar profile
 states that range as one omnidirectional number. A camera sees a cone. The
 guaranteed detection range becomes a function of direction relative to the
-camera frustum and of the confident depth range, and the speed policy limits
+three frustums and of the confident depth range, and the speed policy limits
 speed along the commanded motion by the guaranteed range in that direction. A
-vehicle commanded sideways, backwards or vertically out of its own frustum
-slows to what unobserved motion allows, which is the existing law applied
-honestly rather than a new rule.
+vehicle commanded sideways or backwards, out of every frustum, slows to what
+unobserved motion allows, which is the existing law applied honestly rather
+than a new rule; a climb or a descent is observed by the up or the down pair
+and keeps the speed the lidar profile flies.
 
 That makes heading a perception decision. The execution layer gains a gaze
-policy that yaws the camera toward the commanded motion before the motion
-exceeds what unobserved space allows, so that ordinary forward flight is
-observed flight. Active choice of viewpoint for its own sake — moving to see
+policy that yaws the vehicle so the forward pair faces the horizontal
+component of the commanded motion before the motion exceeds what unobserved
+space allows, so that ordinary forward flight is observed flight; there is
+no pitch or roll to command, the up and down pairs cover the vertical. Active choice of viewpoint for its own sake — moving to see
 into a shaft before committing to it — is a later stage; here the camera only
 follows the motion. The latest-lidar evidence that item 8 admits for bounded
 final execution revalidation becomes latest raw evidence from whichever
@@ -201,10 +223,14 @@ The roadmap dependency between the two must not become a code dependency.
 
 ### Implementation Order
 
-1. Add the stereo rig to the vehicle model and bridge images and camera
-   information; record timestamped stereo pairs and poses from lidar missions,
-   and evaluate recovered depth offline against evaluation-only simulator depth
-   by range, texture and view angle to fix the confident range model.
+1. Add the three stereo pairs to the vehicle model and bridge images and
+   camera information; record timestamped stereo frames and poses from lidar
+   missions, and evaluate recovered depth offline against evaluation-only
+   simulator depth by range, texture, view angle and pair to fix the
+   confident range model and the lens choice; measure what three matchers
+   cost on the GPU the controller shares (41 percent on the lidar profile)
+   and what six renders cost the simulator, which holds a real-time factor
+   of 1.00 without margin.
 2. Add the stereo depth producer and the depth-to-beam adapter that emits the
    item 8 beam observations with per-ray confidence, and integrate them in
    shadow: lidar remains authoritative, and the vision occupancy is compared
@@ -230,7 +256,8 @@ with the lidar absent from the vehicle model, no depth or point
 cloud sensor in the control path, the raw-world and planner contracts
 unchanged, and the same mission gates as the 3D-lidar profile: mission
 complete, collision-free, route availability at the threshold item 9 stage A
-derives, and planner p95 below 200 ms.
+derives, planner p95 below 200 ms, and the routes through both shafts flown
+at the speed the lidar profile flies them.
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
@@ -347,38 +374,6 @@ against 97; the 2D obstacle memory node is still selectable by the launch
 files, fourteen sources sit near the 1000-line cap and 226 lie flat in
 `src/`.
 
-### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
-
-Shipped in [v0.3.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.3.0)
-on 2026-09-17, closed on the urban point-to-point mission with the 3D lidar
-and no static map; the profile, the estimator and its health are in
-[`localization.md`](localization.md), the checks in [`testing.md`](testing.md).
-`LOCALIZATION_PROFILE=lidar_inertial`, the default of every single-vehicle
-flight since, flies on the IMU and a lidar-inertial estimator alone, through the autopilot's external-odometry interface, with
-GNSS, magnetometer and simulation-heading fusion off (`EKF2_GPS_CTRL 0`,
-`EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`); the mission check
-proves the profile from the logs and reports the estimator's health, and a
-scan that does not register is not published, so a lost estimate reaches the
-stack as the autopilot's withdrawn position and the existing pose-age
-revocation. Measured at the r430 to r434 series on 5a113bc5: no crash,
-2.57/2.97/2.58/2.78/2.80 m/s, the autopilot's estimate 0.15, 0.18, 0.22, 0.19 and 0.18 m from the true pose across
-the track at p95 (GNSS baseline 0.19 to 0.25), the estimator's own 0.06 to
-0.17 m, tick 24.1 to 25.0 ms at p50, the estimator at 0.5 cores and 59 MiB;
-the profile, health, dynamics, resource and transport checks green on every
-flight, the known reds of the stack (no-route holds 3.9 to 9.2 percent,
-route availability 90 to 96) as before, and r433 without the route-volume
-witness, which reads the controller's sampled positions and not the estimate.
-
-Deferred with the measured reason: loop closure, because the drift does not
-grow with the flight's length over the 400 m mission (0.1 to 0.2 m at the
-goal, accrued along one bare corridor, not with the distance). Known and not
-gated: the corridor at x 30 to 62 leaves its axis to the IMU, where the
-estimate drifts 0.08 to 0.22 m; the along-track check reads at its own
-resolution (-0.029 to +0.013 s over r415 to r434 against 0.02); and the flights that lost
-the track while the estimator was set (r386, r387, r399 to r401, r411 to
-r413) were each an ordering or timing fault of the scan and IMU streams,
-not of the registration.
-
 ### 12. Persistent Full-3D Strategic Navigation (Completed)
 
 Shipped in [v0.2.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.2.0)
@@ -420,3 +415,35 @@ Not repeated at closure and carried into item 9 stage A: the three-run
 Manhattan gate, the 97 and 99 percent availability targets (measured 88 to 95
 percent after bootstrap), and the cooperative and interception re-flights. The
 technical debt measured during closure is listed in item 10.
+
+### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
+
+Shipped in [v0.3.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.3.0)
+on 2026-09-17, closed on the urban point-to-point mission with the 3D lidar
+and no static map; the profile, the estimator and its health are in
+[`localization.md`](localization.md), the checks in [`testing.md`](testing.md).
+`LOCALIZATION_PROFILE=lidar_inertial`, the default of every single-vehicle
+flight since, flies on the IMU and a lidar-inertial estimator alone, through the autopilot's external-odometry interface, with
+GNSS, magnetometer and simulation-heading fusion off (`EKF2_GPS_CTRL 0`,
+`EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`); the mission check
+proves the profile from the logs and reports the estimator's health, and a
+scan that does not register is not published, so a lost estimate reaches the
+stack as the autopilot's withdrawn position and the existing pose-age
+revocation. Measured at the r430 to r434 series on 5a113bc5: no crash,
+2.57/2.97/2.58/2.78/2.80 m/s, the autopilot's estimate 0.15, 0.18, 0.22, 0.19 and 0.18 m from the true pose across
+the track at p95 (GNSS baseline 0.19 to 0.25), the estimator's own 0.06 to
+0.17 m, tick 24.1 to 25.0 ms at p50, the estimator at 0.5 cores and 59 MiB;
+the profile, health, dynamics, resource and transport checks green on every
+flight, the known reds of the stack (no-route holds 3.9 to 9.2 percent,
+route availability 90 to 96) as before, and r433 without the route-volume
+witness, which reads the controller's sampled positions and not the estimate.
+
+Deferred with the measured reason: loop closure, because the drift does not
+grow with the flight's length over the 400 m mission (0.1 to 0.2 m at the
+goal, accrued along one bare corridor, not with the distance). Known and not
+gated: the corridor at x 30 to 62 leaves its axis to the IMU, where the
+estimate drifts 0.08 to 0.22 m; the along-track check reads at its own
+resolution (-0.029 to +0.013 s over r415 to r434 against 0.02); and the flights that lost
+the track while the estimator was set (r386, r387, r399 to r401, r411 to
+r413) were each an ordering or timing fault of the scan and IMU streams,
+not of the registration.
