@@ -6,6 +6,7 @@
 // here; the initial pose is the declared one.
 
 #include "drone_city_nav/autopilot_state_source.hpp"
+#include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
 #include "drone_city_nav/px4_autopilot_adapter.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
@@ -144,15 +145,16 @@ public:
 
 private:
   void onImu(const AutopilotImuSample& sample) {
-    // The IMU is stamped on the autopilot's clock and the scans on the
-    // simulation's; the clock synchronisation samples relate the two.
-    const std::optional<std::int64_t> mapped = time_mapper_.px4LocalToRosTimeNs(
-        static_cast<std::int64_t>(sample.timestamp_us) * 1000);
-    if (!mapped.has_value()) {
+    // The IMU arrives stamped on the transport's clock and the scans on the
+    // simulation's; the same resolution the obstacle memory applies to the
+    // autopilot's position stamps places the sample on the scans' clock.
+    const LidarPoseSourceStampResult source = resolveLidarPoseSourceStamp(
+        time_mapper_, sample.timestamp_us, get_clock()->now().nanoseconds());
+    if (!source.resolved()) {
       ++unmapped_imu_samples_;
       return;
     }
-    const std::int64_t stamp_ns = *mapped;
+    const std::int64_t stamp_ns = source.mapped_ros_stamp_ns;
     if (!odometry_->initialized()) {
       odometry_->initialize(stamp_ns, Eigen::Vector3d::Zero(),
                             initial_heading_ned_rad_);
