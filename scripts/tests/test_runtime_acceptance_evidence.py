@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -286,6 +288,59 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertIn('--runtime-manifest "${runtime_manifest_path}"', helper)
         self.assertIn("--require-persistent-3d-acceptance", helper)
         self.assertIn("DRONE_GAZEBO_RUN_ID", container)
+
+    def _manifest(self, profile: str) -> Path:
+        directory = Path(tempfile.mkdtemp())
+        path = directory / "manifest.json"
+        path.write_text(json.dumps({"effective_overrides": {"LOCALIZATION_PROFILE": profile}}),
+                        encoding="utf-8")
+        return path
+
+    def test_the_gnss_profiles_report_and_gate_nothing(self) -> None:
+        for profile in ("gnss", "gnss_shadow"):
+            errors: list[str] = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                validator.validate_localization_profile(self._manifest(profile), "", "",
+                                                        errors)
+            self.assertEqual(errors, [])
+            self.assertIn(f"OK: localization profile is {profile}", output.getvalue())
+
+    def test_the_lidar_inertial_profile_needs_gnss_off_no_heading_source_and_odometry(
+            self) -> None:
+        log = self._flight_log(540.0, 200.0)
+        px4 = ("x * EKF2_GPS_CTRL [1,2] : 0.0000\nx * EKF2_MAG_TYPE [1,2] : 5.0000\n"
+               "x * EKF2_EV_CTRL [1,2] : 15.0000\n")
+        estimator = ("[1.0] [lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY "
+                     "healthy=true published=true scans=2000 healthy_scans=1990 "
+                     "published_scans=1990 unmapped_imu=0\n")
+        errors: list[str] = []
+        output = io.StringIO()
+        with redirect_stdout(output):
+            validator.validate_localization_profile(self._manifest("lidar_inertial"),
+                                                    log + estimator, px4, errors)
+        self.assertEqual(errors, [])
+        self.assertIn("the estimator's odometry at 9.9 Hz", output.getvalue())
+
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            validator.validate_localization_profile(
+                self._manifest("lidar_inertial"),
+                log + estimator + "[2.0] [simulation_heading_source_node]: ready\n",
+                px4.replace("EKF2_GPS_CTRL [1,2] : 0.0000", "EKF2_GPS_CTRL [1,2] : 7.0000"),
+                errors)
+        self.assertEqual(len(errors), 2)
+        self.assertIn("sets EKF2_GPS_CTRL to 0 (7)", errors[0])
+        self.assertIn("without the simulation heading source", errors[1])
+
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            validator.validate_localization_profile(
+                self._manifest("lidar_inertial"),
+                log + estimator.replace("published_scans=1990", "published_scans=400"), px4,
+                errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("5 Hz or more (2.0 Hz)", errors[0])
 
     def test_every_flight_records_its_resources_before_the_capture_gate(self) -> None:
         # The resource record starts before the early return that keeps the

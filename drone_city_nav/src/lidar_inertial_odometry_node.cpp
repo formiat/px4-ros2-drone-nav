@@ -206,6 +206,7 @@ private:
       odometry_pub_->publish(px4VisualOdometryFromEstimate(
           estimate, static_cast<std::uint64_t>(stamp_ns / 1000)));
       published = true;
+      ++published_scans_;
     }
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
@@ -215,16 +216,17 @@ private:
         "information=%.3f degenerate_axes=%zu correction_along_m=%.3f speed_mps=%.2f "
         "iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_samples=%" PRIu64
-        " scans=%" PRIu64 " healthy_scans=%" PRIu64 " unmapped_imu=%" PRIu64
-        " position=(%.2f,%.2f,%.2f) yaw=%.3f",
+        " scans=%" PRIu64 " healthy_scans=%" PRIu64 " published_scans=%" PRIu64
+        " unmapped_imu=%" PRIu64 " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
         estimate.information_per_point, estimate.degenerate_axes,
         estimate.correction_along_track_m, estimate.velocity_ned_mps.norm(),
         estimate.iterations, estimate.scan_points, estimate.submap_points,
         estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
-        imu_samples_, scans_, healthy_scans_, unmapped_imu_samples_, map_xy.x, map_xy.y,
-        -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
+        imu_samples_, scans_, healthy_scans_, published_scans_, unmapped_imu_samples_,
+        map_xy.x, map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
+        mapYaw(estimate));
   }
 
   [[nodiscard]] double mapYaw(const LidarInertialEstimate& estimate) const noexcept {
@@ -270,6 +272,7 @@ private:
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};
+  std::uint64_t published_scans_{0U};
 };
 
 } // namespace

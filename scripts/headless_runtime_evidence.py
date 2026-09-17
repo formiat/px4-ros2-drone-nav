@@ -493,3 +493,70 @@ def validate_persistent_3d_acceptance_metrics(
             "OK: every admitted route satisfies latency, stopping, and overlap reserve "
             f"({len(admitted_routes)})"
         )
+
+
+# The localization profile a flight declared and what the logs show it flew.
+# lidar_inertial is the roadmap's item 13: the estimator alone, with the
+# autopilot's GNSS and magnetometer fusion off and the simulation heading
+# source, which is the simulator's truth, not run.
+PX4_PARAMETER_SHOWN_PATTERN = r"{name} \[\d+,\d+\] : (-?[\d.]+)"
+LIDAR_INERTIAL_PUBLISHED_PATTERN = re.compile(
+    r"LIDAR_INERTIAL_ODOMETRY .*?published_scans=(\d+)")
+MINIMUM_LIDAR_INERTIAL_PUBLISH_HZ = 5.0
+
+
+def shown_px4_parameter(px4_log: str, name: str) -> float | None:
+    match = None
+    for match in re.finditer(PX4_PARAMETER_SHOWN_PATTERN.format(name=name), px4_log):
+        pass
+    return float(match.group(1)) if match is not None else None
+
+
+def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: str,
+                                  errors: list[str]) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    profile = manifest.get("effective_overrides", {}).get("LOCALIZATION_PROFILE", "gnss")
+    if profile == "gnss":
+        print("OK: localization profile is gnss (the autopilot's GNSS and the simulated "
+              "heading)")
+        return
+    if profile == "gnss_shadow":
+        print("OK: localization profile is gnss_shadow (the lidar-inertial estimator "
+              "beside GNSS, compared and not flown)")
+        return
+    if profile != "lidar_inertial":
+        errors.append(f"FAIL: localization profile is known ({profile})")
+        return
+    for name, expected in (("EKF2_GPS_CTRL", 0.0), ("EKF2_MAG_TYPE", 5.0),
+                           ("EKF2_EV_CTRL", 15.0)):
+        shown = shown_px4_parameter(px4_log, name)
+        if shown is None:
+            errors.append(f"FAIL: lidar_inertial profile shows {name} in the autopilot log")
+        elif shown != expected:
+            errors.append(f"FAIL: lidar_inertial profile sets {name} to {expected:g} "
+                          f"({shown:g})")
+    if "[simulation_heading_source_node]" in ros_log:
+        errors.append("FAIL: lidar_inertial profile runs without the simulation heading "
+                      "source")
+    published = None
+    for published in LIDAR_INERTIAL_PUBLISHED_PATTERN.finditer(ros_log):
+        pass
+    readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
+    result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
+    if published is None:
+        errors.append("FAIL: lidar_inertial profile publishes the estimator's odometry")
+    elif readiness is not None and result is not None:
+        span_s = float(result.group(1)) - float(readiness.group(1))
+        rate_hz = int(published.group(1)) / span_s if span_s > 0.0 else 0.0
+        if rate_hz < MINIMUM_LIDAR_INERTIAL_PUBLISH_HZ:
+            errors.append(
+                "FAIL: lidar_inertial profile publishes the estimator's odometry at "
+                f"{MINIMUM_LIDAR_INERTIAL_PUBLISH_HZ:.0f} Hz or more ({rate_hz:.1f} Hz)")
+        else:
+            print(f"OK: localization profile is lidar_inertial: GNSS and magnetometer "
+                  f"fusion off, no simulation heading source, the estimator's odometry "
+                  f"at {rate_hz:.1f} Hz over the flight")
+    else:
+        print("OK: localization profile is lidar_inertial (the odometry rate is not "
+              "measured without a successful flight)")
+
