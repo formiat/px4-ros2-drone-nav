@@ -327,6 +327,33 @@ of the same component, chosen per mission:
   shared budget of about 100 kbit/s, latency tens of milliseconds, so the
   rate of the fleet's messages is what the budget allows.
 
+Line of sight is one bit per pair that switches the path-loss exponent of
+a log-distance model: about 2 in the open, 3.5 to 4 behind a building,
+which is what leaves tens of metres of range where there is no sight line.
+Received power against the receiver's sensitivity decides whether the pair
+is linked, and the margin over it the loss probability. The bit comes from
+the segment between the two antennas, at the vehicles' true poses, tested
+against the world's geometry. Two sources exist for that test, and the
+first is the one to build:
+
+1. a world system plugin that casts the segment through the physics
+   engine's collision meshes (`GetRayIntersection` of gz-physics 7, which
+   the dartsim plugin of the container implements, with gz-sim 8's
+   `RaycastData` component) and publishes the pair matrix on a Gazebo topic
+   the bridge carries to the link simulator: exact geometry, no map, six
+   pairs at 10 Hz for four vehicles; it is checked on Urban Circuit Practice
+   01 against pairs known to stand inside and outside the same structure;
+2. the radar's method, a sampled walk along the segment through an
+   evaluation-only voxel occupancy of the world built offline from the
+   SDF collisions (`voxelize_sdf_collisions`), kept as the fallback because
+   the urban location has no valid such map until item 11 delivers one.
+
+The same plugin casts one ray straight up from each vehicle: a ray that
+hits a ceiling puts the vehicle indoors, in a shaft or under a covered
+passage, where the cellular class has no coverage. None of this reaches an
+agent: a vehicle does not learn why it cannot hear a peer, only that it
+cannot, and the geometry lives in the link simulator alone.
+
 Real fleets combine a cellular link for command with a local broadcast for
 deconfliction; a mission may run two classes at once, each carrying what it
 is for. The parameters of each class are stated with their source, the
