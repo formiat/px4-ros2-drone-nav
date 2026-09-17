@@ -132,13 +132,6 @@ public:
   [[nodiscard]] LidarInertialEstimate
   addScan(std::int64_t stamp_ns, const std::vector<Eigen::Vector3d>& points_body);
 
-  // The last scan's estimate carried through the IMU samples received since
-  // to `stamp_ns`: what the autopilot is handed at publication, so the
-  // registration's own latency, 50 to 190 ms behind the scan, does not
-  // reach it as a position error at speed. Health and variances are the
-  // last scan's.
-  [[nodiscard]] LidarInertialEstimate predictAt(std::int64_t stamp_ns) const;
-
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

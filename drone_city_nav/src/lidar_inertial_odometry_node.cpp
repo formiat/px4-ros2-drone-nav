@@ -203,12 +203,24 @@ private:
     publishPose(estimate, cloud.header.stamp);
     bool published = false;
     if (publish_to_autopilot_ && estimate.healthy) {
-      // The autopilot dates the sample at receipt, so it is handed the estimate
-      // carried through the IMU to now, not the scan's.
-      odometry_pub_->publish(px4VisualOdometryFromEstimate(
-          odometry_->predictAt(get_clock()->now().nanoseconds())));
-      published = true;
-      ++published_scans_;
+      // The scan's moment in the autopilot's synchronised clock: its local
+      // time from the clock synchronisation, less the synchronisation offset
+      // the transport adds to the autopilot's own stamps. A pose dated at
+      // receipt was the registration's 50 to 190 ms late, and at 5 m/s the
+      // autopilot's estimate ran 0.3 m rms from the true pose against the
+      // estimator's 0.08 (r373) and reset its position by 1.6 m.
+      const std::optional<std::int64_t> px4_local_ns =
+          time_mapper_.rosToPx4LocalTimeNs(stamp_ns);
+      if (px4_local_ns.has_value()) {
+        const std::int64_t synchronised_ns =
+            *px4_local_ns - time_mapper_.diagnostics().latest_estimated_offset_ns;
+        if (synchronised_ns > 0) {
+          odometry_pub_->publish(px4VisualOdometryFromEstimate(
+              estimate, static_cast<std::uint64_t>(synchronised_ns / 1000)));
+          published = true;
+          ++published_scans_;
+        }
+      }
     }
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});

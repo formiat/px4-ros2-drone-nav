@@ -392,7 +392,6 @@ struct LidarInertialOdometry::Impl {
   bool has_registered{false};
   bool holding{false};
   std::int64_t registered_stamp_ns{0};
-  LidarInertialEstimate last_estimate;
   Eigen::Vector3d registered_position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d registered_velocity{Eigen::Vector3d::Zero()};
 
@@ -685,22 +684,6 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   estimate.velocity_variance_m2ps2 = estimate.position_variance_m2 * 4.0;
   estimate.submap_points = impl.submap.pointCount();
   estimate.keyframes = impl.submap.keyframeCount();
-  impl.last_estimate = estimate;
-  return estimate;
-}
-
-LidarInertialEstimate
-LidarInertialOdometry::predictAt(const std::int64_t stamp_ns) const {
-  const Impl& impl = *impl_;
-  LidarInertialEstimate estimate = impl.last_estimate;
-  if (!impl.initialized || !impl.attitude_levelled) {
-    return estimate;
-  }
-  const Impl::Propagated propagated = impl.propagateTo(stamp_ns);
-  estimate.stamp_ns = propagated.stamp_ns;
-  estimate.position_ned_m = propagated.position;
-  estimate.body_to_ned = propagated.rotation;
-  estimate.velocity_ned_mps = propagated.velocity;
   return estimate;
 }
 
