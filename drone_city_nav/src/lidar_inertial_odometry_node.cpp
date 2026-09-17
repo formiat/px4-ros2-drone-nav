@@ -203,7 +203,10 @@ private:
     publishPose(estimate, cloud.header.stamp);
     bool published = false;
     if (publish_to_autopilot_ && estimate.healthy) {
-      odometry_pub_->publish(px4VisualOdometryFromEstimate(estimate));
+      // The autopilot dates the sample at receipt, so it is handed the estimate
+      // carried through the IMU to now, not the scan's.
+      odometry_pub_->publish(px4VisualOdometryFromEstimate(
+          odometry_->predictAt(get_clock()->now().nanoseconds())));
       published = true;
       ++published_scans_;
     }

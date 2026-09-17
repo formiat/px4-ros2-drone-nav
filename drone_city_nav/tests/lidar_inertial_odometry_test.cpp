@@ -187,6 +187,43 @@ TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
   EXPECT_LT(estimate.position_variance_m2.y(), 0.1);
 }
 
+// The estimate the autopilot is handed is the last scan's carried through
+// the IMU received since, to the moment of publication.
+TEST(LidarInertialOdometryTest, PredictsThePoseThroughTheImuSinceTheLastScan) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  const Eigen::Vector3d start{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  // A second of scans at 1 m/s, so the velocity is registered.
+  const std::int64_t first_scan = kSecond / 2;
+  LidarInertialEstimate estimate =
+      odometry.addScan(first_scan, scanFrom(room, start, level));
+  for (int k = 1; k <= 10; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    for (int i = 1; i <= 10; ++i) {
+      odometry.addImu(restSample(stamp - kSecond / 10 + i * kSecond / 100, level));
+    }
+    const double seconds = 1.0e-9 * static_cast<double>(stamp - first_scan);
+    estimate = odometry.addScan(
+        stamp, scanFrom(room, start + Eigen::Vector3d{seconds, 0.0, 0.0}, level));
+    ASSERT_TRUE(estimate.healthy);
+  }
+  // Three tenths of a second of IMU after the last scan, then the prediction.
+  for (int i = 1; i <= 30; ++i) {
+    odometry.addImu(restSample(estimate.stamp_ns + i * kSecond / 100, level));
+  }
+  const LidarInertialEstimate predicted =
+      odometry.predictAt(estimate.stamp_ns + 300'000'000);
+  EXPECT_EQ(predicted.stamp_ns, estimate.stamp_ns + 300'000'000);
+  EXPECT_NEAR(predicted.position_ned_m.x(), estimate.position_ned_m.x() + 0.3, 0.1);
+  EXPECT_NEAR(predicted.position_ned_m.y(), estimate.position_ned_m.y(), 0.05);
+  EXPECT_TRUE(predicted.healthy);
+}
+
 // A scan that matches nothing does not send the estimate away: the
 // position holds at the last registered pose while the IMU keeps the
 // attitude, and the next scan that fits registers again from there.

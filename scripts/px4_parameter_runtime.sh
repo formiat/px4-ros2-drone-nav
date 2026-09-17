@@ -35,9 +35,13 @@ px4_parameter_stream() {
     echo "param set EKF2_MAG_TYPE 5"
     echo "param set EKF2_HGT_REF 0"
     echo "param set EKF2_EV_CTRL 11"
-    # The sample is dated at receipt; the registration behind it took 48 to
-    # 54 ms at p50 on r364 to r366, and the transport a millisecond.
-    echo "param set EKF2_EV_DELAY 50"
+    # The sample is dated at receipt and is the estimate carried through the
+    # IMU to publication, so what is left is the IMU's own lag behind the
+    # scan clock, 4 to 8 ms measured, and the transport's millisecond. r370
+    # dated the scan's own pose at receipt with a fixed 50 ms against a
+    # registration of 50 to 190 ms, and at 3.3 m/s the autopilot reset its
+    # position to the odometry mid-flight.
+    echo "param set EKF2_EV_DELAY 10"
     echo "param set EKF2_EV_NOISE_MD 0"
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"
