@@ -181,15 +181,16 @@ nearest range a pair resolves is its baseline times the focal length over
 the largest disparity, so a baseline around 10 cm keeps that range under
 0.5 m; a longer baseline sees farther and loses the shaft.
 
-Two alternatives stay on record. A one-axis tilt servo under the pair (the
+One alternative stays on record. A one-axis tilt servo under the pair (the
 pair faces the motion in the vertical plane as the vehicle's yaw faces it in
 the horizontal one) keeps the vertical purely visual at the price of a moving
 extrinsic, one degree of servo error being 17 cm at 10 m; it is the choice if
-the time-of-flight exception is ever withdrawn. Three fixed pairs, forward,
-up and down, are the expensive reference configuration, worth flying once
-for comparison if the simulator's budget allows. The directional detection
-range below is written for any set of frustums, so neither changes anything
-above the sensor boundary.
+the time-of-flight exception is ever withdrawn. The directional detection
+range below is written for any set of frustums, so it changes nothing above
+the sensor boundary. Three fixed pairs are not an alternative: at the price
+of the lidar they lose to it in range, in the dark and in compute, nobody
+would mount them, and the reference this profile is measured against is the
+lidar profile itself.
 
 Environments used for acceptance must carry surface texture, on shaft walls
 and floors as much as on facades. A stereo matcher recovers depth from
@@ -280,8 +281,6 @@ The roadmap dependency between the two must not become a code dependency.
    behave as the observability model says.
 4. Fly Urban Circuit Practice 01 on the stereo profile alone, with the lidar
    removed from the model, against item 12's gates.
-5. Optional, if the simulator's budget allows: fly the three-pair reference
-   configuration once and compare speed, coverage and cost.
 
 ### Measurement And Completion
 
