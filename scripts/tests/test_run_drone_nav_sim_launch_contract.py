@@ -568,7 +568,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_px4_gnss_delay_matches_the_simulated_sensor(self) -> None:
         # The bridge stamps GNSS samples at receipt; the EKF must not assume the
         # 110 ms of a real receiver, which put the estimate ahead of the vehicle.
-        self.assertIn('param set EKF2_GPS_DELAY 0', self.text)
+        self.assertIn('export PX4_PARAM_EKF2_GPS_DELAY=0', self.text)
+        self.assertNotIn('param set EKF2_', self.text)
+        self.assertLess(
+            self.text.index('\nexport_px4_estimator_parameters\n'),
+            self.text.index('run_px4_instance "${instance}"'),
+        )
         self.assertIn('param show EKF2_GPS_DELAY', self.text)
 
     def test_single_vehicle_flights_fly_without_gnss_by_default(self) -> None:

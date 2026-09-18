@@ -677,6 +677,7 @@ export PX4_GZ_MODELS="${runtime_models_dir}"
 export PX4_GZ_WORLDS="${runtime_worlds_dir}"
 export PX4_GZ_PLUGINS="${px4_plugins_dir}"
 export PX4_GZ_SERVER_CONFIG="${px4_server_config}"
+export_px4_estimator_parameters
 export GZ_IP="${GZ_IP:-127.0.0.1}"
 export GZ_SIM_RESOURCE_PATH="${gz_resource_path}"
 drone_city_nav_plugin_dir="${colcon_install_base}/drone_city_nav/lib"

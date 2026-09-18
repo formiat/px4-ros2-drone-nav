@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# The PX4 parameters one simulated vehicle flies with, streamed into its
-# SITL console: the speed and acceleration profile, the estimator sources of
-# the localization profile, and the simulation-only heading source. Sourced
-# by run_drone_nav_sim.sh, which owns every variable read here.
+# The PX4 parameters one simulated vehicle flies with: the estimator sources
+# of the localization profile and the simulation-only heading source, exported
+# for the autopilot's startup, and the speed and acceleration profile, streamed
+# into its SITL console. Sourced by run_drone_nav_sim.sh, which owns every
+# variable read here.
 
-px4_parameter_stream() {
-  local cruise_speed="$1"
-  local maximum_speed="$2"
-  sleep "${px4_param_delay_s}"
-  echo "param set CBRK_SUPPLY_CHK 894281"
-  echo "param set NAV_DLL_ACT 0"
+# The estimator sources are set before the autopilot starts, not typed into
+# its console afterwards: rcS applies every PX4_PARAM_<name> before it starts
+# EKF2. Typed six seconds after boot they raced the filter's first fusion on
+# its defaults (GNSS on, GNSS the height reference). On r439 GNSS height
+# fusion ran for 90 ms (cs_gps_hgt from 5.00 to 5.09 s) before the typed
+# parameters took effect, the filter took the GNSS altitude as its origin
+# (ref_alt 7.84 m) and, when the external odometry started, reset its height
+# from 0.02 to 7.84 m: the vehicle climbed 9.6 m for a 2 m takeoff and hit the
+# staging area's ceiling. r427 carried the same reset (0.03 to 7.78 m) and
+# climbed to 17.0 m; r437 and r438 never fused GNSS height and reset to 0.00.
+export_px4_estimator_parameters() {
   # The simulated GNSS has no measurement delay: the Gazebo bridge stamps the
   # navsat sample with the time it receives it (GZBridge.cpp,
   # sensor_gps.timestamp_sample). EKF2 subtracts EKF2_GPS_DELAY from that
@@ -20,7 +26,7 @@ px4_parameter_stream() {
   # median (0.35 m at 3 m/s), with the cross-track error untouched. The
   # obstacle memory's position source offset (lidar_position_source_time_offset_s)
   # compensated the same lead downstream and follows this value.
-  echo "param set EKF2_GPS_DELAY 0"
+  export PX4_PARAM_EKF2_GPS_DELAY=0
   if [[ "${localization_profile}" == "lidar_inertial" ]]; then
     # The lidar-inertial estimator is the position and the heading: GNSS
     # off, magnetometer off, the barometer keeps the height reference, and
@@ -31,8 +37,8 @@ px4_parameter_stream() {
     # the autopilot's height ran to 4.8 m for a 1.1 m climb and the vehicle
     # was flown into the pad. The autopilot derives velocity from its own
     # IMU and the fused position.
-    echo "param set EKF2_GPS_CTRL 0"
-    echo "param set EKF2_MAG_TYPE 5"
+    export PX4_PARAM_EKF2_GPS_CTRL=0
+    export PX4_PARAM_EKF2_MAG_TYPE=5
     # The height reference is the vision, not the barometer. The obstacle
     # memory and the planner fly in the estimator's frame, and PX4's altitude
     # on a barometer reference drifted from it: altitude against the true
@@ -40,30 +46,40 @@ px4_parameter_stream() {
     # flight r366, and on the lidar-inertial flights ran to +1.04 on r376,
     # +0.48 to +0.96 on r378 and +0.98 from takeoff on r379, which flew into
     # the starting-area base a metre below where it held itself.
-    echo "param set EKF2_HGT_REF 3"
-    echo "param set EKF2_EV_CTRL 11"
+    export PX4_PARAM_EKF2_HGT_REF=3
+    export PX4_PARAM_EKF2_EV_CTRL=11
     # The odometry carries the scan's own moment in the synchronised clock,
     # so no delay is added on top. The filter fuses on a delayed horizon
     # EKF2_DELAY_MAX behind now, and a sample older than it is fused at the
     # horizon instead of its moment: the registration took 44 ms at p50,
     # 133 at p99 and 218 at most on r374, past the default 200.
-    echo "param set EKF2_EV_DELAY 0"
-    echo "param set EKF2_DELAY_MAX 300"
-    echo "param set EKF2_EV_NOISE_MD 0"
-    echo "param show EKF2_GPS_CTRL"
-    echo "param show EKF2_MAG_TYPE"
-    echo "param show EKF2_EV_CTRL"
-    echo "param show EKF2_HGT_REF"
+    export PX4_PARAM_EKF2_EV_DELAY=0
+    export PX4_PARAM_EKF2_DELAY_MAX=300
+    export PX4_PARAM_EKF2_EV_NOISE_MD=0
   fi
   if bool_is_true "${enable_simulation_heading_source}"; then
     # The simulated magnetometer's heading sits five to six degrees off the
     # true one at hover, independent of the world's magnetic field; the
     # heading comes from the simulation heading source instead, through the
     # external vision interface, and the magnetometer is not fused.
-    echo "param set EKF2_EV_CTRL 8"
-    echo "param set EKF2_MAG_TYPE 5"
-    echo "param set EKF2_EV_NOISE_MD 1"
-    echo "param set EKF2_EVA_NOISE 0.01"
+    export PX4_PARAM_EKF2_EV_CTRL=8
+    export PX4_PARAM_EKF2_MAG_TYPE=5
+    export PX4_PARAM_EKF2_EV_NOISE_MD=1
+    export PX4_PARAM_EKF2_EVA_NOISE=0.01
+  fi
+}
+
+px4_parameter_stream() {
+  local cruise_speed="$1"
+  local maximum_speed="$2"
+  sleep "${px4_param_delay_s}"
+  echo "param set CBRK_SUPPLY_CHK 894281"
+  echo "param set NAV_DLL_ACT 0"
+  if [[ "${localization_profile}" == "lidar_inertial" ]]; then
+    echo "param show EKF2_GPS_CTRL"
+    echo "param show EKF2_MAG_TYPE"
+    echo "param show EKF2_EV_CTRL"
+    echo "param show EKF2_HGT_REF"
   fi
   echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
   echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
