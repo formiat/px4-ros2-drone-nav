@@ -97,7 +97,7 @@ This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
 
-## 14. Vision-Only 3D Perception Without Lidar Or Static Maps
+## 14. Camera-Based 3D Perception Without Lidar Or Static Maps
 
 **Type:** dependent perception stage.
 
@@ -106,54 +106,90 @@ alignment, and raw-collision validation against its physical world.
 **Validation environment:** Urban Circuit Practice 01.
 
 Navigate the same no-static missions that item 8 and item 12 accept with the
-3D lidar, with no lidar at all and no static map: the vehicle carries only a
-video camera, and software recovers the shape of the surrounding geometry from
-the video stream. The world model does not change. Item 8 fixed the boundary
-between sensing and the raw world as a bundle of timestamped rays with a hit
-at a range or a miss to a range, integrated into revisioned
-`unknown/free/occupied` `Occupancy3D` under one full-6DoF acquisition pose. A
-depth image is exactly such a bundle: one ray per pixel through the calibrated
-optics, a hit where the pixel's depth is known and free space along the ray up
-to it. Vision therefore enters the pipeline as a second producer of the same
-beam observations that `obstacle_memory_3d_node` already integrates, and
-everything downstream — obstacle memory, dirty-chunk transport, immutable raw
-snapshots, swept validation, the persistent planner, MPPI, finite raw-safe
-execution — runs unchanged. The stage proves that the world model is not
-bound to one sensor, which is the property a real vehicle needs before any
-sensor is swapped or lost.
+3D lidar, with no lidar at all and no static map: the vehicle carries one
+forward stereo pair of video cameras, and software recovers the shape of the
+surrounding geometry from the video stream; two short-range multizone
+time-of-flight sensors, the kind serial drones carry, cover straight up and
+straight down, where a forward camera cannot look. The sensor set is chosen by
+price: three stereo pairs cost as much as the 3D lidar they replace, one pair
+and two time-of-flight sensors cost a fraction of it. The world model does not
+change. Item 8 fixed the boundary between sensing and the raw world as a
+bundle of timestamped rays with a hit at a range or a miss to a range,
+integrated into revisioned `unknown/free/occupied` `Occupancy3D` under one
+full-6DoF acquisition pose. A depth image is exactly such a bundle: one ray
+per pixel through the calibrated optics, a hit where the pixel's depth is
+known and free space along the ray up to it. Vision therefore enters the
+pipeline as a second producer of the same beam observations that
+`obstacle_memory_3d_node` already integrates, and everything downstream —
+obstacle memory, dirty-chunk transport, immutable raw snapshots, swept
+validation, the persistent planner, MPPI, finite raw-safe execution — runs
+unchanged. The stage proves that the world model is not bound to one sensor,
+which is the property a real vehicle needs before any sensor is swapped or
+lost.
 
 ### What The Simulator Provides
 
-The simulator provides three calibrated stereo pairs of RGB cameras rigidly
-mounted on the airframe, looking forward, up and down, their intrinsics and
-baselines, the IMU, and a pose source that does not need the lidar: the `gnss` localization profile, kept
-for this stage, since the default `lidar_inertial` estimator of item 13
-registers lidar scans and has nothing to register without them. It provides no depth camera, no RGB-D
-sensor and no point cloud in the control path: depth from a simulated depth
-sensor is a lidar by another name and would prove nothing. Simulator depth and
-Gazebo truth occupancy are available to evaluation and referee components
-only, as item 13 treated ground-truth pose, and must never cross into the
-perception, planning or control data path.
+The simulator provides one calibrated stereo pair of RGB cameras rigidly
+mounted on the airframe and looking forward, its intrinsics and baseline, two
+multizone time-of-flight sensors looking up and down (VL53L8 class: an 8 x 8
+zone matrix, about 4 m of range, a cone of about 60 degrees), the IMU, and a
+pose source that does not need the lidar: the `gnss` localization profile,
+kept for this stage, since the default `lidar_inertial` estimator of item 13
+registers lidar scans and has nothing to register without them. It provides no
+depth camera, no RGB-D sensor and no point cloud in the control path: depth
+from a simulated depth sensor is a lidar by another name and would prove
+nothing. The two time-of-flight sensors are the stated exception, and an
+honest one: 64 rays to 4 m are a tiny flash lidar, they are what a real
+vehicle of this price carries, and they see only the two directions the camera
+cannot. Everything the vehicle flies towards horizontally is recovered from
+video alone. Simulator depth and Gazebo truth occupancy are available to
+evaluation and referee components only, as item 13 treated ground-truth pose,
+and must never cross into the perception, planning or control data path.
 
-Three pairs and not one, because a multirotor can turn about yaw before it
-moves but cannot tilt to look where it climbs or descends. The speed policy
-never moves the vehicle faster than it can stop within the range at which an
-obstacle is guaranteed to be detected in that direction, so a forward pair
-alone gives every vertical motion a detection range of zero: the two shafts
-of Urban Circuit Practice 01, which item 12's routes climb and descend
-regularly, would be crawled through or not entered, against the rule that
-vertical motion is free. The up and down pairs give the shafts their walls
-at the periphery of the image and their floors; sky in the up pair yields no
-depth and is unobserved, which is the honest answer. Backward and sideways
-pairs are not needed: the gaze policy below turns the vehicle before such
-motion. The baseline is chosen for the shafts, whose walls stand 0.5 to 1 m
-from the vehicle: the nearest range a pair resolves is its baseline times
-the focal length over the largest disparity, so a baseline around 10 cm at
-640 px keeps that range under 0.5 m; a longer baseline sees farther and
-loses the shaft. Lenses around 90 degrees leave the diagonals between the
-three cones at the edge of every frustum; the directional detection range
-accounts for that, and wider lenses close the gaps at the cost of distortion
-and disparity at the edge, a choice stage 1 measures.
+One pair and not three, because of price, in hardware and in the simulator
+alike: three pairs are six renders for a simulator that holds a real-time
+factor of 1.00 without margin, one pair is two. What one pair costs is the
+vertical. A multirotor can turn about yaw before it moves but cannot tilt to
+look where it climbs or descends: it is underactuated, its thrust follows the
+body axis, and a pitch of 15 degrees held for a look upwards is 2.6 m/s² of
+horizontal acceleration, 0.2 to 0.5 m of drift in a shaft whose walls stand
+0.5 to 1 m away. The speed policy never moves the vehicle faster than it can
+stop within the range at which an obstacle is guaranteed to be detected in
+that direction, so a forward pair alone gives every vertical motion a
+detection range of zero: the two shafts of Urban Circuit Practice 01, which
+item 12's routes climb and descend regularly, would be crawled through or not
+entered, against the rule that vertical motion is free. The time-of-flight
+sensors give the vertical its guaranteed range: about 4 m in a 60 degree
+cone, which under the vertical law (1.4 m/s²) admits a vertical speed of
+about 2 m/s, slower than the lidar profile and far from a crawl. Their miss
+is real evidence, as the lidar's is, and their 64 rays enter the same beam
+contract as every other ray. Backward and sideways sensing is not needed:
+the gaze policy below turns the vehicle before such motion.
+
+The lens is a measured trade. Depth error grows as the focal length in
+pixels shrinks, so a wider lens sees more of the vertical and less far: at
+640 px, a 10 cm baseline, a quarter pixel of disparity error and one voxel
+of allowed depth error, a 90 degree lens is confident to about 5.7 m, a 120
+degree lens to 4.3 m and a 150 degree lens to 2.9 m, which the braking law
+turns into about 4.8, 3.9 and 3.0 m/s of forward speed. None of them reaches
+the 14 m the lidar profile's 6.5 m/s cruise rests on, so this profile flies
+slower than the lidar profile whatever the lens; the series of item 12 flew
+2.5 to 3.2 m/s on average, so the loss on this location may be modest. These
+are estimates; stage 1 measures them and fixes the lens. The baseline is
+chosen for the shafts, whose walls stand 0.5 to 1 m from the vehicle: the
+nearest range a pair resolves is its baseline times the focal length over
+the largest disparity, so a baseline around 10 cm keeps that range under
+0.5 m; a longer baseline sees farther and loses the shaft.
+
+Two alternatives stay on record. A one-axis tilt servo under the pair (the
+pair faces the motion in the vertical plane as the vehicle's yaw faces it in
+the horizontal one) keeps the vertical purely visual at the price of a moving
+extrinsic, one degree of servo error being 17 cm at 10 m; it is the choice if
+the time-of-flight exception is ever withdrawn. Three fixed pairs, forward,
+up and down, are the expensive reference configuration, worth flying once
+for comparison if the simulator's budget allows. The directional detection
+range below is written for any set of frustums, so neither changes anything
+above the sensor boundary.
 
 Environments used for acceptance must carry surface texture, on shaft walls
 and floors as much as on facades. A stereo matcher recovers depth from
@@ -196,23 +232,25 @@ policy already applies: the vehicle never moves faster than it can stop within
 the range at which it is guaranteed to detect an obstacle. The lidar profile
 states that range as one omnidirectional number. A camera sees a cone. The
 guaranteed detection range becomes a function of direction relative to the
-three frustums and of the confident depth range, and the speed policy limits
+sensors' frustums (the forward pair's and the two time-of-flight cones) and
+of each one's confident range, and the speed policy limits
 speed along the commanded motion by the guaranteed range in that direction. A
 vehicle commanded sideways or backwards, out of every frustum, slows to what
 unobserved motion allows, which is the existing law applied honestly rather
-than a new rule; a climb or a descent is observed by the up or the down pair
-and keeps the speed the lidar profile flies.
+than a new rule; a climb or a descent is observed by the upward or the
+downward time-of-flight sensor and flies the speed its range admits.
 
 That makes heading a perception decision. The execution layer gains a gaze
 policy that yaws the vehicle so the forward pair faces the horizontal
 component of the commanded motion before the motion exceeds what unobserved
-space allows, so that ordinary forward flight is observed flight; there is
-no pitch or roll to command, the up and down pairs cover the vertical. Active choice of viewpoint for its own sake — moving to see
-into a shaft before committing to it — is a later stage; here the camera only
-follows the motion. The latest-lidar evidence that item 8 admits for bounded
-final execution revalidation becomes latest raw evidence from whichever
-sensor produced it; the admission rule, the freshness bound and the swept
-validation do not change.
+space allows, so that ordinary forward flight is observed flight; there is no
+pitch or roll to command, the time-of-flight sensors cover the vertical.
+Active choice of viewpoint for its own sake — moving to see into a shaft
+before committing to it — is a later stage; here the camera only follows the
+motion. The latest-lidar evidence that item 8 admits for bounded final
+execution revalidation becomes latest raw evidence from whichever sensor
+produced it; the admission rule, the freshness bound and the swept validation
+do not change.
 
 Localization is not part of this stage. Stages 1 to 3 fly with the lidar
 still mounted and keep the default lidar-inertial profile; stage 4, with the
@@ -223,16 +261,17 @@ The roadmap dependency between the two must not become a code dependency.
 
 ### Implementation Order
 
-1. Add the three stereo pairs to the vehicle model and bridge images and
-   camera information; record timestamped stereo frames and poses from lidar
-   missions, and evaluate recovered depth offline against evaluation-only
-   simulator depth by range, texture, view angle and pair to fix the
-   confident range model and the lens choice; measure what three matchers
-   cost on the GPU the controller shares (41 percent on the lidar profile)
-   and what six renders cost the simulator, which holds a real-time factor
-   of 1.00 without margin.
+1. Add the forward stereo pair and the two time-of-flight sensors to the
+   vehicle model and bridge them; record timestamped stereo frames, ranges
+   and poses from lidar missions, and evaluate recovered depth offline
+   against evaluation-only simulator depth by range, texture and view angle
+   for 90, 120 and 150 degree lenses to fix the confident range model and
+   the lens; measure what the matcher costs on the GPU the controller shares
+   (41 percent on the lidar profile) and what two renders cost the simulator,
+   which holds a real-time factor of 1.00 without margin.
 2. Add the stereo depth producer and the depth-to-beam adapter that emits the
-   item 8 beam observations with per-ray confidence, and integrate them in
+   item 8 beam observations with per-ray confidence, and the time-of-flight
+   adapter that emits its zones as the same beams, and integrate them in
    shadow: lidar remains authoritative, and the vision occupancy is compared
    with lidar occupancy and truth occupancy for occupied precision and recall,
    unknown fraction and latency.
@@ -241,6 +280,8 @@ The roadmap dependency between the two must not become a code dependency.
    behave as the observability model says.
 4. Fly Urban Circuit Practice 01 on the stereo profile alone, with the lidar
    removed from the model, against item 12's gates.
+5. Optional, if the simulator's budget allows: fly the three-pair reference
+   configuration once and compare speed, coverage and cost.
 
 ### Measurement And Completion
 
@@ -252,12 +293,14 @@ from exposure to raw-world revision, planner p95, route availability, minimum
 obstacle clearance and physical collisions.
 
 This stage is complete when repeated Urban Circuit Practice 01 missions run
-with the lidar absent from the vehicle model, no depth or point
-cloud sensor in the control path, the raw-world and planner contracts
-unchanged, and the same mission gates as the 3D-lidar profile: mission
-complete, collision-free, route availability at the threshold item 9 stage A
-derives, planner p95 below 200 ms, and the routes through both shafts flown
-at the speed the lidar profile flies them.
+with the lidar absent from the vehicle model, no depth or point cloud sensor
+in the control path beyond the two time-of-flight sensors, the raw-world and
+planner contracts unchanged, and the mission gates of the 3D-lidar profile:
+mission complete, collision-free, route availability at the threshold item 9
+stage A derives and planner p95 below 200 ms. Speed is measured, not gated
+at the lidar profile's: forward speed follows the lens's confident range and
+the routes through both shafts are flown at the speed the time-of-flight
+range admits, without crawling.
 
 ## 15. Realistic Cooperative Communication
 
@@ -422,14 +465,14 @@ flies on the lidar-inertial profile.
 Item 13 took away GNSS and the magnetometer while the lidar carried the
 position. Item 14 takes away the lidar while GNSS carries the position. Each
 removed one thing so that a failed flight had one possible cause. This item
-removes both at once: the vehicle carries the three stereo pairs of item 14
-and the IMU, and nothing else. Position and heading come from a
-visual-inertial estimator on the `visual_inertial` profile, and the world is
-the vision raw world of item 14. Nothing below the estimator changes: the
-autopilot's EKF2 remains the owner of the estimate, the estimator publishes
-`VehicleOdometry` to `/fmu/in/vehicle_visual_odometry` exactly as
-`lidar_inertial_odometry_node` does, and the map frame is still fixed by the
-scenario's start pose ([`localization.md`](localization.md)).
+removes both at once: the vehicle carries the forward stereo pair and the two
+time-of-flight sensors of item 14 and the IMU, and nothing else. Position and
+heading come from a visual-inertial estimator on the `visual_inertial`
+profile, and the world is the vision raw world of item 14. Nothing below the
+estimator changes: the autopilot's EKF2 remains the owner of the estimate, the
+estimator publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`
+exactly as `lidar_inertial_odometry_node` does, and the map frame is still
+fixed by the scenario's start pose ([`localization.md`](localization.md)).
 
 The estimator is a separate component from the perception of item 14. Both
 read the same images, and neither reads the other's output: an estimator that
@@ -444,13 +487,13 @@ become a code dependency.
 
 ### What The Simulator Provides
 
-The three calibrated stereo pairs of item 14, their intrinsics and baselines,
-and the IMU. No GNSS in the control path, no magnetometer fusion, no
-`simulation_heading_source_node`; the simulator's true pose and its depth
-stay where item 13 and item 14 put them, in evaluation and referee components
-only. The environment must carry the surface texture item 14 already requires:
-a feature tracker fails on a flat untextured wall for the same reason a stereo
-matcher does.
+The calibrated forward stereo pair of item 14, its intrinsics and baseline,
+the two time-of-flight sensors, and the IMU. No GNSS in the control path, no
+magnetometer fusion, no `simulation_heading_source_node`; the simulator's true
+pose and its depth stay where item 13 and item 14 put them, in evaluation and
+referee components only. The environment must carry the surface texture item
+14 already requires: a feature tracker fails on a flat untextured wall for the
+same reason a stereo matcher does.
 
 ### The Estimator
 
@@ -470,10 +513,12 @@ Keyframe visual-inertial odometry, built on the contracts item 13 established:
   converge is not published at all, so the autopilot sees no estimate rather
   than a wrong one.
 
-Which pairs feed the estimator is measured, not assumed. The forward pair is
-the natural one; the up and down pairs see structure during the vertical
-motion through the two shafts, where a forward-only tracker watches a wall
-slide past with little parallax. Stage 1 measures both.
+The forward pair feeds the estimator. Its weak place is measured, not
+assumed: during the vertical motion through the two shafts a forward tracker
+watches a wall slide past at under a metre, fast in the image and poor in
+texture, and the time-of-flight ranges are the only other exteroception the
+vehicle has there. Stage 1 measures the drift through the shafts and whether
+those ranges are needed as a vertical constraint.
 
 A visual-inertial estimate drifts without a closure, and the mission is
 hundreds of metres long. The threshold is not chosen for the estimator, it is
@@ -498,7 +543,7 @@ the stale pose and the offboard node holds.
 1. Offline first, as item 13 set its filter: replay recorded stereo frames,
    IMU and true pose from item 14's flights (`log/tools/replay`), and measure
    drift per 100 m, along-track and cross-track error and heading error
-   against the truth, by texture, speed, lighting and pair selection. Flights
+   against the truth, by texture, speed, lighting and lens. Flights
    are stochastic; estimator parameters are set on recordings and only
    confirmed in flight.
 2. Add the `visual_inertial_shadow` profile, as `gnss_shadow` did for item 13:
