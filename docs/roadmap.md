@@ -217,7 +217,7 @@ validation do not change.
 Localization is not part of this stage. Stages 1 to 3 fly with the lidar
 still mounted and keep the default lidar-inertial profile; stage 4, with the
 lidar removed, flies on the `gnss` profile, and item 13's rule holds in
-reverse: visual-inertial odometry, if it is ever added, is a separate
+reverse: visual-inertial odometry, which item 16 adds, is a separate
 estimator that this stage must not depend on and must not be depended on by.
 The roadmap dependency between the two must not become a code dependency.
 
@@ -410,6 +410,127 @@ when stage 0 has landed, the cooperative acceptance series passes under the
 mesh and cellular classes with the intent within the channel's budget, the
 referee's separation gates hold under scripted outages, and the series
 flies on the lidar-inertial profile.
+
+## 16. Flight Without GNSS And Without Lidar
+
+**Type:** dependent localization stage.
+
+**Hard prerequisites:** items 13 and 14.
+
+**Validation environment:** Urban Circuit Practice 01.
+
+Item 13 took away GNSS and the magnetometer while the lidar carried the
+position. Item 14 takes away the lidar while GNSS carries the position. Each
+removed one thing so that a failed flight had one possible cause. This item
+removes both at once: the vehicle carries the three stereo pairs of item 14
+and the IMU, and nothing else. Position and heading come from a
+visual-inertial estimator on the `visual_inertial` profile, and the world is
+the vision raw world of item 14. Nothing below the estimator changes: the
+autopilot's EKF2 remains the owner of the estimate, the estimator publishes
+`VehicleOdometry` to `/fmu/in/vehicle_visual_odometry` exactly as
+`lidar_inertial_odometry_node` does, and the map frame is still fixed by the
+scenario's start pose ([`localization.md`](localization.md)).
+
+The estimator is a separate component from the perception of item 14. Both
+read the same images, and neither reads the other's output: an estimator that
+takes its pose from the map built with that pose closes a loop that hides its
+own drift. The estimator keeps its own landmarks and its own window, as
+`LidarInertialOdometry` keeps its own submap and depends on Eigen alone
+(`test_navigation_dependency_contract.py` holds that boundary); it must not
+consume the obstacle memory's occupancy, the planner's route or the
+controller's state, and nothing in perception, planning or control may depend
+on its internals. The roadmap dependency between items 14 and 16 must not
+become a code dependency.
+
+### What The Simulator Provides
+
+The three calibrated stereo pairs of item 14, their intrinsics and baselines,
+and the IMU. No GNSS in the control path, no magnetometer fusion, no
+`simulation_heading_source_node`; the simulator's true pose and its depth
+stay where item 13 and item 14 put them, in evaluation and referee components
+only. The environment must carry the surface texture item 14 already requires:
+a feature tracker fails on a flat untextured wall for the same reason a stereo
+matcher does.
+
+### The Estimator
+
+Keyframe visual-inertial odometry, built on the contracts item 13 established:
+
+- features tracked across the rectified images of a pair and triangulated
+  against the known baseline, so the scale is metric and measured, never
+  learnt;
+- the IMU preintegrated between frames as the motion prior, with the
+  gyroscope bias as a state and the level from the accelerometer at rest, as
+  item 13 integrates it to a scan stamp;
+- the pose from minimizing reprojection error over a sliding window of
+  keyframes with a robust cost, the window marginalized rather than grown;
+- item 13's honesty rule in its own form: a direction observed by too few
+  landmarks carries no measurement, a landmark whose reprojection lies
+  outside the gate is dropped for that frame, and a frame that did not
+  converge is not published at all, so the autopilot sees no estimate rather
+  than a wrong one.
+
+Which pairs feed the estimator is measured, not assumed. The forward pair is
+the natural one; the up and down pairs see structure during the vertical
+motion through the two shafts, where a forward-only tracker watches a wall
+slide past with little parallax. Stage 1 measures both.
+
+A visual-inertial estimate drifts without a closure, and the mission is
+hundreds of metres long. The threshold is not chosen for the estimator, it is
+the one the stack already needs: the persistent memory integrates a beam only
+as far as the pose error keeps its hit within two voxels of the surface, which
+at 0.25 m voxels bounds the heading error to about 2 degrees
+(`lidar_pose_heading_uncertainty_rad`,
+[`gazebo_simulation.md`](gazebo_simulation.md)), and a map built with a worse
+pose smears its walls and closes the passages the
+planner is trying to use. Stage 1 measures drift against that bound and
+decides what it costs to hold: a closure against the estimator's own
+keyframes, or a mission short enough that pure odometry stays inside it.
+
+The health and failure contour of item 13 applies unchanged and gains no new
+latch: without odometry for 200 ms the autopilot's external-vision fusion
+stops, after `EKF2_NOAID_TOUT` it withdraws the horizontal estimate, the local
+position arrives with `xy_valid` false, the controller revokes execution on
+the stale pose and the offboard node holds.
+
+### Implementation Order
+
+1. Offline first, as item 13 set its filter: replay recorded stereo frames,
+   IMU and true pose from item 14's flights (`log/tools/replay`), and measure
+   drift per 100 m, along-track and cross-track error and heading error
+   against the truth, by texture, speed, lighting and pair selection. Flights
+   are stochastic; estimator parameters are set on recordings and only
+   confirmed in flight.
+2. Add the `visual_inertial_shadow` profile, as `gnss_shadow` did for item 13:
+   the estimator runs beside GNSS, publishes to the diagnostic topic only, and
+   the mission check compares it with the true pose on every flight.
+3. Fly on `visual_inertial` with the lidar still mounted and still
+   authoritative for perception, so a failure separates the estimator from the
+   vision perception.
+4. Fly with the lidar absent from the vehicle model and item 14's vision raw
+   world: no GNSS, no magnetometer, no lidar.
+
+Multi-vehicle missions stay out of this item; the shared frame between
+vehicles without GNSS is item 15 stage 4.
+
+### Measurement And Completion
+
+The mission check reports, as it does for item 13: the autopilot's position
+estimate against the true pose (cross-track p95 and along-track offset), the
+estimator's own published estimate against the true pose, drift per 100 m of
+flown route, the profile proved from the autopilot and ROS logs
+(`EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`, no
+heading source, odometry published at rate over the flight), and estimator
+health: tracked landmark count, reprojection residual, the observability of
+the weakest direction, gated and degenerate directions, and the frames that
+left the autopilot without an estimate, which must be none in a clean flight.
+
+This item is complete when repeated Urban Circuit Practice 01 missions run
+with no GNSS, no magnetometer and no lidar in the vehicle model, the estimate
+holds the pose error the mapping contract above requires, and the mission
+gates of item 12 hold: mission complete, collision-free, route availability at
+the threshold item 9 stage A derives, planner p95 below 200 ms, and the routes
+through both shafts flown at the speed the lidar profile flies them.
 
 ## Completed
 
