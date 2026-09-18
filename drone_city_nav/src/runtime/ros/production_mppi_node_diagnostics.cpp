@@ -21,6 +21,12 @@ void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
   const mppi::MppiTickInput& input = snapshot.input;
   const mppi::MppiTickResult& result = snapshot.result;
+  const double actual_speed_mps =
+      std::hypot(input.initial_state.vx, input.initial_state.vy);
+  const mppi::State& commanded_state = snapshot.execution.horizon.size() > 1U
+                                           ? snapshot.execution.horizon[1U]
+                                           : input.initial_state;
+  const double commanded_speed_mps = std::hypot(commanded_state.vx, commanded_state.vy);
   const WorldSnapshot3D empty_world;
   const WorldSnapshot3D& world =
       snapshot.world != nullptr ? *snapshot.world : empty_world;
@@ -193,6 +199,11 @@ void ProductionMppiNode::processDiagnostics(
        << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
        << " target_lookahead_m=" << speed_policy.target_lookahead_m
        << " reference_speed_mps=" << input.reference_speed_mps
+       << " commanded_speed_mps=" << commanded_speed_mps
+       << " actual_speed_mps=" << actual_speed_mps
+       << " active_speed_limiter=" << mppiSpeedLimiterName(speed_policy.active_limiter)
+       << " terminal_goal_limit_enabled="
+       << (speed_policy.terminal_goal_limit_enabled ? "true" : "false")
        << " curvature_speed_limit_mps="
        << finiteOrNegative(speed_policy.curvature_limit_mps)
        << " sensor_braking_speed_limit_mps="
@@ -572,6 +583,12 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
          << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
          << ",\"reference_speed_mps\":" << input.reference_speed_mps
+         << ",\"commanded_speed_mps\":" << commanded_speed_mps
+         << ",\"actual_speed_mps\":" << actual_speed_mps
+         << ",\"active_speed_limiter\":\""
+         << mppiSpeedLimiterName(speed_policy.active_limiter) << '"'
+         << ",\"terminal_goal_limit_enabled\":"
+         << (speed_policy.terminal_goal_limit_enabled ? "true" : "false")
          << ",\"curvature_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.curvature_limit_mps)
          << ",\"sensor_braking_speed_limit_mps\":"
