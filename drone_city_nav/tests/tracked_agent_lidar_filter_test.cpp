@@ -119,16 +119,13 @@ TEST(TrackedAgentLidarFilterTest, UsesProjectedEndpointAltitude) {
   EXPECT_FLOAT_EQ(result.ranges.front(), 10.0F);
 }
 
-TEST(DynamicAgentLidarStateTest, AlignsTrackedTargetAndPeerToScanTime) {
+TEST(DynamicAgentLidarStateTest, AlignsAPeerToScanTime) {
   constexpr std::int64_t kStampNs{9'800'000'000LL};
   constexpr std::int64_t kAcquisitionNs{9'900'000'000LL};
   constexpr std::int64_t kNowNs{10'000'000'000LL};
   DynamicAgentLidarState state{DynamicAgentLidarStateConfig{
       .cooperative_enabled = true,
       .own_vehicle_id = "civilian_0",
-      .tracked_agent_radius_m = 1.0,
-      .tracked_agent_vertical_tolerance_m = 1.0,
-      .tracked_agent_maximum_age_s = 0.5,
       .cooperative_peer_horizontal_margin_m = 0.0,
       .cooperative_peer_vertical_margin_m = 0.0,
       .cooperative_alignment_extrapolation_s = 0.5,
@@ -138,8 +135,6 @@ TEST(DynamicAgentLidarStateTest, AlignsTrackedTargetAndPeerToScanTime) {
               .maximum_peers = 4U,
           },
   }};
-  state.updateTrackedAgent(Point3{5.0, 0.0, 10.0}, Vec3{1.0, 0.0, 0.0}, true, true,
-                           kStampNs);
   EXPECT_EQ(state.updateCooperativeIntent(peerIntent("civilian_0", kStampNs), kNowNs),
             CooperativePeerUpdateStatus::kIgnoredOwnship);
   EXPECT_EQ(state.updateCooperativeIntent(peerIntent("civilian_1", kStampNs), kNowNs),
@@ -147,8 +142,6 @@ TEST(DynamicAgentLidarStateTest, AlignsTrackedTargetAndPeerToScanTime) {
 
   const DynamicAgentLidarFilterPlan plan = state.makeFilterPlan(kNowNs, kAcquisitionNs);
 
-  ASSERT_EQ(plan.tracked_agent_exclusions.size(), 1U);
-  EXPECT_NEAR(plan.tracked_agent_exclusions.front().position.x, 5.1, 1.0e-9);
   ASSERT_EQ(plan.cooperative_memory_exclusions.size(), 1U);
   EXPECT_NEAR(plan.cooperative_memory_exclusions.front().position.x, 8.2, 1.0e-9);
   EXPECT_DOUBLE_EQ(plan.cooperative_memory_exclusions.front().radius_m, 0.8);

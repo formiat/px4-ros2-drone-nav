@@ -37,10 +37,10 @@ class LidarProfileTest(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            ("gz_x500_lidar_3d_evader", "x500_lidar_3d_evader_3"),
+            ("gz_x500_lidar_3d_civilian", "x500_lidar_3d_civilian_3"),
             resolve_model_identity(
-                "gz_x500_lidar_2d_evader",
-                "x500_lidar_2d_evader_3",
+                "gz_x500_lidar_2d_civilian",
+                "x500_lidar_2d_civilian_3",
                 "3d",
             ),
         )

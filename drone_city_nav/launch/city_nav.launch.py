@@ -155,11 +155,11 @@ def generate_launch_description():
         default_model_name = (
             "x500_lidar_3d_0" if profile == "3d" else "x500_lidar_2d_0"
         )
-        gazebo_world_name = "generated_city"
+        gazebo_world_name = "urban_circuit_practice_01"
         gazebo_model_name = default_model_name
         sensor_name = "lidar_3d_v1" if profile == "3d" else "lidar_2d_v2"
         lidar_gz_topic = (
-            f"/world/generated_city/model/{default_model_name}/link/link/"
+            f"/world/{gazebo_world_name}/model/{default_model_name}/link/link/"
             f"sensor/{sensor_name}/scan"
         )
         if profile == "3d":

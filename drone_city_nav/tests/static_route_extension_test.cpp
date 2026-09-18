@@ -786,7 +786,7 @@ TEST(StaticRouteExtensionTest,
 }
 
 TEST(StaticRouteExtensionTest,
-     RepeatedRadarSamplesKeepRouteIdentityUntilAssignmentChanges) {
+     RepeatedObjectiveSamplesKeepRouteIdentityUntilAssignmentChanges) {
   const StaticRouteObjective route_objective{.goal = Point3{100.0, 50.0, 18.0},
                                              .mission_epoch = 7U,
                                              .sample_sequence = 300U,

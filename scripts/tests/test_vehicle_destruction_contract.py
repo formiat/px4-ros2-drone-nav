@@ -14,19 +14,17 @@ INCLUDE = PACKAGE / "include" / "drone_city_nav"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 MESSAGE = PACKAGE / "msg" / "VehicleDestroyed.msg"
-REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
-REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
+REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
+REFEREE_LIFECYCLE = SOURCE / "cooperative_traffic_referee_lifecycle.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 COLLISION = SOURCE / "collision_crash_node.cpp"
-INTERCEPT_MISSION_TEST = PACKAGE / "tests" / "intercept_mission_test.cpp"
 
 
 class VehicleDestructionContractTest(unittest.TestCase):
     def test_message_has_only_typed_physical_death_causes(self) -> None:
         text = MESSAGE.read_text(encoding="utf-8")
         self.assertIn("CAUSE_PHYSICAL_COLLISION=1", text)
-        self.assertIn("CAUSE_PROXIMITY_INTERCEPT=2", text)
-        self.assertIn("CAUSE_PROXIMITY_COLLISION=3", text)
+        self.assertIn("CAUSE_PROXIMITY_COLLISION=2", text)
         self.assertIn("uint8 vehicle_role", text)
         self.assertIn("string vehicle_id", text)
         self.assertIn("uint8 death_cause", text)
@@ -65,35 +63,17 @@ class VehicleDestructionContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         collision = COLLISION.read_text(encoding="utf-8")
-        self.assertIn("CAUSE_PROXIMITY_INTERCEPT", referee)
-        self.assertIn("CAUSE_PROXIMITY_COLLISION", referee)
         self.assertIn("CAUSE_PHYSICAL_COLLISION", collision)
         self.assertNotIn("VehicleCommand", referee)
-
-    def test_referee_keeps_physical_contacts_active_during_settlement(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
-            encoding="utf-8"
-        )
-        mission_test = INTERCEPT_MISSION_TEST.read_text(encoding="utf-8")
-        self.assertIn("detectPhysicalContacts();", referee)
-        self.assertIn("settleTerminal(now_ns);", referee)
-        self.assertIn(
-            "ContinuesPhysicalContactsWithoutReplacingTerminalOutcome", mission_test
-        )
-        self.assertIn("outcome_preserved=evader_reached_goal", referee)
-        self.assertIn("outcome_preserved=target_reached_goal", referee)
-        self.assertNotIn("late_capture_after_goal_", referee)
 
     def test_referee_advances_all_survivor_hold_confirmations_each_tick(self) -> None:
         lifecycle = REFEREE_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn(
-            "bool InterceptMissionRefereeNode::allSurvivorsHeld", lifecycle
+            "bool CooperativeTrafficRefereeNode::allSurvivorsHeld", lifecycle
         )
-        self.assertIn("bool all_confirmed = true;", lifecycle)
-        self.assertIn("all_confirmed = false;", lifecycle)
-        self.assertIn("return all_confirmed;", lifecycle)
+        self.assertIn("allDestroyedVehiclesSettled(now_ns) && allSurvivorsHeld", lifecycle)
 
-    def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
+    def test_multi_vehicle_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")
         self.assertIn('"vehicle_destroyed_topic": f"{prefix}/vehicle_destroyed"', text)
         self.assertGreaterEqual(text.count('"vehicle_role": config["role_code"]'), 2)

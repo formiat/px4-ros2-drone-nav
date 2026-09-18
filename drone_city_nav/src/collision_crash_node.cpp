@@ -51,8 +51,6 @@ public:
               destroyed->death_cause ==
                   msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
               destroyed->death_cause ==
-                  msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT ||
-              destroyed->death_cause ==
                   msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
           const bool matching_role =
               destroyed->vehicle_role == vehicle_role_ ||

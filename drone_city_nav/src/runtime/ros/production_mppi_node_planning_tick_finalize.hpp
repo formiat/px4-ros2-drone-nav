@@ -26,14 +26,12 @@ struct ProductionMppiPlanningTickFinalization {
   const std::shared_ptr<const ProductionNavigationObjective>& objective;
   const ProductionMppiPredictionError& prediction;
   const MppiLivenessResult& liveness;
-  const DirectTrackingManeuverUpdate& direct_tracking_maneuver;
   const MppiSpeedPolicyResult& speed_policy;
   const RouteProgressUpdate3D& route_progress;
   const MppiEligibleRolloutUpdate& no_eligible_recovery;
   const MissionGoalCaptureResult& goal_capture;
   const MppiRolloutBudgetDecision& rollout_budget;
   const ProductionMppiCooperativeUpdate& cooperative;
-  const ProductionMppiNonCooperativeUpdate& noncooperative;
   const RouteProgressProjection3D& route_projection;
   const Point3& mission_goal;
   const std::string& target_source;
@@ -58,7 +56,6 @@ struct ProductionMppiPlanningTickFinalization {
   mppi::RiskTier route_required_risk_tier;
   const std::optional<ExecutedHorizonClearance3D>& executed_horizon_clearance;
   bool route_usable;
-  bool direct_tracking_interception;
   bool local_route_stop_is_terminal;
   bool pose_predicted;
 };

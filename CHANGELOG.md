@@ -4,6 +4,24 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## Unreleased
+
+- Roadmap item 15 stage 0: the interception missions, the airborne radar and
+  the grid-city world they flew in are removed from the repository. Gone are
+  the radar simulators, trackers, interceptor guidance, target assignment, the
+  interception referee and its truth boundary, the non-cooperative avoidance
+  pipeline and its controller parameters, the grid-city world specification
+  with its generated SDF, occupancy, ESDF and topology artifacts, the world
+  generator, the interception and grid-city scenarios, and their make targets,
+  wrapper scripts, messages, tests and documentation. The shared multi-vehicle
+  infrastructure that the cooperative mission uses is kept under neutral names
+  (`multi_vehicle_scenario.py`, `multi_vehicle_spectator_node`,
+  `multi_vehicle_diagnostics_mux_node`, `multi_vehicle_truth_launch.py`), and
+  `VehicleDestroyed` keeps only the civilian role and the two physical death
+  causes. What remains is the imported Urban Circuit Practice 01 environment
+  with its point-to-point and cooperative traffic missions. The `Completed`
+  roadmap entries 1 to 5 and 6.1 stay as history, each marked as removed.
+
 ## v0.3.0 (2026-09-17)
 
 Navigation without GNSS and without a magnetometer: a lidar-inertial

@@ -11,7 +11,7 @@ Gazebo GPU lidar + PX4 pose
   -> raw snapshot or revisioned Occupancy3D base + dirty chunks
 
 static:
-  canonical Occupancy3D + precomputed chunked ESDF3D
+  raw Occupancy3D + precomputed chunked ESDF3D
   -> extracted local distance evidence
 
 no-static 3D:
@@ -57,7 +57,7 @@ Gazebo contact involving the drone
 - publishes the full atomic memory/provenance snapshot at the debug cadence;
 - publishes timestamp-aligned raw lidar hit endpoints independently of
   persistent-memory integration;
-- does not load or merge the canonical static map.
+- does not load or merge the static map.
 
 `obstacle_memory_3d_node` owns the corresponding organized 3D hit/miss beam
 pipeline, full-6DoF acquisition pose, sparse observed Occupancy3D, revisioned
@@ -69,7 +69,7 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   snapshots where required;
 - terminates raw ROS memory messages at `RawWorldIngressRos3D`, which converts
   them to ROS-free world-ingress values before invoking `WorldPipeline3D`;
-- loads canonical static artifacts at composition time and transfers their
+- loads static artifacts at composition time and transfers their
   ownership to `WorldPipeline3D`;
 - derives no-static soft distance evidence from immutable sparse
   `KnownObstacleDistance3D` chunks and materializes only the controller upload
@@ -118,24 +118,23 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 
 This node has no direct PX4 command publisher.
 
-The intercept launch loads all four production planners as ROS 2 components in
+The multi-vehicle launch loads every production planner as a ROS 2 component in
 one multithreaded component container. Each component retains independent
 vehicle state, route lifecycle, worker pool, CUDA stream, ESDF, and MPPI nominal
 controls. Sharing one process removes redundant ROS/DDS process overhead and
 lets all planners use one CUDA primary context; it does not merge vehicle state
 or make one vehicle's planner callbacks depend on another vehicle.
 
-Radar target trackers and interceptor guidance nodes run in a separate
-multithreaded component container. Tracker-to-guidance `TargetTrack` delivery
-uses ROS 2 intra-process transport, while each interceptor retains independent
-tracker and guidance state. Radar simulators and the mission referee remain
-separate processes because they form the ground-truth data boundary.
+Cooperative traffic agents run in a separate multithreaded component container,
+so flight intents are delivered intra-process while each vehicle retains
+independent agent state. The mission referee and the simulation truth adapter
+remain separate processes because they form the ground-truth data boundary.
 
 The spectator, diagnostics mux, world visualization, and enabled lidar-debug
 nodes share a diagnostics-only component container. Intra-process transport
 avoids serializing spectator selection and detailed point clouds between these
 components. This container remains isolated from planning, mapping, control,
-the mission referee, and radar simulators.
+and the mission referee.
 
 ## Compile-Time Runtime Boundaries
 
@@ -193,7 +192,7 @@ participating in route selection.
 
 ## World Representation
 
-Static production planning consumes canonical sparse Occupancy3D. Its chunked
+Static production planning consumes sparse raw Occupancy3D. Its chunked
 global ESDF and compiled `FreeSpaceTopology3D` share the same world fingerprint
 and provide derived distance and passage evidence, but neither can override raw
 occupied evidence.
@@ -356,140 +355,65 @@ captured goal flies no route, so the capture releases again when the vehicle
 leaves the radius: the route takes it back inside, where resting captures the
 goal once more.
 
-The finite intercept mission runs four complete navigation stacks: three
-interceptors and one evader, each with a separate PX4 DDS namespace, planner,
-offboard node, lidar safety input, and destruction state. No-static navigation
-maintains independent persistent lidar memory for every vehicle. Static
-navigation uses the canonical world for planning and keeps diagnostic persistent
-memory only for the current spectator vehicle. Pursuit uses an explicit radar
-data boundary:
+The finite cooperative traffic mission runs one complete navigation stack per
+vehicle: a separate PX4 DDS namespace, planner, offboard node, lidar safety
+input, cooperative agent, and destruction state. No-static navigation maintains
+independent persistent lidar memory for every vehicle. The mission has no
+ground-truth data path into navigation:
 
 ```text
 Gazebo Pose_V -> simulation truth adapter -> typed physical vehicle states
-typed evader truth -> mission referee -> outcome and settlement only
-typed evader truth -> three radar simulators -> independent RadarScan streams
-interceptor[i] state + RadarScan[i] -> tracker[i] -> TargetTrack[i]
-interceptor[i] state + TargetTrack[i] -> guidance[i] -> NavigationObjective[i]
+typed physical truth -> cooperative referee -> outcome and settlement only
+vehicle[i] state + horizon[i] -> agent[i] -> FlightIntent[i]
+FlightIntent[*] -> agent[i] -> maneuver command and passage state for vehicle[i]
 ```
 
-`intercept_scenario.json` is the only hand-written source for vehicle map starts
-and the evader goal. Its Gazebo spawns are derived from the canonical world's
+`cooperative_traffic_urban_scenario.json` is the only hand-written source for
+vehicle map starts and goals. Its Gazebo spawns are derived from the world's
 `map_to_sdf` transform by both the runner and launch tooling. The simulation
 truth adapter converts physical Gazebo poses back to map coordinates and checks
 them against navigation states over consecutive samples. A persistent mismatch
 prevents mission start and requests hold for already airborne vehicles.
 
+Vehicles coordinate only through the shared flight-intent channel. Each agent
+publishes its own predicted trajectory, reads the intents of its peers, and
+issues its own maneuver command and passage state; no node arbitrates for
+another vehicle. The referee owns goals, terminal outcome, and hold or disarm
+settlement, and it verifies through the ROS graph that it is the only subscriber
+of typed physical truth.
+
 Visualization remains outside this control boundary. Each planner publishes a
-namespaced lightweight path. `intercept_diagnostics_mux_node` subscribes to the
-latched `SpectatorTarget`, clears the previous selected layers, and republishes
-the selected planner markers, execution horizon, status, memory cloud, and
-lidar-debug clouds on stable RViz topics. Lightweight interceptor paths remain
-visible concurrently. Selector-gated lidar debug nodes retain pose and
-latest-map context for every scenario vehicle, but only the current spectator
-projects scans, integrates diagnostic memory, writes a bounded startup snapshot,
-and publishes detailed lidar layers. Non-selected vehicles continue publishing
-their latest physical lidar returns for finite-path validation, but do not build
-static-mode diagnostic memory. These
-visualization-only nodes share the diagnostics component container; their
+namespaced lightweight path. `multi_vehicle_diagnostics_mux_node` subscribes to
+the latched `SpectatorTarget`, clears the previous selected layers, and
+republishes the selected planner markers, execution horizon, status, memory
+cloud, and lidar-debug clouds on stable RViz topics. Lightweight per-vehicle
+paths remain visible concurrently. Selector-gated lidar debug nodes retain pose
+and latest-map context for every scenario vehicle, but only the current
+spectator projects scans, integrates diagnostic memory, writes a bounded startup
+snapshot, and publishes detailed lidar layers. Non-selected vehicles continue
+publishing their latest physical lidar returns for finite-path validation.
+These visualization-only nodes share the diagnostics component container; their
 outputs never participate in route selection or vehicle control.
-
-The radar anti-leak graph contract grants the spectator and diagnostics mux a
-narrow read-only exception for target navigation-state topics. That exception
-exists only to render and follow an attacker. Neither node receives physical
-Gazebo truth, publishes tracking objectives, or shares a process with tracker or
-guidance components.
-
-The mission referee publishes the evader's fixed position objective, then waits
-until all four vehicles are navigation-ready, all planners have activated a
-world, all three trackers have produced a valid target position, and physical
-and navigation coordinates are aligned. It evaluates the
-terminal outcome and owns hold or disarm settlement. It cannot publish an
-interceptor navigation objective. The referee verifies both boundaries through
-the ROS graph: only the referee and simulation-truth adapter may subscribe to
-the evader navigation state, and only the referee and three radar simulators may
-subscribe to typed evader physical truth.
-
-`RadarScan` exposes only range, azimuth, elevation, and relative radial velocity.
-It contains no absolute target state or simulator identity. The ideal simulator
-publishes immediately at a deterministic correlated cadence between 0.1 s and
-3.0 s in search mode. The planner publishes a typed mode command containing no
-target state: swept raw-clear visibility of the current target estimate requests
-an immediate scan and 20 Hz track mode at any range; occlusion restores search
-cadence. The tracker reconstructs Cartesian position from the interceptor state
-at measurement time. Its first measurement has no full velocity estimate; later
-variable-dt corrections produce a constant-velocity `TargetTrack` that coasts
-between measurements. Ideal high-rate scans use full velocity innovation gain.
-Each interceptor guidance node runs at 20 Hz and converts its track into a typed
-continuous objective. All three follow measured target motion by default. When
-`intercept_directional_hypotheses_enabled` is enabled, the other two rotate only
-their long-range prediction by `-45` and `+45` degrees. Their effective offsets
-continuously converge to zero from 120 m to 30 m and their lateral displacement
-is capped at 70 m. Radar tracks and measured velocities remain unchanged.
-Guidance solves the constant-velocity
-intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
-ahead inside the target corridor. Vertical coasting applies bounded
-deceleration until vertical speed reaches zero and clips altitude to the flight
-envelope instead of rejecting the complete tracking objective. Vehicle yaw is
-not used to choose the persistent route.
-
-Guidance does not read occupancy. The production planner resolves the predicted
-segment against its immutable raw world, stopping at the first occupied cell and
-retaining the last raw-clear sample as the ordinary planning goal. Unknown
-no-static space remains traversable with the same base cost as confirmed free
-space, and no inflation or prohibited region is introduced.
-The planner separately validates swept visibility of the coasted current target
-and the path to the full predicted intercept point. Current-target visibility
-keeps direct interception active; blockage of only the full prediction shortens
-the lead to the farthest directly reachable point, down to the current target.
-Current-target occlusion exits direct mode immediately and atomically hands off
-to a current-generation persistent route. MPPI minimizes
-closest approach to the target trajectory over its horizon, while raw collision
-remains forbidden. Continuous objectives disable terminal goal capture. Swept
-relative-motion evaluation over physical Gazebo poses detects a 5 m intercept
-between state samples and
-publishes one typed `VehicleDestroyed` event for the capturing interceptor and
-one for the evader with cause `proximity_intercept`. Every death event includes
-a stable `vehicle_id`, so role alone never identifies one of several
-interceptors.
-
-The first terminal event is latched and cannot be reclassified by later inertial
-motion. Evader goal arrival is latched on the first airborne sample inside the
-configured goal radius, without a stop-speed or hold-time delay. An intercept
-records the result only after both typed destruction events, both PX4 disarm
-confirmations, and confirmed holds from every surviving interceptor. If the
-evader reaches its goal first, the coordinator commands every surviving
-interceptor to transition to a typed stationary position hold. It records
-the result only after a post-command position-hold horizon is active and all
-positions and speeds remain inside the configured hold tolerances. No mission
-termination or disarm is requested in that branch.
-The capture detector remains active until settlement: a late inertial entry into
-the capture radius still disarms both vehicles but cannot overwrite the latched
-evader-goal outcome.
-Headless runs then shut down deterministically. GUI runs keep the terminal world
-alive after either result.
-
-Mission failure and vehicle death are independent. Generic system failures only
-produce a failed mission result. A physical Gazebo contact publishes cause
-`physical_collision`; a 5 m intercept publishes `proximity_intercept`; and a
-5 m interceptor-to-interceptor collision publishes `proximity_collision` for
-the involved pair. Only these physical death causes can enter the force-disarm
-lifecycle. A single interceptor death does not terminate the episode while
-another interceptor remains. Physical evader death is settled after its disarm
-and confirmed holds of all survivors. If no interceptor remains, the finite
-mission ends with `no_interceptors_remaining`.
 
 One spectator node owns the sole RViz `drone_follow` transform. Its initial
 vehicle and `first_living` or cyclic `next_living` reselection policy are typed
 launch parameters. Death events are matched by vehicle ID, role, and mission
 epoch before changing the selection. A visualization-only adapter applies the
-same selection to the Gazebo GUI camera. The `3x1` script starts on
-`interceptor_0`; the `2x2` script starts on `evader_0` and prefers `evader_1`
-after a successful first interception. No attacker respawn or episode reset
-exists in this finite mission.
+same selection to the Gazebo GUI camera.
 
-Each interceptor lidar pipeline filters returns belonging to its radar-tracked
-evader before obstacle-memory integration. This prevents the moving target from
-becoming a persistent environmental obstacle; it does not introduce a
+Mission failure and vehicle death are independent. Generic system failures only
+produce a failed mission result. A physical Gazebo contact publishes cause
+`physical_collision`; a 5 m separation between two vehicles publishes
+`proximity_collision` for the involved pair. Only these physical death causes
+can enter the force-disarm lifecycle. Every death event includes a stable
+`vehicle_id`, so role alone never identifies one of several vehicles. The
+mission records its result only after every destroyed vehicle is settled and
+every survivor confirms a stationary position hold. Headless runs then shut down
+deterministically; GUI runs keep the terminal world alive.
+
+Each vehicle's lidar pipeline filters returns belonging to peers whose flight
+intents it receives, before obstacle-memory integration. This prevents a moving
+peer from becoming a persistent environmental obstacle; it does not introduce a
 prohibited zone or relax collision checks against raw physical occupancy.
 
 ## Execution Contract
@@ -566,15 +490,15 @@ starve the other.
 Stop joins outside the lifecycle mutex and processing exceptions are contained
 at the service boundary.
 
-In the four-vehicle intercept mission, the planner component container has one
+In the cooperative traffic mission, the planner component container has one
 executor thread per vehicle. CPU-heavy planner work remains bounded by the
 mission-wide planner worker budget. Each MPPI engine currently launches its own
 rollout kernels on an independent CUDA stream; vehicle-by-rollout fused kernels
 are a separate backend optimization and are not implied by component
-composition. Three tracker/guidance pairs share a second component process and
-use three executor threads; simulator truth never enters that process.
+composition. The cooperative agents share a second component process; simulator
+truth never enters that process.
 
-The intercept launcher applies subsystem CPU affinity when the host exposes at
+The multi-vehicle launcher applies subsystem CPU affinity when the host exposes at
 least four logical CPUs. Control and physics, planning and mapping, and
 diagnostics receive overlapping CPU masks so latency-sensitive work retains
 reserved capacity without assigning a vehicle to one core. Every mask can be
@@ -586,7 +510,7 @@ scheduling.
 - The adaptive persistent D* Lite graph uses power-of-two world-aligned
   resolution levels. It is not an octree and deliberately keeps the complete
   minimum-resolution 26-connected lattice as its reachability baseline.
-- Static mode currently plans only against canonical Occupancy3D; lidar memory
+- Static mode currently plans only against raw Occupancy3D; lidar memory
   is not fused into its 3D collision map.
 - No-static production navigation requires revisioned 3D-lidar Occupancy3D and
   has no open-space-versus-passage partition.

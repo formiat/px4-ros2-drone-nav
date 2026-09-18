@@ -31,7 +31,6 @@ struct PersistentLidarScan3D {
   std::size_t projection_invalid{0U};
   std::size_t self_filtered{0U};
   std::size_t persistent_self_filtered{0U};
-  std::size_t tracked_agent_filtered{0U};
   std::size_t cooperative_filtered{0U};
   bool altitude_valid{false};
   bool publish_debug{false};

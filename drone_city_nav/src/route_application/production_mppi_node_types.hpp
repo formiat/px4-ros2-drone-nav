@@ -1,9 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/control_contracts_3d.hpp"
-#include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
-#include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cmath>
@@ -91,31 +89,8 @@ struct ProductionMppiVehicleStatus {
   bool valid{false};
 };
 
-struct ProductionTrackingObjective {
-  Point3 observed_position{};
-  Point3 current_target_position{};
-  Point3 unconstrained_predicted_position{};
-  Vec3 observed_velocity{};
-  std::int64_t observation_stamp_ns{0};
-  double prediction_horizon_s{0.0};
-  double resolved_fraction{0.0};
-  InterceptGuidanceMode guidance_mode{InterceptGuidanceMode::kDirect};
-  TrackingObjectiveResolutionStatus resolution_status{
-      TrackingObjectiveResolutionStatus::kInvalidInput};
-  DirectTrackingTargetStatus direct_target_status{
-      DirectTrackingTargetStatus::kWorldUnavailable};
-  RadarCadenceReason radar_cadence_reason{RadarCadenceReason::kNoTrackingObjective};
-  bool vertical_prediction_clipped{false};
-  bool observed_target_visible{false};
-  bool predicted_intercept_path_clear{false};
-  bool direct_interception_active{false};
-  std::uint64_t line_of_sight_generation{0U};
-  std::uint64_t target_track_id{0U};
-};
-
 struct ProductionNavigationObjective {
   Point3 goal{};
-  std::optional<ProductionTrackingObjective> tracking;
   std::uint64_t mission_epoch{0U};
   std::uint64_t sample_sequence{0U};
   std::uint64_t assignment_generation{0U};

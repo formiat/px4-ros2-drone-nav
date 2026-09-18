@@ -1,29 +1,11 @@
 uint8 TERMINAL_POLICY_POSITION_HOLD=0
-uint8 TERMINAL_POLICY_CONTINUOUS_TRACKING=1
-uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=2
+uint8 TERMINAL_POLICY_IMMEDIATE_HOLD=1
 
 uint8 OBJECTIVE_TYPE_POSITION=0
-uint8 OBJECTIVE_TYPE_TRACKING_PREDICTION=1
-
-uint8 GUIDANCE_MODE_DIRECT=0
-uint8 GUIDANCE_MODE_ANALYTIC_INTERCEPT=1
-uint8 GUIDANCE_MODE_AHEAD_INTERCEPT=2
 
 builtin_interfaces/Time stamp
-builtin_interfaces/Time observation_stamp
 uint64 mission_epoch
 uint64 sample_sequence
-uint64 assignment_generation
-uint64 target_detection_id
-uint64 target_track_id
 geometry_msgs/Point position
-geometry_msgs/Point observed_target_position
-geometry_msgs/Vector3 observed_target_velocity
-float64 prediction_horizon_s
-float64 configured_heading_offset_rad
-float64 effective_heading_offset_rad
-float64 hypothesis_lateral_offset_m
-bool vertical_prediction_limited
 uint8 objective_type
-uint8 guidance_mode
 uint8 terminal_policy

@@ -55,7 +55,7 @@ namespace {
   // hold enabled and the capture latched. At rest anywhere else it needs only
   // an objective the vehicle can be at rest under.
   const bool stationary_rearm_candidate =
-      !context.objective->tracking.has_value() && !context.objective->immediate_hold &&
+      !context.objective->immediate_hold &&
       (!at_captured_goal ||
        (context.terminal_hold_enabled && context.goal_capture_latched));
   const bool validation_policy_current = stationary_rearm_candidate &&

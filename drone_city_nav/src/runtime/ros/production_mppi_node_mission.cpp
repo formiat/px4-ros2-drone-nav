@@ -33,9 +33,8 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       objective_state != nullptr ? objective_state->objective : nullptr;
   if (!mission_waypoint_sequence_ || !mission_waypoint_capture_gate_ || !objective ||
-      objective->tracking.has_value() || objective->immediate_hold ||
-      !mission_waypoint_acknowledgement_pub_ || execution_authority == nullptr ||
-      !execution_authority->valid()) {
+      objective->immediate_hold || !mission_waypoint_acknowledgement_pub_ ||
+      execution_authority == nullptr || !execution_authority->valid()) {
     if (mission_waypoint_capture_gate_) {
       mission_waypoint_capture_gate_->reset();
     }
@@ -242,18 +241,11 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
                   .objective = std::make_shared<const ProductionNavigationObjective>(
                       ProductionNavigationObjective{
                           .goal = mission_goal_,
-                          .tracking = std::nullopt,
                           .mission_epoch = objective->mission_epoch + 1U,
                           .sample_sequence = 0U,
-                          .assignment_generation = 0U,
-                          .target_detection_id = 0U,
-                          .target_track_id = 0U,
                           .stamp_ns = commit_now_ns,
-                          .continuous_tracking = false,
                           .immediate_hold = false,
                       }),
-                  .minimum_tracking_route_mission_epoch = 0U,
-                  .minimum_tracking_route_sample_sequence = 0U,
               }),
           std::memory_order_release);
       // Keep the completed leg's wire owner as the revocation witness, but make

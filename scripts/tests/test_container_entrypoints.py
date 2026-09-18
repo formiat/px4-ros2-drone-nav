@@ -40,7 +40,7 @@ class ContainerEntrypointTest(unittest.TestCase):
         # which stops stale simulation processes before the run and again once
         # the run ends, however it ends.
         wrappers = sorted(SCRIPTS_DIR.glob("sim_*.sh"))
-        self.assertGreaterEqual(len(wrappers), 13)
+        self.assertGreaterEqual(len(wrappers), 5)
         for wrapper in wrappers:
             with self.subTest(script_name=wrapper.name):
                 text = wrapper.read_text(encoding="utf-8")

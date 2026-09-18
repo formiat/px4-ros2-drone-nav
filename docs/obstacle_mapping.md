@@ -7,24 +7,20 @@ distance-based risk tiers do not inflate hard occupancy.
 
 ## Static World
 
-The static map is loaded from:
-
-```text
-drone_city_nav/worlds/generated_city.occupancy3d
-```
-
-Configured by:
+The static map is loaded from the Occupancy3D artifact of the environment being
+flown, configured by:
 
 ```yaml
 use_static_map: true
-static_occupancy_3d_path: worlds/generated_city.occupancy3d
+static_occupancy_3d_path: <environment occupancy3d>
 ```
 
-The sparse static world is generated from the same canonical specification as
-Gazebo SDF and is used only in static mode. `production_mppi_node`, not
-`obstacle_memory_node`, owns this map. The current static path does not fuse 2D
-lidar memory into Occupancy3D. Derived regions, portals, and traversal edges are
-stored in the separate fingerprint-bound `generated_city.topology3d` artifact.
+Both are empty by default because every current mission runs no-static. The
+sparse static world describes the same geometry as the Gazebo world and is used
+only in static mode. `production_mppi_node`, not `obstacle_memory_node`, owns
+this map. The current static path does not fuse 2D lidar memory into
+Occupancy3D. Derived regions, portals, and traversal edges are stored in the
+separate fingerprint-bound FreeSpaceTopology3D artifact.
 
 ## Compatibility 2D Lidar Input
 
@@ -50,7 +46,7 @@ blind sector.
 
 Lidar evidence is never filtered against hand-authored route geometry. This
 planar node is retained for compatibility diagnostics; it is not a production
-strategic-planning source. Static planning reads canonical Occupancy3D, and
+strategic-planning source. Static planning reads raw Occupancy3D, and
 no-static production navigation requires the 3D profile.
 
 ## 3D Lidar Input
@@ -258,7 +254,7 @@ rest. Proximity and ESDF clearance remain soft ranking costs.
 When persistent memory is disabled, the obstacle-memory node keeps the pose and
 scan-alignment lifecycle but does not allocate a memory grid, integrate hits,
 publish snapshots, or start the memory diagnostics worker.
-Static intercept GUI runs additionally gate diagnostic memory by the latched
+Static multi-vehicle GUI runs additionally gate diagnostic memory by the latched
 spectator target. Only the selected vehicle integrates and publishes this
 memory. No-static mode does not apply this gate because every vehicle requires
 its own persistent map for navigation.
@@ -353,7 +349,7 @@ cumulative `RawObstacleDelta3D` dirty chunks relative to that base. The direct
 current-scan safety message is published before persistent-memory integration.
 Memory integration and DDS serialization run on separate coalescing workers, so
 an expensive snapshot cannot make the physical scan stale. Static planning
-consumes neither sensor-world transport; canonical Occupancy3D is its
+consumes neither sensor-world transport; raw Occupancy3D is its
 authoritative world.
 
 `ObstacleMemorySnapshot` remains an atomic raw-grid/provenance artifact for
@@ -422,7 +418,7 @@ keeps observed obstacles available after they leave the instantaneous scan.
 
 These are the two production planning sources, selected by mode:
 
-- static: canonical Occupancy3D + precomputed chunked ESDF3D -> local dense
+- static: raw Occupancy3D + precomputed chunked ESDF3D -> local dense
   controller projection;
 - no-static 3D: revisioned observed Occupancy3D -> exact capped dense
   `KnownObstacleDistance3D` over the chunk-aligned local window -> controller

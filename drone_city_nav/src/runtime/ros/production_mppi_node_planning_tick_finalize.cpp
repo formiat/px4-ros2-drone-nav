@@ -48,8 +48,6 @@ void ProductionMppiNode::finalizePlanningTick(
       finalization.objective;
   const ProductionMppiPredictionError& prediction = finalization.prediction;
   const MppiLivenessResult& liveness = finalization.liveness;
-  const DirectTrackingManeuverUpdate& direct_tracking_maneuver =
-      finalization.direct_tracking_maneuver;
   const MppiSpeedPolicyResult& speed_policy = finalization.speed_policy;
   const RouteProgressUpdate3D& route_progress = finalization.route_progress;
   const MppiEligibleRolloutUpdate& no_eligible_recovery =
@@ -57,10 +55,7 @@ void ProductionMppiNode::finalizePlanningTick(
   const MissionGoalCaptureResult& goal_capture = finalization.goal_capture;
   const MppiRolloutBudgetDecision& rollout_budget = finalization.rollout_budget;
   const ProductionMppiCooperativeUpdate& cooperative = finalization.cooperative;
-  const ProductionMppiNonCooperativeUpdate& noncooperative =
-      finalization.noncooperative;
   const RouteProgressProjection3D& route_projection = finalization.route_projection;
-  const Point3& mission_goal = finalization.mission_goal;
   const std::string& target_source = finalization.target_source;
   const std::uint64_t route_generation = finalization.route_generation;
   const std::uint64_t memory_sequence = finalization.memory_sequence;
@@ -76,7 +71,6 @@ void ProductionMppiNode::finalizePlanningTick(
       finalization.previous_control_source;
   const mppi::RiskTier route_required_risk_tier = finalization.route_required_risk_tier;
   const bool route_usable = finalization.route_usable;
-  const bool direct_tracking_interception = finalization.direct_tracking_interception;
   const bool local_route_stop_is_terminal = finalization.local_route_stop_is_terminal;
   const bool pose_predicted = finalization.pose_predicted;
 
@@ -99,28 +93,6 @@ void ProductionMppiNode::finalizePlanningTick(
     RCLCPP_INFO(get_logger(),
                 "COOPERATIVE_SEPARATION_RELEASE_RESEED route_generation=%" PRIu64,
                 route_generation);
-  }
-  if (result.noncooperative_acquisition_reseeded) {
-    RCLCPP_INFO(
-        get_logger(),
-        "NONCOOPERATIVE_SEPARATION_ACQUISITION_RESEED available=%s "
-        "candidate_index=%zu maneuver=%s minimum_separation_m=%.3f "
-        "separation_gain_m=%.3f head_progress_m=%.3f terminal_progress_m=%.3f "
-        "lifecycle_generation=%" PRIu64,
-        result.noncooperative_acquisition_available ? "true" : "false",
-        result.noncooperative_acquisition_candidate_index,
-        mppi::nonCooperativeManeuverName(result.noncooperative_acquisition_maneuver),
-        static_cast<double>(result.noncooperative_acquisition_minimum_separation_m),
-        static_cast<double>(result.noncooperative_acquisition_separation_gain_m),
-        static_cast<double>(result.noncooperative_acquisition_head_progress_m),
-        static_cast<double>(result.noncooperative_acquisition_terminal_progress_m),
-        noncooperative.avoidance.lifecycle_generation);
-  }
-  if (result.noncooperative_release_reseeded) {
-    RCLCPP_INFO(get_logger(),
-                "NONCOOPERATIVE_SEPARATION_RELEASE_RESEED "
-                "lifecycle_generation=%" PRIu64,
-                noncooperative.avoidance.lifecycle_generation);
   }
   ++tick_sequence_;
   const auto publication_started = std::chrono::steady_clock::now();
@@ -274,16 +246,6 @@ void ProductionMppiNode::finalizePlanningTick(
   if (now_ns - last_rviz_stamp_ns_ >= config_.diagnostics.rviz_period_ns) {
     std::shared_ptr<const std::vector<mppi::RouteSample3D>> rviz_route =
         route_usable ? execution_mppi_route : nullptr;
-    if (direct_tracking_interception) {
-      const std::vector<Point3> direct_points{
-          Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-          mission_goal,
-      };
-      rviz_route = mppi::adaptRouteVisualization3D(sampleRoute3D(
-          direct_points,
-          std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
-          speed_policy.reference_speed_mps));
-    }
     rviz = ProductionMppiRvizSnapshot{
         .candidate_horizon = result.horizon,
         .previous_horizon = previous_result_.has_value() ? previous_result_->horizon
@@ -317,7 +279,6 @@ void ProductionMppiNode::finalizePlanningTick(
       .stability = stability,
       .prediction = prediction,
       .liveness = liveness,
-      .direct_tracking_maneuver = direct_tracking_maneuver,
       .speed_policy = speed_policy,
       .route_progress = route_progress,
       .no_eligible_recovery = no_eligible_recovery,
@@ -346,7 +307,6 @@ void ProductionMppiNode::finalizePlanningTick(
       .previous_control_source = previous_control_source,
       .rollout_budget = rollout_budget,
       .cooperative = cooperative,
-      .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
       .executed_horizon_clearance = finalization.executed_horizon_clearance,
   }));

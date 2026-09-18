@@ -60,8 +60,6 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
     return;
   }
 
-  const std::size_t forgotten_tracked_voxels =
-      memory_.forgetDynamicVolumes(scan.dynamic_filter_plan.tracked_agent_exclusions);
   const std::size_t forgotten_cooperative_voxels = memory_.forgetDynamicVolumes(
       scan.dynamic_filter_plan.cooperative_memory_exclusions);
   if (!scan.dynamic_filter_plan.cooperative_memory_exclusions.empty()) {
@@ -106,10 +104,9 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       scan.acquisition_stamp_ns, scan.source_beams, stats.processed_beams,
       stats.hit_beams, stats.miss_beams, stats.surface_beams,
       stats.invalid_beams + scan.projection_invalid, scan.self_filtered,
-      scan.persistent_self_filtered,
-      scan.tracked_agent_filtered + scan.cooperative_filtered,
-      forgotten_tracked_voxels + forgotten_cooperative_voxels, stats.state_transitions,
-      memory_.revision(), queue_age_ms, integration_ms, transport_enqueue_ms,
+      scan.persistent_self_filtered, scan.cooperative_filtered,
+      forgotten_cooperative_voxels, stats.state_transitions, memory_.revision(),
+      queue_age_ms, integration_ms, transport_enqueue_ms,
       1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
       dropped_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");

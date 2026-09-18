@@ -23,9 +23,8 @@ real-aircraft operation.
 - Timestamped execution horizons consumed by the MPPI offboard node.
 - Typed position hold when no physically executable route is available.
 - Terminal-point or current-position hold when no fresh finite path is available.
-- Canonical 3D static world with a `5 x 8` Manhattan grid, two L-shaped passages,
-  and one straight-through passage.
-- Typed vehicle destruction from Gazebo contact or 5 m proximity intercept.
+- Imported 3D urban environment with narrow streets and physical passages.
+- Typed vehicle destruction from Gazebo contact or 5 m proximity collision.
 - Swept oriented 3D drone-footprint collision checks.
 - A configured half-open flight envelope, currently `1.0 <= z < 32.0 m`.
 - RViz, JSONL, lidar snapshots, and mission diagnostics.
@@ -48,8 +47,8 @@ real-aircraft operation.
 ## Main Run Modes
 
 ```bash
-./scripts/sim_headless.sh
-./scripts/sim_gui.sh
+./scripts/sim_urban_point_to_point_headless.sh
+./scripts/sim_urban_point_to_point_gui.sh
 ```
 
 Runs default to `ENABLE_STATIC_MAP=false` and use the selected lidar memory as
@@ -105,8 +104,8 @@ validated with a compass-grade heading of 2 degrees and more.
   perception work.
 - `architecture.md`: node ownership and data flow.
 - `navigation_pipeline.md`: current world-to-control pipeline.
-- `world3d.md`: canonical world generation, raw Occupancy3D,
-  FreeSpaceTopology3D, and constrained spans.
+- `world3d.md`: World3D specifications, raw Occupancy3D, FreeSpaceTopology3D,
+  and constrained spans.
 - `environment_candidates.md`: external world selection, versioned artifact
   distribution, static-map import, and sparse-topology evidence.
 - `trajectory_optimization.md`: GPU MPPI optimization.

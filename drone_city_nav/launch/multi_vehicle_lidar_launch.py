@@ -33,7 +33,6 @@ def make_memory_parameters(
     use_static_map,
     obstacle_memory_enabled,
     cooperative_traffic,
-    tracked_agent_maximum_age_s,
     scan_topic,
     raw_snapshot_topic,
     raw_delta_topic,
@@ -71,10 +70,6 @@ def make_memory_parameters(
         "raw_memory_3d_pointcloud_topic": f"{prefix}/raw_memory_points_3d",
         "obstacle_memory_status_topic": memory_status_topic,
         "latest_lidar_obstacle_scan_topic": latest_lidar_obstacle_scan_topic,
-        "tracked_agent_track_topic": (
-            f"{prefix}/target_track" if config["is_interceptor"] else ""
-        ),
-        "tracked_agent_maximum_age_s": tracked_agent_maximum_age_s,
         "cooperative_traffic_enabled": cooperative_traffic,
         "vehicle_id": role,
         "cooperative_flight_intent_topic": (

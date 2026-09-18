@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "intercept_ros_utils.hpp"
+#include "multi_vehicle_ros_utils.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -72,7 +72,6 @@ positionObjective(const rclcpp::Time& stamp, const std::uint64_t mission_epoch,
   objective.position.y = position.y;
   objective.position.z = position.z;
   objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-  objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
   objective.terminal_policy = terminal_policy;
   return objective;
 }

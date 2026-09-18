@@ -53,32 +53,14 @@ void ProductionMppiNode::planningTick() {
       navigationObjectiveState();
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       objective_state != nullptr ? objective_state->objective : nullptr;
-  const bool tracking_objective_available =
-      objective != nullptr && objective->tracking.has_value();
-  const ProductionTrackingObjective tracking_objective =
-      objective != nullptr ? objective->tracking.value_or(ProductionTrackingObjective{})
-                           : ProductionTrackingObjective{};
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
-  const bool terminal_hold_enabled = !objective || !objective->continuous_tracking;
-  const bool direct_tracking_interception =
-      objective && objective->continuous_tracking && tracking_objective_available &&
-      tracking_objective.direct_interception_active;
+  const bool terminal_hold_enabled = true;
   const bool observed_3d_world = !config_.world.use_static_map;
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch is a hard barrier; retain it until revoke
     // publication has linearized with the exact snapshot.
     return;
   }
-  const std::uint64_t line_of_sight_generation =
-      tracking_objective_available ? tracking_objective.line_of_sight_generation : 0U;
-  const std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity =
-      makeDirectTrackingOwnerIdentity(objective.get(), direct_tracking_interception,
-                                      line_of_sight_generation);
-  const std::uint64_t effective_route_generation = directTrackingRouteGeneration(
-      direct_tracking_interception, line_of_sight_generation);
-  const std::uint64_t required_route_sample =
-      objective_state != nullptr ? objective_state->requiredTrackingSampleSequence()
-                                 : 0U;
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
   ProductionMppiVehicleStatus vehicle_status;
@@ -94,7 +76,6 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiHorizonPublicationRecord horizon_publication;
   bool vehicle_status_epoch_stable{false};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
-  ProductionMppiNonCooperativeTracks noncooperative_tracks;
   LatestObservation latest_observation;
   std::uint64_t memory_sequence{0U};
   bool raw_world_identity_conflicted{false};
@@ -122,7 +103,6 @@ void ProductionMppiNode::planningTick() {
     vehicle_status_epoch_stable =
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
     cooperative_command = cooperative_command_;
-    noncooperative_tracks = noncooperative_tracks_;
     world_input = raw_world_ingress_->snapshot();
     latest_observation = world_input.latest_observation;
     memory_sequence = latest_observation.sequence;
@@ -454,22 +434,16 @@ void ProductionMppiNode::planningTick() {
           .latest_raw_world = latest_raw_world_3d,
           .latest_lidar_evidence = latest_lidar_evidence,
           .cooperative_command = cooperative_command,
-          .noncooperative_tracks = noncooperative_tracks,
-          .direct_tracking_identity = direct_tracking_identity,
           .mission_goal = mission_goal,
           .tick_started = snapshot_started,
-          .minimum_tracking_sample_sequence = required_route_sample,
           .physically_invalidated_through_generation =
               physical_trajectory_replan_route_generation_.load(
                   std::memory_order_acquire),
-          .effective_route_generation = effective_route_generation,
-          .line_of_sight_generation = line_of_sight_generation,
           .world_revision = world->revision,
           .now_ns = now_ns,
           .observation_age_ms = observation_age_ms,
           .control_feedback_fresh = execution_input_preparation.control_feedback_fresh,
           .terminal_hold_enabled = terminal_hold_enabled,
-          .direct_tracking_interception = direct_tracking_interception,
           .use_static_map = config_.world.use_static_map,
           .observed_3d_world = observed_3d_world,
       });
@@ -607,7 +581,6 @@ void ProductionMppiNode::planningTick() {
     cooperative_passage_state_pub_->publish(
         cooperativePassageIntentMessage(planning.controller.cooperative.passage));
   }
-  logNonCooperativeUpdate(planning.controller.noncooperative);
 
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
@@ -620,7 +593,6 @@ void ProductionMppiNode::planningTick() {
           .route_generation = planning.route.generation,
           .now_ns = now_ns,
           .route_cross_track_m = planning.route.projection.cross_track_m,
-          .direct_tracking_interception = direct_tracking_interception,
       });
   const double controller_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -651,14 +623,12 @@ void ProductionMppiNode::planningTick() {
       .objective = objective,
       .prediction = prediction,
       .liveness = planning.controller.liveness,
-      .direct_tracking_maneuver = planning.controller.direct_tracking_maneuver,
       .speed_policy = planning.controller.speed_policy,
       .route_progress = planning.controller.route_progress,
       .no_eligible_recovery = no_eligible_recovery,
       .goal_capture = planning.controller.goal_capture,
       .rollout_budget = planning.controller.rollout_budget,
       .cooperative = planning.controller.cooperative,
-      .noncooperative = planning.controller.noncooperative,
       .route_projection = planning.route.projection,
       .mission_goal = mission_goal,
       .target_source = planning.controller.target_source,
@@ -683,7 +653,6 @@ void ProductionMppiNode::planningTick() {
       .route_required_risk_tier = planning.controller.route_required_risk_tier,
       .executed_horizon_clearance = planning.controller.executed_horizon_clearance,
       .route_usable = planning.route.usable,
-      .direct_tracking_interception = direct_tracking_interception,
       .local_route_stop_is_terminal = planning.route.local_stop_is_terminal,
       .pose_predicted = pose_predicted,
   });

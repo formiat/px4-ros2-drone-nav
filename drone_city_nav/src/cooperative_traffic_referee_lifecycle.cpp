@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "cooperative_traffic_referee_node.hpp"
-#include "intercept_ros_utils.hpp"
+#include "multi_vehicle_ros_utils.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -31,7 +31,6 @@ immediateHoldObjective(const rclcpp::Time& stamp, const std::uint64_t mission_ep
   objective.position.y = position.y;
   objective.position.z = position.z;
   objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-  objective.guidance_mode = msg::NavigationObjective::GUIDANCE_MODE_DIRECT;
   objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD;
   return objective;
 }

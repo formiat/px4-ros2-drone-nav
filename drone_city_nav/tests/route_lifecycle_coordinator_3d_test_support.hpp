@@ -169,7 +169,6 @@ struct LifecycleFixture3D {
   auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
           .goal = goal,
-          .tracking = std::nullopt,
           .mission_epoch = route_objective.mission_epoch,
           .sample_sequence = route_objective.sample_sequence,
       });

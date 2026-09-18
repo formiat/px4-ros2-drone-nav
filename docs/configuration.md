@@ -328,9 +328,9 @@ the 3D profile and rejects `none`. All simulation entry points default to 3D.
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.
-Intercept spectator selection additionally uses
-`INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
-`INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch
+Multi-vehicle spectator selection additionally uses
+`MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID` and
+`MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=first_living|next_living`. The launch
 file and `scripts/run_drone_nav_sim.sh` are the source of truth for supported
 overrides.
 

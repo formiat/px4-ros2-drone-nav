@@ -3,7 +3,6 @@
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/cooperative_passage_execution.hpp"
 #include "drone_city_nav/cooperative_traffic.hpp"
-#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -42,19 +41,6 @@ struct ProductionMppiCooperativeUpdate {
   CooperativePassageYieldDecision yield{};
   std::uint64_t command_generation{0U};
   double command_age_ms{-1.0};
-};
-
-struct ProductionMppiNonCooperativeTracks {
-  std::vector<NonCooperativeAircraftTrack> tracks;
-  std::uint64_t source_scan_sequence{0U};
-  std::int64_t receive_stamp_ns{0};
-};
-
-struct ProductionMppiNonCooperativeUpdate {
-  NonCooperativeAvoidanceUpdate avoidance{};
-  std::uint64_t source_scan_sequence{0U};
-  double transport_age_ms{-1.0};
-  bool enabled{false};
 };
 
 } // namespace drone_city_nav

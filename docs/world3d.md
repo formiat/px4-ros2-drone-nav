@@ -1,72 +1,29 @@
-# Canonical 3D World
+# 3D World Artifacts
 
 ## Source Of Truth
 
-`drone_city_nav/worlds/canonical_city.world3d.json` is the only hand-edited
-source of static geometry. It declares:
+A World3D specification declares the static world a mission flies in:
 
 - the `map` frame and the map-to-SDF coordinate transform;
 - Occupancy3D origin, dimensions, resolution, and chunk size;
-- ground and regular building geometry;
-- an optional array of generated air-passage structures;
-- mission start and goal positions.
+- the flight envelope and initial altitude;
+- ground and building geometry when the world carries its own geometry.
 
-The current city contains 40 ordinary buildings plus four horizontal passages:
+`drone_city_nav/worlds/urban_circuit_practice_01.world3d.json` is the only
+committed specification. It describes the imported Urban Circuit environment;
+its Gazebo geometry, collision world, and sensor world come from the environment
+artifact pipeline described in `docs/gazebo_simulation.md`, not from a generator
+in this repository. There is no hand-authored portal database and no
+nearest-opening selector.
 
-- straight-through at `(54, 162)`, open south/north;
-- left turn at `(108, 162)`, open south/east;
-- left turn at `(108, 216)`, open west/north.
-- T junction at `(108, 108)`, open west/east/north and physically closed south.
+Static map artifacts are optional per environment. When an environment ships
+them, `scripts/prepare_environment_simulation.py` exports their paths and
+`scripts/compile_environment_topology.py` compiles the matching
+FreeSpaceTopology3D. Urban Circuit runs no-static, so the exported static paths
+are empty and the planner loads no offline map.
 
-RViz reverses the visual X direction relative to map X. The map directions above
-therefore produce the screen-space cross-sections requested for a vehicle
-approaching from the lower-right mission start.
-
-The canonical-world toolchain deterministically emits four committed artifacts
-from that specification:
-
-- `drone_city_nav/worlds/generated_city.sdf` for Gazebo rendering and physics;
-- `drone_city_nav/worlds/generated_city.occupancy3d` for raw static occupancy;
-- `drone_city_nav/worlds/generated_city.topology3d` for derived free-space topology;
-- `drone_city_nav/worlds/generated_city.esdf3d` for precomputed static distances.
-
-The old `.map2d` and `.passages3d` sources no longer exist. There is no
-hand-authored portal database or nearest-opening selector. Free-space topology
-is a separately versioned compiled index derived from the same raw voxels used
-for collision checks.
-
-Building visuals use the same deterministic eight-color muted palette in Gazebo
-and RViz. The palette index is derived from the building grid coordinates, so a
-building keeps the same color in both views and across regenerated worlds. RViz
-controls its own transparency; Gazebo building materials remain opaque.
-
-## Regeneration
-
-Run the generators through the repository container workflow:
-
-```bash
-./scripts/dev_shell.sh
-make build
-python3 scripts/generate_canonical_world.py \
-  --spec drone_city_nav/worlds/canonical_city.world3d.json \
-  --sdf drone_city_nav/worlds/generated_city.sdf \
-  --occupancy drone_city_nav/worlds/generated_city.occupancy3d \
-  --esdf drone_city_nav/worlds/generated_city.esdf3d \
-  --topology drone_city_nav/worlds/generated_city.topology3d
-```
-
-The Python stage writes SDF and raw Occupancy3D. It then invokes the repository's
-`generate_static_esdf_cache` and `free_space_topology_compiler` C++ tools. The
-executables can be selected explicitly with `--esdf-generator` and
-`--topology-compiler`; otherwise the script resolves the build tree, install tree,
-or `PATH`.
-
-`make test-scripts` regenerates SDF and Occupancy3D in a temporary directory and
-checks them byte-for-byte. It also verifies command construction and that the
-committed ESDF3D and FreeSpaceTopology3D artifacts have matching raw-map metadata
-and fingerprints. C++ tests verify sparse topology semantics, arbitrary portal
-patches, raw-safe segments, exact cache round-tripping, ROI extraction, distance
-capping, and corruption handling.
+Free-space topology is a separately versioned compiled index derived from the
+same raw voxels used for collision checks.
 
 ## Occupancy3D
 
@@ -88,19 +45,11 @@ portals and neighbors, minimum clearance, and speed limit. A topology file is
 used only when both its fingerprint and bounds match the loaded raw occupancy.
 
 The graph is computed from raw occupancy and the matching ESDF after physical
-geometry has been voxelized. Canonical passage records do not provide
-centerlines, portal IDs, planner edges, or conflict resources. The current world
-compiles into one connected passage network with five exterior portal patches
-and six sparse medial segments. Nearby physical structures merge naturally when
-their constrained free volumes are connected. The current world uses:
-
-```text
-origin:       (-30, -30, 0) m
-size:         (345, 525, 40) m
-resolution:   0.5 m
-dimensions:   690 x 1050 x 80 cells
-chunk size:   16 cells
-```
+geometry has been voxelized. World3D passage records do not provide centerlines,
+portal IDs, planner edges, or conflict resources. Nearby physical structures
+merge naturally when their constrained free volumes are connected. The grid
+origin, size, resolution, and chunk size come from the World3D specification of
+the environment being compiled.
 
 Only physical collision geometry is voxelized. No clearance inflation,
 prohibited grid, portal mask, or no-static lidar occluder is stored in
@@ -111,7 +60,7 @@ The immutable global ESDF is computed offline and stored as independently
 compressed 16-cubed chunks. At runtime the planner decodes only chunks intersecting
 the current vehicle-to-planning-goal ROI, materializes that local dense ESDF3D,
 and uploads it to MPPI. The cache is accepted only when its grid metadata,
-canonical-world fingerprint, and maximum distance satisfy the current request.
+raw-occupancy fingerprint, and maximum distance satisfy the current request.
 A missing, corrupt, or incompatible cache is logged and falls back to the exact
 runtime EDT builder.
 
@@ -119,46 +68,6 @@ The cache stores exact squared voxel distances rather than an inflated occupancy
 layer. Only raw Occupancy3D cells remain hard obstacles. Using the global field
 also preserves distance information from physical objects immediately outside a
 local computational ROI; the ROI boundary itself is not an obstacle.
-
-## Physical Passage Geometry
-
-The canonical `passage_structures` array describes physical world construction only. Its
-identifiers remain useful for SDF model names and source-level geometry tests,
-but they are not planner topology IDs.
-
-### Straight
-
-A straight passage contains one structure volume and an opening-center altitude.
-The generator creates a physical lower mass and upper mass, leaving one
-continuous free opening. No route through the opening is supplied.
-
-### Four-Building Intersection
-
-An `intersection` passage contains one center volume plus four bridge volumes
-between four neighboring buildings. The `blocked` state of each bridge defines
-the route shape:
-
-- opposite open bridges produce a straight-through passage;
-- adjacent open bridges produce an L-shaped passage;
-- three open bridges produce a T junction;
-- blocked bridges receive physical middle masses;
-- lower and upper physical masses on every bridge;
-- one lower and one upper physical mass across the central intersection.
-
-This produces one continuous free volume. It is not a staircase and is not a
-set of independent openings selected by a passage coordinator. Shared bridge
-masses between adjacent passage declarations are deduplicated by physical
-geometry before SDF and Occupancy3D generation.
-
-A T junction exposes three physical openings. The topology compiler, not the
-passage declaration, decides which openings belong to one free-space component
-and represents its connectivity with sparse medial segments.
-
-Every currently generated lower, upper, and middle mass is an axis-aligned box
-whose floor and roof are parallel to the ground. The portal path search itself
-operates in XYZ and does not assume a constant-Z centerline, but the current
-physical-geometry generator does not yet emit inclined slabs or curved vertical
-surfaces. The generalized fixtures and imported environments cover those cases.
 
 ## Topology Extractor V2
 
@@ -183,7 +92,7 @@ the graph is an immutable evidence index over raw geometry. Runtime route
 association and activation still validate physical geometry with the swept
 footprint against raw Occupancy3D.
 
-The canonical `free_space_topology.validation_capsule` is the minimum vehicle
+The World3D `free_space_topology.validation_capsule` is the minimum vehicle
 profile used to compile useful sparse segments. The configured Z range bounds
 only the offline acceleration index. Neither setting inflates or modifies
 Occupancy3D, defines a hard clearance envelope, or replaces runtime validation.
@@ -215,7 +124,7 @@ implementation that they validate.
 Static point-to-point search uses the same persistent sparse D* Lite graph as
 no-static navigation. The graph is world-fixed and full-3D; its edges use the
 shared flight-time objective and are accepted only after exact swept-footprint
-validation against canonical raw Occupancy3D. Physical occupied voxels and the
+validation against raw Occupancy3D. Physical occupied voxels and the
 flight envelope remain the only hard geometry. The ESDF cache supplies derived
 distance evidence but cannot create an occupied or prohibited region.
 
@@ -268,13 +177,12 @@ revisioned observed Occupancy3D, local occupied-distance evidence, and persisten
 strategic traversability and base cost. The mode does not divide the world into
 open space and semantic passages and does not load the static topology artifact.
 
-The generated SDF gives passage lower/upper/middle masses one dedicated
-visibility flag and adds transparent, collisionless lidar occluders across each
-intersection and open bridge. Before each run,
-`scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
+A world SDF may mark simulation-only lidar occluders with a dedicated
+visibility flag. Before each run, `scripts/configure_lidar_visibility.py`
+changes the GPU lidar mask:
 
-- static mode hides both passage masses and no-static occluders from its
-  optional diagnostic lidar because canonical Occupancy3D is authoritative;
+- static mode hides those occluders from its optional diagnostic lidar because
+  raw Occupancy3D is authoritative;
 - no-static 3D mode hides the simulation-only occluders but exposes physical
   geometry, allowing hit and miss rays to establish the real free volume.
 
@@ -297,13 +205,12 @@ reserve, compilation, publication, and activation status.
 
 ## Change Checklist
 
-When changing static geometry or physical passage structures:
+When changing a static world:
 
-1. Edit only `canonical_city.world3d.json`.
-2. Regenerate all four committed artifacts.
+1. Edit its World3D specification.
+2. Rebuild the environment artifacts and, if the environment ships a static map,
+   recompile its FreeSpaceTopology3D.
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
-5. If passages are derived, verify static route Z and constrained-span
-   diagnostics through each changed passage.
-6. Verify the no-static 3D profile ignores simulation-only occluders, observes
+5. Verify the no-static 3D profile ignores simulation-only occluders, observes
    physical geometry, and validates the real free volume from raw lidar evidence.

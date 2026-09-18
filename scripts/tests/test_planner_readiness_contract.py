@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static contracts for planner-world and intercept-start readiness."""
+"""Static contracts for planner-world readiness."""
 
 from __future__ import annotations
 
@@ -52,10 +52,8 @@ MPPI_REFERENCE = SOURCE / "mppi" / "mppi_reference.cpp"
 MPPI_KERNELS = SOURCE / "mppi" / "mppi_engine_kernels.cuh"
 FINITE_HORIZON = SOURCE / "finite_motion_horizon_3d.cpp"
 FINITE_EXECUTION_PATH = SOURCE / "finite_execution_path_3d.cpp"
-REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
-REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
-REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
-ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
+REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
+REFEREE_LIFECYCLE = SOURCE / "cooperative_traffic_referee_lifecycle.cpp"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 
@@ -121,11 +119,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("observed_world", extension)
         self.assertIn('"observed_resident_esdf"', extension)
         self.assertNotIn("Lattice3DRoutePurpose", extension)
-        self.assertIn(
-            "route_progress_tracker_ != nullptr && "
-            "!request.direct_tracking_interception",
-            planning_cycle,
-        )
+        self.assertIn("route_progress_tracker_ != nullptr", planning_cycle)
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
         planning_cycle = PLANNING_COORDINATOR.read_text(encoding="utf-8")
@@ -297,35 +291,12 @@ class PlannerReadinessContractTest(unittest.TestCase):
             launch,
         )
 
-    def test_intercept_start_requires_all_worlds_and_target_tracks(self) -> None:
-        referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
-            encoding="utf-8"
-        )
-        referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
-        coordinator = ASSIGNMENT_COORDINATOR.read_text(encoding="utf-8")
-        launch = LAUNCH.read_text(encoding="utf-8") + MISSION_LAUNCH.read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("missionReady(const std::int64_t now_ns) const", referee)
-        self.assertIn("interceptor_world_readiness_topics", referee_support)
-        self.assertIn("target_world_readiness_topics", referee_support)
-        self.assertIn("target_track_readiness_topics", referee_support)
-        self.assertIn("std::ranges::all_of(interceptors_", referee)
-        self.assertIn("publishReadiness(runtime, true)", coordinator)
-        self.assertIn("interceptor_world_readiness_topics", launch)
-        self.assertIn("target_world_readiness_topics", launch)
-        self.assertIn("target_track_readiness_topics", launch)
-
     def test_coordinate_alignment_is_latched_as_a_startup_contract(self) -> None:
         referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
             encoding="utf-8"
         )
-        referee_support = REFEREE_SUPPORT.read_text(encoding="utf-8")
         self.assertIn("latchStartupContract()", referee)
         self.assertIn("startup_failure_confirmed", referee)
-        self.assertIn("runtime_residual=true", referee_support)
-        self.assertIn("mission_blocked=false", referee_support)
         self.assertNotIn("truth_alignment_sample_aligned_", referee)
 
 

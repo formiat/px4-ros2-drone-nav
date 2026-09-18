@@ -42,7 +42,6 @@ prepare_runtime_resources() {
     --lidar-profile "${materialized_lidar_profile}"
   cp -a "${repo_root}/drone_city_nav/models/${runtime_sensor_model_name}" \
     "${runtime_models_dir}/${runtime_sensor_model_name}"
-  prepare_multi_vehicle_model_resources
 
   local lidar_visibility_mode="no-static-3d"
   if bool_is_true "${active_static_map}"; then

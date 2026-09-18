@@ -67,7 +67,6 @@ namespace {
   config.flight_envelope = config.route_execution.flight_envelope;
   config.horizon_steps = 8U;
   config.dynamics.dt_s = 0.1F;
-  config.tracking_capture_radius_m = 5.0;
   config.route_constraint_diagnostics_distance_m = 30.0;
   return config;
 }
@@ -154,51 +153,6 @@ TEST(PlanningCycleCoordinator3DTest,
   EXPECT_FLOAT_EQ(result.controller.request.input.target.z, 9.0F);
   EXPECT_FLOAT_EQ(result.controller.request.input.reference_speed_mps, 0.0F);
   EXPECT_EQ(result.controller.target_source, "mission_command_position_hold");
-}
-
-TEST(PlanningCycleCoordinator3DTest,
-     NonCooperativeTrackInfluenceReachesTheControllerRequest) {
-  ExecutionSupervisor3D supervisor;
-  PlanningCycleCoordinatorConfig3D config = coordinatorConfig();
-  config.noncooperative_avoidance_enabled = true;
-  PlanningCycleCoordinator3D coordinator{supervisor, config};
-  const WorldSnapshot3D world = worldSnapshot();
-  ProductionNavigationObjective objective;
-  objective.goal = Point3{7.0, 8.0, 9.0};
-  objective.mission_epoch = 43U;
-  objective.sample_sequence = 47U;
-  PlanningCycleRequest3D request = requestFor(world, objective);
-  request.noncooperative_tracks = ProductionMppiNonCooperativeTracks{
-      .tracks = {NonCooperativeAircraftTrack{
-          .local_track_id = 53U,
-          .position = Point3{7.0, 3.0, 4.0},
-          .velocity = Vec3{},
-          .measurement_stamp_ns = request.now_ns,
-          .position_valid = true,
-          .velocity_valid = true,
-      }},
-      .source_scan_sequence = 59U,
-      .receive_stamp_ns = request.now_ns,
-  };
-
-  const PlanningCycleOutcome3D result = coordinator.prepare(request);
-
-  ASSERT_TRUE(result.ready());
-  EXPECT_TRUE(result.controller.noncooperative.enabled);
-  EXPECT_TRUE(
-      result.controller.noncooperative.avoidance.influence.cost_influence_active);
-  EXPECT_TRUE(
-      result.controller.noncooperative.avoidance.influence.evasive_maneuver_active);
-  ASSERT_EQ(result.controller.request.input.dynamic_aircraft.size(), 1U);
-  ASSERT_TRUE(result.controller.request.input.dynamic_aircraft_cost_policy.has_value());
-  const mppi::DynamicAircraftCostPolicy cost_policy =
-      result.controller.request.input.dynamic_aircraft_cost_policy.value_or(
-          mppi::DynamicAircraftCostPolicy{});
-  EXPECT_FLOAT_EQ(
-      cost_policy.strong_weight,
-      static_cast<float>(config.noncooperative_avoidance.strong_cost_weight));
-  EXPECT_TRUE(result.controller.request.input.noncooperative_acquisition.has_value());
-  EXPECT_TRUE(result.controller.request.input.noncooperative_avoidance_active);
 }
 
 TEST(PlanningCycleCoordinator3DTest, NamesEveryCycleDisposition) {

@@ -42,65 +42,6 @@ sim-environment-demo:
 		(printf '%s\n' 'Set ENVIRONMENT_DEMO_ID, for example urban_circuit_practice_01.' >&2; exit 2)
 	./scripts/run_environment_demo.sh "$${ENVIRONMENT_DEMO_ID}"
 
-.PHONY: sim-gui
-sim-gui: build
-	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
-		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
-		export MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18'; \
-	fi; \
-	./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-headless
-sim-headless: build
-	@if [[ -z "$${MISSION_GOALS_XYZ_M+x}" && \
-		-z "$${POINT_TO_POINT_SCENARIO_PATH:-}" ]]; then \
-		export MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18'; \
-	fi; \
-	HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
-		./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-intercept-gui
-sim-intercept-gui: build
-	MISSION_TYPE=intercept \
-		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader}" \
-		./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-intercept-headless
-sim-intercept-headless: build
-	MISSION_TYPE=intercept HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-120}" ./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-multi-intercept-gui
-sim-multi-intercept-gui: build
-	MISSION_TYPE=multi_intercept \
-		INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false \
-		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader_0}" \
-		INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}" \
-		./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-multi-intercept-headless
-sim-multi-intercept-headless: build
-	MISSION_TYPE=multi_intercept \
-		INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=false \
-		INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader_0}" \
-		INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}" \
-		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-180}" \
-		./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-cooperative-traffic-gui
-sim-cooperative-traffic-gui: build
-	MISSION_TYPE=cooperative_traffic \
-		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID="$${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-civilian_0}" \
-		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY="$${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-next_living}" \
-		./scripts/run_drone_nav_sim.sh
-
-.PHONY: sim-cooperative-traffic-headless
-sim-cooperative-traffic-headless: build
-	MISSION_TYPE=cooperative_traffic \
-		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID="$${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-civilian_0}" \
-		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY="$${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-next_living}" \
-		HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
-		./scripts/run_drone_nav_sim.sh
-
 .PHONY: sim-cooperative-traffic-urban-headless
 sim-cooperative-traffic-urban-headless: build
 	python3 scripts/prepare_environment_simulation.py \

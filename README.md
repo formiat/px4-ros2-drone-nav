@@ -33,10 +33,9 @@ The first run downloads several gigabytes and builds for tens of minutes.
 ## Roadmap
 
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
-covers the interceptor mission, radar-derived target tracking, predictive
-guidance, multi-drone scenarios, cooperative air traffic, generalized static 3D
-passages, no-static 3D lidar perception, lidar-inertial localization, and
-vision-only 3D perception without lidar or static maps.
+covers cooperative air traffic, generalized static 3D passages, no-static 3D
+lidar perception, lidar-inertial localization, realistic cooperative
+communication, and vision-only 3D perception without lidar or static maps.
 
 ## Releases
 
@@ -76,14 +75,6 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/bootstrap.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./scripts/sim_gui.sh
-./scripts/sim_headless.sh
-./scripts/sim_intercept_gui.sh
-./scripts/sim_intercept_headless.sh
-./scripts/sim_multi_intercept_gui.sh
-./scripts/sim_multi_intercept_headless.sh
-./scripts/sim_cooperative_traffic_gui.sh
-./scripts/sim_cooperative_traffic_headless.sh
 ./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/sim_urban_point_to_point_gui.sh
@@ -115,14 +106,6 @@ make test
 make test-scripts
 make quality
 make format
-make sim-gui
-make sim-headless
-make sim-intercept-gui
-make sim-intercept-headless
-make sim-multi-intercept-gui
-make sim-multi-intercept-headless
-make sim-cooperative-traffic-gui
-make sim-cooperative-traffic-headless
 make sim-cooperative-traffic-urban-gui
 make sim-cooperative-traffic-urban-headless
 make sim-urban-point-to-point-gui
@@ -130,17 +113,11 @@ make sim-urban-point-to-point-headless
 ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 make sim-environment-demo
 ```
 
-The base `sim` mission visits sequential point-to-point waypoints. The default
-route follows the four city corners. Override it with `MISSION_GOALS_XYZ_M`
-using `x,y,z;x,y,z;...` syntax; each waypoint is terminal and the mission
-succeeds only after the vehicle settles at the last one.
-
-A single-destination mission uses the same parameter with one `x,y,z` triple.
-
-```bash
-MISSION_GOALS_XYZ_M='216,378,18;216,54,18;54,378,18;54,54,18' \
-  ./scripts/sim_headless.sh
-```
+The point-to-point mission visits sequential waypoints. Its scenario owns the
+default sequence; override it with `MISSION_GOALS_XYZ_M` using
+`x,y,z;x,y,z;...` syntax. Each waypoint is terminal and the mission succeeds
+only after the vehicle settles at the last one. A single-destination mission
+uses the same parameter with one `x,y,z` triple.
 
 Build and run the isolated CUDA MPPI benchmark:
 
@@ -192,7 +169,7 @@ make format
 Run the GUI simulation:
 
 ```bash
-./scripts/sim_gui.sh
+./scripts/sim_urban_point_to_point_gui.sh
 ```
 
 Simulation runs use no static map by default. Set `ENABLE_STATIC_MAP=true`
@@ -238,27 +215,22 @@ simulation entry point defaults to the 3D lidar. A static-map run may disable
 lidar entirely:
 
 ```bash
-ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_gui.sh
+ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_urban_point_to_point_gui.sh
 ```
 
 No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
 starting the simulation. Unknown and free volume have identical traversability
 and base cost; only confirmed occupied geometry is a hard spatial obstacle.
 
-Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
+Acceptance uses the urban environment, no static map, and only the 3D profile:
 
 ```bash
-POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/manhattan_low_altitude_point_to_point_scenario.json \
-ENABLE_STATIC_MAP=false \
-LIDAR_PROFILE=3d \
-REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
-OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M='42,147,1.5,66,177,8.5' \
-./scripts/sim_headless.sh
+./scripts/sim_urban_point_to_point_headless.sh
 ```
 
 Every run writes `log/runs/<run-id>/manifest.json`. The manifest binds the exact
-Git commit, navigation configuration, generated world, mission scenario, and
-runtime profile by SHA-256. When constrained-volume validation is enabled, a
+Git commit, navigation configuration, world, mission scenario, and runtime
+profile by SHA-256. When constrained-volume validation is enabled, a
 transient-local subscriber also retains the exact observed/occupied bit words
 for that volume in a revisioned `raw_snapshot_3d_revision_<revision>.json`
 artifact. The headless acceptance gate verifies the artifact hash and payload,
@@ -294,140 +266,14 @@ Override the profile for an individual run with environment variables:
 CRUISE_SPEED_MPS=6.5 \
 ABSOLUTE_SPEED_LIMIT_MPS=10 \
 MAXIMUM_HORIZONTAL_ACCELERATION_MPS2=4 \
-./scripts/sim_cooperative_traffic_headless.sh
+./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
 
-These values are independent of map source. Complex environments use the
-default profile; Manhattan can use a faster explicit profile for experiments.
+These values are independent of map source.
 
-Run the finite three-interceptor mission:
-
-```bash
-./scripts/sim_intercept_gui.sh
-./scripts/sim_intercept_headless.sh
-```
-
-The point-to-point mission remains the default. The intercept mission launches
-three isolated interceptor PX4/ROS stacks and one evader stack. The
-interceptors start in three separated city sectors; one starts at the evader's destination
-but receives neither that destination nor any other attacker ground truth. The
-evader flies diagonally to its fixed goal with the same speed policy as the
-interceptors. Each interceptor receives only its own ideal radar measurements
-containing range, azimuth, elevation, and radial velocity; an independent
-variable-dt tracker derives the target state used by predictive guidance. Scan
-cadence follows a deterministic correlated random walk from 0.1 s to 3.0 s
-while the current target estimate is occluded. Once a planner validates swept
-raw-clear visibility of that estimate, a typed command triggers an immediate
-scan and 20 Hz track mode without a range limit. Tracker coasting and guidance
-continue at 20 Hz between scans. Only the three simulation radar adapters and
-the mission referee may consume the typed physical target truth produced by the
-simulation-truth adapter. Radar measurements and mission proximity are derived
-from Gazebo model poses, not independently configured PX4 origins. Mission
-motion starts only after all four planners report a resident world, all three
-trackers have published a valid target position, and several consecutive
-samples confirm that every navigation pose agrees with its Gazebo pose.
-This coordinate agreement is a startup contract: once mission motion begins it
-is latched for the episode. Later navigation-to-truth residuals remain visible
-as diagnostics but do not stop physical adjudication or place the fleet in
-hold.
-
-All four map-frame starts and the evader goal are owned by
-`drone_city_nav/config/intercept_scenario.json`. The runner derives each Gazebo
-spawn from the canonical world's `map_to_sdf` transform; there are no separate
-intercept spawn coordinates in the shell or launch file.
-
-The continuous guidance objective has no terminal goal hold. It uses a
-latency-compensated analytic intercept solution, capped at 15 s, and smoothly
-caps the lead at 1 s when the interceptor is already ahead in the evader's
-motion corridor. Vertical prediction models the target stopping its climb or
-descent under bounded acceleration and clamps the result to the configured
-half-open flight envelope. The planner treats current-target visibility and the
-path to the predicted intercept point separately. A visible current target keeps
-direct MPPI interception active; a blocked full-lead path shortens the prediction
-toward the current target instead of dropping direct mode.
-By default, all three interceptors predict the measured target direction. Set
-`INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=true` to assign the other two
-interceptors `+45` and `-45` degree long-range motion hypotheses. Those offsets
-converge continuously to zero below 30 m and their lateral lead is capped at
-70 m. The radar track itself is never rotated or falsified.
-
-A physically measured swept Gazebo separation of 5 m between any interceptor
-and the evader publishes
-typed `VehicleDestroyed` events for that pair. Their offboard nodes force-disarm
-and confirm both deaths, while the other interceptors receive a typed hold objective
-and settle into confirmed stationary position hold. A physical or 5 m proximity
-collision between
-interceptors destroys only the involved vehicles and the mission continues
-while another interceptor is available. If the evader reaches its goal first,
-the first airborne sample inside the goal radius latches that outcome, all
-surviving interceptors stop tracking and settle into confirmed stationary
-position hold; no vehicle is disarmed. A later inertial approach cannot change
-the first outcome, although entering the capture radius still applies the normal
-pair disarm. Evader goal arrival is an intercept failure but still a technically
-successful simulation outcome. In the GUI workflow, RViz and Gazebo initially
-follow the attacker `evader`. The default `first_living` policy selects the
-first surviving scenario vehicle three seconds after the observed vehicle dies.
-RViz keeps the lightweight route and direction
-arrow of every interceptor visible. Its
-full MPPI, memory, and lidar layers are routed from the current spectator only
-and switch with the same spectator selection; optional per-interceptor memory
-clouds remain disabled by default. The GUI
-workflow remains open after either outcome. The headless workflow exits only
-after all applicable hold and disarm settlements are confirmed in the log. The
-mission contains one evader only; it does not respawn attackers or start another
-episode.
-
-Run the finite two-interceptor versus two-attacker mission separately:
-
-```bash
-./scripts/sim_multi_intercept_gui.sh
-./scripts/sim_multi_intercept_headless.sh
-```
-
-This entry point uses the same generic launch and navigation code with
-`drone_city_nav/config/multi_intercept_2v2_scenario.json`. The attackers start
-on the short city side farthest from the destination: `evader_0` starts at its
-corner and `evader_1` starts one block inward along that side. The interceptors
-start on the opposite short side, next to the destination corner at
-`(54, 378, 18)`. Both attackers fly toward that same fixed goal. Each interceptor
-owns an independent radar simulator and
-multi-target tracker; its `RadarScan` contains one relative spherical detection
-per active attacker and still exposes no absolute target coordinates.
-
-A central typed assignment coordinator compares estimated constant-velocity
-intercept times and computes a deterministic minimum-cost allocation. In the
-2x2 case it covers both active attackers with distinct interceptors whenever
-valid tracks permit it. Assignment changes require a material, sustained cost
-improvement, which prevents rapid target flapping. If an attacker is
-intercepted, reaches its goal, or is destroyed, it is removed from future
-allocation immediately and the surviving interceptors are reassigned to the
-remaining active attackers. Radio transport and communication impairments are
-not simulated.
-
-The referee records exactly one first terminal outcome per attacker. An
-interceptor-attacker separation of 5 m destroys and disarms only that pair;
-other assignments continue. The finite episode ends after every attacker has a
-terminal outcome, or fails if no interceptor remains while an attacker is still
-active. Headless validation requires every captured pair to have physical
-Gazebo proximity evidence and confirmed disarms, every survivor to confirm
-position hold, and no vehicle to collide with a building. Directional motion
-hypotheses are disabled in this supported scenario.
-
-The `2x2` GUI starts with `evader_0` as the spectator and uses the cyclic
-`next_living` policy. Three seconds after its destruction, the camera selects
-`evader_1` when it is alive; otherwise it continues through the scenario order
-and wraps to the first living vehicle. Gazebo, the RViz `drone_follow` frame,
-and selected planner diagnostics consume the same typed spectator selection.
-
-Run the cooperative civilian traffic mission:
-
-```bash
-./scripts/sim_cooperative_traffic_gui.sh
-./scripts/sim_cooperative_traffic_headless.sh
-```
-
-Run the no-static cooperative mission in the imported Urban Circuit Practice 01
-environment. Both entrypoints use only 3D lidar and online obstacle memory:
+Run the finite cooperative civilian traffic mission in the imported Urban
+Circuit Practice 01 environment. Both entrypoints use only 3D lidar and online
+obstacle memory:
 
 ```bash
 ./scripts/sim_cooperative_traffic_urban_gui.sh
@@ -448,21 +294,20 @@ Run the base single-drone no-static flight in the same environment:
 
 The scenario is defined once in
 `drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json`.
-Its map-space launch pose is transformed by the canonical world contract for
-Gazebo, while the same pose sets the PX4 origin and the navigation start. The
+Its map-space launch pose is transformed by the world's `map_to_sdf` contract
+for Gazebo, while the same pose sets the PX4 origin and the navigation start. The
 headless target additionally validates the persistent full-3D planner, route
 ownership continuity, successor reserve, physical route-volume traversal, and
 measured runtime latency.
 
 The finite scenario in
-`drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of
-civilian drones from opposite ends of the western interior street containing
-the straight `passage_structure_54_162_straight` 3D passage. The two parallel routes start
-only 2 m apart, deliberately forcing cooperative separation immediately after
-launch, then fan out to destinations separated by 8 m. Each route carries
-opposing traffic through the passage between the building rows. Every vehicle
-owns its own PX4, navigation, mapping, and MPPI pipeline. All vehicles start and
-cruise at the same altitude; no fixed altitude layers are assigned.
+`drone_city_nav/config/cooperative_traffic_urban_scenario.json` launches two
+pairs of civilian drones from opposite ends of the same urban corridor. The two
+parallel routes of a pair start only 2 m apart, deliberately forcing cooperative
+separation immediately after launch. Each pair carries opposing traffic through
+the corridor. Every vehicle owns its own PX4, navigation, mapping, and MPPI
+pipeline. All vehicles start and cruise at the same altitude; no fixed altitude
+layers are assigned.
 
 At 20 Hz, each vehicle publishes a typed `CooperativeFlightIntent` containing
 its current state, physical footprint, bounded-validity MPPI horizon, and active
@@ -503,16 +348,11 @@ complete minimum-separation report. Both static-map and no-static-map workflows
 are supported. The GUI spectator starts on `civilian_0` and uses cyclic
 `next_living` selection.
 
-In the Gazebo view, interceptor visibility markers remain yellow and the evader
-visibility marker is red. RViz continues to use its distinct per-role colors.
-
 Mission outcome and vehicle death are separate contracts. Mission failures never
 request disarm. Force-disarm is owned only by the latched death lifecycle and is
-accepted only for a physical Gazebo collision or a typed 5 m proximity death. If the
-evader physically crashes, its death/disarm is confirmed and a surviving
-interceptor receives a typed objective for confirmed stationary position hold. A typed proximity
-collision between two interceptors is the same physical death contract, not a
-mission-failure disarm path.
+accepted only for a physical Gazebo collision or a typed 5 m proximity death. A
+vehicle that physically crashes has its death and disarm confirmed while the
+survivors receive a typed objective for confirmed stationary position hold.
 
 Stop all running simulation leftovers, including related Gazebo/PX4/ROS
 processes and simulation containers:
@@ -535,8 +375,8 @@ all candidate containers and PIDs before terminating them. Use
 `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
 
 By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin. The
-point-to-point mission follows the PX4-spawned model `x500_lidar_2d_0`; intercept
-missions derive the model from the typed spectator selection. Disable the
+point-to-point mission follows the PX4-spawned model `x500_lidar_2d_0`;
+multi-vehicle missions derive the model from the typed spectator selection. Disable the
 camera with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the point-to-point target
 with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
 `GZ_GUI_FOLLOW_OFFSET="-7 0 3.5"`. The runner waits for the initial model to appear
@@ -545,12 +385,12 @@ ID-aware native `CameraTrack` command until the resulting target state remains
 stable. The conflicting `/gui/follow` service is intentionally not used.
 Simulation unpause remains a separate Gazebo world-control operation.
 
-Intercept scripts expose `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID` and
-`INTERCEPT_SPECTATOR_RESELECTION_POLICY`. The latter accepts `first_living` or
-`next_living`. `first_living` always selects the lowest-index living scenario
+Multi-vehicle scripts expose `MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID` and
+`MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY`. The latter accepts `first_living`
+or `next_living`. `first_living` always selects the lowest-index living scenario
 vehicle; `next_living` scans forward from the destroyed vehicle and wraps at the
-end of the scenario list. `INTERCEPT_SPECTATOR_RESELECTION_DELAY_S` controls the
-handoff delay and defaults to three seconds.
+end of the scenario list. `MULTI_VEHICLE_SPECTATOR_RESELECTION_DELAY_S` controls
+the handoff delay and defaults to three seconds.
 
 By default, RViz also opens in a follow-camera debug view that targets the
 visualization-only `drone_follow` TF frame. Disable that behavior with
@@ -580,13 +420,13 @@ when you need a minimal run.
 Run a headless smoke validation:
 
 ```bash
-./scripts/sim_headless.sh
+./scripts/sim_urban_point_to_point_headless.sh
 ```
 
 Equivalent explicit command inside an interactive container shell:
 
 ```bash
-make sim-headless
+make sim-urban-point-to-point-headless
 ```
 
 Record a debug rosbag while the simulation is running:
@@ -597,13 +437,12 @@ Record a debug rosbag while the simulation is running:
 
 The container targets use `build/`, `install/`, and `log/`.
 
-Static mode loads raw `generated_city.occupancy3d`, its fingerprint-bound
-`generated_city.topology3d`, and precomputed chunked `generated_city.esdf3d` in
-`production_mppi_node`. All three artifacts and `generated_city.sdf` are
-generated from the same canonical world specification. The current city is a `5 x 8` Manhattan
-building grid with two horizontal L-shaped air-passage structures, one
-straight-through structure, and one T junction. Static planning loads the
-separate free-space topology index as optional static passage metadata. Route
+Static mode loads an environment's raw Occupancy3D, its fingerprint-bound
+FreeSpaceTopology3D, and its precomputed chunked ESDF3D in
+`production_mppi_node`. Those artifacts are optional per environment; the
+current Urban Circuit environment ships none of them and every mission flies
+no-static. Static planning loads the separate free-space topology index as
+optional static passage metadata. Route
 production remains owned by the same persistent full-3D planner used in
 no-static mode; the topology artifact does not instantiate a competing search
 or route owner. There is no hand-authored planner centerline, semantic lane, or
@@ -616,7 +455,7 @@ collision authority. Planning treats free and unknown identically; exact raw
 occupied geometry remains the only hard spatial obstacle.
 
 The static free-space topology index remains an optional compatibility
-acceleration for static Manhattan planning. It is not generated or consumed by
+acceleration for static planning. It is not generated or consumed by
 the no-static 3D pipeline. Source contracts are documented in
 `docs/world3d.md`, `docs/obstacle_mapping.md`, and `docs/configuration.md`.
 
@@ -632,7 +471,7 @@ contain only direct sensor evidence. Each timestamp-aligned scan first publishes
 `/drone_city_nav/latest_lidar_obstacle_scan`; while fresh, those physical hit
 points validate the complete finite path without waiting for persistent-memory
 integration. The planner builds a distance-derived risk field without
-materializing inflated grids. Static mode instead loads canonical Occupancy3D
+materializing inflated grids. Static mode instead loads raw Occupancy3D
 directly. `/drone_city_nav/raw_obstacle_grid` is visualization-only and must not
 be wired back into planner or offboard validation.
 

@@ -1,21 +1,19 @@
 # Gazebo Simulation
 
 The simulator run combines Gazebo, PX4 SITL, ROS 2, the navigation nodes, and
-optional RViz. The default world is a generated city-like environment, but the
-navigation stack is not tied to a city scenario.
+optional RViz. The world is the imported Urban Circuit environment, but the
+navigation stack is not tied to one scenario.
 
 ## World Files
 
-World and map assets live under `drone_city_nav/worlds/`:
-
-- `generated_city.sdf`
-- `generated_city.occupancy3d`
-- `generated_city.topology3d`
-- `canonical_city.world3d.json`
-
-The SDF, sparse Occupancy3D, and FreeSpaceTopology3D are generated from the
-canonical JSON world spec. Static planning loads raw occupancy and its derived
-topology separately; no-static planning uses lidar only.
+`drone_city_nav/worlds/urban_circuit_practice_01.world3d.json` declares the map
+frame, the map-to-SDF transform, the Occupancy3D grid, and the flight envelope.
+Gazebo geometry (collision, sensor, and GUI worlds) is produced by the
+environment artifact pipeline into
+`external/environment-artifacts/derived/<environment>/runtime/` and selected
+through `scripts/prepare_environment_simulation.py`. Static planning loads raw
+occupancy and its derived topology separately when an environment ships them;
+no-static planning uses lidar only, which is what every current mission runs.
 
 ## Drone Model
 
@@ -26,7 +24,7 @@ Gazebo publishes the lidar scan on a Gazebo topic, and the launch file starts a
 The lidar topic configured in `city_nav.launch.py` is:
 
 ```text
-/world/generated_city/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan
+/world/<world name>/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan
 ```
 
 ROS nodes consume the bridged `/scan` topic.
@@ -49,11 +47,10 @@ PX4 local coordinates are aligned with the planner map through configured
 origin parameters such as `px4_local_origin_x_m` and `px4_local_origin_y_m`
 and the `px4_to_map_m00..m11` matrix. PX4 reports NED positions (X north, Y
 east) while Gazebo worlds are ENU, so the launch derives the matrix from the
-canonical world's `map_to_sdf`: the Manhattan world already swaps its map axes
-and keeps the identity, whereas a world whose map frame equals the SDF frame
-(Urban Circuit) receives the axis swap `(0, 1, 1, 0)`. Every node that turns
-a PX4 pose into map coordinates, including the mission monitor, receives the
-same matrix.
+world's `map_to_sdf`: a world whose map frame equals the SDF frame (Urban
+Circuit) receives the axis swap `(0, 1, 1, 0)`, while a world that already
+swaps its map axes keeps the identity. Every node that turns a PX4 pose into
+map coordinates, including the mission monitor, receives the same matrix.
 
 ## Heading Source
 
@@ -120,12 +117,12 @@ heuristic: Gazebo physics contact is the source of truth for a crash.
 
 When changing the scenario, keep these values consistent across nodes.
 
-The intercept mission does not duplicate these values. Its four map starts and
-evader goal live in `drone_city_nav/config/intercept_scenario.json`; Gazebo
-spawns are derived automatically from the canonical world's `map_to_sdf`
-transform. At runtime, `simulation_truth_adapter_node` converts Gazebo dynamic
-poses back to map coordinates and the referee blocks mission start until all
-four navigation poses agree with physical truth.
+The cooperative traffic mission does not duplicate these values. Its map starts
+and goals live in `drone_city_nav/config/cooperative_traffic_urban_scenario.json`;
+Gazebo spawns are derived automatically from the world's `map_to_sdf` transform.
+At runtime, `simulation_truth_adapter_node` converts Gazebo dynamic poses back
+to map coordinates and the referee blocks mission start until every navigation
+pose agrees with physical truth.
 
 ## Static World Generation
 
@@ -133,20 +130,24 @@ The planner static obstacle source is configured with:
 
 ```yaml
 use_static_map: true
-static_occupancy_3d_path: worlds/generated_city.occupancy3d
-static_free_space_topology_3d_path: worlds/generated_city.topology3d
+static_occupancy_3d_path: <environment occupancy3d>
+static_free_space_topology_3d_path: <environment topology3d>
 ```
 
-Regenerate all static world artifacts with the exact container command documented in
-`world3d.md`. Occupied voxels are physical geometry only. Clearance bands remain
-ranking costs.
+Both paths default to empty because every current mission runs no-static; an
+environment that ships a static map exports them through
+`scripts/prepare_environment_simulation.py` and compiles its topology with
+`scripts/compile_environment_topology.py`, as documented in `world3d.md`.
+Occupied voxels are physical geometry only. Clearance bands remain ranking
+costs.
 
 ## Changing The Environment
 
 When changing the world:
 
-1. Update `canonical_city.world3d.json`.
-2. Regenerate the SDF, Occupancy3D, ESDF3D, and FreeSpaceTopology3D artifacts.
+1. Update its World3D specification.
+2. Rebuild the environment artifacts and, if it ships a static map, recompile
+   its FreeSpaceTopology3D.
 3. Update grid bounds in `urban_mvp.yaml` if the navigable area changes.
 4. Update start/goal/origin values consistently.
 5. Check RViz overlays against Gazebo geometry.
@@ -171,8 +172,8 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 - `ENABLE_RVIZ_FOLLOW_CAMERA=false`
 - `GZ_GUI_FOLLOW_TARGET=<model>`
 - `GZ_GUI_FOLLOW_OFFSET="-7 0 3.5"`
-- `INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID=<scenario vehicle ID>`
-- `INTERCEPT_SPECTATOR_RESELECTION_POLICY=first_living|next_living`
+- `MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=<scenario vehicle ID>`
+- `MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=first_living|next_living`
 
 ## Known Gazebo-Specific Issues
 
@@ -181,9 +182,9 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 - GUI display forwarding can fail on restrictive X11/Wayland setups.
 - RViz navigation debug uses the `gazebo_map` fixed frame plus the
   `gazebo_aligned_map_tf` transform from the launch file, derived from the
-  canonical world's `map_to_sdf`. The generated city keeps the legacy rotation
-  that swaps the horizontal axes and flips Z; a world whose map frame equals
-  the SDF frame (Urban Circuit) gets the identity transform. Every overlay
+  world's `map_to_sdf`. A world whose map frame equals the SDF frame (Urban
+  Circuit) gets the identity transform, while a world that swaps its
+  horizontal axes and flips Z gets the matching rotation. Every overlay
   publisher receives the matching `gazebo_aligned_rviz_axes_swapped`
   parameter.
 - Multiple simultaneous Gazebo instances are not supported by the standard
@@ -209,17 +210,13 @@ or arming rather than planner geometry.
 
 ## World Artifact Consistency
 
-`canonical_city.world3d.json` is the only hand-edited geometry source. The
-generator derives both Gazebo SDF and sparse Occupancy3D from it, so rendering,
-physics, and static planning cannot encode different buildings. The current
-world adds two L-shaped passages, one straight-through passage, and one T
-junction between neighboring Manhattan buildings. Every open bridge and
-intersection receives a collisionless no-static lidar occluder.
+A world's World3D specification and its Gazebo geometry must describe the same
+buildings, so rendering, physics, and static planning cannot disagree.
 
 When editing a world, verify:
 
 - ordinary building positions and sizes in Gazebo;
-- regenerated SDF and Occupancy3D match the canonical specification;
+- the Occupancy3D artifact matches the World3D specification;
 - all passage orientations and constrained envelopes are represented in
   Occupancy3D;
 - map origin relative to PX4 local origin;
@@ -228,9 +225,9 @@ When editing a world, verify:
 - RViz static Occupancy3D points overlay the visible city.
 
 The runner configures the lidar visibility mask from the resolved
-`ENABLE_STATIC_MAP` mode. Static lidar excludes passage masses and no-static
-occluders because Occupancy3D is authoritative. No-static lidar includes both,
-so every passage is observed as an ordinary obstacle rather than traversed.
+`ENABLE_STATIC_MAP` mode. Static lidar excludes simulation-only occluders
+because Occupancy3D is authoritative. No-static lidar observes the physical
+geometry, so every passage is observed rather than assumed.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
 "help" the planner. MPPI derives categorical risk bands from the occupied

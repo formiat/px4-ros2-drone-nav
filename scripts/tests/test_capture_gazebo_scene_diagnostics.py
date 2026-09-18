@@ -60,7 +60,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             summary = diagnostics.capture_diagnostics(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 target="x500_lidar_2d_0",
                 output_dir=output_dir,
                 topic_duration_s=0.2,
@@ -80,9 +80,9 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
         self.assertIn("yellow_visual_seen=true", joined_summary)
         self.assertIn("gui_tracking_target_seen=true", joined_summary)
         self.assertTrue(
-            any("/world/generated_city/pose/info" in call for call in runner.calls)
+            any("/world/urban_circuit_practice_01/pose/info" in call for call in runner.calls)
         )
-        self.assertTrue(any("/world/generated_city/scene/info" in call for call in runner.calls))
+        self.assertTrue(any("/world/urban_circuit_practice_01/scene/info" in call for call in runner.calls))
         self.assertTrue(
             any(
                 "/gui/currently_tracked" in call
@@ -100,7 +100,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             summary = diagnostics.capture_diagnostics(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 target="x500_lidar_2d_0",
                 output_dir=Path(temp_dir),
                 topic_duration_s=0.2,
@@ -129,7 +129,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.object(diagnostics.time, "sleep"):
                 summary = diagnostics.capture_diagnostics(
-                    world="generated_city",
+                    world="urban_circuit_practice_01",
                     target="x500_lidar_2d_0",
                     output_dir=Path(temp_dir),
                     topic_duration_s=0.2,

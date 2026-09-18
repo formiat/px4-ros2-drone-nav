@@ -61,32 +61,32 @@ Visualization Manager:
       Enabled: true
       Line Style: Lines
       Line Width: 0.08
-      Name: Interceptor 0 Route
+      Name: Vehicle 0 Route
       Topic:
-        Value: /vehicles/interceptor_0/mppi/path
+        Value: /vehicles/civilian_0/mppi/path
     - Alpha: 0.72
       Class: rviz_default_plugins/Path
       Color: 76; 235; 115
       Enabled: true
       Line Style: Lines
       Line Width: 0.08
-      Name: Interceptor 1 Route
+      Name: Vehicle 1 Route
       Topic:
-        Value: /vehicles/interceptor_1/mppi/path
+        Value: /vehicles/civilian_1/mppi/path
     - Alpha: 0.72
       Class: rviz_default_plugins/Path
       Color: 255; 153; 51
       Enabled: true
       Line Style: Lines
       Line Width: 0.08
-      Name: Interceptor 2 Route
+      Name: Vehicle 2 Route
       Topic:
-        Value: /vehicles/interceptor_2/mppi/path
+        Value: /vehicles/civilian_2/mppi/path
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: Interceptor Directions
+      Name: Vehicle Directions
       Topic:
-        Value: /drone_city_nav/interceptor_directions
+        Value: /drone_city_nav/vehicle_directions
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255
@@ -214,7 +214,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
-      Name: Interceptor 0 Memory (Optional)
+      Name: Vehicle 0 Memory (Optional)
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.25
@@ -224,7 +224,7 @@ Visualization Manager:
         Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /vehicles/interceptor_0/raw_memory_points_3d
+        Value: /vehicles/civilian_0/raw_memory_points_3d
     - Alpha: 0.75
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2
@@ -232,7 +232,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
-      Name: Interceptor 1 Memory (Optional)
+      Name: Vehicle 1 Memory (Optional)
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.25
@@ -242,7 +242,7 @@ Visualization Manager:
         Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /vehicles/interceptor_1/raw_memory_points_3d
+        Value: /vehicles/civilian_1/raw_memory_points_3d
     - Alpha: 0.75
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2
@@ -250,7 +250,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
-      Name: Interceptor 2 Memory (Optional)
+      Name: Vehicle 2 Memory (Optional)
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.25
@@ -260,7 +260,7 @@ Visualization Manager:
         Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /vehicles/interceptor_2/raw_memory_points_3d
+        Value: /vehicles/civilian_2/raw_memory_points_3d
     - Alpha: 0.30
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

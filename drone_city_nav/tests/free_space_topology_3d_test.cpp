@@ -1,67 +1,74 @@
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cmath>
 #include <filesystem>
-#include <map>
-#include <ranges>
 
 namespace drone_city_nav {
 namespace {
 
-TEST(FreeSpaceTopology3D, LoadsFingerprintBoundGeneratedArtifact) {
-  const OccupancyGrid3D occupancy = OccupancyGrid3D::load(TEST_OCCUPANCY3D_PATH);
-  const FreeSpaceTopology3D topology =
-      FreeSpaceTopology3D::load(TEST_FREE_SPACE_TOPOLOGY3D_PATH);
+[[nodiscard]] PassagePortal makePortal(const char* id,
+                                       const FreeSpaceRegionId& region_id,
+                                       const Point3 center, const GridIndex3D voxel) {
+  return PassagePortal{
+      .id = PassagePortalId{id},
+      .region_id = region_id,
+      .center = center,
+      .outward_normal = {1.0, 0.0, 0.0},
+      .opening_polygon = {{center.x, center.y - 0.5, center.z - 0.5},
+                          {center.x, center.y + 0.5, center.z - 0.5},
+                          {center.x, center.y, center.z + 0.5}},
+      .surface_voxels = {voxel},
+      .traversable_anchors = {center},
+      .local_u_axis = {0.0, 1.0, 0.0},
+      .local_v_axis = {0.0, 0.0, 1.0},
+      .minimum_clearance_m = 1.0,
+      .mean_clearance_m = 1.5,
+      .maximum_clearance_m = 2.0,
+  };
+}
 
-  EXPECT_TRUE(topology.compatibleWith(occupancy));
-  EXPECT_EQ(topology.occupancyFingerprint(), occupancy.fingerprint());
-  EXPECT_EQ(topology.occupancyBounds(), occupancy.bounds());
-  ASSERT_EQ(topology.regions().size(), 1U);
-  ASSERT_EQ(topology.portals().size(), 5U);
-  ASSERT_EQ(topology.segments().size(), 6U);
-  EXPECT_TRUE(topology.traversalEdges().empty());
-
-  for (const PassagePortal& portal : topology.portals()) {
-    EXPECT_GE(portal.opening_polygon.size(), 3U);
-    EXPECT_FALSE(portal.surface_voxels.empty());
-    EXPECT_FALSE(portal.traversable_anchors.empty());
-    EXPECT_NEAR(std::sqrt(portal.outward_normal.x * portal.outward_normal.x +
-                          portal.outward_normal.y * portal.outward_normal.y +
-                          portal.outward_normal.z * portal.outward_normal.z),
-                1.0, 1.0e-6);
-  }
-  std::map<PassagePortalId, std::size_t> segment_count_by_portal;
-  for (const PassageSegment& segment : topology.segments()) {
-    EXPECT_EQ(segment.id.value().find("passage_structure_"), std::string::npos);
-    EXPECT_GT(segment.centerline.size(), 1U);
-    EXPECT_FALSE(segment.endpoint_portal_ids.empty());
-    EXPECT_GT(segment.minimum_clearance_m, 0.0);
-    EXPECT_DOUBLE_EQ(segment.speed_limit_mps, 10.0);
-    for (const PassagePortalId& portal_id : segment.endpoint_portal_ids) {
-      ++segment_count_by_portal[portal_id];
-    }
-    const SweptFootprintConfig footprint{};
-    for (std::size_t index = 1U; index < segment.centerline.size(); ++index) {
-      EXPECT_TRUE(validateRawSweptFootprint(
-                      occupancy, segment.centerline[index - 1U].position,
-                      FootprintBodyAxis{}, segment.centerline[index].position,
-                      FootprintBodyAxis{}, footprint)
-                      .accepted())
-          << segment.id << " sample " << index;
-    }
-  }
-  EXPECT_TRUE(std::ranges::any_of(segment_count_by_portal,
-                                  [](const auto& entry) { return entry.second > 1U; }));
+[[nodiscard]] FreeSpaceTopology3D makeTopology() {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 10, 10, 10};
+  const FreeSpaceRegionId region_id{"region:round-trip"};
+  const PassagePortal shared =
+      makePortal("portal:shared", region_id, {5.5, 5.5, 5.5}, {5, 5, 5});
+  const PassagePortal first =
+      makePortal("portal:first", region_id, {2.5, 5.5, 5.5}, {2, 5, 5});
+  const PassagePortal second =
+      makePortal("portal:second", region_id, {5.5, 8.5, 5.5}, {5, 8, 5});
+  const PassageSegmentId first_segment_id{"segment:first"};
+  const PassageSegmentId second_segment_id{"segment:second"};
+  return FreeSpaceTopology3D{
+      42U,
+      bounds,
+      {FreeSpaceRegion{.id = region_id,
+                       .representative = {5.5, 5.5, 5.5},
+                       .maximum_clearance_m = 2.0,
+                       .portal_ids = {shared.id, first.id, second.id}}},
+      {shared, first, second},
+      {PassageSegment{
+           .id = first_segment_id,
+           .centerline = {{.position = shared.center}, {.position = first.center}},
+           .endpoint_portal_ids = {shared.id, first.id},
+           .first_endpoint_neighbors = {second_segment_id},
+           .second_endpoint_neighbors = {},
+           .minimum_clearance_m = 1.0,
+           .speed_limit_mps = 5.0},
+       PassageSegment{
+           .id = second_segment_id,
+           .centerline = {{.position = shared.center}, {.position = second.center}},
+           .endpoint_portal_ids = {shared.id, second.id},
+           .first_endpoint_neighbors = {first_segment_id},
+           .second_endpoint_neighbors = {},
+           .minimum_clearance_m = 1.0,
+           .speed_limit_mps = 5.0}},
+  };
 }
 
 TEST(FreeSpaceTopology3D, PreservesTopologyWhenRewritten) {
-  const FreeSpaceTopology3D original =
-      FreeSpaceTopology3D::load(TEST_FREE_SPACE_TOPOLOGY3D_PATH);
+  const FreeSpaceTopology3D original = makeTopology();
   const std::filesystem::path path =
       std::filesystem::temp_directory_path() /
       "drone_city_nav_free_space_topology_3d_round_trip.topology3d";
@@ -100,23 +107,10 @@ TEST(FreeSpaceTopology3D, PreservesTopologyWhenRewritten) {
     EXPECT_DOUBLE_EQ(loaded_segment.minimum_clearance_m,
                      original_segment.minimum_clearance_m);
   }
-  for (std::size_t index = 0U; index < original.traversalEdges().size(); ++index) {
-    const PassageTraversalEdge& original_edge = original.traversalEdges()[index];
-    const PassageTraversalEdge& loaded_edge = loaded.traversalEdges()[index];
-    EXPECT_EQ(loaded_edge.id, original_edge.id);
-    EXPECT_EQ(loaded_edge.region_id, original_edge.region_id);
-    EXPECT_EQ(loaded_edge.entry_portal_id, original_edge.entry_portal_id);
-    EXPECT_EQ(loaded_edge.exit_portal_id, original_edge.exit_portal_id);
-    EXPECT_NEAR(distance3D(loaded_edge.entry, original_edge.entry), 0.0, 1.0e-5);
-    EXPECT_NEAR(distance3D(loaded_edge.exit, original_edge.exit), 0.0, 1.0e-5);
-    EXPECT_DOUBLE_EQ(loaded_edge.minimum_clearance_m,
-                     original_edge.minimum_clearance_m);
-  }
 }
 
 TEST(FreeSpaceTopology3D, RejectsTruncatedArtifact) {
-  const FreeSpaceTopology3D topology =
-      FreeSpaceTopology3D::load(TEST_FREE_SPACE_TOPOLOGY3D_PATH);
+  const FreeSpaceTopology3D topology = makeTopology();
   const std::filesystem::path path =
       std::filesystem::temp_directory_path() /
       "drone_city_nav_truncated_free_space_topology.topology3d";
@@ -130,8 +124,7 @@ TEST(FreeSpaceTopology3D, RejectsTruncatedArtifact) {
 }
 
 TEST(FreeSpaceTopology3D, RejectsDifferentOccupancyFingerprint) {
-  const FreeSpaceTopology3D topology =
-      FreeSpaceTopology3D::load(TEST_FREE_SPACE_TOPOLOGY3D_PATH);
+  const FreeSpaceTopology3D topology = makeTopology();
   const OccupancyGrid3D different_occupancy{topology.occupancyBounds(),
                                             topology.occupancyFingerprint() + 1U};
 

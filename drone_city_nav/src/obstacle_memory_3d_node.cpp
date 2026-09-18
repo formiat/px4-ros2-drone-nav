@@ -15,7 +15,6 @@
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
-#include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_3d.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
@@ -373,20 +372,6 @@ public:
     const DynamicAgentLidarStateConfig dynamic_config =
         declareDynamicAgentLidarStateConfig(*this);
     dynamic_agent_state_ = std::make_unique<DynamicAgentLidarState>(dynamic_config);
-    const std::string tracked_agent_topic =
-        declare_parameter<std::string>("tracked_agent_track_topic", "");
-    if (!tracked_agent_topic.empty()) {
-      tracked_agent_sub_ = create_subscription<msg::TargetTrack>(
-          tracked_agent_topic, rclcpp::QoS{1}.reliable().transient_local(),
-          [this](const msg::TargetTrack::SharedPtr track) {
-            dynamic_agent_state_->updateTrackedAgent(
-                Point3{track->position.x, track->position.y, track->position.z},
-                Vec3{track->velocity.x, track->velocity.y, track->velocity.z},
-                track->position_valid, track->velocity_valid,
-                rclcpp::Time{track->header.stamp}.nanoseconds());
-          },
-          cloud_subscription_options);
-    }
     if (dynamic_config.cooperative_enabled) {
       cooperative_intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
           declare_parameter<std::string>("cooperative_flight_intent_topic",
@@ -702,7 +687,6 @@ private:
     hit_points_body.reserve(decoded.hit_beams);
     Point3 ray_origin{};
     bool origin_valid{false};
-    std::size_t tracked_agent_filtered{0U};
     std::size_t cooperative_filtered{0U};
     std::size_t self_filtered{0U};
     std::size_t persistent_self_filtered{0U};
@@ -743,14 +727,11 @@ private:
           memory_beams.push_back(beam);
           return;
         }
-        const bool tracked_agent =
-            anyVolumeContains(filter_plan.tracked_agent_exclusions, endpoint);
         const bool cooperative_peer =
             anyVolumeContains(filter_plan.cooperative_memory_exclusions, endpoint);
-        if (tracked_agent || cooperative_peer) {
+        if (cooperative_peer) {
           beam.valid = false;
-          tracked_agent_filtered += tracked_agent ? 1U : 0U;
-          cooperative_filtered += !tracked_agent && cooperative_peer ? 1U : 0U;
+          ++cooperative_filtered;
         } else {
           if (!sample.interpolated) {
             hit_points_map.push_back(endpoint);
@@ -780,7 +761,7 @@ private:
     latest.acquisition_body_frame = body_frame;
     latest.hit_points_body_frd = hit_points_body;
     latest.source_beam_count = decoded.beams.size();
-    const std::size_t dynamic_filtered = tracked_agent_filtered + cooperative_filtered;
+    const std::size_t dynamic_filtered = cooperative_filtered;
     latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;
     latest.valid = true;
     latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
@@ -807,7 +788,6 @@ private:
           .projection_invalid = projection_invalid,
           .self_filtered = self_filtered,
           .persistent_self_filtered = persistent_self_filtered,
-          .tracked_agent_filtered = tracked_agent_filtered,
           .cooperative_filtered = cooperative_filtered,
           .altitude_valid = pose.altitude_valid,
           .publish_debug = publish_current_cloud,
@@ -879,7 +859,6 @@ private:
   TransportLatencySamples cloud_delivery_ms_;
   Px4MapFrameTransform map_transform_{};
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
-  rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<msg::LatestLidarObstacleScan>::SharedPtr latest_scan_pub_;

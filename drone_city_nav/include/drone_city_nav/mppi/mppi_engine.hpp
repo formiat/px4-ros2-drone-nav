@@ -48,7 +48,6 @@ struct MppiTickInput {
   std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy;
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;
   std::optional<CooperativeSeparationAcquisition> cooperative_acquisition;
-  std::optional<NonCooperativeSeparationAcquisition> noncooperative_acquisition;
   std::optional<std::size_t> active_rollouts;
   DeterministicCandidateKind deterministic_candidate{
       DeterministicCandidateKind::kDisabled};
@@ -57,7 +56,6 @@ struct MppiTickInput {
   // update regardless of its cost to break a stationary fixed point.
   bool force_route_directed_candidate{false};
   bool cooperative_avoidance_active{false};
-  bool noncooperative_avoidance_active{false};
 };
 
 [[nodiscard]] inline bool
@@ -200,16 +198,6 @@ struct MppiTickResult {
   float cooperative_acquisition_terminal_progress_m{0.0F};
   float cooperative_acquisition_separation_gain_m{0.0F};
   bool cooperative_candidates_injected{false};
-  bool noncooperative_acquisition_reseeded{false};
-  bool noncooperative_release_reseeded{false};
-  bool noncooperative_acquisition_available{false};
-  std::size_t noncooperative_acquisition_candidate_index{0U};
-  NonCooperativeManeuver noncooperative_acquisition_maneuver{
-      NonCooperativeManeuver::kRouteCruise};
-  float noncooperative_acquisition_minimum_separation_m{0.0F};
-  float noncooperative_acquisition_separation_gain_m{0.0F};
-  float noncooperative_acquisition_head_progress_m{0.0F};
-  float noncooperative_acquisition_terminal_progress_m{0.0F};
   std::size_t dynamic_aircraft_count{0U};
   std::uint64_t esdf_revision{0U};
   std::size_t active_rollouts{0U};

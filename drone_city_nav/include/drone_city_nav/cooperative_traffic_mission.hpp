@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/intercept_mission.hpp"
+#include "drone_city_nav/swept_vehicle_separation.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>

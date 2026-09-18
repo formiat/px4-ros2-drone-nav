@@ -100,13 +100,9 @@ struct DynamicAgentLidarScanView {
     const LidarProjectionConfig& projection_config) noexcept;
 
 struct DynamicAgentLidarScanFilterResult {
-  std::vector<float> tracked_agent_ranges;
   std::vector<float> cooperative_memory_ranges;
-  std::size_t tracked_agent_filtered_beams{0U};
-  std::size_t tracked_agent_matches{0U};
   std::size_t cooperative_filtered_beams{0U};
   std::size_t cooperative_peer_matches{0U};
-  bool tracked_agent_filter_applied{false};
   bool cooperative_filter_applied{false};
 
   [[nodiscard]] std::span<const float>

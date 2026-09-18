@@ -20,10 +20,7 @@ constexpr double kNanosecondsPerSecond{1.0e9};
 
 DynamicAgentLidarState::DynamicAgentLidarState(DynamicAgentLidarStateConfig config)
     : config_{std::move(config)} {
-  if (!(config_.tracked_agent_radius_m > 0.0) ||
-      !(config_.tracked_agent_vertical_tolerance_m >= 0.0) ||
-      !(config_.tracked_agent_maximum_age_s > 0.0) ||
-      !(config_.cooperative_peer_horizontal_margin_m >= 0.0) ||
+  if (!(config_.cooperative_peer_horizontal_margin_m >= 0.0) ||
       !(config_.cooperative_peer_vertical_margin_m >= 0.0) ||
       !(config_.cooperative_alignment_extrapolation_s >= 0.0) ||
       (config_.cooperative_enabled && config_.own_vehicle_id.empty())) {
@@ -33,21 +30,6 @@ DynamicAgentLidarState::DynamicAgentLidarState(DynamicAgentLidarStateConfig conf
     peer_store_ = std::make_unique<CooperativePeerStore>(config_.own_vehicle_id,
                                                          config_.peer_store);
   }
-}
-
-void DynamicAgentLidarState::updateTrackedAgent(const Point3& position,
-                                                const Vec3& velocity,
-                                                const bool position_valid,
-                                                const bool velocity_valid,
-                                                const std::int64_t stamp_ns) noexcept {
-  const std::scoped_lock lock{mutex_};
-  tracked_agent_ = TrackedAgentState{
-      .position = position,
-      .velocity = velocity,
-      .stamp_ns = stamp_ns,
-      .position_valid = position_valid,
-      .velocity_valid = velocity_valid,
-  };
 }
 
 CooperativePeerUpdateStatus DynamicAgentLidarState::updateCooperativeIntent(
@@ -64,27 +46,6 @@ DynamicAgentLidarState::makeFilterPlan(const std::int64_t now_ns,
                                        const std::int64_t acquisition_stamp_ns) {
   const std::scoped_lock lock{mutex_};
   DynamicAgentLidarFilterPlan result;
-  const auto maximum_track_age_ns = static_cast<std::int64_t>(
-      std::llround(config_.tracked_agent_maximum_age_s * kNanosecondsPerSecond));
-  if (tracked_agent_.position_valid && tracked_agent_.stamp_ns > 0 && now_ns > 0 &&
-      now_ns >= tracked_agent_.stamp_ns &&
-      now_ns - tracked_agent_.stamp_ns <= maximum_track_age_ns &&
-      acquisition_stamp_ns > 0) {
-    const double delta_s =
-        static_cast<double>(acquisition_stamp_ns - tracked_agent_.stamp_ns) /
-        kNanosecondsPerSecond;
-    const Point3 position =
-        tracked_agent_.velocity_valid
-            ? extrapolate(tracked_agent_.position, tracked_agent_.velocity, delta_s)
-            : tracked_agent_.position;
-    result.tracked_agent_exclusions.push_back(DynamicAgentLidarVolume{
-        .position = position,
-        .radius_m = config_.tracked_agent_radius_m,
-        .lower_extent_m = config_.tracked_agent_vertical_tolerance_m,
-        .upper_extent_m = config_.tracked_agent_vertical_tolerance_m,
-    });
-  }
-
   if (!peer_store_ || acquisition_stamp_ns <= 0) {
     return result;
   }

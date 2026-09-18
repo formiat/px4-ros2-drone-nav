@@ -73,10 +73,10 @@ run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 initialize_runtime_evidence_paths
 mission_type="${MISSION_TYPE:-point_to_point}"
-multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-${INTERCEPT_SCENARIO_PATH:-}}"
+multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-}"
 point_to_point_scenario_override="${POINT_TO_POINT_SCENARIO_PATH:-}"
 load_multi_vehicle_sim_scenario "${mission_type}" "${multi_vehicle_scenario_override}"
-scenario_world_name="${multi_vehicle_world_name:-generated_city}"
+scenario_world_name="${multi_vehicle_world_name:-urban_circuit_practice_01}"
 bool_is_true "${multi_vehicle_mission}" ||
   resolve_point_to_point_runtime "${point_to_point_scenario_override}"
 world_name="${SIM_WORLD_NAME:-${scenario_world_name}}"
@@ -87,10 +87,10 @@ if bool_is_true "${multi_vehicle_mission}" &&
 fi
 multi_vehicle_spectator_initial_vehicle_id=""
 multi_vehicle_spectator_initial_model=""
-multi_vehicle_spectator_reselection_policy="${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-${INTERCEPT_SPECTATOR_RESELECTION_POLICY:-first_living}}"
-multi_vehicle_spectator_reselection_delay_s="${MULTI_VEHICLE_SPECTATOR_RESELECTION_DELAY_S:-${INTERCEPT_SPECTATOR_RESELECTION_DELAY_S:-3.0}}"
+multi_vehicle_spectator_reselection_policy="${MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY:-first_living}"
+multi_vehicle_spectator_reselection_delay_s="${MULTI_VEHICLE_SPECTATOR_RESELECTION_DELAY_S:-3.0}"
 if bool_is_true "${multi_vehicle_mission}"; then
-  multi_vehicle_spectator_initial_vehicle_id="${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-${INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-${multi_vehicle_ids[0]}}}"
+  multi_vehicle_spectator_initial_vehicle_id="${MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID:-${multi_vehicle_ids[0]}}"
   case "${multi_vehicle_spectator_reselection_policy}" in
   first_living | next_living) ;;
   *)
@@ -268,10 +268,6 @@ if [[ -n "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
   multi_vehicle_shutdown_on_terminal_outcome="$(
     normalize_bool "${MULTI_VEHICLE_SHUTDOWN_ON_TERMINAL_OUTCOME}"
   )"
-elif [[ -n "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME+x}" ]]; then
-  multi_vehicle_shutdown_on_terminal_outcome="$(
-    normalize_bool "${INTERCEPT_SHUTDOWN_ON_TERMINAL_OUTCOME}"
-  )"
 elif [[ -n "${headless}" ]]; then
   multi_vehicle_shutdown_on_terminal_outcome="true"
 else
@@ -300,13 +296,6 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
-evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"
-intercept_directional_hypotheses_enabled="$(
-  normalize_bool "${INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false}"
-)"
-intercept_noncooperative_avoidance_enabled="$(
-  normalize_bool "${INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED:-false}"
-)"
 cooperative_desired_minimum_separation_m="${COOPERATIVE_DESIRED_MINIMUM_SEPARATION_M:-5.0}"
 cooperative_release_separation_m="${COOPERATIVE_RELEASE_SEPARATION_M:-7.0}"
 cooperative_prediction_horizon_s="${COOPERATIVE_PREDICTION_HORIZON_S:-5.0}"
@@ -507,14 +496,6 @@ px4_active_max_horizontal_acceleration_mps2="${horizontal_acceleration_override:
 )}"
 px4_active_maximum_jerk_mps3="$(
     read_ros_float_parameter production_mppi_node maximum_control_jerk_mps3
-)"
-evader_px4_max_horizontal_speed_mps="$(
-  python3 -c 'import sys; print(float(sys.argv[1]) * float(sys.argv[2]))' \
-    "${px4_active_max_horizontal_speed_mps}" "${evader_speed_scale}"
-)"
-evader_px4_cruise_speed_mps="$(
-  python3 -c 'import sys; print(float(sys.argv[1]) * float(sys.argv[2]))' \
-    "${px4_active_cruise_speed_mps}" "${evader_speed_scale}"
 )"
 
 format_override_value() {
@@ -826,13 +807,8 @@ if bool_is_true "${multi_vehicle_mission}"; then
   multi_vehicle_px4_cruise_speeds=()
   multi_vehicle_px4_maximum_speeds=()
   for instance in "${!multi_vehicle_ids[@]}"; do
-    if [[ "${multi_vehicle_roles[instance]}" == "evader" ]]; then
-      multi_vehicle_px4_cruise_speeds+=("${evader_px4_cruise_speed_mps}")
-      multi_vehicle_px4_maximum_speeds+=("${evader_px4_max_horizontal_speed_mps}")
-    else
-      multi_vehicle_px4_cruise_speeds+=("${px4_active_cruise_speed_mps}")
-      multi_vehicle_px4_maximum_speeds+=("${px4_active_max_horizontal_speed_mps}")
-    fi
+    multi_vehicle_px4_cruise_speeds+=("${px4_active_cruise_speed_mps}")
+    multi_vehicle_px4_maximum_speeds+=("${px4_active_max_horizontal_speed_mps}")
   done
   multi_vehicle_px4_pids=()
   for instance in "${!multi_vehicle_ids[@]}"; do
@@ -896,12 +872,8 @@ fi
 
 launch_file="city_nav.launch.py"
 if bool_is_true "${multi_vehicle_mission}"; then
-  scenario_argument="intercept_scenario_path"
-  launch_file="intercept.launch.py"
-  if bool_is_true "${cooperative_traffic_mission}"; then
-    scenario_argument="cooperative_traffic_scenario_path"
-    launch_file="cooperative_traffic.launch.py"
-  fi
+  scenario_argument="cooperative_traffic_scenario_path"
+  launch_file="cooperative_traffic.launch.py"
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
     "${scenario_argument}:=${multi_vehicle_scenario_path}"
@@ -909,9 +881,6 @@ if bool_is_true "${multi_vehicle_mission}"; then
     lidar_profile:="${lidar_profile}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
-    evader_speed_scale:="${evader_speed_scale}"
-    intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"
-    intercept_noncooperative_avoidance_enabled:="${intercept_noncooperative_avoidance_enabled}"
     spectator_initial_vehicle_id:="${multi_vehicle_spectator_initial_vehicle_id}"
     spectator_reselection_policy:="${multi_vehicle_spectator_reselection_policy}"
     spectator_reselection_delay_s:="${multi_vehicle_spectator_reselection_delay_s}"

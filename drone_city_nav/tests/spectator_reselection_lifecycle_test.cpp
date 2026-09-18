@@ -1,6 +1,6 @@
-#include "drone_city_nav/intercept_spectator_node.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/multi_vehicle_spectator_node.hpp"
 
 #include <rclcpp/executors/single_threaded_executor.hpp>
 #include <rclcpp/parameter.hpp>
@@ -21,11 +21,11 @@ namespace {
 
 using namespace std::chrono_literals;
 
-const std::vector<std::string> kVehicleIds{"evader", "interceptor_0", "interceptor_1"};
+const std::vector<std::string> kVehicleIds{"civilian_0", "civilian_1", "civilian_2"};
 const std::vector<std::string> kDestroyedTopics{
-    "/test/spectator_reselection/evader_destroyed",
-    "/test/spectator_reselection/interceptor_0_destroyed",
-    "/test/spectator_reselection/interceptor_1_destroyed"};
+    "/test/spectator_reselection/civilian_0_destroyed",
+    "/test/spectator_reselection/civilian_1_destroyed",
+    "/test/spectator_reselection/civilian_2_destroyed"};
 const std::string kTargetTopic{"/test/spectator_reselection/target"};
 
 class SpectatorReselectionLifecycleTest : public ::testing::Test {
@@ -49,26 +49,26 @@ protected:
     options.parameter_overrides(
         {rclcpp::Parameter{"mission_epoch", std::int64_t{1}},
          rclcpp::Parameter{"vehicle_ids", kVehicleIds},
-         rclcpp::Parameter{"vehicle_state_topics",
-                           std::vector<std::string>{
-                               "/test/spectator_reselection/evader_state",
-                               "/test/spectator_reselection/interceptor_0_state",
-                               "/test/spectator_reselection/interceptor_1_state"}},
+         rclcpp::Parameter{
+             "vehicle_state_topics",
+             std::vector<std::string>{"/test/spectator_reselection/civilian_0_state",
+                                      "/test/spectator_reselection/civilian_1_state",
+                                      "/test/spectator_reselection/civilian_2_state"}},
          rclcpp::Parameter{"vehicle_destroyed_topics", kDestroyedTopics},
          rclcpp::Parameter{
              "vehicle_roles",
-             std::vector<std::int64_t>{msg::VehicleDestroyed::ROLE_EVADER,
-                                       msg::VehicleDestroyed::ROLE_INTERCEPTOR,
-                                       msg::VehicleDestroyed::ROLE_INTERCEPTOR}},
+             std::vector<std::int64_t>{msg::VehicleDestroyed::ROLE_CIVILIAN,
+                                       msg::VehicleDestroyed::ROLE_CIVILIAN,
+                                       msg::VehicleDestroyed::ROLE_CIVILIAN}},
          rclcpp::Parameter{"gazebo_models",
-                           std::vector<std::string>{"evader_model",
-                                                    "interceptor_0_model",
-                                                    "interceptor_1_model"}},
+                           std::vector<std::string>{"civilian_0_model",
+                                                    "civilian_1_model",
+                                                    "civilian_2_model"}},
          rclcpp::Parameter{"initial_vehicle_id", kVehicleIds.front()},
          rclcpp::Parameter{"reselection_policy", "first_living"},
          rclcpp::Parameter{"reselection_delay_s", 0.25},
          rclcpp::Parameter{"spectator_target_topic", kTargetTopic}});
-    spectator_ = makeInterceptSpectatorNode(options);
+    spectator_ = makeMultiVehicleSpectatorNode(options);
     driver_ = std::make_shared<rclcpp::Node>("spectator_reselection_driver");
 
     const auto latched_qos = rclcpp::QoS{1}.reliable().transient_local();
@@ -124,9 +124,8 @@ protected:
     destroyed.stamp = driver_->now();
     destroyed.mission_epoch = 1U;
     destroyed.vehicle_id = kVehicleIds[index];
-    destroyed.vehicle_role = index == 0U ? msg::VehicleDestroyed::ROLE_EVADER
-                                         : msg::VehicleDestroyed::ROLE_INTERCEPTOR;
-    destroyed.death_cause = msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT;
+    destroyed.vehicle_role = msg::VehicleDestroyed::ROLE_CIVILIAN;
+    destroyed.death_cause = msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
     destroyed_publishers_[index]->publish(destroyed);
   }
 
@@ -162,7 +161,7 @@ private:
 TEST_F(SpectatorReselectionLifecycleTest,
        DelaysHandoffAndSkipsCandidateDestroyedDuringDelay) {
   ASSERT_TRUE(spinUntil([this] { return targetCount() != 0U; }));
-  ASSERT_EQ(latestTargetId(), "evader");
+  ASSERT_EQ(latestTargetId(), "civilian_0");
   ASSERT_TRUE(spinUntil([this] { return destroyedSubscriptionsReady(); }));
 
   const auto observed_destroyed_at = std::chrono::steady_clock::now();
@@ -174,7 +173,7 @@ TEST_F(SpectatorReselectionLifecycleTest,
   EXPECT_EQ(targetCount(), 1U);
 
   ASSERT_TRUE(spinUntil([this] { return targetCount() >= 2U; }));
-  EXPECT_EQ(latestTargetId(), "interceptor_1");
+  EXPECT_EQ(latestTargetId(), "civilian_2");
   EXPECT_GE(latestTargetReceivedAt() - observed_destroyed_at, 200ms);
 }
 

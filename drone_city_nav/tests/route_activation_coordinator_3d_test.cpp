@@ -127,7 +127,6 @@ activationFixture(const ExecutionSupervisor3D& supervisor,
   fixture.objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
           .goal = goal,
-          .tracking = std::nullopt,
           .mission_epoch = route_objective.mission_epoch,
           .sample_sequence = route_objective.sample_sequence,
           .assignment_generation = route_objective.assignment_generation,

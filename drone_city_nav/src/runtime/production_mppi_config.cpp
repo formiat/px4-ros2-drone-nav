@@ -34,9 +34,6 @@ bool ProductionMppiConfig::valid() const noexcept {
       planning.cooperative_passage_yield.stopping_buffer_m >= 0.0 &&
       planning.cooperative_passage_yield.reaction_latency_s >= 0.0 &&
       planning.cooperative_passage_yield.maximum_braking_acceleration_mps2 > 0.0;
-  const bool noncooperative_valid = !planning.noncooperative_avoidance_enabled ||
-                                    (!planning.cooperative_traffic_enabled &&
-                                     !planning.topics.noncooperative_tracks.empty());
   const bool route_extension_valid =
       staticRouteExtensionConfigValid(planning.static_route_extension) &&
       planning.route_successor_improvement.valid() &&
@@ -47,20 +44,14 @@ bool ProductionMppiConfig::valid() const noexcept {
       planning.static_route_search_retry.minimum_objective_change_m > 0.0 &&
       planning.static_route_search_retry.minimum_retry_interval_s > 0.0;
   const bool rollout_budget_valid =
-      control.mppi.rollouts > 0U &&
-      control.rollout_budget.direct_tracking_rollouts > 0U &&
-      control.rollout_budget.open_static_rollouts > 0U &&
-      control.rollout_budget.direct_tracking_rollouts <=
-          control.rollout_budget.open_static_rollouts &&
+      control.mppi.rollouts > 0U && control.rollout_budget.open_static_rollouts > 0U &&
       control.rollout_budget.open_static_rollouts <= control.mppi.rollouts &&
       control.rollout_budget.minimum_reduced_clearance_m > 0.0F &&
-      control.rollout_budget.maximum_world_age_ms > 0.0 &&
-      control.rollout_budget.maximum_tracking_age_ms > 0.0;
+      control.rollout_budget.maximum_world_age_ms > 0.0;
   const bool objective_valid = !planning.mission_waypoints.empty() &&
                                planning.dynamic_objective_replan_distance_m > 0.0 &&
                                planning.dynamic_objective_replan_period_s > 0.0 &&
                                planning.tracking_objective_ray_sample_spacing_m > 0.0 &&
-                               planning.tracking_capture_radius_m > 0.0 &&
                                planning.static_tracking_esdf_refresh_margin_m >= 0.0;
   const bool mission_waypoints_valid =
       objective_valid &&
@@ -147,7 +138,7 @@ bool ProductionMppiConfig::valid() const noexcept {
          world.no_static_3d_esdf_update_rate_hz > 0.0 &&
          localObservedEsdfWindow3DIsValid(world.no_static_3d_esdf_window) &&
          rollout_budget_valid && mission_waypoints_valid && cooperative_valid &&
-         noncooperative_valid && route_extension_valid && route_search_retry_valid &&
+         route_extension_valid && route_search_retry_valid &&
          navigationAngularDerivativeConfigIsValid(
              control.navigation_angular_derivative) &&
          execution.validation_policy != nullptr &&

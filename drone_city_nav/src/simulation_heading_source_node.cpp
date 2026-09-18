@@ -63,8 +63,8 @@ public:
   SimulationHeadingSourceNode()
       : Node{"simulation_heading_source_node"},
         generator_{std::random_device{}()} {
-    pose_topic_ = declare_parameter<std::string>("gazebo_pose_topic",
-                                                 "/world/generated_city/pose/info");
+    pose_topic_ = declare_parameter<std::string>(
+        "gazebo_pose_topic", "/world/urban_circuit_practice_01/pose/info");
     model_name_ =
         declare_parameter<std::string>("gazebo_model_name", "x500_lidar_3d_0");
     heading_noise_std_rad_ = declare_parameter<double>("heading_noise_std_rad",

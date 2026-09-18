@@ -59,8 +59,8 @@ end-to-end latency. Report distributions, not one sample:
 - maximum;
 - deadline misses.
 
-The intercept mission loads all vehicle planners into one ROS 2 component
-container. Their MPPI engines share one process and CUDA primary context while
+The cooperative traffic mission loads all vehicle planners into one ROS 2
+component container. Their MPPI engines share one process and CUDA primary context while
 retaining separate streams, buffers, nominal controls, and route state. This
 reduces process, DDS, and CUDA-context overhead without changing rollout
 selection.
@@ -73,32 +73,29 @@ streams in the shared process are therefore the production backend. Reconsider
 fusion only if profiling demonstrates reliably full batches without collection
 latency.
 
-The three radar tracker/guidance pairs use one interceptor-side component
-container. This replaces six standalone ROS contexts with one shared context;
-intra-process delivery also removes the DDS serialization hop between each
-`TargetTrack` publisher and its guidance consumer. Radar simulators stay
-process-isolated because they consume typed target physical truth. A single
-simulation-truth adapter subscribes to Gazebo's dynamic-pose stream, avoiding a
-full static-scene pose stream for every radar.
+The cooperative traffic agents use one shared component container, so their
+flight intents are delivered intra-process instead of through a DDS
+serialization hop. A single simulation-truth adapter subscribes to Gazebo's
+dynamic-pose stream, avoiding a full static-scene pose stream per vehicle.
 
-Intercept visualization uses a third component container for the spectator,
+Multi-vehicle visualization uses a third component container for the spectator,
 diagnostics mux, world visualization, and enabled selector-gated lidar-debug
 nodes. Spectator selection and detailed point clouds use intra-process delivery
-inside that container. The control, planning, mapping, referee, and radar
+inside that container. The control, planning, mapping, referee, and
 ground-truth boundaries remain separate processes.
 
-Intercept simulation uses subsystem affinity rather than per-vehicle pinning.
+Multi-vehicle simulation uses subsystem affinity rather than per-vehicle
+pinning.
 On a 16-CPU host the default masks are control/physics `0-7`, planning/mapping
 `4-15`, and diagnostics `12-15`. The overlap leaves dedicated capacity at both
 ends while allowing bursty control and planner work to share the middle CPUs.
 Set `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` to run an unrestricted comparison, or
 override `CONTROL_CPU_LIST`, `PLANNING_CPU_LIST`, and `DIAGNOSTICS_CPU_LIST`.
 
-Buffers are allocated for the configured maximum rollout count. A confirmed
-direct-interception tick may execute a smaller validated prefix through
-`direct_tracking_rollouts`; loss of direct tracking, route execution, holds, and
-all ordinary navigation ticks retain the full configured budget. Diagnostics
-record `active_rollouts` so timing changes can be compared by actual GPU work.
+Buffers are allocated for the configured maximum rollout count. Route
+execution, holds, and all ordinary navigation ticks retain the full configured
+budget. Diagnostics record `active_rollouts` so timing changes can be compared
+by actual GPU work.
 
 ## ESDF
 

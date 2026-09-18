@@ -26,7 +26,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "intercept_ground_truth_boundary.hpp"
+#include "simulation_truth_boundary.hpp"
 
 namespace drone_city_nav {
 
@@ -137,7 +137,7 @@ private:
   std::unordered_map<std::string, std::size_t> vehicle_indices_;
   std::unique_ptr<CooperativePeerStore> intent_validator_;
   std::unique_ptr<CooperativeSeparationMonitor> separation_monitor_;
-  std::unique_ptr<InterceptGroundTruthBoundary> ground_truth_boundary_;
+  std::unique_ptr<SimulationGroundTruthBoundary> ground_truth_boundary_;
   SimulationTruthAlignmentMissionLifecycle truth_alignment_lifecycle_;
   SimulationTruthAlignmentMissionUpdate truth_alignment_update_{};
   CooperativeGoalHoldConfig goal_hold_config_{};

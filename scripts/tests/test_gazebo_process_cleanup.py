@@ -36,7 +36,7 @@ class GazeboProcessCleanupTest(unittest.TestCase):
         processes = cleanup.parse_ps_output(
             "\n".join(
                 [
-                    "100 1 100 /usr/bin/gz sim -r -s generated_city.sdf",
+                    "100 1 100 /usr/bin/gz sim -r -s urban_circuit_practice_01.sdf",
                     "101 1 101 gz sim -g",
                     "102 1 102 python3 unrelated.py --arg gazebo",
                     "103 1 103 python3 note.py --message please run gz sim later",

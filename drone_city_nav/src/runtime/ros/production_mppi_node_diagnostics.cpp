@@ -14,16 +14,11 @@
 #include "production_mppi_execution_diagnostics.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_diagnostics_format.hpp"
-#include "production_mppi_noncooperative_diagnostics.hpp"
-#include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
-  const std::shared_ptr<const ProductionNavigationObjective>& objective =
-      snapshot.objective;
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const mppi::MppiTickInput& input = snapshot.input;
   const mppi::MppiTickResult& result = snapshot.result;
   const WorldSnapshot3D empty_world;
@@ -47,8 +42,6 @@ void ProductionMppiNode::processDiagnostics(
   const MppiSpeedPolicyResult& speed_policy = snapshot.speed_policy;
   const SensorBrakingAssessment3D& sensor_braking =
       speed_policy.sensor_braking_assessment;
-  const detail::TrackingPursuitDiagnostics pursuit_diagnostics =
-      detail::trackingPursuitDiagnostics(objective.get(), input, snapshot.execution);
   const ConstrainedRouteObservation route_constraint =
       diagnosticRouteConstraint(snapshot, config_.planning.route_envelope,
                                 config_.diagnostics.route_constraint_distance_m);
@@ -200,7 +193,6 @@ void ProductionMppiNode::processDiagnostics(
        << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
        << " target_lookahead_m=" << speed_policy.target_lookahead_m
        << " reference_speed_mps=" << input.reference_speed_mps
-       << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
        << " curvature_speed_limit_mps="
        << finiteOrNegative(speed_policy.curvature_limit_mps)
        << " sensor_braking_speed_limit_mps="
@@ -230,7 +222,6 @@ void ProductionMppiNode::processDiagnostics(
        << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
        << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
        << detail::cooperativeInfoFields(snapshot.cooperative, result)
-       << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
        << " gpu_warm_start_ms=" << result.timings.warm_start_ms
        << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
        << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
@@ -297,16 +288,6 @@ void ProductionMppiNode::processDiagnostics(
        << " previous_control_source="
        << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
        << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
-       << " direct_maneuver_reseed="
-       << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
-       << " direct_maneuver_reason="
-       << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
-       << " direct_bearing_change_deg="
-       << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
-       << " direct_closing_speed_mps="
-       << snapshot.direct_tracking_maneuver.closing_speed_mps
-       << " direct_no_closing_duration_s="
-       << snapshot.direct_tracking_maneuver.no_closing_duration_s
        << " target_directed_candidate_injected="
        << (result.target_directed_candidate_injected ? "true" : "false")
        << " target_directed_candidate_device_feasible="
@@ -432,9 +413,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"state_vx_mps\":" << input.initial_state.vx
         << ",\"state_vy_mps\":" << input.initial_state.vy
         << ",\"state_vz_mps\":" << input.initial_state.vz << ",\"target_source\":\""
-        << target_source << '"'
-        << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
-        << ",\"horizon_s\":"
+        << target_source << '"' << ",\"horizon_s\":"
         << static_cast<double>(config_.control.mppi.steps) *
                config_.control.mppi.dynamics.dt_s
         << ",\"horizontal_speed_cap_mps\":"
@@ -593,7 +572,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
          << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
          << ",\"reference_speed_mps\":" << input.reference_speed_mps
-         << detail::trackingPursuitJsonFields(pursuit_diagnostics, speed_policy, result)
          << ",\"curvature_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.curvature_limit_mps)
          << ",\"sensor_braking_speed_limit_mps\":"
@@ -628,7 +606,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"rollout_budget_reason\":\""
          << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason) << '"'
          << detail::cooperativeJsonFields(snapshot.cooperative, result)
-         << detail::nonCooperativeJsonFields(snapshot.noncooperative, result)
          << ",\"gpu_warm_start_ms\":" << result.timings.warm_start_ms
          << ",\"gpu_noise_generation_ms\":" << result.timings.noise_generation_ms
          << ",\"gpu_rollout_simulation_ms\":" << result.timings.rollout_simulation_ms
@@ -691,16 +668,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"route_progress_integral_m_s\":" << result.route_progress_integral_m_s
          << ",\"warm_start_shift_ms\":" << result.warm_start_shift_s * 1000.0
          << ",\"nominal_reseeded\":" << (result.nominal_reseeded ? "true" : "false")
-         << ",\"direct_maneuver_reseed\":"
-         << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
-         << ",\"direct_maneuver_reason\":\""
-         << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
-         << '"' << ",\"direct_bearing_change_rad\":"
-         << snapshot.direct_tracking_maneuver.bearing_change_rad
-         << ",\"direct_closing_speed_mps\":"
-         << snapshot.direct_tracking_maneuver.closing_speed_mps
-         << ",\"direct_no_closing_duration_s\":"
-         << snapshot.direct_tracking_maneuver.no_closing_duration_s
          << ",\"target_directed_candidate_injected\":"
          << (result.target_directed_candidate_injected ? "true" : "false")
          << ",\"target_directed_candidate_device_feasible\":"

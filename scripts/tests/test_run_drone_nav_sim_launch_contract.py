@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 
@@ -17,7 +16,7 @@ LIDAR_PROFILE_SUPPORT_FILE = (
 )
 RESOURCE_RUNTIME = RUNNER.with_name("simulation_resource_runtime.sh")
 MAKEFILE = RUNNER.parents[1] / "Makefile"
-INTERCEPT_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
+MULTI_VEHICLE_RUNTIME_HELPER = RUNNER.with_name("multi_vehicle_sim_runtime.sh")
 GAZEBO_SPECTATOR_FOLLOW = RUNNER.with_name("gazebo_spectator_follow.py")
 GAZEBO_GUI_CAMERA_RUNTIME = RUNNER.with_name("gazebo_gui_camera_runtime.sh")
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
@@ -27,35 +26,26 @@ LAUNCH_FILE = (
     / "launch"
     / "city_nav.launch.py"
 )
-INTERCEPT_LAUNCH_FILE = (
+MULTI_VEHICLE_LAUNCH_FILE = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
     / "launch"
-    / "intercept.launch.py"
+    / "multi_vehicle.launch.py"
 )
-INTERCEPT_TRACKING_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
-    "intercept_tracking_launch.py"
+COOPERATIVE_LAUNCH_FILE = MULTI_VEHICLE_LAUNCH_FILE.with_name(
+    "cooperative_traffic.launch.py"
 )
-MULTI_VEHICLE_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
-    "multi_vehicle.launch.py"
-)
-MULTI_VEHICLE_MISSION_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+MULTI_VEHICLE_MISSION_LAUNCH_FILE = MULTI_VEHICLE_LAUNCH_FILE.with_name(
     "multi_vehicle_mission_launch.py"
 )
-MULTI_VEHICLE_LIDAR_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+MULTI_VEHICLE_LIDAR_LAUNCH_FILE = MULTI_VEHICLE_LAUNCH_FILE.with_name(
     "multi_vehicle_lidar_launch.py"
 )
-MULTI_VEHICLE_LAUNCH_VALUES_FILE = INTERCEPT_LAUNCH_FILE.with_name(
+MULTI_VEHICLE_LAUNCH_VALUES_FILE = MULTI_VEHICLE_LAUNCH_FILE.with_name(
     "multi_vehicle_launch_values.py"
 )
-INTERCEPT_DIAGNOSTICS_LAUNCH_FILE = INTERCEPT_LAUNCH_FILE.with_name(
-    "intercept_diagnostics_launch.py"
-)
-INTERCEPT_SCENARIO = (
-    Path(__file__).resolve().parents[2]
-    / "drone_city_nav"
-    / "config"
-    / "intercept_scenario.json"
+MULTI_VEHICLE_DIAGNOSTICS_LAUNCH_FILE = MULTI_VEHICLE_LAUNCH_FILE.with_name(
+    "multi_vehicle_diagnostics_launch.py"
 )
 NAV_CONFIG = (
     Path(__file__).resolve().parents[2]
@@ -106,8 +96,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.lidar_profile_support_text = LIDAR_PROFILE_SUPPORT_FILE.read_text(
             encoding="utf-8"
         )
-        cls.intercept_runtime_text = cls.text + INTERCEPT_RUNTIME_HELPER.read_text(
-            encoding="utf-8"
+        cls.multi_vehicle_runtime_text = (
+            cls.text + MULTI_VEHICLE_RUNTIME_HELPER.read_text(encoding="utf-8")
         )
         cls.gazebo_spectator_follow_text = GAZEBO_SPECTATOR_FOLLOW.read_text(
             encoding="utf-8"
@@ -117,22 +107,16 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
         cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
-        cls.intercept_launch_text = "\n".join(
+        cls.multi_vehicle_launch_text = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (
-                INTERCEPT_LAUNCH_FILE,
+                COOPERATIVE_LAUNCH_FILE,
                 MULTI_VEHICLE_LIDAR_LAUNCH_FILE,
                 MULTI_VEHICLE_LAUNCH_VALUES_FILE,
                 MULTI_VEHICLE_LAUNCH_FILE,
                 MULTI_VEHICLE_MISSION_LAUNCH_FILE,
-                INTERCEPT_DIAGNOSTICS_LAUNCH_FILE,
+                MULTI_VEHICLE_DIAGNOSTICS_LAUNCH_FILE,
             )
-        )
-        cls.intercept_tracking_launch_text = (
-            INTERCEPT_TRACKING_LAUNCH_FILE.read_text(encoding="utf-8")
-        )
-        cls.intercept_scenario = json.loads(
-            INTERCEPT_SCENARIO.read_text(encoding="utf-8")
         )
         cls.nav_config_text = NAV_CONFIG.read_text(encoding="utf-8")
         cls.production_mppi_source_text = PRODUCTION_MPPI_SOURCE.read_text(
@@ -167,7 +151,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_point_to_point_default_spawn_is_above_the_ground_plane(self) -> None:
         self.assertIn(
             'point_to_point_gazebo_spawn_pose:--171.0,-81.0,0.3,0,0,0',
-            self.intercept_runtime_text,
+            self.multi_vehicle_runtime_text,
         )
 
     def test_headless_point_to_point_result_stops_its_launch(self) -> None:
@@ -198,51 +182,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertIn(
             '"configured_mission_objective_enabled": False',
-            self.intercept_launch_text,
-        )
-
-    def test_intercept_spectator_selection_is_launch_configurable(self) -> None:
-        for variable in (
-            "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID",
-            "INTERCEPT_SPECTATOR_RESELECTION_DELAY_S",
-            "INTERCEPT_SPECTATOR_RESELECTION_POLICY",
-        ):
-            with self.subTest(variable=variable):
-                self.assertIn(variable, self.text)
-                self.assertIn(variable, self.container_text)
-        self.assertIn('spectator_initial_vehicle_id:=', self.text)
-        self.assertIn('spectator_reselection_policy:=', self.text)
-        self.assertIn('spectator_reselection_delay_s:=', self.text)
-        self.assertIn(
-            'DeclareLaunchArgument("spectator_initial_vehicle_id"',
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            '"spectator_reselection_policy", default_value="first_living"',
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            '"spectator_reselection_delay_s", default_value="3.0"',
-            self.intercept_launch_text,
-        )
-
-    def test_single_intercept_gui_observes_attacker_first(self) -> None:
-        self.assertIn(
-            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${'
-            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader}"',
-            self.makefile_text,
-        )
-
-    def test_multi_intercept_observes_first_evader_then_next_living(self) -> None:
-        self.assertIn(
-            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID="$${'
-            'INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID:-evader_0}"',
-            self.makefile_text,
-        )
-        self.assertIn(
-            'INTERCEPT_SPECTATOR_RESELECTION_POLICY="$${'
-            'INTERCEPT_SPECTATOR_RESELECTION_POLICY:-next_living}"',
-            self.makefile_text,
+            self.multi_vehicle_launch_text,
         )
 
     def test_gazebo_gui_launch_uses_direct_gui_command(self) -> None:
@@ -345,20 +285,20 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_rviz_3d_lidar_uses_bounded_selected_clouds(self) -> None:
         self.assertIn(
-            '--lidar-profile "${lidar_profile}"', self.intercept_runtime_text
+            '--lidar-profile "${lidar_profile}"', self.multi_vehicle_runtime_text
         )
         self.assertIn(
             "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
-            self.intercept_runtime_text,
+            self.multi_vehicle_runtime_text,
         )
         self.assertIn(
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
-            self.intercept_runtime_text,
+            self.multi_vehicle_runtime_text,
         )
-        self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", self.intercept_runtime_text)
-        self.assertNotIn("REQUIRE_ONLINE_3D_PASSAGE", self.intercept_runtime_text)
+        self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", self.multi_vehicle_runtime_text)
+        self.assertNotIn("REQUIRE_ONLINE_3D_PASSAGE", self.multi_vehicle_runtime_text)
         self.assertIn(
-            '"current_lidar_3d_pointcloud_topics": [', self.intercept_launch_text
+            '"current_lidar_3d_pointcloud_topics": [', self.multi_vehicle_launch_text
         )
         for config_path in RVIZ_CONFIGS:
             with self.subTest(config=config_path.name):
@@ -368,7 +308,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 )[1].split("Name: Remembered Lidar Hits", 1)[0]
                 accumulated = config.split(
                     "Name: Accumulated 3D Obstacle Memory", 1
-                )[1].split("Name: Interceptor 0 Memory", 1)[0]
+                )[1].split("Name: Vehicle 0 Memory", 1)[0]
                 self.assertIn("Decay Time: 0", current)
                 self.assertIn("Style: Points", current)
                 self.assertIn("Depth: 1", current)
@@ -398,7 +338,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertIn(
             '"lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE',
-            self.intercept_launch_text,
+            self.multi_vehicle_launch_text,
         )
 
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
@@ -422,7 +362,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_point_to_point_scenario_drives_spawn_and_navigation_contract(self) -> None:
         self.assertIn("POINT_TO_POINT_SCENARIO_PATH", self.text)
-        self.assertIn("load_point_to_point_sim_scenario", self.intercept_runtime_text)
+        self.assertIn("load_point_to_point_sim_scenario", self.multi_vehicle_runtime_text)
         self.assertIn("point_to_point_scenario_path:=", self.text)
         self.assertIn("load_point_to_point_scenario", self.launch_text)
         self.assertIn('DeclareLaunchArgument(\n                "point_to_point_scenario_path"', self.launch_text)
@@ -470,17 +410,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("gz.msgs.PointCloudPacked", self.launch_text)
 
     def test_base_sim_uses_environment_configurable_terminal_waypoints(self) -> None:
-        self.assertIn("MISSION_GOALS_XYZ_M", self.makefile_text)
-        self.assertIn(
-            "216,378,18;216,54,18;54,378,18;54,54,18", self.makefile_text
-        )
-        self.assertIn(
-            '-z "$${POINT_TO_POINT_SCENARIO_PATH:-}"', self.makefile_text
-        )
-        self.assertNotIn(
-            'MISSION_GOALS_XYZ_M="$${MISSION_GOALS_XYZ_M:-216,378,18',
-            self.makefile_text,
-        )
+        self.assertIn("MISSION_GOALS_XYZ_M", self.text)
         runtime_helpers = RUNTIME_HELPERS.read_text(encoding="utf-8")
         self.assertIn("simulation_runtime_helpers.sh", self.text)
         self.assertIn("format_mission_goal_sequence", runtime_helpers)
@@ -505,153 +435,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'if [[ -n "${point_to_point_scenario_path}" ]]', self.text
         )
 
-    def test_intercept_evader_route_crosses_city_diagonally(self) -> None:
-        evader = next(
-            vehicle
-            for vehicle in self.intercept_scenario["vehicles"]
-            if vehicle["id"] == "evader"
-        )
-        self.assertEqual(evader["map_start_m"][:2], [216.0, 54.0])
-        self.assertEqual(self.intercept_scenario["evader_goal_m"][:2], [54.0, 378.0])
-
-    def test_interceptor_2_and_evader_start_on_adjacent_east_lanes(self) -> None:
-        interceptor = next(
-            vehicle
-            for vehicle in self.intercept_scenario["vehicles"]
-            if vehicle["id"] == "interceptor_2"
-        )
-        evader = next(
-            vehicle
-            for vehicle in self.intercept_scenario["vehicles"]
-            if vehicle["id"] == "evader"
-        )
-        self.assertEqual(interceptor["map_start_m"][:2], [270.0, 378.0])
-        self.assertEqual(evader["map_start_m"][:2], [216.0, 54.0])
-        self.assertEqual(interceptor["map_start_m"][0] - evader["map_start_m"][0], 54.0)
-
-    def test_intercept_evader_defaults_to_interceptor_speed(self) -> None:
-        self.assertIn(
-            'evader_speed_scale="${EVADER_SPEED_SCALE:-1.0}"', self.text
-        )
-        self.assertIn(
-            'DeclareLaunchArgument("evader_speed_scale", default_value="1.0")',
-            self.intercept_launch_text,
-        )
-
-    def test_intercept_evader_uses_a_red_gazebo_marker_variant(self) -> None:
-        self.assertIn(
-            'evader_model_name="${multi_vehicle_px4_model_targets[instance]#gz_}"',
-            self.intercept_runtime_text,
-        )
-        self.assertIn(
-            "configure_drone_marker_color.py", self.intercept_runtime_text
-        )
-        self.assertIn(
-            'PX4_SIM_MODEL="${multi_vehicle_px4_model_targets[instance]}"',
-            self.text,
-        )
-        evader = self.intercept_scenario["vehicles"][-1]
-        self.assertEqual(evader["px4_model_target"], "gz_x500_lidar_2d_evader")
-        self.assertEqual(evader["gazebo_model_name"], "x500_lidar_2d_evader_3")
-
-    def test_intercept_launch_configures_adaptive_predictive_guidance(self) -> None:
-        expected_defaults = {
-            "intercept_minimum_prediction_horizon_s": "0.0",
-            "intercept_maximum_prediction_horizon_s": "15.0",
-            "intercept_ahead_maximum_prediction_horizon_s": "1.0",
-            "intercept_fallback_prediction_horizon_s": "1.0",
-            "intercept_minimum_target_speed_mps": "0.5",
-            "intercept_ahead_enter_m": "5.0",
-            "intercept_ahead_exit_m": "0.0",
-            "intercept_ahead_corridor_enter_m": "15.0",
-            "intercept_ahead_corridor_exit_m": "20.0",
-            "intercept_horizon_smoothing_time_constant_s": "0.5",
-        }
-        for name, default in expected_defaults.items():
-            with self.subTest(parameter=name):
-                self.assertRegex(
-                    self.intercept_launch_text,
-                    rf'"{name}",\s*default_value="{default}"',
-                )
-                self.assertIn(f'"{name}",', self.intercept_launch_text)
-                self.assertRegex(
-                    self.intercept_tracking_launch_text,
-                    rf'settings\[\s*"{name}"\s*\]',
-                )
-
-    def test_intercept_directional_hypotheses_are_disabled_by_default(self) -> None:
-        self.assertIn(
-            'INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED:-false', self.text
-        )
-        self.assertIn(
-            'intercept_directional_hypotheses_enabled:="${intercept_directional_hypotheses_enabled}"',
-            self.text,
-        )
-        self.assertIn(
-            "INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED", self.container_text
-        )
-        self.assertRegex(
-            self.intercept_launch_text,
-            r'"intercept_directional_hypotheses_enabled",\s*default_value="false"',
-        )
-        self.assertIn(
-            "return tuple(0.0 for _ in range(interceptor_count))",
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            "return (0.0, angle_rad, -angle_rad)",
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            "offsets[interceptor_index]",
-            self.intercept_launch_text,
-        )
-        self.assertIn(
-            '"prediction_heading_offset_rad": heading_offset',
-            self.intercept_launch_text,
-        )
-
-    def test_intercept_attacker_avoidance_is_disabled_by_default(self) -> None:
-        self.assertIn(
-            "INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED:-false", self.text
-        )
-        self.assertIn(
-            "intercept_noncooperative_avoidance_enabled:="
-            '"${intercept_noncooperative_avoidance_enabled}"',
-            self.text,
-        )
-        self.assertIn(
-            "INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED", self.container_text
-        )
-        self.assertRegex(
-            self.intercept_launch_text,
-            r'"intercept_noncooperative_avoidance_enabled",\s*'
-            r'default_value="false"',
-        )
-        self.assertIn(
-            '--expect-noncooperative-avoidance '
-            '"${intercept_noncooperative_avoidance_enabled}"',
-            self.intercept_runtime_text,
-        )
-
-    def test_intercept_launch_configures_los_driven_radar_track_mode(self) -> None:
-        self.assertRegex(
-            self.intercept_launch_text,
-            r'"radar_track_interval_s",\s*default_value="0.05"',
-        )
-        self.assertIn(
-            '"track_interval_s": settings[', self.intercept_tracking_launch_text
-        )
-        self.assertIn(
-            '"track_mode_command_topic": (', self.intercept_tracking_launch_text
-        )
-        self.assertIn(
-            '"high_rate_velocity_correction_gain": 1.0',
-            self.intercept_tracking_launch_text,
-        )
-        self.assertNotIn("radar_track_enter_range_m", self.intercept_launch_text)
-        self.assertNotIn("radar_track_exit_range_m", self.intercept_launch_text)
-
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
         self.assertIn(
             'obstacle_memory_overrides = {"use_sim_time": True}', self.launch_text
@@ -671,15 +454,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("LIDAR_PROFILE", self.container_text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
-            self.intercept_launch_text,
+            self.multi_vehicle_launch_text,
         )
         self.assertNotIn("ENABLE_2D_LIDAR", self.text)
         self.assertNotIn("ENABLE_2D_LIDAR", self.container_text)
         self.assertNotIn("enable_2d_lidar", self.launch_text)
-        self.assertNotIn("enable_2d_lidar", self.intercept_launch_text)
+        self.assertNotIn("enable_2d_lidar", self.multi_vehicle_launch_text)
         self.assertIn(
             '"persistent_memory_enabled": obstacle_memory_enabled',
-            self.intercept_launch_text,
+            self.multi_vehicle_launch_text,
         )
         self.assertIn(
             'obstacle_memory_overrides["persistent_memory_enabled"]',
@@ -710,7 +493,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             r'default_value="false"',
         )
         self.assertRegex(
-            self.intercept_launch_text,
+            self.multi_vehicle_launch_text,
             r'DeclareLaunchArgument\("use_static_map", default_value="false"\)',
         )
 
@@ -827,7 +610,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
         self.assertIn('"${px4_active_cruise_speed_mps}"', self.text)
-        self.assertIn('"${evader_px4_cruise_speed_mps}"', self.text)
         self.assertIn(
             'px4_parameter_stream "${multi_vehicle_px4_cruise_speeds[instance]}"',
             self.text,
@@ -847,10 +629,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
 
-    def test_intercept_mode_launches_isolated_px4_instances(self) -> None:
+    def test_multi_vehicle_mode_launches_isolated_px4_instances(self) -> None:
         self.assertIn('mission_type="${MISSION_TYPE:-point_to_point}"', self.text)
-        self.assertIn("intercept_scenario.py", self.intercept_runtime_text)
-        self.assertIn("multi_vehicle_px4_namespaces", self.intercept_runtime_text)
+        self.assertIn("multi_vehicle_scenario.py", self.multi_vehicle_runtime_text)
+        self.assertIn("multi_vehicle_px4_namespaces", self.multi_vehicle_runtime_text)
         self.assertIn(
             'for instance in "${!multi_vehicle_ids[@]}"', self.text
         )
@@ -858,11 +640,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('run_px4_instance "${instance}"', self.text)
         self.assertIn(
             'validation_args+=(--expected-vehicles "${#multi_vehicle_ids[@]}")',
-            self.intercept_runtime_text,
+            self.multi_vehicle_runtime_text,
         )
         self.assertIn(
             'validation_args+=(--px4-log "${multi_vehicle_px4_logs[instance]}")',
-            self.intercept_runtime_text,
+            self.multi_vehicle_runtime_text,
         )
 
     def test_px4_sitl_state_is_reset_before_each_launch(self) -> None:
@@ -875,29 +657,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertLess(reset_index, launch_index)
         self.assertIn("reset_px4_instance_state 0", self.text)
 
-    def test_intercept_launch_keeps_vehicle_state_isolated(self) -> None:
-        for interceptor in ("interceptor_0", "interceptor_1", "interceptor_2"):
-            vehicle = next(
-                entry
-                for entry in self.intercept_scenario["vehicles"]
-                if entry["id"] == interceptor
-            )
-            self.assertEqual(vehicle["px4_namespace"], interceptor)
-        self.assertIn('f"{prefix}/state"', self.intercept_launch_text)
-        self.assertIn('scenario["vehicles"]', self.intercept_launch_text)
-        self.assertEqual(
-            self.intercept_scenario["vehicles"][-1]["px4_namespace"], "evader"
-        )
-        self.assertIn('"require_mission_start_signal": True', self.intercept_launch_text)
-        self.assertIn('"rviz_drone_follow_tf_enabled": False', self.intercept_launch_text)
-        diagnostics_launch = INTERCEPT_LAUNCH_FILE.with_name(
-            "intercept_diagnostics_launch.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn(
-            'plugin="drone_city_nav::InterceptSpectatorNode"', diagnostics_launch
-        )
-
-    def test_intercept_gui_observes_terminal_fall_and_headless_exits(self) -> None:
+    def test_multi_vehicle_gui_observes_terminal_fall_and_headless_exits(self) -> None:
         self.assertIn(
             'multi_vehicle_shutdown_on_terminal_outcome="false"', self.text
         )
@@ -910,7 +670,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertIn(
             '"shutdown_on_terminal_outcome": shutdown_on_terminal_outcome',
-            self.intercept_launch_text,
+            self.multi_vehicle_launch_text,
         )
 
 

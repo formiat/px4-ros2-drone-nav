@@ -5,7 +5,6 @@
 #include "drone_city_nav/esdf_query.hpp"
 #include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
@@ -62,12 +61,8 @@ blockedRouteRemainingM(const PlanningRouteDecision3D& route,
 namespace {
 
 [[nodiscard]] mppi::DeterministicCandidateKind planningDeterministicCandidate(
-    const bool direct_tracking_interception,
     const ProductionMppiPlanningState planning_state, const bool route_usable,
     const bool route_projection_valid, const bool route_hold) noexcept {
-  if (direct_tracking_interception) {
-    return mppi::DeterministicCandidateKind::kTargetDirectedReacquisition;
-  }
   if (planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
       route_projection_valid && !route_hold) {
     return mppi::DeterministicCandidateKind::kRouteDirectedCruise;
@@ -165,32 +160,6 @@ selectTarget(const std::span<const RouteSample3D> route,
   return result;
 }
 
-[[nodiscard]] ProductionMppiNonCooperativeUpdate prepareNonCooperativeUpdate(
-    NonCooperativeCollisionAvoidance* const avoidance,
-    const PlanningCycleCoordinatorConfig3D& config, const mppi::State& ownship,
-    const ProductionMppiNonCooperativeTracks& tracks, const std::int64_t now_ns) {
-  ProductionMppiNonCooperativeUpdate result{
-      .source_scan_sequence = tracks.source_scan_sequence,
-      .transport_age_ms = tracks.receive_stamp_ns > 0
-                              ? static_cast<double>(std::max<std::int64_t>(
-                                    0, now_ns - tracks.receive_stamp_ns)) /
-                                    1.0e6
-                              : -1.0,
-      .enabled = config.noncooperative_avoidance_enabled,
-  };
-  if (!config.noncooperative_avoidance_enabled || avoidance == nullptr) {
-    return result;
-  }
-  result.avoidance = avoidance->update(NonCooperativeAvoidanceInput{
-      .ownship = ownship,
-      .tracks = tracks.tracks,
-      .now_ns = now_ns,
-      .horizon_steps = config.horizon_steps,
-      .step_s = config.dynamics.dt_s,
-  });
-  return result;
-}
-
 [[nodiscard]] std::optional<PassageGeometryProximity3D>
 observePassageGeometry(const WorldSnapshot3D& world, const Point3& actual_position,
                        std::vector<PassageGeometryObservation>& observations) {
@@ -267,22 +236,14 @@ PlanningCycleCoordinator3D::PlanningCycleCoordinator3D(
       config_{std::move(config)},
       route_execution_selector_{execution_supervisor_, config_.route_execution},
       liveness_supervisor_{config_.liveness},
-      goal_capture_latch_{config_.goal_capture},
-      direct_tracking_maneuver_lifecycle_{config_.direct_tracking} {
+      goal_capture_latch_{config_.goal_capture} {
   if (config_.horizon_steps == 0U || !(config_.dynamics.dt_s > 0.0F) ||
-      !(config_.tracking_capture_radius_m > 0.0) ||
-      !(config_.route_constraint_diagnostics_distance_m >= 0.0) ||
-      (config_.cooperative_traffic_enabled &&
-       config_.noncooperative_avoidance_enabled)) {
+      !(config_.route_constraint_diagnostics_distance_m >= 0.0)) {
     throw std::invalid_argument{"invalid planning cycle coordinator configuration"};
   }
   if (config_.route_progress.has_value()) {
     route_progress_tracker_ =
         std::make_unique<RouteProgressTracker3D>(*config_.route_progress);
-  }
-  if (config_.noncooperative_avoidance_enabled) {
-    noncooperative_avoidance_ = std::make_unique<NonCooperativeCollisionAvoidance>(
-        config_.noncooperative_avoidance);
   }
 }
 
@@ -307,12 +268,6 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
     horizon = finite->horizon.get();
     valid_from_ns = finite->valid_from_ns;
     control_interval_ns = finite->control_interval_ns;
-  } else if (const DirectTrackingFiniteExecution3D* const direct =
-                 plan->directTrackingExecution();
-             direct != nullptr && direct->horizon != nullptr) {
-    horizon = direct->horizon.get();
-    valid_from_ns = direct->valid_from_ns;
-    control_interval_ns = direct->control_interval_ns;
   }
   if (horizon == nullptr || control_interval_ns <= 0 || valid_from_ns <= 0 ||
       horizon->states.size() < 2U) {
@@ -352,7 +307,6 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           .minimum_tracking_sample_sequence = request.minimum_tracking_sample_sequence,
           .physically_invalidated_through_generation =
               request.physically_invalidated_through_generation,
-          .direct_tracking_identity = request.direct_tracking_identity,
           .observed_3d_world = request.observed_3d_world,
       });
   output.route_selection_ms =
@@ -365,8 +319,6 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
       recoverPendingCertifiedRouteLiveness3D(
           execution_supervisor_, output.route.execution.pending_route,
           PendingCertifiedRouteRecoveryObservation3D{
-              .direct_tracking_requested =
-                  output.route.execution.direct_tracking_identity.has_value(),
               // A stationary hold pins a position and a stop brakes to one:
               // both own the wire while the vehicle executes no route, so
               // neither may suppress the successor search it waits for. A stop
@@ -561,15 +513,6 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   output.controller.cooperative = prepareCooperativeUpdate(
       config_, passage_assignments, route_constraint, request.cooperative_command,
       request.now_ns, output.controller.speed_policy.reference_speed_mps);
-  output.controller.noncooperative = prepareNonCooperativeUpdate(
-      noncooperative_avoidance_.get(), config_, request.navigation.state,
-      request.noncooperative_tracks, request.now_ns);
-  const bool noncooperative_cost_influence_active =
-      output.controller.noncooperative.enabled &&
-      output.controller.noncooperative.avoidance.influence.cost_influence_active;
-  const bool noncooperative_evasive_maneuver_active =
-      output.controller.noncooperative.enabled &&
-      output.controller.noncooperative.avoidance.influence.evasive_maneuver_active;
   if (output.controller.cooperative.yield.active) {
     output.controller.speed_policy.reference_speed_mps =
         std::min(output.controller.speed_policy.reference_speed_mps,
@@ -580,24 +523,11 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                                    output.route.projection.station_m));
   }
 
-  const bool route_execution_blocked = !request.direct_tracking_interception &&
-                                       request.objective != nullptr &&
-                                       !output.route.usable;
+  const bool route_execution_blocked =
+      request.objective != nullptr && !output.route.usable;
   double target_station_m = 0.0;
   mppi::State target;
-  if (request.direct_tracking_interception) {
-    target = mppi::State{
-        .x = static_cast<float>(request.mission_goal.x),
-        .y = static_cast<float>(request.mission_goal.y),
-        .z = static_cast<float>(request.mission_goal.z),
-        .yaw = request.navigation.state.yaw,
-    };
-    output.controller.target_source =
-        request.objective != nullptr && request.objective->tracking.has_value() &&
-                request.objective->tracking->predicted_intercept_path_clear
-            ? "tracking_direct_full_prediction"
-            : "tracking_direct_shortened_prediction";
-  } else if (route_execution_blocked) {
+  if (route_execution_blocked) {
     const Point3& hold = output.route.execution.hold_position;
     target = mppi::State{
         .x = static_cast<float>(hold.x),
@@ -689,7 +619,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
     output.controller.target_source = "cooperative_passage_yield_hold";
   }
 
-  if (!request.direct_tracking_interception) {
+  {
     // The route tangent where the vehicle projects: displacement along it is
     // progress the station coordinate misses whenever the route the vehicle
     // follows is replaced under it.
@@ -720,7 +650,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
         .route_tangent_valid = liveness_projection.valid,
     });
   }
-  if (route_progress_tracker_ != nullptr && !request.direct_tracking_interception) {
+  if (route_progress_tracker_ != nullptr) {
     output.controller.route_progress =
         route_progress_tracker_->evaluate(RouteProgressObservation3D{
             .stamp_ns = request.now_ns,
@@ -760,100 +690,23 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                            std::max(0.0, horizon_distance_m)));
   }
 
-  std::optional<mppi::MovingTargetReference> moving_target;
-  const ProductionTrackingObjective* tracking =
-      request.objective != nullptr && request.objective->tracking.has_value()
-          ? std::addressof(request.objective->tracking.value())
-          : nullptr;
-  if (request.objective != nullptr && request.objective->continuous_tracking &&
-      tracking != nullptr) {
-    const double observation_age_s =
-        static_cast<double>(std::max<std::int64_t>(
-            0, request.now_ns - tracking->observation_stamp_ns)) *
-        1.0e-9;
-    const TargetVerticalPrediction vertical_prediction = predictTargetVerticalMotion(
-        tracking->observed_position.z, tracking->observed_velocity.z, observation_age_s,
-        config_.dynamics.maximum_vertical_acceleration_mps2, config_.flight_envelope);
-    const float minimum_z =
-        static_cast<float>(config_.flight_envelope.minimum_target_z_m);
-    const float maximum_z = std::nextafter(
-        static_cast<float>(config_.flight_envelope.maximum_target_z_m), minimum_z);
-    if (vertical_prediction.valid && std::isfinite(minimum_z) &&
-        std::isfinite(maximum_z) && maximum_z > minimum_z) {
-      moving_target = mppi::MovingTargetReference{
-          .state =
-              mppi::State{
-                  .x = static_cast<float>(tracking->observed_position.x +
-                                          tracking->observed_velocity.x *
-                                              observation_age_s),
-                  .y = static_cast<float>(tracking->observed_position.y +
-                                          tracking->observed_velocity.y *
-                                              observation_age_s),
-                  .z = mppi::clampMovingTargetAltitude(
-                      static_cast<float>(vertical_prediction.z_m), minimum_z,
-                      maximum_z),
-                  .vx = static_cast<float>(tracking->observed_velocity.x),
-                  .vy = static_cast<float>(tracking->observed_velocity.y),
-                  .vz = static_cast<float>(vertical_prediction.velocity_mps),
-              },
-          .capture_radius_m = static_cast<float>(config_.tracking_capture_radius_m),
-          .vertical_deceleration_mps2 =
-              config_.dynamics.maximum_vertical_acceleration_mps2,
-          .minimum_z_m = minimum_z,
-          .maximum_z_m = maximum_z,
-          .bounded_vertical_motion = true,
-      };
-    }
-  }
-  if (request.direct_tracking_interception && moving_target.has_value()) {
-    output.controller.direct_tracking_maneuver =
-        direct_tracking_maneuver_lifecycle_.update(DirectTrackingManeuverObservation{
-            .interceptor_position = actual_position,
-            .interceptor_velocity =
-                Vec3{request.navigation.state.vx, request.navigation.state.vy,
-                     request.navigation.state.vz},
-            .target_position = Point3{moving_target->state.x, moving_target->state.y,
-                                      moving_target->state.z},
-            .target_velocity = Vec3{moving_target->state.vx, moving_target->state.vy,
-                                    moving_target->state.vz},
-            .stamp_ns = request.now_ns,
-            .line_of_sight_generation = request.line_of_sight_generation,
-            .active = output.controller.planning_state ==
-                      ProductionMppiPlanningState::kPlanned,
-        });
-  } else {
-    output.controller.direct_tracking_maneuver =
-        direct_tracking_maneuver_lifecycle_.update({});
-  }
-
   const EsdfQueryResult current_clearance = queryConservativeEsdf3D(
       request.world->grid, *request.world->distances_m, request.navigation.state.x,
       request.navigation.state.y, request.navigation.state.z);
-  const double tracking_age_ms =
-      tracking != nullptr && tracking->observation_stamp_ns > 0
-          ? static_cast<double>(std::max<std::int64_t>(
-                0, request.now_ns - tracking->observation_stamp_ns)) /
-                1.0e6
-          : std::numeric_limits<double>::infinity();
   output.controller.rollout_budget = selectMppiRolloutBudget(
       config_.rollout_budget,
       MppiRolloutBudgetObservation{
           .static_world = request.use_static_map,
-          .route_available = request.direct_tracking_interception ||
-                             (output.route.usable && output.route.projection.valid),
-          .direct_tracking = request.direct_tracking_interception,
+          .route_available = output.route.usable && output.route.projection.valid,
           .clearance_valid = current_clearance.status == EsdfQueryStatus::kValid,
           .clearance_m = current_clearance.clearance_m,
           .world_age_ms = request.observation_age_ms,
-          .tracking_age_ms = tracking_age_ms,
-          .required_risk_tier = request.direct_tracking_interception
-                                    ? mppi::RiskTier::kPreferred
-                                    : output.controller.route_required_risk_tier,
+          .required_risk_tier = output.controller.route_required_risk_tier,
       });
   const mppi::DeterministicCandidateKind deterministic_candidate =
-      planningDeterministicCandidate(
-          request.direct_tracking_interception, output.controller.planning_state,
-          output.route.usable, output.route.projection.valid, route_control.hold_xy);
+      planningDeterministicCandidate(output.controller.planning_state,
+                                     output.route.usable, output.route.projection.valid,
+                                     route_control.hold_xy);
   output.controller.request =
       MppiControllerRequest3D{
           .input =
@@ -874,7 +727,6 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                           ? static_cast<float>(
                                 output.controller.speed_policy.reference_speed_mps)
                           : -1.0F,
-                  .moving_target = moving_target,
                   .route =
                       output.controller.planning_state ==
                                   ProductionMppiPlanningState::kPlanned &&
@@ -892,26 +744,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                             }}
                           : std::nullopt,
                   .dynamic_aircraft =
-                      noncooperative_cost_influence_active
-                          ? output.controller.noncooperative.avoidance.trajectories
-                          : output.controller.cooperative
-                                .mppi.dynamic_aircraft,
-                  .dynamic_aircraft_cost_policy =
-                      noncooperative_cost_influence_active
-                          ? std::optional<mppi::
-                                              DynamicAircraftCostPolicy>{output
-                                                                             .controller
-                                                                             .noncooperative
-                                                                             .avoidance
-                                                                             .cost_policy}
-                          : std::nullopt,
+                      output.controller.cooperative.mppi.dynamic_aircraft,
                   .cooperative_maneuver = output.controller.cooperative.mppi.maneuver,
                   .cooperative_acquisition =
                       output.controller.cooperative.mppi.acquisition,
-                  .noncooperative_acquisition =
-                      noncooperative_evasive_maneuver_active
-                          ? output.controller.noncooperative.avoidance.acquisition
-                          : std::nullopt,
                   .active_rollouts = output.controller.rollout_budget.active_rollouts,
                   .deterministic_candidate = deterministic_candidate,
                   .prefer_route_directed_candidate =
@@ -922,20 +758,14 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                       output.controller.route_progress.local_reseed_requested,
                   .cooperative_avoidance_active =
                       output.controller.cooperative.mppi.avoidance_active,
-                  .noncooperative_avoidance_active =
-                      noncooperative_evasive_maneuver_active,
               },
           .nominal_reseed =
               MppiNominalReseedObservation{
-                  .route_generation = request.direct_tracking_interception
-                                          ? request.effective_route_generation
-                                          : output.route.generation,
+                  .route_generation = output.route.generation,
                   .local_liveness_generation =
                       output.controller.liveness.reseed_generation,
                   .route_liveness_generation =
                       output.controller.route_progress.local_reseed_generation,
-                  .direct_tracking_maneuver_generation =
-                      output.controller.direct_tracking_maneuver.reseed_generation,
               },
           .tick_started = request.tick_started,
           .world_revision = request.world_revision,

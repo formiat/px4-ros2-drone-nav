@@ -39,40 +39,6 @@ enum class CooperativeManeuver : std::uint8_t {
   kSlow = 5,
 };
 
-enum class NonCooperativeManeuver : std::uint8_t {
-  kRouteCruise = 0,
-  kAway = 1,
-  kLeft = 2,
-  kRight = 3,
-  kClimb = 4,
-  kDescend = 5,
-  kBrake = 6,
-  kBackward = 7,
-};
-
-[[nodiscard]] inline const char*
-nonCooperativeManeuverName(const NonCooperativeManeuver maneuver) noexcept {
-  switch (maneuver) {
-    case NonCooperativeManeuver::kRouteCruise:
-      return "route_cruise";
-    case NonCooperativeManeuver::kAway:
-      return "away";
-    case NonCooperativeManeuver::kLeft:
-      return "left";
-    case NonCooperativeManeuver::kRight:
-      return "right";
-    case NonCooperativeManeuver::kClimb:
-      return "climb";
-    case NonCooperativeManeuver::kDescend:
-      return "descend";
-    case NonCooperativeManeuver::kBrake:
-      return "brake";
-    case NonCooperativeManeuver::kBackward:
-      return "backward";
-  }
-  return "unknown";
-}
-
 struct DynamicAircraftSample {
   float x{0.0F};
   float y{0.0F};
@@ -106,15 +72,6 @@ struct CooperativeSeparationAcquisition {
   CooperativeManeuverPreference preference{};
   float minimum_positive_progress_m{0.05F};
   float minimum_separation_gain_m{0.05F};
-};
-
-struct NonCooperativeSeparationAcquisition {
-  float threat_direction_x{0.0F};
-  float threat_direction_y{0.0F};
-  float threat_direction_z{0.0F};
-  float candidate_acceleration_fraction{0.95F};
-  float candidate_duration_s{1.5F};
-  std::uint64_t generation{0U};
 };
 
 #if defined(__CUDACC__)

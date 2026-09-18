@@ -14,7 +14,6 @@
 #include "drone_city_nav/mapping_lifecycle.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
-#include "drone_city_nav/msg/target_track.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
@@ -241,8 +240,6 @@ public:
         "px4_timesync_status_topic", "/fmu/out/timesync_status");
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status_v1");
-    const std::string tracked_agent_track_topic =
-        declare_parameter<std::string>("tracked_agent_track_topic", "");
     const DynamicAgentLidarStateConfig dynamic_agent_config =
         declareDynamicAgentLidarStateConfig(*this);
     dynamic_agent_lidar_state_ =
@@ -276,17 +273,6 @@ public:
                   }
                 },
         });
-    if (!tracked_agent_track_topic.empty()) {
-      tracked_agent_track_sub_ = create_subscription<msg::TargetTrack>(
-          tracked_agent_track_topic, rclcpp::QoS{1}.reliable().transient_local(),
-          [this](const msg::TargetTrack::SharedPtr track) {
-            dynamic_agent_lidar_state_->updateTrackedAgent(
-                Point3{track->position.x, track->position.y, track->position.z},
-                Vec3{track->velocity.x, track->velocity.y, track->velocity.z},
-                track->position_valid, track->velocity_valid,
-                rclcpp::Time{track->header.stamp}.nanoseconds());
-          });
-    }
     if (dynamic_agent_config.cooperative_enabled) {
       cooperative_intent_sub_ = create_subscription<msg::CooperativeFlightIntent>(
           declare_parameter<std::string>("cooperative_flight_intent_topic",
@@ -606,13 +592,6 @@ private:
             makeDynamicAgentLidarScanView(scan, acquisition_pose.alignment.poses,
                                           lidarProjectionConfig()),
             filter_plan);
-    if (filtered_scan.tracked_agent_filter_applied) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "TRACKED_AGENT_LIDAR_FILTER filtered_beams=%zu matched_agents=%zu",
-          filtered_scan.tracked_agent_filtered_beams,
-          filtered_scan.tracked_agent_matches);
-    }
     if (filtered_scan.cooperative_filter_applied) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
@@ -992,7 +971,6 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
-  rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_track_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<msg::LatestLidarObstacleScan>::SharedPtr

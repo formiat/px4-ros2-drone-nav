@@ -7,7 +7,6 @@
 
 #include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_node.hpp"
-#include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
 
@@ -65,7 +64,6 @@ void ProductionMppiNode::publishRviz(
       .selected_tier = snapshot.result.selected_tier,
       .gazebo_aligned_axes_swapped = config_.world.gazebo_aligned_rviz_axes_swapped,
   };
-  detail::populateTrackingObjectiveMarkers(objective.get(), marker_input);
   const visualization_msgs::msg::MarkerArray markers =
       buildMppiDebugMarkers(marker_input);
   markers_pub_->publish(markers);

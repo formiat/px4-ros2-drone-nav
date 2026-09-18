@@ -76,61 +76,9 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
-[[nodiscard]] bool finiteVector(const geometry_msgs::msg::Vector3& vector) noexcept {
-  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
-}
-
-[[nodiscard]] std::optional<InterceptGuidanceMode>
-guidanceMode(const std::uint8_t value) noexcept {
-  switch (value) {
-    case msg::NavigationObjective::GUIDANCE_MODE_DIRECT:
-      return InterceptGuidanceMode::kDirect;
-    case msg::NavigationObjective::GUIDANCE_MODE_ANALYTIC_INTERCEPT:
-      return InterceptGuidanceMode::kAnalyticIntercept;
-    case msg::NavigationObjective::GUIDANCE_MODE_AHEAD_INTERCEPT:
-      return InterceptGuidanceMode::kAheadIntercept;
-    default:
-      return std::nullopt;
-  }
-}
-
-[[nodiscard]] std::uint8_t
-radarCadenceReasonMessageValue(const RadarCadenceReason reason) noexcept {
-  switch (reason) {
-    case RadarCadenceReason::kNoTrackingObjective:
-      return msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE;
-    case RadarCadenceReason::kObservedTargetOccluded:
-      return msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED;
-    case RadarCadenceReason::kObservedTargetVisible:
-      return msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE;
-    case RadarCadenceReason::kWorldUnavailable:
-      return msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE;
-  }
-  return msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE;
-}
-
 [[nodiscard]] double pointDistance(const Point3& first, const Point3& second) noexcept {
   return std::hypot(std::hypot(first.x - second.x, first.y - second.y),
                     first.z - second.z);
-}
-
-[[nodiscard]] std::optional<Point3>
-currentTrackingTarget(const geometry_msgs::msg::Point& observed,
-                      const geometry_msgs::msg::Vector3& velocity,
-                      const std::int64_t observation_stamp_ns,
-                      const std::int64_t objective_stamp_ns,
-                      const double vertical_deceleration_mps2,
-                      const FlightEnvelopeConfig& flight_envelope) noexcept {
-  const double age_s = static_cast<double>(std::max<std::int64_t>(
-                           0, objective_stamp_ns - observation_stamp_ns)) *
-                       1.0e-9;
-  const TargetVerticalPrediction vertical = predictTargetVerticalMotion(
-      observed.z, velocity.z, age_s, vertical_deceleration_mps2, flight_envelope);
-  if (!vertical.valid) {
-    return std::nullopt;
-  }
-  return Point3{observed.x + velocity.x * age_s, observed.y + velocity.y * age_s,
-                vertical.z_m};
 }
 
 } // namespace
@@ -534,34 +482,11 @@ ProductionMppiNode::navigationObjective() const {
   return state != nullptr ? state->objective : nullptr;
 }
 
-void ProductionMppiNode::publishRadarTrackModeCommand(
-    const ProductionNavigationObjective& objective, const RadarCadenceReason reason) {
-  if (!radar_track_mode_command_pub_) {
-    return;
-  }
-  msg::RadarTrackModeCommand command;
-  command.stamp = get_clock()->now();
-  command.mission_epoch = objective.mission_epoch;
-  command.objective_sample_sequence = objective.sample_sequence;
-  command.target_track_id =
-      objective.tracking.has_value() ? objective.tracking->target_track_id : 0U;
-  command.mode =
-      objective.tracking.has_value() && objective.tracking->observed_target_visible
-          ? msg::RadarTrackModeCommand::MODE_TRACK
-          : msg::RadarTrackModeCommand::MODE_SEARCH;
-  command.reason = radarCadenceReasonMessageValue(reason);
-  radar_track_mode_command_pub_->publish(command);
-}
-
 void ProductionMppiNode::onNavigationObjective(
     const msg::NavigationObjective& message) {
-  const bool tracking = message.objective_type ==
-                        msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION;
-  const std::optional<InterceptGuidanceMode> guidance_mode =
-      guidanceMode(message.guidance_mode);
   const FlightEnvelopeStatus target_altitude_status =
       evaluateFlightEnvelopeAltitude(message.position.z, config_.world.flight_envelope);
-  if (!tracking && target_altitude_status != FlightEnvelopeStatus::kValid) {
+  if (target_altitude_status != FlightEnvelopeStatus::kValid) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
                 " sample=%" PRIu64 " reason=flight_envelope_%s target_z=%.3f",
@@ -570,20 +495,9 @@ void ProductionMppiNode::onNavigationObjective(
     return;
   }
   if (!finitePoint(message.position) ||
-      message.objective_type >
-          msg::NavigationObjective::OBJECTIVE_TYPE_TRACKING_PREDICTION ||
-      !guidance_mode.has_value() ||
+      message.objective_type != msg::NavigationObjective::OBJECTIVE_TYPE_POSITION ||
       message.terminal_policy >
-          msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD ||
-      (tracking &&
-       (!finitePoint(message.observed_target_position) ||
-        !finiteVector(message.observed_target_velocity) ||
-        !std::isfinite(message.prediction_horizon_s) ||
-        message.prediction_horizon_s < 0.0 || message.assignment_generation == 0U ||
-        message.target_detection_id == 0U || message.target_track_id == 0U ||
-        timeNanoseconds(message.observation_stamp) <= 0 ||
-        message.terminal_policy !=
-            msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING))) {
+          msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
                 " sample=%" PRIu64 " reason=invalid_payload",
@@ -592,11 +506,9 @@ void ProductionMppiNode::onNavigationObjective(
   }
   std::shared_ptr<const ProductionNavigationObjectiveState> previous_state;
   std::shared_ptr<const ProductionNavigationObjective> previous;
-  TrackingLineOfSightLifecycle next_line_of_sight_lifecycle;
   {
     const auto lock = evidence_boundary_.input();
     previous_state = navigation_objective_state_.load(std::memory_order_acquire);
-    next_line_of_sight_lifecycle = tracking_line_of_sight_lifecycle_;
   }
   if (previous_state != nullptr) {
     previous = previous_state->objective;
@@ -610,7 +522,6 @@ void ProductionMppiNode::onNavigationObjective(
   }
 
   const std::int64_t objective_stamp_ns = timeNanoseconds(message.stamp);
-  const std::int64_t observation_stamp_ns = timeNanoseconds(message.observation_stamp);
   const Point3 unconstrained_goal{message.position.x, message.position.y,
                                   message.position.z};
   const std::optional<double> bounded_goal_z =
@@ -622,172 +533,21 @@ void ProductionMppiNode::onNavigationObjective(
                 message.mission_epoch, message.sample_sequence, unconstrained_goal.z);
     return;
   }
-  Point3 goal{unconstrained_goal.x, unconstrained_goal.y, *bounded_goal_z};
-  std::optional<ProductionTrackingObjective> tracking_objective;
-  TrackingLineOfSightUpdate line_of_sight;
-  RadarCadenceReason radar_cadence_reason{RadarCadenceReason::kNoTrackingObjective};
-  if (tracking) {
-    const Point3 observed{message.observed_target_position.x,
-                          message.observed_target_position.y,
-                          message.observed_target_position.z};
-    const std::optional<double> bounded_observed_z =
-        clampToFlightEnvelope(observed.z, config_.world.flight_envelope);
-    if (!bounded_observed_z.has_value()) {
-      RCLCPP_WARN(get_logger(),
-                  "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
-                  " sample=%" PRIu64 " reason=invalid_observed_target_altitude",
-                  message.mission_epoch, message.sample_sequence);
-      return;
-    }
-    const std::optional<Point3> current_target = currentTrackingTarget(
-        message.observed_target_position, message.observed_target_velocity,
-        observation_stamp_ns, objective_stamp_ns,
-        config_.control.mppi.dynamics.maximum_vertical_acceleration_mps2,
-        config_.world.flight_envelope);
-    if (!current_target.has_value()) {
-      RCLCPP_WARN(get_logger(),
-                  "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
-                  " sample=%" PRIu64 " reason=invalid_current_target_prediction",
-                  message.mission_epoch, message.sample_sequence);
-      return;
-    }
-    TrackingObjectiveResolution resolution{
-        .resolved_position = *current_target,
-        .status = TrackingObjectiveResolutionStatus::kWorldUnavailable,
-        .resolved_fraction = 0.0,
-    };
-    DirectTrackingTargetResolution direct_resolution{
-        .selected_position = *current_target,
-        .status = DirectTrackingTargetStatus::kWorldUnavailable,
-    };
-    ProductionMppiNavigation navigation;
-    {
-      const auto lock = evidence_boundary_.input();
-      navigation = navigation_;
-    }
-    const Point3 current_position{navigation.state.x, navigation.state.y,
-                                  navigation.state.z};
-    const SweptFootprintConfig footprint{
-        .radius_m = config_.world.physical_footprint.radius_m,
-        .lower_extent_m = config_.world.physical_footprint.lower_extent_m,
-        .upper_extent_m = config_.world.physical_footprint.upper_extent_m,
-        .perimeter_samples = config_.world.physical_footprint.perimeter_samples,
-        .radial_rings = config_.world.physical_footprint.radial_rings,
-        .axial_samples = config_.world.physical_footprint.axial_samples,
-        .sweep_step_m = config_.planning.tracking_objective_ray_sample_spacing_m};
-    bool world_available = false;
-    const std::shared_ptr<const OccupancyGrid3D> static_occupancy =
-        config_.world.use_static_map ? world_pipeline_->staticOccupancy() : nullptr;
-    if (static_occupancy != nullptr) {
-      world_available = true;
-      resolution = resolveTrackingObjective(
-          *static_occupancy, *current_target, goal,
-          config_.planning.tracking_objective_ray_sample_spacing_m);
-      if (navigation.valid) {
-        direct_resolution = resolveDirectTrackingTarget(
-            *static_occupancy, current_position, *current_target, goal, footprint);
-      }
-    } else if (!config_.world.use_static_map) {
-      const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
-          world_pipeline_->latestRawWorld();
-      if (raw_world != nullptr && raw_world->valid()) {
-        world_available = true;
-        resolution = resolveTrackingObjective(
-            raw_world->occupancy(), *current_target, goal,
-            config_.planning.tracking_objective_ray_sample_spacing_m);
-        if (navigation.valid) {
-          direct_resolution =
-              resolveDirectTrackingTarget(raw_world->occupancy(), current_position,
-                                          *current_target, goal, footprint);
-        }
-      }
-    }
-    if (world_available && !navigation.valid) {
-      direct_resolution.status = DirectTrackingTargetStatus::kInvalidInput;
-    }
-    if (resolution.status == TrackingObjectiveResolutionStatus::kInvalidInput) {
-      RCLCPP_WARN(get_logger(),
-                  "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
-                  " sample=%" PRIu64 " reason=invalid_tracking_resolution",
-                  message.mission_epoch, message.sample_sequence);
-      return;
-    }
-    const bool epoch_changed =
-        !previous || previous->mission_epoch != message.mission_epoch;
-    const bool assignment_changed =
-        !previous || previous->assignment_generation != message.assignment_generation ||
-        previous->target_detection_id != message.target_detection_id ||
-        previous->target_track_id != message.target_track_id;
-    if (epoch_changed || assignment_changed) {
-      next_line_of_sight_lifecycle.reset();
-    }
-    line_of_sight =
-        next_line_of_sight_lifecycle.update(direct_resolution.observed_target_visible);
-    goal = line_of_sight.active ? direct_resolution.selected_position
-                                : resolution.resolved_position;
-    if (!world_available || !navigation.valid) {
-      radar_cadence_reason = RadarCadenceReason::kWorldUnavailable;
-    } else if (direct_resolution.observed_target_visible) {
-      radar_cadence_reason = RadarCadenceReason::kObservedTargetVisible;
-    } else {
-      radar_cadence_reason = RadarCadenceReason::kObservedTargetOccluded;
-    }
-    tracking_objective = ProductionTrackingObjective{
-        .observed_position = observed,
-        .current_target_position = *current_target,
-        .unconstrained_predicted_position = unconstrained_goal,
-        .observed_velocity =
-            Vec3{message.observed_target_velocity.x, message.observed_target_velocity.y,
-                 message.observed_target_velocity.z},
-        .observation_stamp_ns = observation_stamp_ns,
-        .prediction_horizon_s = message.prediction_horizon_s,
-        .resolved_fraction = line_of_sight.active
-                                 ? direct_resolution.selected_prediction_fraction
-                                 : resolution.resolved_fraction,
-        .guidance_mode = *guidance_mode,
-        .resolution_status = resolution.status,
-        .direct_target_status = direct_resolution.status,
-        .radar_cadence_reason = radar_cadence_reason,
-        .vertical_prediction_clipped =
-            message.vertical_prediction_limited ||
-            std::abs(*bounded_goal_z - unconstrained_goal.z) > 1.0e-9,
-        .observed_target_visible = direct_resolution.observed_target_visible,
-        .predicted_intercept_path_clear =
-            direct_resolution.predicted_intercept_path_clear,
-        .direct_interception_active = line_of_sight.active,
-        .line_of_sight_generation = line_of_sight.generation,
-        .target_track_id = message.target_track_id,
-    };
-  } else {
-    next_line_of_sight_lifecycle.reset();
-  }
+  const Point3 goal{unconstrained_goal.x, unconstrained_goal.y, *bounded_goal_z};
   const auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
           .goal = goal,
-          .tracking = tracking_objective,
           .mission_epoch = message.mission_epoch,
           .sample_sequence = message.sample_sequence,
-          .assignment_generation = tracking ? message.assignment_generation : 0U,
-          .target_detection_id = tracking ? message.target_detection_id : 0U,
-          .target_track_id = tracking ? message.target_track_id : 0U,
           .stamp_ns = objective_stamp_ns,
-          .continuous_tracking =
-              message.terminal_policy ==
-              msg::NavigationObjective::TERMINAL_POLICY_CONTINUOUS_TRACKING,
           .immediate_hold = message.terminal_policy ==
                             msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD,
       });
   bool request_replan = false;
-  bool require_new_tracking_route = false;
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const bool execution_lineage_changed =
-      previous != nullptr &&
-      (previous->mission_epoch != objective->mission_epoch ||
-       previous->assignment_generation != objective->assignment_generation ||
-       previous->target_detection_id != objective->target_detection_id ||
-       previous->target_track_id != objective->target_track_id ||
-       previous->continuous_tracking != objective->continuous_tracking ||
-       previous->immediate_hold != objective->immediate_hold);
+      previous != nullptr && (previous->mission_epoch != objective->mission_epoch ||
+                              previous->immediate_hold != objective->immediate_hold);
   {
     const auto lock = evidence_boundary_.inputWithObjectiveReplan();
     if (navigation_objective_state_.load(std::memory_order_acquire) != previous_state) {
@@ -795,54 +555,17 @@ void ProductionMppiNode::onNavigationObjective(
     }
     const bool epoch_changed =
         !previous || previous->mission_epoch != message.mission_epoch;
-    const bool assignment_changed =
-        tracking && (!previous ||
-                     previous->assignment_generation != message.assignment_generation ||
-                     previous->target_detection_id != message.target_detection_id ||
-                     previous->target_track_id != message.target_track_id);
     const bool moved = pointDistance(goal, objective_replan_anchor_) >=
                        config_.planning.dynamic_objective_replan_distance_m;
     const bool period_elapsed =
         objective_replan_stamp_ns_ <= 0 ||
         static_cast<double>(now_ns - objective_replan_stamp_ns_) * 1.0e-9 >=
             config_.planning.dynamic_objective_replan_period_s;
-    const bool previous_direct_interception =
-        previous && previous->tracking.value_or(ProductionTrackingObjective{})
-                        .direct_interception_active;
-    const bool current_direct_interception =
-        tracking_objective.value_or(ProductionTrackingObjective{})
-            .direct_interception_active;
-    const bool direct_interception_lost =
-        previous_direct_interception && !current_direct_interception;
-    require_new_tracking_route =
-        tracking && (epoch_changed || assignment_changed || direct_interception_lost);
-    request_replan = epoch_changed || assignment_changed || direct_interception_lost ||
-                     (moved && period_elapsed);
-    // The objective and the requirement it produces are published together so a
-    // reader cannot observe one epoch's objective beside another's requirement.
-    ProductionNavigationObjectiveState next_state{
-        .objective = objective,
-        .minimum_tracking_route_mission_epoch =
-            previous_state != nullptr
-                ? previous_state->minimum_tracking_route_mission_epoch
-                : 0U,
-        .minimum_tracking_route_sample_sequence =
-            previous_state != nullptr
-                ? previous_state->minimum_tracking_route_sample_sequence
-                : 0U,
-    };
-    if (require_new_tracking_route) {
-      next_state.minimum_tracking_route_mission_epoch = message.mission_epoch;
-      next_state.minimum_tracking_route_sample_sequence = message.sample_sequence;
-    } else if (!tracking) {
-      next_state.minimum_tracking_route_mission_epoch = 0U;
-      next_state.minimum_tracking_route_sample_sequence = 0U;
-    }
+    request_replan = epoch_changed || (moved && period_elapsed);
     navigation_objective_state_.store(
         std::make_shared<const ProductionNavigationObjectiveState>(
-            std::move(next_state)),
+            ProductionNavigationObjectiveState{.objective = objective}),
         std::memory_order_release);
-    tracking_line_of_sight_lifecycle_ = next_line_of_sight_lifecycle;
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
@@ -851,57 +574,19 @@ void ProductionMppiNode::onNavigationObjective(
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
   }
-  publishRadarTrackModeCommand(*objective, radar_cadence_reason);
   if (config_.world.use_static_map && !world_ready_.load(std::memory_order_acquire)) {
     requestStaticEsdfWork();
   }
   if (request_replan) {
     requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
   }
-  if (objective->tracking.has_value()) {
-    const ProductionTrackingObjective tracking_data =
-        objective->tracking.value_or(ProductionTrackingObjective{});
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
-        " assignment_generation=%" PRIu64 " detection_id=%" PRIu64 " track_id=%" PRIu64
-        " type=tracking_prediction mode=%s horizon_s=%.3f "
-        "observed=(%.2f,%.2f,%.2f) predicted=(%.2f,%.2f,%.2f) "
-        "current=(%.2f,%.2f,%.2f) resolved=(%.2f,%.2f,%.2f) resolution=%s "
-        "direct_target_status=%s resolved_fraction=%.3f "
-        "vertical_prediction_clipped=%s observed_target_visible=%s "
-        "predicted_intercept_path_clear=%s direct_interception=%s "
-        "los_generation=%" PRIu64 " radar_cadence_reason=%s replan=%s",
-        message.mission_epoch, message.sample_sequence, message.assignment_generation,
-        message.target_detection_id, message.target_track_id,
-        interceptGuidanceModeName(tracking_data.guidance_mode),
-        tracking_data.prediction_horizon_s, tracking_data.observed_position.x,
-        tracking_data.observed_position.y, tracking_data.observed_position.z,
-        tracking_data.unconstrained_predicted_position.x,
-        tracking_data.unconstrained_predicted_position.y,
-        tracking_data.unconstrained_predicted_position.z,
-        tracking_data.current_target_position.x,
-        tracking_data.current_target_position.y,
-        tracking_data.current_target_position.z, goal.x, goal.y, goal.z,
-        trackingObjectiveResolutionStatusName(tracking_data.resolution_status),
-        directTrackingTargetStatusName(tracking_data.direct_target_status),
-        tracking_data.resolved_fraction,
-        tracking_data.vertical_prediction_clipped ? "true" : "false",
-        tracking_data.observed_target_visible ? "true" : "false",
-        tracking_data.predicted_intercept_path_clear ? "true" : "false",
-        tracking_data.direct_interception_active ? "true" : "false",
-        tracking_data.line_of_sight_generation,
-        radarCadenceReasonName(radar_cadence_reason),
-        request_replan ? "true" : "false");
-  } else {
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
-        " type=position goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
-        message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
-        objective->immediate_hold ? "immediate_hold" : "position_hold",
-        request_replan ? "true" : "false");
-  }
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "NAVIGATION_OBJECTIVE accepted mission_epoch=%" PRIu64 " sample=%" PRIu64
+      " type=position goal=(%.2f,%.2f,%.2f) policy=%s replan=%s",
+      message.mission_epoch, message.sample_sequence, goal.x, goal.y, goal.z,
+      objective->immediate_hold ? "immediate_hold" : "position_hold",
+      request_replan ? "true" : "false");
 }
 
 } // namespace drone_city_nav

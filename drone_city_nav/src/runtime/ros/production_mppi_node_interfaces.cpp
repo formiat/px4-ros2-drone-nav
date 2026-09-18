@@ -260,14 +260,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                                                              .route_progress}
                   : std::nullopt,
           .goal_capture = config_.planning.mission_goal_capture,
-          .direct_tracking = config_.planning.direct_tracking_maneuver,
           .route_envelope = config_.planning.route_envelope,
           .constrained_route_control = config_.control.constrained_route,
           .speed_policy = config_.control.speed_policy,
           .rollout_budget = config_.control.rollout_budget,
           .cooperative_timing = config_.planning.cooperative_passage_timing,
           .cooperative_yield = config_.planning.cooperative_passage_yield,
-          .noncooperative_avoidance = config_.planning.noncooperative_avoidance,
           .flight_envelope = config_.world.flight_envelope,
           .dynamics = config_.control.mppi.dynamics,
           .physical_footprint = config_.world.physical_footprint,
@@ -280,12 +278,9 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               config_.control.tracking_error_tube.response_time_s,
           .vehicle_id = config_.planning.vehicle_id,
           .horizon_steps = config_.control.mppi.steps,
-          .tracking_capture_radius_m = config_.planning.tracking_capture_radius_m,
           .route_constraint_diagnostics_distance_m =
               config_.diagnostics.route_constraint_distance_m,
           .cooperative_traffic_enabled = config_.planning.cooperative_traffic_enabled,
-          .noncooperative_avoidance_enabled =
-              config_.planning.noncooperative_avoidance_enabled,
           .route_progress_replan_enabled =
               config_.planning.optional_constraints.route_progress_replan_enabled,
           .route_cross_track_constraints_enabled =
@@ -620,11 +615,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       },
       input_subscription_options);
   createCooperativeTrafficInterfaces(input_subscription_options);
-  createNonCooperativeAvoidanceInterface(input_subscription_options);
 
-  radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
-      config_.planning.topics.radar_track_mode_command,
-      rclcpp::QoS{1}.reliable().transient_local());
   path_pub_ = create_publisher<nav_msgs::msg::Path>(config_.diagnostics.topics.path,
                                                     rclcpp::QoS{1}.reliable());
   markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(

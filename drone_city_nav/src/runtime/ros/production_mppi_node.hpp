@@ -8,11 +8,9 @@
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/cooperative_passage_execution.hpp"
 #include "drone_city_nav/cooperative_passage_route.hpp"
-#include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
@@ -31,16 +29,13 @@
 #include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
-#include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta3_d.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
-#include "drone_city_nav/msg/target_track_array.hpp"
 #include "drone_city_nav/navigation_angular_derivative.hpp"
 #include "drone_city_nav/navigation_health_supervisor.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
-#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/offboard_session_admission.hpp"
@@ -57,7 +52,6 @@
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
-#include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/world_generation.hpp"
@@ -148,8 +142,6 @@ private:
   void invalidateAppliedControlWitnessLocked() noexcept;
   void onNavigationObjective(const msg::NavigationObjective& message);
   void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
-  void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
-                                    RadarCadenceReason reason);
   void requestStaticEsdfWork();
   void markStaticWorldReady() noexcept;
   void publishWorldReadiness(bool ready);
@@ -215,10 +207,6 @@ private:
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
-  void createNonCooperativeAvoidanceInterface(
-      const rclcpp::SubscriptionOptions& subscription_options);
-  void onNonCooperativeTracks(const msg::TargetTrackArray& message);
-  void logNonCooperativeUpdate(const ProductionMppiNonCooperativeUpdate& update);
   [[nodiscard]] MissionWaypointUpdate updateMissionWaypoint(
       const std::shared_ptr<const ProductionNavigationObjectiveState>& objective_state,
       const ProductionMppiNavigation& navigation,
@@ -356,7 +344,6 @@ private:
 
   const ProductionMppiConfig config_;
   Point3 mission_goal_{216.0, 378.0, 18.0};
-  TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
@@ -425,7 +412,6 @@ private:
   OffboardSessionAdmissionState offboard_session_admission_{};
   std::int64_t offboard_session_receive_stamp_ns_{0};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
-  ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
   // Published as one immutable state so every reader observes the objective and
   // the tracking-route requirement produced by the same transition.
   std::atomic<std::shared_ptr<const ProductionNavigationObjectiveState>>
@@ -509,9 +495,6 @@ private:
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
   rclcpp::Subscription<msg::CooperativeManeuverCommand>::SharedPtr
       cooperative_command_sub_;
-  rclcpp::Subscription<msg::TargetTrackArray>::SharedPtr noncooperative_tracks_sub_;
-  rclcpp::Publisher<msg::RadarTrackModeCommand>::SharedPtr
-      radar_track_mode_command_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;

@@ -7,11 +7,8 @@ namespace {
 
 [[nodiscard]] bool validConfig(const MppiRolloutBudgetConfig& config) noexcept {
   return config.full_rollouts > 0U && config.open_static_rollouts > 0U &&
-         config.direct_tracking_rollouts > 0U &&
-         config.direct_tracking_rollouts <= config.open_static_rollouts &&
          config.open_static_rollouts <= config.full_rollouts &&
-         config.minimum_reduced_clearance_m > 0.0F &&
-         config.maximum_world_age_ms > 0.0 && config.maximum_tracking_age_ms > 0.0;
+         config.minimum_reduced_clearance_m > 0.0F && config.maximum_world_age_ms > 0.0;
 }
 
 } // namespace
@@ -44,18 +41,6 @@ selectMppiRolloutBudget(const MppiRolloutBudgetConfig& config,
     decision.reason = MppiRolloutBudgetReason::kFullLowClearance;
     return decision;
   }
-  if (observation.direct_tracking) {
-    if (!std::isfinite(observation.tracking_age_ms) ||
-        observation.tracking_age_ms < 0.0 ||
-        observation.tracking_age_ms > config.maximum_tracking_age_ms) {
-      decision.reason = MppiRolloutBudgetReason::kFullTrackingUncertain;
-      return decision;
-    }
-    decision.active_rollouts = config.direct_tracking_rollouts;
-    decision.reason = MppiRolloutBudgetReason::kReducedDirectTracking;
-    decision.reduced = decision.active_rollouts < config.full_rollouts;
-    return decision;
-  }
   if (observation.static_world) {
     decision.active_rollouts = config.open_static_rollouts;
     decision.reason = MppiRolloutBudgetReason::kReducedOpenStatic;
@@ -75,8 +60,6 @@ mppiRolloutBudgetReasonName(const MppiRolloutBudgetReason reason) noexcept {
       return "full_unavailable_route";
     case MppiRolloutBudgetReason::kFullWorldUncertain:
       return "full_world_uncertain";
-    case MppiRolloutBudgetReason::kFullTrackingUncertain:
-      return "full_tracking_uncertain";
     case MppiRolloutBudgetReason::kFullElevatedRisk:
       return "full_elevated_risk";
     case MppiRolloutBudgetReason::kFullLowClearance:
@@ -85,8 +68,6 @@ mppiRolloutBudgetReasonName(const MppiRolloutBudgetReason reason) noexcept {
       return "full_no_static_exploration";
     case MppiRolloutBudgetReason::kReducedOpenStatic:
       return "reduced_open_static";
-    case MppiRolloutBudgetReason::kReducedDirectTracking:
-      return "reduced_direct_tracking";
   }
   return "unknown";
 }

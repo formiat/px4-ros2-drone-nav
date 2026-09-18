@@ -18,7 +18,7 @@ pipeline publishes the current physical scan first, integrates persistent memory
 on a latest-value worker, and transports immutable world revisions at a bounded
 rate. Base snapshots are adaptive and intervening updates are cumulative dirty
 deltas, so skipped superseded messages do not invalidate the newest state. In
-static mode the planner loads canonical Occupancy3D directly and does not merge
+static mode the planner loads raw Occupancy3D directly and does not merge
 the sensor grid into the static 3D map.
 
 Sensor liveness, raw-map content, and local planning state have independent
@@ -33,7 +33,7 @@ revisions.
 
 The production MPPI node prepares a mode-specific occupied-distance field
 asynchronously. Static mode extracts a local dense distance window from the
-precomputed chunked cache associated with canonical Occupancy3D. Fingerprint or format
+precomputed chunked cache associated with raw Occupancy3D. Fingerprint or format
 mismatch falls back to the exact runtime EDT. No-static mode reconstructs the
 revisioned observed occupancy and builds a recentered local
 `KnownObstacleDistance3D` window. Distances are defined in both free and unknown
@@ -278,12 +278,10 @@ Reference speed is bounded by:
 
 When no executable route exists in either mode, direct flight to the distant
 mission goal is forbidden. The planner publishes a typed stationary hold while
-route search continues. Direct interception remains valid without a persistent route
-only when the current target is visible and the direct swept path is physically
-validated.
+route search continues.
 
 Route availability and local-horizon executability are separate contracts. If
-the active route or validated direct interception exists but MPPI produces no
+the active route exists but MPPI produces no
 physically executable next horizon, the planner first validates the unchanged
 remaining trajectory of the previously published finite path against the
 current raw world. If that trajectory became invalid, the planner may rebuild

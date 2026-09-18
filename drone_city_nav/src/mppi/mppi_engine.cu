@@ -204,9 +204,7 @@ public:
     SeparationAcquisitionCoordinatorResult acquisition_lifecycle =
         acquisition_coordinator_.update(SeparationAcquisitionCoordinatorInput{
             .cooperative_avoidance_active = input.cooperative_avoidance_active,
-            .noncooperative_avoidance_active = input.noncooperative_avoidance_active,
             .cooperative_acquisition = input.cooperative_acquisition,
-            .noncooperative_acquisition = input.noncooperative_acquisition,
             .initial_state = input.initial_state,
             .target = input.target,
             .route = active_route,
@@ -218,7 +216,6 @@ public:
             .grid = textures_[active_texture_].grid(),
             .esdf = activeEsdfHost(),
             .aircraft = input.dynamic_aircraft,
-            .dynamic_aircraft_cost_policy = dynamic_aircraft_cost_policy,
             .config = config_,
         });
     if (acquisition_lifecycle.nominal_reseed) {
@@ -785,12 +782,9 @@ public:
     }
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
-    result.nominal_reseeded =
-        external_nominal_reseeded ||
-        acquisition_lifecycle.cooperative_acquisition_reseeded ||
-        acquisition_lifecycle.cooperative_release_reseeded ||
-        acquisition_lifecycle.noncooperative_acquisition_reseeded ||
-        acquisition_lifecycle.noncooperative_release_reseeded;
+    result.nominal_reseeded = external_nominal_reseeded ||
+                              acquisition_lifecycle.cooperative_acquisition_reseeded ||
+                              acquisition_lifecycle.cooperative_release_reseeded;
     result.esdf_revision = active_esdf_revision;
     result.active_rollouts = active_rollouts;
     result.timings.warm_start_ms = elapsedMs(started_, warm_done_);

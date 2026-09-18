@@ -101,13 +101,13 @@ The same steps by hand:
 For a simulator sanity check:
 
 ```bash
-./scripts/sim_headless.sh
+./scripts/sim_urban_point_to_point_headless.sh
 ```
 
 For a GUI sanity check:
 
 ```bash
-./scripts/sim_gui.sh
+./scripts/sim_urban_point_to_point_gui.sh
 ```
 
 If GUI startup fails, first check Docker display permissions and see

@@ -17,7 +17,7 @@ SCENARIO_PATH = (
     / "config"
     / "cooperative_traffic_urban_scenario.json"
 )
-LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "intercept_scenario.py"
+LOADER_PATH = REPOSITORY / "drone_city_nav" / "launch" / "multi_vehicle_scenario.py"
 MANIFEST_PATH = REPOSITORY / "environments" / "environment_manifest.yaml"
 PREPARER_PATH = REPOSITORY / "scripts" / "prepare_environment_simulation.py"
 RUNNER_PATH = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"

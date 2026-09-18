@@ -5,7 +5,7 @@
 load_multi_vehicle_sim_scenario() {
   local requested_mission_type="$1"
   local scenario_override="$2"
-  local default_scenario="drone_city_nav/config/intercept_scenario.json"
+  local default_scenario="drone_city_nav/config/cooperative_traffic_urban_scenario.json"
   local scenario_metadata_tsv=""
   local scenario_tsv=""
 
@@ -13,22 +13,15 @@ load_multi_vehicle_sim_scenario() {
   cooperative_traffic_mission="false"
   case "${requested_mission_type}" in
   point_to_point) ;;
-  intercept | multi_intercept)
-    multi_vehicle_mission="true"
-    ;;
   cooperative_traffic)
     multi_vehicle_mission="true"
     cooperative_traffic_mission="true"
-    default_scenario="drone_city_nav/config/cooperative_traffic_scenario.json"
     ;;
   *)
-    echo "Unsupported MISSION_TYPE=${requested_mission_type}; expected point_to_point, intercept, multi_intercept, or cooperative_traffic" >&2
+    echo "Unsupported MISSION_TYPE=${requested_mission_type}; expected point_to_point or cooperative_traffic" >&2
     return 1
     ;;
   esac
-  if [[ "${requested_mission_type}" == "multi_intercept" ]]; then
-    default_scenario="drone_city_nav/config/multi_intercept_2v2_scenario.json"
-  fi
   multi_vehicle_scenario_path="$(
     make_abs_path "${scenario_override:-${default_scenario}}"
   )"
@@ -39,7 +32,7 @@ load_multi_vehicle_sim_scenario() {
   multi_vehicle_gazebo_model_names=()
   multi_vehicle_map_start_poses=()
   multi_vehicle_gazebo_spawn_poses=()
-  multi_vehicle_world_name="generated_city"
+  multi_vehicle_world_name="urban_circuit_practice_01"
   multi_vehicle_initial_altitude_m="18.0"
   multi_vehicle_minimum_target_z_m="1.0"
   multi_vehicle_maximum_target_z_m="32.0"
@@ -47,7 +40,7 @@ load_multi_vehicle_sim_scenario() {
     return 0
   fi
   if ! scenario_metadata_tsv="$(
-    python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
+    python3 "${repo_root}/drone_city_nav/launch/multi_vehicle_scenario.py" \
       --scenario "${multi_vehicle_scenario_path}" --format metadata-tsv \
       --lidar-profile "${lidar_profile}"
   )"; then
@@ -58,7 +51,7 @@ load_multi_vehicle_sim_scenario() {
     multi_vehicle_initial_altitude_m multi_vehicle_minimum_target_z_m \
     multi_vehicle_maximum_target_z_m <<< "${scenario_metadata_tsv}"
   if ! scenario_tsv="$(
-    python3 "${repo_root}/drone_city_nav/launch/intercept_scenario.py" \
+    python3 "${repo_root}/drone_city_nav/launch/multi_vehicle_scenario.py" \
       --scenario "${multi_vehicle_scenario_path}" --format tsv \
       --lidar-profile "${lidar_profile}"
   )"; then
@@ -119,7 +112,7 @@ resolve_point_to_point_runtime() {
   local scenario_override="$1"
 
   load_point_to_point_sim_scenario "${scenario_override}"
-  scenario_world_name="${point_to_point_world_name:-generated_city}"
+  scenario_world_name="${point_to_point_world_name:-urban_circuit_practice_01}"
 }
 
 resolve_point_to_point_gazebo_spawn() {
@@ -131,30 +124,6 @@ resolve_point_to_point_gazebo_spawn() {
   point_gazebo_spawn_y_m="${SIM_START_Y_M:-${start_y_m}}"
   point_gazebo_spawn_z_m="${SIM_START_Z_M:-${start_z_m}}"
   point_gazebo_spawn_yaw_rad="${SIM_START_YAW_RAD:-${start_yaw_rad}}"
-}
-
-prepare_multi_vehicle_model_resources() {
-  local base_model_name
-  local instance
-  local evader_model_name
-
-  if ! bool_is_true "${multi_vehicle_mission}"; then
-    return 0
-  fi
-  for instance in "${!multi_vehicle_ids[@]}"; do
-    [[ "${multi_vehicle_roles[instance]}" == "evader" ]] || continue
-    evader_model_name="${multi_vehicle_px4_model_targets[instance]#gz_}"
-    if [[ -e "${runtime_models_dir}/${evader_model_name}" ]]; then
-      continue
-    fi
-    base_model_name="x500_lidar_2d"
-    [[ "${lidar_profile}" == "3d" ]] && base_model_name="x500_lidar_3d"
-    cp -a "${runtime_models_dir}/${base_model_name}" \
-      "${runtime_models_dir}/${evader_model_name}"
-    python3 "${repo_root}/scripts/configure_drone_marker_color.py" \
-      "${runtime_models_dir}/${evader_model_name}" \
-      --model-name "${evader_model_name}"
-  done
 }
 
 print_log_tail() {
@@ -175,7 +144,6 @@ check_headless_run() {
     --expected-memory "${expected_obstacle_memory}"
     --lidar-profile "${lidar_profile}"
     --enable-lidar-debug "${enable_lidar_debug}"
-    --expect-noncooperative-avoidance "${intercept_noncooperative_avoidance_enabled}"
     --runtime-manifest "${runtime_manifest_path}"
   )
   if bool_is_true "${multi_vehicle_mission}"; then

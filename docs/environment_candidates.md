@@ -310,9 +310,8 @@ installations before compilation.
   validation.
 - Finals Prize Round World 07 and Cave Circuit Practice 01 do not yet define
   production mission starts, goals, launch selection, or flight-envelope bounds.
-- Interception has not been validated in an imported environment. The current
-  Urban no-static point-to-point and cooperative entrypoints are external
-  environment acceptance targets for persistent full-3D navigation.
+- The Urban no-static point-to-point and cooperative entrypoints are the
+  external environment acceptance targets for persistent full-3D navigation.
 - A valid static topology proves deterministic extraction and raw-safe internal
   segments. End-to-end reachability still requires a scenario-level run and a
   completed passage lifecycle or geometry event.

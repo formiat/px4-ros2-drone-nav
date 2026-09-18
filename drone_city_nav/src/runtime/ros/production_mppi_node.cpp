@@ -140,7 +140,7 @@ void logConfiguration(const ProductionMppiConfig& config,
   RCLCPP_INFO(
       logger,
       "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "
-      "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
+      "adaptive_clearance_m=%.1f "
       "steps=%zu rate=%.1fHz deadline=%.1fms static_map=%s route3d=%s "
       "horizon=%.1fs static_esdf_lookahead=%.1fm cruise=%.1fmps "
       "horizontal_speed_cap=%.1fmps translational_speed_cap=%.1fmps "
@@ -151,7 +151,6 @@ void logConfiguration(const ProductionMppiConfig& config,
       "planner_tick_phase_ms=%.1f no_static_world=observed_occupancy_3d "
       "no_static_esdf=(%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/exact_dense_edt)",
       config.control.mppi.rollouts, config.control.rollout_budget.open_static_rollouts,
-      config.control.rollout_budget.direct_tracking_rollouts,
       config.control.rollout_budget.minimum_reduced_clearance_m,
       config.control.mppi.steps, config.planning.tick_rate_hz,
       config.planning.deadline_ms, config.world.use_static_map ? "true" : "false",
@@ -179,22 +178,6 @@ void logConfiguration(const ProductionMppiConfig& config,
       config.world.no_static_3d_esdf_window.vertical_half_extent_m,
       config.world.no_static_3d_esdf_window.horizontal_recenter_margin_m,
       config.world.no_static_3d_esdf_window.vertical_recenter_margin_m);
-
-  if (config.planning.noncooperative_avoidance_enabled) {
-    RCLCPP_INFO(logger,
-                "NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true vehicle_id='%s' "
-                "tracks_topic='%s' prediction_horizon_s=%.2f strong_separation_m=%.2f "
-                "anticipation_separation_m=%.2f release_separation_m=%.2f "
-                "maximum_track_age_s=%.2f strong_cost_weight=%.1f",
-                config.planning.vehicle_id.c_str(),
-                config.planning.topics.noncooperative_tracks.c_str(),
-                config.planning.noncooperative_avoidance.prediction_horizon_s,
-                config.planning.noncooperative_avoidance.strong_separation_m,
-                config.planning.noncooperative_avoidance.anticipation_separation_m,
-                config.planning.noncooperative_avoidance.release_separation_m,
-                config.planning.noncooperative_avoidance.maximum_track_age_s,
-                config.planning.noncooperative_avoidance.strong_cost_weight);
-  }
 }
 
 } // namespace
@@ -228,7 +211,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
               .objective = std::make_shared<const ProductionNavigationObjective>(
                   ProductionNavigationObjective{
                       .goal = mission_goal_,
-                      .tracking = std::nullopt,
                       .mission_epoch =
                           config_.planning.configured_mission_objective_enabled ? 1U
                                                                                 : 0U,

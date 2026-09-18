@@ -73,8 +73,8 @@ private:
       static_buildings_pub_->publish(staticMapBuildingDeleteMarkers(header()));
       return;
     }
-    std::filesystem::path path = declare_parameter<std::string>(
-        "static_occupancy_3d_path", "worlds/generated_city.occupancy3d");
+    std::filesystem::path path =
+        declare_parameter<std::string>("static_occupancy_3d_path", "");
     if (path.is_relative()) {
       path = package_share / path;
     }

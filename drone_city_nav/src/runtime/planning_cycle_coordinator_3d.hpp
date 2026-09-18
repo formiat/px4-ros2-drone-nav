@@ -1,14 +1,12 @@
 #pragma once
 
 #include "drone_city_nav/cooperative_passage_execution.hpp"
-#include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
-#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
 
@@ -31,14 +29,12 @@ struct PlanningCycleCoordinatorConfig3D {
   MppiLivenessConfig liveness{};
   std::optional<RouteProgressConfig3D> route_progress;
   MissionGoalCaptureConfig goal_capture{};
-  DirectTrackingManeuverConfig direct_tracking{};
   RouteEnvelopeConfig route_envelope{};
   ConstrainedRouteControlConfig constrained_route_control{};
   MppiSpeedPolicyConfig speed_policy{};
   MppiRolloutBudgetConfig rollout_budget{};
   CooperativePassageTimingConfig cooperative_timing{};
   CooperativePassageYieldConfig cooperative_yield{};
-  NonCooperativeAvoidanceConfig noncooperative_avoidance{};
   FlightEnvelopeConfig flight_envelope{};
   mppi::DynamicsConfig dynamics{};
   // The body the executed-horizon clearance is measured for, and the clearance
@@ -48,10 +44,8 @@ struct PlanningCycleCoordinatorConfig3D {
   double executed_horizon_constraint_clearance_m{0.75};
   std::string vehicle_id;
   std::size_t horizon_steps{0U};
-  double tracking_capture_radius_m{0.0};
   double route_constraint_diagnostics_distance_m{0.0};
   bool cooperative_traffic_enabled{false};
-  bool noncooperative_avoidance_enabled{false};
   bool route_progress_replan_enabled{false};
   bool route_cross_track_constraints_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
@@ -66,20 +60,15 @@ struct PlanningCycleRequest3D {
   std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
-  ProductionMppiNonCooperativeTracks noncooperative_tracks{};
-  std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
   Point3 mission_goal{};
   std::chrono::steady_clock::time_point tick_started{};
   std::uint64_t minimum_tracking_sample_sequence{0U};
   std::uint64_t physically_invalidated_through_generation{0U};
-  std::uint64_t effective_route_generation{0U};
-  std::uint64_t line_of_sight_generation{0U};
   std::uint64_t world_revision{0U};
   std::int64_t now_ns{0};
   double observation_age_ms{0.0};
   bool control_feedback_fresh{false};
   bool terminal_hold_enabled{true};
-  bool direct_tracking_interception{false};
   bool use_static_map{false};
   bool observed_3d_world{false};
 
@@ -122,12 +111,10 @@ struct PlanningControllerCycle3D {
   MppiControllerRequest3D request{};
   MppiSpeedPolicyResult speed_policy{};
   MppiLivenessResult liveness{};
-  DirectTrackingManeuverUpdate direct_tracking_maneuver{};
   RouteProgressUpdate3D route_progress{};
   MissionGoalCaptureResult goal_capture{};
   MppiRolloutBudgetDecision rollout_budget{};
   ProductionMppiCooperativeUpdate cooperative{};
-  ProductionMppiNonCooperativeUpdate noncooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   // The clearance the speed policy answered to: where the motion under
   // execution comes close to known occupied evidence.
@@ -188,7 +175,6 @@ private:
   MppiLivenessSupervisor liveness_supervisor_;
   std::unique_ptr<RouteProgressTracker3D> route_progress_tracker_;
   MissionGoalCaptureLatch goal_capture_latch_;
-  DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_;
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
   // The reference speed the previous cycle published and when, for the rise
   // limit the speed policy applies.
@@ -196,7 +182,6 @@ private:
   std::int64_t previous_reference_stamp_ns_{0};
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
-  std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
 };
 
 } // namespace drone_city_nav

@@ -11,10 +11,10 @@ Run these from the repository root:
 ./scripts/bootstrap.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./scripts/sim_gui.sh
-./scripts/sim_headless.sh
-./scripts/sim_intercept_gui.sh
-./scripts/sim_intercept_headless.sh
+./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_headless.sh
+./scripts/sim_cooperative_traffic_urban_gui.sh
+./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -45,10 +45,10 @@ make test
 make test-scripts
 make quality
 make format
-make sim-gui
-make sim-headless
-make sim-intercept-gui
-make sim-intercept-headless
+make sim-urban-point-to-point-gui
+make sim-urban-point-to-point-headless
+make sim-cooperative-traffic-urban-gui
+make sim-cooperative-traffic-urban-headless
 ```
 
 `make build` runs `colcon build` for `drone_city_nav` with build, install, and
@@ -72,77 +72,45 @@ inputs are available.
 
 ## Simulation Commands
 
-GUI simulation:
+Point-to-point mission:
 
 ```bash
-./scripts/sim_gui.sh
+./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_headless.sh
 ```
 
-Headless smoke run:
+Finite cooperative traffic mission:
 
 ```bash
-./scripts/sim_headless.sh
+./scripts/sim_cooperative_traffic_urban_gui.sh
+./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
 
-Finite three-interceptor versus one-evader mission:
-
-```bash
-./scripts/sim_intercept_gui.sh
-./scripts/sim_intercept_headless.sh
-```
-
-Set `EVADER_SPEED_SCALE` to override the default `1.0` evader speed multiplier.
-By default, the evader flies diagonally across the city from map position
-`(270, 54)` to `(54, 378)` at `18 m` altitude.
 The complete finite scenario is defined in
-`drone_city_nav/config/intercept_scenario.json`. The shell runner and ROS launch
-both load this file, and each Gazebo spawn is derived from the canonical
-`map_to_sdf` transform. Set `INTERCEPT_SCENARIO_PATH` to run another validated
-scenario; do not add independent shell spawn overrides.
-Each interceptor uses a latency-compensated analytic intercept solution capped
-at 15 s. While ahead inside the target corridor, the smoothed lead is capped at
-1 s. All three interceptors use the measured motion direction by default. Set
-`INTERCEPT_DIRECTIONAL_HYPOTHESES_ENABLED=true` to enable the `0`, `+45`, and
-`-45` degree long-range hypotheses; the lateral hypotheses converge to zero
-within 30 m and are capped at 70 m.
-Set `INTERCEPT_NONCOOPERATIVE_AVOIDANCE_ENABLED=true` to enable the attacker's
-radar-only collision-avoidance pipeline in interception missions. It is
-disabled by default.
-Interceptors receive no evader coordinates. Three ideal radar adapters publish
-only range, azimuth, elevation, and radial velocity at a deterministic varying
-cadence between 0.1 s and 3.0 s. A typed planner command switches it immediately
-to 20 Hz whenever the current target estimate has swept raw-clear visibility,
-independent of range, and returns it to varying search cadence when the target is
-occluded. A variable-dt tracker reconstructs and coasts a target track, and
-guidance continues at 20 Hz between scans.
-The mission start barrier waits for all four planner worlds, the first valid
-target position from every tracker, and confirmed agreement between each PX4
-navigation pose and its physical Gazebo model pose. A persistent mismatch
-blocks mission start and commands airborne vehicles to hold. Static planner
-readiness comes from the resident Occupancy3D ESDF and does not wait for a lidar
-snapshot.
-Prediction includes measurement age and is clipped only by physical raw
-occupancy in the active static or sensor-derived map. Vertical prediction
-decelerates vertical target motion to a stop and remains inside the configured
-flight envelope. Visibility of the current target uses direct moving-target MPPI
-pursuit. If only the full predicted intercept point is blocked, the planner
-shortens the lead while preserving direct mode.
-The headless command validates all four PX4 logs. An intercept result requires
-typed Gazebo physical-proximity evidence at or below 5 m, confirmed disarm of
-the capturing pair, and confirmed holds from every surviving
-interceptor. Survivors must publish and maintain a stationary
-position-hold horizon. An evader-goal result requires all surviving interceptors
-to stop tracking and confirm the same hold transition without disarming. If
-inertial motion causes a late capture after evader goal arrival, both pair
-disarms are required while the original evader-goal outcome remains unchanged.
-The GUI command keeps Gazebo and RViz open after either outcome; stop it
-explicitly when inspection is complete. No attacker respawn or repeated episode
-is performed.
+`drone_city_nav/config/cooperative_traffic_urban_scenario.json`. The shell
+runner and ROS launch both load this file, and each Gazebo spawn is derived from
+the world's `map_to_sdf` transform. Set `MULTI_VEHICLE_SCENARIO_PATH` to run
+another validated scenario; do not add independent shell spawn overrides.
+
+Every vehicle plans its own route and publishes its own flight intent. Conflicts
+are resolved between peers through those intents; no node plans for another
+vehicle and no vehicle receives the physical truth of another.
+
+The mission start barrier waits for every planner world and for confirmed
+agreement between each PX4 navigation pose and its physical Gazebo model pose. A
+persistent mismatch blocks mission start and commands airborne vehicles to hold.
+Static planner readiness comes from the resident Occupancy3D ESDF and does not
+wait for a lidar snapshot.
+
+The headless command validates every PX4 log. The mission result requires all
+vehicles to reach their goals with their separation contract satisfied, or it
+records a typed failure. The GUI command keeps Gazebo and RViz open after either
+outcome; stop it explicitly when inspection is complete.
 
 A mission error never requests disarm. Force-disarm occurs only after a typed
-physical-collision or proximity-intercept destruction event. A physical evader
-crash is a failed technical run and is settled only after evader disarm plus a
-confirmed interceptor hold.
+physical-collision or proximity-collision destruction event, and a physical
+crash is a failed technical run settled only after that vehicle's disarm and the
+confirmed holds of the survivors.
 
 Stop simulator leftovers:
 

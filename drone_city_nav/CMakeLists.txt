@@ -80,14 +80,6 @@ rosidl_generate_interfaces(
   "msg/NavigationHealth.msg"
   "msg/MissionWaypointAcknowledgement.msg"
   "msg/NavigationObjective.msg"
-  "msg/RadarDetection.msg"
-  "msg/RadarScan.msg"
-  "msg/RadarTrackModeCommand.msg"
-  "msg/TargetTrack.msg"
-  "msg/TargetTrackArray.msg"
-  "msg/TargetAssignment.msg"
-  "msg/InterceptTargetStatus.msg"
-  "msg/InterceptMissionCommand.msg"
   "msg/SpectatorTarget.msg"
   "msg/SimulationTruthAlignment.msg"
   "msg/SimulationTruthState.msg"
@@ -125,7 +117,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/mppi/mppi_control_sequence.cpp
     src/mppi/mppi_temperature_regulator.cpp
     src/mppi/mppi_input_validation.cpp
-    src/mppi/mppi_noncooperative_acquisition.cpp
     src/mppi/static_route_handoff.cpp)
   target_sources(drone_city_nav_mppi_cuda PRIVATE
                  src/mppi/mppi_separation_acquisition.cpp
@@ -212,8 +203,6 @@ add_drone_city_nav_layer(
   src/producer_epoch_admission.cpp
   src/producer_instance_id.cpp
   src/px4_ros_time_mapper.cpp
-  src/radar_cadence.cpp
-  src/radar_model.cpp
   src/simulation_truth_alignment.cpp
   src/stopping_distance.cpp
   src/tracking_error_tube_config_3d.cpp
@@ -328,8 +317,7 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d_world.cpp
   src/route_planning_3d.cpp
   src/route_risk_annotation_3d.cpp
-  src/static_route_geometry.cpp
-  src/tracking_objective.cpp)
+  src/static_route_geometry.cpp)
 target_link_libraries(drone_city_nav_planning PUBLIC drone_city_nav_collision)
 
 add_drone_city_nav_layer(
@@ -357,7 +345,6 @@ add_drone_city_nav_layer(
   src/applied_control_admission.cpp
   src/certified_route_splice_3d.cpp
   src/committed_execution_authority_3d.cpp
-  src/direct_tracking_maneuver_lifecycle.cpp
   src/execution_evidence_3d.cpp
   src/execution_evidence_3d_lidar.cpp
   src/execution_horizon_admission.cpp
@@ -410,8 +397,7 @@ add_drone_city_nav_layer(
   src/mppi_liveness.cpp
   src/mppi_nominal_reseed.cpp
   src/mppi_rollout_budget.cpp
-  src/mppi_speed_policy.cpp
-  src/noncooperative_collision_avoidance.cpp)
+  src/mppi_speed_policy.cpp)
 target_sources(drone_city_nav_control
                PRIVATE src/mppi/trajectory_reference_adapter_3d.cpp)
 target_link_libraries(drone_city_nav_control PUBLIC drone_city_nav_execution)
@@ -420,13 +406,9 @@ add_drone_city_nav_layer(
   drone_city_nav_runtime
   src/cooperative_traffic_mission.cpp
   src/dynamic_agent_lidar_state.cpp
-  src/intercept_guidance.cpp
-  src/intercept_mission.cpp
   src/navigation_health_supervisor.cpp
-  src/radar_target_tracker.cpp
-  src/radar_visibility.cpp
   src/spectator_selection.cpp
-  src/target_assignment.cpp)
+  src/swept_vehicle_separation.cpp)
 target_link_libraries(drone_city_nav_runtime PUBLIC drone_city_nav_control)
 
 # Header ownership. Every hand-written public header belongs to exactly one
@@ -453,8 +435,6 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/px4_map_frame_transform.hpp
     include/drone_city_nav/px4_ros_time_mapper.hpp
     include/drone_city_nav/autopilot_state.hpp
-    include/drone_city_nav/radar_cadence.hpp
-    include/drone_city_nav/radar_model.hpp
     include/drone_city_nav/simulation_truth_alignment.hpp
     include/drone_city_nav/stopping_capability.hpp
     include/drone_city_nav/stopping_distance.hpp
@@ -547,8 +527,7 @@ set(DRONE_CITY_NAV_PLANNING_HEADERS
     include/drone_city_nav/persistent_dstar_lite_planner_3d.hpp
     include/drone_city_nav/route_planning_3d.hpp
     include/drone_city_nav/route_risk_annotation_3d.hpp
-    include/drone_city_nav/static_route_geometry.hpp
-    include/drone_city_nav/tracking_objective.hpp)
+    include/drone_city_nav/static_route_geometry.hpp)
 
 set(DRONE_CITY_NAV_TRAJECTORY_HEADERS
     include/drone_city_nav/compiled_trajectory_3d.hpp
@@ -571,7 +550,6 @@ set(DRONE_CITY_NAV_EXECUTION_HEADERS
     include/drone_city_nav/applied_control_admission.hpp
     include/drone_city_nav/certified_route_splice_3d.hpp
     include/drone_city_nav/committed_execution_authority_3d.hpp
-    include/drone_city_nav/direct_tracking_maneuver_lifecycle.hpp
     include/drone_city_nav/dynamic_handoff_validator_3d.hpp
     include/drone_city_nav/execution_evidence_3d.hpp
     include/drone_city_nav/execution_hold_3d.hpp
@@ -608,29 +586,23 @@ set(DRONE_CITY_NAV_CONTROL_HEADERS
     include/drone_city_nav/mppi_liveness.hpp
     include/drone_city_nav/mppi_nominal_reseed.hpp
     include/drone_city_nav/mppi_rollout_budget.hpp
-    include/drone_city_nav/mppi_speed_policy.hpp
-    include/drone_city_nav/noncooperative_collision_avoidance.hpp)
+    include/drone_city_nav/mppi_speed_policy.hpp)
 
 set(DRONE_CITY_NAV_RUNTIME_HEADERS
     include/drone_city_nav/cooperative_traffic_mission.hpp
     include/drone_city_nav/dynamic_agent_lidar_state.hpp
-    include/drone_city_nav/intercept_guidance.hpp
-    include/drone_city_nav/intercept_mission.hpp
     include/drone_city_nav/navigation_health_supervisor.hpp
-    include/drone_city_nav/radar_target_tracker.hpp
-    include/drone_city_nav/radar_visibility.hpp
     include/drone_city_nav/spectator_diagnostics_selection.hpp
     include/drone_city_nav/spectator_selection.hpp
-    include/drone_city_nav/target_assignment.hpp)
+    include/drone_city_nav/swept_vehicle_separation.hpp)
 
 set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/cooperative_traffic_agent_node.hpp
     include/drone_city_nav/cooperative_traffic_ros.hpp
     include/drone_city_nav/execution_horizon_contract_ros.hpp
     include/drone_city_nav/transport_latency_ros.hpp
-    include/drone_city_nav/intercept_diagnostics_mux_node.hpp
-    include/drone_city_nav/intercept_spectator_node.hpp
-    include/drone_city_nav/interceptor_guidance_node.hpp
+    include/drone_city_nav/multi_vehicle_diagnostics_mux_node.hpp
+    include/drone_city_nav/multi_vehicle_spectator_node.hpp
     include/drone_city_nav/latest_lidar_obstacle_scan_ros.hpp
     include/drone_city_nav/lidar_debug_node_config.hpp
     include/drone_city_nav/lidar_debug_pointclouds.hpp
@@ -640,13 +612,11 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/autopilot_state_source.hpp
     include/drone_city_nav/px4_autopilot_adapter.hpp
     include/drone_city_nav/px4_offboard_setpoint_io.hpp
-    include/drone_city_nav/radar_target_tracker_node.hpp
     include/drone_city_nav/raw_obstacle_3d_ros.hpp
     include/drone_city_nav/raw_obstacle_delta.hpp
     include/drone_city_nav/ros_conversions.hpp
     include/drone_city_nav/spectator_diagnostics_selection_ros.hpp
     include/drone_city_nav/static_map_debug.hpp
-    include/drone_city_nav/target_assignment_coordinator_node.hpp
     include/drone_city_nav/visualization_marker_helpers.hpp
     include/drone_city_nav/world_visualization_node.hpp)
 
@@ -847,8 +817,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
       src/runtime/production_mppi_cooperative_diagnostics.cpp
       src/runtime/production_mppi_execution_control.cpp
       src/runtime/production_mppi_execution_diagnostics.cpp
-      src/runtime/production_mppi_node_names.cpp
-      src/runtime/production_mppi_noncooperative_diagnostics.cpp)
+      src/runtime/production_mppi_node_names.cpp)
   add_drone_city_nav_private_runtime(drone_city_nav_mppi_runtime
                                      ${DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES})
   target_include_directories(
@@ -988,35 +957,17 @@ ament_target_dependencies(
   rclcpp)
 enable_project_warnings(mission_monitor_node)
 
-add_executable(intercept_mission_referee_node
-               src/intercept_mission_referee_node.cpp
-               src/intercept_mission_referee_lifecycle.cpp
-               src/intercept_ground_truth_boundary.cpp
-               src/intercept_referee_support.cpp)
-target_compile_features(intercept_mission_referee_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_mission_referee_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
-ament_target_dependencies(intercept_mission_referee_node rclcpp std_msgs)
-enable_project_warnings(intercept_mission_referee_node)
-
 add_executable(cooperative_traffic_referee_node
                src/cooperative_traffic_referee_main.cpp
                src/cooperative_traffic_referee_node.cpp
                src/cooperative_traffic_referee_lifecycle.cpp
-               src/intercept_ground_truth_boundary.cpp)
+               src/simulation_truth_boundary.cpp)
 target_compile_features(cooperative_traffic_referee_node PRIVATE cxx_std_20)
 target_link_libraries(cooperative_traffic_referee_node drone_city_nav_core
                       drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(cooperative_traffic_referee_node rclcpp std_msgs
                           visualization_msgs)
 enable_project_warnings(cooperative_traffic_referee_node)
-
-add_executable(radar_simulator_node src/radar_simulator_node.cpp)
-target_compile_features(radar_simulator_node PRIVATE cxx_std_20)
-target_link_libraries(radar_simulator_node drone_city_nav_core
-                      ${cpp_typesupport_target})
-ament_target_dependencies(radar_simulator_node ament_index_cpp rclcpp)
-enable_project_warnings(radar_simulator_node)
 
 add_executable(simulation_truth_adapter_node
                src/simulation_truth_adapter_node.cpp)
@@ -1047,27 +998,6 @@ ament_target_dependencies(simulation_heading_source_node rclcpp px4_msgs)
 enable_project_warnings(simulation_heading_source_node)
 
 add_library(
-  drone_city_nav_interceptor_tracking_components SHARED
-  src/radar_target_tracker_node.cpp
-  src/target_assignment_coordinator_node.cpp
-  src/interceptor_guidance_node.cpp)
-target_compile_features(drone_city_nav_interceptor_tracking_components
-                        PRIVATE cxx_std_20)
-target_link_libraries(drone_city_nav_interceptor_tracking_components
-                      drone_city_nav_core ${cpp_typesupport_target})
-ament_target_dependencies(
-  drone_city_nav_interceptor_tracking_components
-  rclcpp
-  rclcpp_components
-  std_msgs)
-rclcpp_components_register_nodes(
-  drone_city_nav_interceptor_tracking_components
-  "drone_city_nav::RadarTargetTrackerNode"
-  "drone_city_nav::TargetAssignmentCoordinatorNode"
-  "drone_city_nav::InterceptorGuidanceNode")
-enable_project_warnings(drone_city_nav_interceptor_tracking_components)
-
-add_library(
   drone_city_nav_cooperative_components SHARED
   src/cooperative_traffic_agent_node.cpp)
 target_compile_features(drone_city_nav_cooperative_components PRIVATE cxx_std_20)
@@ -1094,25 +1024,11 @@ target_link_libraries(cooperative_traffic_agent_node
 ament_target_dependencies(cooperative_traffic_agent_node rclcpp)
 enable_project_warnings(cooperative_traffic_agent_node)
 
-add_executable(radar_target_tracker_node src/radar_target_tracker_main.cpp)
-target_compile_features(radar_target_tracker_node PRIVATE cxx_std_20)
-target_link_libraries(radar_target_tracker_node
-                      drone_city_nav_interceptor_tracking_components)
-ament_target_dependencies(radar_target_tracker_node rclcpp)
-enable_project_warnings(radar_target_tracker_node)
-
-add_executable(interceptor_guidance_node src/interceptor_guidance_main.cpp)
-target_compile_features(interceptor_guidance_node PRIVATE cxx_std_20)
-target_link_libraries(interceptor_guidance_node
-                      drone_city_nav_interceptor_tracking_components)
-ament_target_dependencies(interceptor_guidance_node rclcpp)
-enable_project_warnings(interceptor_guidance_node)
-
 add_library(
   drone_city_nav_diagnostics_components SHARED
   src/world_visualization_node.cpp
-  src/intercept_spectator_node.cpp
-  src/intercept_diagnostics_mux_node.cpp
+  src/multi_vehicle_spectator_node.cpp
+  src/multi_vehicle_diagnostics_mux_node.cpp
   src/lidar_debug_component.cpp
   src/lidar_debug_node_callbacks.cpp
   src/lidar_debug_node_lifecycle.cpp
@@ -1138,8 +1054,8 @@ ament_target_dependencies(
 rclcpp_components_register_nodes(
   drone_city_nav_diagnostics_components
   "drone_city_nav::WorldVisualizationNode"
-  "drone_city_nav::InterceptSpectatorNode"
-  "drone_city_nav::InterceptDiagnosticsMuxNode"
+  "drone_city_nav::MultiVehicleSpectatorNode"
+  "drone_city_nav::MultiVehicleDiagnosticsMuxNode"
   "drone_city_nav::LidarDebugNode")
 enable_project_warnings(drone_city_nav_diagnostics_components)
 
@@ -1150,20 +1066,20 @@ target_link_libraries(world_visualization_node
 ament_target_dependencies(world_visualization_node rclcpp)
 enable_project_warnings(world_visualization_node)
 
-add_executable(intercept_spectator_node src/intercept_spectator_main.cpp)
-target_compile_features(intercept_spectator_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_spectator_node
+add_executable(multi_vehicle_spectator_node src/multi_vehicle_spectator_main.cpp)
+target_compile_features(multi_vehicle_spectator_node PRIVATE cxx_std_20)
+target_link_libraries(multi_vehicle_spectator_node
                       drone_city_nav_diagnostics_components)
-ament_target_dependencies(intercept_spectator_node rclcpp)
-enable_project_warnings(intercept_spectator_node)
+ament_target_dependencies(multi_vehicle_spectator_node rclcpp)
+enable_project_warnings(multi_vehicle_spectator_node)
 
-add_executable(intercept_diagnostics_mux_node
-               src/intercept_diagnostics_mux_main.cpp)
-target_compile_features(intercept_diagnostics_mux_node PRIVATE cxx_std_20)
-target_link_libraries(intercept_diagnostics_mux_node
+add_executable(multi_vehicle_diagnostics_mux_node
+               src/multi_vehicle_diagnostics_mux_main.cpp)
+target_compile_features(multi_vehicle_diagnostics_mux_node PRIVATE cxx_std_20)
+target_link_libraries(multi_vehicle_diagnostics_mux_node
                       drone_city_nav_diagnostics_components)
-ament_target_dependencies(intercept_diagnostics_mux_node rclcpp)
-enable_project_warnings(intercept_diagnostics_mux_node)
+ament_target_dependencies(multi_vehicle_diagnostics_mux_node rclcpp)
+enable_project_warnings(multi_vehicle_diagnostics_mux_node)
 
 add_executable(lidar_debug_node src/lidar_debug_node.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
@@ -1181,7 +1097,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/runtime/ros/production_mppi_node_health.cpp
     src/runtime/ros/production_mppi_node_mission.cpp
     src/runtime/ros/production_mppi_node_cooperative.cpp
-    src/runtime/ros/production_mppi_node_noncooperative.cpp
     src/runtime/ros/production_mppi_node_esdf.cpp
     src/runtime/ros/production_mppi_node_observed_esdf.cpp
     src/runtime/ros/production_mppi_node_observed_evidence.cpp
@@ -1204,7 +1119,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/runtime/ros/production_mppi_node_diagnostics_events.cpp
     src/runtime/ros/production_mppi_node_diagnostics_runtime.cpp
     src/runtime/ros/production_mppi_node_summary.cpp
-    src/runtime/ros/tracking_objective_diagnostics.cpp
     src/runtime/ros/production_mppi_node_execution.cpp
     src/runtime/ros/production_mppi_node_execution_publication.cpp
     src/runtime/ros/production_mppi_node_execution_holds.cpp
@@ -1280,20 +1194,15 @@ install(
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
-    intercept_mission_referee_node
     cooperative_traffic_referee_node
-    radar_simulator_node
     simulation_truth_adapter_node
     simulation_heading_source_node
     lidar_inertial_odometry_node
-    radar_target_tracker_node
-    interceptor_guidance_node
     cooperative_traffic_agent_node
-    drone_city_nav_interceptor_tracking_components
     drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components
-    intercept_spectator_node
-    intercept_diagnostics_mux_node
+    multi_vehicle_spectator_node
+    multi_vehicle_diagnostics_mux_node
     generate_static_esdf_cache
     free_space_topology_compiler
     voxelize_sdf_collisions
@@ -1492,17 +1401,7 @@ if(BUILD_TESTING)
                         drone_city_nav_control)
   enable_project_warnings(trajectory_reference_adapter_3d_test)
 
-  ament_add_gtest(intercept_mission_test tests/intercept_mission_test.cpp)
-  target_compile_features(intercept_mission_test PRIVATE cxx_std_20)
-  target_link_libraries(intercept_mission_test drone_city_nav_core)
-  enable_project_warnings(intercept_mission_test)
-
-  ament_add_gtest(intercept_guidance_test tests/intercept_guidance_test.cpp)
-  target_compile_features(intercept_guidance_test PRIVATE cxx_std_20)
-  target_link_libraries(intercept_guidance_test drone_city_nav_core)
-  enable_project_warnings(intercept_guidance_test)
-
-  ament_add_gtest(simulation_truth_alignment_test
+      ament_add_gtest(simulation_truth_alignment_test
                   tests/simulation_truth_alignment_test.cpp)
   target_compile_features(simulation_truth_alignment_test PRIVATE cxx_std_20)
   target_link_libraries(simulation_truth_alignment_test drone_city_nav_core)
@@ -1520,48 +1419,7 @@ if(BUILD_TESTING)
   target_link_libraries(navigation_pose_origin_test drone_city_nav_core)
   enable_project_warnings(navigation_pose_origin_test)
 
-  ament_add_gtest(direct_tracking_maneuver_lifecycle_test
-                  tests/direct_tracking_maneuver_lifecycle_test.cpp)
-  target_compile_features(direct_tracking_maneuver_lifecycle_test PRIVATE cxx_std_20)
-  target_link_libraries(direct_tracking_maneuver_lifecycle_test drone_city_nav_core)
-  enable_project_warnings(direct_tracking_maneuver_lifecycle_test)
-
-  ament_add_gtest(noncooperative_collision_avoidance_test
-                  tests/noncooperative_collision_avoidance_test.cpp)
-  target_compile_features(noncooperative_collision_avoidance_test PRIVATE cxx_std_20)
-  target_link_libraries(noncooperative_collision_avoidance_test drone_city_nav_core)
-  enable_project_warnings(noncooperative_collision_avoidance_test)
-
-  ament_add_gtest(tracking_objective_test tests/tracking_objective_test.cpp)
-  target_compile_features(tracking_objective_test PRIVATE cxx_std_20)
-  target_link_libraries(tracking_objective_test drone_city_nav_core)
-  enable_project_warnings(tracking_objective_test)
-
-  ament_add_gtest(radar_tracking_test tests/radar_tracking_test.cpp)
-  target_compile_features(radar_tracking_test PRIVATE cxx_std_20)
-  target_link_libraries(radar_tracking_test drone_city_nav_core)
-  enable_project_warnings(radar_tracking_test)
-
-  ament_add_gtest(target_assignment_test tests/target_assignment_test.cpp)
-  target_compile_features(target_assignment_test PRIVATE cxx_std_20)
-  target_link_libraries(target_assignment_test drone_city_nav_core)
-  enable_project_warnings(target_assignment_test)
-
-  ament_add_gtest(target_assignment_lifecycle_test
-                  tests/target_assignment_lifecycle_test.cpp)
-  target_compile_features(target_assignment_lifecycle_test PRIVATE cxx_std_20)
-  target_link_libraries(
-    target_assignment_lifecycle_test
-    drone_city_nav_interceptor_tracking_components
-    ${cpp_typesupport_target})
-  ament_target_dependencies(target_assignment_lifecycle_test rclcpp)
-  set_tests_properties(
-    target_assignment_lifecycle_test
-    PROPERTIES ENVIRONMENT
-               "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
-  enable_project_warnings(target_assignment_lifecycle_test)
-
-  ament_add_gtest(tracked_agent_lidar_filter_test
+              ament_add_gtest(tracked_agent_lidar_filter_test
                   tests/tracked_agent_lidar_filter_test.cpp)
   target_compile_features(tracked_agent_lidar_filter_test PRIVATE cxx_std_20)
   target_link_libraries(tracked_agent_lidar_filter_test drone_city_nav_core)
@@ -1808,14 +1666,7 @@ if(BUILD_TESTING)
     target_link_libraries(mppi_finite_horizon_test drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_finite_horizon_test)
 
-    ament_add_gtest(mppi_noncooperative_acquisition_test
-                    tests/mppi_noncooperative_acquisition_test.cpp)
-    target_compile_features(mppi_noncooperative_acquisition_test PRIVATE cxx_std_20)
-    target_link_libraries(mppi_noncooperative_acquisition_test
-                          drone_city_nav_mppi_cuda)
-    enable_project_warnings(mppi_noncooperative_acquisition_test)
-
-    ament_add_gtest(static_route_handoff_test
+        ament_add_gtest(static_route_handoff_test
                     tests/static_route_handoff_test.cpp)
     target_compile_features(static_route_handoff_test PRIVATE cxx_std_20)
     target_link_libraries(static_route_handoff_test drone_city_nav_mppi_cuda)
@@ -1971,11 +1822,6 @@ if(BUILD_TESTING)
                   tests/free_space_topology_3d_test.cpp)
   target_compile_features(free_space_topology_3d_test PRIVATE cxx_std_20)
   target_link_libraries(free_space_topology_3d_test drone_city_nav_core)
-  target_compile_definitions(
-    free_space_topology_3d_test
-    PRIVATE
-      TEST_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.occupancy3d"
-      TEST_FREE_SPACE_TOPOLOGY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/worlds/generated_city.topology3d")
   enable_project_warnings(free_space_topology_3d_test)
 
   ament_add_gtest(

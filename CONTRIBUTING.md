@@ -7,11 +7,13 @@ All C++ development must follow `CPP_BEST_PRACTICES.md`.
 1. Prefer repository-approved commands from `README.md`, this file, `Makefile`,
    scripts, and CI configuration.
 2. The default and only supported workflow is the container workflow. Use
-   `./scripts/build.sh`, `./scripts/test.sh`, `./scripts/sim_headless.sh`, and
-   `./scripts/sim_gui.sh` for common workflows. Start `./scripts/dev_shell.sh`
+   `./scripts/build.sh`, `./scripts/test.sh`,
+   `./scripts/sim_urban_point_to_point_headless.sh`, and
+   `./scripts/sim_urban_point_to_point_gui.sh` for common workflows. Start `./scripts/dev_shell.sh`
    only when an interactive container shell is needed; inside the container use
    `make build`, `make test`, `make test-scripts`, `make quality`,
-   `make sim-headless`, and `make sim-gui`.
+   `make sim-urban-point-to-point-headless`, and
+   `make sim-urban-point-to-point-gui`.
 3. This repository is a ROS 2 workspace. Use `colcon` as the approved build
    entry point. Do not invent a top-level direct CMake workflow unless the
    repository later adds one explicitly.

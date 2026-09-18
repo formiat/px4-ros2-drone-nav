@@ -250,7 +250,7 @@ def capture_diagnostics(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--world", default="generated_city")
+    parser.add_argument("--world", default="urban_circuit_practice_01")
     parser.add_argument("--target", default="x500_lidar_2d_0")
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--topic-duration-s", default=0.8, type=float)

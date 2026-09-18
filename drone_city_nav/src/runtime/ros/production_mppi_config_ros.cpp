@@ -175,10 +175,10 @@ private:
         declarePositiveSize("physical_footprint_axial_samples", 3);
     world.physical_footprint.sweep_step_m =
         declare<double>("physical_footprint_sweep_step_m", 0.25);
-    world.static_occupancy_3d_path = declare<std::string>(
-        "static_occupancy_3d_path", "worlds/generated_city.occupancy3d");
-    world.static_esdf_3d_cache_path = declare<std::string>(
-        "static_esdf_3d_cache_path", "worlds/generated_city.esdf3d");
+    world.static_occupancy_3d_path =
+        declare<std::string>("static_occupancy_3d_path", "");
+    world.static_esdf_3d_cache_path =
+        declare<std::string>("static_esdf_3d_cache_path", "");
     world.static_free_space_topology_3d_path =
         declare<std::string>("static_free_space_topology_3d_path", "");
     world.topics.px4_local_position = declare<std::string>(
@@ -281,22 +281,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("dynamic_objective_replan_period_s", 0.25);
   planning.tracking_objective_ray_sample_spacing_m =
       declare<double>("tracking_objective_ray_sample_spacing_m", 0.25);
-  planning.tracking_capture_radius_m =
-      declare<double>("tracking_capture_radius_m", 5.0);
   planning.static_tracking_esdf_refresh_margin_m =
       declare<double>("static_tracking_esdf_refresh_margin_m", 15.0);
-  planning.direct_tracking_maneuver = DirectTrackingManeuverConfig{
-      .bearing_change_threshold_rad = declare<double>(
-          "direct_tracking_reseed_bearing_change_rad", 0.5235987755982988),
-      .minimum_closing_speed_mps =
-          declare<double>("direct_tracking_minimum_closing_speed_mps", 0.5),
-      .closing_recovery_speed_mps =
-          declare<double>("direct_tracking_closing_recovery_speed_mps", 1.5),
-      .no_closing_duration_s =
-          declare<double>("direct_tracking_no_closing_reseed_delay_s", 1.0),
-      .minimum_reseed_interval_s =
-          declare<double>("direct_tracking_minimum_reseed_interval_s", 0.5),
-  };
 
   planning.optional_constraints = ProductionNavigationOptionalConstraints{
       .clearance_costs_enabled = declare<bool>("clearance_costs_enabled", false),
@@ -528,39 +514,6 @@ void ProductionMppiConfigLoader::declarePlanning() {
   planning.topics.cooperative_passage_state = declare<std::string>(
       "cooperative_passage_state_topic", "/drone_city_nav/cooperative/passage_state");
 
-  planning.noncooperative_avoidance_enabled =
-      declare<bool>("noncooperative_avoidance_enabled", false);
-  planning.topics.noncooperative_tracks = declare<std::string>(
-      "noncooperative_tracks_topic", "/drone_city_nav/noncooperative_tracks");
-  planning.noncooperative_avoidance.prediction_horizon_s =
-      declare<double>("noncooperative_prediction_horizon_s", 4.0);
-  planning.noncooperative_avoidance.strong_separation_m =
-      declare<double>("noncooperative_strong_separation_m", 10.0);
-  planning.noncooperative_avoidance.anticipation_separation_m =
-      declare<double>("noncooperative_anticipation_separation_m", 20.0);
-  planning.noncooperative_avoidance.release_separation_m =
-      declare<double>("noncooperative_release_separation_m", 15.0);
-  planning.noncooperative_avoidance.release_hysteresis_s =
-      declare<double>("noncooperative_release_hysteresis_s", 1.0);
-  planning.noncooperative_avoidance.maximum_track_age_s =
-      declare<double>("noncooperative_maximum_track_age_s", 0.75);
-  planning.noncooperative_avoidance.tracked_aircraft_radius_m =
-      declare<double>("noncooperative_tracked_aircraft_radius_m", 0.82);
-  planning.noncooperative_avoidance.minimum_relative_speed_mps =
-      declare<double>("noncooperative_minimum_relative_speed_mps", 0.05);
-  planning.noncooperative_avoidance.candidate_acceleration_fraction =
-      declare<double>("noncooperative_candidate_acceleration_fraction", 0.95);
-  planning.noncooperative_avoidance.candidate_duration_s =
-      declare<double>("noncooperative_candidate_duration_s", 1.5);
-  planning.noncooperative_avoidance.strong_cost_weight =
-      declare<double>("noncooperative_strong_cost_weight", 4000.0);
-  planning.noncooperative_avoidance.anticipation_cost_weight =
-      declare<double>("noncooperative_anticipation_cost_weight", 40.0);
-  planning.noncooperative_avoidance.time_to_collision_gain_s =
-      declare<double>("noncooperative_time_to_collision_gain_s", 1.0);
-  planning.noncooperative_avoidance.maximum_time_to_collision_multiplier =
-      declare<double>("noncooperative_maximum_ttc_multiplier", 4.0);
-
   planning.liveness.enabled = declare<bool>("liveness_enabled", false);
   planning.liveness.observation_window_s =
       declare<double>("liveness_observation_window_s", 1.0);
@@ -573,8 +526,6 @@ void ProductionMppiConfigLoader::declarePlanning() {
           1, declare<std::int64_t>("liveness_stalled_windows_before_reseed", 2)));
   planning.topics.navigation_objective = declare<std::string>(
       "navigation_objective_topic", "/drone_city_nav/navigation_objective");
-  planning.topics.radar_track_mode_command = declare<std::string>(
-      "radar_track_mode_command_topic", "/drone_city_nav/radar/track_mode_command");
 }
 
 void ProductionMppiConfigLoader::declareControl() {
@@ -590,14 +541,10 @@ void ProductionMppiConfigLoader::declareControl() {
   control.rollout_budget.full_rollouts = mppi.rollouts;
   control.rollout_budget.open_static_rollouts =
       declarePositiveSize("open_static_rollouts", 6144);
-  control.rollout_budget.direct_tracking_rollouts =
-      declarePositiveSize("direct_tracking_rollouts", 4096);
   control.rollout_budget.minimum_reduced_clearance_m =
       static_cast<float>(declare<double>("adaptive_rollout_minimum_clearance_m", 8.0));
   control.rollout_budget.maximum_world_age_ms =
       declare<double>("adaptive_rollout_maximum_world_age_ms", 250.0);
-  control.rollout_budget.maximum_tracking_age_ms =
-      declare<double>("adaptive_rollout_maximum_tracking_age_ms", 250.0);
   const double dt_s = declare<double>("dt_s", 0.05);
   if (!std::isfinite(dt_s) || !(dt_s > 0.0)) {
     throw std::invalid_argument{"dt_s must be finite and positive"};

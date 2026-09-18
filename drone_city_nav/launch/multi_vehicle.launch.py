@@ -14,13 +14,13 @@ from launch_ros.descriptions import ComposableNode
 
 
 _DIAGNOSTICS_SUPPORT = runpy.run_path(
-    str(Path(__file__).with_name("intercept_diagnostics_launch.py"))
+    str(Path(__file__).with_name("multi_vehicle_diagnostics_launch.py"))
 )
 _SCENARIO_SUPPORT = runpy.run_path(
-    str(Path(__file__).with_name("intercept_scenario.py"))
+    str(Path(__file__).with_name("multi_vehicle_scenario.py"))
 )
 _TRUTH_SUPPORT = runpy.run_path(
-    str(Path(__file__).with_name("intercept_truth_launch.py"))
+    str(Path(__file__).with_name("multi_vehicle_truth_launch.py"))
 )
 _MISSION_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_mission_launch.py"))
@@ -40,7 +40,6 @@ _PX4_MAP_FRAME_SUPPORT = runpy.run_path(
 _gazebo_aligned_map_transform_arguments = _PX4_MAP_FRAME_SUPPORT[
     "gazebo_aligned_map_transform_arguments"
 ]
-_load_intercept_scenario = _SCENARIO_SUPPORT["load_intercept_scenario"]
 _load_multi_vehicle_scenario = _SCENARIO_SUPPORT["load_multi_vehicle_scenario"]
 _make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
 _make_diagnostics_container = _DIAGNOSTICS_SUPPORT["make_diagnostics_container"]
@@ -51,7 +50,6 @@ _make_selected_diagnostics_components = _DIAGNOSTICS_SUPPORT[
 _make_world_visualization_component = _DIAGNOSTICS_SUPPORT[
     "make_world_visualization_component"
 ]
-_make_intercept_mission_nodes = _MISSION_SUPPORT["make_intercept_mission_nodes"]
 _make_cooperative_mission_nodes = _MISSION_SUPPORT[
     "make_cooperative_mission_nodes"
 ]
@@ -60,9 +58,6 @@ _DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _make_lidar_topics = _MULTI_VEHICLE_LIDAR_SUPPORT["make_lidar_topics"]
 _make_memory_parameters = _MULTI_VEHICLE_LIDAR_SUPPORT["make_memory_parameters"]
 _optional_bool = _VALUE_SUPPORT["optional_bool"]
-_directional_hypothesis_offsets_rad = _VALUE_SUPPORT[
-    "directional_hypothesis_offsets_rad"
-]
 
 
 def _parameters(document, node_name, overrides):
@@ -71,22 +66,7 @@ def _parameters(document, node_name, overrides):
     return values
 
 
-def _make_role_configuration(
-    scenario, mission_kind, evader_speed_scale, hypotheses_enabled
-):
-    interceptor_colors = (
-        (0.15, 0.75, 1.0),
-        (0.30, 0.95, 0.45),
-        (1.0, 0.60, 0.20),
-        (0.75, 0.35, 1.0),
-        (0.10, 0.90, 0.85),
-        (1.0, 0.45, 0.70),
-    )
-    evader_colors = (
-        (1.0, 0.25, 0.15),
-        (0.85, 0.08, 0.08),
-        (1.0, 0.38, 0.22),
-    )
+def _make_role_configuration(scenario):
     civilian_colors = (
         (1.0, 0.82, 0.15),
         (0.20, 0.82, 1.0),
@@ -95,31 +75,9 @@ def _make_role_configuration(
         (0.78, 0.55, 1.0),
         (0.20, 0.95, 0.82),
     )
-    interceptor_ids = scenario["interceptor_ids"]
-    offsets = _directional_hypothesis_offsets_rad(
-        hypotheses_enabled, len(interceptor_ids), len(scenario["evaders"])
-    )
     roles = {}
-    interceptor_index = 0
-    evader_index = 0
-    civilian_index = 0
     for system_index, vehicle in enumerate(scenario["vehicles"], start=1):
-        is_interceptor = vehicle["role"] == "interceptor"
-        if is_interceptor:
-            color = interceptor_colors[interceptor_index % len(interceptor_colors)]
-            heading_offset = offsets[interceptor_index]
-            rviz_primary = interceptor_index == 0
-            interceptor_index += 1
-        elif vehicle["role"] == "evader":
-            color = evader_colors[evader_index % len(evader_colors)]
-            heading_offset = 0.0
-            rviz_primary = False
-            evader_index += 1
-        else:
-            color = civilian_colors[civilian_index % len(civilian_colors)]
-            heading_offset = 0.0
-            rviz_primary = civilian_index == 0
-            civilian_index += 1
+        civilian_index = system_index - 1
         roles[vehicle["id"]] = {
             "px4_namespace": vehicle["px4_namespace"],
             "model": vehicle["gazebo_model_name"],
@@ -127,20 +85,11 @@ def _make_role_configuration(
             "map_start_y": vehicle["map_start_m"][1],
             "map_start_z": vehicle["map_start_m"][2],
             "target_system": system_index,
-            "rviz_primary": rviz_primary,
-            "speed_scale": 1.0 if is_interceptor else evader_speed_scale,
-            "is_interceptor": is_interceptor,
+            "rviz_primary": civilian_index == 0,
             "role": vehicle["role"],
-            "role_code": {"interceptor": 1, "evader": 2, "civilian": 3}[
-                vehicle["role"]
-            ],
-            "prediction_heading_offset_rad": heading_offset,
-            "rviz_color": color,
+            "role_code": 1,
+            "rviz_color": civilian_colors[civilian_index % len(civilian_colors)],
         }
-    if mission_kind == "cooperative_traffic" and any(
-        config["role"] != "civilian" for config in roles.values()
-    ):
-        raise RuntimeError("Cooperative traffic requires only civilian vehicles")
     return roles
 
 
@@ -167,17 +116,11 @@ def _cpu_affinity_prefix(cpu_list):
     return f"taskset --cpu-list {value}"
 
 
-def generate_multi_vehicle_launch_description(mission_kind):
-    if mission_kind not in ("intercept", "cooperative_traffic"):
-        raise RuntimeError(f"Unsupported multi-vehicle mission '{mission_kind}'")
-    cooperative_traffic = mission_kind == "cooperative_traffic"
+def generate_multi_vehicle_launch_description():
+    mission_kind = "cooperative_traffic"
     package_share = Path(get_package_share_directory("drone_city_nav"))
     params_file = LaunchConfiguration("params_file")
-    scenario_argument = (
-        "cooperative_traffic_scenario_path"
-        if cooperative_traffic
-        else "intercept_scenario_path"
-    )
+    scenario_argument = "cooperative_traffic_scenario_path"
     scenario_path = LaunchConfiguration(scenario_argument)
     enable_rviz = LaunchConfiguration("enable_rviz")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
@@ -190,16 +133,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
         with open(params_path, encoding="utf-8") as stream:
             document = yaml.safe_load(stream)
         profile = _validate_lidar_profile(lidar_profile.perform(context))
-        if cooperative_traffic:
-            scenario = _load_multi_vehicle_scenario(
-                scenario_path.perform(context), profile
-            )
-            if not scenario["civilian_ids"] or scenario["evaders"]:
-                raise RuntimeError("Scenario is not a cooperative traffic mission")
-        else:
-            scenario = _load_intercept_scenario(
-                scenario_path.perform(context), profile
-            )
+        scenario = _load_multi_vehicle_scenario(
+            scenario_path.perform(context), profile
+        )
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), False
         )
@@ -222,27 +158,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
         horizontal_acceleration_override = LaunchConfiguration(
             "maximum_horizontal_acceleration_mps2"
         ).perform(context)
-        configured_cruise_speed_mps = float(
-            document["production_mppi_node"]["ros__parameters"]["cruise_speed_mps"]
-        )
-        interceptor_speed_mps = float(
-            cruise_speed_override or configured_cruise_speed_mps
-        )
-        directional_hypotheses_enabled = False
-        noncooperative_avoidance_enabled = False
-        if not cooperative_traffic:
-            directional_hypotheses_enabled = _optional_bool(
-                LaunchConfiguration(
-                    "intercept_directional_hypotheses_enabled"
-                ).perform(context),
-                False,
-            )
-            noncooperative_avoidance_enabled = _optional_bool(
-                LaunchConfiguration(
-                    "intercept_noncooperative_avoidance_enabled"
-                ).perform(context),
-                False,
-            )
         shutdown_on_terminal_outcome = _optional_bool(
             LaunchConfiguration("shutdown_on_terminal_outcome").perform(context), True
         )
@@ -294,38 +209,22 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "ros__parameters"
             ]["static_free_space_topology_3d_path"]
 
-        roles = _make_role_configuration(
-            scenario,
-            mission_kind,
-            float(LaunchConfiguration("evader_speed_scale").perform(context)),
-            directional_hypotheses_enabled,
-        )
+        roles = _make_role_configuration(scenario)
         world_name = scenario["gazebo_world_name"]
         navigation = scenario["navigation"]
         px4_to_map_matrix = scenario["px4_to_map_matrix"]
         gazebo_axes_swapped = scenario["gazebo_axes_swapped"]
-        cooperative_desired_separation_m = 5.0
-        cooperative_release_separation_m = 7.0
-        cooperative_prediction_horizon_s = 5.0
-        noncooperative_track_maximum_age_s = float(
-            LaunchConfiguration("noncooperative_track_maximum_age_s").perform(context)
+        cooperative_desired_separation_m = float(
+            LaunchConfiguration(
+                "cooperative_desired_minimum_separation_m"
+            ).perform(context)
         )
-        if cooperative_traffic:
-            cooperative_desired_separation_m = float(
-                LaunchConfiguration(
-                    "cooperative_desired_minimum_separation_m"
-                ).perform(context)
-            )
-            cooperative_release_separation_m = float(
-                LaunchConfiguration("cooperative_release_separation_m").perform(
-                    context
-                )
-            )
-            cooperative_prediction_horizon_s = float(
-                LaunchConfiguration("cooperative_prediction_horizon_s").perform(
-                    context
-                )
-            )
+        cooperative_release_separation_m = float(
+            LaunchConfiguration("cooperative_release_separation_m").perform(context)
+        )
+        cooperative_prediction_horizon_s = float(
+            LaunchConfiguration("cooperative_prediction_horizon_s").perform(context)
+        )
         role_names = list(roles)
         spectator_initial_vehicle_id = LaunchConfiguration(
             "spectator_initial_vehicle_id"
@@ -424,13 +323,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 px4_to_map_matrix,
                 use_static_map,
                 obstacle_memory_enabled,
-                cooperative_traffic,
-                float(
-                    LaunchConfiguration("radar_maximum_scan_interval_s").perform(
-                        context
-                    )
-                )
-                + 0.5,
+                True,
                 scan_topic,
                 raw_snapshot,
                 raw_delta,
@@ -491,19 +384,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "path_topic": path_topic,
                     "markers_topic": marker_topic,
                     "navigation_objective_topic": f"{prefix}/navigation_objective",
-                    "radar_track_mode_command_topic": (
-                        f"{prefix}/radar/track_mode_command"
-                    ),
                     "diagnostics_output_dir": f"log/{mission_kind}/{role}/mppi",
-                    "cooperative_traffic_enabled": cooperative_traffic,
-                    "noncooperative_avoidance_enabled": (
-                        noncooperative_avoidance_enabled
-                        and config["role"] == "evader"
-                    ),
-                    "noncooperative_tracks_topic": f"{prefix}/avoidance_tracks",
-                    "noncooperative_maximum_track_age_s": (
-                        noncooperative_track_maximum_age_s
-                    ),
+                    "cooperative_traffic_enabled": True,
                     "vehicle_id": role,
                     "cooperative_maneuver_command_topic": (
                         f"{prefix}/cooperative/command"
@@ -519,11 +401,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                         role_index * planner_tick_phase_step_s
                     ),
                     "cruise_speed_mps": document["production_mppi_node"]
-                    ["ros__parameters"]["cruise_speed_mps"]
-                    * config["speed_scale"],
+                    ["ros__parameters"]["cruise_speed_mps"],
                     "absolute_speed_limit_mps": document["production_mppi_node"]
-                    ["ros__parameters"]["absolute_speed_limit_mps"]
-                    * config["speed_scale"],
+                    ["ros__parameters"]["absolute_speed_limit_mps"],
                     "maximum_horizontal_acceleration_mps2": document[
                         "production_mppi_node"
                     ]["ros__parameters"]["maximum_horizontal_acceleration_mps2"],
@@ -534,12 +414,10 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     tracking_error_tube_response_time_override
                 )
             if cruise_speed_override:
-                planner_params["cruise_speed_mps"] = (
-                    float(cruise_speed_override) * config["speed_scale"]
-                )
+                planner_params["cruise_speed_mps"] = float(cruise_speed_override)
             if speed_limit_override:
-                planner_params["absolute_speed_limit_mps"] = (
-                    float(speed_limit_override) * config["speed_scale"]
+                planner_params["absolute_speed_limit_mps"] = float(
+                    speed_limit_override
                 )
             if horizontal_acceleration_override:
                 planner_params["maximum_horizontal_acceleration_mps2"] = float(
@@ -750,38 +628,23 @@ def generate_multi_vehicle_launch_description(mission_kind):
         )
         diagnostics_components.append(_make_world_visualization_component(world_params))
         nodes.append(_make_simulation_truth_adapter(scenario, control_prefix))
-        if cooperative_traffic:
-            nodes.extend(
-                _make_cooperative_mission_nodes(
-                    scenario,
-                    roles,
-                    document,
-                    control_prefix,
-                    shutdown_on_terminal_outcome,
-                    cooperative_desired_separation_m,
-                    cooperative_release_separation_m,
-                    cooperative_prediction_horizon_s,
-                    float(
-                        LaunchConfiguration("cooperative_mission_timeout_s").perform(
-                            context
-                        )
-                    ),
-                )
+        nodes.extend(
+            _make_cooperative_mission_nodes(
+                scenario,
+                roles,
+                document,
+                control_prefix,
+                shutdown_on_terminal_outcome,
+                cooperative_desired_separation_m,
+                cooperative_release_separation_m,
+                cooperative_prediction_horizon_s,
+                float(
+                    LaunchConfiguration("cooperative_mission_timeout_s").perform(
+                        context
+                    )
+                ),
             )
-        else:
-            nodes.extend(
-                _make_intercept_mission_nodes(
-                    context,
-                    scenario,
-                    roles,
-                    document,
-                    interceptor_speed_mps,
-                    control_prefix,
-                    shutdown_on_terminal_outcome,
-                    noncooperative_avoidance_enabled,
-                    static_path,
-                )
-            )
+        )
         diagnostics_components.extend(
             _make_selected_diagnostics_components(
                 role_names,
@@ -836,11 +699,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 default_value=str(
                     package_share
                     / "config"
-                    / (
-                        "cooperative_traffic_scenario.json"
-                        if cooperative_traffic
-                        else "intercept_scenario.json"
-                    )
+                    / "cooperative_traffic_urban_scenario.json"
                 ),
             ),
             DeclareLaunchArgument("enable_rviz", default_value="false"),
@@ -859,80 +718,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "static_free_space_topology_3d_path", default_value=""
             ),
             DeclareLaunchArgument("static_esdf_3d_cache_path", default_value=""),
-            DeclareLaunchArgument(
-                "intercept_minimum_prediction_horizon_s", default_value="0.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_maximum_prediction_horizon_s", default_value="15.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_ahead_maximum_prediction_horizon_s",
-                default_value="1.0",
-            ),
-            DeclareLaunchArgument(
-                "intercept_fallback_prediction_horizon_s", default_value="1.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_minimum_target_speed_mps", default_value="0.5"
-            ),
-            DeclareLaunchArgument("intercept_ahead_enter_m", default_value="5.0"),
-            DeclareLaunchArgument("intercept_ahead_exit_m", default_value="0.0"),
-            DeclareLaunchArgument(
-                "intercept_ahead_corridor_enter_m", default_value="15.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_ahead_corridor_exit_m", default_value="20.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_horizon_smoothing_time_constant_s", default_value="0.5"
-            ),
-            DeclareLaunchArgument(
-                "intercept_directional_hypotheses_enabled", default_value="false"
-            ),
-            DeclareLaunchArgument(
-                "intercept_noncooperative_avoidance_enabled",
-                default_value="false",
-            ),
-            DeclareLaunchArgument(
-                "intercept_hypothesis_zero_distance_m", default_value="30.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_hypothesis_full_distance_m", default_value="120.0"
-            ),
-            DeclareLaunchArgument(
-                "intercept_maximum_hypothesis_lateral_offset_m",
-                default_value="70.0",
-            ),
-            DeclareLaunchArgument(
-                "radar_minimum_scan_interval_s", default_value="0.1"
-            ),
-            DeclareLaunchArgument(
-                "radar_maximum_scan_interval_s", default_value="3.0"
-            ),
-            DeclareLaunchArgument(
-                "radar_initial_scan_interval_s", default_value="0.1"
-            ),
-            DeclareLaunchArgument(
-                "radar_maximum_interval_step_s", default_value="0.25"
-            ),
-            DeclareLaunchArgument(
-                "radar_interval_step_correlation", default_value="0.85"
-            ),
-            DeclareLaunchArgument("radar_track_interval_s", default_value="0.05"),
-            DeclareLaunchArgument(
-                "noncooperative_radar_rate_hz", default_value="20.0"
-            ),
-            DeclareLaunchArgument(
-                "noncooperative_radar_maximum_range_m", default_value="100.0"
-            ),
-            DeclareLaunchArgument(
-                "noncooperative_radar_los_sample_spacing_m", default_value="0.25"
-            ),
-            DeclareLaunchArgument(
-                "noncooperative_track_maximum_age_s", default_value="0.75"
-            ),
-            DeclareLaunchArgument("radar_random_seed", default_value="42"),
-            DeclareLaunchArgument("evader_speed_scale", default_value="1.0"),
             DeclareLaunchArgument(
                 "cooperative_desired_minimum_separation_m", default_value="5.0"
             ),

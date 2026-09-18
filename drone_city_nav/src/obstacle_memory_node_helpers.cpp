@@ -270,12 +270,6 @@ DynamicAgentLidarStateConfig declareDynamicAgentLidarStateConfig(rclcpp::Node& n
       .cooperative_enabled =
           node.declare_parameter<bool>("cooperative_traffic_enabled", false),
       .own_vehicle_id = node.declare_parameter<std::string>("vehicle_id", ""),
-      .tracked_agent_radius_m =
-          node.declare_parameter<double>("tracked_agent_filter_radius_m", 1.0),
-      .tracked_agent_vertical_tolerance_m = node.declare_parameter<double>(
-          "tracked_agent_filter_vertical_tolerance_m", 1.0),
-      .tracked_agent_maximum_age_s =
-          node.declare_parameter<double>("tracked_agent_maximum_age_s", 0.5),
       .cooperative_peer_horizontal_margin_m = node.declare_parameter<double>(
           "cooperative_peer_filter_horizontal_margin_m", 0.0),
       .cooperative_peer_vertical_margin_m = node.declare_parameter<double>(
@@ -311,9 +305,6 @@ std::span<const float> DynamicAgentLidarScanFilterResult::persistentRanges(
   if (cooperative_filter_applied) {
     return cooperative_memory_ranges;
   }
-  if (tracked_agent_filter_applied) {
-    return tracked_agent_ranges;
-  }
   return raw_ranges;
 }
 
@@ -334,16 +325,7 @@ filterDynamicAgentsFromLidarScan(const DynamicAgentLidarScanView& scan,
         };
       };
 
-  std::span<const float> persistent_ranges = scan.ranges;
-  if (!filter_plan.tracked_agent_exclusions.empty()) {
-    TrackedAgentLidarFilterResult filtered = filterTrackedAgentLidarHits(
-        scan.ranges, make_filter_input(filter_plan.tracked_agent_exclusions));
-    result.tracked_agent_filtered_beams = filtered.filtered_beams;
-    result.tracked_agent_matches = filtered.matched_agents;
-    result.tracked_agent_ranges = std::move(filtered.ranges);
-    result.tracked_agent_filter_applied = true;
-    persistent_ranges = result.tracked_agent_ranges;
-  }
+  const std::span<const float> persistent_ranges = scan.ranges;
   if (!filter_plan.cooperative_memory_exclusions.empty()) {
     TrackedAgentLidarFilterResult filtered = filterTrackedAgentLidarHits(
         persistent_ranges,

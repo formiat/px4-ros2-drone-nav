@@ -81,23 +81,5 @@ TEST(MppiNominalReseedTrackerTest, ReseedsAgainstReplacementRoute) {
   EXPECT_EQ(replacement.no_eligible_phase, MppiNoEligiblePhase::kAwaitingReseedResult);
 }
 
-TEST(MppiNominalReseedTrackerTest, ReseedsOnDirectTrackingManeuver) {
-  MppiNominalReseedTracker tracker;
-  static_cast<void>(
-      tracker.update(MppiNominalReseedObservation{.route_generation = 1U}));
-
-  const MppiNominalReseedUpdate update = tracker.update(MppiNominalReseedObservation{
-      .route_generation = 1U,
-      .direct_tracking_maneuver_generation = 1U,
-  });
-  const MppiNominalReseedUpdate repeated = tracker.update(MppiNominalReseedObservation{
-      .route_generation = 1U,
-      .direct_tracking_maneuver_generation = 1U,
-  });
-
-  EXPECT_TRUE(update.requested);
-  EXPECT_FALSE(repeated.requested);
-}
-
 } // namespace
 } // namespace drone_city_nav

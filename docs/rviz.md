@@ -13,16 +13,16 @@ top-down configuration instead of the `drone_follow` view.
 
 - `map`: planner and mission frame.
 - `gazebo_map`: Gazebo-aligned visualization frame, the SDF frame of the
-  canonical world.
+  simulated world.
 - `drone_follow`: visualization-only moving target published by offboard.
 
-The launch derives the `gazebo_map -> map` transform from the canonical
-world's `map_to_sdf`. The generated city exchanges its map axes in the SDF
-frame, which is a reflection and has no rigid-transform equivalent, so it keeps
-the legacy rotation that exchanges X/Y and flips Z; map-frame overlays negate Z
-and `gazebo_map`-frame overlays exchange X/Y to compensate. A world whose map
-frame equals the SDF frame, such as Urban Circuit, gets the identity transform
-and every overlay renders map coordinates verbatim. All RViz publishers receive
+The launch derives the `gazebo_map -> map` transform from the world's
+`map_to_sdf`. A world whose map frame equals the SDF frame, such as Urban
+Circuit, gets the identity transform and every overlay renders map coordinates
+verbatim. A world that exchanges its map axes in the SDF frame is a reflection
+with no rigid-transform equivalent, so it gets a rotation that exchanges X/Y
+and flips Z; map-frame overlays then negate Z and `gazebo_map`-frame overlays
+exchange X/Y to compensate. All RViz publishers receive
 the same `gazebo_aligned_rviz_axes_swapped` parameter, so a mirrored picture
 means the parameter and the transform disagree, not a planner coordinate error.
 
@@ -34,7 +34,7 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Static City Map Points | `/drone_city_nav/static_map_points` |
 | Selected MPPI Horizon | `/drone_city_nav/mppi/path` |
 | Selected MPPI Markers | `/drone_city_nav/mppi/markers` |
-| Interceptor Directions | `/drone_city_nav/interceptor_directions` |
+| Vehicle Directions | `/drone_city_nav/vehicle_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
 | Lidar Hit Points | `/drone_city_nav/lidar_debug_points` |
 | Current 3D Lidar Returns | `/drone_city_nav/current_lidar_returns_3d` |
@@ -44,17 +44,16 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Accumulated 3D Obstacle Memory | `/drone_city_nav/raw_memory_obstacle_points_3d` |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
 
-In the `3x1` intercept mission, the lightweight planner paths are also shown from
-`/vehicles/interceptor_0/mppi/path` through
-`/vehicles/interceptor_2/mppi/path`, each with a stable color. The global MPPI,
+In the cooperative traffic mission, the lightweight planner paths are also
+shown from `/vehicles/civilian_0/mppi/path` through
+`/vehicles/civilian_2/mppi/path`, each with a stable color. The global MPPI,
 memory, and lidar topics above represent only the vehicle selected by
 `/drone_city_nav/spectator_target`. The diagnostics mux clears old marker and
-point-cloud state before switching those topics. Optional displays
-for each interceptor's complete memory point cloud are present but disabled by
-default, so they create no RViz subscription or rendering load until enabled.
-The `2x2` script selects `evader_0` initially and changes the same RViz follow
-frame and selected topics to `evader_1` after a typed destruction event when it
-is still alive.
+point-cloud state before switching those topics. Optional displays for each
+vehicle's complete memory point cloud are present but disabled by default, so
+they create no RViz subscription or rendering load until enabled. The
+`next_living` reselection policy moves the follow frame and the selected topics
+to the next vehicle in scenario order after a typed destruction event.
 
 ## MPPI Markers
 
@@ -81,7 +80,7 @@ exposed through diagnostics rather than separate RViz markers.
   for the selected spectator in the 3D profile.
 - Remembered hits persist after the obstacle leaves the current scan.
 - Raw occupied cells are the merged planner evidence.
-- Static points are a downsampled visualization generated from canonical
+- Static points are a downsampled visualization generated from raw
   Occupancy3D. The default four-cell stride keeps RViz responsive while the
   planner continues using the full 0.5 m map. A deterministic muted eight-color
   palette separates neighboring city blocks without connected-component or

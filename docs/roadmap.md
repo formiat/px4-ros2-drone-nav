@@ -280,7 +280,7 @@ navigation invariants hold throughout: a peer the vehicle does not hear of
 is unknown, not an obstacle and not a prohibition; nothing here adds a
 latch, a penalty on free space or a restriction of motion.
 
-### Stage 0: Remove The Interception Missions And The Radar
+### Stage 0: Remove The Interception Missions And The Radar (Done)
 
 The interception missions (items 1 to 5 and 6.1) and the airborne radar
 they rest on leave the repository first. The radar is the one sensor of the
@@ -298,10 +298,13 @@ multi-vehicle launch (55 references), the Makefile (19), the simulation
 script (14), README (57) and `architecture.md` (43). What stays: the
 multi-vehicle launch and spectator infrastructure, the cooperative agents
 and referee, and the `Completed` entries 1 to 5 and 6.1 as history, each
-with the line that this stage removed the feature. The removal is complete
-when the cooperative acceptance series (three flights) passes unchanged,
-every unit and script test passes with the interception ones deleted rather
-than skipped, and no document names a removed node, scenario or command.
+with the line that this stage removed the feature. Done on 2026-09-17, together with the grid-city world the interception
+missions flew in: the world specification, its generated SDF, occupancy, ESDF
+and topology artifacts, the world generator, the two grid-city scenarios and
+the grid-city make targets and wrappers went with them. Only the imported Urban
+Circuit environment remains, with its point-to-point and cooperative traffic
+missions. Unit and script tests were deleted rather than skipped, and no
+document names a removed node, scenario or command.
 
 ### Stage 1: A Link Model Between Vehicles
 
@@ -310,8 +313,8 @@ simulator's true vehicle positions and the world to decide what radio does,
 and it hands each vehicle only the messages that arrive. Every message a
 vehicle sends enters the link simulator on the vehicle's own output topic
 and leaves on the receiving vehicle's input topic; a contract test holds
-that no agent subscribes to another vehicle's output directly, as the radar
-anti-leak test held its graph. Three channel classes, each a parameter set
+that no agent subscribes to another vehicle's output directly, the way the
+cooperative referee's ground-truth boundary holds its graph. Three channel classes, each a parameter set
 of the same component, chosen per mission:
 
 - **mesh** (Wi-Fi 802.11s or batman-adv class): a pair is linked in line
@@ -343,7 +346,7 @@ first is the one to build:
    the bridge carries to the link simulator: exact geometry, no map, six
    pairs at 10 Hz for four vehicles; it is checked on Urban Circuit Practice
    01 against pairs known to stand inside and outside the same structure;
-2. the radar's method, a sampled walk along the segment through an
+2. a sampled walk along the segment through an
    evaluation-only voxel occupancy of the world built offline from the
    SDF collisions (`voxelize_sdf_collisions`), kept as the fallback because
    the urban location has no valid such map until item 11 delivers one.
@@ -414,7 +417,7 @@ Each entry keeps its original number. The release that shipped it is linked;
 the detailed contracts live in the code, its tests, `CHANGELOG.md`, and the
 documents named below.
 
-### 1. Interceptor Drone (Completed)
+### 1. Interceptor Drone (Completed, Removed)
 
 Shipped before the first tag; see the `v0.1.0` entry in `CHANGELOG.md`. Three
 interceptors pursue one attacking drone in isolated PX4 and ROS namespaces,
@@ -422,7 +425,9 @@ each from an independent radar-derived target track with predictive guidance
 and no terminal goal hold. A separation of 5 m or less destroys the capturing
 pair and records the intercept outcome.
 
-### 2. Radar Measurement Simulation (Completed)
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
+
+### 2. Radar Measurement Simulation (Completed, Removed)
 
 Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). The interceptor
 sees only range, bearing, elevation, and radial velocity from an ideal radar
@@ -431,7 +436,9 @@ visibility commands 20 Hz track mode. Truth adapters, referees, radar
 simulators, trackers, and guidance are separate nodes, and contract tests keep
 absolute target position out of the interceptor-facing `RadarScan`.
 
-### 3. Target Motion Prediction (Completed)
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
+
+### 3. Target Motion Prediction (Completed, Removed)
 
 Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Guidance solves
 the constant-velocity intercept from the latest track, capped at 15 s and at
@@ -440,7 +447,9 @@ The planner clips the prediction at the first raw occupied cell without
 inflation or prohibited regions; swept visibility of the target switches to
 direct moving-target MPPI pursuit.
 
-### 4. Multiple Interceptors Versus One Attacker (Completed)
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
+
+### 4. Multiple Interceptors Versus One Attacker (Completed, Removed)
 
 Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Three interceptors
 from three city corners own independent PX4, navigation, radar, tracker, and
@@ -448,7 +457,9 @@ guidance pipelines; optional directional hypotheses converge to zero near the
 attacker. The first interceptor within 5 m destroys the pair, survivors enter a
 typed stationary hold, and interceptor-to-interceptor proximity is collateral.
 
-### 5. Multiple Interceptors Versus Multiple Attackers (Completed)
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
+
+### 5. Multiple Interceptors Versus Multiple Attackers (Completed, Removed)
 
 Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). The generic N x M
 launch pipeline runs the 2x2 scenario through the `sim_multi_intercept_*.sh`
@@ -456,6 +467,8 @@ wrappers. Each interceptor keeps one radar-derived track per detection, a typed
 assignment coordinator minimizes estimated intercept time with hold, threshold,
 and confirmation hysteresis, and the referee records one terminal outcome per
 attacker. Attackers are not respawned.
+
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
 
 ### 6. Cooperative Multi-Drone Air Traffic (Completed)
 
@@ -467,7 +480,7 @@ grid or inflated obstacle; static passages expose raw-validated lane capacity
 with deterministic right-of-way. Static and no-static scenarios passed the
 referee.
 
-### 6.1. Non-Cooperative Collision Avoidance In Interception Missions (Completed)
+### 6.1. Non-Cooperative Collision Avoidance In Interception Missions (Completed, Removed)
 
 Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Every attacker
 carries an anonymous airborne radar and a variable-time tracker; a finite
@@ -475,6 +488,8 @@ trajectory cost below 10 m with anticipation to 20 m and a raw-validated
 maximin acquisition drive avoidance. Raw occupancy remains stronger than
 separation and no exclusion volume exists, so physical interception stays
 possible. The 3x1 and 2x2 scenarios passed with and without a static map.
+
+Removed from the repository by item 15 stage 0 on 2026-09-17; this entry is history.
 
 ### 7. Advanced 3D Passages (Completed)
 
@@ -562,9 +577,10 @@ execution-ownership gaps, planner p95 between 153 and 163 ms, mean flight
 speed between 2.72 and 3.19 m/s.
 
 Not repeated at closure and carried into item 9 stage A: the three-run
-Manhattan gate, the 97 and 99 percent availability targets (measured 88 to 95
-percent after bootstrap), and the cooperative and interception re-flights. The
-technical debt measured during closure is listed in item 10.
+grid-city gate (that world has since been removed), the 97 and 99 percent
+availability targets (measured 88 to 95 percent after bootstrap), and the
+cooperative re-flights. The technical debt measured during closure is listed in
+item 10.
 
 ### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
 

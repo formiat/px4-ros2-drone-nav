@@ -1,4 +1,3 @@
-#include "drone_city_nav/intercept_mission.hpp"
 #include "drone_city_nav/map_to_sdf_transform.hpp"
 #include "drone_city_nav/msg/simulation_truth_alignment.hpp"
 #include "drone_city_nav/msg/simulation_truth_state.hpp"
@@ -24,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "intercept_ros_utils.hpp"
+#include "multi_vehicle_ros_utils.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -64,19 +63,19 @@ public:
   SimulationTruthAdapterNode()
       : Node{"simulation_truth_adapter_node"} {
     vehicle_ids_ = declare_parameter<std::vector<std::string>>(
-        "vehicle_ids", {"interceptor_0", "interceptor_1", "interceptor_2", "evader"});
+        "vehicle_ids", {"civilian_0", "civilian_1", "civilian_2", "civilian_3"});
     gazebo_model_names_ = declare_parameter<std::vector<std::string>>(
-        "gazebo_model_names", {"x500_lidar_2d_0", "x500_lidar_2d_1", "x500_lidar_2d_2",
-                               "x500_lidar_2d_evader_3"});
+        "gazebo_model_names",
+        {"x500_lidar_2d_0", "x500_lidar_2d_1", "x500_lidar_2d_2", "x500_lidar_2d_3"});
     navigation_state_topics_ = declare_parameter<std::vector<std::string>>(
         "navigation_state_topics",
-        {"/vehicles/interceptor_0/state", "/vehicles/interceptor_1/state",
-         "/vehicles/interceptor_2/state", "/vehicles/evader/state"});
+        {"/vehicles/civilian_0/state", "/vehicles/civilian_1/state",
+         "/vehicles/civilian_2/state", "/vehicles/civilian_3/state"});
     truth_state_topics_ = declare_parameter<std::vector<std::string>>(
-        "truth_state_topics", {"/simulation_truth/vehicles/interceptor_0/state",
-                               "/simulation_truth/vehicles/interceptor_1/state",
-                               "/simulation_truth/vehicles/interceptor_2/state",
-                               "/simulation_truth/vehicles/evader/state"});
+        "truth_state_topics", {"/simulation_truth/vehicles/civilian_0/state",
+                               "/simulation_truth/vehicles/civilian_1/state",
+                               "/simulation_truth/vehicles/civilian_2/state",
+                               "/simulation_truth/vehicles/civilian_3/state"});
     const std::size_t vehicle_count = vehicle_ids_.size();
     if (vehicle_count == 0U) {
       throw std::invalid_argument{"simulation truth adapter requires vehicles"};
@@ -167,7 +166,7 @@ public:
                                        "/simulation_truth/alignment"),
         rclcpp::QoS{1}.reliable().transient_local());
     pose_topic_ = declare_parameter<std::string>(
-        "gazebo_pose_topic", "/world/generated_city/dynamic_pose/info");
+        "gazebo_pose_topic", "/world/urban_circuit_practice_01/dynamic_pose/info");
     if (!gazebo_node_.Subscribe(pose_topic_, &SimulationTruthAdapterNode::onGazeboPose,
                                 this)) {
       throw std::runtime_error{"failed to subscribe to Gazebo pose topic: " +

@@ -28,7 +28,6 @@ ROUTE_ACTIVATION_PREPARATION = (
     EXECUTION_RUNTIME / "route_activation_preparation_3d.cpp"
 )
 ROUTE_EXECUTION = EXECUTION_RUNTIME / "production_mppi_route_execution.cpp"
-INTERCEPT_REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 CAPTURE_GATE_HEADER = INCLUDE / "mission_waypoint_capture_gate.hpp"
 CAPTURE_GATE_TEST = PACKAGE / "tests" / "mission_waypoint_capture_gate_test.cpp"
 
@@ -102,23 +101,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             capture_test,
         )
 
-    def test_intercept_horizon_transport_is_reliable(self) -> None:
-        referee = INTERCEPT_REFEREE.read_text(encoding="utf-8")
-        self.assertEqual(
-            referee.count(
-                "runtime.horizon_sub = "
-                "create_subscription<msg::MppiTrajectoryHorizon>("
-            ),
-            2,
-        )
-        self.assertEqual(
-            referee.count("topics.execution_horizon[index], control_feedback_qos"),
-            2,
-        )
-        self.assertNotIn(
-            "topics.execution_horizon[index], rclcpp::QoS{10}.best_effort()",
-            referee,
-        )
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,10 +23,7 @@ class FreeSpaceTopologyContractTest(unittest.TestCase):
             document = yaml.safe_load(stream)
         planner = document["production_mppi_node"]["ros__parameters"]
         visualization = document["world_visualization_node"]["ros__parameters"]
-        self.assertEqual(
-            "worlds/generated_city.topology3d",
-            planner["static_free_space_topology_3d_path"],
-        )
+        self.assertEqual("", planner["static_free_space_topology_3d_path"])
         self.assertNotIn("static_free_space_topology_3d_path", visualization)
 
     def test_launches_forward_an_explicit_topology_path(self) -> None:

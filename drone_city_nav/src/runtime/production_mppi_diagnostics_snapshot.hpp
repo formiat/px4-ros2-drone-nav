@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -79,7 +78,6 @@ struct ProductionMppiDiagnosticsSnapshot {
   ProductionMppiStability stability{};
   ProductionMppiPredictionError prediction{};
   MppiLivenessResult liveness{};
-  DirectTrackingManeuverUpdate direct_tracking_maneuver{};
   MppiSpeedPolicyResult speed_policy{};
   RouteProgressUpdate3D route_progress{};
   MppiEligibleRolloutUpdate no_eligible_recovery{};
@@ -109,7 +107,6 @@ struct ProductionMppiDiagnosticsSnapshot {
       ProductionMppiPreviousControlSource::kEngineFallback};
   MppiRolloutBudgetDecision rollout_budget{};
   ProductionMppiCooperativeUpdate cooperative{};
-  ProductionMppiNonCooperativeUpdate noncooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
   std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
 };

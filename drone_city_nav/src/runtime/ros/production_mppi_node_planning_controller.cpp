@@ -53,8 +53,7 @@ ProductionMppiNode::runPlanningController(ProductionMppiControllerTick tick) {
   }
   mppi::MppiTickResult& result = output.result;
   if (result.route_directed_candidate_injected &&
-      !result.route_directed_candidate_device_feasible &&
-      !tick.direct_tracking_interception) {
+      !result.route_directed_candidate_device_feasible) {
     // A route-directed seed is only one controller candidate. Its rejection does
     // not invalidate the certified route geometry while the remaining MPPI
     // rollouts can still provide an executable control result.
@@ -67,7 +66,6 @@ ProductionMppiNode::runPlanningController(ProductionMppiControllerTick tick) {
         result.feasibility_contract.available ? "true" : "false");
   }
   if (output.no_eligible_recovery.route_replan_requested &&
-      !tick.direct_tracking_interception &&
       config_.planning.optional_constraints.no_eligible_route_replan_enabled) {
     requestRouteRelease(RouteReleaseReason3D::kNoEligibleRollouts,
                         tick.route_generation);

@@ -10,20 +10,20 @@ TEST(SpectatorDiagnosticsSelectionTest, UngatedSelectionRemainsActive) {
 
   EXPECT_FALSE(selection.gated());
   EXPECT_TRUE(selection.selected());
-  EXPECT_FALSE(selection.select("interceptor_2"));
+  EXPECT_FALSE(selection.select("civilian_2"));
   EXPECT_TRUE(selection.selected());
 }
 
 TEST(SpectatorDiagnosticsSelectionTest, GatedSelectionTracksVehicleId) {
-  SpectatorDiagnosticsSelection selection{"interceptor_1"};
+  SpectatorDiagnosticsSelection selection{"civilian_1"};
 
   EXPECT_TRUE(selection.gated());
   EXPECT_FALSE(selection.selected());
-  EXPECT_FALSE(selection.select("interceptor_0"));
-  EXPECT_TRUE(selection.select("interceptor_1"));
+  EXPECT_FALSE(selection.select("civilian_0"));
+  EXPECT_TRUE(selection.select("civilian_1"));
   EXPECT_TRUE(selection.selected());
-  EXPECT_FALSE(selection.select("interceptor_1"));
-  EXPECT_TRUE(selection.select("interceptor_2"));
+  EXPECT_FALSE(selection.select("civilian_1"));
+  EXPECT_TRUE(selection.select("civilian_2"));
   EXPECT_FALSE(selection.selected());
 }
 

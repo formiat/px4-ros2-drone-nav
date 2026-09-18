@@ -41,7 +41,7 @@ class GazeboGuiControlTest(unittest.TestCase):
                 gui.CommandResult(
                     0,
                     "No service providers on service "
-                    "[/world/generated_city/scene/info]\n",
+                    "[/world/urban_circuit_practice_01/scene/info]\n",
                     "",
                 ),
                 gui.CommandResult(
@@ -55,7 +55,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with mock.patch.object(gui.time, "sleep"):
             exit_code = gui.wait_for_world(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 wait_s=2,
                 runner=runner,
             )
@@ -63,7 +63,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(runner.calls), 2)
         self.assertEqual(runner.calls[0][:2], ["service", "-i"])
-        self.assertIn("/world/generated_city/scene/info", runner.calls[0])
+        self.assertIn("/world/urban_circuit_practice_01/scene/info", runner.calls[0])
 
     def test_wait_for_world_fails_when_the_deadline_expires(self) -> None:
         runner = FakeRunner(
@@ -72,7 +72,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with mock.patch.object(gui.time, "sleep"):
             exit_code = gui.wait_for_world(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 wait_s=2,
                 runner=runner,
             )
@@ -83,7 +83,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         runner = FakeRunner()
 
         exit_code = gui.configure_world_running(
-            world="generated_city",
+            world="urban_circuit_practice_01",
             wait_s=5,
             runner=runner,
             required_confirmations=3,
@@ -91,7 +91,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(runner.calls), 3)
-        self.assertIn("/world/generated_city/control", runner.calls[0])
+        self.assertIn("/world/urban_circuit_practice_01/control", runner.calls[0])
         self.assertIn("pause: false", runner.calls[0])
 
     def test_follow_camera_publishes_expected_commands(self) -> None:
@@ -112,7 +112,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         )
 
         exit_code = gui.configure_follow_camera(
-            world="generated_city",
+            world="urban_circuit_practice_01",
             target="x500_lidar_2d_0",
             offset_text="-12 0 6",
             wait_s=5,
@@ -153,7 +153,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with redirect_stdout(stdout), mock.patch.object(gui.time, "sleep"):
             exit_code = gui.configure_follow_camera(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 target="drone",
                 offset_text="-12 0 6",
                 wait_s=3,
@@ -193,7 +193,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with mock.patch.object(gui.time, "sleep"):
             exit_code = gui.configure_follow_camera(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 target="x500_lidar_2d_0",
                 offset_text="-12 0 6",
                 wait_s=3,
@@ -211,7 +211,7 @@ class GazeboGuiControlTest(unittest.TestCase):
         runner = FakeRunner()
 
         exit_code = gui.configure_follow_camera(
-            world="generated_city",
+            world="urban_circuit_practice_01",
             target="x500_lidar_2d_0",
             offset_text="-12 0",
             wait_s=5,
@@ -235,7 +235,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         with mock.patch.object(gui.time, "sleep"):
             exit_code = gui.wait_for_scene_entity(
-                world="generated_city",
+                world="urban_circuit_practice_01",
                 target="x500_lidar_2d_0",
                 wait_s=2,
                 runner=runner,
@@ -243,7 +243,7 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(runner.calls), 2)
-        self.assertIn("/world/generated_city/scene/info", runner.calls[0])
+        self.assertIn("/world/urban_circuit_practice_01/scene/info", runner.calls[0])
 
     def test_default_runner_converts_timeout_to_retryable_result(self) -> None:
         timeout = gui.subprocess.TimeoutExpired(

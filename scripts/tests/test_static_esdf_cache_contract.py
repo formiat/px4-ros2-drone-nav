@@ -11,7 +11,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PARAMETERS = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
-INTERCEPT_LAUNCH = REPO_ROOT / "drone_city_nav/launch/multi_vehicle.launch.py"
+MULTI_VEHICLE_LAUNCH = REPO_ROOT / "drone_city_nav/launch/multi_vehicle.launch.py"
 
 
 class StaticEsdfCacheContractTest(unittest.TestCase):
@@ -20,14 +20,11 @@ class StaticEsdfCacheContractTest(unittest.TestCase):
             document = yaml.safe_load(stream)
         planner = document["production_mppi_node"]["ros__parameters"]
         visualization = document["world_visualization_node"]["ros__parameters"]
-        self.assertEqual(
-            "worlds/generated_city.esdf3d",
-            planner["static_esdf_3d_cache_path"],
-        )
+        self.assertEqual("", planner["static_esdf_3d_cache_path"])
         self.assertNotIn("static_esdf_3d_cache_path", visualization)
 
-    def test_intercept_launch_forwards_cache_path_to_every_planner(self) -> None:
-        source = INTERCEPT_LAUNCH.read_text(encoding="utf-8")
+    def test_multi_vehicle_launch_forwards_cache_path_to_every_planner(self) -> None:
+        source = MULTI_VEHICLE_LAUNCH.read_text(encoding="utf-8")
         self.assertIn(
             '"static_esdf_3d_cache_path": static_esdf_cache_path', source
         )

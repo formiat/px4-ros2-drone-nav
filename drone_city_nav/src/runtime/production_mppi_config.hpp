@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/cooperative_passage_execution.hpp"
-#include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -14,7 +13,6 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/navigation_angular_derivative.hpp"
 #include "drone_city_nav/navigation_health_supervisor.hpp"
-#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
@@ -51,8 +49,6 @@ struct ProductionMppiPlanningTopics {
   std::string navigation_objective{"/drone_city_nav/navigation_objective"};
   std::string cooperative_maneuver_command{"/drone_city_nav/cooperative/command"};
   std::string cooperative_passage_state{"/drone_city_nav/cooperative/passage_state"};
-  std::string noncooperative_tracks{"/drone_city_nav/noncooperative_tracks"};
-  std::string radar_track_mode_command{"/drone_city_nav/radar/track_mode_command"};
 };
 
 struct ProductionMppiExecutionTopics {
@@ -93,8 +89,8 @@ struct ProductionMppiConfig final {
     // alike, stood upright: the hull as configured. The tilt the airframe
     // reaches is the tube's lean law (TrackingErrorTubeConfig3D).
     SweptFootprintConfig physical_footprint{};
-    std::filesystem::path static_occupancy_3d_path{"worlds/generated_city.occupancy3d"};
-    std::filesystem::path static_esdf_3d_cache_path{"worlds/generated_city.esdf3d"};
+    std::filesystem::path static_occupancy_3d_path{};
+    std::filesystem::path static_esdf_3d_cache_path{};
     std::filesystem::path static_free_space_topology_3d_path{};
     ProductionMppiWorldTopics topics{};
   };
@@ -112,9 +108,7 @@ struct ProductionMppiConfig final {
     double dynamic_objective_replan_distance_m{5.0};
     double dynamic_objective_replan_period_s{0.25};
     double tracking_objective_ray_sample_spacing_m{0.25};
-    double tracking_capture_radius_m{5.0};
     double static_tracking_esdf_refresh_margin_m{15.0};
-    DirectTrackingManeuverConfig direct_tracking_maneuver{};
     ProductionNavigationOptionalConstraints optional_constraints{};
     bool cooperative_traffic_enabled{false};
     std::string vehicle_id;
@@ -122,8 +116,6 @@ struct ProductionMppiConfig final {
     CooperativePassageRouteConfig cooperative_passage_route{};
     CooperativePassageTimingConfig cooperative_passage_timing{};
     CooperativePassageYieldConfig cooperative_passage_yield{};
-    bool noncooperative_avoidance_enabled{false};
-    NonCooperativeAvoidanceConfig noncooperative_avoidance{};
     float constrained_route_speed_limit_mps{10.0F};
     PersistentPlannerConfig3D persistent_planner{};
     double route_sampling_step_m{0.5};

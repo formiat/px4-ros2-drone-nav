@@ -23,12 +23,6 @@ TEST(MppiRolloutBudgetTest, ReducesOpenStaticAndDirectTrackingWork) {
   MppiRolloutBudgetDecision decision = selectMppiRolloutBudget(config, observation);
   EXPECT_EQ(decision.active_rollouts, config.open_static_rollouts);
   EXPECT_EQ(decision.reason, MppiRolloutBudgetReason::kReducedOpenStatic);
-
-  observation.direct_tracking = true;
-  observation.tracking_age_ms = 50.0;
-  decision = selectMppiRolloutBudget(config, observation);
-  EXPECT_EQ(decision.active_rollouts, config.direct_tracking_rollouts);
-  EXPECT_EQ(decision.reason, MppiRolloutBudgetReason::kReducedDirectTracking);
 }
 
 TEST(MppiRolloutBudgetTest, KeepsFullBudgetForRiskOrLowClearance) {
@@ -46,18 +40,12 @@ TEST(MppiRolloutBudgetTest, KeepsFullBudgetForRiskOrLowClearance) {
   EXPECT_EQ(decision.reason, MppiRolloutBudgetReason::kFullLowClearance);
 }
 
-TEST(MppiRolloutBudgetTest, KeepsFullBudgetForUncertainWorldOrTrack) {
+TEST(MppiRolloutBudgetTest, KeepsFullBudgetForAnUncertainWorld) {
   const MppiRolloutBudgetConfig config;
   MppiRolloutBudgetObservation observation = safeStaticObservation();
   observation.world_age_ms = config.maximum_world_age_ms + 1.0;
   EXPECT_EQ(selectMppiRolloutBudget(config, observation).reason,
             MppiRolloutBudgetReason::kFullWorldUncertain);
-
-  observation.world_age_ms = 0.0;
-  observation.direct_tracking = true;
-  observation.tracking_age_ms = config.maximum_tracking_age_ms + 1.0;
-  EXPECT_EQ(selectMppiRolloutBudget(config, observation).reason,
-            MppiRolloutBudgetReason::kFullTrackingUncertain);
 }
 
 TEST(MppiRolloutBudgetTest, NoStaticExplorationRetainsFullBudget) {

@@ -647,7 +647,7 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
   EXPECT_GT(near.soft_cost, far.soft_cost);
 }
 
-TEST(MppiReferenceTest, NonCooperativeSurvivalCostDominatesInsideTenMeters) {
+TEST(MppiReferenceTest, DynamicAircraftSurvivalCostDominatesInsideTenMeters) {
   constexpr int kWidth = 40;
   constexpr int kHeight = 10;
   const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};

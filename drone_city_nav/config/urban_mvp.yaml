@@ -238,7 +238,7 @@ world_visualization_node:
   ros__parameters:
     frame_id: map
     use_static_map: true
-    static_occupancy_3d_path: worlds/generated_city.occupancy3d
+    static_occupancy_3d_path: ''
     static_map_visualization_stride_cells: 4
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_grid_topic: /drone_city_nav/raw_obstacle_grid
@@ -258,10 +258,8 @@ production_mppi_node:
     planner_worker_count: 4
     rollouts: 8192
     open_static_rollouts: 6144
-    direct_tracking_rollouts: 4096
     adaptive_rollout_minimum_clearance_m: 8.0
     adaptive_rollout_maximum_world_age_ms: 250.0
-    adaptive_rollout_maximum_tracking_age_ms: 250.0
     dt_s: 0.05
     static_horizon_duration_s: 6.0
     no_static_horizon_duration_s: 4.0
@@ -407,9 +405,9 @@ production_mppi_node:
     minimum_target_lookahead_m: 30.0
     maximum_target_lookahead_m: 100.0
     use_static_map: true
-    static_occupancy_3d_path: worlds/generated_city.occupancy3d
-    static_free_space_topology_3d_path: worlds/generated_city.topology3d
-    static_esdf_3d_cache_path: worlds/generated_city.esdf3d
+    static_occupancy_3d_path: ''
+    static_free_space_topology_3d_path: ''
+    static_esdf_3d_cache_path: ''
     # Cruise sits above the speed the sensor-braking contract admits along its
     # worst direction for the guaranteed lidar range below: the contract, not
     # cruise, caps every rollout on open legs. The simulation targets pass the
@@ -583,30 +581,7 @@ production_mppi_node:
     navigation_health_topic: /drone_city_nav/mppi/navigation_health
     dynamic_objective_replan_distance_m: 5.0
     dynamic_objective_replan_period_s: 0.25
-    tracking_objective_ray_sample_spacing_m: 0.25
     static_tracking_esdf_refresh_margin_m: 15.0
-    tracking_capture_radius_m: 5.0
-    direct_tracking_reseed_bearing_change_rad: 0.5235987755982988
-    direct_tracking_minimum_closing_speed_mps: 0.5
-    direct_tracking_closing_recovery_speed_mps: 1.5
-    direct_tracking_no_closing_reseed_delay_s: 1.0
-    direct_tracking_minimum_reseed_interval_s: 0.5
-    noncooperative_avoidance_enabled: false
-    noncooperative_tracks_topic: /drone_city_nav/noncooperative_tracks
-    noncooperative_prediction_horizon_s: 4.0
-    noncooperative_strong_separation_m: 10.0
-    noncooperative_anticipation_separation_m: 20.0
-    noncooperative_release_separation_m: 15.0
-    noncooperative_release_hysteresis_s: 1.0
-    noncooperative_maximum_track_age_s: 0.75
-    noncooperative_tracked_aircraft_radius_m: 0.82
-    noncooperative_minimum_relative_speed_mps: 0.05
-    noncooperative_candidate_acceleration_fraction: 0.95
-    noncooperative_candidate_duration_s: 1.5
-    noncooperative_strong_cost_weight: 4000.0
-    noncooperative_anticipation_cost_weight: 40.0
-    noncooperative_time_to_collision_gain_s: 1.0
-    noncooperative_maximum_ttc_multiplier: 4.0
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_land_detected_topic: /fmu/out/vehicle_land_detected
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status

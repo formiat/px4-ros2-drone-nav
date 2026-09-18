@@ -49,10 +49,6 @@ namespace {
   switch (role) {
     case msg::VehicleDestroyed::ROLE_UNSPECIFIED:
       return "unspecified";
-    case msg::VehicleDestroyed::ROLE_INTERCEPTOR:
-      return "interceptor";
-    case msg::VehicleDestroyed::ROLE_EVADER:
-      return "evader";
     case msg::VehicleDestroyed::ROLE_CIVILIAN:
       return "civilian";
     default:
@@ -64,8 +60,6 @@ namespace {
   switch (cause) {
     case msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION:
       return "physical_collision";
-    case msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT:
-      return "proximity_intercept";
     case msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION:
       return "proximity_collision";
     default:
@@ -75,7 +69,6 @@ namespace {
 
 [[nodiscard]] bool validVehicleDeathCause(const std::uint8_t cause) noexcept {
   return cause == msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
-         cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_INTERCEPT ||
          cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
 }
 
