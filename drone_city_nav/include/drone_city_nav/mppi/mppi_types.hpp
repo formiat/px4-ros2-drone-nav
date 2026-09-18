@@ -21,15 +21,6 @@ using Control = drone_city_nav::MotionControl3D;
 using RiskTier = drone_city_nav::ControlRouteRiskTier3D;
 using RouteSample3D = drone_city_nav::ControlRouteSample3D;
 
-struct MovingTargetReference {
-  State state{};
-  float capture_radius_m{5.0F};
-  float vertical_deceleration_mps2{0.0F};
-  float minimum_z_m{0.0F};
-  float maximum_z_m{0.0F};
-  bool bounded_vertical_motion{false};
-};
-
 enum class CooperativeManeuver : std::uint8_t {
   kKeep = 0,
   kClimb = 1,
@@ -115,34 +106,6 @@ dynamicAircraftCostContribution(const float separation_m, const float elapsed_s,
   };
 }
 
-[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
-clampMovingTargetAltitude(const float z_m, const float minimum_z_m,
-                          const float maximum_z_m) noexcept {
-  if (z_m < minimum_z_m) {
-    return minimum_z_m;
-  }
-  return z_m > maximum_z_m ? maximum_z_m : z_m;
-}
-
-[[nodiscard]] DRONE_CITY_NAV_MPPI_HOST_DEVICE inline float
-movingTargetAltitudeAt(const MovingTargetReference& target,
-                       const float elapsed_s) noexcept {
-  if (!target.bounded_vertical_motion || !(target.vertical_deceleration_mps2 > 0.0F)) {
-    return target.state.z + target.state.vz * elapsed_s;
-  }
-  const float speed_mps = target.state.vz < 0.0F ? -target.state.vz : target.state.vz;
-  const float stopping_time_s = speed_mps / target.vertical_deceleration_mps2;
-  const float motion_time_s = elapsed_s < stopping_time_s ? elapsed_s : stopping_time_s;
-  const float signed_deceleration_mps2 = target.state.vz < 0.0F
-                                             ? -target.vertical_deceleration_mps2
-                                             : target.vertical_deceleration_mps2;
-  const float predicted_z_m =
-      target.state.z + target.state.vz * motion_time_s -
-      0.5F * signed_deceleration_mps2 * motion_time_s * motion_time_s;
-  return clampMovingTargetAltitude(predicted_z_m, target.minimum_z_m,
-                                   target.maximum_z_m);
-}
-
 #undef DRONE_CITY_NAV_MPPI_HOST_DEVICE
 
 struct CostBreakdown {
@@ -213,9 +176,7 @@ struct RolloutMetrics {
   // Path length to the first state whose envelope enters occupied evidence;
   // infinite when the rollout keeps clear of it.
   float contact_distance_m{0.0F};
-  float minimum_target_separation_m{0.0F};
   float minimum_peer_separation_m{0.0F};
-  float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool altitude_envelope_violation{false};
 };

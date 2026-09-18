@@ -20,9 +20,9 @@ evaluateControlSequence(const ControlSequenceEvaluationContext& context,
       config.costs, context.grid, context.esdf, input.target.x, input.target.y,
       config.early_exit_on_altitude_envelope_violation,
       context.previous_applied_control, input.reference_speed_mps, config.footprint,
-      input.moving_target, &evaluation.trace, input.dynamic_aircraft,
-      input.cooperative_maneuver, config.cooperative,
-      context.dynamic_aircraft_cost_policy, config.altitude_envelope, input.target.z);
+      &evaluation.trace, input.dynamic_aircraft, input.cooperative_maneuver,
+      config.cooperative, context.dynamic_aircraft_cost_policy,
+      config.altitude_envelope, input.target.z);
   const bool route_active = !context.active_route.empty() && input.route.has_value();
   if (route_active && input.route->terminal_cross_track_tolerance_m &&
       !evaluation.trace.horizon.empty()) {

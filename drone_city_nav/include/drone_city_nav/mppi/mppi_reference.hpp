@@ -30,9 +30,7 @@ resolveCooperativePreferredAcceleration(const CooperativeManeuverPreference& pre
                                         const CooperativeConfig& cooperative) noexcept;
 
 [[nodiscard]] MppiProgressDiagnostics
-resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
-                                   bool moving_target_enabled,
-                                   float fixed_target_head_progress_m,
+resolveUnroutedProgressDiagnostics(float fixed_target_head_progress_m,
                                    float fixed_target_terminal_progress_m) noexcept;
 
 [[nodiscard]] RolloutMetrics simulateReference(
@@ -42,9 +40,7 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     std::span<const float> esdf, float target_x_m, float target_y_m,
     bool early_exit_on_altitude_envelope_violation,
     Control previous_applied_control = {}, float reference_speed_mps = -1.0F,
-    const FootprintConfig& footprint = {},
-    std::optional<MovingTargetReference> moving_target = std::nullopt,
-    ReferenceSimulationTrace* trace = nullptr,
+    const FootprintConfig& footprint = {}, ReferenceSimulationTrace* trace = nullptr,
     std::span<const DynamicAircraftTrajectory> dynamic_aircraft = {},
     std::optional<CooperativeManeuverPreference> cooperative_maneuver = std::nullopt,
     const CooperativeConfig& cooperative = {},

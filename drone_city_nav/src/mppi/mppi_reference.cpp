@@ -49,16 +49,6 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   return value * value;
 }
 
-[[nodiscard]] float targetDistance(const State& state,
-                                   const MovingTargetReference& target,
-                                   const float elapsed_s) noexcept {
-  const float target_x = target.state.x + target.state.vx * elapsed_s;
-  const float target_y = target.state.y + target.state.vy * elapsed_s;
-  const float target_z = movingTargetAltitudeAt(target, elapsed_s);
-  return std::hypot(std::hypot(target_x - state.x, target_y - state.y),
-                    target_z - state.z);
-}
-
 [[nodiscard]] float aircraftDistance(const State& state,
                                      const DynamicAircraftSample& aircraft) noexcept {
   return std::hypot(std::hypot(aircraft.x - state.x, aircraft.y - state.y),
@@ -180,15 +170,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
 }
 
 MppiProgressDiagnostics resolveUnroutedProgressDiagnostics(
-    const RolloutMetrics& metrics, const bool moving_target_enabled,
     const float fixed_target_head_progress_m,
     const float fixed_target_terminal_progress_m) noexcept {
-  if (moving_target_enabled) {
-    return MppiProgressDiagnostics{
-        .head_progress_m = metrics.costs.head_progress,
-        .terminal_progress_m = -metrics.costs.progress,
-    };
-  }
   return MppiProgressDiagnostics{
       .head_progress_m = fixed_target_head_progress_m,
       .terminal_progress_m = fixed_target_terminal_progress_m,
@@ -220,9 +203,7 @@ RolloutMetrics simulateReference(
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
     const bool early_exit_on_altitude_envelope_violation,
     const Control previous_applied_control, const float reference_speed_mps,
-    const FootprintConfig& footprint,
-    const std::optional<MovingTargetReference> moving_target,
-    ReferenceSimulationTrace* const trace,
+    const FootprintConfig& footprint, ReferenceSimulationTrace* const trace,
     const std::span<const DynamicAircraftTrajectory> dynamic_aircraft,
     const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
     const CooperativeConfig& cooperative,
@@ -269,10 +250,7 @@ RolloutMetrics simulateReference(
     return std::hypot(std::hypot(target_x_m - sample.x, target_y_m - sample.y),
                       target_z_m - sample.z);
   };
-  const float initial_target_distance =
-      moving_target.has_value() ? targetDistance(state, *moving_target, 0.0F)
-                                : fixedTargetDistance(state);
-  metrics.minimum_target_separation_m = initial_target_distance;
+  const float initial_target_distance = fixedTargetDistance(state);
   const std::size_t head_steps =
       std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
                                   costs.head_progress_horizon_s / dynamics.dt_s)),
@@ -378,18 +356,7 @@ RolloutMetrics simulateReference(
                                                     risk.stopping_deceleration_mps2);
     }
 
-    const float target_distance =
-        moving_target.has_value()
-            ? targetDistance(state, *moving_target,
-                             static_cast<float>(step + 1U) * dynamics.dt_s)
-            : fixedTargetDistance(state);
-    if (target_distance < metrics.minimum_target_separation_m) {
-      metrics.minimum_target_separation_m = target_distance;
-    }
-    if (moving_target.has_value() && metrics.predicted_capture_time_s < 0.0F &&
-        target_distance <= moving_target->capture_radius_m) {
-      metrics.predicted_capture_time_s = static_cast<float>(step + 1U) * dynamics.dt_s;
-    }
+    const float target_distance = fixedTargetDistance(state);
     for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
       if (step >= aircraft.active_steps) {
         continue;
@@ -450,10 +417,7 @@ RolloutMetrics simulateReference(
                                                             state.vy, state.vz)));
       metrics.costs.overspeed += squared(excess_mps);
     }
-    metrics.costs.terminal = moving_target.has_value()
-                                 ? std::max(0.0F, metrics.minimum_target_separation_m -
-                                                      moving_target->capture_radius_m)
-                                 : target_distance;
+    metrics.costs.terminal = target_distance;
     previous = control;
     if (metrics.altitude_envelope_violation &&
         early_exit_on_altitude_envelope_violation) {
@@ -474,10 +438,7 @@ RolloutMetrics simulateReference(
       trace->horizon.push_back(trace_state);
     }
   }
-  metrics.costs.progress =
-      -(initial_target_distance - (moving_target.has_value()
-                                       ? metrics.minimum_target_separation_m
-                                       : fixedTargetDistance(state)));
+  metrics.costs.progress = -(initial_target_distance - fixedTargetDistance(state));
   metrics.soft_cost =
       costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +

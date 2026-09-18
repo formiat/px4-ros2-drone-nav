@@ -167,7 +167,7 @@ TEST(MppiReferenceTest, DerivedZeroClearanceKeepsFullHorizon) {
   const RolloutMetrics metrics =
       simulateReference(State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{},
                         RiskConfig{}, CostConfig{}, grid, esdf, 3.0F, 1.5F, true,
-                        Control{}, -1.0F, FootprintConfig{}, std::nullopt, &trace);
+                        Control{}, -1.0F, FootprintConfig{}, &trace);
 
   EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
   ASSERT_EQ(trace.horizon.size(), controls.size() + 1U);
@@ -632,14 +632,12 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
       .samples = far_samples, .footprint_radius_m = 0.82F, .active_steps = 4U}};
   const State initial{.vx = 2.0F};
 
-  const RolloutMetrics near =
-      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
-                        grid, esdf, 30.0F, 0.0F, false, Control{}, -1.0F,
-                        FootprintConfig{}, std::nullopt, nullptr, near_peer);
-  const RolloutMetrics far =
-      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
-                        grid, esdf, 30.0F, 0.0F, false, Control{}, -1.0F,
-                        FootprintConfig{}, std::nullopt, nullptr, far_peer);
+  const RolloutMetrics near = simulateReference(
+      initial, controls, noise, dynamics, RiskConfig{}, CostConfig{}, grid, esdf, 30.0F,
+      0.0F, false, Control{}, -1.0F, FootprintConfig{}, nullptr, near_peer);
+  const RolloutMetrics far = simulateReference(
+      initial, controls, noise, dynamics, RiskConfig{}, CostConfig{}, grid, esdf, 30.0F,
+      0.0F, false, Control{}, -1.0F, FootprintConfig{}, nullptr, far_peer);
 
   EXPECT_GT(near.costs.peer_separation, 0.0F);
   EXPECT_LT(near.minimum_peer_separation_m, 5.0F);
@@ -673,12 +671,12 @@ TEST(MppiReferenceTest, DynamicAircraftSurvivalCostDominatesInsideTenMeters) {
 
   const RolloutMetrics strong = simulateReference(
       State{}, controls, noise, DynamicsConfig{}, RiskConfig{}, CostConfig{}, grid,
-      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, std::nullopt,
-      nullptr, strong_aircraft, std::nullopt, CooperativeConfig{}, policy);
+      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, nullptr,
+      strong_aircraft, std::nullopt, CooperativeConfig{}, policy);
   const RolloutMetrics anticipated = simulateReference(
       State{}, controls, noise, DynamicsConfig{}, RiskConfig{}, CostConfig{}, grid,
-      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, std::nullopt,
-      nullptr, anticipated_aircraft, std::nullopt, CooperativeConfig{}, policy);
+      esdf, 30.0F, 0.0F, false, Control{}, -1.0F, FootprintConfig{}, nullptr,
+      anticipated_aircraft, std::nullopt, CooperativeConfig{}, policy);
 
   EXPECT_GT(strong.costs.dynamic_aircraft_survival,
             anticipated.costs.dynamic_aircraft_survival * 10.0F);
@@ -701,79 +699,12 @@ TEST(MppiReferenceTest, NoPeersAddsNoCooperativeCost) {
   EXPECT_TRUE(std::isinf(metrics.minimum_peer_separation_m));
 }
 
-TEST(MppiReferenceTest, MovingTargetUsesClosestApproachInsteadOfTerminalPoint) {
-  constexpr int kWidth = 30;
-  constexpr int kHeight = 4;
-  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 30.0F);
-  const std::array<Control, 20> controls{};
-  const std::array<Control, 20> noise{};
-  DynamicsConfig dynamics;
-  dynamics.dt_s = 0.1F;
-  dynamics.linear_drag_1ps = 0.0F;
-  const State initial{.x = 0.5F, .y = 1.5F, .vx = 10.0F};
+TEST(MppiReferenceTest, UnroutedDiagnosticsReportFixedTargetProgress) {
+  const MppiProgressDiagnostics diagnostics =
+      resolveUnroutedProgressDiagnostics(-20.0F, -30.0F);
 
-  const RolloutMetrics terminal_point =
-      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
-                        grid, esdf, 5.5F, 1.5F, false);
-  const RolloutMetrics moving_target = simulateReference(
-      initial, controls, noise, dynamics, RiskConfig{}, CostConfig{}, grid, esdf, 5.5F,
-      1.5F, false, Control{}, -1.0F, FootprintConfig{},
-      MovingTargetReference{.state = State{.x = 5.5F, .y = 1.5F},
-                            .capture_radius_m = 0.25F});
-
-  EXPECT_GT(terminal_point.costs.terminal, 10.0F);
-  EXPECT_NEAR(moving_target.minimum_target_separation_m, 0.0F, 1.0e-5F);
-  EXPECT_NEAR(moving_target.predicted_capture_time_s, 0.5F, 1.0e-5F);
-  EXPECT_FLOAT_EQ(moving_target.costs.terminal, 0.0F);
-  EXPECT_LT(moving_target.soft_cost, terminal_point.soft_cost);
-}
-
-TEST(MppiReferenceTest, MovingTargetDiagnosticsUseDynamicClosestApproach) {
-  RolloutMetrics metrics;
-  metrics.costs.head_progress = 3.0F;
-  metrics.costs.progress = -8.0F;
-
-  const MppiProgressDiagnostics moving =
-      resolveUnroutedProgressDiagnostics(metrics, true, -20.0F, -30.0F);
-  const MppiProgressDiagnostics fixed =
-      resolveUnroutedProgressDiagnostics(metrics, false, -20.0F, -30.0F);
-
-  EXPECT_FLOAT_EQ(moving.head_progress_m, 3.0F);
-  EXPECT_FLOAT_EQ(moving.terminal_progress_m, 8.0F);
-  EXPECT_FLOAT_EQ(fixed.head_progress_m, -20.0F);
-  EXPECT_FLOAT_EQ(fixed.terminal_progress_m, -30.0F);
-}
-
-TEST(MppiReferenceTest, MovingTargetVerticalMotionStopsAndRespectsBounds) {
-  const MovingTargetReference stopping{
-      .state = State{.z = 18.0F, .vz = 4.0F},
-      .vertical_deceleration_mps2 = 4.0F,
-      .minimum_z_m = 1.0F,
-      .maximum_z_m = std::nextafter(32.0F, 1.0F),
-      .bounded_vertical_motion = true,
-  };
-  const MovingTargetReference bounded{
-      .state = State{.z = 31.0F, .vz = 10.0F},
-      .vertical_deceleration_mps2 = 1.0F,
-      .minimum_z_m = 1.0F,
-      .maximum_z_m = std::nextafter(32.0F, 1.0F),
-      .bounded_vertical_motion = true,
-  };
-
-  EXPECT_FLOAT_EQ(movingTargetAltitudeAt(stopping, 10.0F), 20.0F);
-  EXPECT_FLOAT_EQ(movingTargetAltitudeAt(bounded, 10.0F), bounded.maximum_z_m);
-  EXPECT_LT(movingTargetAltitudeAt(bounded, 10.0F), 32.0F);
-}
-
-TEST(MppiReferenceTest, FloatConversionCannotReopenHalfOpenUpperEnvelope) {
-  const float maximum_z = std::nextafter(32.0F, 1.0F);
-  const float rounded_double_boundary = static_cast<float>(std::nextafter(32.0, 1.0));
-
-  ASSERT_FLOAT_EQ(rounded_double_boundary, 32.0F);
-  EXPECT_FLOAT_EQ(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z),
-                  maximum_z);
-  EXPECT_LT(clampMovingTargetAltitude(rounded_double_boundary, 1.0F, maximum_z), 32.0F);
+  EXPECT_FLOAT_EQ(diagnostics.head_progress_m, -20.0F);
+  EXPECT_FLOAT_EQ(diagnostics.terminal_progress_m, -30.0F);
 }
 
 TEST(MppiReferenceTest, DetectsAltitudeEnvelopeViolationInsideRollout) {
@@ -788,8 +719,8 @@ TEST(MppiReferenceTest, DetectsAltitudeEnvelopeViolationInsideRollout) {
   const RolloutMetrics metrics = simulateReference(
       State{.x = 1.5F, .y = 1.5F, .z = 1.1F, .vz = -1.0F}, controls, noise, dynamics,
       RiskConfig{}, CostConfig{}, grid, esdf, 5.0F, 1.5F, true, Control{}, -1.0F,
-      FootprintConfig{}, std::nullopt, nullptr, {}, std::nullopt, CooperativeConfig{},
-      std::nullopt, AltitudeEnvelopeConfig{.minimum_z_m = 1.0F, .maximum_z_m = 32.0F});
+      FootprintConfig{}, nullptr, {}, std::nullopt, CooperativeConfig{}, std::nullopt,
+      AltitudeEnvelopeConfig{.minimum_z_m = 1.0F, .maximum_z_m = 32.0F});
 
   EXPECT_TRUE(metrics.altitude_envelope_violation);
 }

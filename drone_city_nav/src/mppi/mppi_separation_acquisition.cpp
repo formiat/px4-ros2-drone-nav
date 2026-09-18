@@ -80,9 +80,8 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
       input.config.risk, input.config.costs, input.grid, input.esdf, input.target.x,
       input.target.y, input.config.early_exit_on_altitude_envelope_violation,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
-      std::nullopt, &trace, input.aircraft, input.acquisition.preference,
-      input.config.cooperative, std::nullopt, input.config.altitude_envelope,
-      input.target.z);
+      &trace, input.aircraft, input.acquisition.preference, input.config.cooperative,
+      std::nullopt, input.config.altitude_envelope, input.target.z);
   const std::size_t head_step = std::clamp<std::size_t>(
       static_cast<std::size_t>(std::ceil(input.config.costs.head_progress_horizon_s /
                                          input.config.dynamics.dt_s)),

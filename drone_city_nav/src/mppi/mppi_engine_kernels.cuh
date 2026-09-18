@@ -317,8 +317,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          float* critical_exposure, float* planning_exposure, float* minimum_clearance,
          std::uint8_t* altitude_envelope_violation, std::uint8_t* collision_violation,
          std::uint8_t* worst_tier, std::size_t rollouts, std::size_t steps,
-         State initial, State target, MovingTargetReference moving_target,
-         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
+         State initial, State target, DynamicsConfig dynamics, RiskConfig risk,
          FootprintConfig footprint, AltitudeEnvelopeConfig altitude_envelope,
          CostConfig costs, HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
          cudaTextureObject_t esdf_texture, const RouteSample3D* route_points,
@@ -368,12 +367,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       initial, previous_applied_control, dynamics, altitude_envelope);
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   const float initial_distance =
-      moving_target_enabled ? hypotf(hypotf(moving_target.state.x - initial.x,
-                                            moving_target.state.y - initial.y),
-                                     moving_target.state.z - initial.z)
-                            : hypotf(hypotf(target.x - initial.x, target.y - initial.y),
-                                     target.z - initial.z);
-  float minimum_target_separation_m = initial_distance;
+      hypotf(hypotf(target.x - initial.x, target.y - initial.y), target.z - initial.z);
   float head_progress = 0.0F;
   float terminal_route_progress = 0.0F;
   float route_progress_integral_m_s = 0.0F;
@@ -483,17 +477,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                                     risk.stopping_response_time_s,
                                                     risk.stopping_deceleration_mps2);
     }
-    const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =
-        moving_target_enabled
-            ? hypotf(hypotf(moving_target.state.x +
-                                moving_target.state.vx * target_elapsed_s - state.x,
-                            moving_target.state.y +
-                                moving_target.state.vy * target_elapsed_s - state.y),
-                     movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
-            : hypotf(hypotf(target.x - state.x, target.y - state.y),
-                     target.z - state.z);
-    minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
+        hypotf(hypotf(target.x - state.x, target.y - state.y), target.z - state.z);
     for (std::size_t aircraft_index = 0U; aircraft_index < dynamic_aircraft_count;
          ++aircraft_index) {
       if (step >= dynamic_aircraft_active_steps[aircraft_index]) {
@@ -543,10 +528,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
             sample_weight * route_projection.distance_m * route_projection.distance_m;
         terminal_route_progress = creditedRouteProgressM(
             route_projection.station_m, initial_route_station_m, traveled_distance_m);
-        if (!moving_target_enabled) {
-          route_progress_integral_m_s +=
-              sample_weight * dynamics.dt_s * terminal_route_progress;
-        }
+        route_progress_integral_m_s +=
+            sample_weight * dynamics.dt_s * terminal_route_progress;
       } else {
         const float guide_x = target.x - initial.x;
         const float guide_y = target.y - initial.y;
@@ -598,8 +581,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
     if (step + 1U == head_steps) {
       head_speed_mps = segment_speed_mps;
-      head_progress = moving_target_enabled ? initial_distance - target_distance
-                      : route_projection.valid
+      head_progress = route_projection.valid
                           ? terminal_route_progress
                           : initial_distance -
                                 hypotf(hypotf(target.x - state.x, target.y - state.y),
@@ -617,13 +599,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     }
   }
   const float terminal_distance =
-      moving_target_enabled
-          ? fmaxf(0.0F, minimum_target_separation_m - moving_target.capture_radius_m)
-          : hypotf(hypotf(target.x - state.x, target.y - state.y), target.z - state.z);
-  const float progress =
-      moving_target_enabled     ? initial_distance - minimum_target_separation_m
-      : route_point_count >= 2U ? terminal_route_progress
-                                : initial_distance - terminal_distance;
+      hypotf(hypotf(target.x - state.x, target.y - state.y), target.z - state.z);
+  const float progress = route_point_count >= 2U ? terminal_route_progress
+                                                 : initial_distance - terminal_distance;
   RolloutCostTerms terms;
   terms.head_progress = costs.head_progress_weight * -head_progress;
   terms.progress = costs.progress_weight * -progress;

@@ -179,9 +179,6 @@ public:
                                                          input.route->initial_station_m,
                                                          kMaximumDeviceRoutePoints)
                      : detail::DeviceRouteWindow3D{};
-    const MovingTargetReference moving_target =
-        input.moving_target.value_or(MovingTargetReference{});
-    const bool moving_target_enabled = input.moving_target.has_value();
     const DynamicAircraftCostPolicy dynamic_aircraft_cost_policy =
         input.dynamic_aircraft_cost_policy.value_or(DynamicAircraftCostPolicy{
             .strong_separation_m = config_.cooperative.desired_minimum_separation_m,
@@ -403,11 +400,11 @@ public:
           buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
           buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
           buffers_.collision_violation.get(), buffers_.worst_tier.get(), rollouts,
-          config_.steps, input.initial_state, input.target, moving_target,
-          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
-          config_.altitude_envelope, config_.costs, config_.horizon_sampling,
-          textures_[active_texture_].grid(), textures_[active_texture_].texture(),
-          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          config_.steps, input.initial_state, input.target, config_.dynamics,
+          config_.risk, config_.footprint, config_.altitude_envelope, config_.costs,
+          config_.horizon_sampling, textures_[active_texture_].grid(),
+          textures_[active_texture_].texture(), buffers_.route_points.get(),
+          route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
           buffers_.dynamic_aircraft_samples.get(),
           buffers_.dynamic_aircraft_radii.get(),
@@ -828,7 +825,6 @@ public:
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.obstacle_approach_m2_s = metrics.costs.obstacle_approach_m2_s;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
-    result.minimum_target_separation_m = metrics.minimum_target_separation_m;
     result.minimum_peer_separation_m = metrics.minimum_peer_separation_m;
     result.peer_separation_cost = metrics.costs.peer_separation;
     result.dynamic_aircraft_anticipation_cost =
@@ -839,7 +835,6 @@ public:
         std::abs(metrics.soft_cost - result.dynamic_aircraft_survival_cost);
     result.dynamic_aircraft_survival_cost_ratio =
         result.dynamic_aircraft_survival_cost / std::max(1.0e-3F, non_survival_cost);
-    result.predicted_capture_time_s = metrics.predicted_capture_time_s;
     result.selected_tier = metrics.worst_tier;
     result.post_update_classification = selected_evaluation.classification;
     Control previous_control = previous_applied_control;
@@ -896,7 +891,7 @@ public:
       result.terminal_progress_m = latest_credited_route_progress_m;
     } else {
       const MppiProgressDiagnostics progress = resolveUnroutedProgressDiagnostics(
-          metrics, moving_target_enabled, fixed_target_head_progress_m,
+          fixed_target_head_progress_m,
           initial_distance -
               std::hypot(input.target.x - state.x, input.target.y - state.y));
       result.head_progress_m = progress.head_progress_m;

@@ -14,22 +14,6 @@ void validateMppiTickInput(const MppiTickInput& input, const std::size_t expecte
        !(*input.route->terminal_cross_track_tolerance_m > 0.0F))) {
     throw std::invalid_argument{"invalid route terminal cross-track tolerance"};
   }
-  if (input.moving_target.has_value()) {
-    const MovingTargetReference& target = *input.moving_target;
-    const bool invalid_vertical =
-        target.bounded_vertical_motion &&
-        (!std::isfinite(target.vertical_deceleration_mps2) ||
-         !(target.vertical_deceleration_mps2 > 0.0F) ||
-         !std::isfinite(target.minimum_z_m) || !std::isfinite(target.maximum_z_m) ||
-         !(target.maximum_z_m > target.minimum_z_m) ||
-         target.state.z < target.minimum_z_m || target.state.z > target.maximum_z_m);
-    if (!std::isfinite(target.state.x) || !std::isfinite(target.state.y) ||
-        !std::isfinite(target.state.z) || !std::isfinite(target.state.vx) ||
-        !std::isfinite(target.state.vy) || !std::isfinite(target.state.vz) ||
-        !(target.capture_radius_m > 0.0F) || invalid_vertical) {
-      throw std::invalid_argument{"invalid moving target reference"};
-    }
-  }
   if (input.dynamic_aircraft.size() > maximum_dynamic_aircraft) {
     throw std::invalid_argument{"too many dynamic aircraft for MPPI engine"};
   }

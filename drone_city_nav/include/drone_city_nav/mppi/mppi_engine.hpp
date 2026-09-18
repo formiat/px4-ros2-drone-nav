@@ -42,7 +42,6 @@ struct MppiTickInput {
   std::optional<Control> previous_applied_control;
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
-  std::optional<MovingTargetReference> moving_target;
   std::optional<RouteReference> route;
   std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
   std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy;
@@ -167,13 +166,11 @@ struct MppiTickResult {
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
   float route_progress_integral_m_s{0.0F};
-  float minimum_target_separation_m{0.0F};
   float minimum_peer_separation_m{0.0F};
   float peer_separation_cost{0.0F};
   float dynamic_aircraft_anticipation_cost{0.0F};
   float dynamic_aircraft_survival_cost{0.0F};
   float dynamic_aircraft_survival_cost_ratio{0.0F};
-  float predicted_capture_time_s{-1.0F};
   float maximum_acceleration_mps2{0.0F};
   float maximum_jerk_mps3{0.0F};
   float first_control_delta{0.0F};
