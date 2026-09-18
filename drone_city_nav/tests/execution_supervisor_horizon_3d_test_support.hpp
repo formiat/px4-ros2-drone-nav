@@ -25,10 +25,6 @@ executionHorizonTestRawOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
     return execution->observed_raw_world;
   }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          plan.directTrackingExecution()) {
-    return execution->observed_raw_world;
-  }
   if (const StopExecution3D* const stop = plan.stopExecution()) {
     return stop->observed_raw_world;
   }
@@ -41,10 +37,6 @@ executionHorizonTestRawOwner(const ExecutionPlan3D& plan) {
 [[nodiscard]] inline std::shared_ptr<const VersionedLatestLidarEvidence3D>
 executionHorizonTestLidarOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
-    return execution->latest_lidar_evidence;
-  }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          plan.directTrackingExecution()) {
     return execution->latest_lidar_evidence;
   }
   if (const StopExecution3D* const stop = plan.stopExecution()) {

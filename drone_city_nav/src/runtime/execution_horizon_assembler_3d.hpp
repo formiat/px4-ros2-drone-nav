@@ -30,8 +30,10 @@ struct EvidenceSnapshot3D {
   mppi::Control exact_previous_control{};
   std::uint64_t target_offboard_instance_id{0U};
   std::int64_t lidar_validation_now_ns{0};
-  std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
-  std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
+  // The world a stationary capture re-arm is certified against: it owns no
+  // route, so it carries its own evidence.
+  std::shared_ptr<const VersionedObservedRawWorld3D> rearm_observed_world;
+  std::shared_ptr<const VersionedStaticWorld3D> rearm_static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
@@ -51,7 +53,6 @@ struct RouteDecision3D {
   Point3 mission_goal{};
   const CertifiedRouteSuffix3D* selected_snapshot_route{nullptr};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
-  bool direct_tracking_requested{false};
   bool publication_route_constrained{false};
 };
 
@@ -183,8 +184,6 @@ struct ExecutionHorizonAssemblerConfig3D {
   mppi::FiniteHorizonConfig finite_horizon{};
   // Wall-clock bound on one horizon assembly. Zero leaves it unbounded.
   double maximum_assembly_ms{0.0};
-  std::shared_ptr<const VersionedExecutionValidationPolicy3D>
-      direct_tracking_validation_policy;
 };
 
 // Produces an immutable execution-plan candidate without ROS dependencies.

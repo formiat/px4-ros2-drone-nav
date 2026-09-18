@@ -16,7 +16,7 @@ namespace {
   };
 }
 
-TEST(MppiRolloutBudgetTest, ReducesOpenStaticAndDirectTrackingWork) {
+TEST(MppiRolloutBudgetTest, ReducesOpenStaticWork) {
   const MppiRolloutBudgetConfig config;
   MppiRolloutBudgetObservation observation = safeStaticObservation();
 

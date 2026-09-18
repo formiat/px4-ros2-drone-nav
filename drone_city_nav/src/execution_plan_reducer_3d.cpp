@@ -58,28 +58,6 @@ applyCommand(const ExecutionPlan3D& current,
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-applyCommand(const ExecutionPlan3D& current,
-             TransferToDirectTrackingCommand3D command) {
-  return applyTransferToDirectTrackingCommand3D(
-      current, command.expected_snapshot_version, std::move(command.direct_execution));
-}
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-applyCommand(const ExecutionPlan3D& current,
-             ReplaceDirectTrackingExecutionCommand3D command) {
-  return applyReplaceDirectTrackingExecutionCommand3D(
-      current, command.expected_snapshot_version, std::move(command.direct_execution));
-}
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-applyCommand(const ExecutionPlan3D& current,
-             TransferDirectTrackingToCertifiedRouteCommand3D command) {
-  return applyTransferDirectTrackingToCertifiedRouteCommand3D(
-      current, command.expected_snapshot_version, std::move(command.successor),
-      std::move(command.successor_execution));
-}
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
 applyCommand(const ExecutionPlan3D& current, TransferToExecutionHoldCommand3D command) {
   return applyTransferToExecutionHoldCommand3D(
       current, command.expected_snapshot_version, std::move(command.certification));
@@ -187,39 +165,6 @@ ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
   return reduceExecutionPlan3D(
       current, ReplaceCertifiedRouteAtHandoffCommand3D{
                    .guard = guard,
-                   .successor = std::move(successor),
-                   .successor_execution = std::move(successor_execution),
-               });
-}
-
-ExecutionRouteTransitionResult3D
-transferToDirectTracking3D(const ExecutionPlan3D& current,
-                           const std::uint64_t expected_snapshot_version,
-                           DirectTrackingFiniteExecution3D direct_execution) {
-  return reduceExecutionPlan3D(
-      current, TransferToDirectTrackingCommand3D{
-                   .expected_snapshot_version = expected_snapshot_version,
-                   .direct_execution = std::move(direct_execution),
-               });
-}
-
-ExecutionRouteTransitionResult3D
-replaceDirectTrackingExecution3D(const ExecutionPlan3D& current,
-                                 const std::uint64_t expected_snapshot_version,
-                                 DirectTrackingFiniteExecution3D direct_execution) {
-  return reduceExecutionPlan3D(
-      current, ReplaceDirectTrackingExecutionCommand3D{
-                   .expected_snapshot_version = expected_snapshot_version,
-                   .direct_execution = std::move(direct_execution),
-               });
-}
-
-ExecutionRouteTransitionResult3D transferDirectTrackingToCertifiedRoute3D(
-    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
-    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution) {
-  return reduceExecutionPlan3D(
-      current, TransferDirectTrackingToCertifiedRouteCommand3D{
-                   .expected_snapshot_version = expected_snapshot_version,
                    .successor = std::move(successor),
                    .successor_execution = std::move(successor_execution),
                });

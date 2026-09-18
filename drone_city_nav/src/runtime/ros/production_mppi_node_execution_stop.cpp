@@ -28,9 +28,9 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
   // longer be trusted. Derive the newest observed evidence here, the way a
   // hold derives it.
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world =
-      cycle.evidence.direct_observed_world;
+      cycle.evidence.rearm_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world =
-      cycle.evidence.direct_static_world;
+      cycle.evidence.rearm_static_world;
   const WorldSnapshot3D& world = cycle.controller.worldRef();
   if (observed_raw_world == nullptr && static_world == nullptr) {
     if (config_.world.use_static_map && world.static_occupancy != nullptr) {

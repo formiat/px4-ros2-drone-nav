@@ -8,25 +8,13 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool
-sameDirectTrackingIdentity(const DirectTrackingOwnerIdentity3D& first,
-                           const DirectTrackingOwnerIdentity3D& second) noexcept {
-  return first.mission_epoch == second.mission_epoch &&
-         first.assignment_generation == second.assignment_generation &&
-         first.target_detection_id == second.target_detection_id &&
-         first.target_track_id == second.target_track_id &&
-         first.objective_sample_sequence == second.objective_sample_sequence &&
-         first.line_of_sight_generation == second.line_of_sight_generation;
-}
-
 template<typename ExecutionStore>
 [[nodiscard]] PendingCertifiedRouteRecoveryResult3D
 recoverPendingCertifiedRouteLivenessImpl(
     ExecutionStore& store,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const PendingCertifiedRouteRecoveryObservation3D& observation) {
-  if (observation.direct_tracking_requested || observation.execution_owner_available ||
-      observation.pending_activation) {
+  if (observation.execution_owner_available || observation.pending_activation) {
     return {};
   }
   if (expected_pending == nullptr) {
@@ -60,12 +48,12 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
   switch (base_kind) {
     case PendingExecutionBaseKind3D::kEmpty:
       return base_route_generation == 0U && base_geometry_revision == 0U &&
-             base_continuity_id == 0U && !base_direct_tracking_identity.has_value() &&
-             !route_splice.has_value() && successor_generation;
+             base_continuity_id == 0U && !route_splice.has_value() &&
+             successor_generation;
     case PendingExecutionBaseKind3D::kRoute:
       return base_route_generation != 0U && base_geometry_revision != 0U &&
-             base_continuity_id != 0U && !base_direct_tracking_identity.has_value() &&
-             route_splice.has_value() && route_splice->structurallyValid() &&
+             base_continuity_id != 0U && route_splice.has_value() &&
+             route_splice->structurallyValid() &&
              route_splice->base_route_generation == base_route_generation &&
              route_splice->base_geometry_revision == base_geometry_revision &&
              route_splice->base_continuity_id == base_continuity_id &&
@@ -76,19 +64,13 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
              successor_generation;
     case PendingExecutionBaseKind3D::kRouteHandoff:
       return base_route_generation != 0U && base_geometry_revision != 0U &&
-             base_continuity_id != 0U && !base_direct_tracking_identity.has_value() &&
-             !route_splice.has_value() && successor_generation;
-    case PendingExecutionBaseKind3D::kDirectTracking:
-      return base_geometry_revision == 0U && base_continuity_id == 0U &&
-             base_direct_tracking_identity.has_value() &&
-             base_direct_tracking_identity->valid() && !route_splice.has_value() &&
+             base_continuity_id != 0U && !route_splice.has_value() &&
              successor_generation;
     case PendingExecutionBaseKind3D::kStationaryHold:
     case PendingExecutionBaseKind3D::kStop:
     case PendingExecutionBaseKind3D::kRevoked:
       return base_geometry_revision == 0U && base_continuity_id == 0U &&
-             !base_direct_tracking_identity.has_value() && !route_splice.has_value() &&
-             successor_generation;
+             !route_splice.has_value() && successor_generation;
   }
   return false;
 }
@@ -142,14 +124,12 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
     return false;
   }
   const CertifiedRouteSuffix3D* const route = snapshot.route();
-  const DirectTrackingFiniteExecution3D* const direct =
-      snapshot.directTrackingExecution();
   const StationaryExecutionHold3D* const hold = snapshot.stationaryHold();
   switch (pending.base_kind) {
     case PendingExecutionBaseKind3D::kEmpty:
       return snapshot.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor &&
              route == nullptr && snapshot.finiteExecution() == nullptr &&
-             direct == nullptr && hold == nullptr;
+             hold == nullptr;
     case PendingExecutionBaseKind3D::kRoute:
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              route != nullptr && route->geometry != nullptr &&
@@ -168,8 +148,7 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
       // vehicle and is re-validated on activation, so a revoked, empty plan
       // whose last route generation is the base still hands it off.
       if (snapshot.phase() == ExecutionRoutePhase3D::kRevoked && route == nullptr &&
-          snapshot.finiteExecution() == nullptr && direct == nullptr &&
-          hold == nullptr) {
+          snapshot.finiteExecution() == nullptr && hold == nullptr) {
         return true;
       }
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
@@ -178,11 +157,6 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
              route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
              route->continuity_id == pending.base_continuity_id;
-    case PendingExecutionBaseKind3D::kDirectTracking:
-      return snapshot.phase() == ExecutionRoutePhase3D::kDirectTracking &&
-             direct != nullptr && pending.base_direct_tracking_identity.has_value() &&
-             sameDirectTrackingIdentity(*pending.base_direct_tracking_identity,
-                                        direct->identity);
     case PendingExecutionBaseKind3D::kStationaryHold:
       return snapshot.phase() == ExecutionRoutePhase3D::kStopped && hold != nullptr &&
              hold->hold_id == pending.base_execution_owner_epoch;
@@ -191,12 +165,10 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
       // hands off from the stop itself, flown to rest or still braking.
       return snapshot.phase() == ExecutionRoutePhase3D::kStopping &&
              snapshot.stopExecution() != nullptr && route == nullptr &&
-             snapshot.finiteExecution() == nullptr && direct == nullptr &&
-             hold == nullptr;
+             snapshot.finiteExecution() == nullptr && hold == nullptr;
     case PendingExecutionBaseKind3D::kRevoked:
       return snapshot.phase() == ExecutionRoutePhase3D::kRevoked && route == nullptr &&
-             snapshot.finiteExecution() == nullptr && direct == nullptr &&
-             hold == nullptr;
+             snapshot.finiteExecution() == nullptr && hold == nullptr;
   }
   return false;
 }

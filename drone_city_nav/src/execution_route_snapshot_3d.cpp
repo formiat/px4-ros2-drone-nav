@@ -351,51 +351,6 @@ bool FiniteExecutionPlan3D::validFor(
              command_horizon.stop_boundary.station_m + kStationToleranceM;
 }
 
-bool DirectTrackingOwnerIdentity3D::valid() const noexcept {
-  return mission_epoch != 0U && assignment_generation != 0U &&
-         target_detection_id != 0U && target_track_id != 0U &&
-         objective_sample_sequence != 0U && line_of_sight_generation != 0U;
-}
-
-bool DirectTrackingFiniteExecution3D::valid() const noexcept {
-  const bool horizon_counts_valid =
-      horizon != nullptr &&
-      horizon->nominal_prefix_control_count <= horizon->controls.size() &&
-      horizon->arrival_control_count <= horizon->controls.size() &&
-      horizon->nominal_prefix_control_count + horizon->arrival_control_count ==
-          horizon->controls.size();
-  const bool duration_fits =
-      horizon != nullptr && control_interval_ns > 0 && valid_from_ns > 0 &&
-      horizon->controls.size() <=
-          static_cast<std::uint64_t>(
-              (std::numeric_limits<std::int64_t>::max() - valid_from_ns) /
-              control_interval_ns);
-  const std::int64_t expected_valid_until_ns =
-      duration_fits
-          ? valid_from_ns + static_cast<std::int64_t>(horizon->controls.size()) *
-                                control_interval_ns
-          : 0;
-  return identity.valid() && trajectory_revision != 0U &&
-         source_snapshot_version != 0U && source_navigation_revision != 0U &&
-         finitePoint(target) && horizon != nullptr && !horizon->controls.empty() &&
-         horizon->states.size() == horizon->controls.size() + 1U &&
-         horizon_counts_valid && duration_fits &&
-         finiteMotionHorizonHasTerminalRestState3D(*horizon) &&
-         valid_until_ns == expected_valid_until_ns &&
-         (kind == FiniteExecutionKind3D::kNominal ||
-          kind == FiniteExecutionKind3D::kRetained) &&
-         std::all_of(horizon->states.begin(), horizon->states.end(), finiteState) &&
-         std::all_of(horizon->controls.begin(), horizon->controls.end(),
-                     finiteControl) &&
-         execution_input != nullptr &&
-         finiteStateNearlyEqual(horizon->states.front(), execution_input->state()) &&
-         validation_proof.artifact_fingerprint != 0U &&
-         validation_proof.validation_contract_fingerprint != 0U &&
-         directTrackingWorldOwnerMatchesProof(*this) &&
-         validation_proof.artifact_fingerprint ==
-             directTrackingExecutionArtifactFingerprint(*this);
-}
-
 bool StationaryExecutionHold3D::valid() const noexcept {
   const bool terminal_origin =
       origin == StationaryExecutionHoldOrigin3D::kTerminalExecution;
@@ -440,9 +395,6 @@ bool StationaryExecutionHold3D::valid() const noexcept {
 ExecutionRoutePhase3D ExecutionPlan3D::phase() const noexcept {
   if (std::holds_alternative<FollowingPlan3D>(state)) {
     return ExecutionRoutePhase3D::kFollowing;
-  }
-  if (std::holds_alternative<DirectTrackingPlan3D>(state)) {
-    return ExecutionRoutePhase3D::kDirectTracking;
   }
   if (std::holds_alternative<StopPlan3D>(state)) {
     return ExecutionRoutePhase3D::kStopping;
@@ -513,12 +465,6 @@ const FiniteExecutionState3D* ExecutionPlan3D::brakingFallback() const noexcept 
                                  : nullptr;
 }
 
-const DirectTrackingFiniteExecution3D*
-ExecutionPlan3D::directTrackingExecution() const noexcept {
-  const auto* direct = std::get_if<DirectTrackingPlan3D>(&state);
-  return direct != nullptr ? std::addressof(direct->execution) : nullptr;
-}
-
 const StopExecution3D* ExecutionPlan3D::stopExecution() const noexcept {
   const auto* stopping = std::get_if<StopPlan3D>(&state);
   return stopping != nullptr ? std::addressof(stopping->execution) : nullptr;
@@ -538,9 +484,6 @@ std::uint64_t ExecutionPlan3D::ownerTrajectoryRevision() const noexcept {
   }
   if (const FiniteExecutionState3D* const braking = brakingFallback()) {
     revision = std::max(revision, braking->trajectory_revision);
-  }
-  if (const DirectTrackingFiniteExecution3D* const direct = directTrackingExecution()) {
-    revision = std::max(revision, direct->trajectory_revision);
   }
   if (const StopExecution3D* const stop = stopExecution()) {
     revision = std::max(revision, stop->trajectory_revision);
@@ -603,9 +546,6 @@ bool ExecutionPlan3D::valid() const noexcept {
             plan->execution.command_horizon.kind == FiniteExecutionKind3D::kRetained) &&
            !finiteExecutionValidatedAgainstNewerRawWorld(
                plan->execution.command_horizon);
-  }
-  if (const auto* plan = std::get_if<DirectTrackingPlan3D>(&state)) {
-    return plan->execution.valid() && plan->execution.source_snapshot_version < version;
   }
   if (const auto* plan = std::get_if<StopPlan3D>(&state)) {
     return plan->execution.valid() && plan->execution.source_snapshot_version < version;

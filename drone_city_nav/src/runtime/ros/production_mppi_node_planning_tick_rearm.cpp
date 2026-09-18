@@ -13,7 +13,6 @@ bool executionSnapshotRevokedEmpty(
   return snapshot != nullptr && snapshot->valid() &&
          snapshot->phase() == ExecutionRoutePhase3D::kRevoked &&
          snapshot->route() == nullptr && snapshot->finiteExecution() == nullptr &&
-         snapshot->directTrackingExecution() == nullptr &&
          snapshot->stationaryHold() == nullptr;
 }
 

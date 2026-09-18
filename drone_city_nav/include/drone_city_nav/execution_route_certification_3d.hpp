@@ -104,20 +104,6 @@ struct FiniteExecutionPlanCertificationResult3D {
   [[nodiscard]] bool certified() const noexcept;
 };
 
-struct DirectTrackingExecutionCertification3D {
-  DirectTrackingOwnerIdentity3D identity{};
-  std::uint64_t trajectory_revision{0U};
-  Point3 target{};
-  FiniteMotionHorizon3D horizon{};
-  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
-  std::shared_ptr<const VersionedStaticWorld3D> static_world;
-  std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
-  std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
-  std::int64_t valid_from_ns{0};
-  FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
-};
-
 // Everything a stop is certified from: the braking horizon itself and the
 // evidence it is swept against. No route, no adherence corridor, no route
 // certificate: a stop answers only to physics.
@@ -230,10 +216,6 @@ certifyFiniteExecution3D(const ExecutionPlan3D& current,
 [[nodiscard]] TrackingErrorTubeHandoffAssessment3D assessCertifiedTrackingTubeHandoff3D(
     const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
     const VersionedExecutionInput3D& current_execution_input) noexcept;
-
-[[nodiscard]] std::optional<DirectTrackingFiniteExecution3D>
-certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
-                                 DirectTrackingExecutionCertification3D certification);
 
 // Why a stop could not be certified. A stop is the last thing a vehicle with
 // no executable route can do, so a refusal that reaches the log as a bare

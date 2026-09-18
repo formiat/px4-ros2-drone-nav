@@ -133,50 +133,6 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
   };
 }
 
-[[nodiscard]] std::optional<FiniteExecutionPathWorld3D>
-directValidationWorld(const ExecutionRetentionRequest3D& request,
-                      const DirectTrackingFiniteExecution3D& execution,
-                      std::optional<ProprioceptiveFreeSpaceSeed3D>& live_seed) {
-  if (!execution.valid() || execution.validation_policy == nullptr ||
-      !latestLidarEvidenceFresh(request, *execution.validation_policy)) {
-    return std::nullopt;
-  }
-  const bool static_world = execution.static_world != nullptr;
-  const bool observed_world = execution.observed_raw_world != nullptr;
-  if (static_world == observed_world) {
-    return std::nullopt;
-  }
-  const std::optional<LaunchSupportContact3D>* const launch_support_owner =
-      observed_world
-          ? std::addressof(execution.observed_raw_world->launchSupportContact())
-          : nullptr;
-  const LaunchSupportContact3D* const launch_support_contact =
-      launch_support_owner != nullptr && launch_support_owner->has_value()
-          ? std::addressof(launch_support_owner->value())
-          : nullptr;
-  live_seed = proprioceptiveContactSeed3D(
-      Point3{request.exact_initial_state.x, request.exact_initial_state.y,
-             request.exact_initial_state.z},
-      request.exact_previous_control, execution.validation_policy->sweptFootprint(),
-      observed_world ? std::addressof(execution.observed_raw_world->occupancy())
-                     : nullptr);
-  return FiniteExecutionPathWorld3D{
-      .flight_envelope = &execution.validation_policy->flightEnvelope(),
-      .dynamics = &execution.validation_policy->dynamics(),
-      .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
-      .footprint = &execution.validation_policy->sweptFootprint(),
-      .static_occupancy = static_world ? &execution.static_world->occupancy() : nullptr,
-      .observed_occupancy =
-          observed_world ? &execution.observed_raw_world->occupancy() : nullptr,
-      .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = optionalAddress(live_seed),
-      .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points =
-          std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},
-      .terminal_boundary = std::nullopt,
-  };
-}
-
 // A physical rejection of the resident path from where the vehicle stands is
 // evidence the path was not certified on. Keeping the longest prefix that
 // still clears it carried the vehicle at four metres a second to the last
@@ -349,97 +305,6 @@ retainedPreservedPrefixControlCount(const ExecutionRetentionResult3D& result,
   return result;
 }
 
-[[nodiscard]] ExecutionRetentionResult3D prepareDirectRetention(
-    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-    const std::shared_ptr<const ExecutionPlan3D>& expected,
-    const ExecutionRetentionRequest3D& request) {
-  ExecutionRetentionResult3D result;
-  result.kind = ExecutionRetentionKind3D::kDirectTracking;
-  result.expected_authority = expected_authority;
-  const DirectTrackingFiniteExecution3D* const active =
-      expected->directTrackingExecution();
-  if (expected->phase() != ExecutionRoutePhase3D::kDirectTracking ||
-      active == nullptr || active->horizon == nullptr) {
-    return result;
-  }
-  result.source_trajectory_revision = active->trajectory_revision;
-  const std::vector<TimedExecutionPathPoint3D> points = executionPathPoints(*active);
-  std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed;
-  const std::optional<FiniteExecutionPathWorld3D> continuation_world =
-      directValidationWorld(request, *active, live_seed);
-  if (points.empty()) {
-    result.status = ExecutionRetentionStatus3D::kInvalidActivePath;
-    return result;
-  }
-  if (!continuation_world.has_value()) {
-    result.status = ExecutionRetentionStatus3D::kValidationWorldUnavailable;
-    return result;
-  }
-  result.actual_state_validation = validateFiniteExecutionPathContinuation3D(
-      points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
-      request.exact_initial_state, request.exact_previous_control, *continuation_world);
-  result.trajectory_validation = validateFiniteExecutionTrajectoryContinuation3D(
-      points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
-      request.exact_initial_state, request.exact_previous_control, *continuation_world);
-  if (active->trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
-    result.status = ExecutionRetentionStatus3D::kTrajectoryRevisionExhausted;
-    return result;
-  }
-  result.prepared_trajectory_revision = active->trajectory_revision + 1U;
-  std::optional<DirectTrackingFiniteExecution3D> recertified;
-  const FiniteExecutionPathCandidateValidator3D candidate_validator =
-      [&](const FiniteMotionHorizon3D& candidate) {
-        recertified = certifyDirectTrackingExecution3D(
-            *expected, DirectTrackingExecutionCertification3D{
-                           .identity = active->identity,
-                           .trajectory_revision = result.prepared_trajectory_revision,
-                           .target = active->target,
-                           .horizon = candidate,
-                           .observed_raw_world = active->observed_raw_world,
-                           .static_world = active->static_world,
-                           .validation_policy = active->validation_policy,
-                           .execution_input = request.execution_input,
-                           .latest_lidar_evidence = request.latest_lidar_evidence,
-                           .valid_from_ns = request.now_ns,
-                           .kind = FiniteExecutionKind3D::kRetained,
-                       });
-        return recertified.has_value();
-      };
-  const RebuiltFiniteExecutionPathContinuation3D rebuilt =
-      rebuildFiniteExecutionPathContinuation3D(
-          points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
-          request.exact_initial_state, request.exact_previous_control,
-          retainedNominalPrefixControlCount(result, *active),
-          retainedPreservedPrefixControlCount(result, *active),
-          active->validation_policy->dynamics(),
-          finiteHorizonArrivalSearchStepControls3D(
-              active->validation_policy->dynamics().dt_s),
-          request.finite_horizon_config, *continuation_world, candidate_validator);
-  result.rebuild_validation = rebuilt.validation;
-  result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
-  if (!rebuilt.accepted()) {
-    result.status = ExecutionRetentionStatus3D::kRebuildRejected;
-    return result;
-  }
-  if (!recertified.has_value()) {
-    result.status = ExecutionRetentionStatus3D::kCertificationRejected;
-    return result;
-  }
-  const ExecutionRouteTransitionResult3D transition =
-      replaceDirectTrackingExecution3D(*expected, expected->version, *recertified);
-  const DirectTrackingFiniteExecution3D* const transitioned_direct =
-      transition.next != nullptr ? transition.next->directTrackingExecution() : nullptr;
-  if (!transition.applied() || transition.next == nullptr ||
-      transitioned_direct == nullptr || transitioned_direct->horizon == nullptr) {
-    result.status = ExecutionRetentionStatus3D::kTransitionRejected;
-    return result;
-  }
-  result.transition =
-      std::make_shared<const ExecutionRouteTransitionResult3D>(transition);
-  result.status = ExecutionRetentionStatus3D::kPrepared;
-  return result;
-}
-
 } // namespace
 
 const char* executionRetentionKind3DName(const ExecutionRetentionKind3D kind) noexcept {
@@ -448,8 +313,6 @@ const char* executionRetentionKind3DName(const ExecutionRetentionKind3D kind) no
       return "none";
     case ExecutionRetentionKind3D::kRoute:
       return "route";
-    case ExecutionRetentionKind3D::kDirectTracking:
-      return "direct_tracking";
   }
   return "unknown";
 }
@@ -499,9 +362,6 @@ ExecutionSupervisor3D::prepareRetention(ExecutionRetentionRequest3D request) con
   const std::shared_ptr<const ExecutionPlan3D> expected = resident.plan();
   if (!resident.valid() || expected == nullptr) {
     return {};
-  }
-  if (expected->directTrackingExecution() != nullptr) {
-    return prepareDirectRetention(resident.authority, expected, owned_request);
   }
   return prepareRouteRetention(resident.authority, expected, owned_request);
 }

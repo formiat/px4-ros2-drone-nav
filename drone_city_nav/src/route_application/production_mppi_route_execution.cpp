@@ -334,7 +334,6 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       .physical_trajectory_invalidated = false,
       .raw_blocked_station_m = std::nullopt,
       .latest_lidar_blocked_station_m = std::nullopt,
-      .direct_tracking_identity = request.direct_tracking_identity,
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       execution_supervisor_.snapshot();
@@ -345,13 +344,11 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
   result.execution_owner_available =
       result.source_snapshot != nullptr &&
       (result.source_snapshot->finiteExecution() != nullptr ||
-       result.source_snapshot->directTrackingExecution() != nullptr ||
        result.source_snapshot->stopExecution() != nullptr ||
        result.source_snapshot->stationaryHold() != nullptr);
   result.routeless_execution_owner =
       result.source_snapshot != nullptr &&
       result.source_snapshot->finiteExecution() == nullptr &&
-      result.source_snapshot->directTrackingExecution() == nullptr &&
       (result.source_snapshot->stationaryHold() != nullptr ||
        result.source_snapshot->stopExecution() != nullptr);
   if (result.source_snapshot == nullptr) {
@@ -363,9 +360,6 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       !pendingCertifiedRouteEligible3D(*stale_pending, *result.source_snapshot) &&
       pendingRoutePermanentlyObsolete(*stale_pending, *result.source_snapshot)) {
     static_cast<void>(execution_supervisor_.acknowledgePendingIfSame(stale_pending));
-  }
-  if (result.direct_tracking_identity.has_value()) {
-    return output;
   }
   if (execution_input == nullptr || !execution_input->valid() ||
       !execution_input->nominalStateAuthoritative()) {

@@ -224,7 +224,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("rebuildFiniteExecutionPathContinuation", execution)
         self.assertIn("recertified=true", execution)
         self.assertIn("prepareRouteRetention", execution)
-        self.assertIn("prepareDirectRetention", execution)
         self.assertIn("execution_supervisor_.prepareRetention", execution)
         self.assertIn("FiniteExecutionPathTerminalBoundary", execution)
         self.assertNotIn("original_valid_until_ns", execution)

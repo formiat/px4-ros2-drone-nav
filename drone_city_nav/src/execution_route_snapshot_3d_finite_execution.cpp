@@ -207,8 +207,6 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     const std::optional<double> atomic_plan_begin_station_m = std::nullopt) {
   const CertifiedRouteSuffix3D* const current_route = routePointer(current);
   const FiniteExecutionState3D* const current_execution = current.finiteExecution();
-  const DirectTrackingFiniteExecution3D* const current_direct_execution =
-      current.directTrackingExecution();
   const bool certifies_braking_execution =
       certification.kind == FiniteExecutionKind3D::kEmergencyBrakeTail;
   if (!current.valid() || !target_route.valid() ||
@@ -220,10 +218,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       certification.execution_input->effectiveStampNs() !=
           certification.valid_from_ns ||
       (current_execution != nullptr &&
-       certification.trajectory_revision <= current_execution->trajectory_revision) ||
-      (current_direct_execution != nullptr &&
-       certification.trajectory_revision <=
-           current_direct_execution->trajectory_revision)) {
+       certification.trajectory_revision <= current_execution->trajectory_revision)) {
     return rejectedFiniteExecution(FiniteExecutionCertificationStatus3D::kInvalidInput);
   }
 
@@ -234,18 +229,11 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       current_route != nullptr &&
       current_route->identity.generation != std::numeric_limits<std::uint64_t>::max() &&
       target_route.identity.generation == current_route->identity.generation + 1U;
-  const bool targets_direct_successor =
-      current.phase() == ExecutionRoutePhase3D::kDirectTracking &&
-      current_direct_execution != nullptr && current_route == nullptr &&
-      current.routeGenerationHighWater() != std::numeric_limits<std::uint64_t>::max() &&
-      target_route.identity.generation == current.routeGenerationHighWater() + 1U;
   const bool targets_initial_route =
       current_route == nullptr && current_execution == nullptr &&
-      current_direct_execution == nullptr &&
       current.routeGenerationHighWater() != std::numeric_limits<std::uint64_t>::max() &&
       target_route.identity.generation == current.routeGenerationHighWater() + 1U;
-  if (!targets_current_route && !targets_successor_route && !targets_direct_successor &&
-      !targets_initial_route) {
+  if (!targets_current_route && !targets_successor_route && !targets_initial_route) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kTargetRelationRejected);
   }
@@ -339,8 +327,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     // so establish only the new route's bounded forward station. The command
     // and braking horizons beginning at this exact state remain subject to the
     // complete swept-world and latest-lidar validation below.
-    if (!targets_successor_route && !targets_direct_successor &&
-        !targets_initial_route) {
+    if (!targets_successor_route && !targets_initial_route) {
       return rejectedFiniteExecution(
           FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
     }
@@ -395,7 +382,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
                 certificate_view.suffix_start_station_m,
                 certificate_view.certified_end_station_m, cross_track_limit,
                 cross_track_limit, policy->sweptFootprint().sweep_step_m,
-                targets_initial_route || targets_direct_successor ||
+                targets_initial_route ||
                     (targets_current_route &&
                      certifiedTrackingTubeHandoffPending(current, target_route)),
                 policy->routeTrackingTubeConstraintsEnabled());
@@ -689,168 +676,6 @@ certifyFiniteExecution3D(const ExecutionPlan3D& current,
   return route == nullptr
              ? std::nullopt
              : certifyFiniteExecution3D(current, *route, std::move(certification));
-}
-
-std::optional<DirectTrackingFiniteExecution3D>
-certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
-                                 DirectTrackingExecutionCertification3D certification) {
-  const bool raw_mode = certification.observed_raw_world != nullptr;
-  const bool static_mode = certification.static_world != nullptr;
-  const FiniteExecutionState3D* const current_execution = current.finiteExecution();
-  const DirectTrackingFiniteExecution3D* const current_direct_execution =
-      current.directTrackingExecution();
-  if (!current.valid() || !certification.identity.valid() ||
-      certification.trajectory_revision == 0U || !finitePoint(certification.target) ||
-      raw_mode == static_mode || certification.validation_policy == nullptr ||
-      !certification.validation_policy->valid() ||
-      certification.execution_input == nullptr ||
-      !certification.execution_input->valid() ||
-      !certification.execution_input->nominalStateAuthoritative() ||
-      certification.latest_lidar_evidence == nullptr ||
-      certification.valid_from_ns <= 0 ||
-      certification.execution_input->effectiveStampNs() !=
-          certification.valid_from_ns ||
-      !executionInputFreshAt(*certification.execution_input,
-                             *certification.validation_policy,
-                             certification.valid_from_ns) ||
-      !latestLidarEvidenceFreshAt(*certification.latest_lidar_evidence,
-                                  *certification.validation_policy,
-                                  certification.valid_from_ns) ||
-      (certification.kind != FiniteExecutionKind3D::kNominal &&
-       certification.kind != FiniteExecutionKind3D::kRetained) ||
-      (raw_mode && !certification.observed_raw_world->valid()) ||
-      (static_mode && !certification.static_world->valid()) ||
-      (current_execution != nullptr &&
-       certification.trajectory_revision <= current_execution->trajectory_revision) ||
-      (current_direct_execution != nullptr &&
-       certification.trajectory_revision <=
-           current_direct_execution->trajectory_revision)) {
-    return std::nullopt;
-  }
-
-  const FiniteMotionHorizon3D& horizon = certification.horizon;
-  const std::int64_t control_interval_ns = finitePathControlIntervalNanoseconds3D(
-      certification.validation_policy->dynamics().dt_s);
-  if (horizon.controls.empty() ||
-      horizon.states.size() != horizon.controls.size() + 1U ||
-      control_interval_ns <= 0 || !finiteMotionHorizonHasTerminalRestState3D(horizon) ||
-      !finiteHorizonDynamicallyConsistent(
-          horizon, certification.execution_input->previousControl(),
-          certification.validation_policy->dynamics()) ||
-      !finiteStateNearlyEqual(horizon.states.front(),
-                              certification.execution_input->state()) ||
-      horizon.controls.size() >
-          static_cast<std::uint64_t>(
-              (std::numeric_limits<std::int64_t>::max() - certification.valid_from_ns) /
-              control_interval_ns)) {
-    return std::nullopt;
-  }
-
-  const LaunchSupportContact3D* const launch_support_contact =
-      raw_mode
-          ? optionalAddress(certification.observed_raw_world->launchSupportContact())
-          : nullptr;
-  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
-      proprioceptiveContactSeed3D(
-          executionInputPosition(*certification.execution_input),
-          certification.execution_input->previousControl(),
-          certification.validation_policy->sweptFootprint(),
-          raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
-                   : nullptr);
-  const IndexedPointCloudView3D latest_lidar_obstacle_points =
-      certification.latest_lidar_evidence->indexedHitPoints();
-  FiniteExecutionPathWorld3D validation_world{
-      .flight_envelope = &certification.validation_policy->flightEnvelope(),
-      .dynamics = &certification.validation_policy->dynamics(),
-      .altitude_envelope = &certification.validation_policy->altitudeEnvelope(),
-      .footprint = &certification.validation_policy->sweptFootprint(),
-      .static_occupancy =
-          static_mode ? &certification.static_world->occupancy() : nullptr,
-      .observed_occupancy =
-          raw_mode ? &certification.observed_raw_world->occupancy() : nullptr,
-      .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
-      .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
-      .terminal_boundary = std::nullopt,
-  };
-  const std::vector<TimedExecutionPathPoint3D> validation_points =
-      timedExecutionPathPoints(horizon,
-                               certification.execution_input->previousControl(),
-                               control_interval_ns);
-  if (!validateCompleteFiniteExecutionPath3D(
-           validation_points, certification.execution_input->previousControl(),
-           validation_world)
-           .accepted()) {
-    return std::nullopt;
-  }
-
-  const std::uint64_t collision_policy_fingerprint = validationPolicyFingerprint(
-      certification.validation_policy->sweptFootprint(), launch_support_contact);
-  const std::uint64_t validation_contract_fingerprint = validationContractFingerprint(
-      validation_world, certification.execution_input->previousControl(),
-      ValidationContractOwners3D{
-          .observed_raw_world = certification.observed_raw_world.get(),
-          .static_world = certification.static_world.get(),
-          .latest_lidar_evidence = certification.latest_lidar_evidence.get(),
-      });
-  if (collision_policy_fingerprint == 0U || validation_contract_fingerprint == 0U) {
-    return std::nullopt;
-  }
-  FiniteExecutionValidationLineage3D lineage{
-      StaticFiniteExecutionValidationLineage3D{}};
-  if (raw_mode) {
-    lineage = ObservedRawFiniteExecutionValidationLineage3D{
-        .producer_instance_id =
-            certification.observed_raw_world->version().producer_instance_id,
-        .validated_through_raw_revision =
-            certification.observed_raw_world->version().revision,
-        .validation_policy_fingerprint = collision_policy_fingerprint,
-        .observed_world_content_fingerprint =
-            certification.observed_raw_world->contentFingerprint(),
-        .observed_occupancy_content_fingerprint =
-            certification.observed_raw_world->occupiedContentFingerprint(),
-    };
-  } else {
-    lineage = StaticFiniteExecutionValidationLineage3D{
-        .world_certificate = certification.static_world->certificate(),
-        .static_occupancy_content_fingerprint =
-            certification.static_world->contentFingerprint(),
-        .validation_policy_fingerprint = collision_policy_fingerprint,
-    };
-  }
-
-  const std::int64_t valid_until_ns =
-      certification.valid_from_ns +
-      static_cast<std::int64_t>(horizon.controls.size()) * control_interval_ns;
-  DirectTrackingFiniteExecution3D execution{
-      .identity = certification.identity,
-      .trajectory_revision = certification.trajectory_revision,
-      .source_snapshot_version = current.version,
-      .source_navigation_revision = certification.execution_input->poseRevision(),
-      .target = certification.target,
-      .horizon = std::make_shared<const FiniteMotionHorizon3D>(
-          std::move(certification.horizon)),
-      .observed_raw_world = std::move(certification.observed_raw_world),
-      .static_world = std::move(certification.static_world),
-      .validation_policy = std::move(certification.validation_policy),
-      .execution_input = std::move(certification.execution_input),
-      .latest_lidar_evidence = std::move(certification.latest_lidar_evidence),
-      .valid_from_ns = certification.valid_from_ns,
-      .valid_until_ns = valid_until_ns,
-      .control_interval_ns = control_interval_ns,
-      .kind = certification.kind,
-      .validation_proof =
-          FiniteExecutionValidationProof3D{
-              .validation_contract_fingerprint = validation_contract_fingerprint,
-              .lineage = lineage,
-          },
-  };
-  execution.validation_proof.artifact_fingerprint =
-      directTrackingExecutionArtifactFingerprint(execution);
-  return execution.valid()
-             ? std::optional<DirectTrackingFiniteExecution3D>{std::move(execution)}
-             : std::nullopt;
 }
 
 } // namespace drone_city_nav

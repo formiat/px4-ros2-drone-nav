@@ -176,12 +176,11 @@ parallel authorities.
 Owns one `RouteExecutionManager3D`, including pending and active ownership,
 certification, progress, retention, successor hysteresis, braking fallback, and
 atomic publication. Execution state is a tagged variant whose alternatives make
-route/hold/direct/braking conflicts unrepresentable:
+route/hold/braking conflicts unrepresentable:
 
 ```cpp
 using ExecutionPlanState3D = std::variant<
     FollowingPlan3D,
-    DirectTrackingPlan3D,
     BrakingPlan3D,
     StationaryHoldPlan3D,
     AwaitingSuccessorPlan3D,
@@ -240,9 +239,9 @@ The supervisor captures the exact resident authority, selects route or direct
 tracking from that capture, reconstructs the remaining finite path, validates
 current raw/lidar evidence, certifies the replacement and braking fallback, and
 returns the captured authority with one immutable transition. Preparation does
-not mutate the store. Direct tests cover normal route retention and commit,
-direct-tracking retention, exact raw-invalidation emergency braking, stale
-lifecycle ownership, and missing-evidence rejection. The ROS adapter contains
+not mutate the store. Direct tests cover normal route retention and commit, exact
+raw-invalidation emergency braking, stale lifecycle ownership, and
+missing-evidence rejection. The ROS adapter contains
 no finite-path certification or reducer calls.
 
 Stationary-hold preparation now crosses one owned `ExecutionHoldRequest3D`.

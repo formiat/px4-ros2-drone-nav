@@ -16,7 +16,6 @@ namespace drone_city_nav {
 enum class ExecutionRetentionKind3D : std::uint8_t {
   kNone,
   kRoute,
-  kDirectTracking,
 };
 
 enum class ExecutionRetentionStatus3D : std::uint8_t {

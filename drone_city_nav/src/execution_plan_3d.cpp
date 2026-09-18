@@ -78,8 +78,6 @@ std::string_view executionRoutePhase3DName(const ExecutionRoutePhase3D phase) no
   switch (phase) {
     case ExecutionRoutePhase3D::kFollowing:
       return "following";
-    case ExecutionRoutePhase3D::kDirectTracking:
-      return "direct_tracking";
     case ExecutionRoutePhase3D::kAwaitingSuccessor:
       return "awaiting_successor";
     case ExecutionRoutePhase3D::kStopping:

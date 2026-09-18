@@ -207,8 +207,6 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     return transitionFailure(status);
   }
   const FiniteExecutionState3D* const route_execution = current.finiteExecution();
-  const DirectTrackingFiniteExecution3D* const direct_execution =
-      current.directTrackingExecution();
   // A flown stop is the ordinary way a moving vehicle reaches rest, so it is a
   // hold source like any other terminal execution. Without this the plan would
   // have no way out of the stop it just completed.
@@ -216,7 +214,6 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
   const StationaryExecutionHold3D* const resident_hold = current.stationaryHold();
   const std::size_t source_count =
       static_cast<std::size_t>(route_execution != nullptr) +
-      static_cast<std::size_t>(direct_execution != nullptr) +
       static_cast<std::size_t>(stop_execution != nullptr) +
       static_cast<std::size_t>(resident_hold != nullptr);
   if (source_count != 1U) {
@@ -236,13 +233,6 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     source_static = route_execution->static_world.get();
     source_lidar = route_execution->latest_lidar_evidence.get();
     source_policy = route_execution->validation_policy.get();
-  } else if (direct_execution != nullptr) {
-    source_horizon = direct_execution->horizon.get();
-    source_input = direct_execution->execution_input;
-    source_observed = direct_execution->observed_raw_world.get();
-    source_static = direct_execution->static_world.get();
-    source_lidar = direct_execution->latest_lidar_evidence.get();
-    source_policy = direct_execution->validation_policy.get();
   } else if (stop_execution != nullptr) {
     source_horizon = stop_execution->horizon.get();
     source_input = stop_execution->execution_input;
@@ -323,15 +313,10 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
                 route_execution->control_interval_ns,
                 route_execution->trajectory_revision};
       }
-      if (direct_execution != nullptr) {
-        return {direct_execution->valid_from_ns, direct_execution->valid_until_ns,
-                direct_execution->control_interval_ns,
-                direct_execution->trajectory_revision};
-      }
       return {stop_execution->valid_from_ns, stop_execution->valid_until_ns,
               stop_execution->control_interval_ns, stop_execution->trajectory_revision};
     }();
-    // A route or a tracking horizon is handed over at the rest it commanded.
+    // A route horizon is handed over at the rest it commanded.
     // A stop's rest point is a prediction from the vehicle's dynamics, and
     // the vehicle rests wherever braking actually left it; the hold pins that
     // measured position, which the certification has already been checked
@@ -371,7 +356,6 @@ execution_route_snapshot_3d_internal::applyArmStationaryCaptureHoldCommand3D(
   }
   if (current.phase() != ExecutionRoutePhase3D::kRevoked ||
       current.route() != nullptr || current.finiteExecution() != nullptr ||
-      current.directTrackingExecution() != nullptr ||
       current.stationaryHold() != nullptr) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);

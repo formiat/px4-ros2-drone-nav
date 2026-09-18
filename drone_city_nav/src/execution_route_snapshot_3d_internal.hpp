@@ -328,13 +328,6 @@ void hashCertificate(std::uint64_t& hash,
 [[nodiscard]] std::uint64_t
 finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noexcept;
 
-[[nodiscard]] bool
-sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
-                        const DirectTrackingOwnerIdentity3D& second) noexcept;
-
-[[nodiscard]] std::uint64_t directTrackingExecutionArtifactFingerprint(
-    const DirectTrackingFiniteExecution3D& execution) noexcept;
-
 [[nodiscard]] bool certificateValidForSource(
     const RouteSuffixCertificate3D& certificate, RouteInstanceId3D route_instance_id,
     const std::uint64_t route_generation, const std::uint64_t geometry_revision,
@@ -372,9 +365,6 @@ certificateEligibleForRevalidation(const RouteSuffixCertificate3D& artifact,
 
 [[nodiscard]] bool
 finiteWorldOwnerMatchesProof(const FiniteExecutionState3D& execution) noexcept;
-
-[[nodiscard]] bool directTrackingWorldOwnerMatchesProof(
-    const DirectTrackingFiniteExecution3D& execution) noexcept;
 
 [[nodiscard]] std::uint64_t
 rawValidatedRevision(const FiniteExecutionValidationLineage3D& lineage) noexcept;
@@ -462,31 +452,11 @@ latestLidarEvidenceNotOlder(const VersionedLatestLidarEvidence3D& candidate,
                             const VersionedLatestLidarEvidence3D& previous) noexcept;
 
 [[nodiscard]] bool
-directTrackingWorldNotOlder(const DirectTrackingFiniteExecution3D& candidate,
-                            const DirectTrackingFiniteExecution3D& previous) noexcept;
-
-[[nodiscard]] bool directTrackingExecutionNotOlder(
-    const DirectTrackingFiniteExecution3D& candidate,
-    const DirectTrackingFiniteExecution3D& previous) noexcept;
-
-[[nodiscard]] bool directTrackingEvidenceNotOlderThanRoute(
-    const DirectTrackingFiniteExecution3D& candidate,
-    const FiniteExecutionState3D& previous) noexcept;
-
-[[nodiscard]] bool routeExecutionEvidenceNotOlderThanDirect(
-    const FiniteExecutionState3D& candidate,
-    const DirectTrackingFiniteExecution3D& previous) noexcept;
-
-[[nodiscard]] bool
 routeExecutionEvidenceNotOlderThanStop(const FiniteExecutionState3D& candidate,
                                        const StopExecution3D& previous) noexcept;
 
 [[nodiscard]] bool routeExecutionEvidenceNotOlderThanHold(
     const FiniteExecutionState3D& candidate,
-    const StationaryExecutionHold3D& previous) noexcept;
-
-[[nodiscard]] bool directTrackingEvidenceNotOlderThanHold(
-    const DirectTrackingFiniteExecution3D& candidate,
     const StationaryExecutionHold3D& previous) noexcept;
 
 [[nodiscard]] bool
@@ -548,20 +518,6 @@ applyCompleteCertifiedRouteCommand3D(const ExecutionPlan3D& current,
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyReplaceCertifiedRouteAtHandoffCommand3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
-    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D applyTransferToDirectTrackingCommand3D(
-    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
-    DirectTrackingFiniteExecution3D direct_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-applyReplaceDirectTrackingExecutionCommand3D(
-    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
-    DirectTrackingFiniteExecution3D direct_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-applyTransferDirectTrackingToCertifiedRouteCommand3D(
-    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D applyTransferToExecutionHoldCommand3D(

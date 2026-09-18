@@ -171,14 +171,6 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
            revalidateFiniteExecution(*command, latest_raw, latest_lidar) &&
            revalidateFiniteExecution(*fallback, latest_raw, latest_lidar);
   }
-  const DirectTrackingFiniteExecution3D* const direct =
-      snapshot.directTrackingExecution();
-  if (direct != nullptr) {
-    const std::optional<FiniteExecutionEvidenceView3D> view =
-        finiteExecutionEvidenceView(*direct);
-    return view.has_value() &&
-           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
-  }
   // A stop carries no braking fallback of its own: it is the fallback, and its
   // evidence is the same swept body against the newest world.
   if (const StopExecution3D* const stop = snapshot.stopExecution()) {
@@ -218,11 +210,6 @@ snapshotRawOwner(const ExecutionPlan3D& snapshot) {
       execution != nullptr && execution->observed_raw_world != nullptr) {
     return execution->observed_raw_world;
   }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          snapshot.directTrackingExecution();
-      execution != nullptr && execution->observed_raw_world != nullptr) {
-    return execution->observed_raw_world;
-  }
   if (const StopExecution3D* const stop = snapshot.stopExecution();
       stop != nullptr && stop->observed_raw_world != nullptr) {
     return stop->observed_raw_world;
@@ -239,10 +226,6 @@ snapshotLidarOwner(const ExecutionPlan3D& snapshot) {
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
     return execution->latest_lidar_evidence;
   }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          snapshot.directTrackingExecution()) {
-    return execution->latest_lidar_evidence;
-  }
   const StopExecution3D* const stop = snapshot.stopExecution();
   return stop != nullptr ? stop->latest_lidar_evidence : nullptr;
 }
@@ -253,10 +236,6 @@ snapshotValidationPolicy(const ExecutionPlan3D& snapshot) {
     return hold->validation_policy;
   }
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
-    return execution->validation_policy;
-  }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          snapshot.directTrackingExecution()) {
     return execution->validation_policy;
   }
   if (const StopExecution3D* const stop = snapshot.stopExecution()) {

@@ -108,22 +108,6 @@ struct ReplaceCertifiedRouteAtHandoffCommand3D {
   FiniteExecutionPlan3D successor_execution{};
 };
 
-struct TransferToDirectTrackingCommand3D {
-  std::uint64_t expected_snapshot_version{0U};
-  DirectTrackingFiniteExecution3D direct_execution{};
-};
-
-struct ReplaceDirectTrackingExecutionCommand3D {
-  std::uint64_t expected_snapshot_version{0U};
-  DirectTrackingFiniteExecution3D direct_execution{};
-};
-
-struct TransferDirectTrackingToCertifiedRouteCommand3D {
-  std::uint64_t expected_snapshot_version{0U};
-  CertifiedRouteSuffix3D successor{};
-  FiniteExecutionPlan3D successor_execution{};
-};
-
 struct TransferToExecutionHoldCommand3D {
   std::uint64_t expected_snapshot_version{0U};
   StationaryExecutionHoldCertification3D certification{};
@@ -149,14 +133,14 @@ struct SuspendFiniteExecutionCommand3D {
   std::uint64_t expected_snapshot_version{0U};
 };
 
-using ExecutionPlanTransitionCommand3D = std::variant<
-    ActivateCertifiedRouteCommand3D, AdvanceCertifiedRouteCommand3D,
-    ReplaceFiniteExecutionPlanCommand3D, CompleteCertifiedRouteCommand3D,
-    ReplaceCertifiedRouteCommand3D, ReplaceCertifiedRouteAtHandoffCommand3D,
-    TransferToDirectTrackingCommand3D, ReplaceDirectTrackingExecutionCommand3D,
-    TransferDirectTrackingToCertifiedRouteCommand3D, TransferToExecutionHoldCommand3D,
-    ArmStationaryCaptureHoldCommand3D, EnterStopExecutionCommand3D,
-    RevokeExecutionCommand3D, SuspendFiniteExecutionCommand3D>;
+using ExecutionPlanTransitionCommand3D =
+    std::variant<ActivateCertifiedRouteCommand3D, AdvanceCertifiedRouteCommand3D,
+                 ReplaceFiniteExecutionPlanCommand3D, CompleteCertifiedRouteCommand3D,
+                 ReplaceCertifiedRouteCommand3D,
+                 ReplaceCertifiedRouteAtHandoffCommand3D,
+                 TransferToExecutionHoldCommand3D, ArmStationaryCaptureHoldCommand3D,
+                 EnterStopExecutionCommand3D, RevokeExecutionCommand3D,
+                 SuspendFiniteExecutionCommand3D>;
 
 class ExecutionRouteTransitionFactory3D;
 class RouteExecutionManager3D;
@@ -220,20 +204,6 @@ completeCertifiedRoute3D(const ExecutionPlan3D& current,
 
 [[nodiscard]] ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
-    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-transferToDirectTracking3D(const ExecutionPlan3D& current,
-                           std::uint64_t expected_snapshot_version,
-                           DirectTrackingFiniteExecution3D direct_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-replaceDirectTrackingExecution3D(const ExecutionPlan3D& current,
-                                 std::uint64_t expected_snapshot_version,
-                                 DirectTrackingFiniteExecution3D direct_execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D transferDirectTrackingToCertifiedRoute3D(
-    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D composeExecutionPlanTransition3D(

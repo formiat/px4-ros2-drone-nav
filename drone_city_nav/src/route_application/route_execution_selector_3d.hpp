@@ -41,7 +41,6 @@ struct RouteExecutionSelectorRequest3D {
   std::int64_t validation_stamp_ns{0};
   std::uint64_t minimum_tracking_sample_sequence{0U};
   std::uint64_t physically_invalidated_through_generation{0U};
-  std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
   bool observed_3d_world{false};
 
   [[nodiscard]] bool valid() const noexcept {

@@ -66,7 +66,6 @@ struct ProductionRouteExecutionSelection3D {
   // brakes toward a persistent block, instead of meeting it at the end of its
   // horizon and stopping hard.
   std::optional<double> latest_lidar_blocked_station_m;
-  std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };
 
 } // namespace drone_city_nav

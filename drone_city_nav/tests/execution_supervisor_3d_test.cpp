@@ -37,7 +37,6 @@ supervisorPendingDraft(const ExecutionPlan3D& initial,
       .base_route_generation = 0U,
       .base_geometry_revision = 0U,
       .base_continuity_id = 0U,
-      .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .route = route,
   };

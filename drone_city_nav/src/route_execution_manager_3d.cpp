@@ -12,18 +12,7 @@ namespace {
 [[nodiscard]] bool exclusiveExecutionHold(const ExecutionPlan3D& plan) noexcept {
   return plan.phase() == ExecutionRoutePhase3D::kStopped &&
          plan.stationaryHold() != nullptr && plan.route() == nullptr &&
-         plan.finiteExecution() == nullptr && plan.directTrackingExecution() == nullptr;
-}
-
-[[nodiscard]] bool
-sameDirectTrackingIdentity(const DirectTrackingOwnerIdentity3D& first,
-                           const DirectTrackingOwnerIdentity3D& second) noexcept {
-  return first.mission_epoch == second.mission_epoch &&
-         first.assignment_generation == second.assignment_generation &&
-         first.target_detection_id == second.target_detection_id &&
-         first.target_track_id == second.target_track_id &&
-         first.objective_sample_sequence == second.objective_sample_sequence &&
-         first.line_of_sight_generation == second.line_of_sight_generation;
+         plan.finiteExecution() == nullptr;
 }
 
 } // namespace
@@ -36,8 +25,6 @@ bool sameExecutionRouteBase3D(
   }
   if (first->execution_owner_epoch != second->execution_owner_epoch ||
       (first->route() != nullptr) != (second->route() != nullptr) ||
-      (first->directTrackingExecution() != nullptr) !=
-          (second->directTrackingExecution() != nullptr) ||
       (first->stationaryHold() != nullptr) != (second->stationaryHold() != nullptr) ||
       first->routeGenerationHighWater() != second->routeGenerationHighWater()) {
     return false;
@@ -48,15 +35,6 @@ bool sameExecutionRouteBase3D(
   if (exclusiveExecutionHold(*first)) {
     return exclusiveExecutionHold(*second) && first_hold != nullptr &&
            second_hold != nullptr && first_hold->hold_id == second_hold->hold_id;
-  }
-
-  const DirectTrackingFiniteExecution3D* const first_direct =
-      first->directTrackingExecution();
-  const DirectTrackingFiniteExecution3D* const second_direct =
-      second->directTrackingExecution();
-  if (first_direct != nullptr) {
-    return second_direct != nullptr &&
-           sameDirectTrackingIdentity(first_direct->identity, second_direct->identity);
   }
 
   const CertifiedRouteSuffix3D* const first_route = first->route();

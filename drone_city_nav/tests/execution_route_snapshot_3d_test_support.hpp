@@ -498,19 +498,15 @@ struct SnapshotFixture3D {
       const double begin_station_m = -1.0) {
     const CertifiedRouteSuffix3D* const resident_route = snapshot.route();
     const StationaryExecutionHold3D* const resident_hold = snapshot.stationaryHold();
-    const DirectTrackingFiniteExecution3D* const direct_execution =
-        snapshot.directTrackingExecution();
     const FiniteExecutionState3D* const finite_execution = snapshot.finiteExecution();
     const VersionedExecutionInput3D* const minimum_execution_input =
-        resident_route != nullptr     ? resident_route->progress.execution_input.get()
-        : resident_hold != nullptr    ? resident_hold->terminal_execution_input.get()
-        : direct_execution != nullptr ? direct_execution->execution_input.get()
-                                      : nullptr;
+        resident_route != nullptr  ? resident_route->progress.execution_input.get()
+        : resident_hold != nullptr ? resident_hold->terminal_execution_input.get()
+                                   : nullptr;
     const VersionedLatestLidarEvidence3D* const minimum_lidar_evidence =
-        finite_execution != nullptr   ? finite_execution->latest_lidar_evidence.get()
-        : resident_hold != nullptr    ? resident_hold->latest_lidar_evidence.get()
-        : direct_execution != nullptr ? direct_execution->latest_lidar_evidence.get()
-                                      : nullptr;
+        finite_execution != nullptr ? finite_execution->latest_lidar_evidence.get()
+        : resident_hold != nullptr  ? resident_hold->latest_lidar_evidence.get()
+                                    : nullptr;
     const std::optional<FiniteExecutionState3D> certified = certifyFiniteExecution3D(
         snapshot, suffix,
         finiteCertificationForRoute(suffix, kind, trajectory_revision,
@@ -578,13 +574,6 @@ struct SnapshotFixture3D {
                 route->valid_until_ns,     route->latest_lidar_evidence,
                 route->observed_raw_world, route->static_world,
                 route->validation_policy};
-      }
-      if (const DirectTrackingFiniteExecution3D* const direct =
-              snapshot.directTrackingExecution()) {
-        return {direct->execution_input,    direct->horizon.get(),
-                direct->valid_until_ns,     direct->latest_lidar_evidence,
-                direct->observed_raw_world, direct->static_world,
-                direct->validation_policy};
       }
       if (const StopExecution3D* const stop = snapshot.stopExecution()) {
         return {stop->execution_input,    stop->horizon.get(),
@@ -727,10 +716,6 @@ struct SnapshotFixture3D {
     if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
       return execution->execution_input;
     }
-    if (const DirectTrackingFiniteExecution3D* const execution =
-            plan.directTrackingExecution()) {
-      return execution->execution_input;
-    }
     if (const StopExecution3D* const stop = plan.stopExecution()) {
       return stop->execution_input;
     }
@@ -812,66 +797,6 @@ staticActivation(SnapshotFixture3D& fixture, const OccupancyGrid3D& static_occup
   activation.static_world =
       VersionedStaticWorld3D::capture(validated_world, static_occupancy);
   return activation;
-}
-
-[[nodiscard, maybe_unused]] std::optional<DirectTrackingFiniteExecution3D>
-certifyDirectFixtureExecution(
-    const ExecutionPlan3D& snapshot, CertifiedRouteSuffix3D path_route,
-    const DirectTrackingOwnerIdentity3D& identity,
-    const std::uint64_t trajectory_revision,
-    const FiniteExecutionKind3D kind = FiniteExecutionKind3D::kNominal) {
-  const DirectTrackingFiniteExecution3D* const previous_direct =
-      snapshot.directTrackingExecution();
-  const StationaryExecutionHold3D* const resident_hold = snapshot.stationaryHold();
-  const FiniteExecutionState3D* const resident_execution = snapshot.finiteExecution();
-  const VersionedExecutionInput3D* const minimum_execution_input =
-      previous_direct != nullptr      ? previous_direct->execution_input.get()
-      : resident_hold != nullptr      ? resident_hold->terminal_execution_input.get()
-      : resident_execution != nullptr ? resident_execution->execution_input.get()
-                                      : nullptr;
-  const VersionedLatestLidarEvidence3D* const minimum_lidar_evidence =
-      previous_direct != nullptr      ? previous_direct->latest_lidar_evidence.get()
-      : resident_hold != nullptr      ? resident_hold->latest_lidar_evidence.get()
-      : resident_execution != nullptr ? resident_execution->latest_lidar_evidence.get()
-                                      : nullptr;
-  if (previous_direct != nullptr) {
-    path_route.progress.execution_input = previous_direct->execution_input;
-    path_route.progress.last_observed_position =
-        Point3{previous_direct->execution_input->state().x,
-               previous_direct->execution_input->state().y,
-               previous_direct->execution_input->state().z};
-  } else if (resident_hold != nullptr) {
-    path_route.progress.station_m = path_route.endStationM();
-    path_route.progress.execution_input = resident_hold->terminal_execution_input;
-    path_route.progress.last_observed_position = resident_hold->position;
-  }
-  FiniteExecutionCertification3D finite =
-      SnapshotFixture3D::finiteCertificationForRoute(
-          path_route, kind, trajectory_revision, trajectory_revision, 0U, -1.0,
-          minimum_execution_input, minimum_lidar_evidence);
-  return certifyDirectTrackingExecution3D(
-      snapshot,
-      DirectTrackingExecutionCertification3D{
-          .identity = identity,
-          .trajectory_revision = trajectory_revision,
-          .target = {10.0, 0.0, 5.0},
-          .horizon = std::move(finite.horizon),
-          .observed_raw_world =
-              previous_direct != nullptr ? previous_direct->observed_raw_world
-              : resident_hold != nullptr ? resident_hold->observed_raw_world
-                                         : path_route.observed_raw_world,
-          .static_world = previous_direct != nullptr ? previous_direct->static_world
-                          : resident_hold != nullptr ? resident_hold->static_world
-                                                     : path_route.static_world,
-          .validation_policy =
-              previous_direct != nullptr ? previous_direct->validation_policy
-              : resident_hold != nullptr ? resident_hold->validation_policy
-                                         : path_route.validation_policy,
-          .execution_input = std::move(finite.execution_input),
-          .latest_lidar_evidence = std::move(finite.latest_lidar_evidence),
-          .valid_from_ns = finite.valid_from_ns,
-          .kind = kind,
-      });
 }
 
 [[nodiscard, maybe_unused]] bool

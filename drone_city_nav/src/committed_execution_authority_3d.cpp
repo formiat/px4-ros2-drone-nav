@@ -63,10 +63,6 @@ planExecutionInput(const ExecutionPlan3D& plan) noexcept {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
     return execution->execution_input.get();
   }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          plan.directTrackingExecution()) {
-    return execution->execution_input.get();
-  }
   if (const StopExecution3D* const stop = plan.stopExecution()) {
     return stop->execution_input.get();
   }

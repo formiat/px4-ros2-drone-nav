@@ -136,13 +136,9 @@ void ProductionMppiNode::finalizePlanningTick(
   const CertifiedRouteSuffix3D* const committed_route =
       committed_execution_snapshot != nullptr ? committed_execution_snapshot->route()
                                               : nullptr;
-  const bool committed_direct_owner =
-      committed_execution_snapshot != nullptr &&
-      committed_execution_snapshot->directTrackingExecution() != nullptr;
   const bool committed_execution_owner =
       committed_execution_snapshot != nullptr &&
       (committed_execution_snapshot->finiteExecution() != nullptr ||
-       committed_direct_owner ||
        committed_execution_snapshot->stationaryHold() != nullptr);
   const bool raw_invalidation_active =
       committed_route != nullptr &&
@@ -216,14 +212,13 @@ void ProductionMppiNode::finalizePlanningTick(
                                : std::numeric_limits<double>::infinity(),
       .speed_mps = routeSpeed3D(
           Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
-      .resident_route_available = committed_route != nullptr || committed_direct_owner,
+      .resident_route_available = committed_route != nullptr,
       .execution_owner_available = committed_execution_owner,
       // A stationary hold owns execution without carrying the vehicle
-      // anywhere; only a finite or direct execution flies a route.
+      // anywhere; only a finite execution flies a route.
       .route_execution_owner_available =
           committed_execution_snapshot != nullptr &&
-          (committed_execution_snapshot->finiteExecution() != nullptr ||
-           committed_direct_owner),
+          committed_execution_snapshot->finiteExecution() != nullptr,
       .endpoint_limiter_active =
           speed_policy.active_limiter == MppiSpeedLimiter::kRouteEndpoint,
       .raw_invalidation_active = raw_invalidation_active,

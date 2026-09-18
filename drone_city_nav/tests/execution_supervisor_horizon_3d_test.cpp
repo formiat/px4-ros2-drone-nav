@@ -17,10 +17,6 @@ rawOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
     return execution->observed_raw_world;
   }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          plan.directTrackingExecution()) {
-    return execution->observed_raw_world;
-  }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
     return hold->observed_raw_world;
   }
@@ -30,10 +26,6 @@ rawOwner(const ExecutionPlan3D& plan) {
 [[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
 lidarOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
-    return execution->latest_lidar_evidence;
-  }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          plan.directTrackingExecution()) {
     return execution->latest_lidar_evidence;
   }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
@@ -209,7 +201,6 @@ TEST(ExecutionSupervisorHorizon3DTest,
               .base_route_generation = 0U,
               .base_geometry_revision = 0U,
               .base_continuity_id = 0U,
-              .base_direct_tracking_identity = std::nullopt,
               .route_splice = std::nullopt,
               .route = route,
           });

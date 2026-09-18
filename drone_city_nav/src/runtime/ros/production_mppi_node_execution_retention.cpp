@@ -66,12 +66,8 @@ ProductionMppiNode::retainActiveFinitePath(
   const ExecutionRouteTransitionResult3D& transition = *prepared.transition;
   const FiniteExecutionState3D* const retained_route_execution =
       transition.next->finiteExecution();
-  const DirectTrackingFiniteExecution3D* const retained_direct_execution =
-      transition.next->directTrackingExecution();
   const FiniteExecutionState3D* const resident_route_execution =
       expected->finiteExecution();
-  const DirectTrackingFiniteExecution3D* const resident_direct_execution =
-      expected->directTrackingExecution();
   const mppi::FiniteHorizon* retained_horizon{nullptr};
   std::int64_t retained_valid_until_ns{0};
   std::int64_t retained_control_interval_ns{0};
@@ -79,22 +75,14 @@ ProductionMppiNode::retainActiveFinitePath(
     retained_horizon = retained_route_execution->horizon.get();
     retained_valid_until_ns = retained_route_execution->valid_until_ns;
     retained_control_interval_ns = retained_route_execution->control_interval_ns;
-  } else if (retained_direct_execution != nullptr) {
-    retained_horizon = retained_direct_execution->horizon.get();
-    retained_valid_until_ns = retained_direct_execution->valid_until_ns;
-    retained_control_interval_ns = retained_direct_execution->control_interval_ns;
   }
   const mppi::FiniteHorizon* resident_horizon{nullptr};
   if (resident_route_execution != nullptr) {
     resident_horizon = resident_route_execution->horizon.get();
-  } else if (resident_direct_execution != nullptr) {
-    resident_horizon = resident_direct_execution->horizon.get();
   }
-  const bool prepared_kind_valid =
-      (prepared.kind == ExecutionRetentionKind3D::kRoute &&
-       retained_route_execution != nullptr && resident_route_execution != nullptr) ||
-      (prepared.kind == ExecutionRetentionKind3D::kDirectTracking &&
-       retained_direct_execution != nullptr && resident_direct_execution != nullptr);
+  const bool prepared_kind_valid = prepared.kind == ExecutionRetentionKind3D::kRoute &&
+                                   retained_route_execution != nullptr &&
+                                   resident_route_execution != nullptr;
   if (!prepared_kind_valid || retained_horizon == nullptr ||
       resident_horizon == nullptr || retained_horizon->controls.empty() ||
       resident_horizon->controls.empty()) {
@@ -123,11 +111,6 @@ ProductionMppiNode::retainActiveFinitePath(
       horizon.obstacle_revision =
           retained_route_execution->observed_raw_world->version().revision;
     }
-  } else if (prepared.kind == ExecutionRetentionKind3D::kDirectTracking) {
-    horizon.route_constrained = false;
-    horizon.route_target.x = retained_direct_execution->target.x;
-    horizon.route_target.y = retained_direct_execution->target.y;
-    horizon.route_target.z = retained_direct_execution->target.z;
   } else {
     return std::nullopt;
   }

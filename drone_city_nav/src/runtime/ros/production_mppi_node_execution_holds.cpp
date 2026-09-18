@@ -58,8 +58,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
           .current_lidar_evidence = current_lidar,
           .current_observed_raw_world = current_observed_raw_world,
-          .stationary_capture_observed_raw_world = cycle.evidence.direct_observed_world,
-          .stationary_capture_static_world = cycle.evidence.direct_static_world,
+          .stationary_capture_observed_raw_world = cycle.evidence.rearm_observed_world,
+          .stationary_capture_static_world = cycle.evidence.rearm_static_world,
           .selected_validation_policy = cycle.evidence.selected_policy,
           .stationary_capture_validation_policy = config_.execution.validation_policy,
           .validation_now_ns = cycle.evidence.lidar_validation_now_ns,
@@ -398,9 +398,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::residentOwnerContinuation
   const mppi::FiniteHorizon* resident_horizon{nullptr};
   if (const FiniteExecutionState3D* const finite = plan->finiteExecution()) {
     resident_horizon = finite->horizon.get();
-  } else if (const DirectTrackingFiniteExecution3D* const direct =
-                 plan->directTrackingExecution()) {
-    resident_horizon = direct->horizon.get();
   } else if (const StopExecution3D* const stop = plan->stopExecution()) {
     resident_horizon = stop->horizon.get();
   }
@@ -634,8 +631,7 @@ void ProductionMppiNode::retireGoalHoldForSuccessorLeg() {
   }
   const std::shared_ptr<const ExecutionPlan3D> expected = expected_authority->plan();
   if (expected == nullptr || expected->stationaryHold() == nullptr ||
-      expected->finiteExecution() != nullptr ||
-      expected->directTrackingExecution() != nullptr) {
+      expected->finiteExecution() != nullptr) {
     return;
   }
   const ExecutionRouteTransitionResult3D transition =
@@ -686,7 +682,6 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
     const bool snapshot_has_executable_authority =
         snapshot != nullptr &&
         (snapshot->finiteExecution() != nullptr ||
-         snapshot->directTrackingExecution() != nullptr ||
          snapshot->stopExecution() != nullptr || snapshot->stationaryHold() != nullptr);
     revocation_already_satisfied = !snapshot_has_executable_authority &&
                                    authority != nullptr && !authority->owner().valid;
@@ -706,9 +701,8 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
   const bool authority_present =
       snapshot != nullptr &&
       (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
-       snapshot->finiteExecution() != nullptr ||
-       snapshot->directTrackingExecution() != nullptr ||
-       snapshot->stopExecution() != nullptr || snapshot->stationaryHold() != nullptr);
+       snapshot->finiteExecution() != nullptr || snapshot->stopExecution() != nullptr ||
+       snapshot->stationaryHold() != nullptr);
   if (authority_present) {
     static_cast<void>(publishExecutionRevocation(reason, now_ns));
   }

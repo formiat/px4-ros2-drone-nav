@@ -41,8 +41,7 @@ candidateStatusFromRiskAssignment(const RouteRiskAnnotationStatus3D status) noex
 [[nodiscard]] bool exclusiveExecutionHold(const ExecutionPlan3D& snapshot) noexcept {
   return snapshot.phase() == ExecutionRoutePhase3D::kStopped &&
          snapshot.stationaryHold() != nullptr && snapshot.route() == nullptr &&
-         snapshot.finiteExecution() == nullptr &&
-         snapshot.directTrackingExecution() == nullptr;
+         snapshot.finiteExecution() == nullptr;
 }
 
 [[nodiscard]] PendingExecutionBaseKind3D
@@ -53,9 +52,6 @@ pendingExecutionBaseKind(const ExecutionPlan3D& snapshot,
   }
   if (exclusiveExecutionHold(snapshot)) {
     return PendingExecutionBaseKind3D::kStationaryHold;
-  }
-  if (snapshot.directTrackingExecution() != nullptr) {
-    return PendingExecutionBaseKind3D::kDirectTracking;
   }
   if (snapshot.stopExecution() != nullptr) {
     return PendingExecutionBaseKind3D::kStop;
@@ -895,10 +891,6 @@ makePendingDraft(RouteActivationPreparationState3D state) {
       state.prepared.execution_base;
   const CertifiedRouteSuffix3D* const current_route =
       current_execution != nullptr ? current_execution->route() : nullptr;
-  const DirectTrackingFiniteExecution3D* const current_direct =
-      current_execution != nullptr ? current_execution->directTrackingExecution()
-                                   : nullptr;
-
   state.prepared.pending_draft =
       state.certified_route.has_value() && state.splice_ready
           ? std::optional<PendingCertifiedRoute3D>{PendingCertifiedRoute3D{
@@ -918,11 +910,6 @@ makePendingDraft(RouteActivationPreparationState3D state) {
                         : 0U,
                 .base_continuity_id =
                     current_route != nullptr ? current_route->continuity_id : 0U,
-                .base_direct_tracking_identity =
-                    current_direct != nullptr
-                        ? std::optional<DirectTrackingOwnerIdentity3D>{current_direct
-                                                                           ->identity}
-                        : std::nullopt,
                 .route_splice =
                     state.overlap_search ? report.splice.splice : std::nullopt,
                 .route = state.certified_route.value(),

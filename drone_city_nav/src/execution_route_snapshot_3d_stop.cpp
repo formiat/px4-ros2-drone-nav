@@ -504,12 +504,8 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
   const FiniteExecutionState3D* const route_execution = current.finiteExecution();
-  const DirectTrackingFiniteExecution3D* const direct_execution =
-      current.directTrackingExecution();
-  if ((route_execution != nullptr &&
-       certification.trajectory_revision <= route_execution->trajectory_revision) ||
-      (direct_execution != nullptr &&
-       certification.trajectory_revision <= direct_execution->trajectory_revision)) {
+  if (route_execution != nullptr &&
+      certification.trajectory_revision <= route_execution->trajectory_revision) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }

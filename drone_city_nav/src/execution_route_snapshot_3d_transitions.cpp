@@ -160,7 +160,6 @@ ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
       (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
        current.phase() == ExecutionRoutePhase3D::kRevoked) &&
       current.route() == nullptr && current.finiteExecution() == nullptr &&
-      current.directTrackingExecution() == nullptr &&
       current.stationaryHold() == nullptr;
   const bool stationary_owner = current.phase() == ExecutionRoutePhase3D::kStopped &&
                                 current.stationaryHold() != nullptr;
@@ -600,107 +599,6 @@ ExecutionRouteTransitionResult3D applyReplaceCertifiedRouteAtHandoffCommand3D(
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution) {
   return replaceCertifiedRouteImpl(current, guard, std::move(successor),
                                    std::move(successor_execution), nullptr);
-}
-
-ExecutionRouteTransitionResult3D applyTransferToDirectTrackingCommand3D(
-    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
-    DirectTrackingFiniteExecution3D direct_execution) {
-  const ExecutionRouteTransitionStatus3D status =
-      checkCurrentAndVersion(current, expected_snapshot_version);
-  if (status != ExecutionRouteTransitionStatus3D::kApplied) {
-    return transitionFailure(status);
-  }
-  const bool route_owner = current.finiteExecution() != nullptr;
-  const bool stationary_owner = current.stationaryHold() != nullptr;
-  const bool empty_owner =
-      (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-       current.phase() == ExecutionRoutePhase3D::kRevoked) &&
-      current.route() == nullptr && current.finiteExecution() == nullptr &&
-      current.directTrackingExecution() == nullptr &&
-      current.stationaryHold() == nullptr;
-  if (current.phase() == ExecutionRoutePhase3D::kDirectTracking ||
-      current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
-      !direct_execution.valid() ||
-      direct_execution.source_snapshot_version != current.version ||
-      (!route_owner && !stationary_owner && !empty_owner) ||
-      (route_owner && !directTrackingEvidenceNotOlderThanRoute(
-                          direct_execution, *current.finiteExecution())) ||
-      (stationary_owner && !directTrackingEvidenceNotOlderThanHold(
-                               direct_execution, *current.stationaryHold()))) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  ExecutionPlan3D next = current;
-  ++next.version;
-  next.route_generation_high_water = current.routeGenerationHighWater();
-  next.state = DirectTrackingPlan3D{.execution = std::move(direct_execution)};
-  ++next.execution_owner_epoch;
-  return finishTransition(current, std::move(next));
-}
-
-ExecutionRouteTransitionResult3D applyReplaceDirectTrackingExecutionCommand3D(
-    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
-    DirectTrackingFiniteExecution3D direct_execution) {
-  const ExecutionRouteTransitionStatus3D status =
-      checkCurrentAndVersion(current, expected_snapshot_version);
-  if (status != ExecutionRouteTransitionStatus3D::kApplied) {
-    return transitionFailure(status);
-  }
-  if (current.phase() != ExecutionRoutePhase3D::kDirectTracking ||
-      current.directTrackingExecution() == nullptr || !direct_execution.valid() ||
-      direct_execution.source_snapshot_version != current.version ||
-      !directTrackingExecutionNotOlder(direct_execution,
-                                       *current.directTrackingExecution())) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  ExecutionPlan3D next = current;
-  ++next.version;
-  next.state = DirectTrackingPlan3D{.execution = std::move(direct_execution)};
-  return finishTransition(current, std::move(next));
-}
-
-ExecutionRouteTransitionResult3D applyTransferDirectTrackingToCertifiedRouteCommand3D(
-    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
-    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution) {
-  const ExecutionRouteTransitionStatus3D status =
-      checkCurrentAndVersion(current, expected_snapshot_version);
-  if (status != ExecutionRouteTransitionStatus3D::kApplied) {
-    return transitionFailure(status);
-  }
-  if (current.phase() != ExecutionRoutePhase3D::kDirectTracking ||
-      current.directTrackingExecution() == nullptr || !successor.valid() ||
-      current.routeGenerationHighWater() == std::numeric_limits<std::uint64_t>::max() ||
-      current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
-      successor.identity.generation != current.routeGenerationHighWater() + 1U ||
-      successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal ||
-      successor_execution.command_horizon.execution_input == nullptr ||
-      !candidateFiniteExecutionValid(successor_execution.command_horizon, current,
-                                     &successor, true) ||
-      !routeExecutionEvidenceNotOlderThanDirect(successor_execution.command_horizon,
-                                                *current.directTrackingExecution())) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  bindProgressToExecutionInput(
-      successor.progress, successor_execution.command_horizon.execution_input,
-      successor_execution.command_horizon.begin_route_station_m);
-  if (!successor.valid() || !successor_execution.validFor(successor) ||
-      !candidateFiniteExecutionValid(successor_execution.command_horizon, current,
-                                     &successor, true)) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  ExecutionPlan3D next = current;
-  ++next.version;
-  const std::uint64_t successor_generation = successor.identity.generation;
-  next.state = FollowingPlan3D{
-      .route = std::move(successor),
-      .execution = std::move(successor_execution),
-  };
-  ++next.execution_owner_epoch;
-  next.route_generation_high_water = successor_generation;
-  return finishTransition(current, std::move(next));
 }
 
 } // namespace drone_city_nav::execution_route_snapshot_3d_internal

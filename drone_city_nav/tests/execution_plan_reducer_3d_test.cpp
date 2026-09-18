@@ -5,7 +5,7 @@
 namespace drone_city_nav {
 namespace {
 
-static_assert(std::variant_size_v<ExecutionPlanTransitionCommand3D> == 14U,
+static_assert(std::variant_size_v<ExecutionPlanTransitionCommand3D> == 11U,
               "every execution transition must remain a tagged reducer command");
 
 TEST(ExecutionPlanReducer3DTest,

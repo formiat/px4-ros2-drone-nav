@@ -15,7 +15,6 @@ enum class PendingExecutionBaseKind3D : std::uint8_t {
   kEmpty,
   kRoute,
   kRouteHandoff,
-  kDirectTracking,
   kStationaryHold,
   kStop,
   kRevoked,
@@ -28,7 +27,6 @@ struct PendingCertifiedRoute3D {
   std::uint64_t base_route_generation{0U};
   std::uint64_t base_geometry_revision{0U};
   std::uint64_t base_continuity_id{0U};
-  std::optional<DirectTrackingOwnerIdentity3D> base_direct_tracking_identity;
   std::optional<CertifiedRouteSplice3D> route_splice;
   CertifiedRouteSuffix3D route{};
 
@@ -86,7 +84,6 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
 class ExecutionSupervisor3D;
 
 struct PendingCertifiedRouteRecoveryObservation3D {
-  bool direct_tracking_requested{false};
   bool execution_owner_available{false};
   bool pending_activation{false};
 };

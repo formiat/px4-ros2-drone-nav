@@ -138,16 +138,5 @@ replaceCertifiedRouteAtHandoff3D(
       current, guard, std::move(successor), std::move(plan));
 }
 
-[[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
-transferDirectTrackingToCertifiedRoute3D(const ExecutionPlan3D& current,
-                                         const std::uint64_t expected_snapshot_version,
-                                         CertifiedRouteSuffix3D successor,
-                                         FiniteExecutionState3D successor_execution) {
-  FiniteExecutionPlan3D plan =
-      testExecutionPlanForCommand(current, successor, std::move(successor_execution));
-  return ::drone_city_nav::transferDirectTrackingToCertifiedRoute3D(
-      current, expected_snapshot_version, std::move(successor), std::move(plan));
-}
-
 } // namespace
 } // namespace drone_city_nav

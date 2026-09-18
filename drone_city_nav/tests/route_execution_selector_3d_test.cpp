@@ -32,7 +32,6 @@ TEST(RouteExecutionSelector3DTest,
           .validation_stamp_ns = 0,
           .minimum_tracking_sample_sequence = 0U,
           .physically_invalidated_through_generation = 0U,
-          .direct_tracking_identity = std::nullopt,
           .observed_3d_world = false,
       });
 

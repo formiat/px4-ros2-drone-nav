@@ -165,7 +165,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
   std::optional<FiniteExecutionPlanCertificationResult3D> route_certification;
   double certification_ms{0.0};
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
-  if (!route.direct_tracking_requested) {
+  {
     route_certification_target = route_execution.pending_activation
                                      ? route_execution.route.get()
                                      : execution_certification_snapshot->route();
@@ -255,8 +255,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     candidate.route_adherence_failure_distance_m =
         route_certification->command_horizon.route_adherence_failure_distance_m;
   }
-  if (!route.direct_tracking_requested && !route_execution.pending_activation &&
-      route.selected_snapshot_route != nullptr &&
+  if (!route_execution.pending_activation && route.selected_snapshot_route != nullptr &&
       validated_path.physicalObstacleValidationBackoff()) {
     const bool persistent_raw = validated_path.persistent_raw_path_validation_backoff;
     candidate.physical_rejection = HorizonCandidatePhysicalRejection3D{
@@ -276,57 +275,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       std::move(validated_path.horizon).value_or(mppi::FiniteHorizon{});
 
   const std::shared_ptr<const ExecutionPlan3D>& expected = expected_snapshot;
-  if (route.direct_tracking_requested) {
-    if (!route_execution.direct_tracking_identity.has_value() ||
-        !route_execution.direct_tracking_identity->valid() ||
-        config_.direct_tracking_validation_policy == nullptr ||
-        (evidence.direct_observed_world == nullptr) ==
-            (evidence.direct_static_world == nullptr)) {
-      candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
-      return candidate;
-    }
-    const std::uint64_t previous_trajectory_revision =
-        expected->ownerTrajectoryRevision();
-    if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
-      candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
-      return candidate;
-    }
-    const std::optional<DirectTrackingFiniteExecution3D> certified_execution =
-        certifyDirectTrackingExecution3D(
-            *expected,
-            DirectTrackingExecutionCertification3D{
-                .identity = *route_execution.direct_tracking_identity,
-                .trajectory_revision = previous_trajectory_revision + 1U,
-                .target = Point3{input.target.x, input.target.y, input.target.z},
-                .horizon = std::move(executable_path),
-                .observed_raw_world = evidence.direct_observed_world,
-                .static_world = evidence.direct_static_world,
-                .validation_policy = config_.direct_tracking_validation_policy,
-                .execution_input = evidence.execution_input,
-                .latest_lidar_evidence = evidence.latest_lidar_evidence,
-                .valid_from_ns = cycle.controller.now_ns,
-                .kind = FiniteExecutionKind3D::kNominal,
-            });
-    if (!certified_execution.has_value()) {
-      candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
-      return candidate;
-    }
-    const ExecutionRouteTransitionResult3D transition =
-        expected->phase() == ExecutionRoutePhase3D::kDirectTracking
-            ? replaceDirectTrackingExecution3D(*expected, expected->version,
-                                               *certified_execution)
-            : transferToDirectTracking3D(*expected, expected->version,
-                                         *certified_execution);
-    if (!transition.applied() || transition.next == nullptr ||
-        transition.next->directTrackingExecution() == nullptr) {
-      candidate.status = HorizonCandidateStatus3D::kTransitionRejected;
-      candidate.transition_status = transition.status;
-      candidate.transition_detail = transition.detail;
-      return candidate;
-    }
-    candidate.committed_snapshot = transition.next;
-    candidate.transition.emplace(transition);
-  } else {
+  {
     if (route_certification_target == nullptr || !route_certification.has_value() ||
         !route_certification->certified() || !route_certification->plan.has_value()) {
       candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
@@ -344,11 +293,6 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       return candidate;
     }
     const ExecutionRouteTransitionResult3D prepared_transition = [&] {
-      if (transition_base->phase() == ExecutionRoutePhase3D::kDirectTracking) {
-        return transferDirectTrackingToCertifiedRoute3D(
-            *transition_base, transition_base->version, *route_certification_target,
-            execution);
-      }
       if (transition_base->route() == nullptr) {
         return activateCertifiedRoute3D(*transition_base, transition_base->version,
                                         *route_certification_target, execution);

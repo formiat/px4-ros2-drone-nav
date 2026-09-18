@@ -311,8 +311,8 @@ captured semantic execution base, assigns the only monotonic pending-publication
 sequence, seals the candidate, and occupies the pending slot under that lock.
 There is no unchecked or externally sequenced pending-publication API.
 Finite-path retention is also supervisor-owned: one evidence request captures
-the exact current authority, rebuilds and recertifies either a route or
-direct-tracking continuation, and returns an immutable prepared transition.
+the exact current authority, rebuilds and recertifies the route continuation,
+and returns an immutable prepared transition.
 Raw or lifecycle invalidation can prepare only a certified emergency-braking
 tail bound to that exact owner. The ROS adapter only encodes the prepared finite
 horizon, invokes the supervisor transaction, publishes DDS, and reports diagnostics.

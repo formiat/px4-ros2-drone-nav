@@ -137,10 +137,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const Point3 mission_goal = objective->goal;
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       world_pipeline_->latestRawWorld();
-  const bool direct_tracking_requested =
-      route_execution.direct_tracking_identity.has_value();
   const CertifiedRouteSuffix3D* const selected_snapshot_route =
-      !direct_tracking_requested ? route_execution.route.get() : nullptr;
+      route_execution.route.get();
   ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed =
       proprioceptiveContactSeed3D(
           Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
@@ -161,31 +159,27 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         departureChain3D(*selected_snapshot_route->geometry->route,
                          selected_snapshot_route->geometry->departure_end_station_m);
   }
-  std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
-  std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
-  if (direct_tracking_requested || stationary_capture_rearm) {
+  std::shared_ptr<const VersionedObservedRawWorld3D> rearm_observed_world;
+  std::shared_ptr<const VersionedStaticWorld3D> rearm_static_world;
+  if (stationary_capture_rearm) {
     if (config_.world.use_static_map && world.static_occupancy != nullptr) {
-      const DirectTrackingFiniteExecution3D* const direct_execution =
-          route_execution.source_snapshot->directTrackingExecution();
       const CertifiedRouteSuffix3D* const source_route =
           route_execution.source_snapshot->route();
-      if (direct_execution != nullptr && direct_execution->static_world != nullptr) {
-        direct_static_world = direct_execution->static_world;
-      } else if (source_route != nullptr && source_route->static_world != nullptr) {
-        direct_static_world = source_route->static_world;
+      if (source_route != nullptr && source_route->static_world != nullptr) {
+        rearm_static_world = source_route->static_world;
       } else {
-        direct_static_world = VersionedStaticWorld3D::captureOwned(
+        rearm_static_world = VersionedStaticWorld3D::captureOwned(
             navigationWorldCertificate3D(world), world.static_occupancy);
       }
     } else if (latest_raw_world_3d != nullptr) {
-      direct_observed_world = latest_raw_world_3d->deriveRouteEvidence(
+      rearm_observed_world = latest_raw_world_3d->deriveRouteEvidence(
           proprioceptive_free_space_seed, world.launch_support_contact);
     }
   }
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
   if (selected_snapshot_route != nullptr) {
     selected_policy = selected_snapshot_route->validation_policy;
-  } else if (direct_tracking_requested || stationary_capture_rearm) {
+  } else if (stationary_capture_rearm) {
     selected_policy = config_.execution.validation_policy;
   }
   const double latest_lidar_maximum_age_ms =
@@ -217,10 +211,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       ((selected_snapshot_route != nullptr &&
         (selected_snapshot_route->static_world != nullptr) !=
             (selected_snapshot_route->observed_raw_world != nullptr)) ||
-       ((direct_tracking_requested || stationary_capture_rearm) &&
-        (direct_static_world != nullptr) != (direct_observed_world != nullptr)));
+       (stationary_capture_rearm &&
+        (rearm_static_world != nullptr) != (rearm_observed_world != nullptr)));
   bool publication_route_constrained{false};
-  if (!direct_tracking_requested && selected_snapshot_route != nullptr &&
+  if (selected_snapshot_route != nullptr &&
       selected_snapshot_route->geometry != nullptr &&
       selected_snapshot_route->geometry->constrained_spans != nullptr) {
     publication_route_constrained =
@@ -229,15 +223,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const OccupancyGrid3D* static_occupancy{nullptr};
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   if (exact_snapshot_world) {
-    if (direct_static_world != nullptr) {
-      static_occupancy = std::addressof(direct_static_world->occupancy());
+    if (rearm_static_world != nullptr) {
+      static_occupancy = std::addressof(rearm_static_world->occupancy());
     } else if (selected_snapshot_route != nullptr &&
                selected_snapshot_route->static_world != nullptr) {
       static_occupancy =
           std::addressof(selected_snapshot_route->static_world->occupancy());
     }
-    if (direct_observed_world != nullptr) {
-      observed_occupancy = std::addressof(direct_observed_world->occupancy());
+    if (rearm_observed_world != nullptr) {
+      observed_occupancy = std::addressof(rearm_observed_world->occupancy());
     } else if (selected_snapshot_route != nullptr &&
                selected_snapshot_route->observed_raw_world != nullptr) {
       observed_occupancy =
@@ -252,13 +246,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>
       route_terminal_boundary =
-          direct_tracking_requested
-              ? std::nullopt
-              : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
+          finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
   const LaunchSupportContact3D* launch_support_contact_owner{nullptr};
-  if (exact_snapshot_world && direct_observed_world != nullptr) {
+  if (exact_snapshot_world && rearm_observed_world != nullptr) {
     launch_support_contact_owner =
-        optionalAddress(direct_observed_world->launchSupportContact());
+        optionalAddress(rearm_observed_world->launchSupportContact());
   } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
              selected_snapshot_route->observed_raw_world != nullptr) {
     launch_support_contact_owner = optionalAddress(
@@ -298,8 +290,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::int64_t finite_path_control_interval_ns =
       mppi::finitePathControlIntervalNanoseconds(execution_dt_s);
   std::uint64_t latest_obstacle_revision = input.obstacle_revision;
-  if (exact_snapshot_world && direct_observed_world != nullptr) {
-    latest_obstacle_revision = direct_observed_world->version().revision;
+  if (exact_snapshot_world && rearm_observed_world != nullptr) {
+    latest_obstacle_revision = rearm_observed_world->version().revision;
   } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
              selected_snapshot_route->observed_raw_world != nullptr) {
     latest_obstacle_revision =
@@ -318,8 +310,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               .exact_previous_control = exact_previous_control,
               .target_offboard_instance_id = target_offboard_instance_id,
               .lidar_validation_now_ns = lidar_validation_now_ns,
-              .direct_observed_world = direct_observed_world,
-              .direct_static_world = direct_static_world,
+              .rearm_observed_world = rearm_observed_world,
+              .rearm_static_world = rearm_static_world,
               .selected_policy = selected_policy,
               .latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms,
               .latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh,
@@ -340,7 +332,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               .mission_goal = mission_goal,
               .selected_snapshot_route = selected_snapshot_route,
               .planning_state = planning_state,
-              .direct_tracking_requested = direct_tracking_requested,
               .publication_route_constrained = publication_route_constrained,
           },
       .controller =
@@ -567,10 +558,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
     const double vehicle_speed_mps = std::hypot(static_cast<double>(vehicle_state.vx),
                                                 static_cast<double>(vehicle_state.vy),
                                                 static_cast<double>(vehicle_state.vz));
-    const bool resident_without_motion_owner =
-        resident != nullptr && resident->finiteExecution() == nullptr &&
-        resident->brakingFallback() == nullptr &&
-        resident->directTrackingExecution() == nullptr;
+    const bool resident_without_motion_owner = resident != nullptr &&
+                                               resident->finiteExecution() == nullptr &&
+                                               resident->brakingFallback() == nullptr;
     const bool resident_stationary =
         resident != nullptr &&
         resident->routeGenerationHighWater() == rejection.route_generation &&
@@ -666,17 +656,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
       candidate.committed_snapshot;
   const FiniteExecutionState3D* const committed_finite =
       committed_snapshot->finiteExecution();
-  const DirectTrackingFiniteExecution3D* const committed_direct =
-      committed_snapshot->directTrackingExecution();
   const CertifiedRouteSuffix3D* const committed_route = committed_snapshot->route();
   const mppi::FiniteHorizon* committed_path{nullptr};
   std::int64_t committed_valid_until_ns{0};
   if (committed_finite != nullptr) {
     committed_path = committed_finite->horizon.get();
     committed_valid_until_ns = committed_finite->valid_until_ns;
-  } else if (committed_direct != nullptr) {
-    committed_path = committed_direct->horizon.get();
-    committed_valid_until_ns = committed_direct->valid_until_ns;
   }
   if (committed_path == nullptr || committed_valid_until_ns <= 0) {
     return publishNoExecutablePathHold(
@@ -688,16 +673,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, committed_valid_until_ns, ProductionMppiExecutionMode::kPlanned,
       ProductionMppiExecutionReason::kNone);
-  if (committed_direct != nullptr) {
-    horizon.route_constrained = false;
-    horizon.route_target.x = committed_direct->target.x;
-    horizon.route_target.y = committed_direct->target.y;
-    horizon.route_target.z = committed_direct->target.z;
-    if (committed_direct->observed_raw_world != nullptr) {
-      horizon.obstacle_revision =
-          committed_direct->observed_raw_world->version().revision;
-    }
-  } else if (committed_route != nullptr && committed_finite != nullptr) {
+  if (committed_route != nullptr && committed_finite != nullptr) {
     if (!production_mppi_execution_detail::bindHorizonRouteMetadata(horizon,
                                                                     *committed_route)) {
       return publishNoExecutablePathHold(

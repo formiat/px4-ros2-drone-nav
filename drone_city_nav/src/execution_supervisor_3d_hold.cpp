@@ -39,14 +39,6 @@ residentHoldSourceEvidence(const ExecutionPlan3D& plan) {
         .validation_policy = route->validation_policy,
     };
   }
-  if (const DirectTrackingFiniteExecution3D* const direct =
-          plan.directTrackingExecution()) {
-    return {
-        .observed_raw_world = direct->observed_raw_world,
-        .static_world = direct->static_world,
-        .validation_policy = direct->validation_policy,
-    };
-  }
   if (const StopExecution3D* const stop = plan.stopExecution()) {
     return {
         .observed_raw_world = stop->observed_raw_world,
@@ -116,13 +108,12 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
 
 [[nodiscard]] bool emptyRevokedPlan(const ExecutionPlan3D& plan) noexcept {
   return plan.phase() == ExecutionRoutePhase3D::kRevoked && plan.route() == nullptr &&
-         plan.finiteExecution() == nullptr &&
-         plan.directTrackingExecution() == nullptr && plan.stationaryHold() == nullptr;
+         plan.finiteExecution() == nullptr && plan.stationaryHold() == nullptr;
 }
 
 [[nodiscard]] bool exclusiveStationaryHold(const ExecutionPlan3D& plan) noexcept {
   return plan.stationaryHold() != nullptr && plan.route() == nullptr &&
-         plan.finiteExecution() == nullptr && plan.directTrackingExecution() == nullptr;
+         plan.finiteExecution() == nullptr;
 }
 
 [[nodiscard]] ExecutionHoldPreparation3D prepareStationaryCaptureRearm(

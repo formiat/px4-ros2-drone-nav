@@ -23,7 +23,6 @@ namespace {
       .base_continuity_id = route_owner && snapshot.route() != nullptr
                                 ? snapshot.route()->continuity_id
                                 : 0U,
-      .base_direct_tracking_identity = std::nullopt,
       .route_splice = route_splice && snapshot.route() != nullptr
                           ? std::optional<CertifiedRouteSplice3D>{testRouteSplice(
                                 *snapshot.route(), route)}
@@ -106,9 +105,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .owner = SuspendedRoutePlan3D{.route = following->route},
   };
   EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
-
-  snapshot.state = DirectTrackingPlan3D{};
-  EXPECT_FALSE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
 
   CertifiedRouteSuffix3D local_stop_route = following->route;
   local_stop_route.planned_endpoint_semantics = RouteEndpointSemantics3D::kLocalStop;
@@ -709,30 +705,6 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     DirectTrackingSuppressesPendingRecoveryAndSuccessorRequest) {
-  SnapshotFixture3D fixture;
-  const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
-  ASSERT_TRUE(route.has_value());
-  const std::shared_ptr<const ExecutionPlan3D> initial =
-      makeInitialExecutionRouteSnapshot3D();
-  ASSERT_NE(initial, nullptr);
-  const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
-      pendingForSnapshot(*initial, PendingExecutionBaseKind3D::kEmpty, *route, 1U));
-  ExecutionSupervisor3D supervisor;
-  ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *pending));
-
-  const PendingCertifiedRouteRecoveryResult3D recovery =
-      recoverPendingCertifiedRouteLiveness3D(supervisor, nullptr,
-                                             PendingCertifiedRouteRecoveryObservation3D{
-                                                 .direct_tracking_requested = true,
-                                             });
-
-  EXPECT_FALSE(recovery.pending_acknowledged);
-  EXPECT_FALSE(recovery.request_successor);
-  EXPECT_NE(supervisor.pending(), nullptr);
-}
-
-TEST(ExecutionRouteSnapshot3DTest,
      FiniteAndStationaryHoldOwnersSuppressPendingRecovery) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
@@ -762,9 +734,7 @@ TEST(ExecutionRouteSnapshot3DTest,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected = pending;
 
     const bool execution_owner_available =
-        owner->finiteExecution() != nullptr ||
-        owner->directTrackingExecution() != nullptr ||
-        owner->stationaryHold() != nullptr;
+        owner->finiteExecution() != nullptr || owner->stationaryHold() != nullptr;
     const PendingCertifiedRouteRecoveryResult3D recovery =
         recoverPendingCertifiedRouteLiveness3D(
             supervisor, expected,
