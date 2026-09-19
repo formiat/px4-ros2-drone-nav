@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <numeric>
 
 namespace drone_city_nav {
@@ -142,7 +143,18 @@ bool sensorBrakingContract3DIsValid(
       !(contract.maximum_vertical_acceleration_mps2 > 0.0) ||
       !std::isfinite(contract.maximum_control_jerk_mps3) ||
       !(contract.maximum_control_jerk_mps3 > 0.0) ||
-      !std::isfinite(stopping_capability.reaction_latency_s)) {
+      !std::isfinite(stopping_capability.reaction_latency_s) ||
+      !std::isfinite(contract.forward_vertical_half_angle_rad) ||
+      contract.forward_vertical_half_angle_rad <= 0.0 ||
+      !std::isfinite(contract.vertical_cone_half_angle_rad) ||
+      contract.vertical_cone_half_angle_rad < 0.0 ||
+      !std::isfinite(contract.vertical_detection_range_m) ||
+      !std::isfinite(contract.vertical_physical_margin_m) ||
+      contract.vertical_physical_margin_m < 0.0 ||
+      (contract.vertical_cone_half_angle_rad > 0.0 &&
+       contract.vertical_physical_margin_m >= contract.vertical_detection_range_m) ||
+      !std::isfinite(contract.unobserved_speed_mps) ||
+      contract.unobserved_speed_mps < 0.0) {
     return false;
   }
   bool valid{true};
@@ -173,16 +185,41 @@ assessSensorBrakingContract3D(const SensorBrakingContract3D& contract,
     assessment.reserve_m = -std::numeric_limits<double>::infinity();
     return assessment;
   }
+  // The range and the margin of the sensor whose field holds the motion; an
+  // unspecified direction is assessed against the forward sensor.
+  const MotionShares3D shares = motionShares(direction);
+  const double elevation_rad =
+      shares.specified() ? std::asin(std::min(1.0, shares.vertical)) : 0.0;
+  if (elevation_rad > contract.forward_vertical_half_angle_rad) {
+    if (contract.vertical_cone_half_angle_rad > 0.0 &&
+        elevation_rad >=
+            0.5 * std::numbers::pi - contract.vertical_cone_half_angle_rad) {
+      assessment.guaranteed_detection_range_m = contract.vertical_detection_range_m;
+      assessment.physical_margin_m = contract.vertical_physical_margin_m;
+    } else {
+      // Observed by nothing: no range answers for it, only the speed.
+      assessment.guaranteed_detection_range_m = 0.0;
+      assessment.required_detection_range_m =
+          speed_mps <= contract.unobserved_speed_mps
+              ? 0.0
+              : std::numeric_limits<double>::infinity();
+      assessment.reserve_m = speed_mps <= contract.unobserved_speed_mps
+                                 ? 0.0
+                                 : -std::numeric_limits<double>::infinity();
+      assessment.valid = true;
+      return assessment;
+    }
+  }
   assessment.total_latency_s =
       contract.maximum_evidence_age_s + stopping_capability.reaction_latency_s;
   assessment.latency_distance_m = speed_mps * assessment.total_latency_s;
-  assessment.stopping_distance_m = directionalStoppingDistanceM(
-      contract, stopping_capability, speed_mps, motionShares(direction));
+  assessment.stopping_distance_m =
+      directionalStoppingDistanceM(contract, stopping_capability, speed_mps, shares);
   assessment.required_detection_range_m = assessment.latency_distance_m +
                                           assessment.stopping_distance_m +
-                                          contract.physical_margin_m;
+                                          assessment.physical_margin_m;
   assessment.reserve_m =
-      contract.guaranteed_detection_range_m - assessment.required_detection_range_m;
+      assessment.guaranteed_detection_range_m - assessment.required_detection_range_m;
   assessment.valid = std::isfinite(assessment.total_latency_s) &&
                      std::isfinite(assessment.latency_distance_m) &&
                      std::isfinite(assessment.stopping_distance_m) &&

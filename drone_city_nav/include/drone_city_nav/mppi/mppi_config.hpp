@@ -154,6 +154,10 @@ struct BenchmarkConfig {
   CostConfig costs{};
   CooperativeConfig cooperative{};
   HorizonSamplingConfig horizon_sampling{};
+  // The heading follows the horizontal direction of motion: for a vehicle
+  // whose obstacle sensor looks forward. A lidar that sees the whole sphere
+  // leaves the heading alone.
+  bool gaze_follows_motion{false};
 };
 
 [[nodiscard]] bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept;

@@ -42,6 +42,11 @@ constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kReportedSequenceCount{2U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
+// The gaze looks where the horizon is 1.5 s on, about the time a quarter turn
+// of the heading takes (1.5 rad/s, 2 rad/s^2), and holds the heading where the
+// horizon moves less than the body's radius in that time.
+constexpr float kGazeLookaheadS{1.5F};
+constexpr float kGazeMinimumDisplacementM{0.55F};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
               static_cast<std::size_t>(kThreadsPerBlock));
 
@@ -801,6 +806,11 @@ public:
     result.horizon = std::move(selected_evaluation.trace.horizon);
     if (result.horizon.size() != updated_.size() + 1U) {
       throw std::runtime_error{"MPPI control evaluation returned incomplete horizon"};
+    }
+    if (config_.gaze_follows_motion) {
+      applyGazeYawControls(updated_, result.horizon, config_.dynamics, kGazeLookaheadS,
+                           kGazeMinimumDisplacementM);
+      result.controls = updated_;
     }
     State state = result.horizon.front();
     const float initial_distance =

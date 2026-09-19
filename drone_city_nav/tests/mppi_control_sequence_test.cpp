@@ -53,6 +53,53 @@ TEST(MppiControlSequenceTest, UploadsInteriorEsdfDirtyRegion) {
   EXPECT_EQ(patched.revision, 2U);
 }
 
+TEST(MppiControlSequenceTest, TheGazeTurnsTheHeadingToTheMotionWithoutOvershoot) {
+  // The vehicle flies north at 3 m/s while it looks east: the heading turns a
+  // quarter turn to the motion inside the yaw limits, arrives without
+  // overshoot and stays, and the translation is not touched.
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.maximum_yaw_rate_radps = 1.5F;
+  dynamics.maximum_yaw_acceleration_radps2 = 2.0F;
+  std::vector<Control> controls(80U);
+  std::vector<State> horizon{State{.vy = 3.0F}};
+  for (const Control& control : controls) {
+    horizon.push_back(integrateReference(horizon.back(), control, dynamics));
+  }
+  const std::vector<State> translation = horizon;
+
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F);
+
+  const float north = 0.5F * std::numbers::pi_v<float>;
+  float peak_yaw{0.0F};
+  for (std::size_t index = 0U; index < controls.size(); ++index) {
+    EXPECT_LE(std::abs(controls[index].yaw_accel), 2.0F + 1.0e-5F);
+    EXPECT_LE(std::abs(horizon[index + 1U].yaw_rate), 1.5F + 1.0e-5F);
+    EXPECT_FLOAT_EQ(horizon[index + 1U].y, translation[index + 1U].y);
+    EXPECT_FLOAT_EQ(controls[index].ay, 0.0F);
+    peak_yaw = std::max(peak_yaw, horizon[index + 1U].yaw);
+  }
+  EXPECT_NEAR(horizon.back().yaw, north, 0.03F);
+  EXPECT_LT(peak_yaw, north + 0.05F);
+  EXPECT_NEAR(horizon.back().yaw_rate, 0.0F, 0.1F);
+  // Two seconds in, the quarter turn is within ten degrees of done.
+  EXPECT_NEAR(horizon[40U].yaw, north, 0.18F);
+}
+
+TEST(MppiControlSequenceTest, TheGazeHoldsTheHeadingOfAVehicleThatHardlyMoves) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  std::vector<Control> controls(10U);
+  std::vector<State> horizon{State{.vx = -0.2F, .yaw = 1.0F}};
+  for (const Control& control : controls) {
+    horizon.push_back(integrateReference(horizon.back(), control, dynamics));
+  }
+
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F);
+
+  EXPECT_NEAR(horizon.back().yaw, 1.0F, 1.0e-5F);
+}
+
 TEST(MppiControlSequenceTest, FractionalShiftInterpolatesWithoutDroppingWholeTick) {
   const std::array<Control, 3> controls{
       Control{.ax = 0.0F},

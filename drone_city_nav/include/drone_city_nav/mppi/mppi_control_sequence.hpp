@@ -56,4 +56,16 @@ projectForwardRouteStation(std::span<const RouteSample3D> route, const State& st
                                                float begin_station_m,
                                                float end_station_m) noexcept;
 
+// The gaze of a vehicle whose sensor looks forward: the yaw channel of
+// `controls` is rewritten so that the heading follows the horizontal direction
+// the horizon moves in over `lookahead_s`, as fast as the yaw dynamics allow
+// and arriving without overshoot, and the yaw states of `horizon` are
+// re-integrated to match. Where the horizon moves less than
+// `minimum_displacement_m` over the lookahead the motion names no direction
+// and the heading is held. The translation is untouched: the yaw channel does
+// not act on it.
+void applyGazeYawControls(std::span<Control> controls, std::span<State> horizon,
+                          const DynamicsConfig& dynamics, float lookahead_s,
+                          float minimum_displacement_m);
+
 } // namespace drone_city_nav::mppi

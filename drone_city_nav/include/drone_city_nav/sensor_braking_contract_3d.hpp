@@ -23,6 +23,27 @@ struct SensorBrakingContract3D {
   double maximum_horizontal_acceleration_mps2{4.0};
   double maximum_vertical_acceleration_mps2{4.0};
   double maximum_control_jerk_mps3{12.0};
+  // Where the sensors look. A lidar that sees the whole sphere guarantees its
+  // range along every direction, and the defaults say so. A forward camera
+  // guarantees `guaranteed_detection_range_m` only up to this elevation above
+  // and below the horizon; sensors looking straight up and down guarantee
+  // `vertical_detection_range_m` inside a cone of this half-angle about the
+  // vertical; a direction inside neither is observed by nothing, and the
+  // vehicle moves along it no faster than `unobserved_speed_mps`, the speed a
+  // contact is left at. The elevation is the motion's own, so the law holds
+  // whichever way the vehicle is tilted while it flies level.
+  double forward_vertical_half_angle_rad{1.5707963267948966};
+  // The forward sensor's half-angle about the heading. The contract does not
+  // know the heading; the speed policy, which does, holds a motion outside it
+  // to `unobserved_speed_mps`.
+  double forward_horizontal_half_angle_rad{3.141592653589793};
+  double vertical_detection_range_m{0.0};
+  double vertical_cone_half_angle_rad{0.0};
+  double unobserved_speed_mps{1.0};
+  // The physical margin of a vertical approach, which the body's height and
+  // the vertical estimate set, where `physical_margin_m` is sized by the
+  // body's horizontal envelope.
+  double vertical_physical_margin_m{0.0};
 };
 
 [[nodiscard]] bool

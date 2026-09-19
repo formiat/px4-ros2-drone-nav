@@ -193,6 +193,64 @@ TEST(SensorBrakingContract3DTest, EachDirectionAnswersToItsOwnAxes) {
             sensorBrakingMaximumSpeedMps(contract, capability, 20.0, level));
 }
 
+TEST(SensorBrakingContract3DTest, ADirectionAnswersToTheSensorThatSeesIt) {
+  // A forward pair confident to 6.4 m up to 52 degrees of elevation, and
+  // time-of-flight sensors that see 2.8 m within 22.5 degrees of the vertical.
+  const SensorBrakingContract3D contract{
+      .guaranteed_detection_range_m = 6.4,
+      .maximum_evidence_age_s = 0.25,
+      .physical_margin_m = 2.0,
+      .maximum_horizontal_acceleration_mps2 = 4.0,
+      .maximum_vertical_acceleration_mps2 = 1.4,
+      .maximum_control_jerk_mps3 = 12.0,
+      .forward_vertical_half_angle_rad = 0.9145,
+      .vertical_detection_range_m = 2.8,
+      .vertical_cone_half_angle_rad = 0.3927,
+      .unobserved_speed_mps = 1.0,
+      .vertical_physical_margin_m = 1.0,
+  };
+  const StoppingCapability capability{
+      .maximum_commanded_horizontal_deceleration_mps2 = 4.0,
+      .guaranteed_horizontal_deceleration_mps2 = 4.0,
+      .guaranteed_vertical_deceleration_mps2 = 1.4,
+      .reaction_latency_s = 0.1,
+  };
+  ASSERT_TRUE(sensorBrakingContract3DIsValid(contract, capability));
+  const auto admitted = [&](const double elevation_rad) {
+    return sensorBrakingMaximumSpeedMps(
+        contract, capability, 10.0,
+        Vec3{std::cos(elevation_rad), 0.0, std::sin(elevation_rad)});
+  };
+
+  // Level flight answers to the pair's range and the horizontal margin.
+  const double level_mps = admitted(0.0);
+  const SensorBrakingAssessment3D level = assessSensorBrakingContract3D(
+      contract, capability, level_mps, Vec3{1.0, 0.0, 0.0});
+  EXPECT_NEAR(level.guaranteed_detection_range_m, 6.4, 1.0e-12);
+  EXPECT_NEAR(level.reserve_m, 0.0, 1.0e-6);
+  EXPECT_GT(level_mps, 2.5);
+  EXPECT_LT(level_mps, 3.2);
+  // A pure climb answers to the time-of-flight range and the vertical margin.
+  const double climb_mps = admitted(1.5707963267948966);
+  const SensorBrakingAssessment3D climb = assessSensorBrakingContract3D(
+      contract, capability, climb_mps, Vec3{0.0, 0.0, 1.0});
+  EXPECT_NEAR(climb.guaranteed_detection_range_m, 2.8, 1.0e-12);
+  EXPECT_NEAR(climb.physical_margin_m, 1.0, 1.0e-12);
+  EXPECT_GT(climb_mps, 1.2);
+  EXPECT_LT(climb_mps, 2.0);
+  // Between the two fields nothing looks: the speed a contact is left at.
+  EXPECT_NEAR(admitted(1.05), 1.0, 1.0e-6);
+  EXPECT_TRUE(assessSensorBrakingContract3D(contract, capability, 0.9,
+                                            Vec3{std::cos(1.05), 0.0, std::sin(1.05)})
+                  .accepted());
+  EXPECT_FALSE(assessSensorBrakingContract3D(contract, capability, 1.1,
+                                             Vec3{std::cos(1.05), 0.0, std::sin(1.05)})
+                   .accepted());
+  // Just inside each field the field's own law applies.
+  EXPECT_GT(admitted(0.90), 1.0);
+  EXPECT_GT(admitted(1.20), 1.0);
+}
+
 TEST(SensorBrakingContract3DTest, InvalidContractFailsClosed) {
   SensorBrakingContract3D invalid;
   invalid.physical_margin_m = invalid.guaranteed_detection_range_m;

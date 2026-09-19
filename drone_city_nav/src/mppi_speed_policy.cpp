@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -257,6 +258,40 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.sensor_braking_limit_mps = sensorBrakingMaximumSpeedMps(
       config.sensor_braking_contract, config.stopping_capability,
       config.absolute_speed_limit_mps, braking_direction);
+  if (config.sensor_braking_contract.forward_horizontal_half_angle_rad <
+      std::numbers::pi) {
+    // A forward sensor sees the motion only while the vehicle faces it. The
+    // motion the reference commands is the route's, so the route's tangent
+    // names the direction where there is a route, and the velocity where
+    // there is none: the velocity of a vehicle correcting its track at 1 m/s
+    // swings through tens of degrees, and read off it the limit released and
+    // bound again with every swing (r488: bound 56 percent of the ticks, the
+    // speed cycling between 1 and 3 m/s). A vehicle about to leave along a
+    // route it does not face is held to the unobserved speed until the gaze
+    // has turned it.
+    const Vec3 faced =
+        input.route.empty()
+            ? braking_direction
+            : input.route[nearestGuideIndex(input.state, input.route)].tangent;
+    // Only a motion the forward sensor answers for has a heading to face: a
+    // climb steeper than its vertical half-angle belongs to the sensors that
+    // look up and down, and its tangent's horizontal remnant points anywhere
+    // (r489: a shaft held the vehicle at the unobserved speed for the whole
+    // climb).
+    const double horizontal = std::hypot(faced.x, faced.y);
+    const double length = std::hypot(horizontal, faced.z);
+    if (length > 1.0e-6 &&
+        horizontal / length >=
+            std::cos(config.sensor_braking_contract.forward_vertical_half_angle_rad) &&
+        std::abs(std::remainder(std::atan2(faced.y, faced.x) -
+                                    static_cast<double>(input.state.yaw),
+                                2.0 * std::numbers::pi)) >
+            config.sensor_braking_contract.forward_horizontal_half_angle_rad) {
+      result.sensor_braking_limit_mps =
+          std::min(result.sensor_braking_limit_mps,
+                   config.sensor_braking_contract.unobserved_speed_mps);
+    }
+  }
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =
         std::max(0.0, distance3D(input.mission_goal,

@@ -40,6 +40,46 @@ TEST(MppiSpeedPolicyTest, SensorBrakingContractLimitsReferenceSpeed) {
               config.sensor_braking_contract.guaranteed_detection_range_m, 1.0e-10);
 }
 
+TEST(MppiSpeedPolicyTest, AForwardSensorHoldsAMotionItDoesNotFaceToTheUnobservedSpeed) {
+  // A pair that sees 60 degrees either side of the heading. Flying where it
+  // looks the contract's range answers; flying sideways nothing looks, and
+  // the speed a contact is left at is all the policy admits.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  allowHighSensorBrakingSpeed(config);
+  config.sensor_braking_contract.forward_horizontal_half_angle_rad = 1.0471975511965976;
+  config.sensor_braking_contract.unobserved_speed_mps = 1.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 3.0F;
+  input.state.yaw = 0.0F;
+  const MppiSpeedPolicyResult facing = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_GT(facing.sensor_braking_limit_mps, 10.0);
+
+  input.state.yaw = 1.5707964F;
+  const MppiSpeedPolicyResult sideways = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(sideways.sensor_braking_limit_mps, 1.0);
+  EXPECT_EQ(sideways.active_limiter, MppiSpeedLimiter::kSensorBraking);
+
+  // A climb steeper than the pair's vertical half-angle is not the pair's to
+  // face, whatever its horizontal remnant points at.
+  config.sensor_braking_contract.forward_vertical_half_angle_rad = 0.9;
+  config.sensor_braking_contract.vertical_detection_range_m = 30.0;
+  config.sensor_braking_contract.vertical_cone_half_angle_rad = 0.5;
+  config.sensor_braking_contract.vertical_physical_margin_m = 1.0;
+  input.state.vx = 0.1F;
+  input.state.vz = 2.0F;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps, 1.0);
+  input.state.vx = 3.0F;
+  input.state.vz = 0.0F;
+  config.sensor_braking_contract.forward_vertical_half_angle_rad = 1.5707963267948966;
+
+  // A lidar that sees the whole sphere does not care where the vehicle looks.
+  config.sensor_braking_contract.forward_horizontal_half_angle_rad = 3.141592653589793;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps, 10.0);
+}
+
 TEST(MppiSpeedPolicyTest, MeasuredOverspeedKeepsTheReferenceAtTheSensorBrakingLimit) {
   // The excess above the reference is priced as overspeed by the optimizer,
   // so the policy names the sensor limiter and keeps the reference at the

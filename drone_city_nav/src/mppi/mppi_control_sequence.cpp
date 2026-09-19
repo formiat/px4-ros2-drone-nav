@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
@@ -680,6 +681,54 @@ RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
                  static_cast<std::uint8_t>(route[index].required_risk_tier)));
   }
   return result == RiskTier::kCollision ? RiskTier::kCritical : result;
+}
+
+// A quarter turn closes to within five degrees in two seconds; the
+// autopilot's yaw response, a few tenths of a second, stays well inside that.
+constexpr float kGazeRateGainPerSecond{1.5F};
+
+void applyGazeYawControls(const std::span<Control> controls,
+                          const std::span<State> horizon,
+                          const DynamicsConfig& dynamics, const float lookahead_s,
+                          const float minimum_displacement_m) {
+  if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
+    return;
+  }
+  const float maximum_acceleration = dynamics.maximum_yaw_acceleration_radps2;
+  const auto lookahead_steps = std::max<std::size_t>(
+      1U, static_cast<std::size_t>(std::lround(lookahead_s / dynamics.dt_s)));
+  for (std::size_t index = 0U; index < controls.size(); ++index) {
+    State& state = horizon[index];
+    // Where the motion is headed over the lookahead, not where the velocity
+    // points this instant: the velocity of a vehicle correcting its track at
+    // 1 m/s swings through tens of degrees, and a gaze that followed it swung
+    // with it (r488: the heading agreed with the turn it needed half the
+    // time).
+    const State& ahead = horizon[std::min(index + lookahead_steps, controls.size())];
+    const float ahead_x = ahead.x - state.x;
+    const float ahead_y = ahead.y - state.y;
+    const float error_rad =
+        std::hypot(ahead_x, ahead_y) >= minimum_displacement_m
+            ? std::remainder(std::atan2(ahead_y, ahead_x) - state.yaw,
+                             2.0F * std::numbers::pi_v<float>)
+            : 0.0F;
+    // A turn rate proportional to the remaining angle, inside the yaw rate
+    // limit. The rate that closes the angle at the full yaw deceleration is
+    // the fastest plan, and it left no room for the autopilot's own yaw
+    // response: flown on r488 to r490 the heading overshot and swung back
+    // through 60 degrees and more, the turn it was making agreed with the turn
+    // it needed half the time, and the vehicle spent 49 to 56 percent of its
+    // ticks held to the unobserved speed for not facing its route.
+    const float desired_rate_radps =
+        std::clamp(kGazeRateGainPerSecond * error_rad, -dynamics.maximum_yaw_rate_radps,
+                   dynamics.maximum_yaw_rate_radps);
+    controls[index].yaw_accel =
+        std::clamp((desired_rate_radps - state.yaw_rate) / dynamics.dt_s,
+                   -maximum_acceleration, maximum_acceleration);
+    const State integrated = integrateReference(state, controls[index], dynamics);
+    horizon[index + 1U].yaw = integrated.yaw;
+    horizon[index + 1U].yaw_rate = integrated.yaw_rate;
+  }
 }
 
 } // namespace drone_city_nav::mppi

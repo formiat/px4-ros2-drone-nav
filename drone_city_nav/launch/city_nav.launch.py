@@ -90,6 +90,27 @@ def optional_waypoint_sequence_override(context, launch_config, argument_name):
     return result
 
 
+# What the sensor set of models/stereo_tof_v1 guarantees to see, for the braking
+# contract and the gaze (roadmap item 14, stage 3). The pair is confident to
+# 6.4 m (the disparity error at p90 on r476, one voxel of depth error) inside
+# 60 degrees either side of the heading and 52.4 degrees above and below the
+# horizon (120 degrees on a 4:3 imager); each time-of-flight sensor sees 2.8 m
+# inside 22.5 degrees of the vertical; a motion in neither field is held to the
+# speed a contact is left at. A vertical approach keeps 1.0 m: the body's half
+# height (0.35 m), the vertical estimate error, a voxel and the tracking error,
+# where the 2.0 m of a horizontal one is sized by the 0.82 m envelope.
+STEREO_TOF_OBSERVABILITY = {
+    "guaranteed_lidar_detection_range_m": 6.4,
+    "forward_detection_vertical_half_angle_deg": 52.4,
+    "forward_detection_horizontal_half_angle_deg": 60.0,
+    "vertical_detection_range_m": 2.8,
+    "vertical_detection_cone_half_angle_deg": 22.5,
+    "vertical_sensor_braking_physical_margin_m": 1.0,
+    "unobserved_motion_speed_mps": 1.0,
+    "gaze_follows_motion": True,
+}
+
+
 def stereo_shadow_nodes(
     params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name
 ):
@@ -192,6 +213,7 @@ def generate_launch_description():
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
     camera_profile = LaunchConfiguration("camera_profile")
+    navigation_sensor_profile = LaunchConfiguration("navigation_sensor_profile")
     localization_profile = LaunchConfiguration("localization_profile")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
@@ -420,6 +442,13 @@ def generate_launch_description():
         )
         assert monitor_shutdown is not None
         mission_monitor_parameters.append({"shutdown_on_result": monitor_shutdown})
+        navigation_sensors = navigation_sensor_profile.perform(context).strip()
+        if navigation_sensors not in ("lidar", "stereo_tof"):
+            raise ValueError(
+                f"unsupported navigation sensor profile: {navigation_sensors}"
+            )
+        if navigation_sensors == "stereo_tof":
+            production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
@@ -767,6 +796,15 @@ def generate_launch_description():
                     "alone as the autopilot's external odometry; gnss: the "
                     "autopilot's GNSS and the simulated heading; gnss_shadow: "
                     "gnss with the estimator running beside it for comparison."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "navigation_sensor_profile",
+                default_value="lidar",
+                description=(
+                    "Whose observability the speed law and the gaze answer to: "
+                    "lidar (the whole sphere) or stereo_tof (a forward pair and "
+                    "two time-of-flight sensors, roadmap item 14)."
                 ),
             ),
             DeclareLaunchArgument(

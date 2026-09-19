@@ -24,4 +24,14 @@ resolve_camera_profile() {
     return 1
     ;;
   esac
+  # Whose observability the speed law and the gaze answer to.
+  navigation_sensor_profile="${NAVIGATION_SENSOR_PROFILE:-lidar}"
+  navigation_sensor_profile="${navigation_sensor_profile,,}"
+  case "${navigation_sensor_profile}" in
+  lidar | stereo_tof) ;;
+  *)
+    echo "NAVIGATION_SENSOR_PROFILE must be one of lidar or stereo_tof; got '${navigation_sensor_profile}'" >&2
+    return 1
+    ;;
+  esac
 }

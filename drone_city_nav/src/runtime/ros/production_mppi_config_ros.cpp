@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -616,7 +617,23 @@ void ProductionMppiConfigLoader::declareControl() {
       .maximum_horizontal_acceleration_mps2 = maximum_horizontal_acceleration_mps2,
       .maximum_vertical_acceleration_mps2 = maximum_vertical_acceleration_mps2,
       .maximum_control_jerk_mps3 = maximum_control_jerk_mps3,
+      // Where the obstacle sensors look; the defaults are a lidar that sees
+      // the whole sphere.
+      .forward_vertical_half_angle_rad =
+          declare<double>("forward_detection_vertical_half_angle_deg", 90.0) *
+          std::numbers::pi / 180.0,
+      .forward_horizontal_half_angle_rad =
+          declare<double>("forward_detection_horizontal_half_angle_deg", 180.0) *
+          std::numbers::pi / 180.0,
+      .vertical_detection_range_m = declare<double>("vertical_detection_range_m", 0.0),
+      .vertical_cone_half_angle_rad =
+          declare<double>("vertical_detection_cone_half_angle_deg", 0.0) *
+          std::numbers::pi / 180.0,
+      .unobserved_speed_mps = declare<double>("unobserved_motion_speed_mps", 1.0),
+      .vertical_physical_margin_m =
+          declare<double>("vertical_sensor_braking_physical_margin_m", 0.0),
   };
+  mppi.gaze_follows_motion = declare<bool>("gaze_follows_motion", false);
   // Braking completes at the goal capture's stationary tolerance: a wider
   // margin leaves the vehicle drifting to rest outside the tolerance with no
   // reference speed left to close the gap.
