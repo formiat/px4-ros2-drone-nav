@@ -21,6 +21,19 @@ release names the asset tags it was validated with.
   causes. What remains is the imported Urban Circuit Practice 01 environment
   with its point-to-point and cooperative traffic missions. The `Completed`
   roadmap entries 1 to 5 and 6.1 stay as history, each marked as removed.
+  Confirmed by five urban point-to-point flights of five on one commit (r448
+  to r452, lidar-inertial profile, 2.58 to 2.94 m/s, no crash); the
+  cooperative mission is not flight-verified after the removal.
+- Fixes the confirming series needed: the four general tick diagnostics lost
+  with the interception ones are restored; the autopilot's estimator sources
+  are set before EKF2 starts, so it no longer fuses GNSS height for its first
+  90 ms and resets the height by 7.84 m at takeoff (r439); a refused stop
+  leaves the vehicle on its still valid resident trajectory when the braking
+  path itself is blocked, instead of a blind straight brake into the wall
+  (r440, r445); the lidar-inertial submap evicts its oldest keyframe without
+  rebuilding the voxel hash, so a scan's cost no longer grows with the submap
+  (r447: 155 to 266 ms a scan, external-vision fusion lost, crash; r448 to
+  r452: at most 99 ms at 82 to 92 thousand points).
 
 ## v0.3.0 (2026-09-17)
 

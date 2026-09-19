@@ -348,6 +348,14 @@ Circuit environment remains, with its point-to-point and cooperative traffic
 missions. Unit and script tests were deleted rather than skipped, and no
 document names a removed node, scenario or command.
 
+Confirmed in flight by a single-vehicle series on the lidar-inertial profile,
+r448 to r452 on one commit: five urban point-to-point flights of five without
+a crash, 2.58 to 2.94 m/s, zero ownership gaps, planner search 152 to 156 ms
+at p95. The removal itself lost four general tick diagnostics, which were
+restored; the other defects the series met and repaired were older than the
+removal. The cooperative traffic mission is not flight-verified after the
+removal and is not flown until this item's later stages land.
+
 ### Stage 1: A Link Model Between Vehicles
 
 A link simulator is a simulation component like the lidar: it may read the
