@@ -86,6 +86,11 @@ struct MppiSpeedPolicyInput {
   // vehicle can rest, so its own frontier is never beyond the stopping path;
   // the route says where the evidence ends ahead of that.
   std::optional<double> route_observed_range_m;
+  // How far along mppiSpeedPolicyFacedDirection the memory has observed the
+  // space the body would sweep. Read only under a forward sensor that does not
+  // see all around, for a motion the vehicle does not face: what was seen
+  // before is then the only witness, and an absent value is nothing seen.
+  std::optional<double> unfaced_observed_range_m;
   // Where the route ahead comes close to known occupied evidence, in the same
   // form as the executed horizon. The horizon reaches only as far as the
   // vehicle can stop, so at low speed it cannot see the tight spot the route
@@ -128,6 +133,9 @@ struct MppiSpeedPolicyResult {
   double unobserved_frontier_limit_mps{std::numeric_limits<double>::infinity()};
   // The observed range the frontier limiter read the contract with.
   double unobserved_frontier_range_m{std::numeric_limits<double>::infinity()};
+  // The range memory answered with for a motion the forward sensor did not
+  // face; infinite where the rule did not apply.
+  double unfaced_observed_range_m{std::numeric_limits<double>::infinity()};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};
@@ -147,6 +155,11 @@ struct MppiSpeedPolicyResult {
                                           const StoppingCapability& capability,
                                           const SensorBrakingContract3D& contract,
                                           double forward_acceleration_mps2) noexcept;
+
+// The direction a forward sensor has to face to see the motion the reference
+// commands: the route's tangent where there is a route, the motion where
+// there is none. Zero when neither names one.
+[[nodiscard]] Vec3 mppiSpeedPolicyFacedDirection(const MppiSpeedPolicyInput& input);
 
 [[nodiscard]] MppiSpeedPolicyResult
 evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,

@@ -158,6 +158,10 @@ struct BenchmarkConfig {
   // whose obstacle sensor looks forward. A lidar that sees the whole sphere
   // leaves the heading alone.
   bool gaze_follows_motion{false};
+  // The horizontal share of a route tangent above which it names a heading to
+  // face: the sine of the half-angle of the sensors that look up and down,
+  // inside whose cone a climb has none.
+  float gaze_minimum_horizontal_share{0.0F};
 };
 
 [[nodiscard]] bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept;

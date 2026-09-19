@@ -68,7 +68,7 @@ TEST(MppiControlSequenceTest, TheGazeTurnsTheHeadingToTheMotionWithoutOvershoot)
   }
   const std::vector<State> translation = horizon;
 
-  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F);
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt);
 
   const float north = 0.5F * std::numbers::pi_v<float>;
   float peak_yaw{0.0F};
@@ -95,9 +95,44 @@ TEST(MppiControlSequenceTest, TheGazeHoldsTheHeadingOfAVehicleThatHardlyMoves) {
     horizon.push_back(integrateReference(horizon.back(), control, dynamics));
   }
 
-  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F);
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt);
 
   EXPECT_NEAR(horizon.back().yaw, 1.0F, 1.0e-5F);
+}
+
+TEST(MppiControlSequenceTest, TheGazeOfAVehicleAtRestTurnsToWhereItsRouteLeaves) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  std::vector<Control> controls(80U);
+  std::vector<State> horizon{State{.yaw = 1.0F}};
+  for (const Control& control : controls) {
+    horizon.push_back(integrateReference(horizon.back(), control, dynamics));
+  }
+  const auto route = std::make_shared<std::vector<RouteSample3D>>(std::vector{
+      RouteSample3D{.z_m = 5.0F, .tangent_y = -1.0F},
+      RouteSample3D{.y_m = -4.0F, .z_m = 5.0F, .tangent_y = -1.0F, .station_m = 4.0F},
+  });
+  const std::optional<float> south =
+      gazeRestHeading(RouteReference{.points = route}, 0.38F);
+  ASSERT_TRUE(south.has_value());
+  EXPECT_NEAR(*south, -1.5707964F, 1.0e-5F);
+
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, south);
+
+  EXPECT_NEAR(horizon.back().yaw, -1.5707964F, 0.05F);
+  EXPECT_NEAR(horizon.back().x, 0.0F, 1.0e-6F);
+
+  // A climb inside the cone of the sensors that look up has no heading.
+  const auto shaft = std::make_shared<std::vector<RouteSample3D>>(std::vector{
+      RouteSample3D{.z_m = 5.0F, .tangent_x = 0.2F, .tangent_z = 0.98F},
+      RouteSample3D{.x_m = 0.8F,
+                    .z_m = 9.0F,
+                    .tangent_x = 0.2F,
+                    .tangent_z = 0.98F,
+                    .station_m = 4.08F},
+  });
+  EXPECT_FALSE(gazeRestHeading(RouteReference{.points = shaft}, 0.38F).has_value());
+  EXPECT_FALSE(gazeRestHeading(std::nullopt, 0.38F).has_value());
 }
 
 TEST(MppiControlSequenceTest, FractionalShiftInterpolatesWithoutDroppingWholeTick) {

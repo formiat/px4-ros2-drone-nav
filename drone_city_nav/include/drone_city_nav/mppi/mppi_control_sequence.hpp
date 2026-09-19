@@ -61,11 +61,21 @@ projectForwardRouteStation(std::span<const RouteSample3D> route, const State& st
 // the horizon moves in over `lookahead_s`, as fast as the yaw dynamics allow
 // and arriving without overshoot, and the yaw states of `horizon` are
 // re-integrated to match. Where the horizon moves less than
-// `minimum_displacement_m` over the lookahead the motion names no direction
-// and the heading is held. The translation is untouched: the yaw channel does
-// not act on it.
+// `minimum_displacement_m` over the lookahead the motion names no direction:
+// the heading turns to `rest_heading_rad`, where the route leaves, and is held
+// where there is none. The translation is untouched: the yaw channel does not
+// act on it.
 void applyGazeYawControls(std::span<Control> controls, std::span<State> horizon,
                           const DynamicsConfig& dynamics, float lookahead_s,
-                          float minimum_displacement_m);
+                          float minimum_displacement_m,
+                          std::optional<float> rest_heading_rad);
+
+// The heading of the route where the vehicle stands on it: what a vehicle at
+// rest has to face before the speed law lets it leave along a route it has
+// not looked along. Absent where the tangent's horizontal share is below
+// `minimum_horizontal_share`.
+[[nodiscard]] std::optional<float>
+gazeRestHeading(const std::optional<RouteReference>& route,
+                float minimum_horizontal_share);
 
 } // namespace drone_city_nav::mppi

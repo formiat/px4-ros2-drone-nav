@@ -40,10 +40,10 @@ TEST(MppiSpeedPolicyTest, SensorBrakingContractLimitsReferenceSpeed) {
               config.sensor_braking_contract.guaranteed_detection_range_m, 1.0e-10);
 }
 
-TEST(MppiSpeedPolicyTest, AForwardSensorHoldsAMotionItDoesNotFaceToTheUnobservedSpeed) {
+TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   // A pair that sees 60 degrees either side of the heading. Flying where it
   // looks the contract's range answers; flying sideways nothing looks, and
-  // the speed a contact is left at is all the policy admits.
+  // the contract is read with what memory has observed along the motion.
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;
   config.absolute_speed_limit_mps = 20.0;
@@ -57,13 +57,33 @@ TEST(MppiSpeedPolicyTest, AForwardSensorHoldsAMotionItDoesNotFaceToTheUnobserved
   const MppiSpeedPolicyResult facing = evaluateMppiSpeedPolicy(config, input);
   EXPECT_GT(facing.sensor_braking_limit_mps, 10.0);
 
+  // Nothing observed along it (r500: a wall 1 m away that no sensor had
+  // looked at): nothing is admitted until the gaze has turned the vehicle.
   input.state.yaw = 1.5707964F;
-  const MppiSpeedPolicyResult sideways = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_DOUBLE_EQ(sideways.sensor_braking_limit_mps, 1.0);
-  EXPECT_EQ(sideways.active_limiter, MppiSpeedLimiter::kSensorBraking);
+  const MppiSpeedPolicyResult blind = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(blind.sensor_braking_limit_mps, 0.0);
+  EXPECT_EQ(blind.active_limiter, MppiSpeedLimiter::kSensorBraking);
+  input.unfaced_observed_range_m = config.sensor_braking_contract.physical_margin_m;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps,
+                   0.0);
 
-  // A climb steeper than the pair's vertical half-angle is not the pair's to
-  // face, whatever its horizontal remnant points at.
+  // Space seen before is flown through without facing it, at what its depth
+  // lets the vehicle stop within, and never faster than facing it would.
+  input.unfaced_observed_range_m = 8.0;
+  const double through_short =
+      evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
+  input.unfaced_observed_range_m = 16.0;
+  const double through_long =
+      evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
+  EXPECT_GT(through_short, 0.0);
+  EXPECT_GT(through_long, through_short);
+  input.unfaced_observed_range_m = 1000.0;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps,
+                   facing.sensor_braking_limit_mps);
+  input.unfaced_observed_range_m.reset();
+
+  // A climb inside the cone of the sensors that look up and down is not the
+  // pair's to face, whatever its horizontal remnant points at.
   config.sensor_braking_contract.forward_vertical_half_angle_rad = 0.9;
   config.sensor_braking_contract.vertical_detection_range_m = 30.0;
   config.sensor_braking_contract.vertical_cone_half_angle_rad = 0.5;

@@ -1,4 +1,5 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
+#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -110,16 +111,28 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   }
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, *hold_valid_until_ns, ProductionMppiExecutionMode::kPositionHold, reason);
+  // A vehicle whose sensor looks forward turns, while it is held, to where its
+  // route leaves: the speed law admits nothing along a route the vehicle does
+  // not face through space memory has not observed, and a hold that kept the
+  // heading would keep that space unobserved. A captured goal has nowhere to
+  // leave to.
+  const float hold_yaw =
+      config_.control.mppi.gaze_follows_motion && cycle.controller.input != nullptr &&
+              reason != ProductionMppiExecutionReason::kGoalCapture
+          ? mppi::gazeRestHeading(cycle.controller.input->route,
+                                  config_.control.mppi.gaze_minimum_horizontal_share)
+                .value_or(cycle.evidence.exact_initial_state.yaw)
+          : cycle.evidence.exact_initial_state.yaw;
   horizon.stationary_position_hold = true;
   horizon.stationary_hold_position.x = owned_hold_position.x;
   horizon.stationary_hold_position.y = owned_hold_position.y;
   horizon.stationary_hold_position.z = owned_hold_position.z;
   horizon.points.reserve(2U);
   production_mppi_execution_detail::appendStationaryHoldPoint(
-      horizon, owned_hold_position, 0, cycle.evidence.exact_initial_state.yaw);
+      horizon, owned_hold_position, 0, hold_yaw);
   production_mppi_execution_detail::appendStationaryHoldPoint(
       horizon, owned_hold_position, cycle.controller.finite_path_control_interval_ns,
-      cycle.evidence.exact_initial_state.yaw);
+      hold_yaw);
 
   ExecutionHorizonLeaseCandidate3D candidate;
   const std::shared_ptr<const ExecutionPlan3D> hold_expected = prepared.expectedPlan();
@@ -148,11 +161,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       mppi::State{.x = static_cast<float>(owned_hold_position.x),
                   .y = static_cast<float>(owned_hold_position.y),
                   .z = static_cast<float>(owned_hold_position.z),
-                  .yaw = cycle.evidence.exact_initial_state.yaw},
+                  .yaw = hold_yaw},
       mppi::State{.x = static_cast<float>(owned_hold_position.x),
                   .y = static_cast<float>(owned_hold_position.y),
                   .z = static_cast<float>(owned_hold_position.z),
-                  .yaw = cycle.evidence.exact_initial_state.yaw},
+                  .yaw = hold_yaw},
   };
   publication.mode = ProductionMppiExecutionMode::kPositionHold;
   publication.reason = reason;

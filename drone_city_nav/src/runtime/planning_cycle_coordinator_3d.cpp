@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -469,42 +470,51 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
       previous_reference_stamp_ns_ > 0 && request.now_ns > previous_reference_stamp_ns_
           ? static_cast<double>(request.now_ns - previous_reference_stamp_ns_) * 1.0e-9
           : 0.0;
-  output.controller.speed_policy = evaluateMppiSpeedPolicy(
-      config_.speed_policy,
-      MppiSpeedPolicyInput{
-          .state = request.navigation.state,
-          .mission_goal = request.mission_goal,
-          .route = route,
-          .route_endpoint_remaining_m =
-              output.route.usable && output.route.projection.valid &&
-                      routeEndpointHasTerminalStop3D(route_endpoint_semantics)
-                  ? std::optional<double>{output.route.projection.remaining_m}
-                  : std::nullopt,
-          .route_constraint_speed_limit_mps =
-              route_control.active
-                  ? std::optional<double>{route_control.speed_limit_mps}
-                  : std::nullopt,
-          .blocked_route_remaining_m =
-              blockedRouteRemainingM(output.route, Point3{request.navigation.state.x,
-                                                          request.navigation.state.y,
-                                                          request.navigation.state.z}),
-          .executed_horizon_clearance = executed_horizon_clearance,
-          .route_observed_range_m = route_observed_range_m,
-          .route_clearance = route_clearance,
-          .esdf_evidence_age_s =
-              request.world != nullptr &&
-                      request.now_ns > request.world->source_stamp_ns
-                  ? static_cast<double>(request.now_ns -
-                                        request.world->source_stamp_ns) *
-                        1.0e-9
-                  : 0.0,
-          .forward_acceleration_mps2 =
-              productionMppiForwardAcceleration3D(request.navigation).horizontal_mps2,
-          .previous_reference_speed_mps = previous_reference_speed_mps_,
-          .elapsed_since_previous_reference_s = reference_elapsed_s,
-          .route_endpoint_semantics = route_endpoint_semantics,
-          .terminal_goal_limit_enabled = request.terminal_hold_enabled,
-      });
+  MppiSpeedPolicyInput speed_policy_input{
+      .state = request.navigation.state,
+      .mission_goal = request.mission_goal,
+      .route = route,
+      .route_endpoint_remaining_m =
+          output.route.usable && output.route.projection.valid &&
+                  routeEndpointHasTerminalStop3D(route_endpoint_semantics)
+              ? std::optional<double>{output.route.projection.remaining_m}
+              : std::nullopt,
+      .route_constraint_speed_limit_mps =
+          route_control.active ? std::optional<double>{route_control.speed_limit_mps}
+                               : std::nullopt,
+      .blocked_route_remaining_m = blockedRouteRemainingM(
+          output.route, Point3{request.navigation.state.x, request.navigation.state.y,
+                               request.navigation.state.z}),
+      .executed_horizon_clearance = executed_horizon_clearance,
+      .route_observed_range_m = route_observed_range_m,
+      .route_clearance = route_clearance,
+      .esdf_evidence_age_s =
+          request.world != nullptr && request.now_ns > request.world->source_stamp_ns
+              ? static_cast<double>(request.now_ns - request.world->source_stamp_ns) *
+                    1.0e-9
+              : 0.0,
+      .forward_acceleration_mps2 =
+          productionMppiForwardAcceleration3D(request.navigation).horizontal_mps2,
+      .previous_reference_speed_mps = previous_reference_speed_mps_,
+      .elapsed_since_previous_reference_s = reference_elapsed_s,
+      .route_endpoint_semantics = route_endpoint_semantics,
+      .terminal_goal_limit_enabled = request.terminal_hold_enabled,
+  };
+  // A forward sensor that does not see all around leaves memory to answer for
+  // a motion the vehicle does not face.
+  if (config_.speed_policy.sensor_braking_contract.forward_horizontal_half_angle_rad <
+          std::numbers::pi &&
+      request.latest_raw_world != nullptr && request.latest_raw_world->valid()) {
+    speed_policy_input.unfaced_observed_range_m = measureObservedRangeAlong3D(
+        request.latest_raw_world->occupancy(),
+        Point3{request.navigation.state.x, request.navigation.state.y,
+               request.navigation.state.z},
+        mppiSpeedPolicyFacedDirection(speed_policy_input),
+        config_.physical_footprint.body_radius_m,
+        config_.speed_policy.sensor_braking_contract.guaranteed_detection_range_m);
+  }
+  output.controller.speed_policy =
+      evaluateMppiSpeedPolicy(config_.speed_policy, speed_policy_input);
   previous_reference_speed_mps_ = output.controller.speed_policy.reference_speed_mps;
   previous_reference_stamp_ns_ = request.now_ns;
   output.controller.executed_horizon_clearance = executed_horizon_clearance;

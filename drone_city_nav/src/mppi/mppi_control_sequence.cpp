@@ -690,7 +690,8 @@ constexpr float kGazeRateGainPerSecond{1.5F};
 void applyGazeYawControls(const std::span<Control> controls,
                           const std::span<State> horizon,
                           const DynamicsConfig& dynamics, const float lookahead_s,
-                          const float minimum_displacement_m) {
+                          const float minimum_displacement_m,
+                          const std::optional<float> rest_heading_rad) {
   if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
     return;
   }
@@ -707,11 +708,13 @@ void applyGazeYawControls(const std::span<Control> controls,
     const State& ahead = horizon[std::min(index + lookahead_steps, controls.size())];
     const float ahead_x = ahead.x - state.x;
     const float ahead_y = ahead.y - state.y;
-    const float error_rad =
-        std::hypot(ahead_x, ahead_y) >= minimum_displacement_m
-            ? std::remainder(std::atan2(ahead_y, ahead_x) - state.yaw,
-                             2.0F * std::numbers::pi_v<float>)
-            : 0.0F;
+    const bool moving = std::hypot(ahead_x, ahead_y) >= minimum_displacement_m;
+    const float error_rad = moving || rest_heading_rad.has_value()
+                                ? std::remainder((moving ? std::atan2(ahead_y, ahead_x)
+                                                         : *rest_heading_rad) -
+                                                     state.yaw,
+                                                 2.0F * std::numbers::pi_v<float>)
+                                : 0.0F;
     // A turn rate proportional to the remaining angle, inside the yaw rate
     // limit. The rate that closes the angle at the full yaw deceleration is
     // the fastest plan, and it left no room for the autopilot's own yaw
@@ -729,6 +732,26 @@ void applyGazeYawControls(const std::span<Control> controls,
     horizon[index + 1U].yaw = integrated.yaw;
     horizon[index + 1U].yaw_rate = integrated.yaw_rate;
   }
+}
+
+std::optional<float> gazeRestHeading(const std::optional<RouteReference>& route,
+                                     const float minimum_horizontal_share) {
+  if (!route.has_value() || route->points == nullptr || route->points->empty()) {
+    return std::nullopt;
+  }
+  // The sample the vehicle stands at: the first one not behind its station.
+  const auto sample =
+      std::ranges::find_if(*route->points, [&](const RouteSample3D& candidate) {
+        return candidate.station_m >= route->initial_station_m;
+      });
+  const RouteSample3D& at =
+      sample != route->points->end() ? *sample : route->points->back();
+  const float horizontal = std::hypot(at.tangent_x, at.tangent_y);
+  const float length = std::hypot(horizontal, at.tangent_z);
+  if (!(length > 1.0e-6F) || horizontal / length <= minimum_horizontal_share) {
+    return std::nullopt;
+  }
+  return std::atan2(at.tangent_y, at.tangent_x);
 }
 
 } // namespace drone_city_nav::mppi

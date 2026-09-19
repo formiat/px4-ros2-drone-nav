@@ -3,6 +3,7 @@
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/esdf_grid_3d.hpp"
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
@@ -107,6 +108,18 @@ measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_st
                             double lookahead_m, const EsdfGrid3D& grid,
                             std::span<const float> esdf_m,
                             const SweptFootprintConfig& footprint);
+
+// How far from `origin` along `direction` the memory has observed every voxel
+// the body sweeps, probing no farther than `maximum_range_m`. The distance
+// field cannot say it: free and unknown are one input to it, and only the edge
+// of its grid reads as unobserved (r500 read 20 m, the grid's edge, along a
+// route that entered space no sensor had looked at 1 m ahead). A sensor set
+// that does not look everywhere leaves memory the only witness of a motion it
+// does not face. The body's own volume is not probed: the vehicle is there.
+[[nodiscard]] double
+measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
+                            const Point3& origin, const Vec3& direction,
+                            double body_radius_m, double maximum_range_m);
 
 // Where the route ahead of `from_station_m` comes close to known occupied
 // evidence, probing no farther than `lookahead_m`, in the same form the

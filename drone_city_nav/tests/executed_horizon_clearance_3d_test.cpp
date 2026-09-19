@@ -219,6 +219,37 @@ TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceIsMeasuredWithTheBodyFootpr
   EXPECT_TRUE(measured_on_its_own);
 }
 
+TEST(ExecutedHorizonClearance3DTest, MemoryAnswersHowFarAMotionWasObserved) {
+  // A 20 m cube of 0.25 m voxels, observed free for x below 6 m: the shaft of
+  // r500 seen from inside, its far wall never looked at.
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{
+      .resolution_m = 0.25, .width_cells = 80, .height_cells = 80, .depth_cells = 80}};
+  for (int x = 0; x < 24; ++x) {
+    for (int y = 0; y < 80; ++y) {
+      for (int z = 0; z < 80; ++z) {
+        occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  const Point3 vehicle{2.0, 10.0, 10.0};
+
+  // Toward the unobserved space: 4 m of memory, to within a voxel.
+  EXPECT_NEAR(
+      measureObservedRangeAlong3D(occupancy, vehicle, Vec3{1.0, 0.0, 0.0}, 0.55, 30.0),
+      4.0, 0.25);
+  // Along it the memory reaches as far as it is probed.
+  EXPECT_NEAR(
+      measureObservedRangeAlong3D(occupancy, vehicle, Vec3{0.0, 1.0, 0.0}, 0.55, 6.0),
+      6.0, 0.25);
+  // The body is as wide as it is: beside the unobserved space, a motion along
+  // it is not observed across its width.
+  EXPECT_NEAR(measureObservedRangeAlong3D(occupancy, Point3{5.7, 10.0, 10.0},
+                                          Vec3{0.0, 1.0, 0.0}, 0.55, 6.0),
+              0.55, 1.0e-9);
+  EXPECT_DOUBLE_EQ(measureObservedRangeAlong3D(occupancy, vehicle, Vec3{}, 0.55, 30.0),
+                   0.0);
+}
+
 TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceStopsAtTheLookahead) {
   const ExecutedHorizonClearance3D near =
       measureRouteClearance3D(routeAlongX(0.5, 20U), 2.0, 2.0, grid(),

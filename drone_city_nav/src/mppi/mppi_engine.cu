@@ -808,8 +808,10 @@ public:
       throw std::runtime_error{"MPPI control evaluation returned incomplete horizon"};
     }
     if (config_.gaze_follows_motion) {
-      applyGazeYawControls(updated_, result.horizon, config_.dynamics, kGazeLookaheadS,
-                           kGazeMinimumDisplacementM);
+      applyGazeYawControls(
+          updated_, result.horizon, config_.dynamics, kGazeLookaheadS,
+          kGazeMinimumDisplacementM,
+          gazeRestHeading(input.route, config_.gaze_minimum_horizontal_share));
       result.controls = updated_;
     }
     State state = result.horizon.front();

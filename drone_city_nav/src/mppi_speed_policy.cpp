@@ -235,6 +235,12 @@ double stoppingLimitedSpeed(const double available_distance_m,
   return lower_mps;
 }
 
+Vec3 mppiSpeedPolicyFacedDirection(const MppiSpeedPolicyInput& input) {
+  return input.route.empty()
+             ? motionDirection(input)
+             : input.route[nearestGuideIndex(input.state, input.route)].tangent;
+}
+
 MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
                                               const MppiSpeedPolicyInput& input) {
   validateConfig(config);
@@ -266,30 +272,43 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // there is none: the velocity of a vehicle correcting its track at 1 m/s
     // swings through tens of degrees, and read off it the limit released and
     // bound again with every swing (r488: bound 56 percent of the ticks, the
-    // speed cycling between 1 and 3 m/s). A vehicle about to leave along a
-    // route it does not face is held to the unobserved speed until the gaze
-    // has turned it.
-    const Vec3 faced =
-        input.route.empty()
-            ? braking_direction
-            : input.route[nearestGuideIndex(input.state, input.route)].tangent;
-    // Only a motion the forward sensor answers for has a heading to face: a
-    // climb steeper than its vertical half-angle belongs to the sensors that
-    // look up and down, and its tangent's horizontal remnant points anywhere
-    // (r489: a shaft held the vehicle at the unobserved speed for the whole
-    // climb).
+    // speed cycling between 1 and 3 m/s).
+    const Vec3 faced = mppiSpeedPolicyFacedDirection(input);
+    // A climb inside the cone of the sensors that look up and down is theirs,
+    // and its tangent's horizontal remnant points anywhere (r489: a shaft held
+    // the vehicle at the unobserved speed for the whole climb). Every other
+    // motion has a heading, and a wall stands across all of its elevations:
+    // facing it is what lets the pair see it.
     const double horizontal = std::hypot(faced.x, faced.y);
     const double length = std::hypot(horizontal, faced.z);
     if (length > 1.0e-6 &&
-        horizontal / length >=
-            std::cos(config.sensor_braking_contract.forward_vertical_half_angle_rad) &&
+        horizontal / length >
+            std::sin(config.sensor_braking_contract.vertical_cone_half_angle_rad) &&
         std::abs(std::remainder(std::atan2(faced.y, faced.x) -
                                     static_cast<double>(input.state.yaw),
                                 2.0 * std::numbers::pi)) >
             config.sensor_braking_contract.forward_horizontal_half_angle_rad) {
+      // No sensor sees a motion the vehicle does not face, so memory answers
+      // for it: the contract is read with the range memory has observed along
+      // it, and where it has observed nothing the vehicle waits for the gaze
+      // to turn it. A fixed speed here was a blind one: r500 climbed a shaft
+      // facing south-west, left it northward at the 1 m/s this rule then
+      // admitted (1.5 m/s flown), and met a wall 1 m away that entered memory
+      // 0.5 s before the contact, when the turning pair first saw it.
+      SensorBrakingContract3D memory_contract = config.sensor_braking_contract;
+      memory_contract.forward_vertical_half_angle_rad = 0.5 * std::numbers::pi;
+      memory_contract.guaranteed_detection_range_m =
+          std::min(memory_contract.guaranteed_detection_range_m,
+                   input.unfaced_observed_range_m.value_or(0.0));
+      result.unfaced_observed_range_m = memory_contract.guaranteed_detection_range_m;
       result.sensor_braking_limit_mps =
           std::min(result.sensor_braking_limit_mps,
-                   config.sensor_braking_contract.unobserved_speed_mps);
+                   memory_contract.guaranteed_detection_range_m >
+                           memory_contract.physical_margin_m
+                       ? sensorBrakingMaximumSpeedMps(
+                             memory_contract, config.stopping_capability,
+                             config.absolute_speed_limit_mps, faced)
+                       : 0.0);
     }
   }
   if (input.terminal_goal_limit_enabled) {

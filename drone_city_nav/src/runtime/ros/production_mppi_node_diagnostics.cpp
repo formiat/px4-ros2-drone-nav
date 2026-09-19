@@ -216,6 +216,8 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.unobserved_frontier_limit_mps)
        << " unobserved_frontier_range_m="
        << finiteOrNegative(speed_policy.unobserved_frontier_range_m)
+       << " unfaced_observed_range_m="
+       << finiteOrNegative(speed_policy.unfaced_observed_range_m)
        << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
        << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
        << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
