@@ -213,9 +213,18 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
     return result;
   }
 
+  // A resident hold keeps its station. An explicit hold requested at the
+  // vehicle's measured rest asks for that same station: the vehicle hovers
+  // centimetres around it, and a request held to the exact coordinate could
+  // never be taken over a resident hold (r498: a goal capture broken by one
+  // lost feedback sample left a no-executable-horizon hold 0.03 m from the
+  // measured position, and every goal capture after it was refused for the
+  // 185 s that remained of the flight).
   const Point3 position =
       resident_hold != nullptr &&
-              request.intent == ExecutionHoldIntent3D::kRefreshResident
+              (request.intent == ExecutionHoldIntent3D::kRefreshResident ||
+               distance3D(resident_hold->position, request.requested_position) <=
+                   kStationaryExecutionHoldPositionToleranceM)
           ? resident_hold->position
           : request.requested_position;
   const ExecutionRouteTransitionResult3D transition = transferToExecutionHold3D(

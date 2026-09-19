@@ -236,6 +236,55 @@ TEST(ExecutionSupervisorHold3DTest,
 }
 
 TEST(ExecutionSupervisorHold3DTest,
+     AnExplicitHoldAtTheHoveringVehicleTakesTheResidentStation) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  const ExecutionHoldPreparation3D transfer = supervisor.prepareHold(
+      holdRequest(active, SnapshotFixture3D::holdCertification(*active)));
+  ASSERT_TRUE(transfer.prepared());
+  ASSERT_NE(transfer.transition, nullptr);
+  ASSERT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = transfer.expected_authority,
+                    .expected_plan = transfer.expectedPlan(),
+                    .transition = *transfer.transition,
+                    .expected_pending = nullptr,
+                    .owner = holdOwner(*transfer.transition->next, 2U),
+                    .input = transfer.executionInput(),
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
+  const std::shared_ptr<const ExecutionPlan3D> resident = supervisor.plan();
+  ASSERT_NE(resident, nullptr);
+  ASSERT_NE(resident->stationaryHold(), nullptr);
+  const Point3 station = resident->stationaryHold()->position;
+
+  // The measured rest of r498: 0.03 m from the station.
+  StationaryExecutionHoldCertification3D hovering =
+      SnapshotFixture3D::holdCertification(*resident);
+  hovering.position = Point3{station.x + 0.02, station.y - 0.02, station.z + 0.01};
+  const ExecutionHoldPreparation3D taken =
+      supervisor.prepareHold(holdRequest(resident, hovering));
+  ASSERT_TRUE(taken.prepared());
+  EXPECT_EQ(taken.position.x, station.x);
+  EXPECT_EQ(taken.position.y, station.y);
+  EXPECT_EQ(taken.position.z, station.z);
+
+  // Another place is another hold: the resident one is not moved there.
+  StationaryExecutionHoldCertification3D elsewhere = hovering;
+  elsewhere.position = Point3{station.x + 0.5, station.y, station.z};
+  const ExecutionHoldPreparation3D refused =
+      supervisor.prepareHold(holdRequest(resident, elsewhere));
+  EXPECT_FALSE(refused.prepared());
+  EXPECT_EQ(supervisor.plan(), resident);
+}
+
+TEST(ExecutionSupervisorHold3DTest,
      RefreshesAResidentInputAndUsesNoChangeOnlyForTheExactOwnerEvidence) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
