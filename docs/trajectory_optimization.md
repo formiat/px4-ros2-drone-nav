@@ -308,6 +308,20 @@ heading (`gazeRestHeading`), so a held vehicle looks where its route leaves
 and the space ahead becomes observed. A lidar that sees all around enters none
 of this (`forward_detection_horizontal_half_angle_deg` 180).
 
+The same rule binds every published horizon, not only the reference of the
+tick. A horizon owns the vehicle for its whole lease, and the lease outlives
+the tick: when nothing can be committed (r518: the autopilot's position was
+rejected for 1.7 s while its timestamps were reacquired) the resident horizon
+flies on, through whatever turn it holds. The horizon assembler's candidate
+validator therefore refuses a candidate whose states carry speed along a
+motion no sensor sees at that state's own planned heading, faster than memory
+admits along it (`firstUnseenMotionState3D`; states no faster than the
+stationary hold tolerance carry nothing), and the arrival search shortens the
+refused candidate as it does for any other refusal, so the horizon ends at
+rest before the unseen motion. Measured cost: the mean speed of the stereo
+profile fell from 1.48 to 1.67 m/s (r506 to r510) to 1.17 to 1.57 m/s (r523
+to r527), the tick from 21 to 23 ms at p50 and from 31 to 37 ms at p95.
+
 The reference may fall as fast as any limiter asks — a cap is always allowed to
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the
 vehicle's own horizontal acceleration. A limit that lifts as the horizon shifts

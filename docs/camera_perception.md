@@ -39,11 +39,24 @@ the correction is recorded beside it.
   distance field treats unknown as free, so the frontier law read 20 m, the
   edge of its grid. Memory now answers for such a motion and the gaze turns
   the vehicle first. After it: r505 to r510 and r516, seven flights, no crash.
+  r518, the first attempt at the final series: the simulator fell behind the
+  wall clock, the autopilot's timestamps were reacquired (10 to 15 times a
+  camera flight, none or once on the lidar), no horizon could be committed for
+  1.7 s, and the resident horizon flew the route's turn at 2 m/s with the pair
+  still facing away, into a structure memory first held 0.67 s before the
+  contact. The speed law bounds the tick; a horizon owns the vehicle for its
+  lease after it. The assembler's candidate validator now refuses a horizon
+  whose states carry speed along a motion no sensor sees at their own planned
+  heading, faster than memory admits, and the arrival search ends it at rest
+  before that motion.
 - **Acceptance** (r506 to r510 on 948d4df2): five of five, 1.48 to 1.67 m/s,
   route availability 97.6 to 98.8 percent, planner p95 152 to 158 ms, 95.5 to
   97.1 percent of the flown path observed before it was entered, 40 percent
   of the planned ticks flown without facing the route and 4.7 percent of all
-  ticks waiting for the gaze (r505).
+  ticks waiting for the gaze (r505). The final series on the defaults, with
+  the horizon rule (r523 to r527 on cd461d01): five of five, 1.17 to 1.57 m/s,
+  availability 98.2 to 99.2 percent; the rule costs about a fifth of the mean
+  speed, and one flight of the five is under the gate.
 - **Decisions the numbers made.** The speed gate of the stereo profile is
   half of what the contract admits forward: 1.226 m/s, not the 1.75 m/s
   estimated from 8.6 m of expected depth. Camera flights use the `gnss`

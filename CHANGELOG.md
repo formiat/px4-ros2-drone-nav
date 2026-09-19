@@ -83,10 +83,24 @@ release names the asset tags it was validated with.
   the lidar absent (r506 to r510: mission complete, no crash, 1.48 to
   1.67 m/s against a 1.226 m/s gate, route availability 97.6 to 98.8
   percent, planner p95 152 to 158 ms) and five control flights of the lidar
-  profile (r511 to r515: 2.65 to 2.82 m/s). The multi-vehicle launch carries
-  the same defaults and has not been flown on them.
-- Three defects found on the way to that series and fixed with their measured
-  cause: a goal capture broken by one lost feedback sample could never be
+  profile (r511 to r515: 2.65 to 2.82 m/s). The final series on the defaults,
+  with no profile variable set and the horizon rule below in place (r523 to
+  r527 on cd461d01): five of five, no crash, 1.17 to 1.57 m/s with one flight
+  under the gate, route availability 98.2 to 99.2 percent. The multi-vehicle
+  launch carries the same defaults and has not been flown on them.
+- A published horizon may not carry speed along a motion its own planned
+  heading leaves unseen, faster than memory admits along it
+  (`firstUnseenMotionState3D` in the horizon assembler's candidate validator;
+  the arrival search shortens a refused candidate to rest before that motion).
+  r518: the simulator fell behind the wall clock, the autopilot's timestamps
+  were reacquired and no horizon could be committed for 1.7 s; the resident
+  horizon flew the route's turn at 2 m/s with the pair still facing away, into
+  a structure memory first held 0.67 s before the contact. Camera flights see
+  10 to 15 such reacquisitions each, lidar flights none or one. The rule costs
+  about a fifth of the stereo profile's mean speed (1.48 to 1.67 m/s before
+  it, 1.17 to 1.57 after).
+- Three defects found on the way to the accepting series and fixed with their
+  measured cause: a goal capture broken by one lost feedback sample could never be
   taken again over the resident hold 0.03 m away (r498: 185 s at the goal
   without an acknowledgement); a motion no sensor faced was admitted a blind
   1 m/s and met a wall 1 m away that no sensor had looked at (r500, crash),
@@ -104,10 +118,14 @@ release names the asset tags it was validated with.
   gates the stereo profile's mean speed at half of what its braking contract
   admits forward (1.226 m/s), and counts `stereo_depth_node` among the onboard
   processes (1.4 cores at p50).
-- Known on the stereo profile (r506 to r510): the evidence age exceeds the
+- Known on the stereo profile (r506 to r510, r523 to r527): the mean speed
+  gate of 1.226 m/s is missed by one flight of the final five (1.165 m/s); the
+  evidence age exceeds the
   600 ms the contract charges on about 1 percent of the ticks (624 to 832 ms
   at most) on a workstation that holds a real-time factor of 0.9; lateral
-  tracking p99 0.305 and 0.320 m in two flights of five against 0.25 m; a
+  tracking p99 0.262 to 0.320 m in three flights of ten against 0.25 m; the
+  route-volume witness is red when the route of the flight does not pass the
+  volume (three of the final five); a
   faced motion between the pair's field and a time-of-flight cone (52.4 to
   67.5 degrees of elevation) is still flown at the unobserved speed of 1 m/s.
 - Known after these changes (series r470 to r474, five flights without a

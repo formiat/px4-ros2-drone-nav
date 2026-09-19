@@ -616,12 +616,21 @@ the median, above half of the 1.29 m/s the time-of-flight range admits;
 perception latency from exposure to the tick 300 to 320 ms at p50, 464 to
 496 ms at p95; the depth node 1.4 cores, the onboard processes 2.3 cores at
 p50 without it. The control series of the lidar profile on the same commit,
-r511 to r515: 2.65 to 2.82 m/s, no crash. Shadow comparison against the lidar
+r511 to r515: 2.65 to 2.82 m/s, no crash. The final series on the defaults,
+with no profile variable set (r523 to r527 on cd461d01): five of five, no
+crash, 1.32/1.17/1.43/1.57/1.44 m/s, route availability 98.2 to 99.2 percent,
+tick 21.8 to 23.5 ms at p50. Between the two series a first attempt at the
+final one lost r518: a timestamp reacquisition left the vehicle on its
+resident horizon for 1.7 s, and that horizon flew the route's turn with the
+pair still facing away. A published horizon since may not carry speed along a
+motion its own planned heading leaves unseen, which is what the difference in
+speed between the two series is. Shadow comparison against the lidar
 memory (stage 2): occupied precision 97 to 98 percent within one voxel,
 recall 96 to 99 percent inside the third of the lidar's volume the vision
 memory observes.
 
-Known and not gated: the evidence age exceeds the 600 ms the contract charges
+Known and not gated: the mean speed gate of 1.226 m/s is missed by one flight
+of the final five (1.165 m/s); the evidence age exceeds the 600 ms the contract charges
 on about 1 percent of the ticks (624 to 832 ms at most) on a workstation that
 holds a real-time factor of 0.9 beside the render, the image bridge and the
 matcher; lateral tracking p99 0.305 and 0.320 m in two flights of five against
