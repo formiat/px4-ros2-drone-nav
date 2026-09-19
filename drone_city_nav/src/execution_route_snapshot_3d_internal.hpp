@@ -51,7 +51,7 @@ using observed_world_content_3d::validationPolicyFingerprint;
 struct ValidationContractOwners3D {
   const VersionedObservedRawWorld3D* observed_raw_world{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
-  const VersionedLatestLidarEvidence3D* latest_lidar_evidence{nullptr};
+  const VersionedLatestSensorEvidence3D* latest_sensor_evidence{nullptr};
 };
 
 struct ValidationWorldOwnerContent3D {
@@ -146,7 +146,7 @@ validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
 
 [[nodiscard]] std::uint64_t validationLidarOwnerContentFingerprint(
     const std::span<const Point3> points,
-    const VersionedLatestLidarEvidence3D* const owner) noexcept;
+    const VersionedLatestSensorEvidence3D* const owner) noexcept;
 
 [[nodiscard]] std::uint64_t
 validationContractFingerprint(const FiniteExecutionPathWorld3D& world,
@@ -168,16 +168,16 @@ canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
     const std::optional<FiniteRouteTerminalBoundary3D>& second) noexcept;
 
 [[nodiscard]] bool
-latestLidarEvidenceFreshAt(const VersionedLatestLidarEvidence3D& evidence,
-                           const VersionedExecutionValidationPolicy3D& policy,
-                           const std::int64_t validation_stamp_ns) noexcept;
+latestSensorEvidenceFreshAt(const VersionedLatestSensorEvidence3D& evidence,
+                            const VersionedExecutionValidationPolicy3D& policy,
+                            const std::int64_t validation_stamp_ns) noexcept;
 
 [[nodiscard]] bool stationaryHoldRawSafe(
     const Point3& position, const VersionedExecutionInput3D& execution_input,
     const VersionedObservedRawWorld3D* observed_raw_world,
     const VersionedStaticWorld3D* static_world,
     const VersionedExecutionValidationPolicy3D& validation_policy,
-    const VersionedLatestLidarEvidence3D& latest_lidar_evidence) noexcept;
+    const VersionedLatestSensorEvidence3D& latest_sensor_evidence) noexcept;
 
 [[nodiscard]] std::vector<TimedExecutionPathPoint3D>
 timedExecutionPathPoints(const FiniteMotionHorizon3D& horizon,
@@ -377,8 +377,8 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
                                  const RouteLifecycleEvent3D& event) noexcept;
 
 [[nodiscard]] bool
-latestLidarInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
-                                         const RouteLifecycleEvent3D& event) noexcept;
+latestSensorInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
+                                          const RouteLifecycleEvent3D& event) noexcept;
 
 [[nodiscard]] bool
 terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
@@ -445,11 +445,11 @@ validateExecutionProgressConnector(
     const CertifiedRouteSuffix3D& route, const Point3& execution_position,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
-    std::span<const Point3> latest_lidar_obstacle_points);
+    std::span<const Point3> latest_sensor_obstacle_points);
 
 [[nodiscard]] bool
-latestLidarEvidenceNotOlder(const VersionedLatestLidarEvidence3D& candidate,
-                            const VersionedLatestLidarEvidence3D& previous) noexcept;
+latestSensorEvidenceNotOlder(const VersionedLatestSensorEvidence3D& candidate,
+                             const VersionedLatestSensorEvidence3D& previous) noexcept;
 
 [[nodiscard]] bool
 routeExecutionEvidenceNotOlderThanStop(const FiniteExecutionState3D& candidate,

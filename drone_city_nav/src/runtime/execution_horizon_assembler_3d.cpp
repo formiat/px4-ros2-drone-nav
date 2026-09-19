@@ -53,8 +53,8 @@ void captureValidationTelemetry(HorizonCandidate3D& candidate,
   candidate.path_validation_backoff = validation.path_validation_backoff;
   candidate.persistent_raw_path_validation_backoff =
       validation.persistent_raw_path_validation_backoff;
-  candidate.latest_lidar_path_validation_backoff =
-      validation.latest_lidar_path_validation_backoff;
+  candidate.latest_sensor_path_validation_backoff =
+      validation.latest_sensor_path_validation_backoff;
 }
 
 } // namespace
@@ -125,12 +125,12 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       break;
   }
 
-  const bool latest_lidar_evidence_usable =
-      evidence.latest_lidar_evidence != nullptr &&
-      (evidence.latest_lidar_obstacle_fresh ||
+  const bool latest_sensor_evidence_usable =
+      evidence.latest_sensor_evidence != nullptr &&
+      (evidence.latest_sensor_obstacle_fresh ||
        (evidence.selected_policy != nullptr &&
-        !evidence.selected_policy->latestLidarFreshnessRequired()));
-  if (!latest_lidar_evidence_usable || evidence.execution_dynamics == nullptr ||
+        !evidence.selected_policy->latestSensorFreshnessRequired()));
+  if (!latest_sensor_evidence_usable || evidence.execution_dynamics == nullptr ||
       evidence.execution_flight_envelope == nullptr ||
       evidence.execution_altitude_envelope == nullptr ||
       evidence.execution_footprint == nullptr || !evidence.exact_snapshot_world) {
@@ -211,7 +211,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
               .trajectory_revision = trajectory_revision,
               .horizon = candidate,
               .execution_input = evidence.execution_input,
-              .latest_lidar_evidence = evidence.latest_lidar_evidence,
+              .latest_sensor_evidence = evidence.latest_sensor_evidence,
               .valid_from_ns = cycle.controller.now_ns,
               .kind = FiniteExecutionKind3D::kNominal,
           },
@@ -264,7 +264,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
                                   : nullptr,
         .route_generation = route.selected_snapshot_route->identity.generation,
         .source = persistent_raw ? HorizonCandidateObstacleSource3D::kPersistentRaw
-                                 : HorizonCandidateObstacleSource3D::kLatestLidar,
+                                 : HorizonCandidateObstacleSource3D::kLatestSensor,
     };
   }
   if (!validated_path.accepted()) {

@@ -17,7 +17,7 @@ enum class ExecutionStopStatus3D : std::uint8_t {
   kAtRest,
   kResidentStopCurrent,
   kValidationWorldUnavailable,
-  kLidarEvidenceNotCurrent,
+  kSensorEvidenceNotCurrent,
   kHorizonUnavailable,
   kRevisionExhausted,
   kTransitionRejected,
@@ -44,7 +44,7 @@ stopMotionHorizonConfig3D(const FiniteMotionHorizonConfig3D& config,
 struct ExecutionStopRequest3D {
   std::shared_ptr<const ExecutionPlan3D> cycle_source_plan;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;

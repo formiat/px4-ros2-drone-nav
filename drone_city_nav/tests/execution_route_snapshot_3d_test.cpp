@@ -431,7 +431,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       raw_suffix->validation_policy->flightEnvelope(), changed_dynamics,
       raw_suffix->validation_policy->altitudeEnvelope(),
       raw_suffix->validation_policy->sweptFootprint(),
-      raw_suffix->validation_policy->latestLidarMaximumAgeMs());
+      raw_suffix->validation_policy->latestSensorMaximumAgeMs());
   ASSERT_NE(changed_policy.validation_policy, nullptr);
   EXPECT_FALSE(changed_policy.valid());
 

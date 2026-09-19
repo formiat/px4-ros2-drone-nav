@@ -10,7 +10,7 @@
 
 namespace drone_city_nav {
 
-struct LatestLidarObstacleScanBuildInput {
+struct LatestSensorObstacleScanBuildInput {
   std::span<const float> ranges{};
   std::span<const LidarProjectionPose> beam_projection_poses{};
   LidarProjectionConfig projection_config{};
@@ -20,7 +20,7 @@ struct LatestLidarObstacleScanBuildInput {
   double angle_increment_rad{0.0};
 };
 
-struct LatestLidarObstacleScanBuildResult {
+struct LatestSensorObstacleScanBuildResult {
   LidarProjectionBodyFrame acquisition_body_frame{};
   std::vector<Point3> hit_points_body_frd;
   std::size_t source_beam_count{0U};
@@ -28,9 +28,9 @@ struct LatestLidarObstacleScanBuildResult {
   bool valid{false};
 };
 
-[[nodiscard]] LatestLidarObstacleScanBuildResult
-buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input);
+[[nodiscard]] LatestSensorObstacleScanBuildResult
+buildLatestSensorObstacleScan(const LatestSensorObstacleScanBuildInput& input);
 
-[[nodiscard]] std::uint64_t createLatestLidarObstacleProducerInstanceId() noexcept;
+[[nodiscard]] std::uint64_t createLatestSensorObstacleProducerInstanceId() noexcept;
 
 } // namespace drone_city_nav

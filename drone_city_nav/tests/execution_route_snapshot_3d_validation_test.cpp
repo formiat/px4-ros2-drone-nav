@@ -37,11 +37,11 @@ namespace {
   });
 }
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
-lidarAtAge(const VersionedLatestLidarEvidence3D& source,
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
+lidarAtAge(const VersionedLatestSensorEvidence3D& source,
            const std::int64_t validation_stamp_ns, const std::int64_t age_ns,
            const std::uint64_t identity_increment) {
-  return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+  return VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
       .producer_instance_id = source.producerInstanceId(),
       .sequence = source.sequence() + identity_increment,
       .pose_generation = source.poseGeneration() + identity_increment,
@@ -241,22 +241,22 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::holdCertification(*active);
   ASSERT_NE(boundary.execution_input, nullptr);
   ASSERT_NE(boundary.validation_policy, nullptr);
-  ASSERT_NE(active->finiteExecution()->latest_lidar_evidence, nullptr);
+  ASSERT_NE(active->finiteExecution()->latest_sensor_evidence, nullptr);
   const std::int64_t maximum_age_ns = static_cast<std::int64_t>(
-      boundary.validation_policy->latestLidarMaximumAgeMs() * 1.0e6);
+      boundary.validation_policy->latestSensorMaximumAgeMs() * 1.0e6);
   ASSERT_GT(maximum_age_ns, 0);
-  boundary.latest_lidar_evidence =
-      lidarAtAge(*active->finiteExecution()->latest_lidar_evidence,
+  boundary.latest_sensor_evidence =
+      lidarAtAge(*active->finiteExecution()->latest_sensor_evidence,
                  boundary.execution_input->effectiveStampNs(), maximum_age_ns, 1U);
-  ASSERT_NE(boundary.latest_lidar_evidence, nullptr);
+  ASSERT_NE(boundary.latest_sensor_evidence, nullptr);
   EXPECT_TRUE(transferToExecutionHold3D(*active, active->version, boundary).applied());
 
   StationaryExecutionHoldCertification3D expired =
       SnapshotFixture3D::holdCertification(*active);
-  expired.latest_lidar_evidence =
-      lidarAtAge(*active->finiteExecution()->latest_lidar_evidence,
+  expired.latest_sensor_evidence =
+      lidarAtAge(*active->finiteExecution()->latest_sensor_evidence,
                  expired.execution_input->effectiveStampNs(), maximum_age_ns + 1, 2U);
-  ASSERT_NE(expired.latest_lidar_evidence, nullptr);
+  ASSERT_NE(expired.latest_sensor_evidence, nullptr);
   EXPECT_EQ(
       transferToExecutionHold3D(*active, active->version, std::move(expired)).status,
       ExecutionRouteTransitionStatus3D::kInvalidCandidate);
@@ -310,22 +310,22 @@ TEST(ExecutionRouteSnapshot3DTest,
   // A return two metres away is an obstacle for a hold there; a return at the
   // vehicle's own pose is contact and leaves the hold certifiable.
   StationaryExecutionHoldCertification3D raw_unsafe = terminal;
-  ASSERT_NE(raw_unsafe.latest_lidar_evidence, nullptr);
+  ASSERT_NE(raw_unsafe.latest_sensor_evidence, nullptr);
   const Point3 remote_hit{raw_unsafe.position.x - 2.0, raw_unsafe.position.y,
                           raw_unsafe.position.z};
   raw_unsafe.position = remote_hit;
-  raw_unsafe.latest_lidar_evidence =
-      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+  raw_unsafe.latest_sensor_evidence =
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
           .producer_instance_id =
-              raw_unsafe.latest_lidar_evidence->producerInstanceId(),
-          .sequence = raw_unsafe.latest_lidar_evidence->sequence() + 1U,
-          .pose_generation = raw_unsafe.latest_lidar_evidence->poseGeneration() + 1U,
+              raw_unsafe.latest_sensor_evidence->producerInstanceId(),
+          .sequence = raw_unsafe.latest_sensor_evidence->sequence() + 1U,
+          .pose_generation = raw_unsafe.latest_sensor_evidence->poseGeneration() + 1U,
           .acquisition_stamp_ns = raw_unsafe.execution_input->effectiveStampNs(),
           .receive_stamp_ns = raw_unsafe.execution_input->effectiveStampNs(),
           .source_beam_count = 1U,
           .hit_points_map_m = {remote_hit},
       });
-  ASSERT_NE(raw_unsafe.latest_lidar_evidence, nullptr);
+  ASSERT_NE(raw_unsafe.latest_sensor_evidence, nullptr);
   EXPECT_EQ(armStationaryCaptureHold3D(*revoked.next, revoked.next->version,
                                        std::move(raw_unsafe))
                 .status,
@@ -379,7 +379,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                     .observed_raw_world = refreshed_hold.observed_raw_world,
                     .static_world = refreshed_hold.static_world,
                     .validation_policy = refreshed_hold.validation_policy,
-                    .latest_lidar_evidence = refreshed_hold.latest_lidar_evidence,
+                    .latest_sensor_evidence = refreshed_hold.latest_sensor_evidence,
                 })
                 .status,
             ExecutionRouteTransitionStatus3D::kNoChange);
@@ -390,7 +390,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .observed_raw_world = refreshed_hold.observed_raw_world,
       .static_world = refreshed_hold.static_world,
       .validation_policy = refreshed_hold.validation_policy,
-      .latest_lidar_evidence = refreshed_hold.latest_lidar_evidence,
+      .latest_sensor_evidence = refreshed_hold.latest_sensor_evidence,
   };
   shifted_replay.position.x += 0.5e-6;
   const ExecutionRouteTransitionResult3D shifted = transferToExecutionHold3D(
@@ -403,7 +403,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     HoldCertificationRejectsRawAndLatestLidarCollisions) {
+     HoldCertificationRejectsRawAndLatestSensorCollisions) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
@@ -431,10 +431,10 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   StationaryExecutionHoldCertification3D lidar_blocked =
       SnapshotFixture3D::holdCertification(*active, true, remote_position);
-  lidar_blocked.latest_lidar_evidence = SnapshotFixture3D::newerLidarEvidence(
-      *lidar_blocked.latest_lidar_evidence,
+  lidar_blocked.latest_sensor_evidence = SnapshotFixture3D::newerSensorEvidence(
+      *lidar_blocked.latest_sensor_evidence,
       std::vector<Point3>{lidar_blocked.position});
-  ASSERT_NE(lidar_blocked.latest_lidar_evidence, nullptr);
+  ASSERT_NE(lidar_blocked.latest_sensor_evidence, nullptr);
   EXPECT_EQ(
       transferToExecutionHold3D(*active, active->version, std::move(lidar_blocked))
           .status,
@@ -471,9 +471,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   StationaryExecutionHoldCertification3D refreshed =
       SnapshotFixture3D::holdCertification(*held.next);
-  refreshed.latest_lidar_evidence =
-      SnapshotFixture3D::newerLidarEvidence(*refreshed.latest_lidar_evidence);
-  ASSERT_NE(refreshed.latest_lidar_evidence, nullptr);
+  refreshed.latest_sensor_evidence =
+      SnapshotFixture3D::newerSensorEvidence(*refreshed.latest_sensor_evidence);
+  ASSERT_NE(refreshed.latest_sensor_evidence, nullptr);
   const ExecutionRouteTransitionResult3D updated =
       transferToExecutionHold3D(*held.next, held.next->version, std::move(refreshed));
 
@@ -820,7 +820,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(active->finiteExecution() != nullptr);
   const FiniteExecutionState3D& resident = *active->finiteExecution();
   ASSERT_NE(resident.execution_input, nullptr);
-  ASSERT_NE(resident.latest_lidar_evidence, nullptr);
+  ASSERT_NE(resident.latest_sensor_evidence, nullptr);
 
   const auto input_capture = [&](const std::uint64_t capture_sequence,
                                  const MotionControl3D control) {
@@ -848,28 +848,28 @@ TEST(ExecutionRouteSnapshot3DTest,
   const auto lidar_capture = [&](const std::uint64_t sequence,
                                  const std::int64_t acquisition_stamp_ns,
                                  std::vector<Point3> points) {
-    return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
-        .producer_instance_id = resident.latest_lidar_evidence->producerInstanceId(),
+    return VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
+        .producer_instance_id = resident.latest_sensor_evidence->producerInstanceId(),
         .sequence = sequence,
-        .pose_generation = resident.latest_lidar_evidence->poseGeneration(),
+        .pose_generation = resident.latest_sensor_evidence->poseGeneration(),
         .acquisition_stamp_ns = acquisition_stamp_ns,
-        .receive_stamp_ns = resident.latest_lidar_evidence->receiveStampNs(),
+        .receive_stamp_ns = resident.latest_sensor_evidence->receiveStampNs(),
         .source_beam_count = std::max<std::size_t>(
-            resident.latest_lidar_evidence->sourceBeamCount(), points.size()),
-        .invalid_beam_count = resident.latest_lidar_evidence->invalidBeamCount(),
+            resident.latest_sensor_evidence->sourceBeamCount(), points.size()),
+        .invalid_beam_count = resident.latest_sensor_evidence->invalidBeamCount(),
         .hit_points_map_m = std::move(points),
     });
   };
   const auto certify_candidate =
       [&](std::shared_ptr<const VersionedExecutionInput3D> input,
-          std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar) {
+          std::shared_ptr<const VersionedLatestSensorEvidence3D> lidar) {
         return certifyFiniteExecution3D(
             *active, *active->route(),
             FiniteExecutionCertification3D{
                 .trajectory_revision = resident.trajectory_revision + 1U,
                 .horizon = *resident.horizon,
                 .execution_input = std::move(input),
-                .latest_lidar_evidence = std::move(lidar),
+                .latest_sensor_evidence = std::move(lidar),
                 .valid_from_ns = resident.valid_from_ns,
                 .kind = FiniteExecutionKind3D::kNominal,
             });
@@ -887,25 +887,25 @@ TEST(ExecutionRouteSnapshot3DTest,
   conflicting_control.ax += 0.01F;
   expect_replacement_rejected(certify_candidate(
       input_capture(resident.execution_input->captureSequence(), conflicting_control),
-      resident.latest_lidar_evidence));
+      resident.latest_sensor_evidence));
 
   expect_replacement_rejected(
       certify_candidate(input_capture(resident.execution_input->captureSequence() - 1U,
                                       resident.execution_input->previousControl()),
-                        resident.latest_lidar_evidence));
+                        resident.latest_sensor_evidence));
 
   const std::shared_ptr<const VersionedExecutionInput3D> newer_input =
       input_capture(resident.execution_input->captureSequence() + 1U,
                     resident.execution_input->previousControl());
   ASSERT_NE(newer_input, nullptr);
   expect_replacement_rejected(certify_candidate(
-      newer_input, lidar_capture(resident.latest_lidar_evidence->sequence(),
-                                 resident.latest_lidar_evidence->acquisitionStampNs(),
+      newer_input, lidar_capture(resident.latest_sensor_evidence->sequence(),
+                                 resident.latest_sensor_evidence->acquisitionStampNs(),
                                  {Point3{-4.0, -4.0, 1.0}})));
   expect_replacement_rejected(certify_candidate(
       newer_input,
-      lidar_capture(resident.latest_lidar_evidence->sequence() + 1U,
-                    resident.latest_lidar_evidence->acquisitionStampNs(), {})));
+      lidar_capture(resident.latest_sensor_evidence->sequence() + 1U,
+                    resident.latest_sensor_evidence->acquisitionStampNs(), {})));
 }
 
 } // namespace

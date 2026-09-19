@@ -34,8 +34,8 @@ canonicalHorizonEndTime(std::int64_t valid_from_ns, std::int64_t duration_ns) no
 [[nodiscard]] bool sameControl(const mppi::Control& first,
                                const mppi::Control& second) noexcept;
 
-[[nodiscard]] LatestLidarEvidenceFreshness3D latestLidarEvidenceFreshness(
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& evidence,
+[[nodiscard]] LatestSensorEvidenceFreshness3D latestSensorEvidenceFreshness(
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>& evidence,
     std::int64_t now_ns, double maximum_age_ms) noexcept;
 
 [[nodiscard]] bool bindHorizonRouteMetadata(msg::MppiTrajectoryHorizon& horizon,

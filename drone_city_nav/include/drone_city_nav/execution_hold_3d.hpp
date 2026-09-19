@@ -28,7 +28,7 @@ enum class ExecutionHoldPreparationStatus3D : std::uint8_t {
   kSourceNotCurrent,
   kIntentNotApplicable,
   kExecutionInputInvalid,
-  kLidarEvidenceNotCurrent,
+  kSensorEvidenceNotCurrent,
   kValidationWorldUnavailable,
   kTransitionRejected,
 };
@@ -48,8 +48,8 @@ struct ExecutionHoldRequest3D {
   Point3 requested_position{};
   std::shared_ptr<const ExecutionPlan3D> cycle_source_plan;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> current_sensor_evidence;
   std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world;
   std::shared_ptr<const VersionedObservedRawWorld3D>
       stationary_capture_observed_raw_world;
@@ -60,7 +60,7 @@ struct ExecutionHoldRequest3D {
       stationary_capture_validation_policy;
   std::int64_t validation_now_ns{0};
   bool raw_world_identity_conflicted{false};
-  bool latest_lidar_identity_conflicted{false};
+  bool latest_sensor_identity_conflicted{false};
 };
 
 // Preparation is side-effect free. A later wire publication commits either the

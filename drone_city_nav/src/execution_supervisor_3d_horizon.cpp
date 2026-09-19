@@ -94,10 +94,10 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
 [[nodiscard]] bool revalidateFiniteExecution(
     const FiniteExecutionEvidenceView3D& view,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar) {
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>& latest_sensor) {
   if (view.horizon == nullptr || view.execution_input == nullptr ||
       view.policy == nullptr || !view.policy->valid() || view.footprint == nullptr ||
-      latest_lidar == nullptr || !latest_lidar->valid() ||
+      latest_sensor == nullptr || !latest_sensor->valid() ||
       view.control_interval_ns <= 0 ||
       view.horizon->states.size() != view.horizon->controls.size() + 1U ||
       view.horizon->controls.empty()) {
@@ -140,7 +140,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       .proprioceptive_free_space_seed =
           proprioceptive_seed ? std::addressof(*proprioceptive_seed) : nullptr,
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = latest_lidar->indexedHitPoints(),
+      .latest_sensor_obstacle_points = latest_sensor->indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
   return validateCompleteFiniteExecutionPath3D(
@@ -151,7 +151,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
 [[nodiscard]] bool revalidateFiniteExecution(
     const ExecutionPlan3D& snapshot,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar) {
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>& latest_sensor) {
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
     const FiniteExecutionState3D* const braking = snapshot.brakingFallback();
     if (braking == nullptr) {
@@ -168,8 +168,8 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       fallback->route = snapshot.route();
     }
     return command.has_value() && fallback.has_value() &&
-           revalidateFiniteExecution(*command, latest_raw, latest_lidar) &&
-           revalidateFiniteExecution(*fallback, latest_raw, latest_lidar);
+           revalidateFiniteExecution(*command, latest_raw, latest_sensor) &&
+           revalidateFiniteExecution(*fallback, latest_raw, latest_sensor);
   }
   // A stop carries no braking fallback of its own: it is the fallback, and its
   // evidence is the same swept body against the newest world.
@@ -177,7 +177,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
     const std::optional<FiniteExecutionEvidenceView3D> view =
         finiteExecutionEvidenceView(*stop);
     return view.has_value() &&
-           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
+           revalidateFiniteExecution(*view, latest_raw, latest_sensor);
   }
   // A stationary hold executes no path; its evidence on the newest world is
   // the body at the hold position staying clear of raw occupancy. Without this
@@ -186,8 +186,8 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   // base to hand off from.
   const StationaryExecutionHold3D* const hold = snapshot.stationaryHold();
   if (hold == nullptr || !hold->valid() || hold->terminal_execution_input == nullptr ||
-      hold->validation_policy == nullptr || latest_lidar == nullptr ||
-      !latest_lidar->valid()) {
+      hold->validation_policy == nullptr || latest_sensor == nullptr ||
+      !latest_sensor->valid()) {
     return false;
   }
   const bool static_world = hold->static_world != nullptr;
@@ -198,7 +198,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   return execution_route_snapshot_3d_internal::stationaryHoldRawSafe(
       hold->position, *hold->terminal_execution_input,
       static_world ? nullptr : latest_raw.get(), hold->static_world.get(),
-      *hold->validation_policy, *latest_lidar);
+      *hold->validation_policy, *latest_sensor);
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedObservedRawWorld3D>
@@ -218,16 +218,16 @@ snapshotRawOwner(const ExecutionPlan3D& snapshot) {
   return route != nullptr ? route->observed_raw_world : nullptr;
 }
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
 snapshotLidarOwner(const ExecutionPlan3D& snapshot) {
   if (const StationaryExecutionHold3D* const hold = snapshot.stationaryHold()) {
-    return hold->latest_lidar_evidence;
+    return hold->latest_sensor_evidence;
   }
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
-    return execution->latest_lidar_evidence;
+    return execution->latest_sensor_evidence;
   }
   const StopExecution3D* const stop = snapshot.stopExecution();
-  return stop != nullptr ? stop->latest_lidar_evidence : nullptr;
+  return stop != nullptr ? stop->latest_sensor_evidence : nullptr;
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedExecutionValidationPolicy3D>
@@ -563,8 +563,8 @@ const char* executionHorizonCommitStatus3DName(
       return "execution_input_not_fresh";
     case ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent:
       return "evidence_not_current";
-    case ExecutionHorizonCommitStatus3D::kLidarEvidenceNotCurrent:
-      return "lidar_evidence_not_current";
+    case ExecutionHorizonCommitStatus3D::kSensorEvidenceNotCurrent:
+      return "sensor_evidence_not_current";
     case ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent:
       return "control_evidence_not_current";
     case ExecutionHorizonCommitStatus3D::kOwnerInvalid:
@@ -665,11 +665,11 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
 
   const std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy =
       snapshotValidationPolicy(*publication_plan);
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> publication_lidar =
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> publication_lidar =
       snapshotLidarOwner(*publication_plan);
   if (policy == nullptr || !policy->valid() || publication_lidar == nullptr ||
-      request.latest_lidar_identity_conflicted) {
-    return reject(ExecutionHorizonCommitStatus3D::kLidarEvidenceNotCurrent,
+      request.latest_sensor_identity_conflicted) {
+    return reject(ExecutionHorizonCommitStatus3D::kSensorEvidenceNotCurrent,
                   ExecutionHorizonRevocationRequest3D::kUnavailableWorld);
   }
   ExecutionHorizonCommitResult3D result;
@@ -682,11 +682,11 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
                                  : ExecutionPublicationRawRequirement3D::kOptional,
           .expected_raw_world = expected_raw,
           .current_raw_world = request.current_observed_raw_world,
-          .expected_lidar_evidence = publication_lidar,
-          .current_lidar_evidence = request.current_lidar_evidence,
+          .expected_sensor_evidence = publication_lidar,
+          .current_sensor_evidence = request.current_sensor_evidence,
           .publication_now_ns = request.publication_now_ns,
-          .maximum_lidar_age_ms = policy->latestLidarMaximumAgeMs(),
-          .lidar_freshness_required = policy->latestLidarFreshnessRequired(),
+          .maximum_lidar_age_ms = policy->latestSensorMaximumAgeMs(),
+          .lidar_freshness_required = policy->latestSensorFreshnessRequired(),
       });
   const bool progress_preserves_route_evidence =
       candidate.progress_preparation == nullptr ||
@@ -699,7 +699,7 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
     const auto revalidation_started = std::chrono::steady_clock::now();
     result.latest_evidence_revalidated =
         revalidateFiniteExecution(*publication_plan, request.current_observed_raw_world,
-                                  request.current_lidar_evidence);
+                                  request.current_sensor_evidence);
     result.revalidation_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   revalidation_started)
@@ -719,18 +719,18 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
         ExecutionHorizonRevocationRequest3D::kNoExecutableHorizon;
     return result;
   }
-  if (request.current_lidar_evidence == nullptr ||
+  if (request.current_sensor_evidence == nullptr ||
       ((publication_lidar->evidenceId() !=
-            request.current_lidar_evidence->evidenceId() ||
+            request.current_sensor_evidence->evidenceId() ||
         publication_lidar->contentFingerprint() !=
-            request.current_lidar_evidence->contentFingerprint()) &&
+            request.current_sensor_evidence->contentFingerprint()) &&
        !result.latest_evidence_revalidated) ||
-      (policy->latestLidarFreshnessRequired() &&
-       !assessLatestLidarEvidenceFreshness3D(*request.current_lidar_evidence,
-                                             request.publication_now_ns,
-                                             policy->latestLidarMaximumAgeMs())
+      (policy->latestSensorFreshnessRequired() &&
+       !assessLatestSensorEvidenceFreshness3D(*request.current_sensor_evidence,
+                                              request.publication_now_ns,
+                                              policy->latestSensorMaximumAgeMs())
             .fresh)) {
-    result.status = ExecutionHorizonCommitStatus3D::kLidarEvidenceNotCurrent;
+    result.status = ExecutionHorizonCommitStatus3D::kSensorEvidenceNotCurrent;
     result.revocation_request = ExecutionHorizonRevocationRequest3D::kUnavailableWorld;
     return result;
   }

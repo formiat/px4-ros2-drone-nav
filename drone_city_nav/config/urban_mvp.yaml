@@ -13,7 +13,7 @@ obstacle_memory_node:
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
     raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
-    latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
+    latest_sensor_obstacle_scan_topic: /drone_city_nav/latest_sensor_obstacle_scan
     raw_obstacle_delta_chunk_size_cells: 32
     use_static_map: true
     risk_critical_distance_m: 1.0
@@ -106,7 +106,7 @@ obstacle_memory_3d_node:
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_timesync_status_topic: /fmu/out/timesync_status
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
-    latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
+    latest_sensor_obstacle_scan_topic: /drone_city_nav/latest_sensor_obstacle_scan
     current_lidar_3d_pointcloud_topic: /drone_city_nav/current_lidar_returns_3d
     raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
@@ -381,7 +381,7 @@ production_mppi_node:
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
-    latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
+    latest_sensor_obstacle_scan_topic: /drone_city_nav/latest_sensor_obstacle_scan
     # Acquisition-aligned 3D returns are expressed in the map frame and remain
     # valid while persistent integration catches up. This budget must exceed the
     # mapper's allowed pose-alignment wait plus transport and executor jitter,
@@ -393,7 +393,7 @@ production_mppi_node:
     # 0.1 s scan period plus transport and executor jitter. 0.6 s covers it
     # with twice the measured maximum; the former 1.0 s cost 0.3 m/s of the
     # contract's limit (2.2 against 2.44 m/s, everything else equal).
-    latest_lidar_obstacle_maximum_age_ms: 600.0
+    latest_sensor_obstacle_maximum_age_ms: 600.0
     navigation_health_topic: /drone_city_nav/mppi/navigation_health
     # Readiness remains observable, but advisory time/attempt budgets must not
     # abort a mission unless an operator explicitly enables that policy.
@@ -768,7 +768,7 @@ production_mppi_node:
     execution_nonphysical_revocation_enabled: false
     # Latest-scan age is diagnostic only. Its exact owned points and persistent
     # raw occupancy remain conservative hard collision evidence.
-    execution_latest_lidar_freshness_required: false
+    execution_latest_sensor_freshness_required: false
     static_route_maximum_shortcut_length_m: 30.0
     static_route_sparse_deviation_tolerance_m: 0.05
     static_route_maximum_shortcut_turn_increase_rad: 0.35

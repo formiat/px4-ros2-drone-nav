@@ -1,4 +1,4 @@
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan.hpp"
 
 #include <gtest/gtest.h>
 
@@ -10,7 +10,7 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(LatestLidarObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
+TEST(LatestSensorObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
   LidarProjectionPose pose;
   pose.position = Point2{10.0, 20.0};
   pose.altitude_m = 5.0;
@@ -29,8 +29,8 @@ TEST(LatestLidarObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
       .compensate_attitude = true,
   };
 
-  const LatestLidarObstacleScanBuildResult result =
-      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
+  const LatestSensorObstacleScanBuildResult result =
+      buildLatestSensorObstacleScan(LatestSensorObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .projection_config = projection_config,
@@ -52,7 +52,7 @@ TEST(LatestLidarObstacleScanTest, PreservesHitInAcquisitionBodyFrame) {
   EXPECT_NEAR(reconstructed.z, expected.endpoint_map_m.z, 1.0e-9);
 }
 
-TEST(LatestLidarObstacleScanTest, PreservesPositiveHandedBodyFrameExactly) {
+TEST(LatestSensorObstacleScanTest, PreservesPositiveHandedBodyFrameExactly) {
   LidarProjectionPose pose;
   pose.position = Point2{10.0, 20.0};
   pose.altitude_m = 5.0;
@@ -72,8 +72,8 @@ TEST(LatestLidarObstacleScanTest, PreservesPositiveHandedBodyFrameExactly) {
       .px4_to_map_m11 = 0.0,
   };
 
-  const LatestLidarObstacleScanBuildResult result =
-      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
+  const LatestSensorObstacleScanBuildResult result =
+      buildLatestSensorObstacleScan(LatestSensorObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .projection_config = projection_config,
@@ -98,7 +98,7 @@ TEST(LatestLidarObstacleScanTest, PreservesPositiveHandedBodyFrameExactly) {
   EXPECT_NEAR(reconstructed.z, expected.endpoint_map_m.z, 1.0e-9);
 }
 
-TEST(LatestLidarObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
+TEST(LatestSensorObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
   LidarProjectionPose first_pose;
   first_pose.position = Point2{10.0, 10.0};
   first_pose.altitude_m = 5.0;
@@ -111,8 +111,8 @@ TEST(LatestLidarObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
   const LidarProjectionConfig config{.min_projected_altitude_m = -100.0,
                                      .max_projected_altitude_m = 100.0};
 
-  const LatestLidarObstacleScanBuildResult result =
-      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
+  const LatestSensorObstacleScanBuildResult result =
+      buildLatestSensorObstacleScan(LatestSensorObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .projection_config = config,
@@ -128,7 +128,7 @@ TEST(LatestLidarObstacleScanTest, UsesTimestampAlignedPoseForEveryBeam) {
   EXPECT_GT(result.hit_points_body_frd[1].x, 5.9);
 }
 
-TEST(LatestLidarObstacleScanTest, RejectsScanWhenEveryBeamIsInvalid) {
+TEST(LatestSensorObstacleScanTest, RejectsScanWhenEveryBeamIsInvalid) {
   const std::vector<float> ranges{
       std::numeric_limits<float>::quiet_NaN(),
       std::numeric_limits<float>::quiet_NaN(),
@@ -139,8 +139,8 @@ TEST(LatestLidarObstacleScanTest, RejectsScanWhenEveryBeamIsInvalid) {
   pose.attitude_valid = true;
   const std::vector<LidarProjectionPose> poses(2U, pose);
 
-  const LatestLidarObstacleScanBuildResult result =
-      buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
+  const LatestSensorObstacleScanBuildResult result =
+      buildLatestSensorObstacleScan(LatestSensorObstacleScanBuildInput{
           .ranges = ranges,
           .beam_projection_poses = poses,
           .range_min_m = 0.2,
@@ -154,9 +154,9 @@ TEST(LatestLidarObstacleScanTest, RejectsScanWhenEveryBeamIsInvalid) {
   EXPECT_TRUE(result.hit_points_body_frd.empty());
 }
 
-TEST(LatestLidarObstacleScanTest, CreatesStableNonzeroProducerEpochValues) {
-  const std::uint64_t first = createLatestLidarObstacleProducerInstanceId();
-  const std::uint64_t second = createLatestLidarObstacleProducerInstanceId();
+TEST(LatestSensorObstacleScanTest, CreatesStableNonzeroProducerEpochValues) {
+  const std::uint64_t first = createLatestSensorObstacleProducerInstanceId();
+  const std::uint64_t second = createLatestSensorObstacleProducerInstanceId();
 
   EXPECT_NE(first, 0U);
   EXPECT_NE(second, 0U);

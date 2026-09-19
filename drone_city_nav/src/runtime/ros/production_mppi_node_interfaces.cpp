@@ -246,7 +246,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                   // vehicle needs to react to an obstacle at its absolute
                   // speed limit: latency, stopping distance and the physical
                   // margin the sensor braking contract keeps.
-                  .latest_lidar_route_lookahead_m =
+                  .latest_sensor_route_lookahead_m =
                       assessSensorBrakingContract3D(
                           config_.control.speed_policy.sensor_braking_contract,
                           config_.control.speed_policy.stopping_capability,
@@ -522,10 +522,10 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  // Large lidar evidence messages must not compete with continuously ready PX4
+  // Large sensor evidence messages must not compete with continuously ready PX4
   // navigation inputs. Evidence admission has its own commit mutex and may run
   // concurrently with the lightweight input callbacks.
-  lidar_evidence_callback_group_ =
+  sensor_evidence_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   world_input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -533,8 +533,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions input_subscription_options;
   input_subscription_options.callback_group = input_callback_group_;
-  rclcpp::SubscriptionOptions lidar_evidence_subscription_options;
-  lidar_evidence_subscription_options.callback_group = lidar_evidence_callback_group_;
+  rclcpp::SubscriptionOptions sensor_evidence_subscription_options;
+  sensor_evidence_subscription_options.callback_group = sensor_evidence_callback_group_;
   rclcpp::SubscriptionOptions world_subscription_options;
   world_subscription_options.callback_group = world_input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
@@ -584,13 +584,13 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_subscription_options);
   }
-  latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
-      config_.world.topics.latest_lidar_obstacle_scan, rclcpp::SensorDataQoS{},
-      [this](const msg::LatestLidarObstacleScan::SharedPtr message,
+  latest_sensor_obstacle_scan_sub_ = create_subscription<msg::LatestSensorObstacleScan>(
+      config_.world.topics.latest_sensor_obstacle_scan, rclcpp::SensorDataQoS{},
+      [this](const msg::LatestSensorObstacleScan::SharedPtr message,
              const rclcpp::MessageInfo& info) {
-        onLatestLidarObstacleScan(*message, info);
+        onLatestSensorObstacleScan(*message, info);
       },
-      lidar_evidence_subscription_options);
+      sensor_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       config_.world.topics.obstacle_memory_status,
       rclcpp::QoS{1}.reliable().transient_local(),

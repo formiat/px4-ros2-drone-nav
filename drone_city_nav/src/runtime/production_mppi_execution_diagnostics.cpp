@@ -38,16 +38,17 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
                 execution.finite_path_first_failed_validation_status)
          << " finite_path_rejected_precondition="
          << execution.finite_path_rejected_precondition
-         << " latest_lidar_obstacle_fresh="
-         << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
-         << " latest_lidar_obstacle_receive_time_fallback="
-         << (execution.latest_lidar_obstacle_receive_time_fallback ? "true" : "false")
-         << " latest_lidar_obstacle_sequence="
-         << execution.latest_lidar_obstacle_sequence
-         << " latest_lidar_obstacle_age_ms=" << execution.latest_lidar_obstacle_age_ms
-         << " latest_lidar_obstacle_hits=" << execution.latest_lidar_obstacle_hit_count
-         << " latest_lidar_path_validation_backoff="
-         << (execution.latest_lidar_path_validation_backoff ? "true" : "false");
+         << " latest_sensor_obstacle_fresh="
+         << (execution.latest_sensor_obstacle_fresh ? "true" : "false")
+         << " latest_sensor_obstacle_receive_time_fallback="
+         << (execution.latest_sensor_obstacle_receive_time_fallback ? "true" : "false")
+         << " latest_sensor_obstacle_sequence="
+         << execution.latest_sensor_obstacle_sequence
+         << " latest_sensor_obstacle_age_ms=" << execution.latest_sensor_obstacle_age_ms
+         << " latest_sensor_obstacle_hits="
+         << execution.latest_sensor_obstacle_hit_count
+         << " latest_sensor_path_validation_backoff="
+         << (execution.latest_sensor_path_validation_backoff ? "true" : "false");
   return fields.str();
 }
 
@@ -82,18 +83,18 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
                 execution.finite_path_first_failed_validation_status)
          << '\"' << ",\"finite_path_rejected_precondition\":\""
          << execution.finite_path_rejected_precondition << '\"'
-         << ",\"latest_lidar_obstacle_fresh\":"
-         << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
-         << ",\"latest_lidar_obstacle_receive_time_fallback\":"
-         << (execution.latest_lidar_obstacle_receive_time_fallback ? "true" : "false")
-         << ",\"latest_lidar_obstacle_sequence\":"
-         << execution.latest_lidar_obstacle_sequence
-         << ",\"latest_lidar_obstacle_age_ms\":"
-         << execution.latest_lidar_obstacle_age_ms
-         << ",\"latest_lidar_obstacle_hit_count\":"
-         << execution.latest_lidar_obstacle_hit_count
-         << ",\"latest_lidar_path_validation_backoff\":"
-         << (execution.latest_lidar_path_validation_backoff ? "true" : "false");
+         << ",\"latest_sensor_obstacle_fresh\":"
+         << (execution.latest_sensor_obstacle_fresh ? "true" : "false")
+         << ",\"latest_sensor_obstacle_receive_time_fallback\":"
+         << (execution.latest_sensor_obstacle_receive_time_fallback ? "true" : "false")
+         << ",\"latest_sensor_obstacle_sequence\":"
+         << execution.latest_sensor_obstacle_sequence
+         << ",\"latest_sensor_obstacle_age_ms\":"
+         << execution.latest_sensor_obstacle_age_ms
+         << ",\"latest_sensor_obstacle_hit_count\":"
+         << execution.latest_sensor_obstacle_hit_count
+         << ",\"latest_sensor_path_validation_backoff\":"
+         << (execution.latest_sensor_path_validation_backoff ? "true" : "false");
   return fields.str();
 }
 

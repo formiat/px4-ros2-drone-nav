@@ -37,7 +37,7 @@ struct ProductionMppiTickPhaseTimings {
   double execution_input_ms{0.0};
   double cycle_prepare_ms{0.0};
   // Inside cycle preparation: the route execution selection with its raw and
-  // latest-lidar route-window validation, and the clearance measurements of
+  // latest-sensor route-window validation, and the clearance measurements of
   // the resident horizon and the route ahead.
   double route_selection_ms{0.0};
   double route_clearance_ms{0.0};

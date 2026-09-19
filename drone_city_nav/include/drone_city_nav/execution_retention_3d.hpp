@@ -45,7 +45,7 @@ struct ExecutionRetentionRequest3D {
   std::optional<RouteLifecycleEvent3D> lifecycle_event;
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   MotionState3D exact_initial_state{};
   MotionControl3D exact_previous_control{};
   FiniteMotionHorizonConfig3D finite_horizon_config{};

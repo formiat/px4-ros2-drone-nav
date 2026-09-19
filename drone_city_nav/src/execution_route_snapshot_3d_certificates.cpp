@@ -193,8 +193,8 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
   hashValue(hash, execution.execution_input != nullptr
                       ? execution.execution_input->contentFingerprint()
                       : 0U);
-  hashValue(hash, execution.latest_lidar_evidence != nullptr
-                      ? execution.latest_lidar_evidence->contentFingerprint()
+  hashValue(hash, execution.latest_sensor_evidence != nullptr
+                      ? execution.latest_sensor_evidence->contentFingerprint()
                       : 0U);
   hashCertificate(hash, execution.certificate);
   hashValue(hash, static_cast<std::uint64_t>(execution.horizon->states.size()));
@@ -474,10 +474,10 @@ finiteWorldOwnerMatchesProof(const FiniteExecutionState3D& execution) noexcept {
       execution.execution_input->poseRevision() !=
           execution.source_navigation_revision ||
       execution.execution_input->effectiveStampNs() != execution.valid_from_ns ||
-      execution.latest_lidar_evidence == nullptr ||
-      !latestLidarEvidenceFreshAt(*execution.latest_lidar_evidence,
-                                  *execution.validation_policy,
-                                  execution.valid_from_ns)) {
+      execution.latest_sensor_evidence == nullptr ||
+      !latestSensorEvidenceFreshAt(*execution.latest_sensor_evidence,
+                                   *execution.validation_policy,
+                                   execution.valid_from_ns)) {
     return false;
   }
   if (const auto* const raw_certificate =
@@ -544,7 +544,7 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
       std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
           &execution.validation_proof.lineage);
   return event.kind == RouteLifecycleEventKind3D::kRawInvalidated &&
-         !event.latest_lidar_evidence.valid() && raw_certificate != nullptr &&
+         !event.latest_sensor_evidence.valid() && raw_certificate != nullptr &&
          raw_lineage != nullptr && execution.observed_raw_world != nullptr &&
          raw_certificate->producer_instance_id == event.raw_producer_instance_id &&
          raw_lineage->producer_instance_id == event.raw_producer_instance_id &&
@@ -557,13 +557,13 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
 }
 
 [[nodiscard]] bool
-latestLidarInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
-                                         const RouteLifecycleEvent3D& event) noexcept {
-  return event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated &&
+latestSensorInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
+                                          const RouteLifecycleEvent3D& event) noexcept {
+  return event.kind == RouteLifecycleEventKind3D::kLatestSensorInvalidated &&
          event.raw_producer_instance_id == 0U && event.raw_revision == 0U &&
-         event.latest_lidar_evidence.valid() &&
-         execution.latest_lidar_evidence != nullptr &&
-         execution.latest_lidar_evidence->evidenceId() == event.latest_lidar_evidence;
+         event.latest_sensor_evidence.valid() &&
+         execution.latest_sensor_evidence != nullptr &&
+         execution.latest_sensor_evidence->evidenceId() == event.latest_sensor_evidence;
 }
 
 [[nodiscard]] bool

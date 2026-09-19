@@ -46,10 +46,10 @@ MINIMUM_DESCENT_ARREST_EPISODES = 3
 # estimate's frame.
 MAXIMUM_POSITION_ESTIMATE_CROSS_TRACK_P95_M = 0.35
 MAXIMUM_POSITION_ESTIMATE_ALONG_TRACK_OFFSET_S = 0.20
-# The braking contract charges latest_lidar_obstacle_maximum_age_ms (600 ms) of
+# The braking contract charges latest_sensor_obstacle_maximum_age_ms (600 ms) of
 # evidence age; the planning tick reports the age it saw. Measured p99 192 to
 # 332 ms and at most 524 ms on r268 to r272.
-MAXIMUM_LIDAR_EVIDENCE_AGE_MS = 600.0
+MAXIMUM_SENSOR_EVIDENCE_AGE_MS = 600.0
 
 
 @dataclass(frozen=True)
@@ -204,11 +204,11 @@ def position_estimate_error(estimate: np.ndarray,
 
 
 TICK_LIDAR_AGE_PATTERN = re.compile(
-    r"PRODUCTION_MPPI_TICK .*?latest_lidar_obstacle_age_ms=(-?[\d.]+)"
+    r"PRODUCTION_MPPI_TICK .*?latest_sensor_obstacle_age_ms=(-?[\d.]+)"
 )
 
 
-def lidar_evidence_age_max_ms(ros_log: str) -> DynamicsMeasurement:
+def sensor_evidence_age_max_ms(ros_log: str) -> DynamicsMeasurement:
     ages = [float(m.group(1)) for m in TICK_LIDAR_AGE_PATTERN.finditer(ros_log)]
     ages = [age for age in ages if age >= 0.0]
     if not ages:
@@ -325,13 +325,13 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
                   f"({error.samples} samples)")
         else:
             print(f"OK: lidar-inertial estimate was not flown ({len(lio)} healthy samples)")
-    age = lidar_evidence_age_max_ms(ros_log)
+    age = sensor_evidence_age_max_ms(ros_log)
     if age.samples == 0:
-        errors.append("FAIL: the planning tick reports the lidar evidence age")
-    elif age.value > MAXIMUM_LIDAR_EVIDENCE_AGE_MS:
+        errors.append("FAIL: the planning tick reports the sensor evidence age")
+    elif age.value > MAXIMUM_SENSOR_EVIDENCE_AGE_MS:
         errors.append(
-            "FAIL: lidar evidence age stays within "
-            f"{MAXIMUM_LIDAR_EVIDENCE_AGE_MS:.0f} ms ({age.value:.0f} ms at most)")
+            "FAIL: sensor evidence age stays within "
+            f"{MAXIMUM_SENSOR_EVIDENCE_AGE_MS:.0f} ms ({age.value:.0f} ms at most)")
     else:
-        print(f"OK: lidar evidence age is at most {age.value:.0f} ms "
+        print(f"OK: sensor evidence age is at most {age.value:.0f} ms "
               f"({age.samples} ticks)")

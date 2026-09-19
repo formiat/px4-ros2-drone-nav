@@ -100,16 +100,16 @@ stopRequest(const SnapshotFixture3D& fixture,
       source != nullptr ? source->finiteExecution() : nullptr;
   const StopExecution3D* const resident =
       source != nullptr ? source->stopExecution() : nullptr;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> sensor_evidence;
   if (active != nullptr) {
-    lidar_evidence = active->latest_lidar_evidence;
+    sensor_evidence = active->latest_sensor_evidence;
   } else if (resident != nullptr) {
-    lidar_evidence = resident->latest_lidar_evidence;
+    sensor_evidence = resident->latest_sensor_evidence;
   }
   return ExecutionStopRequest3D{
       .cycle_source_plan = source,
       .execution_input = input,
-      .latest_lidar_evidence = std::move(lidar_evidence),
+      .latest_sensor_evidence = std::move(sensor_evidence),
       .observed_raw_world = fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision),
       .static_world = nullptr,
       .validation_policy = fixture.validation_policy,
@@ -449,8 +449,8 @@ TEST(ExecutionSupervisorStop3DTest, AStopFlownToRestBecomesAStationaryHold) {
       .requested_position = stop->rest_position,
       .cycle_source_plan = stopping,
       .execution_input = certification.execution_input,
-      .latest_lidar_evidence = certification.latest_lidar_evidence,
-      .current_lidar_evidence = certification.latest_lidar_evidence,
+      .latest_sensor_evidence = certification.latest_sensor_evidence,
+      .current_sensor_evidence = certification.latest_sensor_evidence,
       .current_observed_raw_world = certification.observed_raw_world,
       .stationary_capture_observed_raw_world = nullptr,
       .stationary_capture_static_world = nullptr,
@@ -502,8 +502,8 @@ TEST(ExecutionSupervisorStop3DTest, TheHoldPinsWhereTheVehicleActuallyStopped) {
       .requested_position = actual_rest,
       .cycle_source_plan = stopping,
       .execution_input = resting,
-      .latest_lidar_evidence = evidence.latest_lidar_evidence,
-      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .latest_sensor_evidence = evidence.latest_sensor_evidence,
+      .current_sensor_evidence = evidence.latest_sensor_evidence,
       .current_observed_raw_world = evidence.observed_raw_world,
       .stationary_capture_observed_raw_world = nullptr,
       .stationary_capture_static_world = nullptr,
@@ -554,8 +554,8 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedRouteTakesTheVehicleBackFromARestH
       .requested_position = rest_position,
       .cycle_source_plan = stopping,
       .execution_input = resting_input,
-      .latest_lidar_evidence = evidence.latest_lidar_evidence,
-      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .latest_sensor_evidence = evidence.latest_sensor_evidence,
+      .current_sensor_evidence = evidence.latest_sensor_evidence,
       .current_observed_raw_world = evidence.observed_raw_world,
       .stationary_capture_observed_raw_world = nullptr,
       .stationary_capture_static_world = nullptr,
@@ -636,8 +636,8 @@ TEST(ExecutionSupervisorStop3DTest, AHoldDoesNotHoldADriftedVehicleAgainstItsRou
       .requested_position = rest_position,
       .cycle_source_plan = stopping,
       .execution_input = resting_input,
-      .latest_lidar_evidence = evidence.latest_lidar_evidence,
-      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .latest_sensor_evidence = evidence.latest_sensor_evidence,
+      .current_sensor_evidence = evidence.latest_sensor_evidence,
       .current_observed_raw_world = evidence.observed_raw_world,
       .stationary_capture_observed_raw_world = nullptr,
       .stationary_capture_static_world = nullptr,

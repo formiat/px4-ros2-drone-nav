@@ -517,8 +517,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   StationaryExecutionHoldCertification3D refresh =
       SnapshotFixture3D::holdCertification(*held.next);
-  refresh.latest_lidar_evidence =
-      SnapshotFixture3D::newerLidarEvidence(*refresh.latest_lidar_evidence);
+  refresh.latest_sensor_evidence =
+      SnapshotFixture3D::newerSensorEvidence(*refresh.latest_sensor_evidence);
   const ExecutionRouteTransitionResult3D refreshed =
       transferToExecutionHold3D(*held.next, held.next->version, std::move(refresh));
   ASSERT_TRUE(refreshed.applied());

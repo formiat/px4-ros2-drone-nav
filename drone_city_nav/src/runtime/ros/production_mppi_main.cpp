@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
   try {
     auto node =
         std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{});
-    // Planning, world reconstruction, high-rate vehicle input, lidar evidence,
+    // Planning, world reconstruction, high-rate vehicle input, sensor evidence,
     // and the default group each need a thread of their own so a long planning
     // tick or raw reconstruction can never starve control feedback.
     constexpr std::size_t kCallbackGroupCount{5U};

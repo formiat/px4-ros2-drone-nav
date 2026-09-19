@@ -15,33 +15,34 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr std::uint64_t kLatestLidarWireFingerprintOffset{1469598103934665603ULL};
-constexpr std::uint64_t kLatestLidarWireFingerprintPrime{1099511628211ULL};
-constexpr std::uint64_t kLatestLidarWireFingerprintDomain{0x4c49444152575233ULL};
+constexpr std::uint64_t kLatestSensorWireFingerprintOffset{1469598103934665603ULL};
+constexpr std::uint64_t kLatestSensorWireFingerprintPrime{1099511628211ULL};
+constexpr std::uint64_t kLatestSensorWireFingerprintDomain{0x4c49444152575233ULL};
 
-void hashLatestLidarWireValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
+void hashLatestSensorWireValue(std::uint64_t& hash,
+                               const std::uint64_t value) noexcept {
   for (std::size_t index = 0U; index < sizeof(value); ++index) {
     hash ^= static_cast<std::uint8_t>(value >> (index * 8U));
-    hash *= kLatestLidarWireFingerprintPrime;
+    hash *= kLatestSensorWireFingerprintPrime;
   }
 }
 
 [[nodiscard]] std::uint64_t
-latestLidarRawWireFingerprint(const msg::LatestLidarObstacleScan& message) noexcept {
-  std::uint64_t hash{kLatestLidarWireFingerprintOffset};
-  hashLatestLidarWireValue(hash, kLatestLidarWireFingerprintDomain);
-  hashLatestLidarWireValue(hash, static_cast<std::uint32_t>(message.header.stamp.sec));
-  hashLatestLidarWireValue(hash, message.header.stamp.nanosec);
-  hashLatestLidarWireValue(hash, message.header.frame_id.size());
+latestSensorRawWireFingerprint(const msg::LatestSensorObstacleScan& message) noexcept {
+  std::uint64_t hash{kLatestSensorWireFingerprintOffset};
+  hashLatestSensorWireValue(hash, kLatestSensorWireFingerprintDomain);
+  hashLatestSensorWireValue(hash, static_cast<std::uint32_t>(message.header.stamp.sec));
+  hashLatestSensorWireValue(hash, message.header.stamp.nanosec);
+  hashLatestSensorWireValue(hash, message.header.frame_id.size());
   for (const char value : message.header.frame_id) {
     hash ^= static_cast<std::uint8_t>(value);
-    hash *= kLatestLidarWireFingerprintPrime;
+    hash *= kLatestSensorWireFingerprintPrime;
   }
-  hashLatestLidarWireValue(hash, message.producer_instance_id);
-  hashLatestLidarWireValue(hash, message.sequence);
-  hashLatestLidarWireValue(hash, message.pose_generation);
+  hashLatestSensorWireValue(hash, message.producer_instance_id);
+  hashLatestSensorWireValue(hash, message.sequence);
+  hashLatestSensorWireValue(hash, message.pose_generation);
   const auto hash_double = [&hash](const double value) noexcept {
-    hashLatestLidarWireValue(hash, std::bit_cast<std::uint64_t>(value));
+    hashLatestSensorWireValue(hash, std::bit_cast<std::uint64_t>(value));
   };
   hash_double(message.frame_origin_map.x);
   hash_double(message.frame_origin_map.y);
@@ -55,14 +56,14 @@ latestLidarRawWireFingerprint(const msg::LatestLidarObstacleScan& message) noexc
   hash_double(message.body_z_axis_map.x);
   hash_double(message.body_z_axis_map.y);
   hash_double(message.body_z_axis_map.z);
-  hashLatestLidarWireValue(hash, message.hit_points_body_frd.size());
+  hashLatestSensorWireValue(hash, message.hit_points_body_frd.size());
   for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
-    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.x));
-    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.y));
-    hashLatestLidarWireValue(hash, std::bit_cast<std::uint32_t>(point.z));
+    hashLatestSensorWireValue(hash, std::bit_cast<std::uint32_t>(point.x));
+    hashLatestSensorWireValue(hash, std::bit_cast<std::uint32_t>(point.y));
+    hashLatestSensorWireValue(hash, std::bit_cast<std::uint32_t>(point.z));
   }
-  hashLatestLidarWireValue(hash, message.source_beam_count);
-  hashLatestLidarWireValue(hash, message.invalid_beam_count);
+  hashLatestSensorWireValue(hash, message.source_beam_count);
+  hashLatestSensorWireValue(hash, message.invalid_beam_count);
   return hash == 0U ? 1U : hash;
 }
 
@@ -266,29 +267,29 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
       config_.world.use_static_map ? "resident_static_esdf" : "raw_snapshot_esdf");
 }
 
-void ProductionMppiNode::onLatestLidarObstacleScan(
-    const msg::LatestLidarObstacleScan& message, const rclcpp::MessageInfo& info) {
+void ProductionMppiNode::onLatestSensorObstacleScan(
+    const msg::LatestSensorObstacleScan& message, const rclcpp::MessageInfo& info) {
   // Sanity bound on untrusted wire data, well above the densest modeled scan
   // (240 x 121 beams); the memory node's own contract bounds hits by beams.
   constexpr std::size_t kMaximumObstacleBeamCount{262'144U};
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   lidar_delivery_ms_.add(transportDeliveryLatencyMs(info));
-  LatestLidarEvidenceClaimResult3D claimed;
+  LatestSensorEvidenceClaimResult3D claimed;
   {
-    const auto lock = evidence_boundary_.latestLidar();
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
-        latest_lidar_evidence_.load(std::memory_order_acquire);
-    claimed = claimLatestLidarEvidenceIdentity3D(
-        latest_lidar_evidence_admission_state_, current.get(),
-        LatestLidarEvidenceIdentityClaim3D{
+    const auto lock = evidence_boundary_.latestSensor();
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D> current =
+        latest_sensor_evidence_.load(std::memory_order_acquire);
+    claimed = claimLatestSensorEvidenceIdentity3D(
+        latest_sensor_evidence_admission_state_, current.get(),
+        LatestSensorEvidenceIdentityClaim3D{
             .producer_instance_id = message.producer_instance_id,
             .sequence = message.sequence,
-            .raw_wire_fingerprint = latestLidarRawWireFingerprint(message),
+            .raw_wire_fingerprint = latestSensorRawWireFingerprint(message),
             .first_receive_stamp_ns = receive_stamp_ns,
         });
-    latest_lidar_evidence_admission_state_ = claimed.next_state;
-    latest_lidar_evidence_identity_conflicted_.store(
-        latestLidarEvidenceAuthorityQuarantined3D(claimed.next_state),
+    latest_sensor_evidence_admission_state_ = claimed.next_state;
+    latest_sensor_evidence_identity_conflicted_.store(
+        latestSensorEvidenceAuthorityQuarantined3D(claimed.next_state),
         std::memory_order_release);
     if (claimed.authority_quarantine_opened) {
       // Active execution publication also locks this admission domain, so the
@@ -298,13 +299,13 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
     }
   }
   if (!claimed.assess_candidate) {
-    if (claimed.status == LatestLidarEvidenceClaimStatus3D::kInstalledReplay) {
+    if (claimed.status == LatestSensorEvidenceClaimStatus3D::kInstalledReplay) {
       return;
     }
     rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
-    const auto status_name = latestLidarEvidenceClaimStatus3DName(claimed.status);
+    const auto status_name = latestSensorEvidenceClaimStatus3DName(claimed.status);
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=claim_%.*s "
+                         "LATEST_SENSOR_OBSTACLE_SCAN rejected=true reason=claim_%.*s "
                          "producer=%" PRIu64 " sequence=%" PRIu64,
                          static_cast<int>(status_name.size()), status_name.data(),
                          message.producer_instance_id, message.sequence);
@@ -335,7 +336,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
     rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=invalid_contract "
+        "LATEST_SENSOR_OBSTACLE_SCAN rejected=true reason=invalid_contract "
         "producer=%" PRIu64 " sequence=%" PRIu64
         " frame='%s' acquisition_stamp_ns=%" PRId64 " source_beams=%u hit_points=%zu",
         message.producer_instance_id, message.sequence, message.header.frame_id.c_str(),
@@ -344,7 +345,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
     return;
   }
 
-  LatestLidarEvidenceCapture3D capture{
+  LatestSensorEvidenceCapture3D capture{
       .producer_instance_id = message.producer_instance_id,
       .sequence = message.sequence,
       .pose_generation = message.pose_generation,
@@ -362,7 +363,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
       rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=non_finite_hit "
+          "LATEST_SENSOR_OBSTACLE_SCAN rejected=true reason=non_finite_hit "
           "sequence=%" PRIu64,
           message.sequence);
       return;
@@ -375,48 +376,48 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
     }
     capture.hit_points_map_m.push_back(map_point);
   }
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> evidence =
-      VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> evidence =
+      VersionedLatestSensorEvidence3D::capture(std::move(capture));
   if (evidence == nullptr) {
     rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=invalid_evidence "
+        "LATEST_SENSOR_OBSTACLE_SCAN rejected=true reason=invalid_evidence "
         "producer=%" PRIu64 " sequence=%" PRIu64,
         message.producer_instance_id, message.sequence);
     return;
   }
 
-  LatestLidarEvidenceUpdateStatus3D update_status{
-      LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid};
+  LatestSensorEvidenceUpdateStatus3D update_status{
+      LatestSensorEvidenceUpdateStatus3D::kRejectedInvalid};
   bool acquisition_epoch_reset{false};
   bool producer_handoff{false};
   std::uint64_t previous_producer_instance_id{0U};
   std::int64_t previous_acquisition_stamp_ns{0};
   {
-    const auto lock = evidence_boundary_.latestLidar();
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
-        latest_lidar_evidence_.load(std::memory_order_acquire);
+    const auto lock = evidence_boundary_.latestSensor();
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D> current =
+        latest_sensor_evidence_.load(std::memory_order_acquire);
     previous_producer_instance_id =
         current != nullptr ? current->producerInstanceId() : 0U;
     previous_acquisition_stamp_ns =
         current != nullptr ? current->acquisitionStampNs() : 0;
-    const LatestLidarEvidenceAdmissionResult3D admission =
-        admitClaimedLatestLidarEvidence3D(
-            latest_lidar_evidence_admission_state_, current.get(), *evidence,
+    const LatestSensorEvidenceAdmissionResult3D admission =
+        admitClaimedLatestSensorEvidence3D(
+            latest_sensor_evidence_admission_state_, current.get(), *evidence,
             claimed.claim, get_clock()->now().nanoseconds(),
             config_.execution.validation_policy != nullptr
-                ? config_.execution.validation_policy->latestLidarMaximumAgeMs()
+                ? config_.execution.validation_policy->latestSensorMaximumAgeMs()
                 : 0.0);
-    latest_lidar_evidence_admission_state_ = admission.next_state;
-    latest_lidar_evidence_identity_conflicted_.store(
-        latestLidarEvidenceAuthorityQuarantined3D(admission.next_state),
+    latest_sensor_evidence_admission_state_ = admission.next_state;
+    latest_sensor_evidence_identity_conflicted_.store(
+        latestSensorEvidenceAuthorityQuarantined3D(admission.next_state),
         std::memory_order_release);
     update_status = admission.status;
     acquisition_epoch_reset = admission.acquisition_epoch_reset;
     producer_handoff = admission.producer_handoff;
     if (admission.install_candidate) {
-      latest_lidar_evidence_.store(evidence, std::memory_order_release);
+      latest_sensor_evidence_.store(evidence, std::memory_order_release);
     }
     if (producer_handoff || acquisition_epoch_reset ||
         admission.current_identity_conflict) {
@@ -429,7 +430,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   if (producer_handoff) {
     RCLCPP_WARN(
         get_logger(),
-        "LATEST_LIDAR_OBSTACLE_SCAN producer_handoff=true previous_producer=%" PRIu64
+        "LATEST_SENSOR_OBSTACLE_SCAN producer_handoff=true previous_producer=%" PRIu64
         " producer=%" PRIu64 " sequence=%" PRIu64,
         previous_producer_instance_id, evidence->producerInstanceId(),
         evidence->sequence());
@@ -437,33 +438,33 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   if (acquisition_epoch_reset) {
     RCLCPP_WARN(
         get_logger(),
-        "LATEST_LIDAR_OBSTACLE_SCAN acquisition_epoch_reset=true producer=%" PRIu64
+        "LATEST_SENSOR_OBSTACLE_SCAN acquisition_epoch_reset=true producer=%" PRIu64
         " sequence=%" PRIu64 " previous_acquisition_stamp_ns=%" PRId64
         " acquisition_stamp_ns=%" PRId64,
         evidence->producerInstanceId(), evidence->sequence(),
         previous_acquisition_stamp_ns, evidence->acquisitionStampNs());
   }
-  if (update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial ||
-      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer) {
+  if (update_status == LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial ||
+      update_status == LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer) {
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "LATEST_LIDAR_OBSTACLE_SCAN accepted=true producer=%" PRIu64
+                         "LATEST_SENSOR_OBSTACLE_SCAN accepted=true producer=%" PRIu64
                          " sequence=%" PRIu64 " hit_points=%zu",
                          evidence->producerInstanceId(), evidence->sequence(),
                          evidence->hitPointsMapM().size());
   }
-  if (update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial ||
-      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer ||
+  if (update_status == LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial ||
+      update_status == LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer ||
       update_status ==
-          LatestLidarEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset ||
-      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff ||
-      update_status == LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate) {
+          LatestSensorEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset ||
+      update_status == LatestSensorEvidenceUpdateStatus3D::kAcceptedProducerHandoff ||
+      update_status == LatestSensorEvidenceUpdateStatus3D::kIdempotentDuplicate) {
     return;
   }
   rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
-  const auto update_status_name = latestLidarEvidenceUpdateStatus3DName(update_status);
+  const auto update_status_name = latestSensorEvidenceUpdateStatus3DName(update_status);
   RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "LATEST_LIDAR_OBSTACLE_SCAN rejected=true reason=%.*s producer=%" PRIu64
+      "LATEST_SENSOR_OBSTACLE_SCAN rejected=true reason=%.*s producer=%" PRIu64
       " sequence=%" PRIu64 " acquisition_stamp_ns=%" PRId64,
       static_cast<int>(update_status_name.size()), update_status_name.data(),
       evidence->producerInstanceId(), evidence->sequence(),

@@ -69,7 +69,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
       .launch_support_contact = optionalAddress(current_world.launchSupportContact()),
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = {},
+      .latest_sensor_obstacle_points = {},
       .terminal_boundary = std::nullopt,
   };
   return validateFiniteExecutionTrajectoryContinuation3D(
@@ -77,24 +77,25 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
       current_input.state(), current_input.previousControl(), validation_world);
 }
 
-FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLidar3D(
+FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestSensor3D(
     const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* const route,
     const VersionedExecutionInput3D& current_input,
-    const VersionedLatestLidarEvidence3D& current_lidar,
+    const VersionedLatestSensorEvidence3D& current_lidar,
     const std::int64_t validation_stamp_ns) noexcept {
   const bool observed_mode = execution.observed_raw_world != nullptr;
   const bool static_mode = execution.static_world != nullptr;
   if (execution.horizon == nullptr || execution.validation_policy == nullptr ||
       execution.execution_input == nullptr ||
-      execution.latest_lidar_evidence == nullptr || observed_mode == static_mode ||
+      execution.latest_sensor_evidence == nullptr || observed_mode == static_mode ||
       !current_input.valid() || !current_input.nominalStateAuthoritative() ||
       !current_lidar.valid() || validation_stamp_ns <= 0 ||
       current_input.effectiveStampNs() != validation_stamp_ns ||
-      !latestLidarEvidenceFreshAt(current_lidar, *execution.validation_policy,
-                                  validation_stamp_ns) ||
+      !latestSensorEvidenceFreshAt(current_lidar, *execution.validation_policy,
+                                   validation_stamp_ns) ||
       (current_lidar.producerInstanceId() ==
-           execution.latest_lidar_evidence->producerInstanceId() &&
-       !latestLidarEvidenceNotOlder(current_lidar, *execution.latest_lidar_evidence)) ||
+           execution.latest_sensor_evidence->producerInstanceId() &&
+       !latestSensorEvidenceNotOlder(current_lidar,
+                                     *execution.latest_sensor_evidence)) ||
       (observed_mode && !execution.observed_raw_world->valid()) ||
       (static_mode && !execution.static_world->valid())) {
     return {};
@@ -129,7 +130,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
                         : nullptr,
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = current_lidar.indexedHitPoints(),
+      .latest_sensor_obstacle_points = current_lidar.indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
   return validateFiniteExecutionTrajectoryContinuation3D(

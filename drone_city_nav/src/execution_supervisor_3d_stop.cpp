@@ -47,8 +47,8 @@ stopValidationWorld(const ExecutionStopRequest3D& request,
       !request.validation_policy->valid() ||
       (raw_mode && !request.observed_raw_world->valid()) ||
       (static_mode && !request.static_world->valid()) ||
-      request.latest_lidar_evidence == nullptr ||
-      !request.latest_lidar_evidence->valid()) {
+      request.latest_sensor_evidence == nullptr ||
+      !request.latest_sensor_evidence->valid()) {
     return std::nullopt;
   }
   live_seed = proprioceptiveContactSeed3D(
@@ -69,7 +69,8 @@ stopValidationWorld(const ExecutionStopRequest3D& request,
                    : nullptr,
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = request.latest_lidar_evidence->indexedHitPoints(),
+      .latest_sensor_obstacle_points =
+          request.latest_sensor_evidence->indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
 }
@@ -211,8 +212,8 @@ const char* executionStopStatus3DName(const ExecutionStopStatus3D status) noexce
       return "resident_stop_current";
     case ExecutionStopStatus3D::kValidationWorldUnavailable:
       return "validation_world_unavailable";
-    case ExecutionStopStatus3D::kLidarEvidenceNotCurrent:
-      return "lidar_evidence_not_current";
+    case ExecutionStopStatus3D::kSensorEvidenceNotCurrent:
+      return "sensor_evidence_not_current";
     case ExecutionStopStatus3D::kHorizonUnavailable:
       return "horizon_unavailable";
     case ExecutionStopStatus3D::kRevisionExhausted:
@@ -349,7 +350,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       .static_world = owned_request.static_world,
       .validation_policy = owned_request.validation_policy,
       .execution_input = owned_request.execution_input,
-      .latest_lidar_evidence = owned_request.latest_lidar_evidence,
+      .latest_sensor_evidence = owned_request.latest_sensor_evidence,
       .valid_from_ns = owned_request.now_ns,
       .clearance_reduction = 0.0,
   };

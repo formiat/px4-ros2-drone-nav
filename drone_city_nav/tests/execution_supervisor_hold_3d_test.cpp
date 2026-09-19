@@ -62,8 +62,8 @@ installRouteOwner(ExecutionSupervisor3D& supervisor, SnapshotFixture3D& fixture)
       .requested_position = certification.position,
       .cycle_source_plan = source,
       .execution_input = certification.execution_input,
-      .latest_lidar_evidence = certification.latest_lidar_evidence,
-      .current_lidar_evidence = certification.latest_lidar_evidence,
+      .latest_sensor_evidence = certification.latest_sensor_evidence,
+      .current_sensor_evidence = certification.latest_sensor_evidence,
       .current_observed_raw_world = certification.observed_raw_world,
       .stationary_capture_observed_raw_world = certification.observed_raw_world,
       .stationary_capture_static_world = certification.static_world,
@@ -318,7 +318,7 @@ TEST(ExecutionSupervisorHold3DTest,
       .observed_raw_world = resident_hold.observed_raw_world,
       .static_world = resident_hold.static_world,
       .validation_policy = resident_hold.validation_policy,
-      .latest_lidar_evidence = resident_hold.latest_lidar_evidence,
+      .latest_sensor_evidence = resident_hold.latest_sensor_evidence,
   };
 
   const ExecutionHoldPreparation3D unchanged = supervisor.prepareHold(
@@ -552,10 +552,10 @@ TEST(ExecutionSupervisorHold3DTest,
   EXPECT_EQ(supervisor.prepareHold(request).status,
             ExecutionHoldPreparationStatus3D::kIntentNotApplicable);
   request.intent = ExecutionHoldIntent3D::kExplicitTransfer;
-  request.current_lidar_evidence.reset();
+  request.current_sensor_evidence.reset();
   EXPECT_EQ(supervisor.prepareHold(request).status,
-            ExecutionHoldPreparationStatus3D::kLidarEvidenceNotCurrent);
-  request.current_lidar_evidence = certification.latest_lidar_evidence;
+            ExecutionHoldPreparationStatus3D::kSensorEvidenceNotCurrent);
+  request.current_sensor_evidence = certification.latest_sensor_evidence;
   request.current_observed_raw_world =
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision, nullptr,
                        SnapshotFixture3D::kRawProducer + 1U);

@@ -110,7 +110,7 @@ struct MissionWaypointStationaryRearmObservation {
   bool execution_snapshot_revoked_empty{false};
   bool validation_policy_current{false};
   bool world_evidence_current{false};
-  bool lidar_evidence_current{false};
+  bool sensor_evidence_current{false};
 };
 
 // This is the only planner-side gate that may label zero previous control as a

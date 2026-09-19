@@ -1,4 +1,4 @@
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan.hpp"
 #include "drone_city_nav/producer_instance_id.hpp"
 
 #include <gtest/gtest.h>
@@ -40,7 +40,7 @@ TEST(ProducerInstanceIdTest, RawWorldIdentityIsNonzeroAndProcessUnique) {
 TEST(ProducerInstanceIdTest, SeparatesForkedProcessesWithInheritedClockEpoch) {
   constexpr std::uint64_t kPlannerDomain{0x504c414e4e455200ULL};
   static_cast<void>(createProducerInstanceId(kPlannerDomain));
-  static_cast<void>(createLatestLidarObstacleProducerInstanceId());
+  static_cast<void>(createLatestSensorObstacleProducerInstanceId());
 
   int pipe_fds[2]{-1, -1};
   ASSERT_EQ(::pipe(pipe_fds), 0);
@@ -50,7 +50,7 @@ TEST(ProducerInstanceIdTest, SeparatesForkedProcessesWithInheritedClockEpoch) {
     static_cast<void>(::close(pipe_fds[0]));
     const std::array<std::uint64_t, 2U> child_identities{
         createProducerInstanceId(kPlannerDomain),
-        createLatestLidarObstacleProducerInstanceId(),
+        createLatestSensorObstacleProducerInstanceId(),
     };
     const ssize_t written =
         ::write(pipe_fds[1], child_identities.data(), sizeof(child_identities));
@@ -62,7 +62,7 @@ TEST(ProducerInstanceIdTest, SeparatesForkedProcessesWithInheritedClockEpoch) {
   static_cast<void>(::close(pipe_fds[1]));
   const std::array<std::uint64_t, 2U> parent_identities{
       createProducerInstanceId(kPlannerDomain),
-      createLatestLidarObstacleProducerInstanceId(),
+      createLatestSensorObstacleProducerInstanceId(),
   };
   std::array<std::uint64_t, 2U> child_identities{};
   const ssize_t received =

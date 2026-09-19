@@ -19,9 +19,9 @@ constexpr std::int64_t kAcquisitionStampNs{1'000'000'000LL};
 constexpr std::int64_t kReceiveStampNs{1'001'000'000LL};
 constexpr double kMaximumLidarAgeMs{20.0};
 
-[[nodiscard]] LatestLidarEvidenceCapture3D
+[[nodiscard]] LatestSensorEvidenceCapture3D
 lidarCapture(const std::uint64_t sequence = 11U) {
-  return LatestLidarEvidenceCapture3D{
+  return LatestSensorEvidenceCapture3D{
       .producer_instance_id = 7U,
       .sequence = sequence,
       .pose_generation = 5U,
@@ -35,9 +35,9 @@ lidarCapture(const std::uint64_t sequence = 11U) {
   };
 }
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
-lidarEvidence(const std::uint64_t sequence = 11U) {
-  return VersionedLatestLidarEvidence3D::capture(lidarCapture(sequence));
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
+sensorEvidence(const std::uint64_t sequence = 11U) {
+  return VersionedLatestSensorEvidence3D::capture(lidarCapture(sequence));
 }
 
 [[nodiscard]] std::shared_ptr<const ObservedOccupancyGrid3D>
@@ -67,15 +67,15 @@ rawWorld(std::shared_ptr<const ObservedOccupancyGrid3D> observation,
 
 [[nodiscard]] ExecutionPublicationCurrentnessCheck3D
 currentCheck(std::shared_ptr<const ExecutionPlan3D> snapshot,
-             std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar) {
+             std::shared_ptr<const VersionedLatestSensorEvidence3D> lidar) {
   return ExecutionPublicationCurrentnessCheck3D{
       .expected_snapshot = snapshot,
       .current_snapshot = std::move(snapshot),
       .raw_requirement = ExecutionPublicationRawRequirement3D::kOptional,
       .expected_raw_world = nullptr,
       .current_raw_world = nullptr,
-      .expected_lidar_evidence = lidar,
-      .current_lidar_evidence = std::move(lidar),
+      .expected_sensor_evidence = lidar,
+      .current_sensor_evidence = std::move(lidar),
       .publication_now_ns = kAcquisitionStampNs + 20'000'000LL,
       .maximum_lidar_age_ms = kMaximumLidarAgeMs,
   };
@@ -84,7 +84,7 @@ currentCheck(std::shared_ptr<const ExecutionPlan3D> snapshot,
 TEST(ExecutionPublicationCurrentness3DTest,
      AcceptsExactSnapshotAndLidarOwnersWhenFresh) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto lidar = lidarEvidence();
+  const auto lidar = sensorEvidence();
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(lidar, nullptr);
 
@@ -108,7 +108,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 TEST(ExecutionPublicationCurrentness3DTest,
      RejectsMissingInvalidAndDistinctSnapshotOwners) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto lidar = lidarEvidence();
+  const auto lidar = sensorEvidence();
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(lidar, nullptr);
 
@@ -135,7 +135,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 TEST(ExecutionPublicationCurrentness3DTest,
      RawRequirementRejectsMissingPresenceAndLineageChanges) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto lidar = lidarEvidence();
+  const auto lidar = sensorEvidence();
   const auto observation = rawObservation();
   const auto expected_raw = rawWorld(observation);
   ASSERT_NE(snapshot, nullptr);
@@ -188,7 +188,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 TEST(ExecutionPublicationCurrentness3DTest,
      AcceptsDerivedRawEvidenceSharingTheExactObservationAndVersion) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto lidar = lidarEvidence();
+  const auto lidar = sensorEvidence();
   const auto base_raw = rawWorld(rawObservation());
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(lidar, nullptr);
@@ -223,34 +223,34 @@ TEST(ExecutionPublicationCurrentness3DTest,
 TEST(ExecutionPublicationCurrentness3DTest,
      RequiresRevalidationForAdvancedLidarAndAcceptsCopiesOfTheSameEvidence) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto expected_lidar = lidarEvidence();
+  const auto expected_lidar = sensorEvidence();
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(expected_lidar, nullptr);
 
   ExecutionPublicationCurrentnessCheck3D check = currentCheck(snapshot, expected_lidar);
-  check.current_lidar_evidence.reset();
+  check.current_sensor_evidence.reset();
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
-            ExecutionPublicationCurrentnessStatus3D::kLidarEvidenceMissing);
+            ExecutionPublicationCurrentnessStatus3D::kSensorEvidenceMissing);
 
-  check.current_lidar_evidence = lidarEvidence(12U);
-  ASSERT_NE(check.current_lidar_evidence, nullptr);
+  check.current_sensor_evidence = sensorEvidence(12U);
+  ASSERT_NE(check.current_sensor_evidence, nullptr);
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired);
 
-  LatestLidarEvidenceCapture3D changed_content = lidarCapture();
+  LatestSensorEvidenceCapture3D changed_content = lidarCapture();
   changed_content.hit_points_map_m.front().x += 1.0;
-  check.current_lidar_evidence =
-      VersionedLatestLidarEvidence3D::capture(std::move(changed_content));
-  ASSERT_NE(check.current_lidar_evidence, nullptr);
+  check.current_sensor_evidence =
+      VersionedLatestSensorEvidence3D::capture(std::move(changed_content));
+  ASSERT_NE(check.current_sensor_evidence, nullptr);
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged);
 
-  check.current_lidar_evidence = lidarEvidence();
-  ASSERT_NE(check.current_lidar_evidence, nullptr);
-  ASSERT_NE(check.current_lidar_evidence, expected_lidar);
-  ASSERT_EQ(check.current_lidar_evidence->contentFingerprint(),
+  check.current_sensor_evidence = sensorEvidence();
+  ASSERT_NE(check.current_sensor_evidence, nullptr);
+  ASSERT_NE(check.current_sensor_evidence, expected_lidar);
+  ASSERT_EQ(check.current_sensor_evidence->contentFingerprint(),
             expected_lidar->contentFingerprint());
-  ASSERT_EQ(check.current_lidar_evidence->evidenceId(), expected_lidar->evidenceId());
+  ASSERT_EQ(check.current_sensor_evidence->evidenceId(), expected_lidar->evidenceId());
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kCurrent);
 }
@@ -258,7 +258,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 TEST(ExecutionPublicationCurrentness3DTest,
      RechecksLidarFreshnessAtTheExactPublicationBoundary) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto lidar = lidarEvidence();
+  const auto lidar = sensorEvidence();
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(lidar, nullptr);
 
@@ -287,15 +287,15 @@ TEST(ExecutionPublicationCurrentness3DTest,
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,
-     ConcurrentNewerLidarEvidenceRequiresPublicationRevalidation) {
+     ConcurrentNewerSensorEvidenceRequiresPublicationRevalidation) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
-  const auto initial_lidar = lidarEvidence();
-  const auto newer_lidar = lidarEvidence(12U);
+  const auto initial_lidar = sensorEvidence();
+  const auto newer_lidar = sensorEvidence(12U);
   ASSERT_NE(snapshot, nullptr);
   ASSERT_NE(initial_lidar, nullptr);
   ASSERT_NE(newer_lidar, nullptr);
 
-  std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>> latest_lidar{
+  std::atomic<std::shared_ptr<const VersionedLatestSensorEvidence3D>> latest_sensor{
       initial_lidar};
   std::barrier evidence_captured{2};
   std::barrier evidence_updated{2};
@@ -303,17 +303,17 @@ TEST(ExecutionPublicationCurrentness3DTest,
       ExecutionPublicationCurrentnessStatus3D::kCurrent};
 
   std::thread publisher{[&] {
-    const auto expected_lidar = latest_lidar.load(std::memory_order_acquire);
+    const auto expected_lidar = latest_sensor.load(std::memory_order_acquire);
     evidence_captured.arrive_and_wait();
     evidence_updated.arrive_and_wait();
     ExecutionPublicationCurrentnessCheck3D check =
         currentCheck(snapshot, expected_lidar);
-    check.current_lidar_evidence = latest_lidar.load(std::memory_order_acquire);
+    check.current_sensor_evidence = latest_sensor.load(std::memory_order_acquire);
     status = assessExecutionPublicationCurrentness3D(check);
   }};
   std::thread updater{[&] {
     evidence_captured.arrive_and_wait();
-    latest_lidar.store(newer_lidar, std::memory_order_release);
+    latest_sensor.store(newer_lidar, std::memory_order_release);
     evidence_updated.arrive_and_wait();
   }};
 

@@ -151,7 +151,7 @@ def stereo_vision_nodes(
                         "obstacle_memory_status_topic": (
                             "/drone_city_nav/vision_shadow/obstacle_memory_status"
                         ),
-                        "latest_lidar_obstacle_scan_topic": (
+                        "latest_sensor_obstacle_scan_topic": (
                             "/drone_city_nav/vision_shadow/latest_obstacle_scan"
                         ),
                         "current_lidar_3d_pointcloud_topic": (

@@ -90,7 +90,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   FiniteExecutionCertification3D tube_blocked = handoff_certification(true, 106U);
   ASSERT_NE(tube_blocked.execution_input, nullptr);
-  ASSERT_NE(tube_blocked.latest_lidar_evidence, nullptr);
+  ASSERT_NE(tube_blocked.latest_sensor_evidence, nullptr);
   constexpr std::size_t kTubeOnlyObstacleSegment{25U};
   ASSERT_LT(kTubeOnlyObstacleSegment, tube_blocked.horizon.states.size());
   const MotionState3D& obstacle_begin =
@@ -134,10 +134,10 @@ TEST(ExecutionRouteSnapshot3DTest,
                     .accepted())
         << "physical collision at segment " << index;
   }
-  const VersionedLatestLidarEvidence3D& clear_lidar =
-      *tube_blocked.latest_lidar_evidence;
-  tube_blocked.latest_lidar_evidence =
-      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+  const VersionedLatestSensorEvidence3D& clear_lidar =
+      *tube_blocked.latest_sensor_evidence;
+  tube_blocked.latest_sensor_evidence =
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
           .producer_instance_id = clear_lidar.producerInstanceId(),
           .sequence = clear_lidar.sequence(),
           .pose_generation = clear_lidar.poseGeneration(),
@@ -146,7 +146,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .source_beam_count = 1U,
           .hit_points_map_m = {tube_only_lidar_point},
       });
-  ASSERT_NE(tube_blocked.latest_lidar_evidence, nullptr);
+  ASSERT_NE(tube_blocked.latest_sensor_evidence, nullptr);
   const FiniteExecutionCertificationResult3D blocked =
       certifyFiniteExecution3DDetailed(*initial, *suffix, std::move(tube_blocked));
   EXPECT_FALSE(blocked.certified());

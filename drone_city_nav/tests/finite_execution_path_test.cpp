@@ -48,14 +48,14 @@ struct TestWorld {
       GridBounds3D{0.0, 0.0, 0.0, 0.5, 20, 20, 20}};
 
   [[nodiscard]] FiniteExecutionPathWorld
-  view(const std::span<const Point3> latest_lidar = {}) const noexcept {
+  view(const std::span<const Point3> latest_sensor = {}) const noexcept {
     return FiniteExecutionPathWorld{
         .flight_envelope = &envelope,
         .dynamics = &dynamics,
         .altitude_envelope = &altitude_envelope,
         .footprint = &footprint,
         .static_occupancy = &occupancy,
-        .latest_lidar_obstacle_points = latest_lidar,
+        .latest_sensor_obstacle_points = latest_sensor,
         .terminal_boundary = std::nullopt,
     };
   }
@@ -67,7 +67,7 @@ struct TestWorld {
         .altitude_envelope = &altitude_envelope,
         .footprint = &footprint,
         .observed_occupancy = &observed_occupancy,
-        .latest_lidar_obstacle_points = {},
+        .latest_sensor_obstacle_points = {},
         .terminal_boundary = std::nullopt,
     };
   }
@@ -158,7 +158,7 @@ TEST(FiniteExecutionPathTest, RejectsFreshLidarObstacleOnRemainingPath) {
       State{.x = 3.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}, Control{},
       world.view(lidar_hits));
 
-  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kLatestLidarRawCollision);
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kLatestSensorRawCollision);
 }
 
 TEST(FiniteExecutionPathTest, CompleteValidationChecksEveryRawPathSegment) {
@@ -214,7 +214,7 @@ TEST(FiniteExecutionPathTest,
       validateCompleteFiniteExecutionPath(tilted_path, Control{},
                                           world.view(tilted_body_obstacle));
   EXPECT_EQ(complete_validation.status,
-            FiniteExecutionPathStatus::kLatestLidarRawCollision);
+            FiniteExecutionPathStatus::kLatestSensorRawCollision);
   EXPECT_EQ(complete_validation.failure_segment_index, 0U);
   const FiniteExecutionPathValidation continuation_validation =
       validateFiniteExecutionPathContinuation(
@@ -222,7 +222,7 @@ TEST(FiniteExecutionPathTest,
           State{.x = 1.2F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}, Control{},
           world.view(tilted_body_obstacle));
   EXPECT_EQ(continuation_validation.status,
-            FiniteExecutionPathStatus::kLatestLidarRawCollision);
+            FiniteExecutionPathStatus::kLatestSensorRawCollision);
 }
 
 TEST(FiniteExecutionPathTest, UnknownObservedFrontierIsAlwaysTraversable) {
@@ -306,11 +306,11 @@ TEST(FiniteExecutionPathTest,
     planned_states.push_back(
         integrateReference(planned_states.back(), control, world.dynamics));
   }
-  const std::vector<Point3> latest_lidar_hits{{5.0, 1.0, 5.0}};
+  const std::vector<Point3> latest_sensor_hits{{5.0, 1.0, 5.0}};
 
   const ValidatedFiniteExecutionPath path = buildValidatedFiniteExecutionPath(
       planned_states, planned_controls, Control{}, world.dynamics, 5U,
-      FiniteHorizonConfig{}, world.view(latest_lidar_hits));
+      FiniteHorizonConfig{}, world.view(latest_sensor_hits));
 
   ASSERT_TRUE(path.accepted());
   ASSERT_TRUE(path.horizon.has_value());
@@ -318,7 +318,7 @@ TEST(FiniteExecutionPathTest,
   EXPECT_LT(horizon.nominal_prefix_control_count, planned_controls.size());
   EXPECT_TRUE(path.path_validation_backoff);
   EXPECT_FALSE(path.persistent_raw_path_validation_backoff);
-  EXPECT_TRUE(path.latest_lidar_path_validation_backoff);
+  EXPECT_TRUE(path.latest_sensor_path_validation_backoff);
   EXPECT_TRUE(path.physicalObstacleValidationBackoff());
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
   EXPECT_LT(horizon.states.back().x, 4.75F);
@@ -401,7 +401,7 @@ TEST(FiniteExecutionPathTest,
   const FiniteHorizon horizon = path.horizon.value_or(FiniteHorizon{});
   EXPECT_TRUE(path.path_validation_backoff);
   EXPECT_TRUE(path.persistent_raw_path_validation_backoff);
-  EXPECT_FALSE(path.latest_lidar_path_validation_backoff);
+  EXPECT_FALSE(path.latest_sensor_path_validation_backoff);
   EXPECT_TRUE(path.physicalObstacleValidationBackoff());
   EXPECT_EQ(path.first_failed_validation_status,
             FiniteExecutionPathStatus::kRawCollision);
@@ -731,7 +731,7 @@ TEST(FiniteExecutionPathTest, RebuildsAFiniteRawSafeBrakingTailBeforeANewObstacl
   constexpr std::size_t kCurrentControlIndex{5U};
   const State current_state = source->states[kCurrentControlIndex];
   const Control current_control = source->controls[kCurrentControlIndex - 1U];
-  const std::vector<Point3> latest_lidar_hits{{4.0, 1.0, 5.0}};
+  const std::vector<Point3> latest_sensor_hits{{4.0, 1.0, 5.0}};
 
   const RebuiltFiniteExecutionPathContinuation braking =
       rebuildFiniteExecutionPathContinuation(
@@ -740,16 +740,17 @@ TEST(FiniteExecutionPathTest, RebuildsAFiniteRawSafeBrakingTailBeforeANewObstacl
               static_cast<std::int64_t>(kCurrentControlIndex) * 100'000'000LL,
           current_state, current_control, source->nominal_prefix_control_count,
           source->nominal_prefix_control_count, world.dynamics, 5U,
-          FiniteHorizonConfig{}, world.view(latest_lidar_hits));
+          FiniteHorizonConfig{}, world.view(latest_sensor_hits));
 
   ASSERT_TRUE(braking.accepted());
   ASSERT_TRUE(braking.horizon.has_value());
   EXPECT_TRUE(braking.path_validation_backoff);
-  EXPECT_TRUE(braking.latest_lidar_path_validation_backoff);
+  EXPECT_TRUE(braking.latest_sensor_path_validation_backoff);
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(*braking.horizon));
   EXPECT_FLOAT_EQ(braking.horizon->states.front().x, current_state.x);
-  EXPECT_LT(braking.horizon->states.back().x,
-            static_cast<float>(latest_lidar_hits.front().x - world.footprint.radius_m));
+  EXPECT_LT(
+      braking.horizon->states.back().x,
+      static_cast<float>(latest_sensor_hits.front().x - world.footprint.radius_m));
   EXPECT_LT(braking.horizon->nominal_prefix_control_count,
             planned_controls.size() - kCurrentControlIndex);
   EXPECT_LE(braking.valid_until_ns, 20 * kSecondNs);

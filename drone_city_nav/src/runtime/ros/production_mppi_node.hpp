@@ -22,7 +22,7 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
-#include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/msg/latest_sensor_obstacle_scan.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -133,8 +133,8 @@ private:
                                const rclcpp::MessageInfo& info);
   void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message,
                             const rclcpp::MessageInfo& info);
-  void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message,
-                                 const rclcpp::MessageInfo& info);
+  void onLatestSensorObstacleScan(const msg::LatestSensorObstacleScan& message,
+                                  const rclcpp::MessageInfo& info);
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
@@ -240,8 +240,8 @@ private:
       const ProductionRouteExecutionSelection3D& route_execution,
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
-      const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
-          latest_lidar_evidence,
+      const std::shared_ptr<const VersionedLatestSensorEvidence3D>&
+          latest_sensor_evidence,
       const OffboardSessionAdmissionState& offboard_session,
       std::int64_t offboard_session_receive_stamp_ns,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
@@ -272,7 +272,7 @@ private:
           progress_preparation,
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority);
   // Retains the active finite path with a braking tail. When retention fails
-  // because the active trajectory itself collides with raw or lidar evidence,
+  // because the active trajectory itself collides with raw or sensor evidence,
   // physically_rejected reports it so the caller fails closed instead of
   // letting the resident owner run on. resident_trajectory_clear reports the
   // other case: the path rebuilt from the measured state was refused while the
@@ -433,10 +433,10 @@ private:
       std::numeric_limits<double>::quiet_NaN()};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
   std::atomic<std::uint64_t> physical_trajectory_replan_route_generation_{0U};
-  LatestLidarEvidenceAdmissionState3D latest_lidar_evidence_admission_state_{};
-  std::atomic_bool latest_lidar_evidence_identity_conflicted_{false};
-  std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>
-      latest_lidar_evidence_;
+  LatestSensorEvidenceAdmissionState3D latest_sensor_evidence_admission_state_{};
+  std::atomic_bool latest_sensor_evidence_identity_conflicted_{false};
+  std::atomic<std::shared_ptr<const VersionedLatestSensorEvidence3D>>
+      latest_sensor_evidence_;
   bool launch_support_evaluated_{false};
   std::optional<ProprioceptiveFreeSpaceSeed3D> launch_support_seed_;
   std::optional<LaunchSupportContact3D> launch_support_contact_;
@@ -445,7 +445,7 @@ private:
   std::atomic_bool launch_support_confirmed_by_land_detector_{false};
   std::atomic<std::uint64_t> rejected_lidar_obstacle_scans_{0U};
   // The transport hops into this node: the obstacle memory's snapshots and
-  // deltas, and the latest lidar scan. The receive stamp of the last raw
+  // deltas, and the latest sensor scan. The receive stamp of the last raw
   // update lets the tick split the observation age it reports.
   TransportLatencySamples raw_delivery_ms_;
   TransportLatencySamples lidar_delivery_ms_;
@@ -488,15 +488,15 @@ private:
   std::unique_ptr<NavigationDiagnosticsSink> diagnostics_sink_;
 
   rclcpp::CallbackGroup::SharedPtr input_callback_group_;
-  rclcpp::CallbackGroup::SharedPtr lidar_evidence_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr sensor_evidence_callback_group_;
   rclcpp::CallbackGroup::SharedPtr world_input_callback_group_;
   rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot3D>::SharedPtr raw_snapshot_3d_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;
-  rclcpp::Subscription<msg::LatestLidarObstacleScan>::SharedPtr
-      latest_lidar_obstacle_scan_sub_;
+  rclcpp::Subscription<msg::LatestSensorObstacleScan>::SharedPtr
+      latest_sensor_obstacle_scan_sub_;
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;

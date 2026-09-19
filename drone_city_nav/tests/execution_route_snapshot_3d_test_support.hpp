@@ -295,7 +295,7 @@ struct SnapshotFixture3D {
       const std::size_t extra_stationary_control_count = 0U,
       const double requested_begin_station_m = -1.0,
       const VersionedExecutionInput3D* const minimum_execution_input = nullptr,
-      const VersionedLatestLidarEvidence3D* const minimum_lidar_evidence = nullptr) {
+      const VersionedLatestSensorEvidence3D* const minimum_sensor_evidence = nullptr) {
     const double begin_station_m = requested_begin_station_m >= 0.0
                                        ? requested_begin_station_m
                                        : suffix.progress.station_m;
@@ -440,31 +440,31 @@ struct SnapshotFixture3D {
             .previous_control_receive_stamp_ns = control_receive_stamp_ns,
         });
     const std::uint64_t lidar_sequence =
-        minimum_lidar_evidence != nullptr
+        minimum_sensor_evidence != nullptr
             ? std::max(trajectory_revision,
-                       next_identity(minimum_lidar_evidence->sequence()))
+                       next_identity(minimum_sensor_evidence->sequence()))
             : trajectory_revision;
     const std::uint64_t lidar_pose_generation =
-        minimum_lidar_evidence != nullptr
+        minimum_sensor_evidence != nullptr
             ? std::max(pose_revision,
-                       next_identity(minimum_lidar_evidence->poseGeneration()))
+                       next_identity(minimum_sensor_evidence->poseGeneration()))
             : pose_revision;
     const std::int64_t lidar_acquisition_stamp_ns =
-        minimum_lidar_evidence != nullptr
+        minimum_sensor_evidence != nullptr
             ? std::max<std::int64_t>(
                   valid_from_ns - std::int64_t{15'000'000} + evidence_offset_ns,
-                  next_stamp(minimum_lidar_evidence->acquisitionStampNs()))
+                  next_stamp(minimum_sensor_evidence->acquisitionStampNs()))
             : valid_from_ns - 15'000'000LL + evidence_offset_ns;
     const std::int64_t lidar_receive_stamp_ns =
-        minimum_lidar_evidence != nullptr
+        minimum_sensor_evidence != nullptr
             ? std::max<std::int64_t>(
                   valid_from_ns - std::int64_t{5'000'000} + evidence_offset_ns,
-                  next_stamp(minimum_lidar_evidence->receiveStampNs()))
+                  next_stamp(minimum_sensor_evidence->receiveStampNs()))
             : valid_from_ns - 5'000'000LL + evidence_offset_ns;
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar_evidence =
-        VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
-            .producer_instance_id = minimum_lidar_evidence != nullptr
-                                        ? minimum_lidar_evidence->producerInstanceId()
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D> sensor_evidence =
+        VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
+            .producer_instance_id = minimum_sensor_evidence != nullptr
+                                        ? minimum_sensor_evidence->producerInstanceId()
                                         : 77U,
             .sequence = lidar_sequence,
             .pose_generation = lidar_pose_generation,
@@ -476,14 +476,14 @@ struct SnapshotFixture3D {
     if (execution_input == nullptr) {
       throw std::logic_error{"failed to capture finite execution input"};
     }
-    if (lidar_evidence == nullptr) {
-      throw std::logic_error{"failed to capture finite execution lidar evidence"};
+    if (sensor_evidence == nullptr) {
+      throw std::logic_error{"failed to capture finite execution sensor evidence"};
     }
     return FiniteExecutionCertification3D{
         .trajectory_revision = trajectory_revision,
         .horizon = std::move(horizon),
         .execution_input = execution_input,
-        .latest_lidar_evidence = lidar_evidence,
+        .latest_sensor_evidence = sensor_evidence,
         .valid_from_ns = valid_from_ns,
         .kind = kind,
     };
@@ -503,16 +503,16 @@ struct SnapshotFixture3D {
         resident_route != nullptr  ? resident_route->progress.execution_input.get()
         : resident_hold != nullptr ? resident_hold->terminal_execution_input.get()
                                    : nullptr;
-    const VersionedLatestLidarEvidence3D* const minimum_lidar_evidence =
-        finite_execution != nullptr ? finite_execution->latest_lidar_evidence.get()
-        : resident_hold != nullptr  ? resident_hold->latest_lidar_evidence.get()
+    const VersionedLatestSensorEvidence3D* const minimum_sensor_evidence =
+        finite_execution != nullptr ? finite_execution->latest_sensor_evidence.get()
+        : resident_hold != nullptr  ? resident_hold->latest_sensor_evidence.get()
                                     : nullptr;
     const std::optional<FiniteExecutionState3D> certified = certifyFiniteExecution3D(
         snapshot, suffix,
         finiteCertificationForRoute(suffix, kind, trajectory_revision,
                                     source_navigation_revision,
                                     extra_stationary_control_count, begin_station_m,
-                                    minimum_execution_input, minimum_lidar_evidence));
+                                    minimum_execution_input, minimum_sensor_evidence));
     if (!certified.has_value()) {
       throw std::logic_error{"valid finite execution fixture was rejected"};
     }
@@ -561,7 +561,7 @@ struct SnapshotFixture3D {
       std::shared_ptr<const VersionedExecutionInput3D> input;
       const FiniteMotionHorizon3D* horizon{nullptr};
       std::optional<std::int64_t> valid_until_ns;
-      std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar;
+      std::shared_ptr<const VersionedLatestSensorEvidence3D> lidar;
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
       std::shared_ptr<const VersionedStaticWorld3D> static_world;
       std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
@@ -571,13 +571,13 @@ struct SnapshotFixture3D {
     const HoldSource source = [&]() -> HoldSource {
       if (const FiniteExecutionState3D* const route = snapshot.finiteExecution()) {
         return {route->execution_input,    route->horizon.get(),
-                route->valid_until_ns,     route->latest_lidar_evidence,
+                route->valid_until_ns,     route->latest_sensor_evidence,
                 route->observed_raw_world, route->static_world,
                 route->validation_policy};
       }
       if (const StopExecution3D* const stop = snapshot.stopExecution()) {
         return {stop->execution_input,    stop->horizon.get(),
-                stop->valid_until_ns,     stop->latest_lidar_evidence,
+                stop->valid_until_ns,     stop->latest_sensor_evidence,
                 stop->observed_raw_world, stop->static_world,
                 stop->validation_policy};
       }
@@ -585,7 +585,7 @@ struct SnapshotFixture3D {
         return {resident_hold->terminal_execution_input,
                 nullptr,
                 std::nullopt,
-                resident_hold->latest_lidar_evidence,
+                resident_hold->latest_sensor_evidence,
                 resident_hold->observed_raw_world,
                 resident_hold->static_world,
                 resident_hold->validation_policy};
@@ -656,17 +656,17 @@ struct SnapshotFixture3D {
     if (terminal_input == nullptr) {
       throw std::logic_error{"failed to capture terminal hold input"};
     }
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& source_lidar =
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>& source_lidar =
         source.lidar;
     if (source_lidar == nullptr ||
         source_lidar->sequence() == std::numeric_limits<std::uint64_t>::max() ||
         source_lidar->poseGeneration() == std::numeric_limits<std::uint64_t>::max()) {
       throw std::overflow_error{"hold fixture lidar identity overflow"};
     }
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D> current_lidar =
         resident_hold != nullptr
             ? source_lidar
-            : VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+            : VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
                   .producer_instance_id = source_lidar->producerInstanceId(),
                   .sequence = source_lidar->sequence() + 1U,
                   .pose_generation = source_lidar->poseGeneration() + 1U,
@@ -685,13 +685,13 @@ struct SnapshotFixture3D {
         .observed_raw_world = source.observed_raw_world,
         .static_world = source.static_world,
         .validation_policy = source.validation_policy,
-        .latest_lidar_evidence = current_lidar,
+        .latest_sensor_evidence = current_lidar,
     };
   }
 
-  [[nodiscard]] static std::shared_ptr<const VersionedLatestLidarEvidence3D>
-  newerLidarEvidence(const VersionedLatestLidarEvidence3D& previous,
-                     std::vector<Point3> hit_points_map_m = {}) {
+  [[nodiscard]] static std::shared_ptr<const VersionedLatestSensorEvidence3D>
+  newerSensorEvidence(const VersionedLatestSensorEvidence3D& previous,
+                      std::vector<Point3> hit_points_map_m = {}) {
     if (previous.sequence() == std::numeric_limits<std::uint64_t>::max() ||
         previous.poseGeneration() == std::numeric_limits<std::uint64_t>::max() ||
         previous.acquisitionStampNs() >
@@ -700,7 +700,7 @@ struct SnapshotFixture3D {
             std::numeric_limits<std::int64_t>::max() - 10'000LL) {
       throw std::overflow_error{"lidar fixture identity overflow"};
     }
-    return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+    return VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
         .producer_instance_id = previous.producerInstanceId(),
         .sequence = previous.sequence() + 1U,
         .pose_generation = previous.poseGeneration() + 1U,

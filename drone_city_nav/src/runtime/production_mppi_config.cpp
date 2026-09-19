@@ -66,7 +66,7 @@ bool ProductionMppiConfig::valid() const noexcept {
          std::isfinite(diagnostics.flush_period_s) &&
          diagnostics.flush_period_s > 0.0 && planning.deadline_ms > 0.0 &&
          execution.maximum_control_feedback_age_ms > 0.0 &&
-         execution.latest_lidar_obstacle_maximum_age_ms > 0.0 &&
+         execution.latest_sensor_obstacle_maximum_age_ms > 0.0 &&
          std::isfinite(execution.stationary_hold_validity_s) &&
          execution.stationary_hold_validity_s >= 0.2 &&
          std::isfinite(planning.constrained_route_speed_limit_mps) &&

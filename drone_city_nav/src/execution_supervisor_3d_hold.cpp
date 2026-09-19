@@ -83,26 +83,26 @@ stationaryCaptureWorldCurrent(const ExecutionHoldRequest3D& request) noexcept {
 }
 
 [[nodiscard]] bool
-latestLidarCurrent(const ExecutionHoldRequest3D& request,
-                   const VersionedExecutionValidationPolicy3D& policy) noexcept {
+latestSensorCurrent(const ExecutionHoldRequest3D& request,
+                    const VersionedExecutionValidationPolicy3D& policy) noexcept {
   // The captured scan must be on the current lidar lineage: same producer and
   // not newer than the scan installed now. A scan that arrived while the tick
   // was running is used by the next tick; it does not retract this one.
-  if (request.latest_lidar_identity_conflicted ||
-      request.latest_lidar_evidence == nullptr ||
-      request.current_lidar_evidence == nullptr ||
-      !request.latest_lidar_evidence->valid() ||
-      !request.current_lidar_evidence->valid() ||
-      request.latest_lidar_evidence->producerInstanceId() !=
-          request.current_lidar_evidence->producerInstanceId() ||
-      request.latest_lidar_evidence->sequence() >
-          request.current_lidar_evidence->sequence()) {
+  if (request.latest_sensor_identity_conflicted ||
+      request.latest_sensor_evidence == nullptr ||
+      request.current_sensor_evidence == nullptr ||
+      !request.latest_sensor_evidence->valid() ||
+      !request.current_sensor_evidence->valid() ||
+      request.latest_sensor_evidence->producerInstanceId() !=
+          request.current_sensor_evidence->producerInstanceId() ||
+      request.latest_sensor_evidence->sequence() >
+          request.current_sensor_evidence->sequence()) {
     return false;
   }
-  return !policy.latestLidarFreshnessRequired() ||
-         assessLatestLidarEvidenceFreshness3D(*request.latest_lidar_evidence,
-                                              request.validation_now_ns,
-                                              policy.latestLidarMaximumAgeMs())
+  return !policy.latestSensorFreshnessRequired() ||
+         assessLatestSensorEvidenceFreshness3D(*request.latest_sensor_evidence,
+                                               request.validation_now_ns,
+                                               policy.latestSensorMaximumAgeMs())
              .fresh;
 }
 
@@ -140,8 +140,8 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
     result.status = ExecutionHoldPreparationStatus3D::kValidationWorldUnavailable;
     return result;
   }
-  if (!latestLidarCurrent(request, *request.stationary_capture_validation_policy)) {
-    result.status = ExecutionHoldPreparationStatus3D::kLidarEvidenceNotCurrent;
+  if (!latestSensorCurrent(request, *request.stationary_capture_validation_policy)) {
+    result.status = ExecutionHoldPreparationStatus3D::kSensorEvidenceNotCurrent;
     return result;
   }
   const ExecutionRouteTransitionResult3D transition = armStationaryCaptureHold3D(
@@ -152,7 +152,7 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
           .observed_raw_world = request.stationary_capture_observed_raw_world,
           .static_world = request.stationary_capture_static_world,
           .validation_policy = request.stationary_capture_validation_policy,
-          .latest_lidar_evidence = request.latest_lidar_evidence,
+          .latest_sensor_evidence = request.latest_sensor_evidence,
       });
   result.transition_status = transition.status;
   result.transition_detail = transition.detail;
@@ -208,8 +208,8 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
     }
     current_observed = request.current_observed_raw_world;
   }
-  if (!latestLidarCurrent(request, *source.validation_policy)) {
-    result.status = ExecutionHoldPreparationStatus3D::kLidarEvidenceNotCurrent;
+  if (!latestSensorCurrent(request, *source.validation_policy)) {
+    result.status = ExecutionHoldPreparationStatus3D::kSensorEvidenceNotCurrent;
     return result;
   }
 
@@ -235,7 +235,7 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
           .observed_raw_world = std::move(current_observed),
           .static_world = source.static_world,
           .validation_policy = source.validation_policy,
-          .latest_lidar_evidence = request.latest_lidar_evidence,
+          .latest_sensor_evidence = request.latest_sensor_evidence,
       });
   result.transition_status = transition.status;
   result.transition_detail = transition.detail;
@@ -291,8 +291,8 @@ const char* executionHoldPreparationStatus3DName(
       return "intent_not_applicable";
     case ExecutionHoldPreparationStatus3D::kExecutionInputInvalid:
       return "execution_input_invalid";
-    case ExecutionHoldPreparationStatus3D::kLidarEvidenceNotCurrent:
-      return "lidar_evidence_not_current";
+    case ExecutionHoldPreparationStatus3D::kSensorEvidenceNotCurrent:
+      return "sensor_evidence_not_current";
     case ExecutionHoldPreparationStatus3D::kValidationWorldUnavailable:
       return "validation_world_unavailable";
     case ExecutionHoldPreparationStatus3D::kTransitionRejected:

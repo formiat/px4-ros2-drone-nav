@@ -55,13 +55,13 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertNotIn("ProductionMppiRawWorld2D", raw_input)
         self.assertNotIn("rawOccupancyGridViewFromRos", execution)
 
-    def test_latest_lidar_safety_age_covers_pose_alignment_wait(self) -> None:
+    def test_latest_sensor_safety_age_covers_pose_alignment_wait(self) -> None:
         config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
         memory = config["obstacle_memory_3d_node"]["ros__parameters"]
         planner = config["production_mppi_node"]["ros__parameters"]
 
         self.assertGreaterEqual(
-            planner["latest_lidar_obstacle_maximum_age_ms"],
+            planner["latest_sensor_obstacle_maximum_age_ms"],
             1000.0 * memory["lidar_scan_alignment_maximum_wait_s"],
         )
 
@@ -127,7 +127,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertNotIn("observation_distance_m", planner)
         self.assertNotIn("observation_margin_m", planner)
         self.assertIn(
-            "config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3",
+            "config_.execution.latest_sensor_obstacle_maximum_age_ms * 1.0e-3",
             source,
         )
         # The contract carries each axis's acceleration separately and assesses

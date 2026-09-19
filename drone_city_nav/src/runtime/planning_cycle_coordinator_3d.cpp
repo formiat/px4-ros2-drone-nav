@@ -40,10 +40,10 @@ blockedRouteRemainingM(const PlanningRouteDecision3D& route,
     return std::nullopt;
   }
   std::optional<double> blocked_station_m = route.execution.raw_blocked_station_m;
-  if (route.execution.latest_lidar_blocked_station_m.has_value() &&
+  if (route.execution.latest_sensor_blocked_station_m.has_value() &&
       (!blocked_station_m.has_value() ||
-       *route.execution.latest_lidar_blocked_station_m < *blocked_station_m)) {
-    blocked_station_m = route.execution.latest_lidar_blocked_station_m;
+       *route.execution.latest_sensor_blocked_station_m < *blocked_station_m)) {
+    blocked_station_m = route.execution.latest_sensor_blocked_station_m;
   }
   if (!blocked_station_m.has_value()) {
     return std::nullopt;
@@ -303,7 +303,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           .navigation = request.navigation,
           .execution_input = request.execution_input,
           .latest_raw_world = request.latest_raw_world,
-          .latest_lidar_evidence = request.latest_lidar_evidence,
+          .latest_sensor_evidence = request.latest_sensor_evidence,
           .validation_stamp_ns = request.now_ns,
           .minimum_tracking_sample_sequence = request.minimum_tracking_sample_sequence,
           .physically_invalidated_through_generation =
@@ -442,7 +442,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               request.world->distances_m != nullptr
           ? measureRouteObservedRange3D(
                 route, output.route.projection.station_m,
-                config_.route_execution.latest_lidar_route_lookahead_m,
+                config_.route_execution.latest_sensor_route_lookahead_m,
                 request.world->grid, *request.world->distances_m,
                 config_.physical_footprint)
           : std::nullopt;
@@ -457,7 +457,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               request.world->distances_m != nullptr
           ? std::optional<ExecutedHorizonClearance3D>{measureRouteClearance3D(
                 route, output.route.projection.station_m,
-                config_.route_execution.latest_lidar_route_lookahead_m,
+                config_.route_execution.latest_sensor_route_lookahead_m,
                 request.world->grid, *request.world->distances_m,
                 config_.physical_footprint,
                 config_.executed_horizon_constraint_clearance_m)}

@@ -92,8 +92,8 @@ stopExecutionArtifactFingerprint(const StopExecution3D& execution) noexcept {
   hashValue(hash, execution.execution_input != nullptr
                       ? execution.execution_input->contentFingerprint()
                       : 0U);
-  hashValue(hash, execution.latest_lidar_evidence != nullptr
-                      ? execution.latest_lidar_evidence->contentFingerprint()
+  hashValue(hash, execution.latest_sensor_evidence != nullptr
+                      ? execution.latest_sensor_evidence->contentFingerprint()
                       : 0U);
   hashValue(hash, execution.observed_raw_world != nullptr
                       ? execution.observed_raw_world->contentFingerprint()
@@ -198,7 +198,7 @@ bool StopExecution3D::valid() const noexcept {
          execution_input->nominalStateAuthoritative() &&
          finiteStateNearlyEqual(horizon->states.front(), execution_input->state()) &&
          validation_policy != nullptr && validation_policy->valid() &&
-         latest_lidar_evidence != nullptr && latest_lidar_evidence->valid() &&
+         latest_sensor_evidence != nullptr && latest_sensor_evidence->valid() &&
          finitePoint(rest_position) &&
          samePointExact(rest_position,
                         Point3{terminal_state.x, terminal_state.y, terminal_state.z}) &&
@@ -225,21 +225,21 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       certification.execution_input == nullptr ||
       !certification.execution_input->valid() ||
       !certification.execution_input->nominalStateAuthoritative() ||
-      certification.latest_lidar_evidence == nullptr ||
-      !certification.latest_lidar_evidence->valid() ||
+      certification.latest_sensor_evidence == nullptr ||
+      !certification.latest_sensor_evidence->valid() ||
       certification.valid_from_ns <= 0 ||
       certification.execution_input->effectiveStampNs() !=
           certification.valid_from_ns ||
       !executionInputFreshAt(*certification.execution_input,
                              *certification.validation_policy,
                              certification.valid_from_ns) ||
-      !latestLidarEvidenceFreshAt(*certification.latest_lidar_evidence,
-                                  *certification.validation_policy,
-                                  certification.valid_from_ns) ||
+      !latestSensorEvidenceFreshAt(*certification.latest_sensor_evidence,
+                                   *certification.validation_policy,
+                                   certification.valid_from_ns) ||
       (raw_mode && !certification.observed_raw_world->valid()) ||
       (static_mode && !certification.static_world->valid())) {
     return rejected(certification.execution_input == nullptr ||
-                            certification.latest_lidar_evidence == nullptr ||
+                            certification.latest_sensor_evidence == nullptr ||
                             certification.validation_policy == nullptr
                         ? StopCertificationStatus3D::kInvalidInput
                         : StopCertificationStatus3D::kEvidenceContractRejected);
@@ -287,8 +287,8 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
           certification.execution_input->previousControl(), validation_footprint,
           raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
                    : nullptr);
-  const IndexedPointCloudView3D latest_lidar_obstacle_points =
-      certification.latest_lidar_evidence->indexedHitPoints();
+  const IndexedPointCloudView3D latest_sensor_obstacle_points =
+      certification.latest_sensor_evidence->indexedHitPoints();
   // No terminal boundary: a stop answers to the flight envelope, the vehicle's
   // dynamics and the swept body against raw occupancy, and to nothing else.
   const FiniteExecutionPathWorld3D validation_world{
@@ -303,7 +303,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       .launch_support_contact = launch_support_contact,
       .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
+      .latest_sensor_obstacle_points = latest_sensor_obstacle_points,
       .terminal_boundary = std::nullopt,
   };
   const std::vector<TimedExecutionPathPoint3D> validation_points =
@@ -364,7 +364,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       ValidationContractOwners3D{
           .observed_raw_world = certification.observed_raw_world.get(),
           .static_world = certification.static_world.get(),
-          .latest_lidar_evidence = certification.latest_lidar_evidence.get(),
+          .latest_sensor_evidence = certification.latest_sensor_evidence.get(),
       });
   if (collision_policy_fingerprint == 0U || validation_contract_fingerprint == 0U) {
     return rejected(StopCertificationStatus3D::kValidationContractInvalid);
@@ -407,7 +407,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       .static_world = std::move(certification.static_world),
       .validation_policy = std::move(certification.validation_policy),
       .execution_input = std::move(certification.execution_input),
-      .latest_lidar_evidence = std::move(certification.latest_lidar_evidence),
+      .latest_sensor_evidence = std::move(certification.latest_sensor_evidence),
       .valid_from_ns = certification.valid_from_ns,
       .valid_until_ns = valid_until_ns,
       .control_interval_ns = control_interval_ns,
@@ -470,10 +470,10 @@ bool execution_route_snapshot_3d_internal::routeExecutionEvidenceNotOlderThanSto
          candidate.execution_input != nullptr && previous.execution_input != nullptr &&
          executionInputNotOlder(*candidate.execution_input,
                                 *previous.execution_input) &&
-         candidate.latest_lidar_evidence != nullptr &&
-         previous.latest_lidar_evidence != nullptr &&
-         latestLidarEvidenceNotOlder(*candidate.latest_lidar_evidence,
-                                     *previous.latest_lidar_evidence);
+         candidate.latest_sensor_evidence != nullptr &&
+         previous.latest_sensor_evidence != nullptr &&
+         latestSensorEvidenceNotOlder(*candidate.latest_sensor_evidence,
+                                      *previous.latest_sensor_evidence);
 }
 
 ExecutionRouteTransitionResult3D

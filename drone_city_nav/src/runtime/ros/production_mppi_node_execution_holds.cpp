@@ -42,22 +42,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     const ProductionMppiExecutionCycle& cycle, const Point3& hold_position,
     const ProductionMppiExecutionReason reason, const ExecutionHoldIntent3D intent) {
   ProductionMppiExecutionPublication& publication = cycle.publicationRef();
-  const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
+  const auto evidence_lock = evidence_boundary_.evidenceWithLatestSensor();
   const RawWorldIngressSnapshot3D world_input = raw_world_ingress_->snapshot();
   const std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world =
       world_input.latest_raw_world != nullptr
           ? world_input.latest_raw_world->authoritativeOwner()
           : nullptr;
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
-      latest_lidar_evidence_.load(std::memory_order_acquire);
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> current_lidar =
+      latest_sensor_evidence_.load(std::memory_order_acquire);
   const ExecutionHoldPreparation3D prepared =
       execution_supervisor_.prepareHold(ExecutionHoldRequest3D{
           .intent = intent,
           .requested_position = hold_position,
           .cycle_source_plan = cycle.route.execution.source_snapshot,
           .execution_input = cycle.evidence.execution_input,
-          .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
-          .current_lidar_evidence = current_lidar,
+          .latest_sensor_evidence = cycle.evidence.latest_sensor_evidence,
+          .current_sensor_evidence = current_lidar,
           .current_observed_raw_world = current_observed_raw_world,
           .stationary_capture_observed_raw_world = cycle.evidence.rearm_observed_world,
           .stationary_capture_static_world = cycle.evidence.rearm_static_world,
@@ -65,8 +65,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           .stationary_capture_validation_policy = config_.execution.validation_policy,
           .validation_now_ns = cycle.evidence.lidar_validation_now_ns,
           .raw_world_identity_conflicted = world_input.raw_world_identity_conflicted,
-          .latest_lidar_identity_conflicted =
-              latest_lidar_evidence_identity_conflicted_.load(
+          .latest_sensor_identity_conflicted =
+              latest_sensor_evidence_identity_conflicted_.load(
                   std::memory_order_acquire),
       });
   if (!prepared.prepared() ||
@@ -169,15 +169,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   };
   publication.mode = ProductionMppiExecutionMode::kPositionHold;
   publication.reason = reason;
-  publication.latest_lidar_obstacle_sequence =
-      cycle.evidence.latest_lidar_obstacle_sequence;
-  publication.latest_lidar_obstacle_hit_count =
-      cycle.evidence.latest_lidar_obstacle_points.size();
-  publication.latest_lidar_obstacle_age_ms =
-      cycle.evidence.latest_lidar_obstacle_age_ms;
-  publication.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
-  publication.latest_lidar_obstacle_receive_time_fallback =
-      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
+  publication.latest_sensor_obstacle_sequence =
+      cycle.evidence.latest_sensor_obstacle_sequence;
+  publication.latest_sensor_obstacle_hit_count =
+      cycle.evidence.latest_sensor_obstacle_points.size();
+  publication.latest_sensor_obstacle_age_ms =
+      cycle.evidence.latest_sensor_obstacle_age_ms;
+  publication.latest_sensor_obstacle_fresh =
+      cycle.evidence.latest_sensor_obstacle_fresh;
+  publication.latest_sensor_obstacle_receive_time_fallback =
+      cycle.evidence.latest_sensor_obstacle_receive_time_fallback;
   publication.published = true;
   return publication;
 }
@@ -249,7 +250,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
        (cycle.route.execution.lifecycle_event->kind ==
             RouteLifecycleEventKind3D::kRawInvalidated ||
         cycle.route.execution.lifecycle_event->kind ==
-            RouteLifecycleEventKind3D::kLatestLidarInvalidated));
+            RouteLifecycleEventKind3D::kLatestSensorInvalidated));
   // Any lifecycle event that ends the resident path's claim on the vehicle
   // leaves the vehicle without a plan to execute, physical or not.
   const bool path_claim_ended =

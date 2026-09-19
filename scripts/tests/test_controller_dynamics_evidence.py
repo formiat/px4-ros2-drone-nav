@@ -99,10 +99,10 @@ class PositionEstimateTest(unittest.TestCase):
 
 class LidarAgeAndValidationTest(unittest.TestCase):
     def test_reads_the_largest_lidar_age(self) -> None:
-        log = ("[1.0] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_lidar_obstacle_age_ms=120 b=2\n"
-               "[1.2] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_lidar_obstacle_age_ms=-1 b=2\n"
-               "[1.4] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_lidar_obstacle_age_ms=340 b=2\n")
-        measured = evidence.lidar_evidence_age_max_ms(log)
+        log = ("[1.0] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_sensor_obstacle_age_ms=120 b=2\n"
+               "[1.2] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_sensor_obstacle_age_ms=-1 b=2\n"
+               "[1.4] [production_mppi_node]: PRODUCTION_MPPI_TICK a=1 latest_sensor_obstacle_age_ms=340 b=2\n")
+        measured = evidence.sensor_evidence_age_max_ms(log)
         self.assertEqual(measured.samples, 2)
         self.assertEqual(measured.value, 340.0)
 
@@ -113,7 +113,7 @@ class LidarAgeAndValidationTest(unittest.TestCase):
         self.assertEqual(len(errors), 3)
         self.assertTrue(any("tracking.npz" in error for error in errors))
         self.assertTrue(any("gz_pose.csv" in error for error in errors))
-        self.assertTrue(any("lidar evidence age" in error for error in errors))
+        self.assertTrue(any("sensor evidence age" in error for error in errors))
 
     def test_validation_passes_a_clean_flight(self) -> None:
         setpoints, positions = straight_flight(0.05)
@@ -125,7 +125,7 @@ class LidarAgeAndValidationTest(unittest.TestCase):
             f"[{stamp:.6f}] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=1 "
             f"state_position=({3.0 * (stamp - 1.7e9) + 0.2 * np.sin(stamp - 1.7e9):.3f},0.100,5.000) "
             f"state_velocity=({3.0 + 0.2 * np.cos(stamp - 1.7e9):.3f},0.000,0.000) "
-            "latest_lidar_obstacle_age_ms=150\n"
+            "latest_sensor_obstacle_age_ms=150\n"
             for stamp in log_time)
         with tempfile.TemporaryDirectory() as directory:
             run = Path(directory)
@@ -150,7 +150,7 @@ class LidarAgeAndValidationTest(unittest.TestCase):
             f"[{wall:.6f}] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=1 "
             f"state_position=({3.0 * sim + 0.2 * np.sin(sim):.3f},0.100,5.000) "
             f"state_velocity=({3.0 + 0.2 * np.cos(sim):.3f},0.000,0.000) "
-            "latest_lidar_obstacle_age_ms=150\n"
+            "latest_sensor_obstacle_age_ms=150\n"
             for sim, wall in zip(sim_time[::10], wall_time[::10]))
         with tempfile.TemporaryDirectory() as directory:
             run = Path(directory)

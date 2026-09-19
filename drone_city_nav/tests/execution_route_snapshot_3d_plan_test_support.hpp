@@ -23,9 +23,9 @@ FiniteExecutionPlan3D SnapshotFixture3D::finitePlanForRoute(
       : hold != nullptr           ? hold->terminal_execution_input.get()
                                   : nullptr,
       snapshot.finiteExecution() != nullptr
-          ? snapshot.finiteExecution()->latest_lidar_evidence.get()
-      : stop != nullptr ? stop->latest_lidar_evidence.get()
-      : hold != nullptr ? hold->latest_lidar_evidence.get()
+          ? snapshot.finiteExecution()->latest_sensor_evidence.get()
+      : stop != nullptr ? stop->latest_sensor_evidence.get()
+      : hold != nullptr ? hold->latest_sensor_evidence.get()
                         : nullptr);
   const std::optional<FiniteMotionHorizon3D> braking = buildFiniteBrakingHorizon3D(
       command.horizon.states.front(), command.horizon.controls.size(),
@@ -57,7 +57,7 @@ testExecutionPlanForCommand(const ExecutionPlan3D& current,
   };
   if (command_horizon.horizon == nullptr || command_horizon.horizon->states.empty() ||
       command_horizon.execution_input == nullptr ||
-      command_horizon.latest_lidar_evidence == nullptr ||
+      command_horizon.latest_sensor_evidence == nullptr ||
       target_route.validation_policy == nullptr) {
     return invalid_plan();
   }
@@ -75,7 +75,7 @@ testExecutionPlanForCommand(const ExecutionPlan3D& current,
           .trajectory_revision = command_horizon.trajectory_revision,
           .horizon = braking_horizon.value(),
           .execution_input = command_horizon.execution_input,
-          .latest_lidar_evidence = command_horizon.latest_lidar_evidence,
+          .latest_sensor_evidence = command_horizon.latest_sensor_evidence,
           .valid_from_ns = command_horizon.valid_from_ns,
           .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
       });

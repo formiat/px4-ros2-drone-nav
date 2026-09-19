@@ -212,7 +212,7 @@ TEST(NavigationDiagnosticsSinkTest, PublishesOneCoherentStatisticsSnapshot) {
   execution.reason = ProductionMppiExecutionReason::kNoExecutableHorizon;
   execution.terminal_rest_state = true;
   execution.finite_path_validation_backoff = true;
-  execution.latest_lidar_path_validation_backoff = true;
+  execution.latest_sensor_path_validation_backoff = true;
   execution.retained_previous_finite_path = true;
   execution.arrival_control_count = 3U;
   execution.arrival_shaping_attempts = 2U;
@@ -238,7 +238,7 @@ TEST(NavigationDiagnosticsSinkTest, PublishesOneCoherentStatisticsSnapshot) {
   EXPECT_EQ(statistics.no_executable_horizon_hold_ticks, 1U);
   EXPECT_EQ(statistics.terminal_rest_horizon_ticks, 1U);
   EXPECT_EQ(statistics.finite_path_validation_backoff_ticks, 1U);
-  EXPECT_EQ(statistics.latest_lidar_path_validation_backoff_ticks, 1U);
+  EXPECT_EQ(statistics.latest_sensor_path_validation_backoff_ticks, 1U);
   EXPECT_EQ(statistics.retained_previous_finite_path_ticks, 1U);
   EXPECT_EQ(statistics.arrival_control_total, 3U);
   EXPECT_EQ(statistics.arrival_shaping_attempt_total, 2U);

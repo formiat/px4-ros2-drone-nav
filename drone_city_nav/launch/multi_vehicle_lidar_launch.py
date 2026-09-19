@@ -38,7 +38,7 @@ def make_memory_parameters(
     raw_delta_topic,
     memory_snapshot_topic,
     memory_status_topic,
-    latest_lidar_obstacle_scan_topic,
+    latest_sensor_obstacle_scan_topic,
     enable_lidar_debug,
 ):
     selected_memory_vehicle = (
@@ -69,7 +69,7 @@ def make_memory_parameters(
         "initial_y_m": config["map_start_y"],
         "raw_memory_3d_pointcloud_topic": f"{prefix}/raw_memory_points_3d",
         "obstacle_memory_status_topic": memory_status_topic,
-        "latest_lidar_obstacle_scan_topic": latest_lidar_obstacle_scan_topic,
+        "latest_sensor_obstacle_scan_topic": latest_sensor_obstacle_scan_topic,
         "cooperative_traffic_enabled": cooperative_traffic,
         "vehicle_id": role,
         "cooperative_flight_intent_topic": (

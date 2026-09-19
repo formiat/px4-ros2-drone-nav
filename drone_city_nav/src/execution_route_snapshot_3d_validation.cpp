@@ -57,7 +57,7 @@ knownRouteLifecycleEventKind(const RouteLifecycleEventKind3D kind) noexcept {
   switch (kind) {
     case RouteLifecycleEventKind3D::kCompleted:
     case RouteLifecycleEventKind3D::kRawInvalidated:
-    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
+    case RouteLifecycleEventKind3D::kLatestSensorInvalidated:
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kControlCandidateRejected:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
@@ -193,7 +193,7 @@ validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
 // owner-backed point array before its cached fingerprint can enter the proof.
 [[nodiscard]] std::uint64_t validationLidarOwnerContentFingerprint(
     const IndexedPointCloudView3D& points,
-    const VersionedLatestLidarEvidence3D* const owner) noexcept {
+    const VersionedLatestSensorEvidence3D* const owner) noexcept {
   if (owner == nullptr) {
     return 0U;
   }
@@ -259,8 +259,8 @@ validationContractFingerprint(const FiniteExecutionPathWorld3D& world,
   hashValue(hash, world_content->content_fingerprint);
 
   const std::uint64_t lidar_content_fingerprint =
-      validationLidarOwnerContentFingerprint(world.latest_lidar_obstacle_points,
-                                             owners.latest_lidar_evidence);
+      validationLidarOwnerContentFingerprint(world.latest_sensor_obstacle_points,
+                                             owners.latest_sensor_evidence);
   if (lidar_content_fingerprint == 0U) {
     return 0U;
   }
@@ -340,18 +340,18 @@ std::optional<FiniteExecutionPathTerminalBoundary3D> makeValidationTerminalBound
 }
 
 [[nodiscard]] bool
-latestLidarEvidenceFreshAt(const VersionedLatestLidarEvidence3D& evidence,
-                           const VersionedExecutionValidationPolicy3D& policy,
-                           const std::int64_t validation_stamp_ns) noexcept {
+latestSensorEvidenceFreshAt(const VersionedLatestSensorEvidence3D& evidence,
+                            const VersionedExecutionValidationPolicy3D& policy,
+                            const std::int64_t validation_stamp_ns) noexcept {
   constexpr double kNanosecondsPerMillisecond{1.0e6};
   if (!evidence.valid() || validation_stamp_ns <= 0) {
     return false;
   }
-  if (!policy.latestLidarFreshnessRequired()) {
+  if (!policy.latestSensorFreshnessRequired()) {
     return true;
   }
   const double maximum_age_ns =
-      policy.latestLidarMaximumAgeMs() * kNanosecondsPerMillisecond;
+      policy.latestSensorMaximumAgeMs() * kNanosecondsPerMillisecond;
   const std::int64_t acquisition_age_ns =
       validation_stamp_ns - evidence.acquisitionStampNs();
   const std::int64_t receive_age_ns = validation_stamp_ns - evidence.receiveStampNs();

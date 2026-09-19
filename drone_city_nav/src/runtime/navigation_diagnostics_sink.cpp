@@ -108,8 +108,8 @@ void NavigationDiagnosticsSink::recordTick(
   statistics_.terminal_rest_horizon_ticks += execution.terminal_rest_state ? 1U : 0U;
   statistics_.finite_path_validation_backoff_ticks +=
       execution.finite_path_validation_backoff ? 1U : 0U;
-  statistics_.latest_lidar_path_validation_backoff_ticks +=
-      execution.latest_lidar_path_validation_backoff ? 1U : 0U;
+  statistics_.latest_sensor_path_validation_backoff_ticks +=
+      execution.latest_sensor_path_validation_backoff ? 1U : 0U;
   statistics_.retained_previous_finite_path_ticks +=
       execution.retained_previous_finite_path ? 1U : 0U;
   statistics_.arrival_control_total += execution.arrival_control_count;

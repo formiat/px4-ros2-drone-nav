@@ -23,13 +23,13 @@ rawOwner(const ExecutionPlan3D& plan) {
   return nullptr;
 }
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
 lidarOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
-    return execution->latest_lidar_evidence;
+    return execution->latest_sensor_evidence;
   }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
-    return hold->latest_lidar_evidence;
+    return hold->latest_sensor_evidence;
   }
   return nullptr;
 }
@@ -88,7 +88,7 @@ navigationWitness(const VersionedExecutionInput3D& input) {
           },
       .navigation = navigationWitness(*input),
       .current_observed_raw_world = raw,
-      .current_lidar_evidence = lidarOwner(*next),
+      .current_sensor_evidence = lidarOwner(*next),
       .publication_now_ns = owner.valid_from_ns,
       .maximum_control_feedback_age_ms = 1000.0,
   };
@@ -109,10 +109,10 @@ activeTransition(const ExecutionPlan3D& initial, SnapshotFixture3D& fixture) {
           FiniteExecutionKind3D::kNominal, 100U));
 }
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
-lidarAdvancedBy(const VersionedLatestLidarEvidence3D& previous,
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
+lidarAdvancedBy(const VersionedLatestSensorEvidence3D& previous,
                 const std::int64_t advance_ns) {
-  return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+  return VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
       .producer_instance_id = previous.producerInstanceId(),
       .sequence = previous.sequence() + 1U,
       .pose_generation = previous.poseGeneration() + 1U,
@@ -233,12 +233,12 @@ TEST(ExecutionSupervisorHorizon3DTest,
       activeTransition(*authority->plan(), fixture);
   ASSERT_TRUE(transition.applied());
   ExecutionHorizonCommitRequest3D request = transitionRequest(authority, transition);
-  ASSERT_NE(request.current_lidar_evidence, nullptr);
+  ASSERT_NE(request.current_sensor_evidence, nullptr);
   constexpr std::int64_t kEvidenceAdvanceNs{200'000'000LL};
-  request.current_lidar_evidence =
-      lidarAdvancedBy(*request.current_lidar_evidence, kEvidenceAdvanceNs);
-  ASSERT_NE(request.current_lidar_evidence, nullptr);
-  request.publication_now_ns = request.current_lidar_evidence->receiveStampNs();
+  request.current_sensor_evidence =
+      lidarAdvancedBy(*request.current_sensor_evidence, kEvidenceAdvanceNs);
+  ASSERT_NE(request.current_sensor_evidence, nullptr);
+  request.publication_now_ns = request.current_sensor_evidence->receiveStampNs();
 
   const ExecutionHorizonCommitResult3D committed =
       supervisor.commitHorizon(std::move(request));

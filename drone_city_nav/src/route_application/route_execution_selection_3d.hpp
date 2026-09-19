@@ -65,7 +65,7 @@ struct ProductionRouteExecutionSelection3D {
   // only after its own integration; the vehicle brakes toward it now, as it
   // brakes toward a persistent block, instead of meeting it at the end of its
   // horizon and stopping hard.
-  std::optional<double> latest_lidar_blocked_station_m;
+  std::optional<double> latest_sensor_blocked_station_m;
 };
 
 } // namespace drone_city_nav

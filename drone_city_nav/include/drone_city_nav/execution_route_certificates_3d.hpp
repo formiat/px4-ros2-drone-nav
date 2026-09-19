@@ -161,7 +161,7 @@ struct FiniteExecutionState3D {
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::optional<FiniteRouteTerminalBoundary3D> terminal_boundary;
   CertifiedStopBoundary3D stop_boundary{};
   double begin_route_station_m{0.0};
@@ -187,10 +187,10 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
     std::int64_t validation_stamp_ns) noexcept;
 
 [[nodiscard]] FiniteExecutionPathValidation3D
-validateRemainingFiniteExecutionAgainstLatestLidar3D(
+validateRemainingFiniteExecutionAgainstLatestSensor3D(
     const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* route,
     const VersionedExecutionInput3D& current_input,
-    const VersionedLatestLidarEvidence3D& current_lidar,
+    const VersionedLatestSensorEvidence3D& current_lidar,
     std::int64_t validation_stamp_ns) noexcept;
 
 struct FiniteExecutionPlan3D {

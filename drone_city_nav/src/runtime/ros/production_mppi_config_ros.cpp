@@ -190,9 +190,9 @@ private:
         "raw_obstacle_snapshot_3d_topic", "/drone_city_nav/raw_obstacle_snapshot_3d");
     world.topics.raw_obstacle_delta_3d = declare<std::string>(
         "raw_obstacle_delta_3d_topic", "/drone_city_nav/raw_obstacle_delta_3d");
-    world.topics.latest_lidar_obstacle_scan =
-        declare<std::string>("latest_lidar_obstacle_scan_topic",
-                             "/drone_city_nav/latest_lidar_obstacle_scan");
+    world.topics.latest_sensor_obstacle_scan =
+        declare<std::string>("latest_sensor_obstacle_scan_topic",
+                             "/drone_city_nav/latest_sensor_obstacle_scan");
     world.topics.obstacle_memory_status = declare<std::string>(
         "obstacle_memory_status_topic", "/drone_city_nav/obstacle_memory_status");
   }
@@ -208,8 +208,8 @@ private:
         declare<double>("maximum_control_feedback_age_ms", 200.0);
     execution.horizon_acknowledgement_grace_ms =
         declare<double>("execution_horizon_acknowledgement_grace_ms", 100.0);
-    execution.latest_lidar_obstacle_maximum_age_ms =
-        declare<double>("latest_lidar_obstacle_maximum_age_ms", 1000.0);
+    execution.latest_sensor_obstacle_maximum_age_ms =
+        declare<double>("latest_sensor_obstacle_maximum_age_ms", 1000.0);
     execution.stationary_hold_validity_s =
         declare<double>("stationary_hold_validity_s", 1.0);
     execution.navigation_health = NavigationHealthConfig{
@@ -301,8 +301,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
           declare<bool>("route_progress_replan_enabled", false),
       .no_eligible_route_replan_enabled =
           declare<bool>("no_eligible_route_replan_enabled", false),
-      .latest_lidar_freshness_required =
-          declare<bool>("execution_latest_lidar_freshness_required", false),
+      .latest_sensor_freshness_required =
+          declare<bool>("execution_latest_sensor_freshness_required", false),
       .nonphysical_execution_revocation_enabled =
           declare<bool>("execution_nonphysical_revocation_enabled", false),
   };
@@ -612,7 +612,7 @@ void ProductionMppiConfigLoader::declareControl() {
       .guaranteed_detection_range_m =
           declare<double>("guaranteed_lidar_detection_range_m", 30.0),
       .maximum_evidence_age_s =
-          config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3,
+          config_.execution.latest_sensor_obstacle_maximum_age_ms * 1.0e-3,
       .physical_margin_m = declare<double>("sensor_braking_physical_margin_m", 3.0),
       .maximum_horizontal_acceleration_mps2 = maximum_horizontal_acceleration_mps2,
       .maximum_vertical_acceleration_mps2 = maximum_vertical_acceleration_mps2,
@@ -944,11 +944,11 @@ void ProductionMppiConfigLoader::finalize() {
 
   execution.validation_policy = VersionedExecutionValidationPolicy3D::capture(
       world.flight_envelope, control.mppi.dynamics, control.mppi.altitude_envelope,
-      world.physical_footprint, execution.latest_lidar_obstacle_maximum_age_ms,
+      world.physical_footprint, execution.latest_sensor_obstacle_maximum_age_ms,
       execution.maximum_pose_prediction_age_ms,
       execution.maximum_control_feedback_age_ms,
       planning.optional_constraints.route_cross_track_constraints_enabled,
-      planning.optional_constraints.latest_lidar_freshness_required,
+      planning.optional_constraints.latest_sensor_freshness_required,
       planning.optional_constraints.route_tracking_tube_constraints_enabled,
       control.speed_policy.minimum_target_lookahead_m);
   if (execution.validation_policy == nullptr) {

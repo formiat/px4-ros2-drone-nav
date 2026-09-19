@@ -557,7 +557,7 @@ assessRouteSegmentCompletion3D(const std::span<const RouteSample3D> route,
 bool routeLifecycleEventEndsPathClaim3D(const RouteLifecycleEventKind3D kind) noexcept {
   switch (kind) {
     case RouteLifecycleEventKind3D::kRawInvalidated:
-    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
+    case RouteLifecycleEventKind3D::kLatestSensorInvalidated:
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
     case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
@@ -576,8 +576,8 @@ routeLifecycleEventKind3DName(const RouteLifecycleEventKind3D kind) noexcept {
       return "completed";
     case RouteLifecycleEventKind3D::kRawInvalidated:
       return "raw_invalidated";
-    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
-      return "latest_lidar_invalidated";
+    case RouteLifecycleEventKind3D::kLatestSensorInvalidated:
+      return "latest_sensor_invalidated";
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
       return "objective_superseded";
     case RouteLifecycleEventKind3D::kControlCandidateRejected:

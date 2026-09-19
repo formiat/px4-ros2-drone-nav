@@ -15,7 +15,7 @@ enum class ExecutionPublicationRawRequirement3D : std::uint8_t {
 
 enum class ExecutionPublicationCurrentnessStatus3D : std::uint8_t {
   kCurrent,
-  // The execution owner has not changed, but continuous raw/lidar evidence
+  // The execution owner has not changed, but continuous raw/sensor evidence
   // advanced on the same lineage. Publication may proceed only after the
   // candidate swept horizon is validated against that latest evidence.
   kRevalidationRequired,
@@ -28,8 +28,8 @@ enum class ExecutionPublicationCurrentnessStatus3D : std::uint8_t {
   kRawEvidenceInvalid,
   kRawVersionChanged,
   kRawObservationOwnerChanged,
-  kLidarEvidenceMissing,
-  kLidarEvidenceInvalid,
+  kSensorEvidenceMissing,
+  kSensorEvidenceInvalid,
   kLidarIdentityChanged,
   kLidarContentChanged,
   kInvalidPublicationTime,
@@ -43,8 +43,8 @@ struct ExecutionPublicationCurrentnessCheck3D {
       ExecutionPublicationRawRequirement3D::kRequired};
   std::shared_ptr<const VersionedObservedRawWorld3D> expected_raw_world;
   std::shared_ptr<const VersionedObservedRawWorld3D> current_raw_world;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> expected_lidar_evidence;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> expected_sensor_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> current_sensor_evidence;
   std::int64_t publication_now_ns{0};
   double maximum_lidar_age_ms{0.0};
   bool lidar_freshness_required{true};

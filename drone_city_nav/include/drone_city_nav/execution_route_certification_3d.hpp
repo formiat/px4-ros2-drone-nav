@@ -30,7 +30,7 @@ struct FiniteExecutionCertification3D {
   std::uint64_t trajectory_revision{0U};
   FiniteMotionHorizon3D horizon{};
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::int64_t valid_from_ns{0};
   FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
 };
@@ -114,7 +114,7 @@ struct StopExecutionCertification3D {
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::int64_t valid_from_ns{0};
   // How much of the policy envelope's clearance the braking sweep gives up:
   // 0 is the envelope as configured, 1 the physical body. A stop is the last
@@ -129,7 +129,7 @@ struct StationaryExecutionHoldCertification3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
 };
 
 [[nodiscard]] bool

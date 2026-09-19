@@ -75,7 +75,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const ProductionRouteExecutionSelection3D& route_execution,
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence,
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>&
+        latest_sensor_evidence,
     const OffboardSessionAdmissionState& offboard_session,
     const std::int64_t offboard_session_receive_stamp_ns,
     const ProductionMppiPlanningState planning_state, const std::int64_t now_ns) {
@@ -182,30 +183,31 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   } else if (stationary_capture_rearm) {
     selected_policy = config_.execution.validation_policy;
   }
-  const double latest_lidar_maximum_age_ms =
+  const double latest_sensor_maximum_age_ms =
       selected_policy != nullptr
-          ? selected_policy->latestLidarMaximumAgeMs()
-          : config_.execution.latest_lidar_obstacle_maximum_age_ms;
-  const LatestLidarEvidenceFreshness3D latest_lidar_freshness =
-      production_mppi_execution_detail::latestLidarEvidenceFreshness(
-          latest_lidar_evidence, lidar_validation_now_ns, latest_lidar_maximum_age_ms);
-  double latest_lidar_obstacle_age_ms{-1.0};
-  bool latest_lidar_obstacle_fresh{false};
-  bool latest_lidar_obstacle_receive_time_fallback{false};
-  IndexedPointCloudView3D latest_lidar_obstacle_points;
-  if (latest_lidar_evidence != nullptr) {
-    latest_lidar_obstacle_age_ms = latest_lidar_freshness.age_ms;
-    latest_lidar_obstacle_fresh = latest_lidar_freshness.fresh;
-    latest_lidar_obstacle_receive_time_fallback =
-        latest_lidar_freshness.receive_time_fallback;
-    if (latest_lidar_obstacle_fresh ||
+          ? selected_policy->latestSensorMaximumAgeMs()
+          : config_.execution.latest_sensor_obstacle_maximum_age_ms;
+  const LatestSensorEvidenceFreshness3D latest_sensor_freshness =
+      production_mppi_execution_detail::latestSensorEvidenceFreshness(
+          latest_sensor_evidence, lidar_validation_now_ns,
+          latest_sensor_maximum_age_ms);
+  double latest_sensor_obstacle_age_ms{-1.0};
+  bool latest_sensor_obstacle_fresh{false};
+  bool latest_sensor_obstacle_receive_time_fallback{false};
+  IndexedPointCloudView3D latest_sensor_obstacle_points;
+  if (latest_sensor_evidence != nullptr) {
+    latest_sensor_obstacle_age_ms = latest_sensor_freshness.age_ms;
+    latest_sensor_obstacle_fresh = latest_sensor_freshness.fresh;
+    latest_sensor_obstacle_receive_time_fallback =
+        latest_sensor_freshness.receive_time_fallback;
+    if (latest_sensor_obstacle_fresh ||
         (selected_policy != nullptr &&
-         !selected_policy->latestLidarFreshnessRequired())) {
-      latest_lidar_obstacle_points = latest_lidar_evidence->indexedHitPoints();
+         !selected_policy->latestSensorFreshnessRequired())) {
+      latest_sensor_obstacle_points = latest_sensor_evidence->indexedHitPoints();
     }
   }
-  const std::uint64_t latest_lidar_obstacle_sequence =
-      latest_lidar_evidence != nullptr ? latest_lidar_evidence->sequence() : 0U;
+  const std::uint64_t latest_sensor_obstacle_sequence =
+      latest_sensor_evidence != nullptr ? latest_sensor_evidence->sequence() : 0U;
   const bool exact_snapshot_world =
       selected_policy != nullptr && selected_policy->valid() &&
       ((selected_snapshot_route != nullptr &&
@@ -279,7 +281,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .launch_support_contact = launch_support_contact_owner,
       .proprioceptive_free_space_seed = proprioceptive_seed_owner,
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
+      .latest_sensor_obstacle_points = latest_sensor_obstacle_points,
       .terminal_boundary = route_terminal_boundary,
   };
   const float execution_dt_s = execution_dynamics != nullptr
@@ -303,7 +305,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           EvidenceSnapshot3D{
               .objective = objective,
               .execution_input = execution_input,
-              .latest_lidar_evidence = latest_lidar_evidence,
+              .latest_sensor_evidence = latest_sensor_evidence,
               .offboard_session = offboard_session,
               .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
               .exact_initial_state = exact_initial_state,
@@ -313,12 +315,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               .rearm_observed_world = rearm_observed_world,
               .rearm_static_world = rearm_static_world,
               .selected_policy = selected_policy,
-              .latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms,
-              .latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh,
-              .latest_lidar_obstacle_receive_time_fallback =
-                  latest_lidar_obstacle_receive_time_fallback,
-              .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
-              .latest_lidar_obstacle_sequence = latest_lidar_obstacle_sequence,
+              .latest_sensor_obstacle_age_ms = latest_sensor_obstacle_age_ms,
+              .latest_sensor_obstacle_fresh = latest_sensor_obstacle_fresh,
+              .latest_sensor_obstacle_receive_time_fallback =
+                  latest_sensor_obstacle_receive_time_fallback,
+              .latest_sensor_obstacle_points = latest_sensor_obstacle_points,
+              .latest_sensor_obstacle_sequence = latest_sensor_obstacle_sequence,
               .exact_snapshot_world = exact_snapshot_world,
               .execution_flight_envelope = execution_flight_envelope,
               .execution_dynamics = execution_dynamics,
@@ -570,7 +572,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
         rejection.route_generation, rejection.observed_raw_world,
         rejection.source == HorizonCandidateObstacleSource3D::kPersistentRaw
             ? "selected_finite_candidate_persistent_raw"
-            : "selected_finite_candidate_latest_lidar",
+            : "selected_finite_candidate_latest_sensor",
         resident_stationary
             ? ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner
             : ProductionMppiPhysicalTrajectoryAuthority::kUnownedCandidate);
@@ -625,7 +627,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
     }
     const auto physical_status = [](const mppi::FiniteExecutionPathStatus status) {
       return status == mppi::FiniteExecutionPathStatus::kRawCollision ||
-             status == mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;
+             status == mppi::FiniteExecutionPathStatus::kLatestSensorRawCollision;
     };
     // Physical means collision evidence against the path. A validation
     // backoff on its own is not: a candidate rejected at its route endpoint
@@ -634,7 +636,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
     const bool physical_candidate_rejection =
         candidate.physical_rejection.has_value() ||
         candidate.persistent_raw_path_validation_backoff ||
-        candidate.latest_lidar_path_validation_backoff ||
+        candidate.latest_sensor_path_validation_backoff ||
         physical_status(candidate.validation_status) ||
         physical_status(candidate.first_failed_validation_status);
     ProductionMppiExecutionPublication hold = publishNoExecutablePathHold(
@@ -647,8 +649,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
         candidate.finite_path_rejected_precondition;
     hold.finite_path_first_failed_validation_status =
         candidate.first_failed_validation_status;
-    hold.latest_lidar_path_validation_backoff =
-        candidate.latest_lidar_path_validation_backoff;
+    hold.latest_sensor_path_validation_backoff =
+        candidate.latest_sensor_path_validation_backoff;
     return hold;
   }
 
@@ -725,23 +727,24 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   publication.arrival_shaping_attempts = candidate.arrival_shaping_attempts;
   publication.first_control = execution_controls.front();
   publication.first_control_available = true;
-  publication.latest_lidar_obstacle_sequence =
-      cycle.evidence.latest_lidar_obstacle_sequence;
-  publication.latest_lidar_obstacle_hit_count =
-      cycle.evidence.latest_lidar_obstacle_points.size();
-  publication.latest_lidar_obstacle_age_ms =
-      cycle.evidence.latest_lidar_obstacle_age_ms;
+  publication.latest_sensor_obstacle_sequence =
+      cycle.evidence.latest_sensor_obstacle_sequence;
+  publication.latest_sensor_obstacle_hit_count =
+      cycle.evidence.latest_sensor_obstacle_points.size();
+  publication.latest_sensor_obstacle_age_ms =
+      cycle.evidence.latest_sensor_obstacle_age_ms;
   publication.finite_path_validation_backoff = candidate.path_validation_backoff;
   publication.finite_path_validation_status = candidate.validation_status;
   publication.finite_path_rejected_precondition =
       candidate.finite_path_rejected_precondition;
   publication.finite_path_first_failed_validation_status =
       candidate.first_failed_validation_status;
-  publication.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
-  publication.latest_lidar_obstacle_receive_time_fallback =
-      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
-  publication.latest_lidar_path_validation_backoff =
-      candidate.latest_lidar_path_validation_backoff;
+  publication.latest_sensor_obstacle_fresh =
+      cycle.evidence.latest_sensor_obstacle_fresh;
+  publication.latest_sensor_obstacle_receive_time_fallback =
+      cycle.evidence.latest_sensor_obstacle_receive_time_fallback;
+  publication.latest_sensor_path_validation_backoff =
+      candidate.latest_sensor_path_validation_backoff;
   publication.terminal_rest_state = true;
   publication.published = true;
   return publication;

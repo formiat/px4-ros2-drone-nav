@@ -6,7 +6,7 @@ namespace drone_city_nav {
 namespace {
 
 [[nodiscard]] inline bool
-producerRetired(const LatestLidarEvidenceAdmissionState3D& state,
+producerRetired(const LatestSensorEvidenceAdmissionState3D& state,
                 const std::uint64_t producer_instance_id) noexcept {
   for (std::size_t index = 0U; index < state.retired_producer_count; ++index) {
     if (state.retired_producer_instance_ids[index] == producer_instance_id) {
@@ -17,14 +17,14 @@ producerRetired(const LatestLidarEvidenceAdmissionState3D& state,
 }
 
 [[nodiscard]] inline bool
-validIdentityClaim(const LatestLidarEvidenceIdentityClaim3D& claim) noexcept {
+validIdentityClaim(const LatestSensorEvidenceIdentityClaim3D& claim) noexcept {
   return claim.producer_instance_id != 0U && claim.sequence != 0U &&
          claim.raw_wire_fingerprint != 0U && claim.first_receive_stamp_ns > 0;
 }
 
 [[nodiscard]] inline bool
-sameIdentityClaim(const LatestLidarEvidenceIdentityClaim3D& left,
-                  const LatestLidarEvidenceIdentityClaim3D& right) noexcept {
+sameIdentityClaim(const LatestSensorEvidenceIdentityClaim3D& left,
+                  const LatestSensorEvidenceIdentityClaim3D& right) noexcept {
   return left.producer_instance_id == right.producer_instance_id &&
          left.sequence == right.sequence &&
          left.raw_wire_fingerprint == right.raw_wire_fingerprint &&
@@ -32,7 +32,7 @@ sameIdentityClaim(const LatestLidarEvidenceIdentityClaim3D& left,
 }
 
 [[nodiscard]] inline std::size_t
-prospectiveClaimIndex(const LatestLidarEvidenceAdmissionState3D& state,
+prospectiveClaimIndex(const LatestSensorEvidenceAdmissionState3D& state,
                       const std::uint64_t producer_instance_id) noexcept {
   for (std::size_t index = 0U; index < state.prospective_claim_count; ++index) {
     if (state.prospective_claims[index].identity.producer_instance_id ==
@@ -43,7 +43,7 @@ prospectiveClaimIndex(const LatestLidarEvidenceAdmissionState3D& state,
   return state.prospective_claim_count;
 }
 
-inline void removeProspectiveClaim(LatestLidarEvidenceAdmissionState3D& state,
+inline void removeProspectiveClaim(LatestSensorEvidenceAdmissionState3D& state,
                                    const std::uint64_t producer_instance_id) noexcept {
   const std::size_t index = prospectiveClaimIndex(state, producer_instance_id);
   if (index == state.prospective_claim_count) {
@@ -56,7 +56,7 @@ inline void removeProspectiveClaim(LatestLidarEvidenceAdmissionState3D& state,
 }
 
 inline void
-clearPendingProducerHandoff(LatestLidarEvidenceAdmissionState3D& state) noexcept {
+clearPendingProducerHandoff(LatestSensorEvidenceAdmissionState3D& state) noexcept {
   state.pending_producer_instance_id = 0U;
   state.pending_sequence = 0U;
   state.pending_pose_generation = 0U;
@@ -67,8 +67,8 @@ clearPendingProducerHandoff(LatestLidarEvidenceAdmissionState3D& state) noexcept
 }
 
 inline void
-beginPendingProducerHandoff(LatestLidarEvidenceAdmissionState3D& state,
-                            const VersionedLatestLidarEvidence3D& candidate) noexcept {
+beginPendingProducerHandoff(LatestSensorEvidenceAdmissionState3D& state,
+                            const VersionedLatestSensorEvidence3D& candidate) noexcept {
   state.pending_producer_instance_id = candidate.producerInstanceId();
   state.pending_sequence = candidate.sequence();
   state.pending_pose_generation = candidate.poseGeneration();
@@ -79,8 +79,8 @@ beginPendingProducerHandoff(LatestLidarEvidenceAdmissionState3D& state,
 }
 
 inline void
-promoteCurrentClaim(LatestLidarEvidenceAdmissionState3D& state,
-                    const LatestLidarEvidenceIdentityClaim3D& claim) noexcept {
+promoteCurrentClaim(LatestSensorEvidenceAdmissionState3D& state,
+                    const LatestSensorEvidenceIdentityClaim3D& claim) noexcept {
   removeProspectiveClaim(state, claim.producer_instance_id);
   state.current_producer_instance_id = claim.producer_instance_id;
   state.current_sequence = claim.sequence;
@@ -91,8 +91,8 @@ promoteCurrentClaim(LatestLidarEvidenceAdmissionState3D& state,
 }
 
 [[nodiscard]] inline bool
-validAdmissionState(const LatestLidarEvidenceAdmissionState3D& state,
-                    const VersionedLatestLidarEvidence3D* const current) noexcept {
+validAdmissionState(const LatestSensorEvidenceAdmissionState3D& state,
+                    const VersionedLatestSensorEvidence3D* const current) noexcept {
   if (state.retired_producer_count > state.retired_producer_instance_ids.size() ||
       state.prospective_claim_count > state.prospective_claims.size()) {
     return false;
@@ -127,7 +127,7 @@ validAdmissionState(const LatestLidarEvidenceAdmissionState3D& state,
     }
   }
   for (std::size_t index = 0U; index < state.prospective_claim_count; ++index) {
-    const LatestLidarEvidenceIdentityClaim3D& claim =
+    const LatestSensorEvidenceIdentityClaim3D& claim =
         state.prospective_claims[index].identity;
     if (!validIdentityClaim(claim) || (claim.producer_instance_id == current_producer &&
                                        claim.sequence <= state.current_sequence)) {
@@ -161,7 +161,7 @@ validAdmissionState(const LatestLidarEvidenceAdmissionState3D& state,
           state.pending_sequence) {
     return false;
   }
-  const LatestLidarEvidenceProspectiveClaim3D& pending_claim =
+  const LatestSensorEvidenceProspectiveClaim3D& pending_claim =
       state.prospective_claims[pending_index];
   return pending_claim.identity.sequence != state.pending_sequence ||
          (pending_claim.identity.first_receive_stamp_ns ==

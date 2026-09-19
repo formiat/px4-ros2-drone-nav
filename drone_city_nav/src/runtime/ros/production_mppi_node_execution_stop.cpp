@@ -32,7 +32,7 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
                          "unavailable");
     return publication;
   }
-  const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
+  const auto evidence_lock = evidence_boundary_.evidenceWithLatestSensor();
   // A route-directed cycle derives no validation world of its own: the route
   // owns one, and a stop is exactly the answer to a route whose world can no
   // longer be trusted. Derive the newest observed evidence here, the way a
@@ -67,7 +67,7 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
       execution_supervisor_.prepareStop(ExecutionStopRequest3D{
           .cycle_source_plan = cycle.route.execution.source_snapshot,
           .execution_input = cycle.evidence.execution_input,
-          .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
+          .latest_sensor_evidence = cycle.evidence.latest_sensor_evidence,
           .observed_raw_world = observed_raw_world,
           .static_world = static_world,
           .validation_policy = cycle.evidence.selected_policy != nullptr
@@ -179,15 +179,16 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
   publication.arrival_control_count = stop->horizon->arrival_control_count;
   publication.first_control = stop->horizon->controls.front();
   publication.first_control_available = true;
-  publication.latest_lidar_obstacle_sequence =
-      cycle.evidence.latest_lidar_obstacle_sequence;
-  publication.latest_lidar_obstacle_hit_count =
-      cycle.evidence.latest_lidar_obstacle_points.size();
-  publication.latest_lidar_obstacle_age_ms =
-      cycle.evidence.latest_lidar_obstacle_age_ms;
-  publication.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
-  publication.latest_lidar_obstacle_receive_time_fallback =
-      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
+  publication.latest_sensor_obstacle_sequence =
+      cycle.evidence.latest_sensor_obstacle_sequence;
+  publication.latest_sensor_obstacle_hit_count =
+      cycle.evidence.latest_sensor_obstacle_points.size();
+  publication.latest_sensor_obstacle_age_ms =
+      cycle.evidence.latest_sensor_obstacle_age_ms;
+  publication.latest_sensor_obstacle_fresh =
+      cycle.evidence.latest_sensor_obstacle_fresh;
+  publication.latest_sensor_obstacle_receive_time_fallback =
+      cycle.evidence.latest_sensor_obstacle_receive_time_fallback;
   publication.terminal_rest_state = true;
   publication.published = true;
   RCLCPP_WARN(get_logger(),

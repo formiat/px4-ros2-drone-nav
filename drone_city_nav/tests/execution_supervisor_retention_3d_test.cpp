@@ -61,18 +61,18 @@ installRouteOwner(ExecutionSupervisor3D& supervisor, SnapshotFixture3D& fixture)
       SnapshotFixture3D::finiteCertificationForRoute(
           *route, FiniteExecutionKind3D::kRetained, active->trajectory_revision + 1U,
           active->source_navigation_revision + 1U, 0U, -1.0,
-          active->execution_input.get(), active->latest_lidar_evidence.get());
+          active->execution_input.get(), active->latest_sensor_evidence.get());
   return ExecutionRetentionRequest3D{
       .lifecycle_source_plan = source,
       .lifecycle_event = lifecycle_event,
       .lifecycle_observed_raw_world = std::move(lifecycle_world),
       .execution_input = evidence.execution_input,
-      .latest_lidar_evidence = evidence.latest_lidar_evidence,
+      .latest_sensor_evidence = evidence.latest_sensor_evidence,
       .exact_initial_state = evidence.horizon.states.front(),
       .exact_previous_control = evidence.execution_input->previousControl(),
       .finite_horizon_config = {},
       .now_ns = evidence.valid_from_ns,
-      .lidar_validation_now_ns = evidence.latest_lidar_evidence->receiveStampNs(),
+      .lidar_validation_now_ns = evidence.latest_sensor_evidence->receiveStampNs(),
   };
 }
 
@@ -142,14 +142,14 @@ TEST(ExecutionSupervisorRetention3DTest,
   // is no longer executable from where it stands. The resident is not carried
   // on to the last clear metre; what remains of it is the stop that begins now.
   ExecutionRetentionRequest3D request = routeRetentionRequest(active);
-  request.latest_lidar_evidence = SnapshotFixture3D::newerLidarEvidence(
-      *request.latest_lidar_evidence, {Point3{4.0, 0.0, 5.0}});
-  request.lidar_validation_now_ns = request.latest_lidar_evidence->receiveStampNs();
+  request.latest_sensor_evidence = SnapshotFixture3D::newerSensorEvidence(
+      *request.latest_sensor_evidence, {Point3{4.0, 0.0, 5.0}});
+  request.lidar_validation_now_ns = request.latest_sensor_evidence->receiveStampNs();
 
   const ExecutionRetentionResult3D braking = supervisor.prepareRetention(request);
 
   EXPECT_EQ(braking.actual_state_validation.status,
-            FiniteExecutionPathStatus3D::kLatestLidarRawCollision);
+            FiniteExecutionPathStatus3D::kLatestSensorRawCollision);
   ASSERT_TRUE(braking.prepared()) << executionRetentionStatus3DName(braking.status);
   ASSERT_NE(braking.transition->next->finiteExecution(), nullptr);
   EXPECT_EQ(braking.transition->next->finiteExecution()
@@ -208,7 +208,7 @@ TEST(ExecutionSupervisorRetention3DTest,
       installRouteOwner(supervisor, fixture);
   ASSERT_NE(active, nullptr);
   ExecutionRetentionRequest3D request = routeRetentionRequest(active);
-  request.latest_lidar_evidence.reset();
+  request.latest_sensor_evidence.reset();
 
   const ExecutionRetentionResult3D rejected =
       supervisor.prepareRetention(std::move(request));

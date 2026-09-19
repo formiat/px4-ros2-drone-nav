@@ -116,8 +116,8 @@ namespace {
   if (!observation.world_evidence_current) {
     return "world_evidence_not_current";
   }
-  if (!observation.lidar_evidence_current) {
-    return "lidar_evidence_not_current";
+  if (!observation.sensor_evidence_current) {
+    return "sensor_evidence_not_current";
   }
   if (!finitePoint(observation.mission_goal) ||
       !finitePoint(observation.active_waypoint_goal) ||

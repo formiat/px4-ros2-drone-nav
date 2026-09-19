@@ -27,7 +27,7 @@ bool stationaryHoldRawSafe(
     const VersionedObservedRawWorld3D* const observed_raw_world,
     const VersionedStaticWorld3D* const static_world,
     const VersionedExecutionValidationPolicy3D& validation_policy,
-    const VersionedLatestLidarEvidence3D& latest_lidar_evidence) noexcept {
+    const VersionedLatestSensorEvidence3D& latest_sensor_evidence) noexcept {
   if ((observed_raw_world == nullptr) == (static_world == nullptr)) {
     return false;
   }
@@ -57,7 +57,7 @@ bool stationaryHoldRawSafe(
       .static_occupancy =
           static_world != nullptr ? std::addressof(static_world->occupancy()) : nullptr,
       .planar_occupancy = nullptr,
-      .raw_point_cloud = latest_lidar_evidence.indexedHitPoints(),
+      .raw_point_cloud = latest_sensor_evidence.indexedHitPoints(),
       .launch_support_contact = launch_support,
       .proprioceptive_free_space_seed = proprioceptive_seed.has_value()
                                             ? std::addressof(*proprioceptive_seed)
@@ -109,14 +109,14 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
            : !certification.execution_input->nominalStateAuthoritative()) ||
       certification.validation_policy == nullptr ||
       !certification.validation_policy->valid() ||
-      certification.latest_lidar_evidence == nullptr ||
-      !certification.latest_lidar_evidence->valid() ||
+      certification.latest_sensor_evidence == nullptr ||
+      !certification.latest_sensor_evidence->valid() ||
       !executionInputFreshAt(*certification.execution_input,
                              *certification.validation_policy,
                              certification.execution_input->effectiveStampNs()) ||
-      !latestLidarEvidenceFreshAt(*certification.latest_lidar_evidence,
-                                  *certification.validation_policy,
-                                  certification.execution_input->effectiveStampNs()) ||
+      !latestSensorEvidenceFreshAt(*certification.latest_sensor_evidence,
+                                   *certification.validation_policy,
+                                   certification.execution_input->effectiveStampNs()) ||
       !finitePoint(certification.position)) {
     return false;
   }
@@ -140,7 +140,7 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
   return stationaryHoldRawSafe(
       certification.position, *certification.execution_input,
       certification.observed_raw_world.get(), certification.static_world.get(),
-      *certification.validation_policy, *certification.latest_lidar_evidence);
+      *certification.validation_policy, *certification.latest_sensor_evidence);
 }
 
 // A finite execution may hand its ownership to a stationary hold once its
@@ -189,7 +189,7 @@ makeStationaryHoldSnapshot(const ExecutionPlan3D& current,
               .observed_raw_world = std::move(certification.observed_raw_world),
               .static_world = std::move(certification.static_world),
               .validation_policy = std::move(certification.validation_policy),
-              .latest_lidar_evidence = std::move(certification.latest_lidar_evidence),
+              .latest_sensor_evidence = std::move(certification.latest_sensor_evidence),
           },
   };
   return next;
@@ -224,27 +224,27 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
   std::shared_ptr<const VersionedExecutionInput3D> source_input;
   const VersionedObservedRawWorld3D* source_observed{nullptr};
   const VersionedStaticWorld3D* source_static{nullptr};
-  const VersionedLatestLidarEvidence3D* source_lidar{nullptr};
+  const VersionedLatestSensorEvidence3D* source_lidar{nullptr};
   const VersionedExecutionValidationPolicy3D* source_policy{nullptr};
   if (route_execution != nullptr) {
     source_horizon = route_execution->horizon.get();
     source_input = route_execution->execution_input;
     source_observed = route_execution->observed_raw_world.get();
     source_static = route_execution->static_world.get();
-    source_lidar = route_execution->latest_lidar_evidence.get();
+    source_lidar = route_execution->latest_sensor_evidence.get();
     source_policy = route_execution->validation_policy.get();
   } else if (stop_execution != nullptr) {
     source_horizon = stop_execution->horizon.get();
     source_input = stop_execution->execution_input;
     source_observed = stop_execution->observed_raw_world.get();
     source_static = stop_execution->static_world.get();
-    source_lidar = stop_execution->latest_lidar_evidence.get();
+    source_lidar = stop_execution->latest_sensor_evidence.get();
     source_policy = stop_execution->validation_policy.get();
   } else {
     source_input = resident_hold->terminal_execution_input;
     source_observed = resident_hold->observed_raw_world.get();
     source_static = resident_hold->static_world.get();
-    source_lidar = resident_hold->latest_lidar_evidence.get();
+    source_lidar = resident_hold->latest_sensor_evidence.get();
     source_policy = resident_hold->validation_policy.get();
   }
   if (source_input == nullptr || source_lidar == nullptr || source_policy == nullptr ||
@@ -254,9 +254,9 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
       certification.validation_policy == nullptr ||
       certification.validation_policy->contentFingerprint() !=
           source_policy->contentFingerprint() ||
-      certification.latest_lidar_evidence == nullptr ||
-      !latestLidarEvidenceNotOlder(*certification.latest_lidar_evidence,
-                                   *source_lidar) ||
+      certification.latest_sensor_evidence == nullptr ||
+      !latestSensorEvidenceNotOlder(*certification.latest_sensor_evidence,
+                                    *source_lidar) ||
       !holdWorldNotOlder(certification, source_observed, source_static) ||
       !stationaryHoldPointSafe(certification, false)) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
@@ -285,10 +285,10 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
         certification.static_world == resident_hold->static_world &&
         certification.validation_policy->policyId() ==
             resident_hold->validation_policy->policyId() &&
-        certification.latest_lidar_evidence->evidenceId() ==
-            resident_hold->latest_lidar_evidence->evidenceId() &&
-        certification.latest_lidar_evidence->contentFingerprint() ==
-            resident_hold->latest_lidar_evidence->contentFingerprint();
+        certification.latest_sensor_evidence->evidenceId() ==
+            resident_hold->latest_sensor_evidence->evidenceId() &&
+        certification.latest_sensor_evidence->contentFingerprint() ==
+            resident_hold->latest_sensor_evidence->contentFingerprint();
     if (same_evidence) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
     }

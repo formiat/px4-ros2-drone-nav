@@ -146,7 +146,8 @@ TEST(ObservedEsdf3DTest,
   EXPECT_NE(field.occupancy_fingerprint, unmasked.occupancy_fingerprint);
 }
 
-TEST(ObservedEsdf3DTest, VehicleLandDetectorCreatesBoundedSupportWithoutLidarEvidence) {
+TEST(ObservedEsdf3DTest,
+     VehicleLandDetectorCreatesBoundedSupportWithoutSensorEvidence) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   const ProprioceptiveFreeSpaceSeed3D seed{
       .position = Point3{2.0, 2.0, 2.0},

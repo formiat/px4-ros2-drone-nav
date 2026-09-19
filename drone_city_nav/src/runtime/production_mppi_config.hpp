@@ -41,7 +41,8 @@ struct ProductionMppiWorldTopics {
   std::string navigation_readiness{"/drone_city_nav/navigation_ready"};
   std::string raw_obstacle_snapshot_3d{"/drone_city_nav/raw_obstacle_snapshot_3d"};
   std::string raw_obstacle_delta_3d{"/drone_city_nav/raw_obstacle_delta_3d"};
-  std::string latest_lidar_obstacle_scan{"/drone_city_nav/latest_lidar_obstacle_scan"};
+  std::string latest_sensor_obstacle_scan{
+      "/drone_city_nav/latest_sensor_obstacle_scan"};
   std::string obstacle_memory_status{"/drone_city_nav/obstacle_memory_status"};
 };
 
@@ -145,7 +146,7 @@ struct ProductionMppiConfig final {
     // stall replanning until the lease expires.
     double horizon_acknowledgement_grace_ms{100.0};
     std::int64_t horizon_acknowledgement_grace_ns{100'000'000LL};
-    double latest_lidar_obstacle_maximum_age_ms{1000.0};
+    double latest_sensor_obstacle_maximum_age_ms{1000.0};
     double stale_esdf_execution_window_ms{4000.0};
     double stationary_hold_validity_s{1.0};
     std::int64_t stationary_hold_validity_ns{1'000'000'000LL};

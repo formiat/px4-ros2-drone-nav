@@ -81,7 +81,7 @@ struct ActivatedRouteIdentity3D {
 enum class RouteLifecycleEventKind3D : std::uint8_t {
   kCompleted,
   kRawInvalidated,
-  kLatestLidarInvalidated,
+  kLatestSensorInvalidated,
   kObjectiveSuperseded,
   kControlCandidateRejected,
   kCrossTrackExceeded,
@@ -101,7 +101,7 @@ struct RouteLifecycleEvent3D {
   std::uint64_t generation{0U};
   std::uint64_t raw_producer_instance_id{0U};
   std::uint64_t raw_revision{0U};
-  LatestLidarEvidenceId3D latest_lidar_evidence{};
+  LatestSensorEvidenceId3D latest_sensor_evidence{};
 };
 
 enum class RouteProposalReplacementStatus3D : std::uint8_t {

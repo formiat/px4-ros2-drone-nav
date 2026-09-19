@@ -58,7 +58,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
     const CertifiedRouteSuffix3D& route, const Point3& execution_position,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
-    const IndexedPointCloudView3D& latest_lidar_obstacle_points) {
+    const IndexedPointCloudView3D& latest_sensor_obstacle_points) {
   if (route.progress.execution_input == nullptr || execution_input == nullptr) {
     return std::nullopt;
   }
@@ -121,7 +121,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
                               ? std::addressof(route.static_world->occupancy())
                               : nullptr,
       .planar_occupancy = nullptr,
-      .raw_point_cloud = latest_lidar_obstacle_points,
+      .raw_point_cloud = latest_sensor_obstacle_points,
       .launch_support_contact = launch_support_contact,
       .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .footprint = route.validation_policy->sweptFootprint(),
@@ -255,9 +255,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
                                           .execution_validation_policy_fingerprint ||
       !executionInputFreshAt(*certification.execution_input, *policy,
                              certification.valid_from_ns) ||
-      certification.latest_lidar_evidence == nullptr ||
-      !latestLidarEvidenceFreshAt(*certification.latest_lidar_evidence, *policy,
-                                  certification.valid_from_ns) ||
+      certification.latest_sensor_evidence == nullptr ||
+      !latestSensorEvidenceFreshAt(*certification.latest_sensor_evidence, *policy,
+                                   certification.valid_from_ns) ||
       (static_mode && (!staticWorldMatchesCertificate(target_route.static_world,
                                                       *static_certificate) ||
                        observed_raw_validation_world != nullptr)) ||
@@ -316,9 +316,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kInitialStateMismatch);
   }
-  const IndexedPointCloudView3D latest_lidar_obstacle_points =
-      certification.latest_lidar_evidence != nullptr
-          ? certification.latest_lidar_evidence->indexedHitPoints()
+  const IndexedPointCloudView3D latest_sensor_obstacle_points =
+      certification.latest_sensor_evidence != nullptr
+          ? certification.latest_sensor_evidence->indexedHitPoints()
           : IndexedPointCloudView3D{};
   double execution_begin_station_m = target_route.progress.station_m;
   if (target_route.progress.execution_input == nullptr) {
@@ -326,7 +326,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     // planning pose to this state was owned by the preceding finite trajectory,
     // so establish only the new route's bounded forward station. The command
     // and braking horizons beginning at this exact state remain subject to the
-    // complete swept-world and latest-lidar validation below.
+    // complete swept-world and latest-sensor validation below.
     if (!targets_successor_route && !targets_initial_route) {
       return rejectedFiniteExecution(
           FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
@@ -344,7 +344,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     const std::optional<RouteAdherenceAssessment3D> connector_adherence =
         validateExecutionProgressConnector(
             target_route, initial_state_position, certification.execution_input,
-            observed_raw_validation_world, latest_lidar_obstacle_points);
+            observed_raw_validation_world, latest_sensor_obstacle_points);
     if (!connector_adherence.has_value()) {
       return rejectedFiniteExecution(
           FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
@@ -421,12 +421,12 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .launch_support_contact = launch_support_contact,
       .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
+      .latest_sensor_obstacle_points = latest_sensor_obstacle_points,
       .terminal_boundary = std::nullopt,
   };
   // A braking tail is a physical safety maneuver, not a route-following attempt
   // to capture the endpoint. It remains bound to the immutable route owner and
-  // station, while dynamics, swept occupancy, and latest lidar stay mandatory.
+  // station, while dynamics, swept occupancy, and latest sensor stay mandatory.
   validation_world.terminal_boundary =
       certifies_braking_execution
           ? std::nullopt
@@ -508,7 +508,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           .observed_raw_world =
               raw_mode ? observed_raw_validation_world.get() : nullptr,
           .static_world = static_mode ? target_route.static_world.get() : nullptr,
-          .latest_lidar_evidence = certification.latest_lidar_evidence.get(),
+          .latest_sensor_evidence = certification.latest_sensor_evidence.get(),
       });
   if (validation_contract_fingerprint == 0U) {
     return rejectedFiniteExecution(
@@ -538,7 +538,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .static_world = target_route.static_world,
       .validation_policy = policy,
       .execution_input = std::move(certification.execution_input),
-      .latest_lidar_evidence = std::move(certification.latest_lidar_evidence),
+      .latest_sensor_evidence = std::move(certification.latest_sensor_evidence),
       .terminal_boundary = terminal_boundary,
       .stop_boundary =
           CertifiedStopBoundary3D{
@@ -626,8 +626,8 @@ FiniteExecutionPlanCertificationResult3D certifyFiniteExecutionPlan3DDetailed(
   const std::uint64_t trajectory_revision = command_horizon.trajectory_revision;
   const std::shared_ptr<const VersionedExecutionInput3D> execution_input =
       command_horizon.execution_input;
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence =
-      command_horizon.latest_lidar_evidence;
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence =
+      command_horizon.latest_sensor_evidence;
   const std::int64_t valid_from_ns = command_horizon.valid_from_ns;
   result.command_horizon = certifyFiniteExecution3DDetailed(current, target_route,
                                                             std::move(command_horizon));
@@ -642,7 +642,7 @@ FiniteExecutionPlanCertificationResult3D certifyFiniteExecutionPlan3DDetailed(
             .trajectory_revision = trajectory_revision,
             .horizon = tail,
             .execution_input = execution_input,
-            .latest_lidar_evidence = latest_lidar_evidence,
+            .latest_sensor_evidence = latest_sensor_evidence,
             .valid_from_ns = valid_from_ns,
             .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
         },

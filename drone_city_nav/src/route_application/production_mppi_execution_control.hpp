@@ -157,13 +157,13 @@ enum class ProductionMppiResidentObstacleDisposition : std::uint8_t {
   kClear,
   kRouteSuffixReplacementRequired,
   kPersistentRawFiniteExecutionInvalidated,
-  kLatestLidarFiniteExecutionInvalidated,
+  kLatestSensorFiniteExecutionInvalidated,
 };
 
 struct ProductionMppiResidentObstacleEvidence {
   bool route_suffix_persistent_raw{false};
   bool finite_execution_persistent_raw{false};
-  bool finite_execution_latest_lidar{false};
+  bool finite_execution_latest_sensor{false};
 };
 
 // Only a hit on the published finite execution invalidates its owner. A hit on
@@ -177,9 +177,9 @@ residentObstacleDisposition(
     return ProductionMppiResidentObstacleDisposition::
         kPersistentRawFiniteExecutionInvalidated;
   }
-  if (evidence.finite_execution_latest_lidar) {
+  if (evidence.finite_execution_latest_sensor) {
     return ProductionMppiResidentObstacleDisposition::
-        kLatestLidarFiniteExecutionInvalidated;
+        kLatestSensorFiniteExecutionInvalidated;
   }
   if (evidence.route_suffix_persistent_raw) {
     return ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired;
@@ -196,18 +196,18 @@ struct ProductionMppiExecutionPublication {
   std::size_t arrival_control_count{0U};
   std::size_t arrival_shaping_attempts{0U};
   MotionControl3D first_control{};
-  std::uint64_t latest_lidar_obstacle_sequence{0U};
-  std::size_t latest_lidar_obstacle_hit_count{0U};
-  double latest_lidar_obstacle_age_ms{-1.0};
+  std::uint64_t latest_sensor_obstacle_sequence{0U};
+  std::size_t latest_sensor_obstacle_hit_count{0U};
+  double latest_sensor_obstacle_age_ms{-1.0};
   bool finite_path_validation_backoff{false};
   FiniteExecutionPathStatus3D finite_path_validation_status{
       FiniteExecutionPathStatus3D::kInvalidContract};
   const char* finite_path_rejected_precondition{"none"};
   FiniteExecutionPathStatus3D finite_path_first_failed_validation_status{
       FiniteExecutionPathStatus3D::kValid};
-  bool latest_lidar_obstacle_fresh{false};
-  bool latest_lidar_obstacle_receive_time_fallback{false};
-  bool latest_lidar_path_validation_backoff{false};
+  bool latest_sensor_obstacle_fresh{false};
+  bool latest_sensor_obstacle_receive_time_fallback{false};
+  bool latest_sensor_path_validation_backoff{false};
   bool retained_previous_finite_path{false};
   bool resident_owner_continues{false};
   bool terminal_rest_state{false};

@@ -1,4 +1,4 @@
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan.hpp"
 
 #include "drone_city_nav/producer_instance_id.hpp"
 
@@ -7,13 +7,13 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr std::uint64_t kLatestLidarProducerDomain{0x4c49444152505244ULL};
+constexpr std::uint64_t kLatestSensorProducerDomain{0x4c49444152505244ULL};
 
 } // namespace
 
-LatestLidarObstacleScanBuildResult
-buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input) {
-  LatestLidarObstacleScanBuildResult result{};
+LatestSensorObstacleScanBuildResult
+buildLatestSensorObstacleScan(const LatestSensorObstacleScanBuildInput& input) {
+  LatestSensorObstacleScanBuildResult result{};
   result.source_beam_count = input.ranges.size();
   if (input.ranges.empty() ||
       input.beam_projection_poses.size() != input.ranges.size()) {
@@ -54,8 +54,8 @@ buildLatestLidarObstacleScan(const LatestLidarObstacleScanBuildInput& input) {
   return result;
 }
 
-std::uint64_t createLatestLidarObstacleProducerInstanceId() noexcept {
-  return createProducerInstanceId(kLatestLidarProducerDomain);
+std::uint64_t createLatestSensorObstacleProducerInstanceId() noexcept {
+  return createProducerInstanceId(kLatestSensorProducerDomain);
 }
 
 } // namespace drone_city_nav

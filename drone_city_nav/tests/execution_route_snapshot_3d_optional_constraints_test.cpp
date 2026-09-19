@@ -15,7 +15,7 @@ TEST(ExecutionRouteSnapshot3DTest,
     return VersionedExecutionValidationPolicy3D::capture(
         base_policy->flightEnvelope(), base_policy->dynamics(),
         base_policy->altitudeEnvelope(), base_policy->sweptFootprint(),
-        base_policy->latestLidarMaximumAgeMs(),
+        base_policy->latestSensorMaximumAgeMs(),
         base_policy->executionInputMaximumPoseAgeMs(),
         base_policy->executionInputMaximumControlAgeMs(), false, true,
         tracking_tube_enabled);

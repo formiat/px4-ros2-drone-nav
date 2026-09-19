@@ -239,16 +239,16 @@ RouteExecutionSelector3D::RouteExecutionSelector3D(
       config_{config} {
 }
 
-std::optional<double> RouteExecutionSelector3D::latestLidarBlockedStation(
+std::optional<double> RouteExecutionSelector3D::latestSensorBlockedStation(
     const CertifiedRouteSuffix3D& route, const RouteProjection3D& projection,
-    const VersionedLatestLidarEvidence3D& latest_lidar,
+    const VersionedLatestSensorEvidence3D& latest_sensor,
     const VersionedObservedRawWorld3D* const contact_world) {
   const std::uint64_t geometry_revision =
       route.geometry != nullptr ? route.geometry->compiled_trajectory_revision : 0U;
-  LatestLidarWindowCache3D& cache = latest_lidar_window_cache_;
+  LatestSensorWindowCache3D& cache = latest_sensor_window_cache_;
   if (cache.valid &&
-      cache.lidar_producer_instance_id == latest_lidar.producerInstanceId() &&
-      cache.lidar_sequence == latest_lidar.sequence() &&
+      cache.lidar_producer_instance_id == latest_sensor.producerInstanceId() &&
+      cache.lidar_sequence == latest_sensor.sequence() &&
       cache.route_generation == route.identity.generation &&
       cache.geometry_revision == geometry_revision) {
     return cache.blocked_station_m;
@@ -264,12 +264,12 @@ std::optional<double> RouteExecutionSelector3D::latestLidarBlockedStation(
           optionalAddress(contact_world->proprioceptiveFreeSpaceSeed());
     }
     const RawRouteSuffixValidation3D window = validateRawRouteWindow3D(
-        samples, projection, config_.latest_lidar_route_lookahead_m,
+        samples, projection, config_.latest_sensor_route_lookahead_m,
         OccupiedCollisionWorld3D{
             .observed_occupancy = nullptr,
             .static_occupancy = nullptr,
             .planar_occupancy = nullptr,
-            .raw_point_cloud = latest_lidar.indexedHitPoints(),
+            .raw_point_cloud = latest_sensor.indexedHitPoints(),
             .launch_support_contact = launch_support_contact,
             .proprioceptive_free_space_seed = proprioceptive_seed,
             .footprint = config_.physical_footprint,
@@ -281,9 +281,9 @@ std::optional<double> RouteExecutionSelector3D::latestLidarBlockedStation(
       blocked_station_m = samples[blocked_segment].station_m;
     }
   }
-  cache = LatestLidarWindowCache3D{
-      .lidar_producer_instance_id = latest_lidar.producerInstanceId(),
-      .lidar_sequence = latest_lidar.sequence(),
+  cache = LatestSensorWindowCache3D{
+      .lidar_producer_instance_id = latest_sensor.producerInstanceId(),
+      .lidar_sequence = latest_sensor.sequence(),
       .route_generation = route.identity.generation,
       .geometry_revision = geometry_revision,
       .blocked_station_m = blocked_station_m,
@@ -303,7 +303,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
   const ProductionMppiNavigation& navigation = request.navigation;
   const auto& execution_input = request.execution_input;
   const auto& latest_raw_world = request.latest_raw_world;
-  const auto& latest_lidar_evidence = request.latest_lidar_evidence;
+  const auto& latest_sensor_evidence = request.latest_sensor_evidence;
   const std::int64_t validation_stamp_ns = request.validation_stamp_ns;
   const std::uint64_t minimum_tracking_sample_sequence =
       request.minimum_tracking_sample_sequence;
@@ -333,7 +333,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       .pending_activation = false,
       .physical_trajectory_invalidated = false,
       .raw_blocked_station_m = std::nullopt,
-      .latest_lidar_blocked_station_m = std::nullopt,
+      .latest_sensor_blocked_station_m = std::nullopt,
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       execution_supervisor_.snapshot();
@@ -404,7 +404,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       std::shared_ptr<const VersionedObservedRawWorld3D> latest_observed_owner;
       std::shared_ptr<const VersionedObservedRawWorld3D> collision_observed_owner;
       bool active_trajectory_raw_collision{false};
-      bool active_trajectory_latest_lidar_collision{false};
+      bool active_trajectory_latest_sensor_collision{false};
       FiniteExecutionPathValidation3D active_trajectory_raw_validation;
       FiniteExecutionPathValidation3D active_trajectory_lidar_validation;
       if (observed_route) {
@@ -431,16 +431,16 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           bindObservedRouteEvidence(observation, *route_collision_world);
         }
       }
-      if (latest_lidar_evidence != nullptr &&
+      if (latest_sensor_evidence != nullptr &&
           active_source_snapshot->phase() == ExecutionRoutePhase3D::kFollowing &&
           active_finite_execution != nullptr) {
         active_trajectory_lidar_validation =
-            validateRemainingFiniteExecutionAgainstLatestLidar3D(
+            validateRemainingFiniteExecutionAgainstLatestSensor3D(
                 *active_finite_execution, &active_route, *execution_input,
-                *latest_lidar_evidence, validation_stamp_ns);
-        active_trajectory_latest_lidar_collision =
+                *latest_sensor_evidence, validation_stamp_ns);
+        active_trajectory_latest_sensor_collision =
             active_trajectory_lidar_validation.status ==
-            FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+            FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
       }
       const auto* const raw_certificate =
           std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
@@ -461,7 +461,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           residentObstacleDisposition(ProductionMppiResidentObstacleEvidence{
               .route_suffix_persistent_raw = resident_route_raw_collision,
               .finite_execution_persistent_raw = active_trajectory_raw_collision,
-              .finite_execution_latest_lidar = active_trajectory_latest_lidar_collision,
+              .finite_execution_latest_sensor =
+                  active_trajectory_latest_sensor_collision,
           });
       const bool route_suffix_replacement_required =
           obstacle_disposition ==
@@ -470,7 +471,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           obstacle_disposition == ProductionMppiResidentObstacleDisposition::
                                       kPersistentRawFiniteExecutionInvalidated ||
           obstacle_disposition == ProductionMppiResidentObstacleDisposition::
-                                      kLatestLidarFiniteExecutionInvalidated;
+                                      kLatestSensorFiniteExecutionInvalidated;
       result.physical_trajectory_invalidated = finite_execution_physically_invalidated;
       // The latest scan bounds the route ahead as it bounds the horizon. The
       // persistent memory integrates a hit only after its own confidence
@@ -480,21 +481,21 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       // route for the distance the vehicle needs to react, and a hit there
       // is a station the speed policy brakes toward, as toward a persistent
       // block; the persistent memory stays the authority on the route itself.
-      if (observed_route && latest_lidar_evidence != nullptr &&
+      if (observed_route && latest_sensor_evidence != nullptr &&
           active_source_snapshot->phase() == ExecutionRoutePhase3D::kFollowing &&
           active_finite_execution != nullptr &&
           active_finite_execution->validation_policy != nullptr &&
-          config_.latest_lidar_route_lookahead_m > 0.0 &&
+          config_.latest_sensor_route_lookahead_m > 0.0 &&
           diagnostic_assessment.projection.valid &&
-          execution_route_snapshot_3d_internal::latestLidarEvidenceFreshAt(
-              *latest_lidar_evidence, *active_finite_execution->validation_policy,
+          execution_route_snapshot_3d_internal::latestSensorEvidenceFreshAt(
+              *latest_sensor_evidence, *active_finite_execution->validation_policy,
               validation_stamp_ns)) {
         const std::shared_ptr<const VersionedObservedRawWorld3D>& contact_world =
             latest_observed_owner != nullptr ? latest_observed_owner
                                              : active_route.observed_raw_world;
-        result.latest_lidar_blocked_station_m =
-            latestLidarBlockedStation(active_route, diagnostic_assessment.projection,
-                                      *latest_lidar_evidence, contact_world.get());
+        result.latest_sensor_blocked_station_m =
+            latestSensorBlockedStation(active_route, diagnostic_assessment.projection,
+                                       *latest_sensor_evidence, contact_world.get());
       }
       const bool persistent_raw_collision =
           obstacle_disposition == ProductionMppiResidentObstacleDisposition::
@@ -611,9 +612,9 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           result.status = diagnostic_assessment.status;
           const std::uint64_t generation = active_route.identity.generation;
           const bool raw_invalidated = persistent_raw_collision;
-          const bool latest_lidar_invalidated =
+          const bool latest_sensor_invalidated =
               obstacle_disposition == ProductionMppiResidentObstacleDisposition::
-                                          kLatestLidarFiniteExecutionInvalidated;
+                                          kLatestSensorFiniteExecutionInvalidated;
           if (raw_invalidated) {
             result.lifecycle_observed_raw_world = collision_observed_owner;
           }
@@ -622,8 +623,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           RouteReleaseReason3D release_reason = RouteReleaseReason3D::kBlocked;
           if (raw_invalidated) {
             event_kind = RouteLifecycleEventKind3D::kRawInvalidated;
-          } else if (latest_lidar_invalidated) {
-            event_kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated;
+          } else if (latest_sensor_invalidated) {
+            event_kind = RouteLifecycleEventKind3D::kLatestSensorInvalidated;
           } else if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
             event_kind = RouteLifecycleEventKind3D::kObjectiveSuperseded;
             release_reason = RouteReleaseReason3D::kObjectiveChanged;
@@ -644,12 +645,12 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
               .raw_revision = raw_invalidated && collision_observed_owner != nullptr
                                   ? collision_observed_owner->version().revision
                                   : 0U,
-              .latest_lidar_evidence =
-                  latest_lidar_invalidated && latest_lidar_evidence != nullptr
-                      ? latest_lidar_evidence->evidenceId()
-                      : LatestLidarEvidenceId3D{},
+              .latest_sensor_evidence =
+                  latest_sensor_invalidated && latest_sensor_evidence != nullptr
+                      ? latest_sensor_evidence->evidenceId()
+                      : LatestSensorEvidenceId3D{},
           };
-          if (raw_invalidated || latest_lidar_invalidated) {
+          if (raw_invalidated || latest_sensor_invalidated) {
             output.effects.push_back(RouteExecutionSelectorEffect3D{
                 .kind = RouteExecutionSelectorEffectKind3D::
                     kHandlePhysicalTrajectoryCollision,

@@ -70,13 +70,13 @@ validationTerminalBoundary(
 }
 
 [[nodiscard]] bool
-latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
-                         const VersionedExecutionValidationPolicy3D& policy) noexcept {
-  return request.latest_lidar_evidence != nullptr &&
-         (!policy.latestLidarFreshnessRequired() ||
-          assessLatestLidarEvidenceFreshness3D(*request.latest_lidar_evidence,
-                                               request.lidar_validation_now_ns,
-                                               policy.latestLidarMaximumAgeMs())
+latestSensorEvidenceFresh(const ExecutionRetentionRequest3D& request,
+                          const VersionedExecutionValidationPolicy3D& policy) noexcept {
+  return request.latest_sensor_evidence != nullptr &&
+         (!policy.latestSensorFreshnessRequired() ||
+          assessLatestSensorEvidenceFreshness3D(*request.latest_sensor_evidence,
+                                                request.lidar_validation_now_ns,
+                                                policy.latestSensorMaximumAgeMs())
               .fresh);
 }
 
@@ -88,7 +88,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
     std::optional<ProprioceptiveFreeSpaceSeed3D>& live_seed) {
   if (!route.valid() || route.validation_policy == nullptr ||
       !route.validation_policy->valid() ||
-      !latestLidarEvidenceFresh(request, *route.validation_policy)) {
+      !latestSensorEvidenceFresh(request, *route.validation_policy)) {
     return std::nullopt;
   }
   const bool static_route = route.static_world != nullptr;
@@ -128,7 +128,8 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       .launch_support_contact = launch_support_contact,
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points = request.latest_lidar_evidence->indexedHitPoints(),
+      .latest_sensor_obstacle_points =
+          request.latest_sensor_evidence->indexedHitPoints(),
       .terminal_boundary = terminal_boundary,
   };
 }
@@ -144,7 +145,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
 physicallyRejected(const ExecutionRetentionResult3D& result) noexcept {
   const auto physical = [](const FiniteExecutionPathStatus3D status) {
     return status == FiniteExecutionPathStatus3D::kRawCollision ||
-           status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+           status == FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
   };
   return physical(result.actual_state_validation.status) ||
          physical(result.trajectory_validation.status);
@@ -249,7 +250,7 @@ retainedPreservedPrefixControlCount(const ExecutionRetentionResult3D& result,
             .trajectory_revision = result.prepared_trajectory_revision,
             .horizon = candidate,
             .execution_input = request.execution_input,
-            .latest_lidar_evidence = request.latest_lidar_evidence,
+            .latest_sensor_evidence = request.latest_sensor_evidence,
             .valid_from_ns = request.now_ns,
             .kind = FiniteExecutionKind3D::kRetained,
         };

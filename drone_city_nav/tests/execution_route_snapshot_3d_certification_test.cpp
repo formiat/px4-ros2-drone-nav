@@ -190,7 +190,7 @@ TEST(ExecutionRouteSnapshot3DTest, CertificationNamesTheRuleItRefusedOn) {
       fixture.validation_policy->flightEnvelope(),
       fixture.validation_policy->dynamics(),
       fixture.validation_policy->altitudeEnvelope(), oversized,
-      fixture.validation_policy->latestLidarMaximumAgeMs());
+      fixture.validation_policy->latestSensorMaximumAgeMs());
   ASSERT_NE(uncovered.validation_policy, nullptr);
   EXPECT_FALSE(certifyExecutionRoute3D(uncovered, &status).has_value());
   EXPECT_EQ(status, RouteCertificationStatus3D::kFootprintNotContained);
@@ -219,7 +219,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.validation_policy->flightEnvelope(),
       fixture.validation_policy->dynamics(),
       fixture.validation_policy->altitudeEnvelope(), oversized,
-      fixture.validation_policy->latestLidarMaximumAgeMs());
+      fixture.validation_policy->latestSensorMaximumAgeMs());
   ASSERT_NE(uncovered.validation_policy, nullptr);
   EXPECT_FALSE(certifyExecutionRoute3D(uncovered).has_value());
 
@@ -229,7 +229,7 @@ TEST(ExecutionRouteSnapshot3DTest,
         fixture.validation_policy->flightEnvelope(),
         fixture.validation_policy->dynamics(),
         fixture.validation_policy->altitudeEnvelope(), required,
-        fixture.validation_policy->latestLidarMaximumAgeMs());
+        fixture.validation_policy->latestSensorMaximumAgeMs());
     ASSERT_NE(candidate.validation_policy, nullptr);
     EXPECT_FALSE(certifyExecutionRoute3D(candidate).has_value());
   };
@@ -263,7 +263,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.validation_policy->flightEnvelope(),
       fixture.validation_policy->dynamics(),
       fixture.validation_policy->altitudeEnvelope(), larger_than_tube_profile,
-      fixture.validation_policy->latestLidarMaximumAgeMs());
+      fixture.validation_policy->latestSensorMaximumAgeMs());
   ASSERT_NE(profile_uncovered.validation_policy, nullptr);
   EXPECT_FALSE(certifyExecutionRoute3D(profile_uncovered).has_value());
 }
@@ -281,12 +281,12 @@ TEST(ExecutionRouteSnapshot3DTest,
   const auto make_certification =
       [&](FiniteMotionHorizon3D horizon,
           std::shared_ptr<const VersionedExecutionInput3D> execution_input,
-          std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar_evidence) {
+          std::shared_ptr<const VersionedLatestSensorEvidence3D> sensor_evidence) {
         return FiniteExecutionCertification3D{
             .trajectory_revision = 102U,
             .horizon = std::move(horizon),
             .execution_input = std::move(execution_input),
-            .latest_lidar_evidence = std::move(lidar_evidence),
+            .latest_sensor_evidence = std::move(sensor_evidence),
             .valid_from_ns = 1'000'000'000LL,
             .kind = FiniteExecutionKind3D::kNominal,
         };
@@ -296,7 +296,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       certifyFiniteExecution3DDetailed(
           *active, route,
           make_certification(*baseline.horizon, baseline.execution_input,
-                             baseline.latest_lidar_evidence));
+                             baseline.latest_sensor_evidence));
   ASSERT_TRUE(accepted.certified());
   ASSERT_TRUE(accepted.execution.has_value());
   EXPECT_EQ(accepted.status, FiniteExecutionCertificationStatus3D::kCertified);
@@ -314,7 +314,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       certifyFiniteExecution3DDetailed(
           *active, route,
           make_certification(std::move(inconsistent), baseline.execution_input,
-                             baseline.latest_lidar_evidence));
+                             baseline.latest_sensor_evidence));
   EXPECT_FALSE(inconsistent_result.certified());
   EXPECT_FALSE(inconsistent_result.execution.has_value());
   EXPECT_EQ(inconsistent_result.status,
@@ -352,7 +352,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(
       certifyFiniteExecution3D(*active, route,
                                make_certification(*baseline.horizon, mismatched_input,
-                                                  baseline.latest_lidar_evidence))
+                                                  baseline.latest_sensor_evidence))
           .has_value());
 
   EXPECT_FALSE(
@@ -364,7 +364,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const MotionState3D& middle =
       baseline.horizon->states[baseline.horizon->states.size() / 2U];
   const auto blocking_lidar =
-      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
           .producer_instance_id = 77U,
           .sequence = 102U,
           .pose_generation = 55U,
@@ -381,7 +381,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                    .has_value());
 
   const auto stale_lidar =
-      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
           .producer_instance_id = 77U,
           .sequence = 103U,
           .pose_generation = 55U,
@@ -517,7 +517,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 101U);
   ASSERT_NE(baseline.horizon, nullptr);
   ASSERT_NE(baseline.execution_input, nullptr);
-  ASSERT_NE(baseline.latest_lidar_evidence, nullptr);
+  ASSERT_NE(baseline.latest_sensor_evidence, nullptr);
 
   EXPECT_TRUE(certifyFiniteExecution3D(
                   *initial, *suffix,
@@ -525,14 +525,14 @@ TEST(ExecutionRouteSnapshot3DTest,
                       .trajectory_revision = 102U,
                       .horizon = *baseline.horizon,
                       .execution_input = baseline.execution_input,
-                      .latest_lidar_evidence = baseline.latest_lidar_evidence,
+                      .latest_sensor_evidence = baseline.latest_sensor_evidence,
                       .valid_from_ns = baseline.valid_from_ns,
                       .kind = FiniteExecutionKind3D::kNominal,
                   })
                   .has_value());
 
   const auto blocking_lidar =
-      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
           .producer_instance_id = 77U,
           .sequence = 101U,
           .pose_generation = baseline.execution_input->poseRevision(),
@@ -547,7 +547,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                                             .trajectory_revision = 103U,
                                             .horizon = *baseline.horizon,
                                             .execution_input = baseline.execution_input,
-                                            .latest_lidar_evidence = blocking_lidar,
+                                            .latest_sensor_evidence = blocking_lidar,
                                             .valid_from_ns = baseline.valid_from_ns,
                                             .kind = FiniteExecutionKind3D::kNominal,
                                         })
@@ -562,7 +562,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(active->route() != nullptr);
   const FiniteExecutionState3D baseline = SnapshotFixture3D::finiteExecution(*active);
   ASSERT_NE(baseline.execution_input, nullptr);
-  ASSERT_NE(baseline.latest_lidar_evidence, nullptr);
+  ASSERT_NE(baseline.latest_sensor_evidence, nullptr);
 
   FiniteMotionHorizon3D crossing;
   crossing.controls.reserve(121U);
@@ -597,7 +597,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                        .trajectory_revision = 102U,
                        .horizon = std::move(crossing),
                        .execution_input = baseline.execution_input,
-                       .latest_lidar_evidence = baseline.latest_lidar_evidence,
+                       .latest_sensor_evidence = baseline.latest_sensor_evidence,
                        .valid_from_ns = baseline.valid_from_ns,
                        .kind = FiniteExecutionKind3D::kNominal,
                    })

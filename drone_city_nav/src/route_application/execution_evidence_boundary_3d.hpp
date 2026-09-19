@@ -9,7 +9,7 @@ namespace drone_city_nav {
 // A controller-visible publication may only claim evidence that was coherent at
 // the moment it was committed. Several independent producers can invalidate
 // that evidence: raw-world replacement, route activation, horizon commit,
-// execution holds, and latest-lidar admission. Previously each of those sites
+// execution holds, and latest-sensor admission. Previously each of those sites
 // took the mutexes it happened to need, so the lock order and the atomicity of
 // a commit were a convention spread across the ROS node rather than a property
 // of any one type.
@@ -79,22 +79,22 @@ public:
     std::scoped_lock<std::mutex, std::mutex> lock_;
   };
 
-  // Active publication validates raw-world and latest-lidar admission together.
-  class EvidenceLatestLidarScope final {
+  // Active publication validates raw-world and latest-sensor admission together.
+  class EvidenceLatestSensorScope final {
   public:
-    EvidenceLatestLidarScope(std::mutex& evidence, std::mutex& latest_lidar)
-        : lock_{evidence, latest_lidar} {
+    EvidenceLatestSensorScope(std::mutex& evidence, std::mutex& latest_sensor)
+        : lock_{evidence, latest_sensor} {
     }
 
   private:
     std::scoped_lock<std::mutex, std::mutex> lock_;
   };
 
-  // Latest-lidar admission alone, independent of raw-world reconstruction.
-  class LatestLidarScope final {
+  // Latest-sensor admission alone, independent of raw-world reconstruction.
+  class LatestSensorScope final {
   public:
-    explicit LatestLidarScope(std::mutex& latest_lidar)
-        : lock_{latest_lidar} {
+    explicit LatestSensorScope(std::mutex& latest_sensor)
+        : lock_{latest_sensor} {
     }
 
   private:
@@ -121,20 +121,20 @@ public:
     return EvidenceInputScope{execution_evidence_commit_mutex_, input_mutex_};
   }
 
-  [[nodiscard]] EvidenceLatestLidarScope evidenceWithLatestLidar() {
-    return EvidenceLatestLidarScope{execution_evidence_commit_mutex_,
-                                    latest_lidar_evidence_commit_mutex_};
+  [[nodiscard]] EvidenceLatestSensorScope evidenceWithLatestSensor() {
+    return EvidenceLatestSensorScope{execution_evidence_commit_mutex_,
+                                     latest_sensor_evidence_commit_mutex_};
   }
 
-  [[nodiscard]] LatestLidarScope latestLidar() {
-    return LatestLidarScope{latest_lidar_evidence_commit_mutex_};
+  [[nodiscard]] LatestSensorScope latestSensor() {
+    return LatestSensorScope{latest_sensor_evidence_commit_mutex_};
   }
 
 private:
   std::mutex execution_evidence_commit_mutex_;
-  // Latest-lidar admission is independent from raw-world reconstruction. Active
+  // Latest-sensor admission is independent from raw-world reconstruction. Active
   // execution publication locks both domains to validate one coherent boundary.
-  std::mutex latest_lidar_evidence_commit_mutex_;
+  std::mutex latest_sensor_evidence_commit_mutex_;
   std::mutex input_mutex_;
   std::mutex objective_replan_mutex_;
 };

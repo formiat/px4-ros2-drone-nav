@@ -305,7 +305,7 @@ bool FiniteExecutionState3D::validFor(
   const RouteSample3D expected_stop =
       sampleRoute3DAtStation(*route->geometry->route, stop_boundary.station_m);
   // A strict route corridor is optional because the complete finite horizon is
-  // independently swept against its immutable world and latest lidar evidence.
+  // independently swept against its immutable world and latest sensor evidence.
   if (kind != FiniteExecutionKind3D::kEmergencyBrakeTail &&
       validation_policy->routeCrossTrackConstraintsEnabled() &&
       distance3D(stop_boundary.position, expected_stop.position) >
@@ -331,7 +331,7 @@ bool FiniteExecutionPlan3D::validFor(
       command_horizon.source_physical_route_fingerprint ==
           braking_tail.source_physical_route_fingerprint &&
       command_horizon.execution_input == braking_tail.execution_input &&
-      command_horizon.latest_lidar_evidence == braking_tail.latest_lidar_evidence &&
+      command_horizon.latest_sensor_evidence == braking_tail.latest_sensor_evidence &&
       command_horizon.observed_raw_world == braking_tail.observed_raw_world &&
       command_horizon.static_world == braking_tail.static_world &&
       command_horizon.validation_policy == braking_tail.validation_policy &&
@@ -365,11 +365,11 @@ bool StationaryExecutionHold3D::valid() const noexcept {
            : !(terminal_execution_input->stationaryCaptureStateAuthoritative() ||
                terminal_execution_input->nominalStateAuthoritative())) ||
       validation_policy == nullptr || !validation_policy->valid() ||
-      latest_lidar_evidence == nullptr || !latest_lidar_evidence->valid() ||
+      latest_sensor_evidence == nullptr || !latest_sensor_evidence->valid() ||
       !executionInputFreshAt(*terminal_execution_input, *validation_policy,
                              terminal_execution_input->effectiveStampNs()) ||
-      !latestLidarEvidenceFreshAt(*latest_lidar_evidence, *validation_policy,
-                                  terminal_execution_input->effectiveStampNs()) ||
+      !latestSensorEvidenceFreshAt(*latest_sensor_evidence, *validation_policy,
+                                   terminal_execution_input->effectiveStampNs()) ||
       (observed_raw_world == nullptr) == (static_world == nullptr) ||
       (observed_raw_world != nullptr && !observed_raw_world->valid()) ||
       (static_world != nullptr && !static_world->valid())) {
@@ -389,7 +389,7 @@ bool StationaryExecutionHold3D::valid() const noexcept {
          std::abs(state.yaw_rate) <= kStationaryExecutionHoldYawRateToleranceRadps &&
          stationaryHoldRawSafe(position, *terminal_execution_input,
                                observed_raw_world.get(), static_world.get(),
-                               *validation_policy, *latest_lidar_evidence);
+                               *validation_policy, *latest_sensor_evidence);
 }
 
 ExecutionRoutePhase3D ExecutionPlan3D::phase() const noexcept {

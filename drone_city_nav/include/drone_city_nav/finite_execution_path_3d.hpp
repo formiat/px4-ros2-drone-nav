@@ -40,7 +40,7 @@ enum class FiniteExecutionPathStatus3D {
   kDynamicFlightEnvelopeViolation,
   kRawWorldUnavailable,
   kRawCollision,
-  kLatestLidarRawCollision,
+  kLatestSensorRawCollision,
 };
 
 // Whether a verdict means the swept body met occupied evidence, as opposed to
@@ -48,7 +48,7 @@ enum class FiniteExecutionPathStatus3D {
 [[nodiscard]] constexpr bool finiteExecutionPathOccupiedEvidenceVerdict3D(
     const FiniteExecutionPathStatus3D status) noexcept {
   return status == FiniteExecutionPathStatus3D::kRawCollision ||
-         status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+         status == FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
 }
 
 struct FiniteExecutionPathTerminalBoundary3D {
@@ -93,7 +93,7 @@ struct FiniteExecutionPathWorld3D {
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
-  IndexedPointCloudView3D latest_lidar_obstacle_points;
+  IndexedPointCloudView3D latest_sensor_obstacle_points;
   std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary;
 };
 
@@ -105,7 +105,7 @@ struct RebuiltFiniteExecutionPathContinuation3D {
   std::int64_t valid_until_ns{0};
   bool path_validation_backoff{false};
   bool persistent_raw_path_validation_backoff{false};
-  bool latest_lidar_path_validation_backoff{false};
+  bool latest_sensor_path_validation_backoff{false};
 
   [[nodiscard]] bool accepted() const noexcept {
     return horizon.has_value() && validation.accepted();
@@ -113,7 +113,7 @@ struct RebuiltFiniteExecutionPathContinuation3D {
 
   [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
     return persistent_raw_path_validation_backoff ||
-           latest_lidar_path_validation_backoff;
+           latest_sensor_path_validation_backoff;
   }
 };
 
@@ -133,7 +133,7 @@ struct ValidatedFiniteExecutionPath3D {
   FiniteExecutionPathValidation3D first_failed_validation{
       .status = FiniteExecutionPathStatus3D::kValid};
   bool persistent_raw_path_validation_backoff{false};
-  bool latest_lidar_path_validation_backoff{false};
+  bool latest_sensor_path_validation_backoff{false};
   // The arrival-shaping search ran out of its wall-clock budget before any
   // candidate was accepted.
   bool arrival_shaping_budget_exhausted{false};
@@ -144,7 +144,7 @@ struct ValidatedFiniteExecutionPath3D {
 
   [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
     return persistent_raw_path_validation_backoff ||
-           latest_lidar_path_validation_backoff;
+           latest_sensor_path_validation_backoff;
   }
 };
 

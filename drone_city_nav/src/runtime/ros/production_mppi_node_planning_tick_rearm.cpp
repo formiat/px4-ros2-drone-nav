@@ -60,12 +60,12 @@ namespace {
   const bool validation_policy_current = stationary_rearm_candidate &&
                                          context.validation_policy != nullptr &&
                                          context.validation_policy->valid();
-  const bool lidar_evidence_current =
-      validation_policy_current && context.latest_lidar_evidence != nullptr &&
-      (!context.validation_policy->latestLidarFreshnessRequired() ||
-       assessLatestLidarEvidenceFreshness3D(
-           *context.latest_lidar_evidence, context.now_ns,
-           context.validation_policy->latestLidarMaximumAgeMs())
+  const bool sensor_evidence_current =
+      validation_policy_current && context.latest_sensor_evidence != nullptr &&
+      (!context.validation_policy->latestSensorFreshnessRequired() ||
+       assessLatestSensorEvidenceFreshness3D(
+           *context.latest_sensor_evidence, context.now_ns,
+           context.validation_policy->latestSensorMaximumAgeMs())
            .fresh);
   const bool static_world_current =
       stationary_rearm_candidate && context.use_static_map &&
@@ -130,7 +130,7 @@ namespace {
           executionSnapshotRevokedEmpty(context.execution_authority->plan()),
       .validation_policy_current = validation_policy_current,
       .world_evidence_current = static_world_current || observed_world_current,
-      .lidar_evidence_current = lidar_evidence_current,
+      .sensor_evidence_current = sensor_evidence_current,
   };
   return at_captured_goal
              ? missionWaypointStationaryRearmIneligibility(gate_config,

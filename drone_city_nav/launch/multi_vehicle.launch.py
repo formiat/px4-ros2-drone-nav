@@ -333,7 +333,7 @@ def generate_multi_vehicle_launch_description():
                 if primary
                 else f"{prefix}/obstacle_memory_status"
             )
-            latest_lidar_obstacle_scan = f"{prefix}/latest_lidar_obstacle_scan"
+            latest_sensor_obstacle_scan = f"{prefix}/latest_sensor_obstacle_scan"
             path_topic = f"{prefix}/mppi/path"
             marker_topic = f"{prefix}/mppi/markers"
             memory_node_name, memory_params = _make_memory_parameters(
@@ -353,7 +353,7 @@ def generate_multi_vehicle_launch_description():
                 raw_delta,
                 memory_snapshot,
                 memory_status,
-                latest_lidar_obstacle_scan,
+                latest_sensor_obstacle_scan,
                 lidar_debug_enabled,
             )
             planner_params = _parameters(
@@ -394,8 +394,8 @@ def generate_multi_vehicle_launch_description():
                     "raw_obstacle_delta_3d_topic": (
                         f"{prefix}/raw_obstacle_delta_3d"
                     ),
-                    "latest_lidar_obstacle_scan_topic": (
-                        latest_lidar_obstacle_scan
+                    "latest_sensor_obstacle_scan_topic": (
+                        latest_sensor_obstacle_scan
                     ),
                     "obstacle_memory_status_topic": memory_status,
                     "applied_control_feedback_topic": f"{prefix}/mppi/applied_control",

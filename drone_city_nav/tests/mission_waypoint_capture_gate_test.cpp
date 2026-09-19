@@ -82,7 +82,7 @@ observe(MissionWaypointCaptureGate& gate,
       .execution_snapshot_revoked_empty = true,
       .validation_policy_current = true,
       .world_evidence_current = true,
-      .lidar_evidence_current = true,
+      .sensor_evidence_current = true,
   };
 }
 
@@ -337,7 +337,7 @@ TEST(MissionWaypointCaptureGateTest,
   expect_rejected([](auto& value) { value.execution_snapshot_revoked_empty = false; });
   expect_rejected([](auto& value) { value.validation_policy_current = false; });
   expect_rejected([](auto& value) { value.world_evidence_current = false; });
-  expect_rejected([](auto& value) { value.lidar_evidence_current = false; });
+  expect_rejected([](auto& value) { value.sensor_evidence_current = false; });
 }
 
 TEST(MissionWaypointCaptureGateTest,
@@ -396,7 +396,7 @@ TEST(MissionWaypointCaptureGateTest, RestRearmIsTheGoalRearmWithoutTheGoal) {
       .execution_snapshot_revoked_empty = true,
       .validation_policy_current = true,
       .world_evidence_current = true,
-      .lidar_evidence_current = true,
+      .sensor_evidence_current = true,
   };
 
   EXPECT_STREQ(missionWaypointStationaryRearmIneligibility(config, observation),

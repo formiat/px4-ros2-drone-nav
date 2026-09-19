@@ -113,7 +113,7 @@ class ResourceBudgetEvidenceTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertIn("OK: transport memory to controller (raw snapshots and deltas) delivers "
                       "in 1.80 ms at p50, 1.20 at p95, 12.00 at most (280 messages)", output)
-        self.assertIn("OK: transport memory to controller (latest lidar scan) delivers in "
+        self.assertIn("OK: transport memory to controller (latest sensor scan) delivers in "
                       "2.10 ms at p50, 3.90 at p95, 8.00 at most (1400 messages)", output)
         self.assertIn("OK: transport bridge to memory (point cloud) delivers in 3.50 ms at "
                       "p50, 6.00 at p95, 9.00 at most (1200 messages)", output)

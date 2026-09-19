@@ -171,12 +171,12 @@ struct PathCollisionOracle3D {
       : evidence_available{world.static_occupancy != nullptr ||
                            world.observed_occupancy != nullptr ||
                            world.raw_occupancy != nullptr ||
-                           !world.latest_lidar_obstacle_points.empty()},
+                           !world.latest_sensor_obstacle_points.empty()},
         oracle{OccupiedCollisionWorld3D{
             .observed_occupancy = world.observed_occupancy,
             .static_occupancy = world.static_occupancy,
             .planar_occupancy = world.raw_occupancy,
-            .raw_point_cloud = world.latest_lidar_obstacle_points,
+            .raw_point_cloud = world.latest_sensor_obstacle_points,
             .launch_support_contact = world.launch_support_contact,
             .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
             .footprint = *world.footprint,
@@ -207,7 +207,7 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
     return FiniteExecutionPathStatus3D::kRawWorldUnavailable;
   }
   if (validation.source == OccupiedCollisionSource3D::kRawPointCloud) {
-    return FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+    return FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
   }
   return FiniteExecutionPathStatus3D::kRawCollision;
 }
@@ -464,9 +464,9 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
       result.path_validation_backoff = true;
       result.persistent_raw_path_validation_backoff |=
           result.validation.status == FiniteExecutionPathStatus3D::kRawCollision;
-      result.latest_lidar_path_validation_backoff |=
+      result.latest_sensor_path_validation_backoff |=
           result.validation.status ==
-          FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+          FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
     } else {
       result.validation =
           reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U,
@@ -759,8 +759,8 @@ RebuiltFiniteExecutionPathContinuation3D rebuildFiniteExecutionPathContinuation3
   result.path_validation_backoff = rebuilt.path_validation_backoff;
   result.persistent_raw_path_validation_backoff =
       rebuilt.persistent_raw_path_validation_backoff;
-  result.latest_lidar_path_validation_backoff =
-      rebuilt.latest_lidar_path_validation_backoff;
+  result.latest_sensor_path_validation_backoff =
+      rebuilt.latest_sensor_path_validation_backoff;
   if (!rebuilt.accepted() || !rebuilt.horizon.has_value()) {
     return result;
   }
@@ -796,8 +796,8 @@ finiteExecutionPathStatus3DName(const FiniteExecutionPathStatus3D status) noexce
       return "raw_world_unavailable";
     case FiniteExecutionPathStatus3D::kRawCollision:
       return "raw_collision";
-    case FiniteExecutionPathStatus3D::kLatestLidarRawCollision:
-      return "latest_lidar_raw_collision";
+    case FiniteExecutionPathStatus3D::kLatestSensorRawCollision:
+      return "latest_sensor_raw_collision";
   }
   return "unknown";
 }

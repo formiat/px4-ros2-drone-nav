@@ -295,8 +295,8 @@ void bindProgressToExecutionInput(
 }
 
 [[nodiscard]] bool
-latestLidarEvidenceNotOlder(const VersionedLatestLidarEvidence3D& candidate,
-                            const VersionedLatestLidarEvidence3D& previous) noexcept {
+latestSensorEvidenceNotOlder(const VersionedLatestSensorEvidence3D& candidate,
+                             const VersionedLatestSensorEvidence3D& previous) noexcept {
   if (candidate.producerInstanceId() != previous.producerInstanceId() ||
       candidate.sequence() < previous.sequence() ||
       candidate.poseGeneration() < previous.poseGeneration() ||
@@ -359,10 +359,10 @@ executionEvidenceNotOlderThanHold(const Candidate& candidate,
          previous.terminal_execution_input != nullptr &&
          executionInputNotOlder(*candidate.execution_input,
                                 *previous.terminal_execution_input) &&
-         candidate.latest_lidar_evidence != nullptr &&
-         previous.latest_lidar_evidence != nullptr &&
-         latestLidarEvidenceNotOlder(*candidate.latest_lidar_evidence,
-                                     *previous.latest_lidar_evidence) &&
+         candidate.latest_sensor_evidence != nullptr &&
+         previous.latest_sensor_evidence != nullptr &&
+         latestSensorEvidenceNotOlder(*candidate.latest_sensor_evidence,
+                                      *previous.latest_sensor_evidence) &&
          executionWorldNotOlderThanHold(candidate.observed_raw_world,
                                         candidate.static_world, previous);
 }
@@ -416,10 +416,10 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
                                 *previous.execution_input)) {
       return false;
     }
-    if (previous.latest_lidar_evidence != nullptr &&
-        (candidate.latest_lidar_evidence == nullptr ||
-         !latestLidarEvidenceNotOlder(*candidate.latest_lidar_evidence,
-                                      *previous.latest_lidar_evidence))) {
+    if (previous.latest_sensor_evidence != nullptr &&
+        (candidate.latest_sensor_evidence == nullptr ||
+         !latestSensorEvidenceNotOlder(*candidate.latest_sensor_evidence,
+                                       *previous.latest_sensor_evidence))) {
       return false;
     }
   }

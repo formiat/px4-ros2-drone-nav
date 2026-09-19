@@ -49,8 +49,8 @@ namespace {
   };
 }
 
-[[nodiscard]] LatestLidarEvidenceCapture3D validLatestLidarCapture() {
-  return LatestLidarEvidenceCapture3D{
+[[nodiscard]] LatestSensorEvidenceCapture3D validLatestSensorCapture() {
+  return LatestSensorEvidenceCapture3D{
       .producer_instance_id = 41U,
       .sequence = 43U,
       .pose_generation = 47U,
@@ -96,11 +96,11 @@ TEST(ExecutionEvidence3DTest,
   EXPECT_FLOAT_EQ(policy->dynamics().dt_s, 0.1F);
   EXPECT_FLOAT_EQ(policy->altitudeEnvelope().reaction_latency_s, 0.2F);
   EXPECT_DOUBLE_EQ(policy->sweptFootprint().radius_m, 0.9);
-  EXPECT_DOUBLE_EQ(policy->latestLidarMaximumAgeMs(), 1000.0);
+  EXPECT_DOUBLE_EQ(policy->latestSensorMaximumAgeMs(), 1000.0);
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumPoseAgeMs(), 1000.0);
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumControlAgeMs(), 1000.0);
   EXPECT_FALSE(policy->routeCrossTrackConstraintsEnabled());
-  EXPECT_TRUE(policy->latestLidarFreshnessRequired());
+  EXPECT_TRUE(policy->latestSensorFreshnessRequired());
   EXPECT_TRUE(policy->routeTrackingTubeConstraintsEnabled());
 
   const auto changed = VersionedExecutionValidationPolicy3D::capture(
@@ -112,25 +112,25 @@ TEST(ExecutionEvidence3DTest,
 
   const auto changed_pose_age = VersionedExecutionValidationPolicy3D::capture(
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
-      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(), 999.0,
+      policy->sweptFootprint(), policy->latestSensorMaximumAgeMs(), 999.0,
       policy->executionInputMaximumControlAgeMs());
   const auto changed_control_age = VersionedExecutionValidationPolicy3D::capture(
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
-      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->sweptFootprint(), policy->latestSensorMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(), 999.0);
   const auto strict_route_adherence = VersionedExecutionValidationPolicy3D::capture(
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
-      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->sweptFootprint(), policy->latestSensorMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(),
       policy->executionInputMaximumControlAgeMs(), true);
   const auto diagnostic_lidar_freshness = VersionedExecutionValidationPolicy3D::capture(
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
-      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->sweptFootprint(), policy->latestSensorMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(),
       policy->executionInputMaximumControlAgeMs(), false, false);
   const auto diagnostic_tracking_tube = VersionedExecutionValidationPolicy3D::capture(
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
-      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->sweptFootprint(), policy->latestSensorMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(),
       policy->executionInputMaximumControlAgeMs(), false, true, false);
   ASSERT_NE(changed_pose_age, nullptr);
@@ -142,7 +142,7 @@ TEST(ExecutionEvidence3DTest,
   EXPECT_NE(changed_control_age->contentFingerprint(), policy->contentFingerprint());
   EXPECT_TRUE(strict_route_adherence->routeCrossTrackConstraintsEnabled());
   EXPECT_NE(strict_route_adherence->contentFingerprint(), policy->contentFingerprint());
-  EXPECT_FALSE(diagnostic_lidar_freshness->latestLidarFreshnessRequired());
+  EXPECT_FALSE(diagnostic_lidar_freshness->latestSensorFreshnessRequired());
   EXPECT_NE(diagnostic_lidar_freshness->contentFingerprint(),
             policy->contentFingerprint());
   EXPECT_FALSE(diagnostic_tracking_tube->routeTrackingTubeConstraintsEnabled());
@@ -400,10 +400,10 @@ TEST(ExecutionEvidence3DTest,
   EXPECT_NE(first->contentFingerprint(), second->contentFingerprint());
 }
 
-TEST(ExecutionEvidence3DTest, LatestLidarEvidenceDeepCopiesPointsAndHashesAllContent) {
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
-  const auto lidar = VersionedLatestLidarEvidence3D::capture(capture);
-  const auto repeated = VersionedLatestLidarEvidence3D::capture(capture);
+TEST(ExecutionEvidence3DTest, LatestSensorEvidenceDeepCopiesPointsAndHashesAllContent) {
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
+  const auto lidar = VersionedLatestSensorEvidence3D::capture(capture);
+  const auto repeated = VersionedLatestSensorEvidence3D::capture(capture);
   ASSERT_NE(lidar, nullptr);
   ASSERT_NE(repeated, nullptr);
   ASSERT_TRUE(lidar->valid());
@@ -421,7 +421,7 @@ TEST(ExecutionEvidence3DTest, LatestLidarEvidenceDeepCopiesPointsAndHashesAllCon
   EXPECT_EQ(lidar->contentFingerprint(), repeated->contentFingerprint());
 
   capture.hit_points_map_m.front().x = 9.0;
-  const auto changed = VersionedLatestLidarEvidence3D::capture(capture);
+  const auto changed = VersionedLatestSensorEvidence3D::capture(capture);
   ASSERT_NE(changed, nullptr);
   EXPECT_DOUBLE_EQ(lidar->hitPointsMapM().front().x, 1.0);
   EXPECT_EQ(lidar->producerInstanceId(), changed->producerInstanceId());
@@ -431,145 +431,147 @@ TEST(ExecutionEvidence3DTest, LatestLidarEvidenceDeepCopiesPointsAndHashesAllCon
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceMoveCaptureKeepsTheOriginalPointStorage) {
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
+     LatestSensorEvidenceMoveCaptureKeepsTheOriginalPointStorage) {
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
   const Point3* const original_storage = capture.hit_points_map_m.data();
 
-  const auto lidar = VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  const auto lidar = VersionedLatestSensorEvidence3D::capture(std::move(capture));
 
   ASSERT_NE(lidar, nullptr);
   EXPECT_EQ(lidar->hitPointsMapM().data(), original_storage);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceUpdateRejectsReplayAndDoesNotRejuvenateDuplicates) {
+     LatestSensorEvidenceUpdateRejectsReplayAndDoesNotRejuvenateDuplicates) {
   const auto initial =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(initial, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(nullptr, *initial),
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(nullptr, *initial),
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial);
 
-  LatestLidarEvidenceCapture3D duplicate_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D duplicate_capture = validLatestSensorCapture();
   duplicate_capture.receive_stamp_ns += 1'000'000'000;
   const auto duplicate =
-      VersionedLatestLidarEvidence3D::capture(std::move(duplicate_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(duplicate_capture));
   ASSERT_NE(duplicate, nullptr);
   EXPECT_NE(duplicate->contentFingerprint(), initial->contentFingerprint());
   EXPECT_EQ(duplicate->sourceContentFingerprint(), initial->sourceContentFingerprint());
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *duplicate),
-            LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *duplicate),
+            LatestSensorEvidenceUpdateStatus3D::kIdempotentDuplicate);
 
-  LatestLidarEvidenceCapture3D conflict_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D conflict_capture = validLatestSensorCapture();
   conflict_capture.hit_points_map_m.front().x += 0.5;
   const auto conflict =
-      VersionedLatestLidarEvidence3D::capture(std::move(conflict_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(conflict_capture));
   ASSERT_NE(conflict, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *conflict),
-            LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *conflict),
+            LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict);
 
-  LatestLidarEvidenceCapture3D timestamp_conflict_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D timestamp_conflict_capture = validLatestSensorCapture();
   ++timestamp_conflict_capture.acquisition_stamp_ns;
   const auto timestamp_conflict =
-      VersionedLatestLidarEvidence3D::capture(std::move(timestamp_conflict_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(timestamp_conflict_capture));
   ASSERT_NE(timestamp_conflict, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *timestamp_conflict),
-            LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *timestamp_conflict),
+            LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict);
 
-  LatestLidarEvidenceCapture3D regression_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D regression_capture = validLatestSensorCapture();
   --regression_capture.sequence;
   --regression_capture.acquisition_stamp_ns;
   const auto regression =
-      VersionedLatestLidarEvidence3D::capture(std::move(regression_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(regression_capture));
   ASSERT_NE(regression, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *regression),
-            LatestLidarEvidenceUpdateStatus3D::kRejectedRegression);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *regression),
+            LatestSensorEvidenceUpdateStatus3D::kRejectedRegression);
 
-  LatestLidarEvidenceCapture3D newer_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D newer_capture = validLatestSensorCapture();
   ++newer_capture.sequence;
   ++newer_capture.pose_generation;
   newer_capture.acquisition_stamp_ns -= 1'000'000;
   ++newer_capture.receive_stamp_ns;
-  const auto newer = VersionedLatestLidarEvidence3D::capture(std::move(newer_capture));
+  const auto newer = VersionedLatestSensorEvidence3D::capture(std::move(newer_capture));
   ASSERT_NE(newer, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *newer),
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer);
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *newer),
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer);
 
-  LatestLidarEvidenceCapture3D new_producer_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D new_producer_capture = validLatestSensorCapture();
   ++new_producer_capture.producer_instance_id;
   ++new_producer_capture.sequence;
   ++new_producer_capture.acquisition_stamp_ns;
   const auto new_producer =
-      VersionedLatestLidarEvidence3D::capture(std::move(new_producer_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(new_producer_capture));
   ASSERT_NE(new_producer, nullptr);
-  EXPECT_EQ(assessLatestLidarEvidenceUpdate3D(initial.get(), *new_producer),
-            LatestLidarEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer);
-  EXPECT_EQ(latestLidarEvidenceUpdateStatus3DName(
-                LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer),
+  EXPECT_EQ(assessLatestSensorEvidenceUpdate3D(initial.get(), *new_producer),
+            LatestSensorEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer);
+  EXPECT_EQ(latestSensorEvidenceUpdateStatus3DName(
+                LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer),
             "accepted_newer");
-  EXPECT_EQ(latestLidarEvidenceUpdateStatus3DName(
-                static_cast<LatestLidarEvidenceUpdateStatus3D>(255U)),
+  EXPECT_EQ(latestSensorEvidenceUpdateStatus3DName(
+                static_cast<LatestSensorEvidenceUpdateStatus3D>(255U)),
             "unknown");
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceFutureAcquisitionDoesNotPoisonSequenceAdmission) {
-  LatestLidarEvidenceAdmissionState3D state;
+     LatestSensorEvidenceFutureAcquisitionDoesNotPoisonSequenceAdmission) {
+  LatestSensorEvidenceAdmissionState3D state;
   const auto initial =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(initial, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D initial_admission =
-      admitLatestLidarEvidence3D(state, nullptr, *initial, 6'020'000'000, 100.0);
+  const LatestSensorEvidenceAdmissionResult3D initial_admission =
+      admitLatestSensorEvidence3D(state, nullptr, *initial, 6'020'000'000, 100.0);
   ASSERT_TRUE(initial_admission.install_candidate);
   state = initial_admission.next_state;
 
-  LatestLidarEvidenceCapture3D future_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D future_capture = validLatestSensorCapture();
   ++future_capture.sequence;
   ++future_capture.pose_generation;
   future_capture.acquisition_stamp_ns = 60'000'000'000;
   future_capture.receive_stamp_ns = 6'020'000'000;
   const auto future =
-      VersionedLatestLidarEvidence3D::capture(std::move(future_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(future_capture));
   ASSERT_NE(future, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D future_admission =
-      admitLatestLidarEvidence3D(state, initial.get(), *future, 6'020'000'000, 100.0);
-  ASSERT_EQ(future_admission.status, LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer);
+  const LatestSensorEvidenceAdmissionResult3D future_admission =
+      admitLatestSensorEvidence3D(state, initial.get(), *future, 6'020'000'000, 100.0);
+  ASSERT_EQ(future_admission.status,
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer);
   ASSERT_TRUE(future_admission.install_candidate);
   state = future_admission.next_state;
 
-  LatestLidarEvidenceCapture3D recovered_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D recovered_capture = validLatestSensorCapture();
   recovered_capture.sequence += 2U;
   recovered_capture.pose_generation += 2U;
   recovered_capture.acquisition_stamp_ns = 6'025'000'000;
   recovered_capture.receive_stamp_ns = 6'030'000'000;
   const auto recovered =
-      VersionedLatestLidarEvidence3D::capture(std::move(recovered_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(recovered_capture));
   ASSERT_NE(recovered, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D recovered_admission =
-      admitLatestLidarEvidence3D(state, future.get(), *recovered, 6'030'000'000, 100.0);
+  const LatestSensorEvidenceAdmissionResult3D recovered_admission =
+      admitLatestSensorEvidence3D(state, future.get(), *recovered, 6'030'000'000,
+                                  100.0);
   EXPECT_EQ(recovered_admission.status,
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset);
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset);
   EXPECT_TRUE(recovered_admission.install_candidate);
   EXPECT_TRUE(recovered_admission.acquisition_epoch_reset);
   EXPECT_FALSE(recovered_admission.producer_handoff);
   EXPECT_TRUE(
-      assessLatestLidarEvidenceFreshness3D(*recovered, 6'030'000'000, 100.0).fresh);
+      assessLatestSensorEvidenceFreshness3D(*recovered, 6'030'000'000, 100.0).fresh);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarIdentityConflictQuarantinesCurrentUntilStrictlyNewerSequence) {
-  LatestLidarEvidenceAdmissionState3D state;
+     LatestSensorIdentityConflictQuarantinesCurrentUntilStrictlyNewerSequence) {
+  LatestSensorEvidenceAdmissionState3D state;
   const auto current =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(current, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D initial =
-      admitLatestLidarEvidence3D(state, nullptr, *current, 6'020'000'000, 100.0);
+  const LatestSensorEvidenceAdmissionResult3D initial =
+      admitLatestSensorEvidence3D(state, nullptr, *current, 6'020'000'000, 100.0);
   ASSERT_TRUE(initial.install_candidate);
   state = initial.next_state;
 
-  const LatestLidarEvidenceClaimResult3D conflicted =
-      claimLatestLidarEvidenceIdentity3D(
+  const LatestSensorEvidenceClaimResult3D conflicted =
+      claimLatestSensorEvidenceIdentity3D(
           state, current.get(),
-          LatestLidarEvidenceIdentityClaim3D{
+          LatestSensorEvidenceIdentityClaim3D{
               .producer_instance_id = current->producerInstanceId(),
               .sequence = current->sequence(),
               .raw_wire_fingerprint =
@@ -577,63 +579,64 @@ TEST(ExecutionEvidence3DTest,
               .first_receive_stamp_ns = 6'020'000'000,
           });
   EXPECT_EQ(conflicted.status,
-            LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict);
+            LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict);
   EXPECT_TRUE(conflicted.authority_quarantine_opened);
   EXPECT_TRUE(conflicted.next_state.current_identity_conflicted);
-  EXPECT_TRUE(latestLidarEvidenceAuthorityQuarantined3D(conflicted.next_state));
+  EXPECT_TRUE(latestSensorEvidenceAuthorityQuarantined3D(conflicted.next_state));
   EXPECT_FALSE(conflicted.assess_candidate);
 
-  const LatestLidarEvidenceClaimResult3D replayed_original =
-      claimLatestLidarEvidenceIdentity3D(
+  const LatestSensorEvidenceClaimResult3D replayed_original =
+      claimLatestSensorEvidenceIdentity3D(
           conflicted.next_state, current.get(),
-          LatestLidarEvidenceIdentityClaim3D{
+          LatestSensorEvidenceIdentityClaim3D{
               .producer_instance_id = current->producerInstanceId(),
               .sequence = current->sequence(),
               .raw_wire_fingerprint = state.current_raw_wire_fingerprint,
               .first_receive_stamp_ns = 6'030'000'000,
           });
   EXPECT_EQ(replayed_original.status,
-            LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict);
+            LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict);
   EXPECT_FALSE(replayed_original.authority_quarantine_opened);
   EXPECT_TRUE(replayed_original.next_state.current_identity_conflicted);
   EXPECT_FALSE(replayed_original.assess_candidate);
 
-  LatestLidarEvidenceCapture3D newer_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D newer_capture = validLatestSensorCapture();
   ++newer_capture.sequence;
   ++newer_capture.pose_generation;
   newer_capture.acquisition_stamp_ns = 6'030'000'000;
   newer_capture.receive_stamp_ns = 6'030'000'000;
-  const auto newer = VersionedLatestLidarEvidence3D::capture(std::move(newer_capture));
+  const auto newer = VersionedLatestSensorEvidence3D::capture(std::move(newer_capture));
   ASSERT_NE(newer, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D recovered = admitLatestLidarEvidence3D(
+  const LatestSensorEvidenceAdmissionResult3D recovered = admitLatestSensorEvidence3D(
       replayed_original.next_state, current.get(), *newer, 6'030'000'000, 100.0);
-  EXPECT_EQ(recovered.status, LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer);
+  EXPECT_EQ(recovered.status, LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer);
   EXPECT_TRUE(recovered.install_candidate);
   EXPECT_FALSE(recovered.next_state.current_identity_conflicted);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceHandoffRequiresStalenessAndTombstonesRetiredProducer) {
-  LatestLidarEvidenceAdmissionState3D state;
-  const auto first = VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+     LatestSensorEvidenceHandoffRequiresStalenessAndTombstonesRetiredProducer) {
+  LatestSensorEvidenceAdmissionState3D state;
+  const auto first =
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(first, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D initial =
-      admitLatestLidarEvidence3D(state, nullptr, *first, 6'020'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D initial =
+      admitLatestSensorEvidence3D(state, nullptr, *first, 6'020'000'000, 20.0);
   ASSERT_TRUE(initial.install_candidate);
   state = initial.next_state;
 
-  LatestLidarEvidenceCapture3D restart_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D restart_capture = validLatestSensorCapture();
   restart_capture.producer_instance_id = 53U;
   restart_capture.sequence = 1U;
   restart_capture.pose_generation = 1U;
   restart_capture.acquisition_stamp_ns = 6'019'000'000;
   restart_capture.receive_stamp_ns = 6'019'000'000;
-  const auto premature = VersionedLatestLidarEvidence3D::capture(restart_capture);
+  const auto premature = VersionedLatestSensorEvidence3D::capture(restart_capture);
   ASSERT_NE(premature, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D fresh_owner_rejection =
-      admitLatestLidarEvidence3D(state, first.get(), *premature, 6'019'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D fresh_owner_rejection =
+      admitLatestSensorEvidence3D(state, first.get(), *premature, 6'019'000'000, 20.0);
   EXPECT_EQ(fresh_owner_rejection.status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer);
   EXPECT_FALSE(fresh_owner_rejection.install_candidate);
   ASSERT_EQ(fresh_owner_rejection.next_state.prospective_claim_count, 1U);
   EXPECT_EQ(fresh_owner_rejection.next_state.prospective_claims.front()
@@ -645,11 +648,12 @@ TEST(ExecutionEvidence3DTest,
   ++restart_capture.pose_generation;
   restart_capture.acquisition_stamp_ns = 6'040'000'000;
   restart_capture.receive_stamp_ns = 6'040'000'000;
-  const auto probation = VersionedLatestLidarEvidence3D::capture(restart_capture);
+  const auto probation = VersionedLatestSensorEvidence3D::capture(restart_capture);
   ASSERT_NE(probation, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D pending =
-      admitLatestLidarEvidence3D(state, first.get(), *probation, 6'040'000'000, 20.0);
-  ASSERT_EQ(pending.status, LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff);
+  const LatestSensorEvidenceAdmissionResult3D pending =
+      admitLatestSensorEvidence3D(state, first.get(), *probation, 6'040'000'000, 20.0);
+  ASSERT_EQ(pending.status,
+            LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff);
   ASSERT_FALSE(pending.install_candidate);
   state = pending.next_state;
 
@@ -657,12 +661,12 @@ TEST(ExecutionEvidence3DTest,
   ++restart_capture.pose_generation;
   restart_capture.acquisition_stamp_ns = 6'050'000'000;
   restart_capture.receive_stamp_ns = 6'050'000'000;
-  const auto confirmed = VersionedLatestLidarEvidence3D::capture(restart_capture);
+  const auto confirmed = VersionedLatestSensorEvidence3D::capture(restart_capture);
   ASSERT_NE(confirmed, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D handoff =
-      admitLatestLidarEvidence3D(state, first.get(), *confirmed, 6'050'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D handoff =
+      admitLatestSensorEvidence3D(state, first.get(), *confirmed, 6'050'000'000, 20.0);
   ASSERT_EQ(handoff.status,
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff);
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedProducerHandoff);
   ASSERT_TRUE(handoff.install_candidate);
   ASSERT_TRUE(handoff.producer_handoff);
   ASSERT_EQ(handoff.next_state.current_producer_instance_id, 53U);
@@ -670,119 +674,120 @@ TEST(ExecutionEvidence3DTest,
   ASSERT_EQ(handoff.next_state.retired_producer_instance_ids.front(), 41U);
   state = handoff.next_state;
 
-  LatestLidarEvidenceCapture3D replay_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D replay_capture = validLatestSensorCapture();
   replay_capture.sequence = 1'000U;
   replay_capture.pose_generation = 1'000U;
   replay_capture.acquisition_stamp_ns = 6'100'000'000;
   replay_capture.receive_stamp_ns = 6'100'000'000;
   const auto retired_replay =
-      VersionedLatestLidarEvidence3D::capture(std::move(replay_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(replay_capture));
   ASSERT_NE(retired_replay, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D replay_rejection =
-      admitLatestLidarEvidence3D(state, confirmed.get(), *retired_replay, 6'100'000'000,
-                                 20.0);
+  const LatestSensorEvidenceAdmissionResult3D replay_rejection =
+      admitLatestSensorEvidence3D(state, confirmed.get(), *retired_replay,
+                                  6'100'000'000, 20.0);
   EXPECT_EQ(replay_rejection.status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedRetiredProducer);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedRetiredProducer);
   EXPECT_FALSE(replay_rejection.install_candidate);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceHandoffProbationRejectsReorderAndIdentityConflict) {
-  LatestLidarEvidenceAdmissionState3D state;
+     LatestSensorEvidenceHandoffProbationRejectsReorderAndIdentityConflict) {
+  LatestSensorEvidenceAdmissionState3D state;
   const auto current =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(current, nullptr);
-  state = admitLatestLidarEvidence3D(state, nullptr, *current, 6'020'000'000, 20.0)
+  state = admitLatestSensorEvidence3D(state, nullptr, *current, 6'020'000'000, 20.0)
               .next_state;
 
-  LatestLidarEvidenceCapture3D candidate_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D candidate_capture = validLatestSensorCapture();
   candidate_capture.producer_instance_id = 59U;
   candidate_capture.sequence = 7U;
   candidate_capture.acquisition_stamp_ns = 6'040'000'000;
   candidate_capture.receive_stamp_ns = 6'040'000'000;
-  const auto candidate = VersionedLatestLidarEvidence3D::capture(candidate_capture);
+  const auto candidate = VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(candidate, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D pending =
-      admitLatestLidarEvidence3D(state, current.get(), *candidate, 6'040'000'000, 20.0);
-  ASSERT_EQ(pending.status, LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff);
+  const LatestSensorEvidenceAdmissionResult3D pending = admitLatestSensorEvidence3D(
+      state, current.get(), *candidate, 6'040'000'000, 20.0);
+  ASSERT_EQ(pending.status,
+            LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff);
 
   candidate_capture.sequence = 6U;
   candidate_capture.receive_stamp_ns = 6'041'000'000;
-  const auto reordered = VersionedLatestLidarEvidence3D::capture(candidate_capture);
+  const auto reordered = VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(reordered, nullptr);
-  EXPECT_EQ(admitLatestLidarEvidence3D(pending.next_state, current.get(), *reordered,
-                                       6'041'000'000, 20.0)
+  EXPECT_EQ(admitLatestSensorEvidence3D(pending.next_state, current.get(), *reordered,
+                                        6'041'000'000, 20.0)
                 .status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedRegression);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedRegression);
 
   candidate_capture.sequence = 7U;
   candidate_capture.hit_points_map_m.front().x += 1.0;
-  const auto conflict = VersionedLatestLidarEvidence3D::capture(candidate_capture);
+  const auto conflict = VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(conflict, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D conflicted = admitLatestLidarEvidence3D(
+  const LatestSensorEvidenceAdmissionResult3D conflicted = admitLatestSensorEvidence3D(
       pending.next_state, current.get(), *conflict, 6'041'000'000, 20.0);
   EXPECT_EQ(conflicted.status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict);
   EXPECT_EQ(conflicted.next_state.pending_producer_instance_id, 59U);
   EXPECT_EQ(conflicted.next_state.pending_sequence, 7U);
   EXPECT_EQ(conflicted.next_state.pending_confirmation_count, 1U);
   EXPECT_TRUE(conflicted.next_state.pending_identity_conflicted);
 
-  const LatestLidarEvidenceAdmissionResult3D original_replay =
-      admitLatestLidarEvidence3D(conflicted.next_state, current.get(), *candidate,
-                                 6'041'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D original_replay =
+      admitLatestSensorEvidence3D(conflicted.next_state, current.get(), *candidate,
+                                  6'041'000'000, 20.0);
   EXPECT_EQ(original_replay.status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict);
   EXPECT_TRUE(original_replay.next_state.pending_identity_conflicted);
 
   candidate_capture.sequence = 8U;
   ++candidate_capture.pose_generation;
   candidate_capture.acquisition_stamp_ns = 6'050'000'000;
   candidate_capture.receive_stamp_ns = 6'050'000'000;
-  const auto higher = VersionedLatestLidarEvidence3D::capture(candidate_capture);
+  const auto higher = VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(higher, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D restarted = admitLatestLidarEvidence3D(
+  const LatestSensorEvidenceAdmissionResult3D restarted = admitLatestSensorEvidence3D(
       original_replay.next_state, current.get(), *higher, 6'050'000'000, 20.0);
   EXPECT_EQ(restarted.status,
-            LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff);
+            LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff);
   EXPECT_EQ(restarted.next_state.pending_sequence, 8U);
   EXPECT_FALSE(restarted.next_state.pending_identity_conflicted);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceExpiredHandoffProbationNeedsFreshConfirmation) {
-  LatestLidarEvidenceAdmissionState3D state;
+     LatestSensorEvidenceExpiredHandoffProbationNeedsFreshConfirmation) {
+  LatestSensorEvidenceAdmissionState3D state;
   const auto current =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(current, nullptr);
-  state = admitLatestLidarEvidence3D(state, nullptr, *current, 6'020'000'000, 20.0)
+  state = admitLatestSensorEvidence3D(state, nullptr, *current, 6'020'000'000, 20.0)
               .next_state;
 
-  LatestLidarEvidenceCapture3D candidate_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D candidate_capture = validLatestSensorCapture();
   candidate_capture.producer_instance_id = 67U;
   candidate_capture.sequence = 1U;
   candidate_capture.pose_generation = 1U;
   candidate_capture.acquisition_stamp_ns = 6'040'000'000;
   candidate_capture.receive_stamp_ns = 6'040'000'000;
-  const auto first = VersionedLatestLidarEvidence3D::capture(candidate_capture);
+  const auto first = VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(first, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D first_pending =
-      admitLatestLidarEvidence3D(state, current.get(), *first, 6'040'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D first_pending =
+      admitLatestSensorEvidence3D(state, current.get(), *first, 6'040'000'000, 20.0);
   ASSERT_EQ(first_pending.status,
-            LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff);
+            LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff);
 
   ++candidate_capture.sequence;
   ++candidate_capture.pose_generation;
   candidate_capture.acquisition_stamp_ns = 6'070'000'000;
   candidate_capture.receive_stamp_ns = 6'070'000'000;
   const auto expired_confirmation =
-      VersionedLatestLidarEvidence3D::capture(candidate_capture);
+      VersionedLatestSensorEvidence3D::capture(candidate_capture);
   ASSERT_NE(expired_confirmation, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D restarted =
-      admitLatestLidarEvidence3D(first_pending.next_state, current.get(),
-                                 *expired_confirmation, 6'070'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D restarted =
+      admitLatestSensorEvidence3D(first_pending.next_state, current.get(),
+                                  *expired_confirmation, 6'070'000'000, 20.0);
   EXPECT_EQ(restarted.status,
-            LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff);
+            LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff);
   EXPECT_FALSE(restarted.install_candidate);
   EXPECT_EQ(restarted.next_state.pending_confirmation_count, 1U);
   EXPECT_EQ(restarted.next_state.pending_sequence, 2U);
@@ -792,255 +797,260 @@ TEST(ExecutionEvidence3DTest,
   candidate_capture.acquisition_stamp_ns = 6'080'000'000;
   candidate_capture.receive_stamp_ns = 6'080'000'000;
   const auto fresh_confirmation =
-      VersionedLatestLidarEvidence3D::capture(std::move(candidate_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(candidate_capture));
   ASSERT_NE(fresh_confirmation, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D handoff = admitLatestLidarEvidence3D(
+  const LatestSensorEvidenceAdmissionResult3D handoff = admitLatestSensorEvidence3D(
       restarted.next_state, current.get(), *fresh_confirmation, 6'080'000'000, 20.0);
   EXPECT_EQ(handoff.status,
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff);
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedProducerHandoff);
   EXPECT_TRUE(handoff.install_candidate);
   EXPECT_TRUE(handoff.producer_handoff);
 }
 
-TEST(ExecutionEvidence3DTest, LatestLidarEvidenceTombstoneCapacityFailsClosed) {
+TEST(ExecutionEvidence3DTest, LatestSensorEvidenceTombstoneCapacityFailsClosed) {
   const auto current =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(current, nullptr);
-  LatestLidarEvidenceAdmissionState3D state =
-      admitLatestLidarEvidence3D({}, nullptr, *current, 6'020'000'000, 20.0).next_state;
+  LatestSensorEvidenceAdmissionState3D state =
+      admitLatestSensorEvidence3D({}, nullptr, *current, 6'020'000'000, 20.0)
+          .next_state;
   state.retired_producer_count = state.retired_producer_instance_ids.size();
   for (std::size_t index = 0U; index < state.retired_producer_instance_ids.size();
        ++index) {
     state.retired_producer_instance_ids[index] = 100U + index;
   }
 
-  LatestLidarEvidenceCapture3D candidate_capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D candidate_capture = validLatestSensorCapture();
   candidate_capture.producer_instance_id = 61U;
   candidate_capture.sequence = 1U;
   candidate_capture.acquisition_stamp_ns = 6'040'000'000;
   candidate_capture.receive_stamp_ns = 6'040'000'000;
   const auto candidate =
-      VersionedLatestLidarEvidence3D::capture(std::move(candidate_capture));
+      VersionedLatestSensorEvidence3D::capture(std::move(candidate_capture));
   ASSERT_NE(candidate, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D admission =
-      admitLatestLidarEvidence3D(state, current.get(), *candidate, 6'040'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D admission = admitLatestSensorEvidence3D(
+      state, current.get(), *candidate, 6'040'000'000, 20.0);
   EXPECT_EQ(admission.status,
-            LatestLidarEvidenceUpdateStatus3D::kRejectedHandoffCapacity);
+            LatestSensorEvidenceUpdateStatus3D::kRejectedHandoffCapacity);
   EXPECT_FALSE(admission.install_candidate);
   EXPECT_EQ(admission.next_state.retired_producer_count,
-            kLatestLidarRetiredProducerCapacity3D);
+            kLatestSensorRetiredProducerCapacity3D);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarMalformedClaimCannotRejuvenateAndMutationNeedsHigherSequence) {
-  const LatestLidarEvidenceIdentityClaim3D malformed{
+     LatestSensorMalformedClaimCannotRejuvenateAndMutationNeedsHigherSequence) {
+  const LatestSensorEvidenceIdentityClaim3D malformed{
       .producer_instance_id = 71U,
       .sequence = 1U,
       .raw_wire_fingerprint = 101U,
       .first_receive_stamp_ns = 6'010'000'000,
   };
-  const LatestLidarEvidenceClaimResult3D claimed =
-      claimLatestLidarEvidenceIdentity3D({}, nullptr, malformed);
-  ASSERT_EQ(claimed.status, LatestLidarEvidenceClaimStatus3D::kClaimed);
+  const LatestSensorEvidenceClaimResult3D claimed =
+      claimLatestSensorEvidenceIdentity3D({}, nullptr, malformed);
+  ASSERT_EQ(claimed.status, LatestSensorEvidenceClaimStatus3D::kClaimed);
   ASSERT_TRUE(claimed.assess_candidate);
   ASSERT_EQ(claimed.next_state.prospective_claim_count, 1U);
 
-  LatestLidarEvidenceIdentityClaim3D retransmission = malformed;
+  LatestSensorEvidenceIdentityClaim3D retransmission = malformed;
   retransmission.first_receive_stamp_ns = 6'020'000'000;
-  const LatestLidarEvidenceClaimResult3D replay =
-      claimLatestLidarEvidenceIdentity3D(claimed.next_state, nullptr, retransmission);
-  EXPECT_EQ(replay.status, LatestLidarEvidenceClaimStatus3D::kRejectedReplay);
+  const LatestSensorEvidenceClaimResult3D replay =
+      claimLatestSensorEvidenceIdentity3D(claimed.next_state, nullptr, retransmission);
+  EXPECT_EQ(replay.status, LatestSensorEvidenceClaimStatus3D::kRejectedReplay);
   EXPECT_FALSE(replay.assess_candidate);
   EXPECT_EQ(replay.claim.first_receive_stamp_ns, malformed.first_receive_stamp_ns);
 
-  LatestLidarEvidenceIdentityClaim3D mutation = retransmission;
+  LatestSensorEvidenceIdentityClaim3D mutation = retransmission;
   mutation.raw_wire_fingerprint = 103U;
-  const LatestLidarEvidenceClaimResult3D conflicted =
-      claimLatestLidarEvidenceIdentity3D(replay.next_state, nullptr, mutation);
+  const LatestSensorEvidenceClaimResult3D conflicted =
+      claimLatestSensorEvidenceIdentity3D(replay.next_state, nullptr, mutation);
   EXPECT_EQ(conflicted.status,
-            LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict);
+            LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict);
   EXPECT_TRUE(conflicted.next_state.prospective_claims.front().conflicted);
   EXPECT_EQ(
-      claimLatestLidarEvidenceIdentity3D(conflicted.next_state, nullptr, malformed)
+      claimLatestSensorEvidenceIdentity3D(conflicted.next_state, nullptr, malformed)
           .status,
-      LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict);
+      LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict);
 
-  LatestLidarEvidenceIdentityClaim3D higher = mutation;
+  LatestSensorEvidenceIdentityClaim3D higher = mutation;
   ++higher.sequence;
   higher.raw_wire_fingerprint = 107U;
   higher.first_receive_stamp_ns = 6'030'000'000;
-  const LatestLidarEvidenceClaimResult3D recovered_claim =
-      claimLatestLidarEvidenceIdentity3D(conflicted.next_state, nullptr, higher);
-  ASSERT_EQ(recovered_claim.status, LatestLidarEvidenceClaimStatus3D::kClaimed);
+  const LatestSensorEvidenceClaimResult3D recovered_claim =
+      claimLatestSensorEvidenceIdentity3D(conflicted.next_state, nullptr, higher);
+  ASSERT_EQ(recovered_claim.status, LatestSensorEvidenceClaimStatus3D::kClaimed);
   EXPECT_FALSE(recovered_claim.next_state.prospective_claims.front().conflicted);
 
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
   capture.producer_instance_id = higher.producer_instance_id;
   capture.sequence = higher.sequence;
   capture.acquisition_stamp_ns = 6'030'000'000;
   capture.receive_stamp_ns = higher.first_receive_stamp_ns;
-  const auto evidence = VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  const auto evidence = VersionedLatestSensorEvidence3D::capture(std::move(capture));
   ASSERT_NE(evidence, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D recovered =
-      admitClaimedLatestLidarEvidence3D(recovered_claim.next_state, nullptr, *evidence,
-                                        recovered_claim.claim, 6'030'000'000, 20.0);
+  const LatestSensorEvidenceAdmissionResult3D recovered =
+      admitClaimedLatestSensorEvidence3D(recovered_claim.next_state, nullptr, *evidence,
+                                         recovered_claim.claim, 6'030'000'000, 20.0);
   EXPECT_TRUE(recovered.install_candidate);
   EXPECT_EQ(recovered.next_state.current_raw_wire_fingerprint,
             higher.raw_wire_fingerprint);
 }
 
-TEST(ExecutionEvidence3DTest, LatestLidarStaleRejectedReplayPreservesOriginalReceipt) {
-  const LatestLidarEvidenceIdentityClaim3D identity{
+TEST(ExecutionEvidence3DTest, LatestSensorStaleRejectedReplayPreservesOriginalReceipt) {
+  const LatestSensorEvidenceIdentityClaim3D identity{
       .producer_instance_id = 73U,
       .sequence = 1U,
       .raw_wire_fingerprint = 109U,
       .first_receive_stamp_ns = 6'010'000'000,
   };
-  const LatestLidarEvidenceClaimResult3D claimed =
-      claimLatestLidarEvidenceIdentity3D({}, nullptr, identity);
+  const LatestSensorEvidenceClaimResult3D claimed =
+      claimLatestSensorEvidenceIdentity3D({}, nullptr, identity);
   ASSERT_TRUE(claimed.assess_candidate);
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
   capture.producer_instance_id = identity.producer_instance_id;
   capture.sequence = identity.sequence;
   capture.receive_stamp_ns = identity.first_receive_stamp_ns;
-  const auto evidence = VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  const auto evidence = VersionedLatestSensorEvidence3D::capture(std::move(capture));
   ASSERT_NE(evidence, nullptr);
-  const LatestLidarEvidenceAdmissionResult3D stale = admitClaimedLatestLidarEvidence3D(
-      claimed.next_state, nullptr, *evidence, claimed.claim, 6'050'000'000, 20.0);
-  ASSERT_EQ(stale.status, LatestLidarEvidenceUpdateStatus3D::kRejectedStaleCandidate);
+  const LatestSensorEvidenceAdmissionResult3D stale =
+      admitClaimedLatestSensorEvidence3D(claimed.next_state, nullptr, *evidence,
+                                         claimed.claim, 6'050'000'000, 20.0);
+  ASSERT_EQ(stale.status, LatestSensorEvidenceUpdateStatus3D::kRejectedStaleCandidate);
 
-  LatestLidarEvidenceIdentityClaim3D retransmission = identity;
+  LatestSensorEvidenceIdentityClaim3D retransmission = identity;
   retransmission.first_receive_stamp_ns = 6'050'000'000;
-  const LatestLidarEvidenceClaimResult3D replay =
-      claimLatestLidarEvidenceIdentity3D(stale.next_state, nullptr, retransmission);
-  EXPECT_EQ(replay.status, LatestLidarEvidenceClaimStatus3D::kRejectedReplay);
+  const LatestSensorEvidenceClaimResult3D replay =
+      claimLatestSensorEvidenceIdentity3D(stale.next_state, nullptr, retransmission);
+  EXPECT_EQ(replay.status, LatestSensorEvidenceClaimStatus3D::kRejectedReplay);
   EXPECT_FALSE(replay.assess_candidate);
   EXPECT_EQ(replay.claim.first_receive_stamp_ns, identity.first_receive_stamp_ns);
   EXPECT_EQ(replay.next_state.current_producer_instance_id, 0U);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarProspectiveClaimCapacityLatchesAuthorityClosed) {
-  LatestLidarEvidenceAdmissionState3D state;
-  for (std::size_t index = 0U; index < kLatestLidarProspectiveClaimCapacity3D;
+     LatestSensorProspectiveClaimCapacityLatchesAuthorityClosed) {
+  LatestSensorEvidenceAdmissionState3D state;
+  for (std::size_t index = 0U; index < kLatestSensorProspectiveClaimCapacity3D;
        ++index) {
-    const LatestLidarEvidenceClaimResult3D claimed = claimLatestLidarEvidenceIdentity3D(
-        state, nullptr,
-        LatestLidarEvidenceIdentityClaim3D{
-            .producer_instance_id = 100U + index,
-            .sequence = 1U,
-            .raw_wire_fingerprint = 1'000U + index,
-            .first_receive_stamp_ns = 6'000'000'000 + static_cast<std::int64_t>(index),
-        });
-    ASSERT_EQ(claimed.status, LatestLidarEvidenceClaimStatus3D::kClaimed);
+    const LatestSensorEvidenceClaimResult3D claimed =
+        claimLatestSensorEvidenceIdentity3D(
+            state, nullptr,
+            LatestSensorEvidenceIdentityClaim3D{
+                .producer_instance_id = 100U + index,
+                .sequence = 1U,
+                .raw_wire_fingerprint = 1'000U + index,
+                .first_receive_stamp_ns =
+                    6'000'000'000 + static_cast<std::int64_t>(index),
+            });
+    ASSERT_EQ(claimed.status, LatestSensorEvidenceClaimStatus3D::kClaimed);
     state = claimed.next_state;
   }
-  const LatestLidarEvidenceClaimResult3D exhausted =
-      claimLatestLidarEvidenceIdentity3D(state, nullptr,
-                                         LatestLidarEvidenceIdentityClaim3D{
-                                             .producer_instance_id = 999U,
-                                             .sequence = 1U,
-                                             .raw_wire_fingerprint = 2'000U,
-                                             .first_receive_stamp_ns = 6'100'000'000,
-                                         });
-  EXPECT_EQ(exhausted.status, LatestLidarEvidenceClaimStatus3D::kRejectedCapacity);
+  const LatestSensorEvidenceClaimResult3D exhausted =
+      claimLatestSensorEvidenceIdentity3D(state, nullptr,
+                                          LatestSensorEvidenceIdentityClaim3D{
+                                              .producer_instance_id = 999U,
+                                              .sequence = 1U,
+                                              .raw_wire_fingerprint = 2'000U,
+                                              .first_receive_stamp_ns = 6'100'000'000,
+                                          });
+  EXPECT_EQ(exhausted.status, LatestSensorEvidenceClaimStatus3D::kRejectedCapacity);
   EXPECT_TRUE(exhausted.authority_quarantine_opened);
-  EXPECT_TRUE(latestLidarEvidenceAuthorityQuarantined3D(exhausted.next_state));
+  EXPECT_TRUE(latestSensorEvidenceAuthorityQuarantined3D(exhausted.next_state));
   EXPECT_FALSE(exhausted.assess_candidate);
 
-  const LatestLidarEvidenceClaimResult3D later_higher =
-      claimLatestLidarEvidenceIdentity3D(exhausted.next_state, nullptr,
-                                         LatestLidarEvidenceIdentityClaim3D{
-                                             .producer_instance_id = 100U,
-                                             .sequence = 2U,
-                                             .raw_wire_fingerprint = 3'000U,
-                                             .first_receive_stamp_ns = 6'200'000'000,
-                                         });
-  EXPECT_EQ(later_higher.status, LatestLidarEvidenceClaimStatus3D::kRejectedCapacity);
+  const LatestSensorEvidenceClaimResult3D later_higher =
+      claimLatestSensorEvidenceIdentity3D(exhausted.next_state, nullptr,
+                                          LatestSensorEvidenceIdentityClaim3D{
+                                              .producer_instance_id = 100U,
+                                              .sequence = 2U,
+                                              .raw_wire_fingerprint = 3'000U,
+                                              .first_receive_stamp_ns = 6'200'000'000,
+                                          });
+  EXPECT_EQ(later_higher.status, LatestSensorEvidenceClaimStatus3D::kRejectedCapacity);
   EXPECT_FALSE(later_higher.authority_quarantine_opened);
 }
 
-TEST(ExecutionEvidence3DTest, LatestLidarEvidenceRejectsInvalidContract) {
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
+TEST(ExecutionEvidence3DTest, LatestSensorEvidenceRejectsInvalidContract) {
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
   capture.producer_instance_id = 0U;
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.sequence = 0U;
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.pose_generation = 0U;
-  EXPECT_NE(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_NE(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.acquisition_stamp_ns = 0;
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.receive_stamp_ns = 0;
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.acquisition_stamp_ns = capture.receive_stamp_ns + 1'000'000'000LL;
-  EXPECT_NE(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_NE(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.invalid_beam_count = capture.source_beam_count;
   capture.hit_points_map_m.clear();
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 
-  capture = validLatestLidarCapture();
+  capture = validLatestSensorCapture();
   capture.hit_points_map_m.front().z = std::numeric_limits<double>::quiet_NaN();
-  EXPECT_EQ(VersionedLatestLidarEvidence3D::capture(capture), nullptr);
+  EXPECT_EQ(VersionedLatestSensorEvidence3D::capture(capture), nullptr);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceFreshnessUsesBothAcquisitionAndReceiptTimes) {
+     LatestSensorEvidenceFreshnessUsesBothAcquisitionAndReceiptTimes) {
   const auto evidence =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(evidence, nullptr);
 
-  const LatestLidarEvidenceFreshness3D fresh =
-      assessLatestLidarEvidenceFreshness3D(*evidence, 6'020'000'000, 20.0);
+  const LatestSensorEvidenceFreshness3D fresh =
+      assessLatestSensorEvidenceFreshness3D(*evidence, 6'020'000'000, 20.0);
   EXPECT_TRUE(fresh.fresh);
   EXPECT_FALSE(fresh.receive_time_fallback);
   EXPECT_DOUBLE_EQ(fresh.age_ms, 20.0);
 
-  const LatestLidarEvidenceFreshness3D stale =
-      assessLatestLidarEvidenceFreshness3D(*evidence, 6'020'000'001, 20.0);
+  const LatestSensorEvidenceFreshness3D stale =
+      assessLatestSensorEvidenceFreshness3D(*evidence, 6'020'000'001, 20.0);
   EXPECT_FALSE(stale.fresh);
   EXPECT_GT(stale.age_ms, 20.0);
 }
 
 TEST(ExecutionEvidence3DTest,
-     LatestLidarEvidenceFreshnessFallsBackForFutureAcquisitionTime) {
-  LatestLidarEvidenceCapture3D capture = validLatestLidarCapture();
+     LatestSensorEvidenceFreshnessFallsBackForFutureAcquisitionTime) {
+  LatestSensorEvidenceCapture3D capture = validLatestSensorCapture();
   capture.acquisition_stamp_ns = 7'000'000'000;
-  const auto evidence = VersionedLatestLidarEvidence3D::capture(std::move(capture));
+  const auto evidence = VersionedLatestSensorEvidence3D::capture(std::move(capture));
   ASSERT_NE(evidence, nullptr);
 
-  const LatestLidarEvidenceFreshness3D freshness =
-      assessLatestLidarEvidenceFreshness3D(*evidence, 6'020'000'000, 20.0);
+  const LatestSensorEvidenceFreshness3D freshness =
+      assessLatestSensorEvidenceFreshness3D(*evidence, 6'020'000'000, 20.0);
   EXPECT_TRUE(freshness.fresh);
   EXPECT_TRUE(freshness.receive_time_fallback);
   EXPECT_DOUBLE_EQ(freshness.age_ms, 10.0);
 }
 
-TEST(ExecutionEvidence3DTest, LatestLidarEvidenceFreshnessRejectsInvalidTimeContracts) {
+TEST(ExecutionEvidence3DTest,
+     LatestSensorEvidenceFreshnessRejectsInvalidTimeContracts) {
   const auto evidence =
-      VersionedLatestLidarEvidence3D::capture(validLatestLidarCapture());
+      VersionedLatestSensorEvidence3D::capture(validLatestSensorCapture());
   ASSERT_NE(evidence, nullptr);
 
   EXPECT_FALSE(
-      assessLatestLidarEvidenceFreshness3D(*evidence, 6'000'000'000, 20.0).fresh);
+      assessLatestSensorEvidenceFreshness3D(*evidence, 6'000'000'000, 20.0).fresh);
   EXPECT_FALSE(
-      assessLatestLidarEvidenceFreshness3D(*evidence, 6'020'000'000, 0.0).fresh);
-  EXPECT_FALSE(assessLatestLidarEvidenceFreshness3D(
+      assessLatestSensorEvidenceFreshness3D(*evidence, 6'020'000'000, 0.0).fresh);
+  EXPECT_FALSE(assessLatestSensorEvidenceFreshness3D(
                    *evidence, 6'020'000'000, std::numeric_limits<double>::quiet_NaN())
                    .fresh);
-  EXPECT_FALSE(assessLatestLidarEvidenceFreshness3D(*evidence, 6'020'000'000,
-                                                    std::numeric_limits<double>::max())
+  EXPECT_FALSE(assessLatestSensorEvidenceFreshness3D(*evidence, 6'020'000'000,
+                                                     std::numeric_limits<double>::max())
                    .fresh);
 }
 

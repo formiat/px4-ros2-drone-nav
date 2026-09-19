@@ -2,9 +2,9 @@
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
-#include "drone_city_nav/latest_lidar_obstacle_scan_ros.hpp"
 #include "drone_city_nav/latest_processing_queue.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan_ros.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -13,7 +13,7 @@
 #include "drone_city_nav/lidar_scan_3d.hpp"
 #include "drone_city_nav/lidar_self_filter.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
-#include "drone_city_nav/msg/latest_lidar_obstacle_scan.hpp"
+#include "drone_city_nav/msg/latest_sensor_obstacle_scan.hpp"
 #include "drone_city_nav/msg/spectator_target.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_3d.hpp"
@@ -389,9 +389,9 @@ public:
           cloud_subscription_options);
     }
 
-    latest_scan_pub_ = create_publisher<msg::LatestLidarObstacleScan>(
-        declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
-                                       "/drone_city_nav/latest_lidar_obstacle_scan"),
+    latest_scan_pub_ = create_publisher<msg::LatestSensorObstacleScan>(
+        declare_parameter<std::string>("latest_sensor_obstacle_scan_topic",
+                                       "/drone_city_nav/latest_sensor_obstacle_scan"),
         sensor_qos);
     current_returns_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("current_lidar_3d_pointcloud_topic",
@@ -769,14 +769,14 @@ private:
     }
 
     std_msgs::msg::Header source_header = pending.cloud.header;
-    LatestLidarObstacleScanBuildResult latest;
+    LatestSensorObstacleScanBuildResult latest;
     latest.acquisition_body_frame = body_frame;
     latest.hit_points_body_frd = hit_points_body;
     latest.source_beam_count = decoded.beams.size();
     const std::size_t dynamic_filtered = cooperative_filtered;
     latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;
     latest.valid = true;
-    latest_scan_pub_->publish(makeLatestLidarObstacleScanMessage(
+    latest_scan_pub_->publish(makeLatestSensorObstacleScanMessage(
         latest, source_header, frame_id_, acquisition_stamp_ns,
         latest_scan_producer_instance_id_, ++latest_scan_sequence_, pose_generation));
     const bool publish_current_cloud = persistent_memory_diagnostics_enabled_ &&
@@ -856,7 +856,7 @@ private:
   std::int64_t alignment_maximum_wait_ns_{350'000'000};
   std::int64_t last_pose_update_ns_{0};
   const std::uint64_t latest_scan_producer_instance_id_{
-      createLatestLidarObstacleProducerInstanceId()};
+      createLatestSensorObstacleProducerInstanceId()};
   std::uint64_t latest_scan_sequence_{0U};
   std::uint64_t alignment_coalesced_clouds_{0U};
   bool persistent_memory_enabled_{true};
@@ -874,7 +874,7 @@ private:
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
-  rclcpp::Publisher<msg::LatestLidarObstacleScan>::SharedPtr latest_scan_pub_;
+  rclcpp::Publisher<msg::LatestSensorObstacleScan>::SharedPtr latest_scan_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr current_returns_pub_;
 };
 

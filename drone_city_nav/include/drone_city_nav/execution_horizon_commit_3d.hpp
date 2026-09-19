@@ -31,7 +31,7 @@ enum class ExecutionHorizonCommitStatus3D : std::uint8_t {
   kExecutionInputNotCurrent,
   kExecutionInputNotFresh,
   kEvidenceNotCurrent,
-  kLidarEvidenceNotCurrent,
+  kSensorEvidenceNotCurrent,
   kControlEvidenceNotCurrent,
   kOwnerInvalid,
   kOwnerPlanIdentityInvalid,
@@ -95,10 +95,10 @@ struct ExecutionHorizonCommitRequest3D {
   ExecutionHorizonRuntimeCurrentness3D runtime{};
   ExecutionHorizonNavigationWitness3D navigation{};
   std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> current_sensor_evidence;
   std::int64_t publication_now_ns{0};
   double maximum_control_feedback_age_ms{0.0};
-  bool latest_lidar_identity_conflicted{false};
+  bool latest_sensor_identity_conflicted{false};
 };
 
 struct ExecutionHorizonCommitResult3D {

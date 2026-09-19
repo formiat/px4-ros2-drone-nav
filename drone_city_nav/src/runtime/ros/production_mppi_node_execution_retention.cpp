@@ -21,7 +21,7 @@ ProductionMppiNode::retainActiveFinitePath(
           .lifecycle_event = route_execution.lifecycle_event,
           .lifecycle_observed_raw_world = route_execution.lifecycle_observed_raw_world,
           .execution_input = cycle.evidence.execution_input,
-          .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
+          .latest_sensor_evidence = cycle.evidence.latest_sensor_evidence,
           .exact_initial_state = cycle.evidence.exact_initial_state,
           .exact_previous_control = cycle.evidence.exact_previous_control,
           .finite_horizon_config = config_.execution.finite_horizon,
@@ -37,7 +37,7 @@ ProductionMppiNode::retainActiveFinitePath(
     if (physically_rejected != nullptr) {
       const auto physical = [](const FiniteExecutionPathStatus3D status) {
         return status == FiniteExecutionPathStatus3D::kRawCollision ||
-               status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+               status == FiniteExecutionPathStatus3D::kLatestSensorRawCollision;
       };
       *physically_rejected = physical(prepared.trajectory_validation.status) ||
                              physical(prepared.rebuild_validation.status) ||
@@ -149,14 +149,14 @@ ProductionMppiNode::retainActiveFinitePath(
   retained.arrival_shaping_attempts = prepared.arrival_shaping_attempts;
   retained.first_control = reported_horizon.controls.front();
   retained.first_control_available = true;
-  retained.latest_lidar_obstacle_sequence =
-      cycle.evidence.latest_lidar_evidence->sequence();
-  retained.latest_lidar_obstacle_hit_count =
-      cycle.evidence.latest_lidar_obstacle_points.size();
-  retained.latest_lidar_obstacle_age_ms = cycle.evidence.latest_lidar_obstacle_age_ms;
-  retained.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
-  retained.latest_lidar_obstacle_receive_time_fallback =
-      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
+  retained.latest_sensor_obstacle_sequence =
+      cycle.evidence.latest_sensor_evidence->sequence();
+  retained.latest_sensor_obstacle_hit_count =
+      cycle.evidence.latest_sensor_obstacle_points.size();
+  retained.latest_sensor_obstacle_age_ms = cycle.evidence.latest_sensor_obstacle_age_ms;
+  retained.latest_sensor_obstacle_fresh = cycle.evidence.latest_sensor_obstacle_fresh;
+  retained.latest_sensor_obstacle_receive_time_fallback =
+      cycle.evidence.latest_sensor_obstacle_receive_time_fallback;
   retained.retained_previous_finite_path = true;
   retained.resident_owner_continues = false;
   retained.terminal_rest_state = true;

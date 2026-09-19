@@ -21,9 +21,9 @@ struct ExecutionCycleFixture3D {
   };
 };
 
-[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
-latestLidarEvidence() {
-  return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+[[nodiscard]] std::shared_ptr<const VersionedLatestSensorEvidence3D>
+latestSensorEvidence() {
+  return VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
       .producer_instance_id = 41U,
       .sequence = 43U,
       .pose_generation = 47U,
@@ -39,8 +39,8 @@ void bindExactEvidence(ExecutionCycleFixture3D& fixture,
                        const mppi::DynamicsConfig& dynamics,
                        const mppi::AltitudeEnvelopeConfig& altitude_envelope,
                        const SweptFootprintConfig& footprint) {
-  fixture.cycle.evidence.latest_lidar_evidence = latestLidarEvidence();
-  fixture.cycle.evidence.latest_lidar_obstacle_fresh = true;
+  fixture.cycle.evidence.latest_sensor_evidence = latestSensorEvidence();
+  fixture.cycle.evidence.latest_sensor_obstacle_fresh = true;
   fixture.cycle.evidence.exact_snapshot_world = true;
   fixture.cycle.evidence.execution_flight_envelope = &flight_envelope;
   fixture.cycle.evidence.execution_dynamics = &dynamics;

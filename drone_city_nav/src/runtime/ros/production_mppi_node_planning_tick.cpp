@@ -29,8 +29,8 @@ namespace {
         kPersistentRawFiniteExecutionInvalidated:
       return "active_finite_trajectory_persistent_raw";
     case ProductionMppiResidentObstacleDisposition::
-        kLatestLidarFiniteExecutionInvalidated:
-      return "active_finite_trajectory_latest_lidar";
+        kLatestSensorFiniteExecutionInvalidated:
+      return "active_finite_trajectory_latest_sensor";
     case ProductionMppiResidentObstacleDisposition::kClear:
       return "none";
   }
@@ -119,12 +119,12 @@ void ProductionMppiNode::planningTick() {
       latest_route_pipeline_event_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       world_input.latest_raw_world;
-  const bool latest_lidar_evidence_identity_conflicted =
-      latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire);
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence =
-      latest_lidar_evidence_identity_conflicted
+  const bool latest_sensor_evidence_identity_conflicted =
+      latest_sensor_evidence_identity_conflicted_.load(std::memory_order_acquire);
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence =
+      latest_sensor_evidence_identity_conflicted
           ? nullptr
-          : latest_lidar_evidence_.load(std::memory_order_acquire);
+          : latest_sensor_evidence_.load(std::memory_order_acquire);
   const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
       execution_authority != nullptr ? execution_authority->plan() : nullptr;
   // Timestamp the immutable planning view only after all callback-owned inputs
@@ -344,7 +344,7 @@ void ProductionMppiNode::planningTick() {
       .offboard_session = &offboard_session,
       .world = world.get(),
       .latest_raw_world_3d = latest_raw_world_3d,
-      .latest_lidar_evidence = latest_lidar_evidence,
+      .latest_sensor_evidence = latest_sensor_evidence,
       .validation_policy = config_.execution.validation_policy,
       .static_occupancy_3d = world->static_occupancy,
       .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
@@ -432,7 +432,7 @@ void ProductionMppiNode::planningTick() {
           .navigation = navigation,
           .execution_input = execution_input,
           .latest_raw_world = latest_raw_world_3d,
-          .latest_lidar_evidence = latest_lidar_evidence,
+          .latest_sensor_evidence = latest_sensor_evidence,
           .cooperative_command = cooperative_command,
           .mission_goal = mission_goal,
           .tick_started = snapshot_started,
@@ -453,14 +453,14 @@ void ProductionMppiNode::planningTick() {
           .count();
   {
     // The block the replan snapshot stitches short of: the nearer of the
-    // persistent raw and the latest lidar blocks on the resident route.
+    // persistent raw and the latest sensor blocks on the resident route.
     std::optional<double> blocked_station_m =
         planning.route.execution.raw_blocked_station_m;
-    if (planning.route.execution.latest_lidar_blocked_station_m.has_value() &&
+    if (planning.route.execution.latest_sensor_blocked_station_m.has_value() &&
         (!blocked_station_m.has_value() ||
-         *planning.route.execution.latest_lidar_blocked_station_m <
+         *planning.route.execution.latest_sensor_blocked_station_m <
              *blocked_station_m)) {
-      blocked_station_m = planning.route.execution.latest_lidar_blocked_station_m;
+      blocked_station_m = planning.route.execution.latest_sensor_blocked_station_m;
     }
     observed_route_blocked_station_m_.store(
         blocked_station_m.value_or(std::numeric_limits<double>::quiet_NaN()),
@@ -613,7 +613,7 @@ void ProductionMppiNode::planningTick() {
       .route_pipeline = route_pipeline,
       .route_execution = planning.route.execution,
       .execution_input = execution_input,
-      .latest_lidar_evidence = latest_lidar_evidence,
+      .latest_sensor_evidence = latest_sensor_evidence,
       .offboard_session = offboard_session,
       .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
       .navigation = navigation,

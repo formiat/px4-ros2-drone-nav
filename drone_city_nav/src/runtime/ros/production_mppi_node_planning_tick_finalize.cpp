@@ -36,8 +36,8 @@ void ProductionMppiNode::finalizePlanningTick(
       finalization.route_execution;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input =
       finalization.execution_input;
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence =
-      finalization.latest_lidar_evidence;
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D>& latest_sensor_evidence =
+      finalization.latest_sensor_evidence;
   const ProductionMppiNavigation& navigation = finalization.navigation;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>>& execution_mppi_route =
       finalization.execution_mppi_route;
@@ -106,7 +106,7 @@ void ProductionMppiNode::finalizePlanningTick(
   latest_publication_started_ = publication_started;
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
       input, result, *world, route_execution, objective, execution_input,
-      latest_lidar_evidence, finalization.offboard_session,
+      latest_sensor_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
   const auto publication_finished = std::chrono::steady_clock::now();
   const ProductionMppiTickPhaseTimings phases{

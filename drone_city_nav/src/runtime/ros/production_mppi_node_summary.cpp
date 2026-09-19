@@ -49,8 +49,8 @@ void ProductionMppiNode::publishSummary() {
       diagnostics.terminal_rest_horizon_ticks;
   const std::uint64_t finite_path_validation_backoff_ticks =
       diagnostics.finite_path_validation_backoff_ticks;
-  const std::uint64_t latest_lidar_path_validation_backoff_ticks =
-      diagnostics.latest_lidar_path_validation_backoff_ticks;
+  const std::uint64_t latest_sensor_path_validation_backoff_ticks =
+      diagnostics.latest_sensor_path_validation_backoff_ticks;
   const std::uint64_t retained_previous_finite_path_ticks =
       diagnostics.retained_previous_finite_path_ticks;
   const std::uint64_t arrival_control_total = diagnostics.arrival_control_total;
@@ -111,7 +111,7 @@ void ProductionMppiNode::publishSummary() {
       " no_executable_horizon_hold_ticks=%" PRIu64
       " terminal_rest_horizon_ticks=%" PRIu64
       " finite_path_validation_backoff_ticks=%" PRIu64
-      " latest_lidar_path_validation_backoff_ticks=%" PRIu64
+      " latest_sensor_path_validation_backoff_ticks=%" PRIu64
       " retained_previous_finite_path_ticks=%" PRIu64
       " average_arrival_controls=%.1f average_arrival_shaping_attempts=%.2f"
       " dropped_esdf_updates=%" PRIu64 " no_static_raw_updates=%" PRIu64
@@ -181,7 +181,7 @@ void ProductionMppiNode::publishSummary() {
       no_progress_horizons, liveness_reseeds, mission_goal_position_hold_ticks,
       no_executable_route_hold_ticks, no_executable_horizon_hold_ticks,
       terminal_rest_horizon_ticks, finite_path_validation_backoff_ticks,
-      latest_lidar_path_validation_backoff_ticks, retained_previous_finite_path_ticks,
+      latest_sensor_path_validation_backoff_ticks, retained_previous_finite_path_ticks,
       average_arrival_controls, average_arrival_shaping_attempts,
       world_statistics.dropped_raw_worlds, world_statistics.raw_updates,
       world_statistics.observedBuilds(), world_statistics.throttled_observed_builds,

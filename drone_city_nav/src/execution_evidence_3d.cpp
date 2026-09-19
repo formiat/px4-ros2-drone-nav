@@ -95,14 +95,14 @@ validPolicy(const FlightEnvelopeConfig& flight_envelope,
             const MotionDynamicsConfig3D& dynamics,
             const MotionAltitudeEnvelopeConfig3D& altitude_envelope,
             const SweptFootprintConfig& swept_footprint,
-            const double latest_lidar_maximum_age_ms,
+            const double latest_sensor_maximum_age_ms,
             const double execution_input_maximum_pose_age_ms,
             const double execution_input_maximum_control_age_ms) noexcept {
   return validFlightEnvelope(flight_envelope) && validDynamics(dynamics) &&
          validAltitudeEnvelope(altitude_envelope, dynamics) &&
          validSweptFootprint(swept_footprint) &&
-         std::isfinite(latest_lidar_maximum_age_ms) &&
-         latest_lidar_maximum_age_ms > 0.0 &&
+         std::isfinite(latest_sensor_maximum_age_ms) &&
+         latest_sensor_maximum_age_ms > 0.0 &&
          std::isfinite(execution_input_maximum_pose_age_ms) &&
          execution_input_maximum_pose_age_ms > 0.0 &&
          std::isfinite(execution_input_maximum_control_age_ms) &&
@@ -160,15 +160,15 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
                   const MotionDynamicsConfig3D& dynamics,
                   const MotionAltitudeEnvelopeConfig3D& altitude_envelope,
                   const SweptFootprintConfig& swept_footprint,
-                  const double latest_lidar_maximum_age_ms,
+                  const double latest_sensor_maximum_age_ms,
                   const double execution_input_maximum_pose_age_ms,
                   const double execution_input_maximum_control_age_ms,
                   const bool route_cross_track_constraints_enabled,
-                  const bool latest_lidar_freshness_required,
+                  const bool latest_sensor_freshness_required,
                   const bool route_tracking_tube_constraints_enabled,
                   const double route_station_credit_slack_m) noexcept {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
-                   latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
+                   latest_sensor_maximum_age_ms, execution_input_maximum_pose_age_ms,
                    execution_input_maximum_control_age_ms) ||
       !std::isfinite(route_station_credit_slack_m) ||
       route_station_credit_slack_m < 0.0) {
@@ -180,11 +180,11 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
   hashDynamics(hash, dynamics);
   hashAltitudeEnvelope(hash, altitude_envelope);
   hashSweptFootprint(hash, swept_footprint);
-  hashValue(hash, canonicalDoubleBits(latest_lidar_maximum_age_ms));
+  hashValue(hash, canonicalDoubleBits(latest_sensor_maximum_age_ms));
   hashValue(hash, canonicalDoubleBits(execution_input_maximum_pose_age_ms));
   hashValue(hash, canonicalDoubleBits(execution_input_maximum_control_age_ms));
   hashValue(hash, route_cross_track_constraints_enabled ? 1U : 0U);
-  hashValue(hash, latest_lidar_freshness_required ? 1U : 0U);
+  hashValue(hash, latest_sensor_freshness_required ? 1U : 0U);
   hashValue(hash, route_tracking_tube_constraints_enabled ? 1U : 0U);
   hashValue(hash, canonicalDoubleBits(route_station_credit_slack_m));
   return hash == 0U ? 1U : hash;
@@ -342,29 +342,29 @@ executionInputFingerprint(const ExecutionInputCapture3D& capture) noexcept {
 VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
     CaptureToken, FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
     MotionAltitudeEnvelopeConfig3D altitude_envelope,
-    SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
+    SweptFootprintConfig swept_footprint, const double latest_sensor_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
     const bool route_cross_track_constraints_enabled,
-    const bool latest_lidar_freshness_required,
+    const bool latest_sensor_freshness_required,
     const bool route_tracking_tube_constraints_enabled,
     const double route_station_credit_slack_m)
     : flight_envelope_{flight_envelope},
       dynamics_{dynamics},
       altitude_envelope_{altitude_envelope},
       swept_footprint_{swept_footprint},
-      latest_lidar_maximum_age_ms_{latest_lidar_maximum_age_ms},
+      latest_sensor_maximum_age_ms_{latest_sensor_maximum_age_ms},
       execution_input_maximum_pose_age_ms_{execution_input_maximum_pose_age_ms},
       execution_input_maximum_control_age_ms_{execution_input_maximum_control_age_ms},
       route_cross_track_constraints_enabled_{route_cross_track_constraints_enabled},
-      latest_lidar_freshness_required_{latest_lidar_freshness_required},
+      latest_sensor_freshness_required_{latest_sensor_freshness_required},
       route_tracking_tube_constraints_enabled_{route_tracking_tube_constraints_enabled},
       route_station_credit_slack_m_{route_station_credit_slack_m},
       content_fingerprint_{policyFingerprint(
           flight_envelope_, dynamics_, altitude_envelope_, swept_footprint_,
-          latest_lidar_maximum_age_ms_, execution_input_maximum_pose_age_ms_,
+          latest_sensor_maximum_age_ms_, execution_input_maximum_pose_age_ms_,
           execution_input_maximum_control_age_ms_,
-          route_cross_track_constraints_enabled_, latest_lidar_freshness_required_,
+          route_cross_track_constraints_enabled_, latest_sensor_freshness_required_,
           route_tracking_tube_constraints_enabled_, route_station_credit_slack_m_)} {
 }
 
@@ -372,15 +372,15 @@ std::shared_ptr<const VersionedExecutionValidationPolicy3D>
 VersionedExecutionValidationPolicy3D::capture(
     FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
     MotionAltitudeEnvelopeConfig3D altitude_envelope,
-    SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
+    SweptFootprintConfig swept_footprint, const double latest_sensor_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
     const bool route_cross_track_constraints_enabled,
-    const bool latest_lidar_freshness_required,
+    const bool latest_sensor_freshness_required,
     const bool route_tracking_tube_constraints_enabled,
     const double route_station_credit_slack_m) {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
-                   latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
+                   latest_sensor_maximum_age_ms, execution_input_maximum_pose_age_ms,
                    execution_input_maximum_control_age_ms) ||
       !std::isfinite(route_station_credit_slack_m) ||
       route_station_credit_slack_m < 0.0) {
@@ -388,9 +388,9 @@ VersionedExecutionValidationPolicy3D::capture(
   }
   return std::make_shared<const VersionedExecutionValidationPolicy3D>(
       CaptureToken{}, flight_envelope, dynamics, altitude_envelope, swept_footprint,
-      latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
+      latest_sensor_maximum_age_ms, execution_input_maximum_pose_age_ms,
       execution_input_maximum_control_age_ms, route_cross_track_constraints_enabled,
-      latest_lidar_freshness_required, route_tracking_tube_constraints_enabled,
+      latest_sensor_freshness_required, route_tracking_tube_constraints_enabled,
       route_station_credit_slack_m);
 }
 
@@ -418,8 +418,8 @@ VersionedExecutionValidationPolicy3D::sweptFootprint() const noexcept {
   return swept_footprint_;
 }
 
-double VersionedExecutionValidationPolicy3D::latestLidarMaximumAgeMs() const noexcept {
-  return latest_lidar_maximum_age_ms_;
+double VersionedExecutionValidationPolicy3D::latestSensorMaximumAgeMs() const noexcept {
+  return latest_sensor_maximum_age_ms_;
 }
 
 double
@@ -437,9 +437,9 @@ bool VersionedExecutionValidationPolicy3D::routeCrossTrackConstraintsEnabled()
   return route_cross_track_constraints_enabled_;
 }
 
-bool VersionedExecutionValidationPolicy3D::latestLidarFreshnessRequired()
+bool VersionedExecutionValidationPolicy3D::latestSensorFreshnessRequired()
     const noexcept {
-  return latest_lidar_freshness_required_;
+  return latest_sensor_freshness_required_;
 }
 
 bool VersionedExecutionValidationPolicy3D::routeTrackingTubeConstraintsEnabled()
@@ -460,7 +460,8 @@ VersionedExecutionValidationPolicy3D::contentFingerprint() const noexcept {
 bool VersionedExecutionValidationPolicy3D::valid() const noexcept {
   return content_fingerprint_ != 0U &&
          validPolicy(flight_envelope_, dynamics_, altitude_envelope_, swept_footprint_,
-                     latest_lidar_maximum_age_ms_, execution_input_maximum_pose_age_ms_,
+                     latest_sensor_maximum_age_ms_,
+                     execution_input_maximum_pose_age_ms_,
                      execution_input_maximum_control_age_ms_);
 }
 
@@ -604,56 +605,56 @@ bool executionInputFreshAt(const VersionedExecutionInput3D& input,
                                            policy.executionInputMaximumControlAgeMs());
 }
 
-LatestLidarEvidenceUpdateStatus3D assessLatestLidarEvidenceUpdate3D(
-    const VersionedLatestLidarEvidence3D* const current,
-    const VersionedLatestLidarEvidence3D& candidate) noexcept {
+LatestSensorEvidenceUpdateStatus3D assessLatestSensorEvidenceUpdate3D(
+    const VersionedLatestSensorEvidence3D* const current,
+    const VersionedLatestSensorEvidence3D& candidate) noexcept {
   if (!candidate.valid()) {
-    return LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid;
+    return LatestSensorEvidenceUpdateStatus3D::kRejectedInvalid;
   }
   if (current == nullptr) {
-    return LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial;
+    return LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial;
   }
   if (!current->valid()) {
-    return LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid;
+    return LatestSensorEvidenceUpdateStatus3D::kRejectedInvalid;
   }
   if (candidate.producerInstanceId() != current->producerInstanceId()) {
     // Producer epochs are authority boundaries, not ordering fields. The
     // stateful admission function owns authenticated handoff.
-    return LatestLidarEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer;
+    return LatestSensorEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer;
   }
   if (candidate.sequence() == current->sequence()) {
     return candidate.sourceContentFingerprint() == current->sourceContentFingerprint()
-               ? LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate
-               : LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict;
+               ? LatestSensorEvidenceUpdateStatus3D::kIdempotentDuplicate
+               : LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict;
   }
   if (candidate.sequence() <= current->sequence() ||
       candidate.poseGeneration() < current->poseGeneration() ||
       candidate.receiveStampNs() <= current->receiveStampNs()) {
-    return LatestLidarEvidenceUpdateStatus3D::kRejectedRegression;
+    return LatestSensorEvidenceUpdateStatus3D::kRejectedRegression;
   }
   // Sequence is the producer-local order. Acquisition time is source content,
   // but is not an ordering high-water: a corrupt future value must not poison
   // all later observations and a producer epoch may restart its source clock.
-  return LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer;
+  return LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer;
 }
 
-LatestLidarEvidenceClaimResult3D
-claimLatestLidarEvidenceIdentity3D(const LatestLidarEvidenceAdmissionState3D& state,
-                                   const VersionedLatestLidarEvidence3D* const current,
-                                   LatestLidarEvidenceIdentityClaim3D claim) noexcept {
-  LatestLidarEvidenceClaimResult3D result{.next_state = state, .claim = claim};
+LatestSensorEvidenceClaimResult3D claimLatestSensorEvidenceIdentity3D(
+    const LatestSensorEvidenceAdmissionState3D& state,
+    const VersionedLatestSensorEvidence3D* const current,
+    LatestSensorEvidenceIdentityClaim3D claim) noexcept {
+  LatestSensorEvidenceClaimResult3D result{.next_state = state, .claim = claim};
   if (!validIdentityClaim(claim) || !validAdmissionState(state, current)) {
     return result;
   }
   if (state.prospective_claim_capacity_exhausted) {
-    result.status = LatestLidarEvidenceClaimStatus3D::kRejectedCapacity;
+    result.status = LatestSensorEvidenceClaimStatus3D::kRejectedCapacity;
     return result;
   }
 
   if (current != nullptr &&
       claim.producer_instance_id == current->producerInstanceId()) {
     if (claim.sequence < current->sequence()) {
-      result.status = LatestLidarEvidenceClaimStatus3D::kRejectedRegression;
+      result.status = LatestSensorEvidenceClaimStatus3D::kRejectedRegression;
       return result;
     }
     if (claim.sequence == current->sequence()) {
@@ -662,9 +663,9 @@ claimLatestLidarEvidenceIdentity3D(const LatestLidarEvidenceAdmissionState3D& st
           claim.raw_wire_fingerprint != state.current_raw_wire_fingerprint) {
         result.authority_quarantine_opened = !state.current_identity_conflicted;
         result.next_state.current_identity_conflicted = true;
-        result.status = LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict;
+        result.status = LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict;
       } else {
-        result.status = LatestLidarEvidenceClaimStatus3D::kInstalledReplay;
+        result.status = LatestSensorEvidenceClaimStatus3D::kInstalledReplay;
       }
       return result;
     }
@@ -672,10 +673,10 @@ claimLatestLidarEvidenceIdentity3D(const LatestLidarEvidenceAdmissionState3D& st
 
   const std::size_t index = prospectiveClaimIndex(state, claim.producer_instance_id);
   if (index != state.prospective_claim_count) {
-    LatestLidarEvidenceProspectiveClaim3D& resident =
+    LatestSensorEvidenceProspectiveClaim3D& resident =
         result.next_state.prospective_claims[index];
     if (claim.sequence < resident.identity.sequence) {
-      result.status = LatestLidarEvidenceClaimStatus3D::kRejectedRegression;
+      result.status = LatestSensorEvidenceClaimStatus3D::kRejectedRegression;
       return result;
     }
     if (claim.sequence == resident.identity.sequence) {
@@ -686,42 +687,42 @@ claimLatestLidarEvidenceIdentity3D(const LatestLidarEvidenceAdmissionState3D& st
             state.pending_sequence == claim.sequence) {
           result.next_state.pending_identity_conflicted = true;
         }
-        result.status = LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict;
+        result.status = LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict;
       } else if (resident.conflicted) {
-        result.status = LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict;
+        result.status = LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict;
       } else if (state.pending_producer_instance_id == claim.producer_instance_id &&
                  state.pending_sequence == claim.sequence) {
-        result.status = LatestLidarEvidenceClaimStatus3D::kPendingReplay;
+        result.status = LatestSensorEvidenceClaimStatus3D::kPendingReplay;
       } else {
-        result.status = LatestLidarEvidenceClaimStatus3D::kRejectedReplay;
+        result.status = LatestSensorEvidenceClaimStatus3D::kRejectedReplay;
       }
       return result;
     }
-    resident = LatestLidarEvidenceProspectiveClaim3D{.identity = claim};
+    resident = LatestSensorEvidenceProspectiveClaim3D{.identity = claim};
   } else {
     if (state.prospective_claim_count == state.prospective_claims.size()) {
       result.next_state.prospective_claim_capacity_exhausted = true;
-      result.status = LatestLidarEvidenceClaimStatus3D::kRejectedCapacity;
+      result.status = LatestSensorEvidenceClaimStatus3D::kRejectedCapacity;
       result.authority_quarantine_opened = true;
       return result;
     }
     result.next_state.prospective_claims[state.prospective_claim_count] =
-        LatestLidarEvidenceProspectiveClaim3D{.identity = claim};
+        LatestSensorEvidenceProspectiveClaim3D{.identity = claim};
     ++result.next_state.prospective_claim_count;
   }
-  result.status = LatestLidarEvidenceClaimStatus3D::kClaimed;
+  result.status = LatestSensorEvidenceClaimStatus3D::kClaimed;
   result.assess_candidate = true;
   return result;
 }
 
-LatestLidarEvidenceAdmissionResult3D
-admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& state,
-                                  const VersionedLatestLidarEvidence3D* const current,
-                                  const VersionedLatestLidarEvidence3D& candidate,
-                                  const LatestLidarEvidenceIdentityClaim3D& claim,
-                                  const std::int64_t now_ns,
-                                  const double maximum_age_ms) noexcept {
-  LatestLidarEvidenceAdmissionResult3D result{.next_state = state};
+LatestSensorEvidenceAdmissionResult3D
+admitClaimedLatestSensorEvidence3D(const LatestSensorEvidenceAdmissionState3D& state,
+                                   const VersionedLatestSensorEvidence3D* const current,
+                                   const VersionedLatestSensorEvidence3D& candidate,
+                                   const LatestSensorEvidenceIdentityClaim3D& claim,
+                                   const std::int64_t now_ns,
+                                   const double maximum_age_ms) noexcept {
+  LatestSensorEvidenceAdmissionResult3D result{.next_state = state};
   if (!candidate.valid() || !validIdentityClaim(claim) ||
       !validAdmissionState(state, current) ||
       state.prospective_claim_capacity_exhausted ||
@@ -729,7 +730,7 @@ admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& sta
       candidate.sequence() != claim.sequence ||
       candidate.receiveStampNs() != claim.first_receive_stamp_ns) {
     if (state.prospective_claim_capacity_exhausted) {
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedClaimCapacity;
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedClaimCapacity;
     }
     return result;
   }
@@ -740,30 +741,30 @@ admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& sta
       !sameIdentityClaim(state.prospective_claims[claim_index].identity, claim)) {
     return result;
   }
-  const LatestLidarEvidenceFreshness3D candidate_freshness =
-      assessLatestLidarEvidenceFreshness3D(candidate, now_ns, maximum_age_ms);
+  const LatestSensorEvidenceFreshness3D candidate_freshness =
+      assessLatestSensorEvidenceFreshness3D(candidate, now_ns, maximum_age_ms);
   if (!candidate_freshness.fresh) {
-    result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedStaleCandidate;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedStaleCandidate;
     return result;
   }
   if (producerRetired(state, candidate.producerInstanceId())) {
-    result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedRetiredProducer;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedRetiredProducer;
     return result;
   }
 
   if (current == nullptr) {
     promoteCurrentClaim(result.next_state, claim);
-    result.status = LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial;
     result.install_candidate = true;
     return result;
   }
 
   if (candidate.producerInstanceId() == current->producerInstanceId()) {
-    result.status = assessLatestLidarEvidenceUpdate3D(current, candidate);
-    if (result.status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer) {
+    result.status = assessLatestSensorEvidenceUpdate3D(current, candidate);
+    if (result.status == LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer) {
       if (candidate.acquisitionStampNs() <= current->acquisitionStampNs()) {
         result.status =
-            LatestLidarEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset;
+            LatestSensorEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset;
         result.acquisition_epoch_reset = true;
       }
       promoteCurrentClaim(result.next_state, claim);
@@ -773,35 +774,36 @@ admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& sta
   }
 
   if (state.retired_producer_count == state.retired_producer_instance_ids.size()) {
-    result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedHandoffCapacity;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedHandoffCapacity;
     return result;
   }
-  if (assessLatestLidarEvidenceFreshness3D(*current, now_ns, maximum_age_ms).fresh) {
+  if (assessLatestSensorEvidenceFreshness3D(*current, now_ns, maximum_age_ms).fresh) {
     // A live owner cancels handoff probation, but the immutable prospective
     // claim remains recorded and cannot be replayed with a newer receipt.
     clearPendingProducerHandoff(result.next_state);
-    result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer;
+    result.status =
+        LatestSensorEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer;
     return result;
   }
 
   if (state.pending_producer_instance_id != candidate.producerInstanceId()) {
     beginPendingProducerHandoff(result.next_state, candidate);
-    result.status = LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff;
     return result;
   }
   if (state.pending_identity_conflicted) {
     if (candidate.sequence() <= state.pending_sequence) {
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict;
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict;
       return result;
     }
     beginPendingProducerHandoff(result.next_state, candidate);
-    result.status = LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff;
     return result;
   }
   if (candidate.sequence() <= state.pending_sequence ||
       candidate.poseGeneration() < state.pending_pose_generation ||
       candidate.receiveStampNs() <= state.pending_receive_stamp_ns) {
-    result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedRegression;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedRegression;
     return result;
   }
   const double confirmation_interval_ms =
@@ -812,7 +814,7 @@ admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& sta
     // A lone observation must not remain an authentication credential after it
     // has aged out. Restart probation from the current fresh observation.
     beginPendingProducerHandoff(result.next_state, candidate);
-    result.status = LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff;
+    result.status = LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff;
     return result;
   }
 
@@ -821,131 +823,132 @@ admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& sta
       current->producerInstanceId();
   ++result.next_state.retired_producer_count;
   promoteCurrentClaim(result.next_state, claim);
-  result.status = LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff;
+  result.status = LatestSensorEvidenceUpdateStatus3D::kAcceptedProducerHandoff;
   result.install_candidate = true;
   result.producer_handoff = true;
   return result;
 }
 
-LatestLidarEvidenceAdmissionResult3D
-admitLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& state,
-                           const VersionedLatestLidarEvidence3D* const current,
-                           const VersionedLatestLidarEvidence3D& candidate,
-                           const std::int64_t now_ns,
-                           const double maximum_age_ms) noexcept {
-  const LatestLidarEvidenceClaimResult3D claimed = claimLatestLidarEvidenceIdentity3D(
+LatestSensorEvidenceAdmissionResult3D
+admitLatestSensorEvidence3D(const LatestSensorEvidenceAdmissionState3D& state,
+                            const VersionedLatestSensorEvidence3D* const current,
+                            const VersionedLatestSensorEvidence3D& candidate,
+                            const std::int64_t now_ns,
+                            const double maximum_age_ms) noexcept {
+  const LatestSensorEvidenceClaimResult3D claimed = claimLatestSensorEvidenceIdentity3D(
       state, current,
-      LatestLidarEvidenceIdentityClaim3D{
+      LatestSensorEvidenceIdentityClaim3D{
           .producer_instance_id = candidate.producerInstanceId(),
           .sequence = candidate.sequence(),
           .raw_wire_fingerprint = candidate.sourceContentFingerprint(),
           .first_receive_stamp_ns = candidate.receiveStampNs(),
       });
-  LatestLidarEvidenceAdmissionResult3D result{.next_state = claimed.next_state};
+  LatestSensorEvidenceAdmissionResult3D result{.next_state = claimed.next_state};
   result.current_identity_conflict =
       claimed.authority_quarantine_opened &&
-      claimed.status == LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict;
+      claimed.status == LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict;
   switch (claimed.status) {
-    case LatestLidarEvidenceClaimStatus3D::kClaimed:
-      result = admitClaimedLatestLidarEvidence3D(claimed.next_state, current, candidate,
-                                                 claimed.claim, now_ns, maximum_age_ms);
+    case LatestSensorEvidenceClaimStatus3D::kClaimed:
+      result =
+          admitClaimedLatestSensorEvidence3D(claimed.next_state, current, candidate,
+                                             claimed.claim, now_ns, maximum_age_ms);
       result.current_identity_conflict = false;
       return result;
-    case LatestLidarEvidenceClaimStatus3D::kInstalledReplay:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate;
+    case LatestSensorEvidenceClaimStatus3D::kInstalledReplay:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kIdempotentDuplicate;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kPendingReplay:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff;
+    case LatestSensorEvidenceClaimStatus3D::kPendingReplay:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kRejectedReplay:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedClaimReplay;
+    case LatestSensorEvidenceClaimStatus3D::kRejectedReplay:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedClaimReplay;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kRejectedRegression:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedRegression;
+    case LatestSensorEvidenceClaimStatus3D::kRejectedRegression:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedRegression;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict;
+    case LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kRejectedCapacity:
-      result.status = LatestLidarEvidenceUpdateStatus3D::kRejectedClaimCapacity;
+    case LatestSensorEvidenceClaimStatus3D::kRejectedCapacity:
+      result.status = LatestSensorEvidenceUpdateStatus3D::kRejectedClaimCapacity;
       break;
-    case LatestLidarEvidenceClaimStatus3D::kRejectedInvalid:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedInvalid:
       break;
   }
   return result;
 }
 
-std::string_view latestLidarEvidenceUpdateStatus3DName(
-    const LatestLidarEvidenceUpdateStatus3D status) noexcept {
+std::string_view latestSensorEvidenceUpdateStatus3DName(
+    const LatestSensorEvidenceUpdateStatus3D status) noexcept {
   switch (status) {
-    case LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial:
+    case LatestSensorEvidenceUpdateStatus3D::kAcceptedInitial:
       return "accepted_initial";
-    case LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer:
+    case LatestSensorEvidenceUpdateStatus3D::kAcceptedNewer:
       return "accepted_newer";
-    case LatestLidarEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset:
+    case LatestSensorEvidenceUpdateStatus3D::kAcceptedAcquisitionEpochReset:
       return "accepted_acquisition_epoch_reset";
-    case LatestLidarEvidenceUpdateStatus3D::kAcceptedProducerHandoff:
+    case LatestSensorEvidenceUpdateStatus3D::kAcceptedProducerHandoff:
       return "accepted_producer_handoff";
-    case LatestLidarEvidenceUpdateStatus3D::kIdempotentDuplicate:
+    case LatestSensorEvidenceUpdateStatus3D::kIdempotentDuplicate:
       return "idempotent_duplicate";
-    case LatestLidarEvidenceUpdateStatus3D::kPendingProducerHandoff:
+    case LatestSensorEvidenceUpdateStatus3D::kPendingProducerHandoff:
       return "pending_producer_handoff";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedInvalid:
       return "invalid";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedStaleCandidate:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedStaleCandidate:
       return "stale_candidate";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedRegression:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedRegression:
       return "regression";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedIdentityConflict:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedIdentityConflict:
       return "identity_conflict";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedUnauthenticatedProducer:
       return "unauthenticated_producer";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedRetiredProducer:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedRetiredProducer:
       return "retired_producer";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedHandoffCapacity:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedHandoffCapacity:
       return "handoff_capacity";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedClaimReplay:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedClaimReplay:
       return "claim_replay";
-    case LatestLidarEvidenceUpdateStatus3D::kRejectedClaimCapacity:
+    case LatestSensorEvidenceUpdateStatus3D::kRejectedClaimCapacity:
       return "claim_capacity";
   }
   return "unknown";
 }
 
-std::string_view latestLidarEvidenceClaimStatus3DName(
-    const LatestLidarEvidenceClaimStatus3D status) noexcept {
+std::string_view latestSensorEvidenceClaimStatus3DName(
+    const LatestSensorEvidenceClaimStatus3D status) noexcept {
   switch (status) {
-    case LatestLidarEvidenceClaimStatus3D::kClaimed:
+    case LatestSensorEvidenceClaimStatus3D::kClaimed:
       return "claimed";
-    case LatestLidarEvidenceClaimStatus3D::kInstalledReplay:
+    case LatestSensorEvidenceClaimStatus3D::kInstalledReplay:
       return "installed_replay";
-    case LatestLidarEvidenceClaimStatus3D::kPendingReplay:
+    case LatestSensorEvidenceClaimStatus3D::kPendingReplay:
       return "pending_replay";
-    case LatestLidarEvidenceClaimStatus3D::kRejectedReplay:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedReplay:
       return "rejected_replay";
-    case LatestLidarEvidenceClaimStatus3D::kRejectedRegression:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedRegression:
       return "regression";
-    case LatestLidarEvidenceClaimStatus3D::kRejectedIdentityConflict:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedIdentityConflict:
       return "identity_conflict";
-    case LatestLidarEvidenceClaimStatus3D::kRejectedCapacity:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedCapacity:
       return "claim_capacity";
-    case LatestLidarEvidenceClaimStatus3D::kRejectedInvalid:
+    case LatestSensorEvidenceClaimStatus3D::kRejectedInvalid:
       return "invalid";
   }
   return "unknown";
 }
 
-bool latestLidarEvidenceAuthorityQuarantined3D(
-    const LatestLidarEvidenceAdmissionState3D& state) noexcept {
+bool latestSensorEvidenceAuthorityQuarantined3D(
+    const LatestSensorEvidenceAdmissionState3D& state) noexcept {
   return state.current_identity_conflicted ||
          state.prospective_claim_capacity_exhausted;
 }
 
-LatestLidarEvidenceFreshness3D
-assessLatestLidarEvidenceFreshness3D(const VersionedLatestLidarEvidence3D& evidence,
-                                     const std::int64_t now_ns,
-                                     const double maximum_age_ms) noexcept {
-  LatestLidarEvidenceFreshness3D result;
+LatestSensorEvidenceFreshness3D
+assessLatestSensorEvidenceFreshness3D(const VersionedLatestSensorEvidence3D& evidence,
+                                      const std::int64_t now_ns,
+                                      const double maximum_age_ms) noexcept {
+  LatestSensorEvidenceFreshness3D result;
   constexpr double kMaximumRepresentableAgeMs =
       static_cast<double>(std::numeric_limits<std::int64_t>::max()) / 1.0e6;
   if (!evidence.valid() || now_ns <= 0 || !std::isfinite(maximum_age_ms) ||

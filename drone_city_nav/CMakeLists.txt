@@ -68,7 +68,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
   "msg/ObstacleMemoryStatus.msg"
-  "msg/LatestLidarObstacleScan.msg"
+  "msg/LatestSensorObstacleScan.msg"
   "msg/RawObstacleDelta.msg"
   "msg/RawObstacleSnapshot.msg"
   "msg/ObservedObstacleChunk3D.msg"
@@ -241,7 +241,7 @@ add_drone_city_nav_layer(
   src/grid_overlay.cpp
   src/known_obstacle_distance_3d.cpp
   src/known_static_lidar_hit_classifier.cpp
-  src/latest_lidar_obstacle_scan.cpp
+  src/latest_sensor_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_beam_observation.cpp
   src/lidar_debug_renderer.cpp
@@ -478,7 +478,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/grid_overlay.hpp
     include/drone_city_nav/known_obstacle_distance_3d.hpp
     include/drone_city_nav/known_static_lidar_hit_classifier.hpp
-    include/drone_city_nav/latest_lidar_obstacle_scan.hpp
+    include/drone_city_nav/latest_sensor_obstacle_scan.hpp
     include/drone_city_nav/lidar_acquisition_pose.hpp
     include/drone_city_nav/lidar_beam_observation.hpp
     include/drone_city_nav/lidar_debug_renderer.hpp
@@ -608,7 +608,7 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/transport_latency_ros.hpp
     include/drone_city_nav/multi_vehicle_diagnostics_mux_node.hpp
     include/drone_city_nav/multi_vehicle_spectator_node.hpp
-    include/drone_city_nav/latest_lidar_obstacle_scan_ros.hpp
+    include/drone_city_nav/latest_sensor_obstacle_scan_ros.hpp
     include/drone_city_nav/lidar_debug_node_config.hpp
     include/drone_city_nav/lidar_debug_pointclouds.hpp
     include/drone_city_nav/local_hold_pin.hpp
@@ -867,7 +867,7 @@ add_library(
   drone_city_nav_ros_adapters
   src/cooperative_traffic_ros.cpp
   src/execution_horizon_contract_ros.cpp
-  src/latest_lidar_obstacle_scan_ros.cpp
+  src/latest_sensor_obstacle_scan_ros.cpp
   src/lidar_debug_node_config.cpp
   src/memory_provenance_audit_tracker.cpp
   src/obstacle_memory_provenance_ros.cpp
@@ -1439,11 +1439,11 @@ if(BUILD_TESTING)
   target_link_libraries(tracked_agent_lidar_filter_test drone_city_nav_core)
   enable_project_warnings(tracked_agent_lidar_filter_test)
 
-  ament_add_gtest(latest_lidar_obstacle_scan_test
-                  tests/latest_lidar_obstacle_scan_test.cpp)
-  target_compile_features(latest_lidar_obstacle_scan_test PRIVATE cxx_std_20)
-  target_link_libraries(latest_lidar_obstacle_scan_test drone_city_nav_core)
-  enable_project_warnings(latest_lidar_obstacle_scan_test)
+  ament_add_gtest(latest_sensor_obstacle_scan_test
+                  tests/latest_sensor_obstacle_scan_test.cpp)
+  target_compile_features(latest_sensor_obstacle_scan_test PRIVATE cxx_std_20)
+  target_link_libraries(latest_sensor_obstacle_scan_test drone_city_nav_core)
+  enable_project_warnings(latest_sensor_obstacle_scan_test)
 
   ament_add_gtest(mppi_reference_test_current tests/mppi_reference_test.cpp)
   target_compile_features(mppi_reference_test_current PRIVATE cxx_std_20)

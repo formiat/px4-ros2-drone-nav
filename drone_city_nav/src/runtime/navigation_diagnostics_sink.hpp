@@ -65,7 +65,7 @@ struct NavigationDiagnosticsStatistics {
   std::uint64_t resident_owner_continuation_ticks{0U};
   std::uint64_t terminal_rest_horizon_ticks{0U};
   std::uint64_t finite_path_validation_backoff_ticks{0U};
-  std::uint64_t latest_lidar_path_validation_backoff_ticks{0U};
+  std::uint64_t latest_sensor_path_validation_backoff_ticks{0U};
   std::uint64_t retained_previous_finite_path_ticks{0U};
   std::uint64_t arrival_control_total{0U};
   std::uint64_t arrival_shaping_attempt_total{0U};

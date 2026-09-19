@@ -182,13 +182,13 @@ TEST(ProductionMppiExecutionControlTest,
             ProductionMppiResidentObstacleDisposition::kClear);
   EXPECT_EQ(residentObstacleDisposition({.route_suffix_persistent_raw = true}),
             ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired);
-  EXPECT_EQ(residentObstacleDisposition({.finite_execution_latest_lidar = true}),
+  EXPECT_EQ(residentObstacleDisposition({.finite_execution_latest_sensor = true}),
             ProductionMppiResidentObstacleDisposition::
-                kLatestLidarFiniteExecutionInvalidated);
+                kLatestSensorFiniteExecutionInvalidated);
   EXPECT_EQ(residentObstacleDisposition({
                 .route_suffix_persistent_raw = true,
                 .finite_execution_persistent_raw = true,
-                .finite_execution_latest_lidar = true,
+                .finite_execution_latest_sensor = true,
             }),
             ProductionMppiResidentObstacleDisposition::
                 kPersistentRawFiniteExecutionInvalidated);

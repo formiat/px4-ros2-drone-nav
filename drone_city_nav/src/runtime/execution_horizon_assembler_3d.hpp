@@ -23,7 +23,7 @@ namespace drone_city_nav {
 struct EvidenceSnapshot3D {
   std::shared_ptr<const ProductionNavigationObjective> objective;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   OffboardSessionAdmissionState offboard_session{};
   std::int64_t offboard_session_receive_stamp_ns{0};
   mppi::State exact_initial_state{};
@@ -35,11 +35,11 @@ struct EvidenceSnapshot3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> rearm_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> rearm_static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
-  double latest_lidar_obstacle_age_ms{-1.0};
-  bool latest_lidar_obstacle_fresh{false};
-  bool latest_lidar_obstacle_receive_time_fallback{false};
-  IndexedPointCloudView3D latest_lidar_obstacle_points;
-  std::uint64_t latest_lidar_obstacle_sequence{0U};
+  double latest_sensor_obstacle_age_ms{-1.0};
+  bool latest_sensor_obstacle_fresh{false};
+  bool latest_sensor_obstacle_receive_time_fallback{false};
+  IndexedPointCloudView3D latest_sensor_obstacle_points;
+  std::uint64_t latest_sensor_obstacle_sequence{0U};
   bool exact_snapshot_world{false};
   const FlightEnvelopeConfig* execution_flight_envelope{nullptr};
   const mppi::DynamicsConfig* execution_dynamics{nullptr};
@@ -116,7 +116,7 @@ horizonCandidateStatus3DName(HorizonCandidateStatus3D status) noexcept;
 enum class HorizonCandidateObstacleSource3D : std::uint8_t {
   kNone,
   kPersistentRaw,
-  kLatestLidar,
+  kLatestSensor,
 };
 
 struct HorizonCandidatePhysicalRejection3D {
@@ -171,7 +171,7 @@ struct HorizonCandidate3D {
   double certification_ms{0.0};
   bool path_validation_backoff{false};
   bool persistent_raw_path_validation_backoff{false};
-  bool latest_lidar_path_validation_backoff{false};
+  bool latest_sensor_path_validation_backoff{false};
 
   [[nodiscard]] bool planned() const noexcept {
     return status == HorizonCandidateStatus3D::kPlanned &&

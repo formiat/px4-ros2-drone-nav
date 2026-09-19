@@ -58,12 +58,12 @@ bool sameControl(const mppi::Control& first, const mppi::Control& second) noexce
          first.yaw_accel == second.yaw_accel;
 }
 
-LatestLidarEvidenceFreshness3D latestLidarEvidenceFreshness(
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& evidence,
+LatestSensorEvidenceFreshness3D latestSensorEvidenceFreshness(
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>& evidence,
     const std::int64_t now_ns, const double maximum_age_ms) noexcept {
   return evidence != nullptr
-             ? assessLatestLidarEvidenceFreshness3D(*evidence, now_ns, maximum_age_ms)
-             : LatestLidarEvidenceFreshness3D{};
+             ? assessLatestSensorEvidenceFreshness3D(*evidence, now_ns, maximum_age_ms)
+             : LatestSensorEvidenceFreshness3D{};
 }
 
 bool bindHorizonRouteMetadata(msg::MppiTrajectoryHorizon& horizon,
@@ -345,8 +345,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           cycle.evidence.offboard_session_receive_stamp_ns,
           owner.target_offboard_instance_id, publication_now_ns,
           config_.execution.maximum_control_feedback_age_ms);
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
-      latest_lidar_evidence_.load(std::memory_order_acquire);
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> current_lidar =
+      latest_sensor_evidence_.load(std::memory_order_acquire);
   candidate.owner = owner;
   candidate.expected_horizon_producer_instance_id =
       execution_horizon_producer_instance_id_;
@@ -391,12 +391,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
               !config_.world.use_static_map && committed_3d != nullptr
                   ? committed_3d->authoritativeOwner()
                   : nullptr,
-          .current_lidar_evidence = current_lidar,
+          .current_sensor_evidence = current_lidar,
           .publication_now_ns = publication_now_ns,
           .maximum_control_feedback_age_ms =
               config_.execution.maximum_control_feedback_age_ms,
-          .latest_lidar_identity_conflicted =
-              latest_lidar_evidence_identity_conflicted_.load(
+          .latest_sensor_identity_conflicted =
+              latest_sensor_evidence_identity_conflicted_.load(
                   std::memory_order_acquire),
       });
   latest_horizon_commit_ms_ = std::chrono::duration<double, std::milli>(
@@ -484,7 +484,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
     const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
     const std::shared_ptr<const ExecutionRouteTransitionResult3D>& progress_preparation,
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority) {
-  const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
+  const auto evidence_lock = evidence_boundary_.evidenceWithLatestSensor();
   return commitAndPublishExecutionHorizon(
       cycle, horizon,
       ExecutionHorizonLeaseCandidate3D{

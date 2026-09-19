@@ -174,7 +174,7 @@ bool validateTrackingTubeHandoffClearance(
         .observed_occupancy = world.observed_occupancy,
         .static_occupancy = world.static_occupancy,
         .planar_occupancy = world.raw_occupancy,
-        .raw_point_cloud = world.latest_lidar_obstacle_points,
+        .raw_point_cloud = world.latest_sensor_obstacle_points,
         .launch_support_contact = world.launch_support_contact,
         .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
         .footprint = inflated,

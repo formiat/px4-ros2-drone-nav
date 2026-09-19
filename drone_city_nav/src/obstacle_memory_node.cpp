@@ -3,8 +3,8 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/grid_config.hpp"
-#include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
-#include "drone_city_nav/latest_lidar_obstacle_scan_ros.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan.hpp"
+#include "drone_city_nav/latest_sensor_obstacle_scan_ros.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -245,9 +245,9 @@ public:
     dynamic_agent_lidar_state_ =
         std::make_unique<DynamicAgentLidarState>(dynamic_agent_config);
     const auto sensor_qos = rclcpp::SensorDataQoS{};
-    latest_lidar_obstacle_scan_pub_ = create_publisher<msg::LatestLidarObstacleScan>(
-        declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
-                                       "/drone_city_nav/latest_lidar_obstacle_scan"),
+    latest_sensor_obstacle_scan_pub_ = create_publisher<msg::LatestSensorObstacleScan>(
+        declare_parameter<std::string>("latest_sensor_obstacle_scan_topic",
+                                       "/drone_city_nav/latest_sensor_obstacle_scan"),
         sensor_qos);
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
@@ -633,7 +633,7 @@ private:
     scan_view.beam_projection_poses = acquisition_pose.alignment.poses;
     scan_view.projection_pose_source =
         LidarProjectionPoseSource::kSourceTimestampAligned;
-    publishLatestLidarObstacleScan(
+    publishLatestSensorObstacleScan(
         scan, persistent_scan_ranges, acquisition_pose.alignment.poses,
         lidar_pose_history_.generation(), acquisition_stamp_ns);
     if (!persistent_memory_enabled_ || !persistent_memory_selection_.selected()) {
@@ -799,15 +799,15 @@ private:
     };
   }
 
-  void publishLatestLidarObstacleScan(
+  void publishLatestSensorObstacleScan(
       const sensor_msgs::msg::LaserScan& scan, const std::span<const float> ranges,
       const std::span<const LidarProjectionPose> beam_projection_poses,
       const std::uint64_t pose_generation, const std::int64_t acquisition_stamp_ns) {
-    if (!latest_lidar_obstacle_scan_pub_) {
+    if (!latest_sensor_obstacle_scan_pub_) {
       return;
     }
-    const LatestLidarObstacleScanBuildResult obstacle_scan =
-        buildLatestLidarObstacleScan(LatestLidarObstacleScanBuildInput{
+    const LatestSensorObstacleScanBuildResult obstacle_scan =
+        buildLatestSensorObstacleScan(LatestSensorObstacleScanBuildInput{
             .ranges = ranges,
             .beam_projection_poses = beam_projection_poses,
             .projection_config = lidarProjectionConfig(),
@@ -819,19 +819,19 @@ private:
     if (!obstacle_scan.valid) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "LATEST_LIDAR_OBSTACLE_SCAN published=false reason=projection_failed "
+          "LATEST_SENSOR_OBSTACLE_SCAN published=false reason=projection_failed "
           "source_beams=%zu invalid_beams=%zu",
           obstacle_scan.source_beam_count, obstacle_scan.invalid_beam_count);
       return;
     }
-    msg::LatestLidarObstacleScan message = makeLatestLidarObstacleScanMessage(
+    msg::LatestSensorObstacleScan message = makeLatestSensorObstacleScanMessage(
         obstacle_scan, scan.header, frame_id_, acquisition_stamp_ns,
-        latest_lidar_obstacle_scan_producer_instance_id_,
-        ++latest_lidar_obstacle_scan_sequence_, pose_generation);
-    latest_lidar_obstacle_scan_pub_->publish(message);
+        latest_sensor_obstacle_scan_producer_instance_id_,
+        ++latest_sensor_obstacle_scan_sequence_, pose_generation);
+    latest_sensor_obstacle_scan_pub_->publish(message);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "LATEST_LIDAR_OBSTACLE_SCAN published=true producer=%" PRIu64
+        "LATEST_SENSOR_OBSTACLE_SCAN published=true producer=%" PRIu64
         " sequence=%" PRIu64
         " source_beams=%u hit_points=%zu invalid_beams=%u pose_generation=%" PRIu64,
         message.producer_instance_id, message.sequence, message.source_beam_count,
@@ -951,9 +951,9 @@ private:
   LidarMemoryHitDumpWriter lidar_memory_hit_dump_;
   LatestValueMailbox<LidarMemoryHitDiagnosticBatch> lidar_diagnostics_mailbox_;
   std::atomic<std::uint64_t> dropped_lidar_diagnostic_batches_{0U};
-  const std::uint64_t latest_lidar_obstacle_scan_producer_instance_id_{
-      createLatestLidarObstacleProducerInstanceId()};
-  std::uint64_t latest_lidar_obstacle_scan_sequence_{0U};
+  const std::uint64_t latest_sensor_obstacle_scan_producer_instance_id_{
+      createLatestSensorObstacleProducerInstanceId()};
+  std::uint64_t latest_sensor_obstacle_scan_sequence_{0U};
   std::size_t lidar_scan_alignment_queue_capacity_{8U};
   std::deque<PendingLidarScan> pending_lidar_scans_;
   std::jthread lidar_diagnostics_worker_;
@@ -973,8 +973,8 @@ private:
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
-  rclcpp::Publisher<msg::LatestLidarObstacleScan>::SharedPtr
-      latest_lidar_obstacle_scan_pub_;
+  rclcpp::Publisher<msg::LatestSensorObstacleScan>::SharedPtr
+      latest_sensor_obstacle_scan_pub_;
 };
 
 } // namespace drone_city_nav

@@ -58,7 +58,7 @@ struct PlanningCycleRequest3D {
   ProductionMppiNavigation navigation{};
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world;
-  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   Point3 mission_goal{};
   std::chrono::steady_clock::time_point tick_started{};

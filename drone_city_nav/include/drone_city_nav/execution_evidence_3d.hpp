@@ -35,11 +35,11 @@ public:
   capture(FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
           MotionAltitudeEnvelopeConfig3D altitude_envelope,
           SweptFootprintConfig swept_footprint,
-          double latest_lidar_maximum_age_ms = 1000.0,
+          double latest_sensor_maximum_age_ms = 1000.0,
           double execution_input_maximum_pose_age_ms = 1000.0,
           double execution_input_maximum_control_age_ms = 1000.0,
           bool route_cross_track_constraints_enabled = false,
-          bool latest_lidar_freshness_required = true,
+          bool latest_sensor_freshness_required = true,
           bool route_tracking_tube_constraints_enabled = true,
           double route_station_credit_slack_m = 0.0);
 
@@ -47,11 +47,11 @@ public:
   [[nodiscard]] const MotionDynamicsConfig3D& dynamics() const noexcept;
   [[nodiscard]] const MotionAltitudeEnvelopeConfig3D& altitudeEnvelope() const noexcept;
   [[nodiscard]] const SweptFootprintConfig& sweptFootprint() const noexcept;
-  [[nodiscard]] double latestLidarMaximumAgeMs() const noexcept;
+  [[nodiscard]] double latestSensorMaximumAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumPoseAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumControlAgeMs() const noexcept;
   [[nodiscard]] bool routeCrossTrackConstraintsEnabled() const noexcept;
-  [[nodiscard]] bool latestLidarFreshnessRequired() const noexcept;
+  [[nodiscard]] bool latestSensorFreshnessRequired() const noexcept;
   [[nodiscard]] bool routeTrackingTubeConstraintsEnabled() const noexcept;
   // Route station a progress observation may be credited beyond the
   // vehicle's displacement since the last binding. The executor steers at a
@@ -66,10 +66,10 @@ public:
   VersionedExecutionValidationPolicy3D(
       CaptureToken, FlightEnvelopeConfig flight_envelope,
       MotionDynamicsConfig3D dynamics, MotionAltitudeEnvelopeConfig3D altitude_envelope,
-      SweptFootprintConfig swept_footprint, double latest_lidar_maximum_age_ms,
+      SweptFootprintConfig swept_footprint, double latest_sensor_maximum_age_ms,
       double execution_input_maximum_pose_age_ms,
       double execution_input_maximum_control_age_ms,
-      bool route_cross_track_constraints_enabled, bool latest_lidar_freshness_required,
+      bool route_cross_track_constraints_enabled, bool latest_sensor_freshness_required,
       bool route_tracking_tube_constraints_enabled,
       double route_station_credit_slack_m);
 
@@ -78,11 +78,11 @@ private:
   MotionDynamicsConfig3D dynamics_{};
   MotionAltitudeEnvelopeConfig3D altitude_envelope_{};
   SweptFootprintConfig swept_footprint_{};
-  double latest_lidar_maximum_age_ms_{0.0};
+  double latest_sensor_maximum_age_ms_{0.0};
   double execution_input_maximum_pose_age_ms_{0.0};
   double execution_input_maximum_control_age_ms_{0.0};
   bool route_cross_track_constraints_enabled_{false};
-  bool latest_lidar_freshness_required_{true};
+  bool latest_sensor_freshness_required_{true};
   bool route_tracking_tube_constraints_enabled_{true};
   double route_station_credit_slack_m_{0.0};
   std::uint64_t content_fingerprint_{0U};
@@ -186,7 +186,7 @@ executionInputFreshAt(const VersionedExecutionInput3D& input,
                       const VersionedExecutionValidationPolicy3D& policy,
                       std::int64_t validation_stamp_ns) noexcept;
 
-struct LatestLidarEvidenceCapture3D {
+struct LatestSensorEvidenceCapture3D {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t sequence{0U};
   std::uint64_t pose_generation{0U};
@@ -199,7 +199,7 @@ struct LatestLidarEvidenceCapture3D {
   std::vector<Point3> hit_points_map_m;
 };
 
-enum class LatestLidarEvidenceUpdateStatus3D : std::uint8_t {
+enum class LatestSensorEvidenceUpdateStatus3D : std::uint8_t {
   kAcceptedInitial,
   kAcceptedNewer,
   kAcceptedAcquisitionEpochReset,
@@ -217,13 +217,13 @@ enum class LatestLidarEvidenceUpdateStatus3D : std::uint8_t {
   kRejectedClaimCapacity,
 };
 
-struct LatestLidarEvidenceFreshness3D {
+struct LatestSensorEvidenceFreshness3D {
   double age_ms{-1.0};
   bool fresh{false};
   bool receive_time_fallback{false};
 };
 
-struct LatestLidarEvidenceId3D {
+struct LatestSensorEvidenceId3D {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t sequence{0U};
   std::uint64_t pose_generation{0U};
@@ -234,17 +234,17 @@ struct LatestLidarEvidenceId3D {
            acquisition_stamp_ns > 0;
   }
 
-  friend bool operator==(const LatestLidarEvidenceId3D&,
-                         const LatestLidarEvidenceId3D&) = default;
+  friend bool operator==(const LatestSensorEvidenceId3D&,
+                         const LatestSensorEvidenceId3D&) = default;
 };
 
-class VersionedLatestLidarEvidence3D final {
+class VersionedLatestSensorEvidence3D final {
 private:
   struct CaptureToken final {};
 
 public:
-  [[nodiscard]] static std::shared_ptr<const VersionedLatestLidarEvidence3D>
-  capture(LatestLidarEvidenceCapture3D capture);
+  [[nodiscard]] static std::shared_ptr<const VersionedLatestSensorEvidence3D>
+  capture(LatestSensorEvidenceCapture3D capture);
 
   [[nodiscard]] std::uint64_t producerInstanceId() const noexcept;
   [[nodiscard]] std::uint64_t sequence() const noexcept;
@@ -257,42 +257,42 @@ public:
   // The hit points bucketed into cells for the swept-body validators: the same
   // returns as hitPointsMapM, reordered by cell, built once at capture.
   [[nodiscard]] IndexedPointCloudView3D indexedHitPoints() const noexcept;
-  [[nodiscard]] LatestLidarEvidenceId3D evidenceId() const noexcept;
+  [[nodiscard]] LatestSensorEvidenceId3D evidenceId() const noexcept;
   // Fingerprint of producer-owned content. Local receipt time is deliberately
   // excluded so retransmission cannot rejuvenate an observation.
   [[nodiscard]] std::uint64_t sourceContentFingerprint() const noexcept;
   [[nodiscard]] std::uint64_t contentFingerprint() const noexcept;
   [[nodiscard]] bool valid() const noexcept;
 
-  VersionedLatestLidarEvidence3D(CaptureToken, LatestLidarEvidenceCapture3D capture);
+  VersionedLatestSensorEvidence3D(CaptureToken, LatestSensorEvidenceCapture3D capture);
 
 private:
-  LatestLidarEvidenceCapture3D capture_{};
+  LatestSensorEvidenceCapture3D capture_{};
   IndexedPointCloud3D indexed_hit_points_{};
   std::uint64_t source_content_fingerprint_{0U};
   std::uint64_t content_fingerprint_{0U};
   bool valid_{false};
 };
 
-inline constexpr std::size_t kLatestLidarRetiredProducerCapacity3D{16U};
-inline constexpr std::size_t kLatestLidarProspectiveClaimCapacity3D{16U};
+inline constexpr std::size_t kLatestSensorRetiredProducerCapacity3D{16U};
+inline constexpr std::size_t kLatestSensorProspectiveClaimCapacity3D{16U};
 
 // The transport computes the canonical fingerprint over the unvalidated wire
 // fields. Claiming this identity before interpreting the payload prevents a
 // malformed or stale replay from acquiring a newer local receipt time.
-struct LatestLidarEvidenceIdentityClaim3D {
+struct LatestSensorEvidenceIdentityClaim3D {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t sequence{0U};
   std::uint64_t raw_wire_fingerprint{0U};
   std::int64_t first_receive_stamp_ns{0};
 };
 
-struct LatestLidarEvidenceProspectiveClaim3D {
-  LatestLidarEvidenceIdentityClaim3D identity{};
+struct LatestSensorEvidenceProspectiveClaim3D {
+  LatestSensorEvidenceIdentityClaim3D identity{};
   bool conflicted{false};
 };
 
-enum class LatestLidarEvidenceClaimStatus3D : std::uint8_t {
+enum class LatestSensorEvidenceClaimStatus3D : std::uint8_t {
   kClaimed,
   kInstalledReplay,
   kPendingReplay,
@@ -306,7 +306,7 @@ enum class LatestLidarEvidenceClaimStatus3D : std::uint8_t {
 // Consumer-owned authority state. Retired producer identifiers are never
 // evicted: exhausting the bounded tombstone set fails closed instead of making
 // an old producer replay eligible again.
-struct LatestLidarEvidenceAdmissionState3D {
+struct LatestSensorEvidenceAdmissionState3D {
   std::uint64_t current_producer_instance_id{0U};
   std::uint64_t current_sequence{0U};
   std::uint64_t current_raw_wire_fingerprint{0U};
@@ -314,11 +314,11 @@ struct LatestLidarEvidenceAdmissionState3D {
   // Same producer/sequence with a different raw-wire fingerprint quarantines the
   // resident identity until strictly newer evidence resolves the ambiguity.
   bool current_identity_conflicted{false};
-  std::array<std::uint64_t, kLatestLidarRetiredProducerCapacity3D>
+  std::array<std::uint64_t, kLatestSensorRetiredProducerCapacity3D>
       retired_producer_instance_ids{};
   std::size_t retired_producer_count{0U};
-  std::array<LatestLidarEvidenceProspectiveClaim3D,
-             kLatestLidarProspectiveClaimCapacity3D>
+  std::array<LatestSensorEvidenceProspectiveClaim3D,
+             kLatestSensorProspectiveClaimCapacity3D>
       prospective_claims{};
   std::size_t prospective_claim_count{0U};
   // This latch is deliberately irreversible: after bounded identity memory is
@@ -333,65 +333,65 @@ struct LatestLidarEvidenceAdmissionState3D {
   bool pending_identity_conflicted{false};
 };
 
-struct LatestLidarEvidenceClaimResult3D {
-  LatestLidarEvidenceAdmissionState3D next_state{};
-  LatestLidarEvidenceIdentityClaim3D claim{};
-  LatestLidarEvidenceClaimStatus3D status{
-      LatestLidarEvidenceClaimStatus3D::kRejectedInvalid};
+struct LatestSensorEvidenceClaimResult3D {
+  LatestSensorEvidenceAdmissionState3D next_state{};
+  LatestSensorEvidenceIdentityClaim3D claim{};
+  LatestSensorEvidenceClaimStatus3D status{
+      LatestSensorEvidenceClaimStatus3D::kRejectedInvalid};
   bool assess_candidate{false};
   bool authority_quarantine_opened{false};
 };
 
-struct LatestLidarEvidenceAdmissionResult3D {
-  LatestLidarEvidenceAdmissionState3D next_state{};
-  LatestLidarEvidenceUpdateStatus3D status{
-      LatestLidarEvidenceUpdateStatus3D::kRejectedInvalid};
+struct LatestSensorEvidenceAdmissionResult3D {
+  LatestSensorEvidenceAdmissionState3D next_state{};
+  LatestSensorEvidenceUpdateStatus3D status{
+      LatestSensorEvidenceUpdateStatus3D::kRejectedInvalid};
   bool install_candidate{false};
   bool acquisition_epoch_reset{false};
   bool producer_handoff{false};
   bool current_identity_conflict{false};
 };
 
-[[nodiscard]] LatestLidarEvidenceUpdateStatus3D assessLatestLidarEvidenceUpdate3D(
-    const VersionedLatestLidarEvidence3D* current,
-    const VersionedLatestLidarEvidence3D& candidate) noexcept;
+[[nodiscard]] LatestSensorEvidenceUpdateStatus3D assessLatestSensorEvidenceUpdate3D(
+    const VersionedLatestSensorEvidence3D* current,
+    const VersionedLatestSensorEvidence3D& candidate) noexcept;
 
 // This is phase one of admission and must run before frame, count, point,
 // freshness, acquisition-epoch, probation, or owner checks.
-[[nodiscard]] LatestLidarEvidenceClaimResult3D
-claimLatestLidarEvidenceIdentity3D(const LatestLidarEvidenceAdmissionState3D& state,
-                                   const VersionedLatestLidarEvidence3D* current,
-                                   LatestLidarEvidenceIdentityClaim3D claim) noexcept;
+[[nodiscard]] LatestSensorEvidenceClaimResult3D
+claimLatestSensorEvidenceIdentity3D(const LatestSensorEvidenceAdmissionState3D& state,
+                                    const VersionedLatestSensorEvidence3D* current,
+                                    LatestSensorEvidenceIdentityClaim3D claim) noexcept;
 
 // Only the caller that received assess_candidate=true may finalize its claim.
-[[nodiscard]] LatestLidarEvidenceAdmissionResult3D
-admitClaimedLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& state,
-                                  const VersionedLatestLidarEvidence3D* current,
-                                  const VersionedLatestLidarEvidence3D& candidate,
-                                  const LatestLidarEvidenceIdentityClaim3D& claim,
-                                  std::int64_t now_ns, double maximum_age_ms) noexcept;
+[[nodiscard]] LatestSensorEvidenceAdmissionResult3D
+admitClaimedLatestSensorEvidence3D(const LatestSensorEvidenceAdmissionState3D& state,
+                                   const VersionedLatestSensorEvidence3D* current,
+                                   const VersionedLatestSensorEvidence3D& candidate,
+                                   const LatestSensorEvidenceIdentityClaim3D& claim,
+                                   std::int64_t now_ns, double maximum_age_ms) noexcept;
 
 // A new producer may take authority only after the resident evidence is stale
 // and two fresh, strictly ordered observations within one freshness window
 // establish the new producer epoch. The old producer is tombstoned on handoff.
-[[nodiscard]] LatestLidarEvidenceAdmissionResult3D
-admitLatestLidarEvidence3D(const LatestLidarEvidenceAdmissionState3D& state,
-                           const VersionedLatestLidarEvidence3D* current,
-                           const VersionedLatestLidarEvidence3D& candidate,
-                           std::int64_t now_ns, double maximum_age_ms) noexcept;
+[[nodiscard]] LatestSensorEvidenceAdmissionResult3D
+admitLatestSensorEvidence3D(const LatestSensorEvidenceAdmissionState3D& state,
+                            const VersionedLatestSensorEvidence3D* current,
+                            const VersionedLatestSensorEvidence3D& candidate,
+                            std::int64_t now_ns, double maximum_age_ms) noexcept;
 
-[[nodiscard]] std::string_view latestLidarEvidenceUpdateStatus3DName(
-    LatestLidarEvidenceUpdateStatus3D status) noexcept;
+[[nodiscard]] std::string_view latestSensorEvidenceUpdateStatus3DName(
+    LatestSensorEvidenceUpdateStatus3D status) noexcept;
 
-[[nodiscard]] std::string_view
-latestLidarEvidenceClaimStatus3DName(LatestLidarEvidenceClaimStatus3D status) noexcept;
+[[nodiscard]] std::string_view latestSensorEvidenceClaimStatus3DName(
+    LatestSensorEvidenceClaimStatus3D status) noexcept;
 
-[[nodiscard]] bool latestLidarEvidenceAuthorityQuarantined3D(
-    const LatestLidarEvidenceAdmissionState3D& state) noexcept;
+[[nodiscard]] bool latestSensorEvidenceAuthorityQuarantined3D(
+    const LatestSensorEvidenceAdmissionState3D& state) noexcept;
 
-[[nodiscard]] LatestLidarEvidenceFreshness3D
-assessLatestLidarEvidenceFreshness3D(const VersionedLatestLidarEvidence3D& evidence,
-                                     std::int64_t now_ns,
-                                     double maximum_age_ms) noexcept;
+[[nodiscard]] LatestSensorEvidenceFreshness3D
+assessLatestSensorEvidenceFreshness3D(const VersionedLatestSensorEvidence3D& evidence,
+                                      std::int64_t now_ns,
+                                      double maximum_age_ms) noexcept;
 
 } // namespace drone_city_nav

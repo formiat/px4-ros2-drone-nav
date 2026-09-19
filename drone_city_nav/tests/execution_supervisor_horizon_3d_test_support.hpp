@@ -34,16 +34,16 @@ executionHorizonTestRawOwner(const ExecutionPlan3D& plan) {
   return nullptr;
 }
 
-[[nodiscard]] inline std::shared_ptr<const VersionedLatestLidarEvidence3D>
+[[nodiscard]] inline std::shared_ptr<const VersionedLatestSensorEvidence3D>
 executionHorizonTestLidarOwner(const ExecutionPlan3D& plan) {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
-    return execution->latest_lidar_evidence;
+    return execution->latest_sensor_evidence;
   }
   if (const StopExecution3D* const stop = plan.stopExecution()) {
-    return stop->latest_lidar_evidence;
+    return stop->latest_sensor_evidence;
   }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
-    return hold->latest_lidar_evidence;
+    return hold->latest_sensor_evidence;
   }
   return nullptr;
 }
@@ -74,7 +74,7 @@ makeExecutionHorizonTestRequest(ExecutionHorizonTestTransaction3D transaction) {
   const std::shared_ptr<const VersionedObservedRawWorld3D> raw =
       publication_plan != nullptr ? executionHorizonTestRawOwner(*publication_plan)
                                   : nullptr;
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar =
+  const std::shared_ptr<const VersionedLatestSensorEvidence3D> lidar =
       publication_plan != nullptr ? executionHorizonTestLidarOwner(*publication_plan)
                                   : nullptr;
   const ExecutionHorizonNavigationWitness3D navigation =
@@ -118,7 +118,7 @@ makeExecutionHorizonTestRequest(ExecutionHorizonTestTransaction3D transaction) {
           },
       .navigation = navigation,
       .current_observed_raw_world = raw,
-      .current_lidar_evidence = lidar,
+      .current_sensor_evidence = lidar,
       .publication_now_ns = transaction.owner.valid_from_ns,
       .maximum_control_feedback_age_ms = 1000.0,
   };

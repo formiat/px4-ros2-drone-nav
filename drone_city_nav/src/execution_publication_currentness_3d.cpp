@@ -11,8 +11,8 @@ namespace {
 }
 
 [[nodiscard]] bool
-sameLidarIdentity(const VersionedLatestLidarEvidence3D& expected,
-                  const VersionedLatestLidarEvidence3D& current) noexcept {
+sameLidarIdentity(const VersionedLatestSensorEvidence3D& expected,
+                  const VersionedLatestSensorEvidence3D& current) noexcept {
   return expected.evidenceId() == current.evidenceId();
 }
 
@@ -22,8 +22,8 @@ sameLidarIdentity(const VersionedLatestLidarEvidence3D& expected,
 }
 
 [[nodiscard]] bool
-lidarEvidenceAdvanced(const VersionedLatestLidarEvidence3D& expected,
-                      const VersionedLatestLidarEvidence3D& current) noexcept {
+sensorEvidenceAdvanced(const VersionedLatestSensorEvidence3D& expected,
+                       const VersionedLatestSensorEvidence3D& current) noexcept {
   return expected.producerInstanceId() == current.producerInstanceId() &&
          current.sequence() > expected.sequence();
 }
@@ -78,33 +78,33 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
     }
   }
 
-  if (check.expected_lidar_evidence == nullptr ||
-      check.current_lidar_evidence == nullptr) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarEvidenceMissing;
+  if (check.expected_sensor_evidence == nullptr ||
+      check.current_sensor_evidence == nullptr) {
+    return ExecutionPublicationCurrentnessStatus3D::kSensorEvidenceMissing;
   }
-  if (!check.expected_lidar_evidence->valid() ||
-      !check.current_lidar_evidence->valid()) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarEvidenceInvalid;
+  if (!check.expected_sensor_evidence->valid() ||
+      !check.current_sensor_evidence->valid()) {
+    return ExecutionPublicationCurrentnessStatus3D::kSensorEvidenceInvalid;
   }
-  if (!sameLidarIdentity(*check.expected_lidar_evidence,
-                         *check.current_lidar_evidence)) {
-    if (!lidarEvidenceAdvanced(*check.expected_lidar_evidence,
-                               *check.current_lidar_evidence)) {
+  if (!sameLidarIdentity(*check.expected_sensor_evidence,
+                         *check.current_sensor_evidence)) {
+    if (!sensorEvidenceAdvanced(*check.expected_sensor_evidence,
+                                *check.current_sensor_evidence)) {
       return ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged;
     }
     revalidation_required = true;
   } else {
-    if (check.expected_lidar_evidence->contentFingerprint() !=
-        check.current_lidar_evidence->contentFingerprint()) {
+    if (check.expected_sensor_evidence->contentFingerprint() !=
+        check.current_sensor_evidence->contentFingerprint()) {
       return ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged;
     }
   }
 
   if (check.lidar_freshness_required) {
-    const LatestLidarEvidenceFreshness3D freshness =
-        assessLatestLidarEvidenceFreshness3D(*check.current_lidar_evidence,
-                                             check.publication_now_ns,
-                                             check.maximum_lidar_age_ms);
+    const LatestSensorEvidenceFreshness3D freshness =
+        assessLatestSensorEvidenceFreshness3D(*check.current_sensor_evidence,
+                                              check.publication_now_ns,
+                                              check.maximum_lidar_age_ms);
     if (freshness.age_ms < 0.0) {
       return ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime;
     }
@@ -142,10 +142,10 @@ std::string_view executionPublicationCurrentnessStatus3DName(
       return "raw_version_changed";
     case ExecutionPublicationCurrentnessStatus3D::kRawObservationOwnerChanged:
       return "raw_observation_owner_changed";
-    case ExecutionPublicationCurrentnessStatus3D::kLidarEvidenceMissing:
-      return "lidar_evidence_missing";
-    case ExecutionPublicationCurrentnessStatus3D::kLidarEvidenceInvalid:
-      return "lidar_evidence_invalid";
+    case ExecutionPublicationCurrentnessStatus3D::kSensorEvidenceMissing:
+      return "sensor_evidence_missing";
+    case ExecutionPublicationCurrentnessStatus3D::kSensorEvidenceInvalid:
+      return "sensor_evidence_invalid";
     case ExecutionPublicationCurrentnessStatus3D::kLidarIdentityChanged:
       return "lidar_identity_changed";
     case ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged:

@@ -149,7 +149,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const FiniteExecutionState3D& braking = composed_snapshot.brakingFallback()[0];
   ASSERT_NE(braking.horizon, nullptr);
   EXPECT_EQ(command.execution_input, braking.execution_input);
-  EXPECT_EQ(command.latest_lidar_evidence, braking.latest_lidar_evidence);
+  EXPECT_EQ(command.latest_sensor_evidence, braking.latest_sensor_evidence);
   EXPECT_EQ(command.observed_raw_world, braking.observed_raw_world);
   EXPECT_EQ(command.source_snapshot_version, progressed.version);
   EXPECT_EQ(braking.source_snapshot_version, progressed.version);
@@ -205,7 +205,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteCertificationForRoute(
           route, FiniteExecutionKind3D::kNominal, 102U, 56U, 0U, kRetainedStationM,
           route.progress.execution_input.get(),
-          resident_execution.latest_lidar_evidence.get());
+          resident_execution.latest_sensor_evidence.get());
   ASSERT_NE(command.execution_input, nullptr);
   MotionState3D lagging_state = command.execution_input->state();
   lagging_state.x -= 0.1F;
