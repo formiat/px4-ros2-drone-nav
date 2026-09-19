@@ -264,22 +264,29 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
                                        : "physical_stop_after_resident_rejection",
           ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
     }
-    ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
+    bool braking_path_blocked{false};
+    ProductionMppiExecutionPublication stop =
+        publishStopExecution(cycle, reason, &braking_path_blocked);
     if (stop.published || stop.resident_owner_continues) {
       return stop;
     }
-    // The stop was refused: braking along the velocity sweeps into evidence.
-    // A revocation hands the vehicle to the offboard's local hold, which
-    // brakes along that same velocity with no world behind it: the motion the
-    // certifier has just refused. When the path rebuilt from the measured
-    // state was refused but the resident trajectory itself still sweeps clear
-    // of the newest evidence, that trajectory is the only motion the world was
-    // checked against, and it ends at rest within its lease: the resident
-    // owner keeps the vehicle. r440 lost the vehicle to the other choice: the
-    // resident trajectory validated, the stop from 5.66 m/s was refused for
-    // the wall 4 m ahead, the execution was revoked, and the local hold braked
-    // into that wall at 3.83 m/s.
-    if (resident_trajectory_clear) {
+    // A stop refused because braking along the velocity sweeps into evidence
+    // must not be answered by a revocation: the revocation hands the vehicle
+    // to the offboard's local hold, which brakes along that same velocity with
+    // no world behind it, the motion the certifier has just refused. When the
+    // resident trajectory itself still sweeps clear of the newest evidence it
+    // is the only motion the world was checked against, and it ends at rest
+    // within its lease: the resident owner keeps the vehicle. r440 lost the
+    // vehicle to the other choice: the resident trajectory validated, the stop
+    // from 5.66 m/s was refused for the wall 4 m ahead, the execution was
+    // revoked, and the local hold braked into that wall at 3.83 m/s.
+    //
+    // A stop refused only for the clearance of its rest pose is the opposite
+    // case: its braking path sweeps clear, so the local hold's brake is the
+    // shortest clear motion there is, and the revocation stands. r445 flew the
+    // resident trajectory on instead, from 3.45 m/s with 2.6 m of free path,
+    // and met the wall 1.1 s later at 3.7 m/s.
+    if (braking_path_blocked && resident_trajectory_clear) {
       ProductionMppiExecutionPublication continuation = residentOwnerContinuation(
           reason, cycle.controller.now_ns, stop, /*retire_route_on_expiry=*/false);
       if (continuation.resident_owner_continues) {

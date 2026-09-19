@@ -306,9 +306,13 @@ private:
   // current state, validated against the newest evidence and published as the
   // planned horizon. Nothing about it survives its own completion; the next
   // certified route takes the vehicle from wherever it stopped.
+  // braking_path_blocked reports a stop refused because the braking path
+  // itself sweeps into occupied evidence, as opposed to one refused for the
+  // clearance of its rest pose.
   [[nodiscard]] ProductionMppiExecutionPublication
   publishStopExecution(const ProductionMppiExecutionCycle& cycle,
-                       ProductionMppiExecutionReason reason);
+                       ProductionMppiExecutionReason reason,
+                       bool* braking_path_blocked = nullptr);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns,
                              bool physical_route_invalidation = false);

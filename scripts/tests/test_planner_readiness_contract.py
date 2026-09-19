@@ -228,7 +228,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         # A refused stop leaves the vehicle with its resident trajectory while
         # that trajectory still sweeps clear, before any revocation.
         self.assertIn("*resident_trajectory_clear =", execution)
-        self.assertIn("if (resident_trajectory_clear) {", execution)
+        self.assertIn(
+            "if (braking_path_blocked && resident_trajectory_clear) {", execution
+        )
         self.assertIn("FiniteExecutionPathTerminalBoundary", execution)
         self.assertNotIn("original_valid_until_ns", execution)
         self.assertIn("assessExecutionHorizonPayload", offboard)

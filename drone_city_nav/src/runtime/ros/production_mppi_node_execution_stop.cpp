@@ -15,7 +15,8 @@ namespace drone_city_nav {
 
 ProductionMppiExecutionPublication
 ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cycle,
-                                         const ProductionMppiExecutionReason reason) {
+                                         const ProductionMppiExecutionReason reason,
+                                         bool* const braking_path_blocked) {
   ProductionMppiExecutionPublication publication;
   if (cycle.evidence.execution_dynamics == nullptr ||
       cycle.controller.result == nullptr ||
@@ -70,6 +71,12 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
           .now_ns = cycle.controller.now_ns,
       });
   const StopExecution3D* const stop = prepared.stopExecution();
+  if (braking_path_blocked != nullptr) {
+    *braking_path_blocked = prepared.certification.status ==
+                                StopCertificationStatus3D::kPathValidationRejected &&
+                            finiteExecutionPathOccupiedEvidenceVerdict3D(
+                                prepared.certification.path_validation_status);
+  }
   if (!prepared.prepared() || stop == nullptr || stop->horizon == nullptr) {
     // A resident stop that still holds the vehicle is the answer, not a
     // failure: it is already the trajectory this call would have produced,
