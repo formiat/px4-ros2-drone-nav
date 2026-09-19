@@ -47,6 +47,7 @@ find_package(gz-msgs10 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-transport13 REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d)
 find_package(PkgConfig REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -266,6 +267,7 @@ add_drone_city_nav_layer(
   src/occupancy_grid.cpp
   src/occupancy_grid_3d.cpp
   src/static_esdf_cache.cpp
+  src/stereo_depth_returns.cpp
   src/tracked_agent_lidar_filter.cpp)
 target_link_libraries(
   drone_city_nav_world
@@ -499,6 +501,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/occupancy_grid.hpp
     include/drone_city_nav/occupancy_grid_3d.hpp
     include/drone_city_nav/static_esdf_cache.hpp
+    include/drone_city_nav/stereo_depth_returns.hpp
     include/drone_city_nav/tracked_agent_lidar_filter.hpp
     include/drone_city_nav/world_snapshot_3d.hpp)
 
@@ -981,6 +984,13 @@ target_link_libraries(
 ament_target_dependencies(simulation_truth_adapter_node rclcpp)
 enable_project_warnings(simulation_truth_adapter_node)
 
+add_executable(stereo_depth_node src/stereo_depth_node.cpp)
+target_compile_features(stereo_depth_node PRIVATE cxx_std_20)
+target_include_directories(stereo_depth_node SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(stereo_depth_node drone_city_nav_core ${OpenCV_LIBS})
+ament_target_dependencies(stereo_depth_node rclcpp sensor_msgs)
+enable_project_warnings(stereo_depth_node)
+
 add_executable(lidar_inertial_odometry_node src/lidar_inertial_odometry_node.cpp)
 target_compile_features(lidar_inertial_odometry_node PRIVATE cxx_std_20)
 target_link_libraries(lidar_inertial_odometry_node drone_city_nav_localization
@@ -1198,6 +1208,7 @@ install(
     simulation_truth_adapter_node
     simulation_heading_source_node
     lidar_inertial_odometry_node
+    stereo_depth_node
     cooperative_traffic_agent_node
     drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components
@@ -1807,6 +1818,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_scan_3d_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_scan_3d_test drone_city_nav_core)
   enable_project_warnings(lidar_scan_3d_test)
+
+  ament_add_gtest(stereo_depth_returns_test tests/stereo_depth_returns_test.cpp)
+  target_compile_features(stereo_depth_returns_test PRIVATE cxx_std_20)
+  target_link_libraries(stereo_depth_returns_test drone_city_nav_core)
+  enable_project_warnings(stereo_depth_returns_test)
 
   ament_add_gtest(lidar_self_filter_test tests/lidar_self_filter_test.cpp)
   target_compile_features(lidar_self_filter_test PRIVATE cxx_std_20)

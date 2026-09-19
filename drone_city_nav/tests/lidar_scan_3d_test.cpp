@@ -51,6 +51,30 @@ TEST(LidarScan3D, PreservesNoReturnBeamsAsMisses) {
   return config;
 }
 
+TEST(LidarScan3D, HitOnlyReturnsCarryNoMisses) {
+  // Depth recovered from images: a pixel without depth says nothing, a pixel
+  // with depth is a hit along its own ray, and a depth beyond the confident
+  // range is not evidence.
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<Point3> points{Point3{3.0, 4.0, 0.0}, Point3{nan, nan, nan},
+                                   Point3{0.0, 0.0, 9.0}, Point3{0.05, 0.0, 0.0}};
+
+  const OrganizedLidarScan3DResult result = decodeHitOnlyReturns3D(points, 0.2, 8.0);
+
+  ASSERT_EQ(result.beams.size(), 4U);
+  EXPECT_EQ(result.hit_beams, 1U);
+  EXPECT_EQ(result.miss_beams, 0U);
+  EXPECT_EQ(result.invalid_beams, 3U);
+  EXPECT_TRUE(result.beams[0].hit);
+  EXPECT_NEAR(result.beams[0].range_m, 5.0, 1.0e-12);
+  EXPECT_NEAR(result.beams[0].direction_lidar_flu.x, 0.6, 1.0e-12);
+  EXPECT_NEAR(result.beams[0].direction_lidar_flu.y, 0.8, 1.0e-12);
+  for (std::size_t index = 1U; index < 4U; ++index) {
+    EXPECT_FALSE(result.beams[index].valid);
+    EXPECT_FALSE(result.beams[index].hit);
+  }
+}
+
 TEST(LidarScan3D, JoinsAdjacentReturnsOfOneWallWithSurfaceSamples) {
   const OrganizedLidarScan3DConfig config = threeRowScanConfig();
   // A vertical wall ten metres ahead sampled by the -10, 0 and +10 degree

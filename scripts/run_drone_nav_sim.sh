@@ -911,6 +911,7 @@ else
     localization_profile:="${localization_profile}"
     enable_lidar_debug:="${enable_lidar_debug}"
     lidar_profile:="${lidar_profile}"
+    camera_profile:="${camera_profile}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"

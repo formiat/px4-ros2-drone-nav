@@ -1403,3 +1403,37 @@ mission_monitor_node:
       - 405.0
       - 24.0
       - 24.0
+
+stereo_depth_node:
+  ros__parameters:
+    left_image_topic: /stereo/left/image
+    right_image_topic: /stereo/right/image
+    returns_topic: /stereo_depth/points
+    # The pair of models/stereo_tof_v1.
+    image_width: 1280
+    image_height: 960
+    horizontal_fov_rad: 2.0943951023931953
+    baseline_m: 0.20
+    # Semi-global matching (OpenCV StereoSGBM, three-way). 256 disparities put
+    # the nearest matched depth at 0.29 m, inside the shafts whose walls stand
+    # 0.5 to 1 m from the vehicle.
+    maximum_disparity_px: 256
+    # The far surfaces are matched at full resolution over this many
+    # disparities (depth beyond 1.3 m), the near ones at half resolution over
+    # the whole search, on this many threads: 108 ms a pair, the same depth as
+    # one full search at 187 ms (r476), and the other nodes keep their cores.
+    far_disparity_px: 64
+    matcher_threads: 2
+    block_size_px: 5
+    left_right_maximum_difference_px: 1
+    uniqueness_ratio_percent: 10
+    # One return per 4 x 4 pixels: 76 800 rays a pair at the most, about the
+    # lidar's 65 160; a 0.25 m voxel at 6 m still receives 2 x 2 of them.
+    pixel_stride: 4
+    minimum_range_m: 0.3
+    # The disparity error at p90 over the recording flight r476 (0.29 to
+    # 0.49 px by range, 0.11 to 0.17 px at the median), and one voxel of
+    # allowed depth error: a pixel deeper than sqrt(0.25 * 0.20 * 369.5 / 0.45)
+    # = 6.4 m is not evidence.
+    disparity_error_px: 0.45
+    allowed_depth_error_m: 0.25

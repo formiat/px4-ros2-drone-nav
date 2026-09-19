@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -91,6 +92,31 @@ decodeOrganizedLidarScan3D(const std::span<const Point3> returns_lidar_flu,
       result.hit_beams += hit ? 1U : 0U;
       result.miss_beams += hit ? 0U : 1U;
     }
+  }
+  return result;
+}
+
+OrganizedLidarScan3DResult
+decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
+                       const double minimum_range_m, const double maximum_range_m) {
+  OrganizedLidarScan3DResult result;
+  result.organized_dimensions_match = true;
+  result.beams.reserve(returns_sensor_flu.size());
+  for (const Point3& point : returns_sensor_flu) {
+    const double range_m = finitePoint(point)
+                               ? pointNorm(point)
+                               : std::numeric_limits<double>::quiet_NaN();
+    const bool hit = std::isfinite(range_m) && range_m >= minimum_range_m &&
+                     range_m <= maximum_range_m;
+    result.beams.push_back(LidarBeamSample3D{
+        .direction_lidar_flu =
+            hit ? Vec3{point.x / range_m, point.y / range_m, point.z / range_m}
+                : Vec3{},
+        .range_m = hit ? range_m : 0.0,
+        .hit = hit,
+        .valid = hit});
+    result.hit_beams += hit ? 1U : 0U;
+    result.invalid_beams += hit ? 0U : 1U;
   }
   return result;
 }

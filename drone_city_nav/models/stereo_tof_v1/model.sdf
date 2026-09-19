@@ -3,7 +3,9 @@
   <model name="stereo_tof_v1">
     <!-- The sensor set of roadmap item 14. The pair sits on a nose mount ahead
          of the rotor discs (they reach x = 0.30 m), so no rotor is in a 120 degree
-         view; 1280 x 960, 120 degrees, a 0.20 m baseline, 15 Hz, RGB (an L8
+         view; 1280 x 960, 120 degrees, a 0.20 m baseline, 7.5 Hz (a pair takes
+         about 110 ms to match, and at 15 Hz the simulator, the image bridge and
+         the matcher together left the workstation no core: r479), RGB (an L8
          image is converted on the CPU in the render thread and held the
          simulation at a real-time factor of 0.39; RGB runs at 0.99). The two
          time-of-flight sensors are VL53L8 class: 8 x 8 zones whose centres span
@@ -42,7 +44,7 @@
           <visibility_mask>218103807</visibility_mask>
         </camera>
         <always_on>true</always_on>
-        <update_rate>15</update_rate>
+        <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
       <sensor name="stereo_right" type="camera">
@@ -65,7 +67,7 @@
           <visibility_mask>218103807</visibility_mask>
         </camera>
         <always_on>true</always_on>
-        <update_rate>15</update_rate>
+        <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
       <!-- Evaluation only: the simulator's own depth at the left camera, for
@@ -89,7 +91,7 @@
           <visibility_mask>218103807</visibility_mask>
         </camera>
         <always_on>true</always_on>
-        <update_rate>15</update_rate>
+        <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
       <sensor name="tof_up" type="gpu_lidar">

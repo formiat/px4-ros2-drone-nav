@@ -46,6 +46,15 @@ organizedLidarScan3DConfigIsValid(const OrganizedLidarScan3DConfig& config) noex
 decodeOrganizedLidarScan3D(std::span<const Point3> returns_lidar_flu,
                            const OrganizedLidarScan3DConfig& config);
 
+// Returns of a sensor that measures where it has an answer and says nothing
+// elsewhere, such as depth recovered from a stereo pair: every finite return
+// inside the range is a hit along its own direction, and a return that is not
+// finite is no observation at all, where an organized lidar scan reads it as
+// a miss to the maximum range. The result matches its input one to one.
+[[nodiscard]] OrganizedLidarScan3DResult
+decodeHitOnlyReturns3D(std::span<const Point3> returns_sensor_flu,
+                       double minimum_range_m, double maximum_range_m);
+
 // Surface continuity between adjacent beams of an organized scan. A sparse
 // beam layout samples a wall as rows and columns of returns whose spacing
 // grows with range; the band between two rows, or the strip between two

@@ -90,6 +90,84 @@ def optional_waypoint_sequence_override(context, launch_config, argument_name):
     return result
 
 
+def stereo_shadow_nodes(
+    params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name
+):
+    """The vision path of roadmap item 14 beside the lidar: the pair's images
+    bridged to ROS, depth recovered from them, and a second obstacle memory that
+    integrates those returns on topics of its own. Nothing consumes that
+    memory; the lidar's stays the navigation world."""
+    sensor_prefix = (
+        f"/world/{gazebo_world_name}/model/{gazebo_model_name}"
+        "/link/stereo_tof_link/sensor"
+    )
+    bridge_arguments = []
+    remappings = []
+    for side in ("left", "right"):
+        gz_topic = f"{sensor_prefix}/stereo_{side}/image"
+        bridge_arguments.append(f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image")
+        remappings.extend(["-r", f"{gz_topic}:=/stereo/{side}/image"])
+    with open(params_path, encoding="utf-8") as params_stream:
+        memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
+            "ros__parameters"
+        ]
+    return [
+        Node(
+            package="ros_gz_bridge",
+            executable="parameter_bridge",
+            name="stereo_bridge",
+            output="screen",
+            arguments=[*bridge_arguments, "--ros-args", *remappings],
+        ),
+        Node(
+            package="drone_city_nav",
+            executable="stereo_depth_node",
+            name="stereo_depth_node",
+            output="screen",
+            parameters=[params_path, {"use_sim_time": True}],
+        ),
+        Node(
+            package="drone_city_nav",
+            executable="obstacle_memory_3d_node",
+            name="vision_obstacle_memory_3d_node",
+            output="screen",
+            parameters=[
+                memory_parameters,
+                obstacle_memory_overrides,
+                {
+                    "lidar_3d_topic": "/stereo_depth/points",
+                    "lidar_3d_hit_only_returns": True,
+                    "lidar_surface_interpolation_enabled": False,
+                    # Two hits make a voxel occupied, not one: a matcher's
+                    # outliers beside depth edges do not repeat from frame to
+                    # frame the way a surface does (r481: 4.6 percent of the
+                    # vision-occupied voxels had no lidar voxel within two and
+                    # 3 percent of those were truly occupied).
+                    "hit_weight": 2,
+                    "lidar_3d_minimum_range_m": 0.3,
+                    # The left camera on the nose mount, body forward-right-down.
+                    "lidar_extrinsic_translation_body_frd_m": [0.32, -0.10, -0.02],
+                    "raw_obstacle_snapshot_3d_topic": (
+                        "/drone_city_nav/vision_shadow/raw_obstacle_snapshot_3d"
+                    ),
+                    "raw_obstacle_delta_3d_topic": (
+                        "/drone_city_nav/vision_shadow/raw_obstacle_delta_3d"
+                    ),
+                    "obstacle_memory_status_topic": (
+                        "/drone_city_nav/vision_shadow/obstacle_memory_status"
+                    ),
+                    "latest_lidar_obstacle_scan_topic": (
+                        "/drone_city_nav/vision_shadow/latest_obstacle_scan"
+                    ),
+                    "current_lidar_3d_pointcloud_topic": (
+                        "/drone_city_nav/vision_shadow/current_returns_3d"
+                    ),
+                },
+            ],
+        ),
+    ]
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
@@ -107,6 +185,7 @@ def generate_launch_description():
     )
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
+    camera_profile = LaunchConfiguration("camera_profile")
     localization_profile = LaunchConfiguration("localization_profile")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
@@ -434,6 +513,15 @@ def generate_launch_description():
                     ],
                 )
             )
+        if gazebo_bridge_enabled and camera_profile.perform(context).strip() == "stereo_tof":
+            nodes.extend(
+                stereo_shadow_nodes(
+                    params_file.perform(context),
+                    obstacle_memory_overrides,
+                    gazebo_world_name,
+                    gazebo_model_name,
+                )
+            )
         nodes.append(
             Node(
                 package="drone_city_nav",
@@ -673,6 +761,15 @@ def generate_launch_description():
                     "alone as the autopilot's external odometry; gnss: the "
                     "autopilot's GNSS and the simulated heading; gnss_shadow: "
                     "gnss with the estimator running beside it for comparison."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "camera_profile",
+                default_value="none",
+                description=(
+                    "Camera sensor set mounted beside the lidar: none or "
+                    "stereo_tof (roadmap item 14). With it the vision path runs "
+                    "in shadow; the lidar stays authoritative."
                 ),
             ),
             DeclareLaunchArgument(

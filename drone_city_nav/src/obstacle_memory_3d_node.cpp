@@ -158,6 +158,10 @@ public:
     if (!organizedLidarScan3DConfigIsValid(scan_config_)) {
       throw std::invalid_argument{"invalid organized 3D lidar configuration"};
     }
+    // A sensor that answers where it measured and says nothing elsewhere,
+    // depth recovered from a stereo pair: its returns are hits along their own
+    // rays, with no organized grid and no misses.
+    hit_only_returns_ = declare_parameter<bool>("lidar_3d_hit_only_returns", false);
     surface_interpolation_config_.enabled =
         declare_parameter<bool>("lidar_surface_interpolation_enabled", true);
     surface_interpolation_config_.maximum_incidence_rad =
@@ -651,7 +655,10 @@ private:
       return PendingPointCloudDisposition::kConsumed;
     }
     OrganizedLidarScan3DResult decoded =
-        decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
+        hit_only_returns_
+            ? decodeHitOnlyReturns3D(*raw_returns, scan_config_.minimum_range_m,
+                                     scan_config_.maximum_range_m)
+            : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
     if (!decoded.organized_dimensions_match) {
       RCLCPP_ERROR_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -677,8 +684,10 @@ private:
     // obstacle scan stays the measured returns alone: its contract bounds the
     // hit count by the beam count.
     const std::vector<LidarBeamSample3D> surface_samples =
-        interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
-                                            surface_interpolation_config_);
+        hit_only_returns_
+            ? std::vector<LidarBeamSample3D>{}
+            : interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
+                                                  surface_interpolation_config_);
     std::vector<LidarBeam3D> memory_beams;
     std::vector<Point3> hit_points_map;
     std::vector<Point3> hit_points_body;
@@ -817,6 +826,7 @@ private:
   GridBounds3D bounds_{};
   ObservedOccupancyGrid3D grid_geometry_;
   OrganizedLidarScan3DConfig scan_config_{};
+  bool hit_only_returns_{false};
   LidarSurfaceInterpolation3DConfig surface_interpolation_config_{};
   LidarProjectionConfig projection_config_{};
   LidarSelfFilterConfig self_filter_config_{};
