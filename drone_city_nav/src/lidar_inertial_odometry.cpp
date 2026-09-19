@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <limits>
@@ -67,12 +68,16 @@ struct CellKeyHash {
 // over the cell and its neighbours once enough points are there.
 struct SubmapCell {
   std::vector<Eigen::Vector3d> points;
+  // The keyframe each point came from, so that a keyframe leaving the submap
+  // takes its own points with it and nothing else is touched.
+  std::vector<std::uint64_t> owners;
   Eigen::Vector3d normal{Eigen::Vector3d::Zero()};
   bool normal_valid{false};
   bool normal_stale{true};
 };
 
 struct Keyframe {
+  std::uint64_t id{0U};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
   std::vector<Eigen::Vector3d> points_world;
@@ -97,20 +102,24 @@ public:
   }
 
   void insert(Keyframe keyframe) {
+    // The oldest keyframe leaves first, so the cells it frees are refilled by
+    // the keyframe arriving now rather than standing empty until the next.
+    while (!keyframes_.empty() && keyframes_.size() >= config_.maximum_keyframes) {
+      evictOldest();
+    }
+    keyframe.id = ++last_keyframe_id_;
     for (const Eigen::Vector3d& point : keyframe.points_world) {
       SubmapCell& cell = cells_[cellOf(point, config_.scan_voxel_m)];
       if (cell.points.size() >= config_.maximum_points_per_cell) {
         continue;
       }
       cell.points.push_back(point);
+      cell.owners.push_back(keyframe.id);
       cell.normal_stale = true;
       ++point_count_;
       markNeighboursStale(point);
     }
     keyframes_.push_back(std::move(keyframe));
-    while (keyframes_.size() > config_.maximum_keyframes) {
-      rebuild();
-    }
   }
 
   // The nearest submap point to `query` with its cell's plane normal.
@@ -217,27 +226,45 @@ private:
     cell.normal_valid = true;
   }
 
-  void rebuild() {
+  // Removes the oldest keyframe's own points and refits only the planes they
+  // belonged to. Rebuilding the whole hash on every eviction cost the full
+  // submap per keyframe, and at 5 m/s every scan is a keyframe: on r447 the
+  // submap held 112 thousand points, a scan took 155 to 266 ms against a
+  // 100 ms period, the odometry reached the autopilot 1.2 to 1.5 s old, the
+  // autopilot stopped fusing it and lost its position four seconds later.
+  void evictOldest() {
+    const Keyframe oldest = std::move(keyframes_.front());
     keyframes_.pop_front();
-    cells_.clear();
-    point_count_ = 0U;
-    for (const Keyframe& keyframe : keyframes_) {
-      for (const Eigen::Vector3d& point : keyframe.points_world) {
-        SubmapCell& cell = cells_[cellOf(point, config_.scan_voxel_m)];
-        if (cell.points.size() < config_.maximum_points_per_cell) {
-          cell.points.push_back(point);
-          ++point_count_;
-        }
+    for (const Eigen::Vector3d& point : oldest.points_world) {
+      const auto found = cells_.find(cellOf(point, config_.scan_voxel_m));
+      if (found == cells_.end()) {
+        continue;
       }
-    }
-    for (auto& [key, cell] : cells_) {
-      cell.normal_stale = true;
+      SubmapCell& cell = found->second;
+      bool removed = false;
+      for (std::size_t index = cell.owners.size(); index-- > 0U;) {
+        if (cell.owners[index] != oldest.id) {
+          continue;
+        }
+        cell.points.erase(cell.points.begin() + static_cast<std::ptrdiff_t>(index));
+        cell.owners.erase(cell.owners.begin() + static_cast<std::ptrdiff_t>(index));
+        --point_count_;
+        removed = true;
+      }
+      if (!removed) {
+        continue;
+      }
+      markNeighboursStale(point);
+      if (cell.points.empty()) {
+        cells_.erase(found);
+      }
     }
   }
 
   const LidarInertialOdometryConfig& config_;
   std::unordered_map<CellKey, SubmapCell, CellKeyHash> cells_;
   std::deque<Keyframe> keyframes_;
+  std::uint64_t last_keyframe_id_{0U};
   std::size_t point_count_{0U};
 };
 
