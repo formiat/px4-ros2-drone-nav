@@ -58,6 +58,22 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             self.assertEqual("base_link", joint.findtext("parent"))
             self.assertEqual("stereo_tof_link", joint.findtext("child"))
 
+    def test_camera_navigation_leaves_the_lidar_out_of_the_vehicle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "x500_lidar_3d"
+            shutil.copytree(SOURCE_MODEL, destination)
+
+            lidar_model.configure_model(
+                destination, "x500_lidar_3d", "3d", "stereo_tof", lidar_mounted=False
+            )
+
+            model = ET.parse(destination / "model.sdf").getroot().find("model")
+            uris = [element.text for element in model.iter("uri")]
+            self.assertNotIn("model://lidar_3d_v1", uris)
+            self.assertIn("model://stereo_tof_v1", uris)
+            self.assertIsNone(model.find("joint[@name='LidarJoint']"))
+            self.assertIsNotNone(model.find("joint[@name='CameraProfileJoint']"))
+
     def test_camera_set_keeps_the_evaluation_depth_out_of_the_pair(self) -> None:
         sensors = {
             sensor.attrib["name"]: sensor.attrib["type"]

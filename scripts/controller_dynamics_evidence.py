@@ -233,12 +233,18 @@ def load_lidar_inertial_csv(path: Path) -> np.ndarray:
     return np.column_stack([array, speed])
 
 
-def load_truth_csv(path: Path) -> np.ndarray:
+def load_truth_csv(path: Path, received_clock: bool = False) -> np.ndarray:
+    """time_s, x, y, z of the true pose: on the simulation clock, or on the wall
+    clock the record was received at, which is the clock of a log-stamped
+    estimate whatever the real-time factor."""
     rows = []
     with path.open(newline="", encoding="utf-8") as stream:
         for row in csv.reader(stream):
             if len(row) >= 4:
-                rows.append([float(value) for value in row[:4]])
+                values = [float(value) for value in row[:4]]
+                if received_clock and len(row) >= 9:
+                    values[0] = float(row[8])
+                rows.append(values)
     return np.array(rows, dtype=np.float64).reshape(-1, 4)
 
 
@@ -251,6 +257,11 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
         with np.load(tracking_path) as data:
             setpoints = np.asarray(data["sp"], dtype=np.float64).reshape(-1, 7)
             positions = np.asarray(data["lp"], dtype=np.float64).reshape(-1, 8)
+            if "sp_received_s" in data and "lp_received_s" in data:
+                # One clock for both streams: their own part when the
+                # simulation runs slower than the wall clock.
+                setpoints[:, 0] = np.asarray(data["sp_received_s"]) * 1e6
+                positions[:, 0] = np.asarray(data["lp_received_s"]) * 1e6
         lateral = lateral_tracking_error_p99_m(setpoints, positions)
         if not np.isfinite(lateral.value):
             errors.append("FAIL: lateral tracking error is measured on planned setpoints"
@@ -279,7 +290,7 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
         errors.append("FAIL: the flight recorded its setpoints and local position "
                       f"({tracking_path.name})")
     if truth_path.is_file():
-        truth = load_truth_csv(truth_path)
+        truth = load_truth_csv(truth_path, received_clock=True)
         estimate = estimate_positions_from_log(ros_log)
         error = position_estimate_error(estimate, truth)
         if not np.isfinite(error.cross_track_p95_m) or not np.isfinite(

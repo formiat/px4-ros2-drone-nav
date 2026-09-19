@@ -22,6 +22,7 @@ def configure_model(
     model_name: str,
     lidar_profile: str,
     camera_profile: str = "none",
+    lidar_mounted: bool = True,
 ) -> str:
     sensor_model = PROFILE_SENSOR_MODELS.get(lidar_profile)
     if sensor_model is None:
@@ -48,6 +49,13 @@ def configure_model(
             f"found {len(sensor_includes)}"
         )
     sensor_includes[0].find("uri").text = f"model://{sensor_model}"
+    if not lidar_mounted:
+        # The camera profile navigates without the lidar: the sensor leaves
+        # the vehicle model, not merely the control path.
+        model.remove(sensor_includes[0])
+        for joint in model.findall("joint"):
+            if joint.attrib.get("name") == "LidarJoint":
+                model.remove(joint)
     if camera_profile != "none":
         camera_model, camera_link = CAMERA_PROFILE_MODELS[camera_profile]
         include = ET.SubElement(model, "include", {"merge": "true"})
@@ -81,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("none", *CAMERA_PROFILE_MODELS),
         default="none",
     )
+    parser.add_argument(
+        "--without-lidar",
+        action="store_true",
+        help="Leave the navigation lidar out of the vehicle model.",
+    )
     return parser
 
 
@@ -91,6 +104,7 @@ def main() -> int:
         args.model_name,
         args.lidar_profile,
         args.camera_profile,
+        not args.without_lidar,
     )
     print(
         "Drone lidar model configured: "

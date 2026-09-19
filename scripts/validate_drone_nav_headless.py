@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -413,7 +414,13 @@ def main() -> int:
         )
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, errors)
-        validate_mean_flight_speed(ros_log, errors)
+        manifest_overrides = json.loads(
+            args.runtime_manifest.read_text(encoding="utf-8")
+        ).get("effective_overrides", {})
+        validate_mean_flight_speed(
+            ros_log, errors,
+            manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
+        )
         validate_controller_dynamics(args.runtime_manifest.parent, ros_log, errors)
     if args.runtime_manifest is not None:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, errors)

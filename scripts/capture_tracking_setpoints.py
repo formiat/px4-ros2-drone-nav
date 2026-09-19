@@ -4,7 +4,10 @@ flight, for the controller-dynamics checks of the headless mission check.
 
 Both streams are PX4's own (the setpoint is what the offboard adapter sends, the
 local position is the estimate it reads), in PX4's local NED frame and its clock;
-the checks align and read them. The file is rewritten atomically every few seconds
+the checks align and read them. Each record also carries the wall time it was
+received at: the setpoint is stamped on the simulation clock and the position on
+the autopilot's wall-synchronised one, and the two part when the simulation runs
+slower than the wall clock. The file is rewritten atomically every few seconds
 so an interrupted flight still leaves a usable record.
 
   capture_tracking_setpoints.py OUTPUT.npz [--setpoint-topic T] [--local-position-topic T]
@@ -15,6 +18,7 @@ from __future__ import annotations
 import argparse
 import os
 import threading
+import time
 
 import numpy as np
 import rclpy
@@ -35,6 +39,8 @@ class TrackingCapture(Node):
         self._lock = threading.Lock()
         self._setpoints: list[list[float]] = []
         self._positions: list[list[float]] = []
+        self._setpoints_received_s: list[float] = []
+        self._positions_received_s: list[float] = []
         self.create_subscription(TrajectorySetpoint, setpoint_topic, self._on_setpoint, qos)
         self.create_subscription(VehicleLocalPosition, local_position_topic,
                                  self._on_local_position, qos)
@@ -42,11 +48,13 @@ class TrackingCapture(Node):
 
     def _on_setpoint(self, message) -> None:
         with self._lock:
+            self._setpoints_received_s.append(time.time())
             self._setpoints.append([float(message.timestamp), *message.position,
                                     *message.velocity])
 
     def _on_local_position(self, message) -> None:
         with self._lock:
+            self._positions_received_s.append(time.time())
             self._positions.append([float(message.timestamp),
                                     float(message.timestamp_sample), message.x, message.y,
                                     message.z, message.vx, message.vy, message.vz])
@@ -55,8 +63,12 @@ class TrackingCapture(Node):
         with self._lock:
             setpoints = np.array(self._setpoints, dtype=np.float64).reshape(-1, 7)
             positions = np.array(self._positions, dtype=np.float64).reshape(-1, 8)
+            setpoints_received_s = np.array(self._setpoints_received_s, dtype=np.float64)
+            positions_received_s = np.array(self._positions_received_s, dtype=np.float64)
         temporary = self._output + ".tmp.npz"
-        np.savez_compressed(temporary, sp=setpoints, lp=positions)
+        np.savez_compressed(temporary, sp=setpoints, lp=positions,
+                            sp_received_s=setpoints_received_s,
+                            lp_received_s=positions_received_s)
         os.replace(temporary, self._output)
         print(f"setpoints {len(setpoints)} positions {len(positions)}", flush=True)
 

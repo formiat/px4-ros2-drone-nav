@@ -375,8 +375,10 @@ mission complete, collision-free, route availability at the floor named
 above and planner p95 below 200 ms. Speed is not gated at the lidar
 profile's 2.5 m/s: the mission check on the stereo profile reports the mean
 speed and gates it at half of what the braking contract admits forward for
-the geometry stage 1 fixes (1.75 m/s for the working choice), a bound written
-before stage 4 flies and not moved after it. The routes through both shafts
+the geometry stage 1 fixes, a rule written before stage 4 flies and not moved
+after it. The pre-implementation estimate of that bound was 1.75 m/s, from
+8.6 m of expected depth; the 6.4 m stage 2 measured admit 2.452 m/s under the
+contract, so the gate is 1.226 m/s. The routes through both shafts
 are flown without crawling: the vertical speed held in a shaft is at least
 half of what the time-of-flight range admits there.
 

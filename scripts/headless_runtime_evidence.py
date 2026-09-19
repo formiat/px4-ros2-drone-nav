@@ -48,6 +48,13 @@ MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 # crashes r281 and r286): the five flights r288 to r292 on it flew 372 to
 # 417 m in 124 to 149 s, 2.58 to 3.10 m/s, one of them above 3.0.
 MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.5
+# The stereo navigation profile is not held to the lidar's figure: what its
+# flight may do forward is bounded by what the pair sees. The gate is half of
+# what the braking contract admits forward for the geometry roadmap item 14
+# fixed: 6.4 m of confident depth, 2.0 m of margin and 0.7 s of evidence age
+# and reaction admit 2.452 m/s (sensor_braking_speed_limit_mps of every forward
+# tick of r493). The rule was written before the first flight without the lidar.
+MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.226
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
@@ -278,7 +285,11 @@ def validate_runtime_manifest(
         )
 
 
-def validate_mean_flight_speed(ros_log: str, errors: list[str]) -> None:
+def validate_mean_flight_speed(ros_log: str, errors: list[str],
+                               navigation_sensor_profile: str = "lidar") -> None:
+    minimum_speed_mps = (MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS
+                         if navigation_sensor_profile == "stereo_tof"
+                         else MINIMUM_MEAN_FLIGHT_SPEED_MPS)
     readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
     result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
     if readiness is None or result is None:
@@ -313,10 +324,10 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str]) -> None:
         return
     speed_mps = path_m / duration_s
     detail = f"{speed_mps:.3f} m/s: {path_m:.1f} m in {duration_s:.1f} s"
-    if speed_mps < MINIMUM_MEAN_FLIGHT_SPEED_MPS:
+    if speed_mps < minimum_speed_mps:
         errors.append(
             "FAIL: mean flight speed reaches "
-            f"{MINIMUM_MEAN_FLIGHT_SPEED_MPS:.1f} m/s ({detail})"
+            f"{minimum_speed_mps:.3g} m/s ({detail})"
         )
     else:
         print(f"OK: mean flight speed is {detail}")

@@ -234,6 +234,18 @@ if bool_is_true "${multi_vehicle_mission}"; then
     echo "LOCALIZATION_PROFILE=${localization_profile} needs the lidar-inertial estimator, which the multi-vehicle launches do not run; multi-vehicle missions fly on gnss" >&2
     exit 1
   fi
+elif [[ "${navigation_sensor_profile}" == "stereo_tof" ]]; then
+  # Without the lidar the lidar-inertial estimator has nothing to register;
+  # visual-inertial odometry is roadmap item 16.
+  localization_profile="${LOCALIZATION_PROFILE:-gnss}"
+  if [[ "${localization_profile}" == "lidar_inertial" ]]; then
+    echo "LOCALIZATION_PROFILE=lidar_inertial needs the lidar, which NAVIGATION_SENSOR_PROFILE=stereo_tof leaves out of the vehicle" >&2
+    exit 1
+  fi
+  if [[ "${camera_profile}" != "stereo_tof" ]]; then
+    echo "NAVIGATION_SENSOR_PROFILE=stereo_tof requires CAMERA_PROFILE=stereo_tof" >&2
+    exit 1
+  fi
 else
   localization_profile="${LOCALIZATION_PROFILE:-lidar_inertial}"
 fi
@@ -247,6 +259,9 @@ case "${localization_profile}" in
 esac
 # The runtime manifest records the profile the flight flew, defaulted or not.
 export LOCALIZATION_PROFILE="${localization_profile}"
+# The resolved sensor profiles, for the runtime manifest.
+export CAMERA_PROFILE="${camera_profile}"
+export NAVIGATION_SENSOR_PROFILE="${navigation_sensor_profile}"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"

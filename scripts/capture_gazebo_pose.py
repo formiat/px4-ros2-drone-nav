@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Record the true world pose of one Gazebo model (simulation time, position,
-quaternion) from the world's pose/info topic, for the position-estimate check of
-the headless mission check. The file is rewritten atomically every few seconds.
+quaternion, wall time of reception) from the world's pose/info topic, for the
+position-estimate check of the headless mission check. The wall time is what a
+log-stamped estimate is held against when the simulation runs slower than the
+wall clock. The file is rewritten atomically every few seconds.
 
   capture_gazebo_pose.py OUTPUT.csv --world WORLD --model MODEL
 """
@@ -37,7 +39,7 @@ def main() -> int:
             with lock:
                 rows.append((stamp, pose.position.x, pose.position.y, pose.position.z,
                              pose.orientation.w, pose.orientation.x, pose.orientation.y,
-                             pose.orientation.z))
+                             pose.orientation.z, time.time()))
             break
 
     node = Node()

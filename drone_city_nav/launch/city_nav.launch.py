@@ -111,13 +111,31 @@ STEREO_TOF_OBSERVABILITY = {
 }
 
 
-def stereo_shadow_nodes(
-    params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name
+# What makes an obstacle memory a vision memory: the returns of the depth node,
+# each a ray of its own, from the left camera on the nose mount (body
+# forward-right-down). Two hits make a voxel occupied, not one: a matcher's
+# outliers beside depth edges do not repeat from frame to frame the way a
+# surface does (r481: 4.6 percent of the vision-occupied voxels had no lidar
+# voxel within two and 3 percent of those were truly occupied; with two hits
+# 0.7 percent, r483).
+VISION_MEMORY_OVERRIDES = {
+    "lidar_3d_topic": "/stereo_depth/points",
+    "lidar_3d_hit_only_returns": True,
+    "lidar_surface_interpolation_enabled": False,
+    "lidar_3d_minimum_range_m": 0.3,
+    "lidar_extrinsic_translation_body_frd_m": [0.32, -0.10, -0.02],
+    "hit_weight": 2,
+}
+
+
+def stereo_vision_nodes(
+    params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name, shadow
 ):
-    """The vision path of roadmap item 14 beside the lidar: the pair's images
-    bridged to ROS, depth recovered from them, and a second obstacle memory that
-    integrates those returns on topics of its own. Nothing consumes that
-    memory; the lidar's stays the navigation world."""
+    """The vision path of roadmap item 14: the pair's images and the
+    time-of-flight scans bridged to ROS and depth recovered from them. In
+    shadow a second obstacle memory integrates those returns on topics of its
+    own beside the lidar's, and nothing consumes it; otherwise the launch's one
+    obstacle memory is the vision memory and this adds no memory of its own."""
     sensor_prefix = (
         f"/world/{gazebo_world_name}/model/{gazebo_model_name}"
         "/link/stereo_tof_link/sensor"
@@ -138,7 +156,7 @@ def stereo_shadow_nodes(
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
             "ros__parameters"
         ]
-    return [
+    nodes = [
         Node(
             package="ros_gz_bridge",
             executable="parameter_bridge",
@@ -153,46 +171,39 @@ def stereo_shadow_nodes(
             output="screen",
             parameters=[params_path, {"use_sim_time": True}],
         ),
-        Node(
-            package="drone_city_nav",
-            executable="obstacle_memory_3d_node",
-            name="vision_obstacle_memory_3d_node",
-            output="screen",
-            parameters=[
-                memory_parameters,
-                obstacle_memory_overrides,
-                {
-                    "lidar_3d_topic": "/stereo_depth/points",
-                    "lidar_3d_hit_only_returns": True,
-                    "lidar_surface_interpolation_enabled": False,
-                    # Two hits make a voxel occupied, not one: a matcher's
-                    # outliers beside depth edges do not repeat from frame to
-                    # frame the way a surface does (r481: 4.6 percent of the
-                    # vision-occupied voxels had no lidar voxel within two and
-                    # 3 percent of those were truly occupied).
-                    "hit_weight": 2,
-                    "lidar_3d_minimum_range_m": 0.3,
-                    # The left camera on the nose mount, body forward-right-down.
-                    "lidar_extrinsic_translation_body_frd_m": [0.32, -0.10, -0.02],
-                    "raw_obstacle_snapshot_3d_topic": (
-                        "/drone_city_nav/vision_shadow/raw_obstacle_snapshot_3d"
-                    ),
-                    "raw_obstacle_delta_3d_topic": (
-                        "/drone_city_nav/vision_shadow/raw_obstacle_delta_3d"
-                    ),
-                    "obstacle_memory_status_topic": (
-                        "/drone_city_nav/vision_shadow/obstacle_memory_status"
-                    ),
-                    "latest_lidar_obstacle_scan_topic": (
-                        "/drone_city_nav/vision_shadow/latest_obstacle_scan"
-                    ),
-                    "current_lidar_3d_pointcloud_topic": (
-                        "/drone_city_nav/vision_shadow/current_returns_3d"
-                    ),
-                },
-            ],
-        ),
     ]
+    if shadow:
+        nodes.append(
+            Node(
+                package="drone_city_nav",
+                executable="obstacle_memory_3d_node",
+                name="vision_obstacle_memory_3d_node",
+                output="screen",
+                parameters=[
+                    memory_parameters,
+                    obstacle_memory_overrides,
+                    VISION_MEMORY_OVERRIDES,
+                    {
+                        "raw_obstacle_snapshot_3d_topic": (
+                            "/drone_city_nav/vision_shadow/raw_obstacle_snapshot_3d"
+                        ),
+                        "raw_obstacle_delta_3d_topic": (
+                            "/drone_city_nav/vision_shadow/raw_obstacle_delta_3d"
+                        ),
+                        "obstacle_memory_status_topic": (
+                            "/drone_city_nav/vision_shadow/obstacle_memory_status"
+                        ),
+                        "latest_lidar_obstacle_scan_topic": (
+                            "/drone_city_nav/vision_shadow/latest_obstacle_scan"
+                        ),
+                        "current_lidar_3d_pointcloud_topic": (
+                            "/drone_city_nav/vision_shadow/current_returns_3d"
+                        ),
+                    },
+                ],
+            )
+        )
+    return nodes
 
 
 def generate_launch_description():
@@ -447,8 +458,16 @@ def generate_launch_description():
             raise ValueError(
                 f"unsupported navigation sensor profile: {navigation_sensors}"
             )
+        cameras_mounted = camera_profile.perform(context).strip() == "stereo_tof"
         if navigation_sensors == "stereo_tof":
+            if not cameras_mounted:
+                raise RuntimeError(
+                    "navigation_sensor_profile=stereo_tof requires "
+                    "camera_profile=stereo_tof"
+                )
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
+            # The launch's one obstacle memory is the vision memory.
+            obstacle_memory_parameters.append(VISION_MEMORY_OVERRIDES)
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
@@ -526,7 +545,7 @@ def generate_launch_description():
                 {"static_free_space_topology_3d_path": ""}
             )
         nodes = [gazebo_aligned_map_tf]
-        if gazebo_bridge_enabled and lidar_enabled:
+        if gazebo_bridge_enabled and lidar_enabled and navigation_sensors == "lidar":
             bridge_contract = (
                 f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
                 "[gz.msgs.PointCloudPacked"
@@ -548,13 +567,14 @@ def generate_launch_description():
                     ],
                 )
             )
-        if gazebo_bridge_enabled and camera_profile.perform(context).strip() == "stereo_tof":
+        if gazebo_bridge_enabled and cameras_mounted:
             nodes.extend(
-                stereo_shadow_nodes(
+                stereo_vision_nodes(
                     params_file.perform(context),
                     obstacle_memory_overrides,
                     gazebo_world_name,
                     gazebo_model_name,
+                    shadow=navigation_sensors == "lidar",
                 )
             )
         nodes.append(

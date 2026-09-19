@@ -135,6 +135,32 @@ class LidarAgeAndValidationTest(unittest.TestCase):
             evidence.validate_controller_dynamics(run, log, errors)
         self.assertEqual(errors, [])
 
+    def test_a_slow_simulation_is_read_on_the_reception_clock(self) -> None:
+        # Real-time factor 0.8: the simulation clock of the setpoints and of the
+        # true pose parts from the wall clock of the positions and of the log.
+        setpoints, positions = straight_flight(0.05)
+        sim_time = setpoints[:, 0] / 1e6
+        wall_time = 1.7e9 + sim_time / 0.8
+        positions[:, 0] = wall_time * 1e6
+        truth = np.column_stack([
+            sim_time, 3.0 * sim_time + 0.2 * np.sin(sim_time),
+            0.05 * np.ones_like(sim_time), 5.0 * np.ones_like(sim_time),
+            *(np.zeros_like(sim_time) for _ in range(4)), wall_time])
+        log = "".join(
+            f"[{wall:.6f}] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=1 "
+            f"state_position=({3.0 * sim + 0.2 * np.sin(sim):.3f},0.100,5.000) "
+            f"state_velocity=({3.0 + 0.2 * np.cos(sim):.3f},0.000,0.000) "
+            "latest_lidar_obstacle_age_ms=150\n"
+            for sim, wall in zip(sim_time[::10], wall_time[::10]))
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            np.savez_compressed(run / "tracking.npz", sp=setpoints, lp=positions,
+                                sp_received_s=wall_time, lp_received_s=wall_time)
+            np.savetxt(run / "gz_pose.csv", truth, delimiter=",")
+            errors: list[str] = []
+            evidence.validate_controller_dynamics(run, log, errors)
+        self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -266,6 +266,22 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("1.667 m/s: 500.0 m in 300.0 s", errors[0])
 
+    def test_mean_flight_speed_of_the_stereo_profile_answers_to_its_own_gate(
+        self,
+    ) -> None:
+        errors: list[str] = []
+
+        validator.validate_mean_flight_speed(
+            self._flight_log(500.0, 300.0), errors, "stereo_tof"
+        )
+        self.assertEqual(errors, [])
+
+        validator.validate_mean_flight_speed(
+            self._flight_log(300.0, 300.0), errors, "stereo_tof"
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertIn("reaches 1.23 m/s", errors[0])
+
     def test_mean_flight_speed_needs_a_successful_mission(self) -> None:
         errors: list[str] = []
         log = self._flight_log(540.0, 200.0).replace("success=true", "success=false")

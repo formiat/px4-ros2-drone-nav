@@ -40,7 +40,8 @@ prepare_runtime_resources() {
     "${runtime_models_dir}/${runtime_drone_model_name}" \
     --model-name "${runtime_drone_model_name}" \
     --lidar-profile "${materialized_lidar_profile}" \
-    --camera-profile "${camera_profile}"
+    --camera-profile "${camera_profile}" \
+    $([[ "${navigation_sensor_profile}" == "stereo_tof" ]] && printf '%s' '--without-lidar')
   cp -a "${repo_root}/drone_city_nav/models/${runtime_sensor_model_name}" \
     "${runtime_models_dir}/${runtime_sensor_model_name}"
   if [[ "${camera_profile}" == "stereo_tof" ]]; then
