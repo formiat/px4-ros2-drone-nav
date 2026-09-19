@@ -288,3 +288,31 @@ After changing simulation assets or launch setup:
 
 This checklist catches environment problems before they are misdiagnosed as
 planner or controller regressions.
+
+## Camera Sensor Set
+
+`drone_city_nav/models/stereo_tof_v1` is the sensor set of roadmap item 14,
+mounted by `CAMERA_PROFILE=stereo_tof` beside the lidar. The pair sits on a
+nose mount ahead of the rotor discs and publishes RGB: an `L8` image is
+converted on the CPU in the simulator's render thread, and with two 1280 x 960
+cameras at 15 Hz that held the simulation at a real-time factor of 0.39 (0.45
+at 10 Hz, 0.60 at 960 x 720, 0.89 at 640 x 480) with the GPU 17 percent busy;
+RGB runs at 0.99 on the sensor world and 0.84 to 0.90 on the GUI world. The
+cameras' visibility mask leaves out the vehicle's own GUI markers, which
+filled a third of the frame, and the grey collision proxies the lidar reads.
+
+The headless flights run on `world_sensor.sdf`, a collision-only
+materialization with no textures and no lights; a camera sees nothing there.
+With the camera profile on, `make sim-urban-point-to-point-headless` runs on
+`world_gui.sdf`, whose surfaces carry the environment's own textures. On it
+semi-global matching (OpenCV `StereoSGBM`, 256 disparities) recovers depth on
+98 to 100 percent of the pixels at every range, with a disparity error of 0.11
+to 0.17 px at the median and 0.29 to 0.49 px at p90: 98 percent of the pixels
+at 4 to 6 m are within one 0.25 m voxel of the simulator's depth, 85 percent
+at 6 to 8 m, 66 percent at 8 to 10 m. One full-resolution pair costs 103 ms on
+the CPU, a half-resolution one 15 ms. A frame's stamp is its render time within
+one frame period (-0.02 to -0.04 s against the true pose, 232 frames).
+
+`evaluation_depth_left` is the simulator's depth at the left camera, for
+measuring against only: nothing in the perception, planning or control path
+may subscribe to it, and a sensor nobody subscribes to is not rendered.

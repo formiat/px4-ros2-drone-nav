@@ -219,6 +219,14 @@ lidar entirely:
 ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_urban_point_to_point_gui.sh
 ```
 
+`CAMERA_PROFILE=none|stereo_tof` (default `none`) mounts the sensor set of
+roadmap item 14 beside the lidar: a forward stereo pair (1280 x 960, 120
+degrees, 0.20 m baseline, 15 Hz) and two 8 x 8 time-of-flight sensors looking
+up and down. Nothing navigates on it yet; the lidar stays authoritative. With
+the profile on, the headless point-to-point flight runs on the textured GUI
+world instead of the collision-only sensor world, which a camera sees
+nothing of.
+
 No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
 starting the simulation. Unknown and free volume have identical traversability
 and base cost; only confirmed occupied geometry is a hard spatial obstacle.

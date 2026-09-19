@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version="1.9">
+  <model name="stereo_tof_v1">
+    <!-- The sensor set of roadmap item 14. The pair sits on a nose mount ahead
+         of the rotor discs (they reach x = 0.30 m), so no rotor is in a 120 degree
+         view; 1280 x 960, 120 degrees, a 0.20 m baseline, 15 Hz, RGB (an L8
+         image is converted on the CPU in the render thread and held the
+         simulation at a real-time factor of 0.39; RGB runs at 0.99). The two
+         time-of-flight sensors are VL53L8 class: 8 x 8 zones whose centres span
+         45 degrees less one zone, 2.8 m, the published range in 5 000 lux, 15 Hz;
+         the zone centres are the rays, the adapter gives each its cone. -->
+    <link name="stereo_tof_link">
+      <pose>0.32 0 0.02 0 0 0</pose>
+      <inertial>
+        <mass>0.000001</mass>
+        <inertia>
+          <ixx>0.000000001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000000001</iyy>
+          <iyz>0</iyz>
+          <izz>0.000000001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="stereo_left" type="camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>0 0.10 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>2.0943951023931953</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>60</far>
+          </clip>
+          <!-- Everything but the vehicle's own GUI markers and the grey
+               collision proxies the lidar reads: the pair sees the world's
+               real surfaces only. -->
+          <visibility_mask>218103807</visibility_mask>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <sensor name="stereo_right" type="camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>0 -0.10 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>2.0943951023931953</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>60</far>
+          </clip>
+          <!-- Everything but the vehicle's own GUI markers and the grey
+               collision proxies the lidar reads: the pair sees the world's
+               real surfaces only. -->
+          <visibility_mask>218103807</visibility_mask>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <!-- Evaluation only: the simulator's own depth at the left camera, for
+           measuring the recovered depth against. Nothing in the perception,
+           planning or control path may subscribe to it; a sensor nobody
+           subscribes to is not rendered. -->
+      <sensor name="evaluation_depth_left" type="depth_camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>0 0.10 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>2.0943951023931953</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+            <format>R_FLOAT32</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>60</far>
+          </clip>
+          <visibility_mask>218103807</visibility_mask>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <sensor name="tof_up" type="gpu_lidar">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>-0.42 0 0.10 0 -1.5707963267948966 0</pose>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>8</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.3436116964863836</min_angle>
+              <max_angle>0.3436116964863836</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>8</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.3436116964863836</min_angle>
+              <max_angle>0.3436116964863836</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.02</min>
+            <max>2.8</max>
+            <resolution>0.001</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.02</stddev>
+          </noise>
+        </ray>
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <sensor name="tof_down" type="gpu_lidar">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>-0.32 0 -0.12 0 1.5707963267948966 0</pose>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>8</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.3436116964863836</min_angle>
+              <max_angle>0.3436116964863836</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>8</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.3436116964863836</min_angle>
+              <max_angle>0.3436116964863836</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.02</min>
+            <max>2.8</max>
+            <resolution>0.001</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.02</stddev>
+          </noise>
+        </ray>
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
+  </model>
+</sdf>

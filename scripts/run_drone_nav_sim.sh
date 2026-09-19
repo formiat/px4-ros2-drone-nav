@@ -12,6 +12,7 @@ source "${repo_root}/scripts/px4_parameter_runtime.sh"
 # shellcheck source=lidar_profile_runtime.sh
 source "${repo_root}/scripts/lidar_profile_runtime.sh"
 resolve_lidar_profile
+resolve_camera_profile
 
 guard_against_root_owned_workspace_writes() {
   local repo_owner_uid
@@ -690,6 +691,7 @@ echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "Obstacle memory: enabled=${enable_obstacle_memory}"
 echo "Lidar profile: ${lidar_profile}"
+echo "Camera profile: ${camera_profile}"
 echo "Observed 3D route-volume validation: required=${require_observed_3d_route_volume_crossing} bounds_m=${observed_3d_route_volume_bounds_m:-unset}"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"

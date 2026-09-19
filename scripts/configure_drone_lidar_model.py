@@ -12,10 +12,16 @@ PROFILE_SENSOR_MODELS = {
     "2d": "lidar_2d_v2",
     "3d": "lidar_3d_v1",
 }
+CAMERA_PROFILE_MODELS = {
+    "stereo_tof": ("stereo_tof_v1", "stereo_tof_link"),
+}
 
 
 def configure_model(
-    model_directory: Path, model_name: str, lidar_profile: str
+    model_directory: Path,
+    model_name: str,
+    lidar_profile: str,
+    camera_profile: str = "none",
 ) -> str:
     sensor_model = PROFILE_SENSOR_MODELS.get(lidar_profile)
     if sensor_model is None:
@@ -42,6 +48,15 @@ def configure_model(
             f"found {len(sensor_includes)}"
         )
     sensor_includes[0].find("uri").text = f"model://{sensor_model}"
+    if camera_profile != "none":
+        camera_model, camera_link = CAMERA_PROFILE_MODELS[camera_profile]
+        include = ET.SubElement(model, "include", {"merge": "true"})
+        ET.SubElement(include, "uri").text = f"model://{camera_model}"
+        joint = ET.SubElement(
+            model, "joint", {"name": "CameraProfileJoint", "type": "fixed"}
+        )
+        ET.SubElement(joint, "parent").text = "base_link"
+        ET.SubElement(joint, "child").text = camera_link
 
     config_tree = ET.parse(model_config)
     config_name = config_tree.getroot().find("name")
@@ -61,17 +76,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("model_directory", type=Path)
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--lidar-profile", choices=("2d", "3d"), required=True)
+    parser.add_argument(
+        "--camera-profile",
+        choices=("none", *CAMERA_PROFILE_MODELS),
+        default="none",
+    )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
     sensor_model = configure_model(
-        args.model_directory, args.model_name, args.lidar_profile
+        args.model_directory,
+        args.model_name,
+        args.lidar_profile,
+        args.camera_profile,
     )
     print(
         "Drone lidar model configured: "
-        f"model={args.model_name} profile={args.lidar_profile} sensor={sensor_model}"
+        f"model={args.model_name} profile={args.lidar_profile} sensor={sensor_model} "
+        f"camera_profile={args.camera_profile}"
     )
     return 0
 

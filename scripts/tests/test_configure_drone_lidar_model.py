@@ -41,6 +41,41 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
                 [element.text for element in sdf_root.iter("uri")],
             )
 
+    def test_camera_profile_adds_the_stereo_and_time_of_flight_set(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "x500_lidar_3d"
+            shutil.copytree(SOURCE_MODEL, destination)
+
+            lidar_model.configure_model(
+                destination, "x500_lidar_3d", "3d", "stereo_tof"
+            )
+
+            model = ET.parse(destination / "model.sdf").getroot().find("model")
+            self.assertIn(
+                "model://stereo_tof_v1", [element.text for element in model.iter("uri")]
+            )
+            joint = model.find("joint[@name='CameraProfileJoint']")
+            self.assertEqual("base_link", joint.findtext("parent"))
+            self.assertEqual("stereo_tof_link", joint.findtext("child"))
+
+    def test_camera_set_keeps_the_evaluation_depth_out_of_the_pair(self) -> None:
+        sensors = {
+            sensor.attrib["name"]: sensor.attrib["type"]
+            for sensor in ET.parse(
+                REPO_ROOT / "drone_city_nav/models/stereo_tof_v1/model.sdf"
+            ).getroot().iter("sensor")
+        }
+        self.assertEqual(
+            {
+                "stereo_left": "camera",
+                "stereo_right": "camera",
+                "evaluation_depth_left": "depth_camera",
+                "tof_up": "gpu_lidar",
+                "tof_down": "gpu_lidar",
+            },
+            sensors,
+        )
+
     def test_rejects_non_materialized_none_profile(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "x500_lidar_none"

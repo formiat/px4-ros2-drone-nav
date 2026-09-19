@@ -39,9 +39,14 @@ prepare_runtime_resources() {
   python3 "${repo_root}/scripts/configure_drone_lidar_model.py" \
     "${runtime_models_dir}/${runtime_drone_model_name}" \
     --model-name "${runtime_drone_model_name}" \
-    --lidar-profile "${materialized_lidar_profile}"
+    --lidar-profile "${materialized_lidar_profile}" \
+    --camera-profile "${camera_profile}"
   cp -a "${repo_root}/drone_city_nav/models/${runtime_sensor_model_name}" \
     "${runtime_models_dir}/${runtime_sensor_model_name}"
+  if [[ "${camera_profile}" == "stereo_tof" ]]; then
+    cp -a "${repo_root}/drone_city_nav/models/stereo_tof_v1" \
+      "${runtime_models_dir}/stereo_tof_v1"
+  fi
 
   local lidar_visibility_mode="no-static-3d"
   if bool_is_true "${active_static_map}"; then
