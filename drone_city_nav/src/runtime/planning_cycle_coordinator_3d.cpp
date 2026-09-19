@@ -498,6 +498,8 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                                         request.world->source_stamp_ns) *
                         1.0e-9
                   : 0.0,
+          .forward_acceleration_mps2 =
+              productionMppiForwardAcceleration3D(request.navigation).horizontal_mps2,
           .previous_reference_speed_mps = previous_reference_speed_mps_,
           .elapsed_since_previous_reference_s = reference_elapsed_s,
           .route_endpoint_semantics = route_endpoint_semantics,

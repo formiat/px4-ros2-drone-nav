@@ -78,7 +78,11 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   // The stop lands the body margin before the block: 8 m less the 3 m margin.
   EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kBlockedRoute);
   EXPECT_STREQ(mppiSpeedLimiterName(result.active_limiter), "blocked_route");
-  EXPECT_NEAR(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 5.0), 1.0e-6);
+  EXPECT_NEAR(result.blocked_route_limit_mps,
+              stoppingLimitedSpeed(5.0, 0.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-9);
+  EXPECT_LT(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 5.0));
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.blocked_route_limit_mps);
 
   input.blocked_route_remaining_m = std::nullopt;
@@ -158,7 +162,8 @@ TEST(MppiSpeedPolicyTest, TheRouteClearanceBoundsTheSpeedTheHorizonCannotYetSee)
   EXPECT_EQ(ahead.active_limiter, MppiSpeedLimiter::kRouteClearance);
   EXPECT_STREQ(mppiSpeedLimiterName(ahead.active_limiter), "route_clearance");
   EXPECT_NEAR(ahead.route_clearance_limit_mps,
-              stoppingLimitedSpeed(10.0, 1.0 / 0.5, config.stopping_capability),
+              stoppingLimitedSpeed(10.0, 1.0 / 0.5, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
               1.0e-9);
   EXPECT_DOUBLE_EQ(ahead.reference_speed_mps, ahead.route_clearance_limit_mps);
 
@@ -189,16 +194,22 @@ TEST(MppiSpeedPolicyTest, TheAgeOfTheClearanceEvidenceIsLatencyInTheStoppingLaw)
   StoppingCapability delayed = config.stopping_capability;
   delayed.reaction_latency_s += 0.5;
   EXPECT_NEAR(fresh.clearance_limit_mps,
-              stoppingLimitedSpeed(10.0, 2.0, config.stopping_capability), 1.0e-9);
-  EXPECT_NEAR(aged.clearance_limit_mps, stoppingLimitedSpeed(10.0, 2.0, delayed),
+              stoppingLimitedSpeed(10.0, 2.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
               1.0e-9);
+  EXPECT_NEAR(
+      aged.clearance_limit_mps,
+      stoppingLimitedSpeed(10.0, 2.0, delayed, config.sensor_braking_contract, 0.0),
+      1.0e-9);
   EXPECT_LT(aged.clearance_limit_mps, fresh.clearance_limit_mps);
 
   input.executed_horizon_clearance.reset();
   input.route_clearance = executedClearance(10.0, 1.0);
   const MppiSpeedPolicyResult aged_route = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_NEAR(aged_route.route_clearance_limit_mps,
-              stoppingLimitedSpeed(10.0, 2.0, delayed), 1.0e-9);
+  EXPECT_NEAR(
+      aged_route.route_clearance_limit_mps,
+      stoppingLimitedSpeed(10.0, 2.0, delayed, config.sensor_braking_contract, 0.0),
+      1.0e-9);
   // Beside the tight spot the tube law alone answers, whatever the age.
   input.route_clearance = executedClearance(0.0, 1.0);
   EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).route_clearance_limit_mps, 2.0,
@@ -305,14 +316,61 @@ TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
   // The tube admits 0.5 / 0.5 = 1 m/s where the horizon grazes an obstacle
-  // fifteen metres ahead, which is also the floor. Braking at 4 m/s^2 the
-  // vehicle may still be doing 11 m/s now.
+  // fifteen metres ahead, which is also the floor. The vehicle may still be
+  // fast now: less than the 11 m/s of an instantaneous 4 m/s^2, by the ramp
+  // the jerk limit takes to get there.
   input.executed_horizon_clearance = executedClearance(15.0, 0.5);
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
-  EXPECT_NEAR(result.clearance_limit_mps, std::sqrt(1.0 + 2.0 * 4.0 * 15.0), 1.0e-6);
-  EXPECT_GT(result.clearance_limit_mps, 10.0);
+  EXPECT_LT(result.clearance_limit_mps, std::sqrt(1.0 + 2.0 * 4.0 * 15.0));
+  EXPECT_GT(result.clearance_limit_mps, 7.0);
+}
+
+TEST(MppiSpeedPolicyTest, TheStoppingLawHoldsForAVehicleStillAccelerating) {
+  // Whatever the distance, and at the few metres a camera resolves as much as
+  // at a lidar's fourteen: a vehicle at the admitted speed and the measured
+  // forward acceleration, integrated under the jerk limit, is down to the
+  // terminal speed within the distance, and one 5 percent faster is not.
+  const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  const double jerk_mps3 = config.sensor_braking_contract.maximum_control_jerk_mps3;
+  const double deceleration_mps2 =
+      config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2;
+  const auto slowdownDistanceM = [&](const double speed_mps,
+                                     const double terminal_speed_mps,
+                                     const double forward_acceleration_mps2) {
+    constexpr double kStepS{1.0e-4};
+    double acceleration_mps2 = forward_acceleration_mps2;
+    double speed = speed_mps;
+    double distance_m{0.0};
+    for (double elapsed_s = 0.0; speed > terminal_speed_mps; elapsed_s += kStepS) {
+      if (elapsed_s >= config.stopping_capability.reaction_latency_s) {
+        acceleration_mps2 =
+            std::max(-deceleration_mps2, acceleration_mps2 - jerk_mps3 * kStepS);
+      }
+      distance_m += speed * kStepS;
+      speed += acceleration_mps2 * kStepS;
+    }
+    return distance_m;
+  };
+  for (const double distance_m : {3.0, 4.3, 5.7, 14.0}) {
+    for (const double terminal_speed_mps : {0.0, 1.0, 3.0}) {
+      for (const double forward_acceleration_mps2 : {0.0, 2.0, 4.0}) {
+        const double admitted_mps = stoppingLimitedSpeed(
+            distance_m, terminal_speed_mps, config.stopping_capability,
+            config.sensor_braking_contract, forward_acceleration_mps2);
+        ASSERT_GE(admitted_mps, terminal_speed_mps);
+        if (admitted_mps > terminal_speed_mps) {
+          EXPECT_LE(slowdownDistanceM(admitted_mps, terminal_speed_mps,
+                                      forward_acceleration_mps2),
+                    distance_m + 1.0e-2);
+          EXPECT_GT(slowdownDistanceM(1.05 * admitted_mps, terminal_speed_mps,
+                                      forward_acceleration_mps2),
+                    distance_m);
+        }
+      }
+    }
+  }
 }
 
 TEST(MppiSpeedPolicyTest, TheBodyClearanceBoundsTheProgressFloor) {
@@ -352,8 +410,13 @@ TEST(MppiSpeedPolicyTest, ATightPointBehindAMildOneStillBindsTheReference) {
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
   // The mild point alone admits 10 m/s; the tight one two metres on admits
-  // 1 m/s and, braking at 4 m/s^2, sqrt(1 + 2 * 4 * 2) now.
-  EXPECT_NEAR(result.clearance_limit_mps, std::sqrt(1.0 + 16.0), 1.0e-6);
+  // 1 m/s and what the stopping law carries over two metres to it.
+  EXPECT_NEAR(result.clearance_limit_mps,
+              stoppingLimitedSpeed(2.0, 1.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-9);
+  EXPECT_LT(result.clearance_limit_mps, std::sqrt(1.0 + 16.0));
+  EXPECT_GT(result.clearance_limit_mps, 1.0);
   EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kClearance);
 }
 
@@ -532,7 +595,11 @@ TEST(MppiSpeedPolicyTest, LocalStopBrakesAtItsFiniteEndpoint) {
 
   const MppiSpeedPolicyResult approaching = evaluateMppiSpeedPolicy(config, input);
 
-  EXPECT_NEAR(approaching.route_endpoint_limit_mps, 9.03, 0.01);
+  EXPECT_NEAR(approaching.route_endpoint_limit_mps,
+              stoppingLimitedSpeed(6.0, 0.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-9);
+  EXPECT_LT(approaching.route_endpoint_limit_mps, 9.03);
   EXPECT_TRUE(approaching.route_endpoint_stop_required);
   EXPECT_EQ(approaching.route_endpoint_semantics, RouteEndpointSemantics3D::kLocalStop);
   EXPECT_DOUBLE_EQ(approaching.reference_speed_mps,

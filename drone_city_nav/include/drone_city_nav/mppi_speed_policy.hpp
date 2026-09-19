@@ -96,6 +96,9 @@ struct MppiSpeedPolicyInput {
   // stopping law owes that interval as latency, on top of the reaction
   // latency, exactly as the sensor-braking contract owes its evidence age.
   double esdf_evidence_age_s{0.0};
+  // The measured acceleration along the horizontal velocity. The stopping
+  // laws charge the jerk ramp from it to the full deceleration.
+  double forward_acceleration_mps2{0.0};
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
   std::optional<double> previous_reference_speed_mps;
@@ -135,9 +138,11 @@ struct MppiSpeedPolicyResult {
   bool terminal_goal_limit_enabled{true};
 };
 
-[[nodiscard]] double
-stoppingLimitedSpeed(double available_distance_m, double terminal_speed_mps,
-                     const StoppingCapability& capability) noexcept;
+[[nodiscard]] double stoppingLimitedSpeed(double available_distance_m,
+                                          double terminal_speed_mps,
+                                          const StoppingCapability& capability,
+                                          const SensorBrakingContract3D& contract,
+                                          double forward_acceleration_mps2) noexcept;
 
 [[nodiscard]] MppiSpeedPolicyResult
 evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,

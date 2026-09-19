@@ -20,12 +20,22 @@ double
 jerkLimitedAxisStoppingDistanceM(const double speed_mps,
                                  const double forward_acceleration_mps2,
                                  const JerkLimitedAxisStoppingConfig& config) noexcept {
+  return jerkLimitedAxisSlowdownDistanceM(speed_mps, 0.0, forward_acceleration_mps2,
+                                          config);
+}
+
+double
+jerkLimitedAxisSlowdownDistanceM(const double speed_mps,
+                                 const double terminal_speed_mps,
+                                 const double forward_acceleration_mps2,
+                                 const JerkLimitedAxisStoppingConfig& config) noexcept {
   if (!std::isfinite(speed_mps) || speed_mps < 0.0 ||
+      !std::isfinite(terminal_speed_mps) || terminal_speed_mps < 0.0 ||
       !std::isfinite(forward_acceleration_mps2) ||
       !jerkLimitedAxisStoppingConfigIsValid(config)) {
     return std::numeric_limits<double>::infinity();
   }
-  if (!(speed_mps > 0.0)) {
+  if (!(speed_mps > terminal_speed_mps)) {
     return 0.0;
   }
 
@@ -43,7 +53,8 @@ jerkLimitedAxisStoppingDistanceM(const double speed_mps,
   const double stop_during_ramp_s =
       (forward_acceleration +
        std::sqrt(forward_acceleration * forward_acceleration +
-                 2.0 * config.maximum_jerk_mps3 * speed_after_reaction_mps)) /
+                 2.0 * config.maximum_jerk_mps3 *
+                     (speed_after_reaction_mps - terminal_speed_mps))) /
       config.maximum_jerk_mps3;
   const double applied_ramp_time_s = std::min(ramp_time_s, stop_during_ramp_s);
   const double ramp_time_squared_s2 = applied_ramp_time_s * applied_ramp_time_s;
@@ -58,7 +69,8 @@ jerkLimitedAxisStoppingDistanceM(const double speed_mps,
       speed_after_reaction_mps + forward_acceleration * ramp_time_s -
       0.5 * config.maximum_jerk_mps3 * ramp_time_s * ramp_time_s;
   const double constant_deceleration_distance_m =
-      speed_after_ramp_mps * speed_after_ramp_mps /
+      (speed_after_ramp_mps * speed_after_ramp_mps -
+       terminal_speed_mps * terminal_speed_mps) /
       (2.0 * config.guaranteed_deceleration_mps2);
   return std::max(0.0, reaction_distance_m + ramp_distance_m +
                            constant_deceleration_distance_m);
