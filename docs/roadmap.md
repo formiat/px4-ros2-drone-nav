@@ -339,6 +339,25 @@ The roadmap dependency between the two must not become a code dependency.
 4. Fly Urban Circuit Practice 01 on the stereo profile alone, with the lidar
    removed from the model, against item 12's gates.
 
+Stages 1 and 2 are done (2026-09-19). Stage 1: the sensor set mounts with
+`CAMERA_PROFILE=stereo_tof`; two 1280 x 960 cameras cost the simulator nothing
+as RGB (real-time factor 0.99) and 0.39 as `L8`; the headless world carries no
+textures, so camera flights run on the GUI world; semi-global matching
+recovers depth on 98 to 100 percent of the pixels with a disparity error of
+0.11 to 0.17 px at the median and 0.29 to 0.49 px at p90, which puts the
+confident depth of the working geometry at 6.4 m, not the 8.6 m estimated
+above from a quarter pixel; a frame's stamp is its render time within one
+frame. Stage 2: the vision returns, their free rays and the time-of-flight
+zones feed a shadow obstacle memory whose occupied voxels agree with the
+lidar memory's to 97 to 98 percent within one voxel and find 96 to 99 percent
+of the lidar's inside the volume they observe, a third of the lidar's
+([obstacle_mapping.md](obstacle_mapping.md)). Two findings bind the stages
+that follow: beside the GUI-world render, the image bridge and a 110 ms
+matcher on two threads the workstation no longer carries the lidar-inertial
+estimator in real time, so camera flights use the `gnss` profile already; and
+with 6.4 m of confident depth the braking contract admits about 2.5 m/s
+forward at the lidar's evidence age and 3.0 m/s at 0.25 s.
+
 ### Measurement And Completion
 
 Measure depth coverage and depth error against evaluation-only truth by range

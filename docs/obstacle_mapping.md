@@ -72,6 +72,53 @@ Transport publishes a revisioned base snapshot and dirty chunks rather than a
 complete dense map on every scan. Unknown voxels remain distinct from occupied
 and confirmed free voxels.
 
+## Vision Returns (Shadow)
+
+With `CAMERA_PROFILE=stereo_tof` a second producer feeds the same beam
+contract (roadmap item 14, stage 2). `stereo_depth_node` recovers depth from
+the forward stereo pair and publishes one ray a matched pixel (every fourth
+pixel each way) in the left camera's forward-left-up frame, stamped with the
+frame:
+
+- a pixel matched within the confident depth is a **hit**. The confident
+  depth is where the depth error `z^2 * e / (b * f)` reaches one 0.25 m voxel
+  for the disparity error measured at p90 (0.45 px on r476): 6.4 m for the
+  1280 px, 120 degree, 0.20 m pair;
+- a pixel matched deeper than that is a **free ray**: no surface measurement,
+  but the surface is no nearer than the disparity plus its error allows, so
+  the ray is free up to that depth or the confident depth, whichever is
+  nearer;
+- a pixel **without a match says nothing**, where an organized lidar scan
+  reads a missing return as a miss to the maximum range.
+
+The two time-of-flight sensors join the same cloud. A zone is a cone, not a
+ray: its evidence is spread over 3 x 3 rays, a surface filling the zone's
+cross-section at the measured range, a zone that saw nothing free across it
+to the rated 2.8 m. The cloud's `intensity` field is 1 for a surface and 0
+for a free ray; `decodeHitOnlyReturns3D` turns it into the beams the memory
+integrates (`lidar_3d_hit_only_returns`).
+
+The matcher is OpenCV's semi-global matching, far and near apart: the far
+surfaces at full resolution over 64 disparities, the near ones at half
+resolution over the whole 256. On the recording flight r476 that recovers the
+same depth as one full search (0.97, 0.84 and 0.66 of the pixels within one
+voxel of the simulator's depth at 4 to 6, 6 to 8 and 8 to 10 m) for 108 ms on
+two threads against 187.
+
+A second instance of `obstacle_memory_3d_node`
+(`vision_obstacle_memory_3d_node`) integrates these returns on topics of its
+own under `/drone_city_nav/vision_shadow/`, with the lidar node's parameters
+and two hits to call a voxel occupied: a matcher's outliers beside depth
+edges do not repeat from frame to frame the way a surface does. Nothing
+consumes that memory; the lidar's stays the navigation world. Measured against
+the lidar memory over whole flights: with one hit 93.7 percent of the
+vision-occupied voxels had a lidar-occupied voxel within one voxel and 4.6
+percent none within two (r481); with two hits 98.4 and 0.7 percent, and 98.8
+percent of the lidar's occupied voxels inside the volume the pair observed
+were found (r483); with the free rays and the time-of-flight zones 97.1
+percent within one voxel and 99.4 within two, 96.0 and 97.8 percent found,
+over 35 percent of the lidar's observed volume (r487).
+
 ## Obstacle Memory
 
 `obstacle_memory_node` accumulates scan evidence into

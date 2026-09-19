@@ -53,6 +53,20 @@ release names the asset tags it was validated with.
 - The lidar-inertial estimator reads the scan to the sensor's whole 35 m, so a
   street longer than 30 m no longer leaves the registration without a
   measurement along it (r461: a 2.0 m slide of the estimate).
+- Roadmap item 14, stages 1 and 2: `CAMERA_PROFILE=stereo_tof` mounts a
+  forward stereo pair (1280 x 960, 120 degrees, 0.20 m baseline) and two 8 x 8
+  time-of-flight sensors beside the lidar; `stereo_depth_node` recovers depth
+  by semi-global matching and publishes it, with the time-of-flight zones, as
+  rays that are hits, free rays or nothing; a second obstacle memory
+  integrates them in shadow. Against the lidar memory its occupied voxels
+  agree to 97 to 98 percent within one voxel and it finds 96 to 99 percent of
+  the lidar's inside the third of the volume it observes. Camera flights run
+  on the textured GUI world, at 7.5 Hz, on the `gnss` localization profile.
+  The roadmap's speed estimates for the camera profile are corrected by the
+  braking contract (6.4 m of confident depth admit 2.5 to 3.0 m/s).
+- At the mission goal a moving vehicle is left to the goal hold instead of
+  being offered a stop every second, which kept the mission from being
+  acknowledged on the GNSS profile (r481).
 - Known after these changes (series r470 to r474, five flights without a
   crash): mean flight speed 2.32 to 2.77 m/s with two flights under the
   2.5 m/s check, and the position estimate check (0.35 m at p95) red in one
