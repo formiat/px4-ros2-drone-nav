@@ -830,7 +830,22 @@ lidar_inertial_odometry_node:
     # coarser until it fits, so the submap keeps no holes.
     maximum_scan_points: 4000
     minimum_range_m: 1.0
-    maximum_range_m: 30.0
+    # The whole range the sensor returns (35 m in the vehicle model). Read to
+    # 30 m, the ends of a street longer than that were not in the scan, the
+    # registration had no measurement along the street, and the axis rode the
+    # IMU alone: on the 55 m street of the urban circuit the recorded flights
+    # r392, r403 and r404 carry 16, 18 and 11 degenerate scans (weakest-axis
+    # information down to 0.002 against the 0.01 threshold) and the estimate
+    # slid 0.17, 0.23 and 0.06 m along it; r463 and r465 slid 0.2 to 0.35 m
+    # there and r461, manoeuvring in it for six seconds, 2.0 m, which it kept
+    # to the end of the flight (position estimate 1.93 m at p95 against the
+    # 0.35 m gate; five flights of r456 to r469 were above the gate). At 35 m
+    # the same three recordings replay with no degenerate scan on the street,
+    # information 0.020 to 0.028 at the least, a slide of 0.05, 0.11 and
+    # 0.05 m, the whole-flight cross-track error at p95 0.081, 0.084 and
+    # 0.214 m against 0.114, 0.110 and 0.276, and a scan cost at p95 of 55,
+    # 49 and 49 ms against 52, 48 and 48.
+    maximum_range_m: 35.0
     maximum_correspondence_m: 1.0
     maximum_iterations: 10
     robust_width_m: 0.2

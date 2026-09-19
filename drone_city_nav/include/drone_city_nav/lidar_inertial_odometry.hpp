@@ -35,7 +35,7 @@ struct LidarInertialOdometryConfig {
   // registration has to fit the scan period.
   std::size_t maximum_scan_points{4000U};
   double minimum_range_m{1.0};
-  double maximum_range_m{30.0};
+  double maximum_range_m{35.0};
   // A scan point matches the nearest submap point within this distance.
   double maximum_correspondence_m{1.0};
   std::size_t maximum_iterations{10U};
