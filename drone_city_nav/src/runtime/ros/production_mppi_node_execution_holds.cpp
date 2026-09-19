@@ -218,11 +218,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     }
   }
   bool retention_physically_rejected{false};
+  bool resident_trajectory_clear{false};
   // At the mission goal the route is finished: re-leasing its finite path
   // would keep extending the lease the goal hold has to outlive.
   if (!mission_goal_hold) {
     if (std::optional<ProductionMppiExecutionPublication> retained =
-            retainActiveFinitePath(cycle, reason, &retention_physically_rejected);
+            retainActiveFinitePath(cycle, reason, &retention_physically_rejected,
+                                   &resident_trajectory_clear);
         retained.has_value()) {
       return *retained;
     }
@@ -265,6 +267,24 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
     if (stop.published || stop.resident_owner_continues) {
       return stop;
+    }
+    // The stop was refused: braking along the velocity sweeps into evidence.
+    // A revocation hands the vehicle to the offboard's local hold, which
+    // brakes along that same velocity with no world behind it: the motion the
+    // certifier has just refused. When the path rebuilt from the measured
+    // state was refused but the resident trajectory itself still sweeps clear
+    // of the newest evidence, that trajectory is the only motion the world was
+    // checked against, and it ends at rest within its lease: the resident
+    // owner keeps the vehicle. r440 lost the vehicle to the other choice: the
+    // resident trajectory validated, the stop from 5.66 m/s was refused for
+    // the wall 4 m ahead, the execution was revoked, and the local hold braked
+    // into that wall at 3.83 m/s.
+    if (resident_trajectory_clear) {
+      ProductionMppiExecutionPublication continuation = residentOwnerContinuation(
+          reason, cycle.controller.now_ns, stop, /*retire_route_on_expiry=*/false);
+      if (continuation.resident_owner_continues) {
+        return continuation;
+      }
     }
     // A vehicle already at rest has no stop to fly, and a revocation cannot
     // be committed while the route stays resident: the plan a suspension

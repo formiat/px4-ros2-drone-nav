@@ -13,7 +13,7 @@ std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason,
-    bool* const physically_rejected) {
+    bool* const physically_rejected, bool* const resident_trajectory_clear) {
   const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
   const ExecutionRetentionResult3D prepared =
       execution_supervisor_.prepareRetention(ExecutionRetentionRequest3D{
@@ -31,6 +31,9 @@ ProductionMppiNode::retainActiveFinitePath(
   const std::shared_ptr<const ExecutionPlan3D> expected = prepared.expectedPlan();
   const std::uint64_t expected_version = expected != nullptr ? expected->version : 0U;
   if (!prepared.prepared()) {
+    if (resident_trajectory_clear != nullptr) {
+      *resident_trajectory_clear = prepared.trajectory_validation.accepted();
+    }
     if (physically_rejected != nullptr) {
       const auto physical = [](const FiniteExecutionPathStatus3D status) {
         return status == FiniteExecutionPathStatus3D::kRawCollision ||

@@ -225,6 +225,16 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("recertified=true", execution)
         self.assertIn("prepareRouteRetention", execution)
         self.assertIn("execution_supervisor_.prepareRetention", execution)
+        # A refused stop leaves the vehicle with its resident trajectory while
+        # that trajectory still sweeps clear, before any revocation.
+        self.assertIn("*resident_trajectory_clear =", execution)
+        self.assertLess(
+            execution.index("if (resident_trajectory_clear) {"),
+            execution.index(
+                "ProductionMppiExecutionPublication revocation = "
+                "publishExecutionRevocation("
+            ),
+        )
         self.assertIn("FiniteExecutionPathTerminalBoundary", execution)
         self.assertNotIn("original_valid_until_ns", execution)
         self.assertIn("assessExecutionHorizonPayload", offboard)

@@ -274,11 +274,14 @@ private:
   // Retains the active finite path with a braking tail. When retention fails
   // because the active trajectory itself collides with raw or lidar evidence,
   // physically_rejected reports it so the caller fails closed instead of
-  // letting the resident owner run on.
+  // letting the resident owner run on. resident_trajectory_clear reports the
+  // other case: the path rebuilt from the measured state was refused while the
+  // resident trajectory itself still sweeps clear of the newest evidence.
   [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
   retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
                          ProductionMppiExecutionReason replacement_failure_reason,
-                         bool* physically_rejected = nullptr);
+                         bool* physically_rejected = nullptr,
+                         bool* resident_trajectory_clear = nullptr);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishPositionHold(const ProductionMppiExecutionCycle& cycle,
                       const Point3& hold_position, ProductionMppiExecutionReason reason,
