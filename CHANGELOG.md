@@ -34,6 +34,29 @@ release names the asset tags it was validated with.
   rebuilding the voxel hash, so a scan's cost no longer grows with the submap
   (r447: 155 to 266 ms a scan, external-vision fusion lost, crash; r448 to
   r452: at most 99 ms at 82 to 92 thousand points).
+- The speed policy's stopping laws answer for the vehicle as it flies. The
+  limits that depend on a distance (clearance, route clearance, blocked
+  route, curvature, goal, route endpoint) are the exact jerk-limited slowdown
+  from the measured forward acceleration, and the evidence-facing ones also
+  charge the measured delay of the loop behind a falling reference
+  (`reference_tracking_lag_s`, 0.3 s). A law of instantaneous deceleration
+  let the vehicle accelerate under a falling limit and cross it inside its
+  braking distance (r320, r440): 7 to 15 crossings a flight before, 0 to 2 in
+  the series r470 to r474.
+- A moving vehicle is offered the certified stop before any revocation,
+  whatever ended the replacement, and the stop no longer depends on the
+  cycle's route-bound validation world. Certified stops flown a flight: 9 to
+  21 against 0 to 2; blind brakes of the offboard above 2 m/s: 1 to 4, none
+  above 3.5 m/s and nearly all taken over by a certified stop within 0.8 s,
+  against 3 to 11 up to 5.9 m/s. What remains is the stop refused for the
+  clearance of its rest pose.
+- The lidar-inertial estimator reads the scan to the sensor's whole 35 m, so a
+  street longer than 30 m no longer leaves the registration without a
+  measurement along it (r461: a 2.0 m slide of the estimate).
+- Known after these changes (series r470 to r474, five flights without a
+  crash): mean flight speed 2.32 to 2.77 m/s with two flights under the
+  2.5 m/s check, and the position estimate check (0.35 m at p95) red in one
+  flight of five for ordinary odometry drift.
 
 ## v0.3.0 (2026-09-17)
 

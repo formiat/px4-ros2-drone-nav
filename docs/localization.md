@@ -51,8 +51,11 @@ Per scan:
    (gravity, the gyroscope bias as a state, the accelerometer at rest for
    the initial level); the stretch after the last sample before the stamp
    is integrated with the sample that spans it;
-2. the scan is thinned to one point per 0.4 m cell and coarser until it
-   holds at most 4000 points, so the submap keeps no holes;
+2. the scan is read to the sensor's whole 35 m (read to 30 m, the ends of a
+   55 m street were not in the scan, the registration had no measurement
+   along it, and the estimate slid 0.06 to 0.35 m there and once 2.0 m,
+   r461) and thinned to one point per 0.4 m cell and coarser until it holds
+   at most 4000 points, so the submap keeps no holes;
 3. point-to-plane Gauss-Newton registration against a sliding submap of
    the last 40 keyframes in a voxel hash, normals fitted over two rings,
    the IMU pose as the starting guess, a robust width of 0.2 m; a failed

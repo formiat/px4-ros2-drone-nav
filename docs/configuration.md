@@ -226,6 +226,11 @@ Persistent 3D planner and route lifecycle:
 - speed-dependent tracking-error response horizon and
   `tracking_error_tube_minimum_progress_speed_mps`, the progress floor that a
   constrained segment keeps wherever the physical body clears raw occupancy;
+- `reference_tracking_lag_s` is the measured delay with which the vehicle
+  follows a reference that falls, less the reaction latency; the distance
+  laws of the speed policy that face evidence (clearance, route clearance,
+  blocked route, route endpoint) charge it as latency, see
+  [trajectory_optimization.md](trajectory_optimization.md);
 - `overspeed_weight` charges every rollout state above the MPPI dynamics
   speed caps (the absolute limit horizontally, the sensor-braking limit
   translationally) and above the reference speed the speed policy derives

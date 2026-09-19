@@ -223,6 +223,23 @@ doing:
   far ahead dropped the reference, the horizon shortened out of reach of the
   obstacle, the reference jumped back, and the longer horizon found the
   obstacle again.
+- The stopping law answers for the vehicle as it flies. It is the exact
+  jerk-limited slowdown to the speed admitted at the point: the reaction
+  latency, the ramp from the **measured** forward acceleration to the full
+  deceleration under `maximum_control_jerk_mps3`, then constant deceleration.
+  A law of instantaneous deceleration falls along its own curve at 4 m/s^2
+  once the vehicle rides it, while the vehicle beneath it may still be
+  accelerating: in the flight r440 the clearance limit fell from 7.9 to
+  3.8 m/s in 1.3 s, the vehicle climbed from 3.8 to 5.6 m/s under it, crossed
+  it a second before a wall and needed 0.64 s to turn its acceleration round.
+  The flights before the change carry 7 to 15 such crossings each; after it 0
+  to 4. The laws that stop the vehicle short of evidence or of the end of what
+  was certified (clearance, route clearance, blocked route, route endpoint)
+  also charge `reference_tracking_lag_s`, the measured delay with which the
+  loop follows a falling reference (0.30 s at the median, 0.41 s at p75 over
+  r457 to r459, of which 0.10 s is the reaction latency already charged); the
+  curvature and goal laws do not, since arriving late at their speed meets
+  nothing. The sensor-braking contract keeps its own worst-case ramp.
 - Evidence beside the motion owes no braking distance. The horizon is
   validated by the body against the raw world and ends at rest, so "stop
   within the lateral clearance" is not a physical requirement; asking for it
