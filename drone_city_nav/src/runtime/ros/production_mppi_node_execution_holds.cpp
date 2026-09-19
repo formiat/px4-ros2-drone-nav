@@ -253,7 +253,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // is no evidence against the world, and it was answered by the blind brake
   // all the same (r456: eight revocations above 2 m/s, one at 4.55 m/s, all
   // with neither flag set).
-  const bool vehicle_moving = !vehicleAtRest(cycle.evidence.exact_initial_state);
+  //
+  // Not at the mission goal: there the vehicle is handed to the goal hold, and
+  // a stop published in its place is a finite execution the hold's transfer
+  // conflicts with. A vehicle that arrived above the rest tolerance was given a
+  // fresh stop every second, the hold never took over, the capture gate never
+  // saw one horizon for its two seconds, and the mission was not acknowledged
+  // although the vehicle stood on the goal for five minutes (r481).
+  const bool vehicle_moving =
+      !mission_goal_hold && !vehicleAtRest(cycle.evidence.exact_initial_state);
   if (physical_route_invalidation || path_claim_ended || vehicle_moving) {
     // The stop is the resident route's end from where the vehicle stands: the
     // successor is searched from now on, while the vehicle is still braking,
