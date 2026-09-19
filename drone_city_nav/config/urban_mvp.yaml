@@ -464,10 +464,16 @@ production_mppi_node:
     # measured one within 0.2 m/s, and raising overspeed_weight fivefold
     # changed nothing (r460): the lag is the velocity loop's, not the cost's.
     # Without it the vehicle rides every falling limit 0.5 to 1.3 m/s above
-    # it. The tick lines are 0.2 s apart, so p90 is read coarsely; 0.5 s sits
-    # between p75 and p90. The sensor-braking contract does not take it: it
-    # reserves the worst-case ramp and the evidence age of its own.
-    reference_tracking_lag_s: 0.5
+    # it. The measured lag is the whole delay and contains the 0.10 s of
+    # speed_reaction_latency_s the laws already charge, so 0.3 s here makes
+    # 0.40 s in all, the measured p75; the tick lines are 0.2 s apart and p90
+    # is read coarsely. 0.5 s was flown first (r461 to r466): mean speed 2.42
+    # to 2.68 m/s with four flights of six under the 2.5 m/s gate; at 0.3 s
+    # (r467 to r469) 2.63, 2.68 and 2.53 m/s, blind brakes above 2 m/s one to
+    # three a flight and each taken over by a certified stop within 0.7 s or
+    # flown below 3.2 m/s. The sensor-braking contract does not take the lag:
+    # it reserves the worst-case ramp and the evidence age of its own.
+    reference_tracking_lag_s: 0.3
     # The range within which the lidar is guaranteed to have resolved an
     # obstacle at the occupancy resolution the validators reject on, not the
     # range at which it returns from a wall. With 360 by 181 beams over the
