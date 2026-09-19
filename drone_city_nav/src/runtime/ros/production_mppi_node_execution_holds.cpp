@@ -247,7 +247,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // hold, which knows nothing about obstacles; a certified stop is the same
   // decision carried out along a trajectory the world was actually checked
   // against.
-  if (physical_route_invalidation || path_claim_ended) {
+  //
+  // The same holds for a moving vehicle whatever ended the replacement: a
+  // commit refused because a newer scan arrived, or an input no longer fresh,
+  // is no evidence against the world, and it was answered by the blind brake
+  // all the same (r456: eight revocations above 2 m/s, one at 4.55 m/s, all
+  // with neither flag set).
+  const bool vehicle_moving = !vehicleAtRest(cycle.evidence.exact_initial_state);
+  if (physical_route_invalidation || path_claim_ended || vehicle_moving) {
     // The stop is the resident route's end from where the vehicle stands: the
     // successor is searched from now on, while the vehicle is still braking,
     // not once it has come to rest. The route stays resident through the
@@ -306,6 +313,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     if (rest_hold.published) {
       return rest_hold;
     }
+  }
+  if (vehicle_moving) {
+    // A revocation hands a moving vehicle to the offboard's blind brake; what
+    // led to it is recorded, because no stop line says so when none was tried.
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "EXECUTION_REVOCATION moving=true reason=%s speed_mps=%.2f "
+                         "physical_route_invalidation=%s path_claim_ended=%s "
+                         "resident_trajectory_clear=%s",
+                         productionMppiExecutionReasonName(reason),
+                         std::hypot(std::hypot(cycle.evidence.exact_initial_state.vx,
+                                               cycle.evidence.exact_initial_state.vy),
+                                    cycle.evidence.exact_initial_state.vz),
+                         physical_route_invalidation ? "true" : "false",
+                         path_claim_ended ? "true" : "false",
+                         resident_trajectory_clear ? "true" : "false");
   }
   ProductionMppiExecutionPublication revocation = publishExecutionRevocation(
       reason, cycle.controller.now_ns, physical_route_invalidation);

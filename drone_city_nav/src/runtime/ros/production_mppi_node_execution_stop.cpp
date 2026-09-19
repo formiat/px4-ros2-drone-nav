@@ -18,9 +18,18 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
                                          const ProductionMppiExecutionReason reason,
                                          bool* const braking_path_blocked) {
   ProductionMppiExecutionPublication publication;
-  if (cycle.evidence.execution_dynamics == nullptr ||
-      cycle.controller.result == nullptr ||
+  // The stop derives its own world and validates against its own policy, so
+  // it needs nothing of the cycle's route-bound validation world: a cycle
+  // whose route has just been retired has none, and that is exactly the cycle
+  // a moving vehicle needs the stop in. Guarded on that world, no stop was
+  // attempted there, and the vehicle went to the offboard's blind brake: in
+  // the urban flights r448 to r455 zero to two stops were published a flight
+  // against three to eleven blind brakes above 2 m/s.
+  if (cycle.controller.result == nullptr ||
       cycle.controller.resultRef().controls.empty()) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "STOP_EXECUTION published=false status=controller_result_"
+                         "unavailable");
     return publication;
   }
   const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
