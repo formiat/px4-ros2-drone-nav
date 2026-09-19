@@ -103,6 +103,11 @@ alignment, and raw-collision validation against its physical world.
 
 **Hard prerequisites:** items 8 and 12.
 
+**Validation prerequisite:** the route availability floor of the 3D-lidar
+profile, which item 9 stage A is to derive; until it does, the floor measured
+over the fifteen flights r430 to r434, r448 to r452 and r470 to r474 stands in
+for it: 90 percent (lowest flight 90.2, median 94.9).
+
 **Validation environment:** Urban Circuit Practice 01.
 
 Navigate the same no-static missions that item 8 and item 12 accept with the
@@ -132,7 +137,11 @@ lost.
 The simulator provides one calibrated stereo pair of RGB cameras rigidly
 mounted on the airframe and looking forward, its intrinsics and baseline, two
 multizone time-of-flight sensors looking up and down (VL53L8 class: an 8 x 8
-zone matrix, about 4 m of range, a cone of about 60 degrees), the IMU, and a
+zone matrix over 45 by 45 degrees, 65 on the diagonal, at up to 15 Hz; 4 m of
+range in the dark and 2.8 m on a large bright target in 5 000 lux, which is
+the figure the simulated sensor takes, since the flights are outdoors; the
+manufacturer states none for direct sunlight, where the range is shorter
+still), the IMU, and a
 pose source that does not need the lidar: the `gnss` localization profile,
 kept for this stage, since the default `lidar_inertial` estimator of item 13
 registers lidar scans and has nothing to register without them. It provides no
@@ -159,27 +168,66 @@ that direction, so a forward pair alone gives every vertical motion a
 detection range of zero: the two shafts of Urban Circuit Practice 01, which
 item 12's routes climb and descend regularly, would be crawled through or not
 entered, against the rule that vertical motion is free. The time-of-flight
-sensors give the vertical its guaranteed range: about 4 m in a 60 degree
-cone, which under the vertical law (1.4 m/s²) admits a vertical speed of
-about 2 m/s, slower than the lidar profile and far from a crawl. Their miss
-is real evidence, as the lidar's is, and their 64 rays enter the same beam
-contract as every other ray. Backward and sideways sensing is not needed:
+sensors give the vertical its guaranteed range, and the braking contract
+says what that range is worth (evidence age, reaction latency, the jerk ramp
+from the largest vertical acceleration, deceleration at 1.4 m/s², and the
+physical margin): with the 2.0 m margin of the lidar profile, 2.8 m admits
+0.7 m/s at the lidar's 0.6 s of evidence age and 0.9 m/s at the 0.2 s a
+15 Hz sensor owes; with the margin a vertical approach needs (about 1.0 m:
+the body's half height, the estimate's vertical error, a voxel and the
+tracking error) 1.3 and 1.6 m/s; in the dark, at 4 m, 1.4 to 2.2 m/s. That
+is slower than the lidar profile and not a crawl in shade or indoors; in
+direct sunlight it is a crawl, and the tilt servo below is then the answer.
+Their miss is real evidence, as the lidar's is, inside the rated range. A
+zone is a cone, not a ray: at 2.8 m it is 0.3 m wide, and a narrow object in
+it returns a mixed range. A zone therefore enters the beam contract as a hit
+that fills the zone's whole cross-section at the measured range and as free
+space only up to that range less the sensor's ranging error, never as a thin
+free ray through a volume the sensor does not resolve. Backward and sideways sensing is not needed:
 the gaze policy below turns the vehicle before such motion.
 
-The lens is a measured trade. Depth error grows as the focal length in
-pixels shrinks, so a wider lens sees more of the vertical and less far: at
-640 px, a 10 cm baseline, a quarter pixel of disparity error and one voxel
-of allowed depth error, a 90 degree lens is confident to about 5.7 m, a 120
-degree lens to 4.3 m and a 150 degree lens to 2.9 m, which the braking law
-turns into about 4.8, 3.9 and 3.0 m/s of forward speed. None of them reaches
-the 14 m the lidar profile's 6.5 m/s cruise rests on, so this profile flies
-slower than the lidar profile whatever the lens; the series of item 12 flew
-2.5 to 3.2 m/s on average, so the loss on this location may be modest. These
-are estimates; stage 1 measures them and fixes the lens. The baseline is
-chosen for the shafts, whose walls stand 0.5 to 1 m from the vehicle: the
-nearest range a pair resolves is its baseline times the focal length over
-the largest disparity, so a baseline around 10 cm keeps that range under
-0.5 m; a longer baseline sees farther and loses the shaft.
+The lens and the baseline are a measured trade. Depth error grows as the
+focal length in pixels shrinks, so a wider lens sees more of the vertical and
+less far, and a longer baseline sees farther and loses the near field. With a
+quarter pixel of disparity error and one voxel (0.25 m) of allowed depth
+error the confident range is the square root of baseline times focal length;
+the nearest range is baseline times focal length over the largest disparity
+(256 px at 1280 px of width). The braking contract then prices the range
+exactly as it prices the lidar's 14 m (5.65 m/s): 2.0 m of physical margin,
+the evidence age, the reaction latency and the jerk ramp from the largest
+acceleration. An earlier version of this section read the speed off the
+stopping distance alone and promised 4.8, 3.9 and 3.0 m/s for 5.7, 4.3 and
+2.9 m; the contract admits 2.1, 1.3 and 0.4 m/s there.
+
+| Width | Lens | Baseline | Range | Nearest | Forward speed at 0.6 s / 0.25 s of evidence age | Vertical half-angle (4:3) |
+|---|---|---|---|---|---|---|
+| 640 px | 90° | 0.10 m | 5.7 m | 0.25 m | 2.1 / 2.5 m/s | 37° |
+| 640 px | 120° | 0.10 m | 4.3 m | 0.14 m | 1.3 / 1.6 m/s | 52° |
+| 1280 px | 90° | 0.20 m | 11.3 m | 0.50 m | 4.6 / 5.4 m/s | 37° |
+| 1280 px | 120° | 0.20 m | 8.6 m | 0.29 m | 3.5 / 4.1 m/s | 52° |
+| 1280 px | 120° | 0.30 m | 10.5 m | 0.43 m | 4.3 / 5.0 m/s | 52° |
+
+A 640 px pair on a 10 cm baseline is therefore not a candidate: it flies at
+1.3 to 2.5 m/s. The working choice is 1280 px, a 120 degree lens and a 20 cm
+baseline, which a 0.5 m airframe carries: 8.6 m of confident range, a
+nearest range of 0.29 m for the shafts whose walls stand 0.5 to 1 m away, 3.5
+to 4.1 m/s forward against the 2.3 to 2.8 m/s the lidar profile averages on
+this location, and a vertical half-angle of 52 degrees. These are estimates;
+stage 1 measures the matcher's real disparity error, the evidence age of the
+vision path and what two 1280 px renders cost the simulator, and fixes the
+geometry among these rows.
+
+The vertical half-angle matters because of what no sensor covers. The pair
+sees up to its vertical half-angle above and below the horizon and each
+time-of-flight sensor 22.5 degrees about the vertical, so a velocity whose
+elevation lies between the two is observed by nothing. Over the flights r470
+to r474 the elevation of the velocity is 4 degrees at the median, 22 at p90
+and 39 at p95; the uncovered band holds 3.0 percent of the flown time with a
+90 degree lens (37 to 67.5 degrees) and 1.4 percent with a 120 degree lens
+(52 to 67.5), at 1.6 to 1.8 m/s. A motion in that band is unobserved motion
+and flies at the speed unobserved motion is allowed, like any other: no
+route, cost or latch keeps the vehicle out of it. At 1.4 percent of the
+flight the price is below a second.
 
 One alternative stays on record. A one-axis tilt servo under the pair (the
 pair faces the motion in the vertical plane as the vehicle's yaw faces it in
@@ -234,8 +282,9 @@ the range at which it is guaranteed to detect an obstacle. The lidar profile
 states that range as one omnidirectional number. A camera sees a cone. The
 guaranteed detection range becomes a function of direction relative to the
 sensors' frustums (the forward pair's and the two time-of-flight cones) and
-of each one's confident range, and the speed policy limits
-speed along the commanded motion by the guaranteed range in that direction. A
+of each one's confident range: the range of the frustum that contains the
+direction, and nothing where no frustum does. The speed policy limits speed
+along the commanded motion by the guaranteed range in that direction. A
 vehicle commanded sideways or backwards, out of every frustum, slows to what
 unobserved motion allows, which is the existing law applied honestly rather
 than a new rule; a climb or a descent is observed by the upward or the
@@ -251,7 +300,11 @@ before committing to it — is a later stage; here the camera only follows the
 motion. The latest-lidar evidence that item 8 admits for bounded final
 execution revalidation becomes latest raw evidence from whichever sensor
 produced it; the admission rule, the freshness bound and the swept validation
-do not change.
+do not change. That is a change of names, not of rules, and it is the one
+place where "runs unchanged" above is not literal: the `LatestLidarObstacleScan`
+message, the `latest_lidar_*` parameters and diagnostics, the
+`VersionedLatestLidarEvidence3D` owner and the `kLatestLidarRawCollision`
+verdict name the sensor and are renamed for the evidence.
 
 Localization is not part of this stage. Stages 1 to 3 fly with the lidar
 still mounted and keep the default lidar-inertial profile; stage 4, with the
@@ -266,8 +319,12 @@ The roadmap dependency between the two must not become a code dependency.
    vehicle model and bridge them; record timestamped stereo frames, ranges
    and poses from lidar missions, and evaluate recovered depth offline
    against evaluation-only simulator depth by range, texture and view angle
-   for 90, 120 and 150 degree lenses to fix the confident range model and
-   the lens; measure what the matcher costs on the GPU the controller shares
+   for the geometries of the table above (90 and 120 degree lenses, 0.2
+   and 0.3 m baselines at 1280 px) to fix the confident range model and
+   the lens; calibrate the offset between a frame's exposure stamp and the
+   pose the way the lidar's was (its pose led the scan by 160 ms until
+   `lidar_pose_latency_s` was measured, and the vehicle met walls for it);
+   measure what the matcher costs on the GPU the controller shares
    (41 percent on the lidar profile) and what two renders cost the simulator,
    which holds a real-time factor of 1.00 without margin.
 2. Add the stereo depth producer and the depth-to-beam adapter that emits the
@@ -291,15 +348,18 @@ was entered, time spent speed-limited by observability, perception latency
 from exposure to raw-world revision, planner p95, route availability, minimum
 obstacle clearance and physical collisions.
 
-This stage is complete when repeated Urban Circuit Practice 01 missions run
-with the lidar absent from the vehicle model, no depth or point cloud sensor
+This stage is complete when a series of five consecutive Urban Circuit
+Practice 01 missions on one commit runs with the lidar absent from the vehicle model, no depth or point cloud sensor
 in the control path beyond the two time-of-flight sensors, the raw-world and
 planner contracts unchanged, and the mission gates of the 3D-lidar profile:
-mission complete, collision-free, route availability at the threshold item 9
-stage A derives and planner p95 below 200 ms. Speed is measured, not gated
-at the lidar profile's: forward speed follows the lens's confident range and
-the routes through both shafts are flown at the speed the time-of-flight
-range admits, without crawling.
+mission complete, collision-free, route availability at the floor named
+above and planner p95 below 200 ms. Speed is not gated at the lidar
+profile's 2.5 m/s: the mission check on the stereo profile reports the mean
+speed and gates it at half of what the braking contract admits forward for
+the geometry stage 1 fixes (1.75 m/s for the working choice), a bound written
+before stage 4 flies and not moved after it. The routes through both shafts
+are flown without crawling: the vertical speed held in a shaft is at least
+half of what the time-of-flight range admits there.
 
 ## 15. Realistic Cooperative Communication
 
