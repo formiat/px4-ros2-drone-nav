@@ -303,7 +303,7 @@ evidence against the resident path; a run with none of these lines never lost
 its plan while moving.
 
 `STOP_EXECUTION published=false status=<status>` names why a stop could not be
-derived: `validation_world_unavailable` (no usable raw/lidar evidence),
+derived: `validation_world_unavailable` (no usable raw/sensor evidence),
 `horizon_unavailable` (the dynamics admit no braking horizon of that length),
 `transition_rejected` or `publication_commit_rejected` (the plan or lease moved
 under the preparation). `at_rest` and `resident_stop_current` are not failures

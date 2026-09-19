@@ -291,8 +291,16 @@ planner or controller regressions.
 
 ## Camera Sensor Set
 
-`drone_city_nav/models/stereo_tof_v1` is the sensor set of roadmap item 14,
-mounted by `CAMERA_PROFILE=stereo_tof` beside the lidar. The pair sits on a
+`drone_city_nav/models/stereo_tof_v1` is the sensor set of roadmap item 14
+and the default of every flight: `CAMERA_PROFILE=stereo_tof` mounts it, and
+`NAVIGATION_SENSOR_PROFILE=stereo_tof` removes the lidar include and its joint
+from the materialized vehicle model (`configure_drone_lidar_model.py
+--without-lidar`), so nothing but the pair and the two time-of-flight sensors
+observes obstacles. With `NAVIGATION_SENSOR_PROFILE=lidar` the set rides
+beside the lidar and the vision path runs in shadow. The cameras run at
+7.5 Hz: at 15 Hz the workstation no longer held the rest of the stack in real
+time beside the textured render, the image bridge and the matcher (r478 to
+r480). The pair sits on a
 nose mount ahead of the rotor discs and publishes RGB: an `L8` image is
 converted on the CPU in the simulator's render thread, and with two 1280 x 960
 cameras at 15 Hz that held the simulation at a real-time factor of 0.39 (0.45
@@ -303,7 +311,7 @@ filled a third of the frame, and the grey collision proxies the lidar reads.
 
 The headless flights run on `world_sensor.sdf`, a collision-only
 materialization with no textures and no lights; a camera sees nothing there.
-With the camera profile on, `make sim-urban-point-to-point-headless` runs on
+With the camera profile on, both headless targets run on
 `world_gui.sdf`, whose surfaces carry the environment's own textures. On it
 semi-global matching (OpenCV `StereoSGBM`, 256 disparities) recovers depth on
 98 to 100 percent of the pixels at every range, with a disparity error of 0.11

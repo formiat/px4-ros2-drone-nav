@@ -215,7 +215,7 @@ one owned horizon transaction whose kind is transition, unchanged plan, or
 pending transition, plus narrow pending, revocation, and control-evidence
 operations. `commitHorizon` captures the resident authority, orders runtime
 admission, validates plan/evidence/input/owner/control identity, revalidates both
-finite command and braking paths against compatible newer raw/lidar evidence,
+finite command and braking paths against compatible newer raw/sensor evidence,
 derives raw-world obligation and expected producer from the publication plan,
 and performs the final manager compare-and-swap. There is no lower-level public
 lease-commit bypass. The ROS adapter retains coherent runtime capture, wire
@@ -237,7 +237,7 @@ field reached through a complete MPPI benchmark configuration.
 Retention preparation now crosses one owned `ExecutionRetentionRequest3D`.
 The supervisor captures the exact resident authority, selects route or direct
 tracking from that capture, reconstructs the remaining finite path, validates
-current raw/lidar evidence, certifies the replacement and braking fallback, and
+current raw/sensor evidence, certifies the replacement and braking fallback, and
 returns the captured authority with one immutable transition. Preparation does
 not mutate the store. Direct tests cover normal route retention and commit, exact
 raw-invalidation emergency braking, stale lifecycle ownership, and

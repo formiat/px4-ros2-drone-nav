@@ -136,8 +136,11 @@ that breaks one is seen on the next flight rather than in a crash:
   0.25) and the offset along the motion within 0.20 s (measured 0.10 to
   0.11 s, 0.3 m at 3 m/s: how far apart in time the estimate a tick reads and
   the true pose are stamped);
-- the lidar evidence age the planning tick reports at most 600 ms, the bound
-  the braking contract charges (measured 200 to 376 ms at most).
+- the sensor evidence age the planning tick reports at most 600 ms, the bound
+  the braking contract charges (measured 200 to 376 ms at most on the lidar;
+  on the stereo profile 256 to 284 ms at p50, 436 to 508 at p95 and 624 to
+  948 ms at most, about 1 percent of the ticks over the bound: the check is
+  red on that profile and is left so).
 
 On the `gnss_shadow` and `lidar_inertial` localization profiles the same
 machinery reports the lidar-inertial estimator's own estimate against the
@@ -150,7 +153,20 @@ read -0.013 to +0.022 s and the lidar-inertial flights r415 to r434 -0.029 to
 while the autopilot's position and the odometry it fuses agree to 5 ms.
 
 The clocks of the three records differ; each measurement aligns them on the
-motion itself (least squares over a grid of offsets).
+motion itself (least squares over a grid of offsets). The grid assumes the
+clocks run at one rate, which a simulation slower than the wall clock breaks:
+the setpoints and the true pose are stamped on the simulation clock, the
+autopilot's positions on its wall-synchronised one and the log on the wall
+clock (r493, real-time factor 0.86: 43 m of lateral error read on a sound
+flight). Both recorders therefore keep the wall time each record was received
+at, and the lateral-tracking and position-estimate measurements read that
+clock when the record carries it; the lidar-inertial comparison stays on the
+simulation clock, which both of its records share.
+
+The mean flight speed is gated by the navigation sensor profile the manifest
+records: 2.5 m/s on the lidar, and on the stereo profile half of what its
+braking contract admits forward, 1.226 m/s (6.4 m of confident depth admit
+2.452 m/s).
 
 ### Resource record
 

@@ -67,6 +67,49 @@ release names the asset tags it was validated with.
 - At the mission goal a moving vehicle is left to the goal hold instead of
   being offered a stop every second, which kept the mission from being
   acknowledged on the GNSS profile (r481).
+- Roadmap item 14, stages 3 and 4, and its closure: the vehicle navigates on
+  the stereo pair and the two time-of-flight sensors alone, with the lidar
+  absent from its model, and that sensor set is now the default everywhere
+  (`CAMERA_PROFILE=stereo_tof`, `NAVIGATION_SENSOR_PROFILE=stereo_tof`; the
+  lidar profile is `CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`). The
+  braking contract reads the range of the sensor whose field holds the motion
+  (6.4 m forward inside 60 by 52.4 degrees, 2.8 m inside 22.5 degrees of the
+  vertical), a gaze policy turns the heading to the motion, and a motion the
+  vehicle does not face answers to what memory has observed along it. The
+  launch's one obstacle memory is the vision memory; the raw world, the
+  planner and the execution core are unchanged. Single-vehicle flights on the
+  stereo profile use the `gnss` localization profile until roadmap item 16
+  adds visual-inertial odometry. Accepted on one commit: five flights with
+  the lidar absent (r506 to r510: mission complete, no crash, 1.48 to
+  1.67 m/s against a 1.226 m/s gate, route availability 97.6 to 98.8
+  percent, planner p95 152 to 158 ms) and five control flights of the lidar
+  profile (r511 to r515: 2.65 to 2.82 m/s). The multi-vehicle launch carries
+  the same defaults and has not been flown on them.
+- Three defects found on the way to that series and fixed with their measured
+  cause: a goal capture broken by one lost feedback sample could never be
+  taken again over the resident hold 0.03 m away (r498: 185 s at the goal
+  without an acknowledgement); a motion no sensor faced was admitted a blind
+  1 m/s and met a wall 1 m away that no sensor had looked at (r500, crash),
+  because the distance field treats unknown as free and the frontier law read
+  the edge of its grid; and the controller-dynamics checks aligned their
+  clocks on the assumption that the simulation runs in real time, reading
+  43 m of lateral error on a sound flight at a real-time factor of 0.86.
+- The evidence admitted for final execution revalidation is named for what it
+  is, not for the sensor: `LatestSensorObstacleScan`, the `latest_sensor_*`
+  parameters, topics and diagnostics, `VersionedLatestSensorEvidence3D`,
+  `kLatestSensorRawCollision`. Names only; the admission rule, the freshness
+  bound and the swept validation are unchanged. Launch overlays and
+  parameter files that set `latest_lidar_*` parameters have to be renamed.
+- The mission check learns the navigation sensor profile from the manifest,
+  gates the stereo profile's mean speed at half of what its braking contract
+  admits forward (1.226 m/s), and counts `stereo_depth_node` among the onboard
+  processes (1.4 cores at p50).
+- Known on the stereo profile (r506 to r510): the evidence age exceeds the
+  600 ms the contract charges on about 1 percent of the ticks (624 to 832 ms
+  at most) on a workstation that holds a real-time factor of 0.9; lateral
+  tracking p99 0.305 and 0.320 m in two flights of five against 0.25 m; a
+  faced motion between the pair's field and a time-of-flight cone (52.4 to
+  67.5 degrees of elevation) is still flown at the unobserved speed of 1 m/s.
 - Known after these changes (series r470 to r474, five flights without a
   crash): mean flight speed 2.32 to 2.77 m/s with two flights under the
   2.5 m/s check, and the position estimate check (0.35 m at p95) red in one

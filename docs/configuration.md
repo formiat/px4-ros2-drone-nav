@@ -57,7 +57,7 @@ step than the wall itself, and joining those returns would draw a ramp through
 free volume. Horizontal neighbours use the wide limit: a depth edge between two
 columns steps by the whole gap behind it, far beyond any incidence. The samples
 carry occupied evidence at their endpoint only and no free-space evidence. The
-latest-lidar obstacle scan stays the measured returns alone.
+latest-sensor obstacle scan stays the measured returns alone.
 
 ## `production_mppi_node`
 
@@ -76,9 +76,9 @@ Execution cadence:
 
 No-static direct raw validation:
 
-- `latest_lidar_obstacle_scan_topic` selects the timestamp-aligned raw-hit
+- `latest_sensor_obstacle_scan_topic` selects the timestamp-aligned raw-hit
   stream produced by obstacle memory;
-- `latest_lidar_obstacle_maximum_age_ms` bounds how long that direct evidence
+- `latest_sensor_obstacle_maximum_age_ms` bounds how long that direct evidence
   participates in complete finite-path validation. Both acquisition and local
   receipt must remain within this budget when the producer clock is not ahead.
   An acquisition timestamp ahead of the consumer's simulated clock uses local
@@ -156,7 +156,7 @@ row at sensor height until the vehicle was a few metres away: under a passage
 roof the neighbouring row hits the ceiling instead of the wall, so no join can
 fill the band, and the body band sailed through unknown space between two
 rows. The speed policy adds
-`latest_lidar_obstacle_maximum_age_ms` to `speed_reaction_latency_s`, then
+`latest_sensor_obstacle_maximum_age_ms` to `speed_reaction_latency_s`, then
 requires
 
 ```text
@@ -283,7 +283,7 @@ the measured altitude has not reached the retained capture window.
 
 Speed policy and liveness:
 
-- lidar evidence age, reaction latency, guaranteed 3D deceleration, worst
+- sensor evidence age, reaction latency, guaranteed 3D deceleration, worst
   forward acceleration, control jerk, detection range, and physical margin;
 - finite-route reserve and mission-goal stopping margins;
 - liveness observation window, the along-route displacement that counts as
@@ -330,6 +330,13 @@ Simulation scripts translate environment variables such as
 `ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|3d`, `ENABLE_RVIZ`, and camera toggles
 into launch arguments or temporary parameter overrides. No-static mode requires
 the 3D profile and rejects `none`. All simulation entry points default to 3D.
+`CAMERA_PROFILE=none|stereo_tof` and `NAVIGATION_SENSOR_PROFILE=lidar|stereo_tof`
+select the sensor set and what navigates on it; both default to `stereo_tof`
+everywhere (`launch/sensor_profile.py` holds the defaults, what the set
+guarantees to see and the vision memory's overrides, and both launches overlay
+them on the YAML, whose `production_mppi_node` and `obstacle_memory_3d_node`
+sections stay the lidar's). The final-revalidation evidence parameters are
+`latest_sensor_*` (formerly `latest_lidar_*`).
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.

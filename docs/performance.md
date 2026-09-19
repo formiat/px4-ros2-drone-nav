@@ -26,7 +26,7 @@ re-doing work already done:
   it. The part the vehicle has already flown will not be flown again, so the
   revalidation now discharges it — which also stops a perfectly executable
   horizon being revoked for evidence that appeared behind the vehicle.
-- **The latest lidar scan.** Every swept segment of the horizon asks which of
+- **The latest sensor scan.** Every swept segment of the horizon asks which of
   the scan's tens of thousands of returns can touch the body, and the answer
   used to be one pass over the whole scan per segment: a hundred segments per
   validation, several validations per assembly, and the commit's revalidation
@@ -204,6 +204,20 @@ the segment, instead of a bisection over inflated swept footprints. The
 physical body remains the hard authority; the tube only shapes the speed
 ceiling, and a configured progress floor keeps constrained segments moving
 wherever the body itself clears raw occupancy.
+
+## Stereo Depth
+
+On the default sensor set the perception cost is `stereo_depth_node`: semi-global
+matching of a 1280 x 960 pair costs 103 ms at full resolution over 128
+disparities on the CPU, so the node matches the far field at full resolution
+over 64 disparities and the near field at half resolution over 128 and merges
+them, 108 to 110 ms a pair on two threads at 7.5 Hz. From exposure to the tick
+that reads the result: 300 to 320 ms at p50 and 464 to 496 ms at p95 (r506 to
+r510), of which 200 to 212 ms are the camera period and the match, 0.1 ms the
+delivery and 76 to 88 ms the wait for the tick. The tick itself is unchanged
+(20.8 to 21.4 ms at p50, 30.3 to 32.4 ms at p95). The simulator renders the
+pair as RGB at no cost to its real-time factor; as `L8` the conversion on the
+render thread dropped it to 0.39.
 
 ## Diagnostics
 

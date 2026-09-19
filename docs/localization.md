@@ -15,9 +15,13 @@ enters the estimator or the control path.
 `LOCALIZATION_PROFILE` selects the profile in `scripts/run_drone_nav_sim.sh`
 and reaches the launch file as `localization_profile`; the runtime manifest
 records it. Since roadmap item 13 closed, `lidar_inertial` is the default of
-every single-vehicle flight; `gnss` remains for the multi-vehicle missions
-(their launches run no estimator, so they refuse the other profiles) and for
-comparison.
+every single-vehicle flight that carries the lidar; `gnss` remains for the
+multi-vehicle missions (their launches run no estimator, so they refuse the
+other profiles), for comparison, and, since roadmap item 14 made the stereo
+sensor set the default, for every flight on it: with the lidar absent the
+estimator has nothing to register, and `NAVIGATION_SENSOR_PROFILE=stereo_tof`
+defaults to `gnss` and refuses `lidar_inertial`. Flight without GNSS and
+without the lidar is roadmap item 16.
 
 | Profile | EKF2 fuses | Heading | Estimator node |
 |---|---|---|---|

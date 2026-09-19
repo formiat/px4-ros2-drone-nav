@@ -6,7 +6,9 @@ PX4 orchestration scripts, and container tooling.
 ## Runtime Data Flow
 
 ```text
-Gazebo GPU lidar + PX4 pose
+Gazebo stereo pair + time-of-flight sensors -> stereo_depth_node (hit / free rays)
+  or Gazebo GPU lidar (NAVIGATION_SENSOR_PROFILE=lidar)
++ PX4 pose
   -> selected 2D or 3D obstacle-memory node
   -> raw snapshot or revisioned Occupancy3D base + dirty chunks
 
@@ -102,7 +104,7 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 - converts the reconstructed horizon into one finite path whose speed profile
   reaches a terminal rest state;
 - validates that complete path against physical occupancy and fresh direct raw
-  lidar evidence where required;
+  sensor evidence where required;
 - publishes a typed position hold while no physically executable route exists;
 - retains the remaining trajectory of the previous finite path only when both
   its geometry and its remaining controls from the measured vehicle state are
@@ -336,7 +338,7 @@ inherited excess above the sensor-braking envelope is braked away instead of
 carried along the horizon, and rollouts pay for any excess that remains. While
 a followed route is blocked ahead by the persistent raw world and its
 replacement is still being searched, the speed policy limits the speed so the
-vehicle can stop before the blocked station. Latest raw lidar evidence
+vehicle can stop before the blocked station. Latest raw sensor evidence
 validates the finite swept path before publication, independently of strategic
 planner reuse.
 

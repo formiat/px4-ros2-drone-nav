@@ -213,4 +213,4 @@ When changing a static world:
 3. Run `make test-scripts` and `make quality` in the container.
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. Verify the no-static 3D profile ignores simulation-only occluders, observes
-   physical geometry, and validates the real free volume from raw lidar evidence.
+   physical geometry, and validates the real free volume from raw sensor evidence.

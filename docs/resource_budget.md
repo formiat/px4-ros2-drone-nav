@@ -44,6 +44,24 @@ exist there.
 | `MicroXRCEAgent` | 0.03 | 0.04 | 0.05 | 28 MiB | 0 | 53 | |
 | **Onboard together** | **2.73** | **3.36** | | **798 MiB** | | | **206 MiB** |
 
+On the stereo profile (r506, lidar absent, `gnss` localization) the depth node
+joins the set and the memory integrates a third of the lidar's volume:
+
+| Process | Cores p50 | Cores p95 | Cores max | RSS p95 | Threads |
+|---|---|---|---|---|---|
+| `production_mppi_node` | 1.65 | 2.48 | 2.81 | 566 MiB | 33 |
+| `stereo_depth_node` (semi-global matching on two threads, 7.5 Hz) | 1.41 | 1.65 | 1.77 | 93 MiB | 18 |
+| `obstacle_memory_3d_node` | 0.58 | 0.79 | 0.90 | 112 MiB | 19 |
+| `mppi_offboard_node` | 0.05 | 0.06 | 0.07 | 45 MiB | 16 |
+| `MicroXRCEAgent` | 0.04 | 0.05 | 0.06 | 28 MiB | 53 |
+
+About 3.7 cores together at p50 against the lidar profile's 2.73: the matcher
+is the difference, and on an onboard computer it belongs to a GPU or a depth
+accelerator the workstation's container does not have (OpenCV there is built
+without CUDA). The image bridge (0.10 cores) is the simulator's. The mission
+check counts `stereo_depth_node` onboard since 2026-09-19; the flights before
+it left its 1.4 cores with the simulator.
+
 The two growths are the map: the obstacle memory and the controller's copy
 of the raw occupancy grow with the volume the flight observes. The mission
 check bounds an onboard process at 256 MiB of growth per flight, twice the
@@ -83,7 +101,7 @@ r352 to r356 series (10 Hz):
 |---|---|---|---|---|---|
 | Gazebo bridge to obstacle memory | `PointCloud2`, 63 700 returns | 10 Hz | 0.74 to 0.81 ms | 1.0 to 1.2 | 2.8 |
 | obstacle memory to controller | `RawObstacleSnapshot3D` / `Delta3D` | 2 then 10 Hz | 0.15 to 0.16 ms | 0.25 to 0.32 | 11.6 |
-| obstacle memory to controller | `LatestLidarObstacleScan` | 10 Hz | 1.3 ms | 1.5 to 1.8 | 4.2 |
+| obstacle memory to controller | `LatestSensorObstacleScan` | 10 Hz | 1.3 ms | 1.5 to 1.8 | 4.2 |
 | controller to offboard | `MppiTrajectoryHorizon` | 50 Hz | 0.06 to 0.08 ms | 0.10 to 0.14 | 1.0 |
 
 The transport is not where the observation age comes from. The age the
@@ -106,7 +124,7 @@ memory node is unchanged, and the tick grows by about a millisecond at
 p50. What remains of the age is the memory's own scan-to-publication time,
 the alignment wait and the integration, which no transport rate touches.
 r347 flew under a foreign compiler build on the host and is excluded: its
-lidar evidence age reached 2240 ms and its deliveries doubled.
+sensor evidence age reached 2240 ms and its deliveries doubled.
 
 Onboard, over the r352 to r356 series at 10 Hz: 3.03 to 3.43 cores at p50
 and 3.85 to 4.14 at p95, 744 to 830 MiB; the r345 figures above are the

@@ -105,7 +105,7 @@ using:
 - the jointly captured pose, velocity, and applied control;
 - the exact immutable route geometry and tracking-error tube;
 - a coherent CPU/GPU world generation;
-- latest raw lidar evidence for final swept-footprint validation;
+- latest raw sensor evidence for final swept-footprint validation;
 - the previous control sequence as a warm start.
 
 Route geometry, nominal finite horizon, braking fallback, raw-validation

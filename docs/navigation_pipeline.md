@@ -256,6 +256,13 @@ profile selects distance-evidence preparation and observation limits, while
 cruise speed, absolute speed, and acceleration are explicit map-independent
 parameters.
 
+On the default stereo profile the sensor-braking bound is directional: 6.4 m
+of range inside the pair's field, 2.8 m inside a time-of-flight cone, and for
+a motion the vehicle does not face, the range memory has observed along it
+(nothing, where that is no more than the physical margin, until the gaze has
+turned the vehicle). [`trajectory_optimization.md`](trajectory_optimization.md)
+has the law.
+
 Reference speed is bounded by:
 
 - mode cruise and absolute limits;
@@ -265,7 +272,7 @@ Reference speed is bounded by:
 - the finite certified route endpoint and the reserve needed to stop before it;
 - the first route sample the persistent raw world blocks, braked toward as
   toward a route end while the replacement is searched;
-- the first route sample the latest lidar scan touches within the distance the
+- the first route sample the latest sensor scan touches within the distance the
   vehicle needs to react at its absolute speed limit (the sensor braking
   contract's required detection range), braked toward in the same way. The
   persistent memory integrates a hit only after its own confidence stages;
@@ -476,7 +483,7 @@ first. That envelope keeps clearance the vehicle may already have lost: the
 evidence that ended its path's claim was confirmed beside that path, or ahead
 of it, and a braking sweep that starts there cannot always keep the margin. A
 stop is the last motion the vehicle can be given, so when the envelope's sweep
-meets occupied evidence (`raw_collision`, `latest_lidar_raw_collision`) the
+meets occupied evidence (`raw_collision`, `latest_sensor_raw_collision`) the
 same trajectory is certified again with part of that clearance given up, a
 quarter of the margin at a time down to the physical body
 (`clearanceReducedFootprint`, `StopExecutionCertification3D::clearance_reduction`).

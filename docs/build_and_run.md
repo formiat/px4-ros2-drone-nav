@@ -79,12 +79,29 @@ Point-to-point mission:
 ./scripts/sim_urban_point_to_point_headless.sh
 ```
 
+Both fly the default sensor set, the forward stereo pair and the two
+time-of-flight sensors, with the lidar absent from the vehicle and the `gnss`
+localization profile. The 3D lidar profile, which defaults to
+`LOCALIZATION_PROFILE=lidar_inertial`, is a request:
+
+```bash
+CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh
+```
+
+A headless stereo flight of the mission takes 245 to 459 s of wall time on the
+reference workstation (real-time factor 0.8 to 1.0); the target's flight
+window is 600 s.
+
 Finite cooperative traffic mission:
 
 ```bash
 ./scripts/sim_cooperative_traffic_urban_gui.sh
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ```
+
+The cooperative launch carries the same sensor defaults per vehicle and has
+not been flown on them; `CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`
+is the configuration it was accepted with.
 
 The complete finite scenario is defined in
 `drone_city_nav/config/cooperative_traffic_urban_scenario.json`. The shell

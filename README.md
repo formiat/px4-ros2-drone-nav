@@ -10,7 +10,7 @@ The main package is `drone_city_nav`, an ament CMake package built with
 
 [Watch on YouTube](https://www.youtube.com/watch?v=rKXcERqb9Ho): point-to-point
 flight through the Urban Circuit Practice 01 location with no static map, from
-3D-lidar evidence alone, as released in v0.2.1 (September 2026).
+3D-sensor evidence alone, as released in v0.2.1 (September 2026).
 
 ## Quick Start
 
@@ -57,12 +57,15 @@ Use it as a planning, simulation, and offboard-control testbed. Do not use it
 on physical drones without a separate safety review, hardware-specific failsafe
 design, controlled test environment, and compliance with local regulations.
 No onboard computer has run it: the resource figures are from a workstation
-([docs/resource_budget.md](docs/resource_budget.md)). The single-vehicle flights
-fly without GNSS by default: a lidar-inertial estimator replaces the simulated
+([docs/resource_budget.md](docs/resource_budget.md)). By default the vehicle
+carries no lidar: it navigates on a forward stereo pair and two time-of-flight
+sensors ([docs/camera_perception.md](docs/camera_perception.md)), on the `gnss`
+localization profile. On the 3D lidar profile
+(`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`) the single-vehicle
+flights fly without GNSS: a lidar-inertial estimator replaces the simulated
 GNSS, the magnetometer and the simulation heading source
-(`LOCALIZATION_PROFILE=lidar_inertial`, [docs/localization.md](docs/localization.md));
-`LOCALIZATION_PROFILE=gnss` restores the GNSS profile, which the multi-vehicle
-missions still fly.
+(`LOCALIZATION_PROFILE=lidar_inertial`, [docs/localization.md](docs/localization.md)).
+Flight without GNSS and without the lidar is roadmap item 16.
 
 ## Approved Commands
 
@@ -219,13 +222,25 @@ lidar entirely:
 ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_urban_point_to_point_gui.sh
 ```
 
-`CAMERA_PROFILE=none|stereo_tof` (default `none`) mounts the sensor set of
-roadmap item 14 beside the lidar: a forward stereo pair (1280 x 960, 120
-degrees, 0.20 m baseline, 15 Hz) and two 8 x 8 time-of-flight sensors looking
-up and down. Nothing navigates on it yet; the lidar stays authoritative. With
-the profile on, the headless point-to-point flight runs on the textured GUI
-world instead of the collision-only sensor world, which a camera sees
-nothing of.
+Since roadmap item 14 closed, every simulation entry point flies on cameras:
+`CAMERA_PROFILE=stereo_tof` mounts a forward stereo pair (1280 x 960, 120
+degrees, 0.20 m baseline, 7.5 Hz) and two 8 x 8 time-of-flight sensors looking
+up and down, and `NAVIGATION_SENSOR_PROFILE=stereo_tof` navigates on them with
+the lidar absent from the vehicle model
+([`docs/camera_perception.md`](docs/camera_perception.md)). The 3D lidar
+remains available on request:
+
+```bash
+CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh
+```
+
+`CAMERA_PROFILE=stereo_tof NAVIGATION_SENSOR_PROFILE=lidar` flies on the lidar
+with the vision path in shadow beside it. `LIDAR_PROFILE=3d` still names the
+3D perception pipeline and the vehicle wrapper either way. On the camera
+profile the headless flights run on the textured GUI world instead of the
+collision-only sensor world, which a camera sees nothing of, and
+single-vehicle flights use the `gnss` localization profile until roadmap
+item 16 adds visual-inertial odometry.
 
 No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
 starting the simulation. Unknown and free volume have identical traversability
@@ -477,7 +492,7 @@ run on independent latest-value workers; superseded work is coalesced rather
 than allowed to make sensor evidence stale. The larger debug representation is
 published at a bounded cadence and is not deserialized by the planner. Raw grids
 contain only direct sensor evidence. Each timestamp-aligned scan first publishes
-`/drone_city_nav/latest_lidar_obstacle_scan`; while fresh, those physical hit
+`/drone_city_nav/latest_sensor_obstacle_scan`; while fresh, those physical hit
 points validate the complete finite path without waiting for persistent-memory
 integration. The planner builds a distance-derived risk field without
 materializing inflated grids. Static mode instead loads raw Occupancy3D
@@ -618,6 +633,7 @@ Key pages:
 - `docs/terminal_capture.md`
 - `docs/replanning.md`
 - `docs/obstacle_mapping.md`
+- `docs/camera_perception.md`
 - `docs/configuration.md`
 - `docs/diagnostics.md`
 - `docs/testing.md`

@@ -121,7 +121,7 @@ zero-speed braking fallback bound motion before unobserved obstacles can become
 unavoidable. The production speed cap is the largest speed satisfying
 
 ```text
-speed * (maximum_lidar_evidence_age + reaction_latency)
+speed * (maximum_sensor_evidence_age + reaction_latency)
   + jerk_limited_stopping_distance
   + physical_margin
   <= guaranteed_lidar_detection_range
@@ -271,6 +271,42 @@ doing:
   of the two ranges. Only the speed changes: the route through unobserved
   space is flown as planned, at the speed the vehicle can stop from before
   the space it has not seen.
+
+On the default stereo sensor set the contract is directional. Its range and
+margin are those of the sensor whose field holds the motion: the pair's 6.4 m
+and 2.0 m inside 60 degrees of the heading and 52.4 degrees of the horizon
+(2.452 m/s), a time-of-flight sensor's 2.8 m and 1.0 m inside 22.5 degrees of
+the vertical (1.29 m/s). Two cases have no sensor behind them:
+
+- a motion the vehicle does not face, at any elevation outside the vertical
+  cones. The direction is the route's tangent where there is a route: the
+  velocity of a vehicle correcting its track swings through tens of degrees.
+  Memory answers for it. `measureObservedRangeAlong3D` reads how far along
+  the direction the raw world has observed every voxel the body sweeps
+  (occupied counts as observed; the clearance laws own it), the contract is
+  read with that range, capped by the sensor's, and where memory has observed
+  no more than the physical margin nothing is admitted. The distance field
+  cannot supply the range: free and unknown are one input to it, and along a
+  route that entered unseen space 1 m ahead the frontier limiter read 20 m,
+  the edge of the field's grid (r500: a wall met at 1.5 m/s under a fixed
+  1 m/s rule). Space the vehicle has flown through or seen before stays
+  flyable without facing it: 40 percent of the planned ticks of r505 were
+  unfaced, at a median admitted speed of 2.36 m/s, and 4.7 percent of all
+  ticks waited;
+- a faced motion between the pair's field and a cone (52.4 to 67.5 degrees of
+  elevation), which no heading brings into view: `unobserved_motion_speed_mps`
+  (1 m/s). A wall across such a motion is seen by the pair, which is why it
+  must be faced; an edge the size of the gap is not, and this remains a known
+  limit.
+
+Waiting for the gaze is not a latch because the gaze turns a vehicle at rest:
+`applyGazeYawControls` turns the heading to where the horizon moves over 1.5 s
+at a rate proportional to the remaining angle (gain 1.5 1/s, inside the yaw
+limits), and where the horizon goes nowhere to the route's tangent at the
+vehicle's station; a position hold other than a goal capture carries the same
+heading (`gazeRestHeading`), so a held vehicle looks where its route leaves
+and the space ahead becomes observed. A lidar that sees all around enters none
+of this (`forward_detection_horizontal_half_angle_deg` 180).
 
 The reference may fall as fast as any limiter asks — a cap is always allowed to
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the

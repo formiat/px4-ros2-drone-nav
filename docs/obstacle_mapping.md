@@ -35,7 +35,7 @@ Important parameters:
 - `range_hit_epsilon_m`
 - calibrated sensor time offset and attitude compensation settings;
 - source timestamp receive-delay and future-skew limits;
-- latest-lidar safety scan age limit in the planner.
+- latest-sensor safety scan age limit in the planner.
 
 The vehicle can accelerate in any horizontal body direction, so the shipped
 2D lidar covers the full 360-degree horizontal sector. It retains 720 samples;
@@ -44,7 +44,7 @@ profile remains a single horizontal 2D lidar. Complete azimuth coverage is
 required so a backwards or sideways stopping path cannot fall into a sensor
 blind sector.
 
-Lidar evidence is never filtered against hand-authored route geometry. This
+Sensor evidence is never filtered against hand-authored route geometry. This
 planar node is retained for compatibility diagnostics; it is not a production
 strategic-planning source. Static planning reads raw Occupancy3D, and
 no-static production navigation requires the 3D profile.
@@ -72,10 +72,26 @@ Transport publishes a revisioned base snapshot and dirty chunks rather than a
 complete dense map on every scan. Unknown voxels remain distinct from occupied
 and confirmed free voxels.
 
-## Vision Returns (Shadow)
+## Vision Returns
 
-With `CAMERA_PROFILE=stereo_tof` a second producer feeds the same beam
-contract (roadmap item 14, stage 2). `stereo_depth_node` recovers depth from
+On the default sensor set the memory's producer is vision (roadmap item 14):
+with `NAVIGATION_SENSOR_PROFILE=stereo_tof` the launch's one
+`obstacle_memory_3d_node` integrates the returns below on the production
+topics, with the overrides of `launch/sensor_profile.py` (hit-only returns, no
+surface interpolation, the left camera's mount as the extrinsic, two hits to a
+voxel). With `NAVIGATION_SENSOR_PROFILE=lidar` and the camera set mounted, a
+second instance integrates them in shadow on `/drone_city_nav/vision_shadow/*`
+beside the lidar's, and nothing consumes it.
+
+What a vision memory does not have is the lidar's view all around: space
+beside and behind the vehicle stays unknown until the pair has faced it.
+Unknown space is traversable as before, so what protects the vehicle there is
+the speed law: a motion the vehicle does not face is admitted what this memory
+has observed along it ([`trajectory_optimization.md`](trajectory_optimization.md)).
+Over the accepting flights 95.5 to 97.1 percent of the flown path had been
+observed before it was entered.
+
+`stereo_depth_node` feeds the same beam contract the lidar does. `stereo_depth_node` recovers depth from
 the forward stereo pair and publishes one ray a matched pixel (every fourth
 pixel each way) in the left camera's forward-left-up frame, stamped with the
 frame:
@@ -280,7 +296,7 @@ The same concepts appear in obstacle-memory and lidar-debug configuration.
 ## Latest Raw Obstacle Scan
 
 Every accepted, acquisition-time-aligned scan publishes its actual hit endpoints
-on `/drone_city_nav/latest_lidar_obstacle_scan`. Endpoints are expressed in a
+on `/drone_city_nav/latest_sensor_obstacle_scan`. Endpoints are expressed in a
 fixed body-FRD frame at the adjusted first-beam acquisition pose. The message
 contains no persistent-memory cells, inflation, clearance boundary, or free-space
 interpretation. Dynamic-agent hits selected by the mapping contract are filtered
@@ -425,7 +441,7 @@ Useful visualization topics:
 - `/drone_city_nav/raw_obstacle_snapshot_3d`
 - `/drone_city_nav/raw_obstacle_delta_3d`
 - `/drone_city_nav/raw_obstacle_grid`
-- `/drone_city_nav/latest_lidar_obstacle_scan`
+- `/drone_city_nav/latest_sensor_obstacle_scan`
 - `/drone_city_nav/current_lidar_returns_3d`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`

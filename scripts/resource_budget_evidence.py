@@ -41,8 +41,11 @@ HORIZON_TRANSPORT_PATTERN = re.compile(
 # The processes that fly on the aircraft: the navigation nodes and the DDS
 # agent. PX4 lives on the flight controller, the simulator and the
 # visualisation do not exist there, and the captures are the harness.
+# The depth node is the stereo profile's perception and flies with it: left
+# with the simulator it hid 1.4 cores of the onboard budget (r506).
 ONBOARD_PROCESSES = ("production_mppi_node", "obstacle_memory_3d_node",
-                     "lidar_inertial_odometry_node", "mppi_offboard_node", "MicroXRCEAgent")
+                     "stereo_depth_node", "lidar_inertial_odometry_node",
+                     "mppi_offboard_node", "MicroXRCEAgent")
 MINIMUM_RECORD_COVERAGE = 0.90
 SAMPLE_PERIOD_S = 1.0
 # The resident memory an onboard process may gain over a flight, the last
@@ -207,7 +210,7 @@ def transport_hops(ros_log: str) -> list[HopLatency]:
         hops.append(HopLatency("memory to controller (raw snapshots and deltas)",
                                int(summary.group(1)), float(summary.group(2)),
                                float(summary.group(3)), float(summary.group(4))))
-        hops.append(HopLatency("memory to controller (latest lidar scan)",
+        hops.append(HopLatency("memory to controller (latest sensor scan)",
                                int(summary.group(5)), float(summary.group(6)),
                                float(summary.group(7)), float(summary.group(8))))
     for name, pattern in (("bridge to memory (point cloud)", CLOUD_TRANSPORT_PATTERN),
