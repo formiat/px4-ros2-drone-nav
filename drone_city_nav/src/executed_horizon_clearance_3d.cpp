@@ -151,6 +151,37 @@ measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
   return std::nullopt;
 }
 
+std::size_t firstUnseenMotionState3D(const std::span<const MotionState3D> horizon,
+                                     const ObservedOccupancyGrid3D& occupancy,
+                                     const SensorBrakingContract3D& contract,
+                                     const StoppingCapability& stopping_capability,
+                                     const double absolute_speed_limit_mps,
+                                     const double body_radius_m,
+                                     const double rest_speed_mps) {
+  for (std::size_t index = 0U; index < horizon.size(); ++index) {
+    const MotionState3D& state = horizon[index];
+    const Vec3 velocity{static_cast<double>(state.vx), static_cast<double>(state.vy),
+                        static_cast<double>(state.vz)};
+    const double speed_mps = std::hypot(std::hypot(velocity.x, velocity.y), velocity.z);
+    if (speed_mps <= rest_speed_mps ||
+        !sensorBrakingMotionUnfaced3D(contract, velocity,
+                                      static_cast<double>(state.yaw))) {
+      continue;
+    }
+    const double observed_range_m = measureObservedRangeAlong3D(
+        occupancy,
+        Point3{static_cast<double>(state.x), static_cast<double>(state.y),
+               static_cast<double>(state.z)},
+        velocity, body_radius_m, contract.guaranteed_detection_range_m);
+    if (speed_mps > sensorBrakingMemorySpeedMps(contract, stopping_capability,
+                                                absolute_speed_limit_mps, velocity,
+                                                observed_range_m)) {
+      return index;
+    }
+  }
+  return horizon.size();
+}
+
 double measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
                                    const Point3& origin, const Vec3& direction,
                                    const double body_radius_m,

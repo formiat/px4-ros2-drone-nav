@@ -83,4 +83,23 @@ sensorBrakingMaximumSpeedMps(const SensorBrakingContract3D& contract,
                              double absolute_speed_limit_mps,
                              const Vec3& direction = Vec3{}) noexcept;
 
+// Whether `direction` is a motion no sensor sees at heading `yaw_rad`: outside
+// the cone of the sensors that look up and down, and outside the forward
+// sensor's horizontal field. A wall stands across every elevation of such a
+// motion, so facing it is what lets the forward sensor see it. Never true for
+// a sensor that sees all around, or for a zero direction.
+[[nodiscard]] bool sensorBrakingMotionUnfaced3D(const SensorBrakingContract3D& contract,
+                                                const Vec3& direction,
+                                                double yaw_rad) noexcept;
+
+// The fastest speed admitted along an unfaced motion: memory is its only
+// witness, so the contract is read with the range memory has observed along
+// it, capped by the sensor's own, and admits nothing where that is no more
+// than the physical margin.
+[[nodiscard]] double
+sensorBrakingMemorySpeedMps(const SensorBrakingContract3D& contract,
+                            const StoppingCapability& stopping_capability,
+                            double absolute_speed_limit_mps, const Vec3& direction,
+                            double observed_range_m) noexcept;
+
 } // namespace drone_city_nav

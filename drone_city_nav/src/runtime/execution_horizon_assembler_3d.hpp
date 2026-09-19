@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
@@ -184,6 +185,14 @@ struct ExecutionHorizonAssemblerConfig3D {
   mppi::FiniteHorizonConfig finite_horizon{};
   // Wall-clock bound on one horizon assembly. Zero leaves it unbounded.
   double maximum_assembly_ms{0.0};
+  // What the obstacle sensors see: a horizon owns the vehicle for its whole
+  // lease, so it may not carry speed along a motion its own planned heading
+  // leaves unseen, faster than memory admits (firstUnseenMotionState3D). A
+  // sensor that sees all around makes this a no-op.
+  SensorBrakingContract3D sensor_braking_contract{};
+  StoppingCapability stopping_capability{};
+  double absolute_speed_limit_mps{0.0};
+  double body_radius_m{0.0};
 };
 
 // Produces an immutable execution-plan candidate without ROS dependencies.

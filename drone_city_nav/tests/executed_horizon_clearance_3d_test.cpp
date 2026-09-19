@@ -250,6 +250,62 @@ TEST(ExecutedHorizonClearance3DTest, MemoryAnswersHowFarAMotionWasObserved) {
                    0.0);
 }
 
+TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothingSees) {
+  // The 20 m cube again, observed free for x below 6 m, and the stereo set:
+  // 6.4 m inside 60 degrees of the heading, 2.8 m inside 22.5 of the vertical.
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{
+      .resolution_m = 0.25, .width_cells = 80, .height_cells = 80, .depth_cells = 80}};
+  for (int x = 0; x < 24; ++x) {
+    for (int y = 0; y < 80; ++y) {
+      for (int z = 0; z < 80; ++z) {
+        occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  SensorBrakingContract3D contract;
+  contract.guaranteed_detection_range_m = 6.4;
+  contract.physical_margin_m = 2.0;
+  contract.forward_vertical_half_angle_rad = 0.9145;
+  contract.forward_horizontal_half_angle_rad = 1.0472;
+  contract.vertical_detection_range_m = 2.8;
+  contract.vertical_cone_half_angle_rad = 0.3927;
+  contract.vertical_physical_margin_m = 1.0;
+  const StoppingCapability capability;
+  const auto first_unseen = [&](const std::vector<MotionState3D>& horizon) {
+    return firstUnseenMotionState3D(horizon, occupancy, contract, capability, 10.0,
+                                    0.55, 0.25);
+  };
+
+  // r518: the horizon turns toward the unobserved space at 2 m/s while its
+  // planned heading still faces away. The first such state is named.
+  const std::vector<MotionState3D> turning{
+      MotionState3D{.x = 3.0F, .y = 10.0F, .z = 10.0F, .vy = 2.0F, .yaw = 1.5708F},
+      MotionState3D{
+          .x = 3.2F, .y = 10.4F, .z = 10.0F, .vx = 1.4F, .vy = 1.4F, .yaw = 1.5708F},
+      MotionState3D{.x = 3.6F, .y = 10.6F, .z = 10.0F, .vx = 2.0F, .yaw = 2.8F},
+      MotionState3D{.x = 4.0F, .y = 10.6F, .z = 10.0F, .vx = 2.0F, .yaw = 2.8F},
+  };
+  EXPECT_EQ(first_unseen(turning), 2U);
+
+  // Faced, the same motion is the forward sensor's to answer for.
+  std::vector<MotionState3D> faced = turning;
+  faced[2].yaw = 0.2F;
+  faced[3].yaw = 0.2F;
+  EXPECT_EQ(first_unseen(faced), faced.size());
+
+  // Unfaced through space seen before, at a speed its depth admits, and at
+  // rest anywhere.
+  const std::vector<MotionState3D> backing{
+      MotionState3D{.x = 5.0F, .y = 10.0F, .z = 10.0F, .vx = -1.0F, .yaw = 0.0F},
+      MotionState3D{.x = 5.5F, .y = 10.0F, .z = 10.0F, .vx = 0.2F, .yaw = 3.0F},
+  };
+  EXPECT_EQ(first_unseen(backing), backing.size());
+
+  // A lidar that sees all around refuses nothing.
+  contract.forward_horizontal_half_angle_rad = 3.141592653589793;
+  EXPECT_EQ(first_unseen(turning), turning.size());
+}
+
 TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceStopsAtTheLookahead) {
   const ExecutedHorizonClearance3D near =
       measureRouteClearance3D(routeAlongX(0.5, 20U), 2.0, 2.0, grid(),

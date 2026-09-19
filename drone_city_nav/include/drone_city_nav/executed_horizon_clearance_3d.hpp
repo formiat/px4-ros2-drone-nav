@@ -5,6 +5,7 @@
 #include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/sensor_braking_contract_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
@@ -120,6 +121,25 @@ measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_st
 measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
                             const Point3& origin, const Vec3& direction,
                             double body_radius_m, double maximum_range_m);
+
+// The first state of `horizon` that carries speed along a motion no sensor
+// sees at that state's own planned heading, faster than memory admits along
+// it; the horizon's size when there is none. States no faster than
+// `rest_speed_mps` carry nothing.
+//
+// A published horizon owns the vehicle for its whole lease, and the lease
+// outlives the tick that published it: r518 lost the autopilot's position for
+// 1.7 s to a timestamp reacquisition (the simulator had fallen behind the wall
+// clock, as it does 10 to 15 times a camera flight), no horizon could be
+// committed, and the resident one flew the vehicle through the route's turn,
+// northward at 2 m/s while the pair still faced south-west, into a structure
+// memory first held 0.67 s before the contact. The speed law bounds what the
+// reference commands now; this bounds what a horizon may do after it.
+[[nodiscard]] std::size_t firstUnseenMotionState3D(
+    std::span<const MotionState3D> horizon, const ObservedOccupancyGrid3D& occupancy,
+    const SensorBrakingContract3D& contract,
+    const StoppingCapability& stopping_capability, double absolute_speed_limit_mps,
+    double body_radius_m, double rest_speed_mps);
 
 // Where the route ahead of `from_station_m` comes close to known occupied
 // evidence, probing no farther than `lookahead_m`, in the same form the

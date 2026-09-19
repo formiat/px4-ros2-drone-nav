@@ -295,6 +295,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .flight_envelope = config_.world.flight_envelope,
           .finite_horizon = config_.execution.finite_horizon,
           .maximum_assembly_ms = config_.execution.maximum_assembly_ms,
+          .sensor_braking_contract =
+              config_.control.speed_policy.sensor_braking_contract,
+          .stopping_capability = config_.control.speed_policy.stopping_capability,
+          .absolute_speed_limit_mps =
+              config_.control.speed_policy.absolute_speed_limit_mps,
+          .body_radius_m = config_.world.physical_footprint.body_radius_m,
       });
   route_lifecycle_coordinator_ = std::make_unique<RouteLifecycleCoordinator3D>(
       execution_supervisor_,

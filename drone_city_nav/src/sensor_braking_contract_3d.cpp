@@ -257,4 +257,37 @@ double sensorBrakingMaximumSpeedMps(const SensorBrakingContract3D& contract,
   return lower_mps;
 }
 
+bool sensorBrakingMotionUnfaced3D(const SensorBrakingContract3D& contract,
+                                  const Vec3& direction,
+                                  const double yaw_rad) noexcept {
+  if (!(contract.forward_horizontal_half_angle_rad < std::numbers::pi)) {
+    return false;
+  }
+  const double horizontal = std::hypot(direction.x, direction.y);
+  const double length = std::hypot(horizontal, direction.z);
+  return length > 1.0e-6 &&
+         horizontal / length > std::sin(contract.vertical_cone_half_angle_rad) &&
+         std::abs(std::remainder(std::atan2(direction.y, direction.x) - yaw_rad,
+                                 2.0 * std::numbers::pi)) >
+             contract.forward_horizontal_half_angle_rad;
+}
+
+double sensorBrakingMemorySpeedMps(const SensorBrakingContract3D& contract,
+                                   const StoppingCapability& stopping_capability,
+                                   const double absolute_speed_limit_mps,
+                                   const Vec3& direction,
+                                   const double observed_range_m) noexcept {
+  SensorBrakingContract3D memory_contract = contract;
+  // Memory has seen what it has seen at every elevation.
+  memory_contract.forward_vertical_half_angle_rad = 0.5 * std::numbers::pi;
+  memory_contract.guaranteed_detection_range_m =
+      std::min(contract.guaranteed_detection_range_m, observed_range_m);
+  if (!(memory_contract.guaranteed_detection_range_m >
+        memory_contract.physical_margin_m)) {
+    return 0.0;
+  }
+  return sensorBrakingMaximumSpeedMps(memory_contract, stopping_capability,
+                                      absolute_speed_limit_mps, direction);
+}
+
 } // namespace drone_city_nav

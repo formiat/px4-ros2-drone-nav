@@ -188,6 +188,18 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         route_certification.reset();
         return false;
       }
+      // Shortened like any other refused prefix: the arrival search ends the
+      // horizon at rest before the motion no sensor would see.
+      if (route_certification_target->observed_raw_world != nullptr &&
+          firstUnseenMotionState3D(
+              candidate.states,
+              route_certification_target->observed_raw_world->occupancy(),
+              config_.sensor_braking_contract, config_.stopping_capability,
+              config_.absolute_speed_limit_mps, config_.body_radius_m,
+              kStationaryExecutionHoldSpeedToleranceMps) < candidate.states.size()) {
+        route_certification.reset();
+        return false;
+      }
       const auto certification_started = std::chrono::steady_clock::now();
       // The braking tail is the earliest stop along the candidate the
       // world admits: the stop that begins at once where it clears, and

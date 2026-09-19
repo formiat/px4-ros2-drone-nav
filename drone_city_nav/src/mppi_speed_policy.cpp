@@ -279,15 +279,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the vehicle at the unobserved speed for the whole climb). Every other
     // motion has a heading, and a wall stands across all of its elevations:
     // facing it is what lets the pair see it.
-    const double horizontal = std::hypot(faced.x, faced.y);
-    const double length = std::hypot(horizontal, faced.z);
-    if (length > 1.0e-6 &&
-        horizontal / length >
-            std::sin(config.sensor_braking_contract.vertical_cone_half_angle_rad) &&
-        std::abs(std::remainder(std::atan2(faced.y, faced.x) -
-                                    static_cast<double>(input.state.yaw),
-                                2.0 * std::numbers::pi)) >
-            config.sensor_braking_contract.forward_horizontal_half_angle_rad) {
+    if (sensorBrakingMotionUnfaced3D(config.sensor_braking_contract, faced,
+                                     static_cast<double>(input.state.yaw))) {
       // No sensor sees a motion the vehicle does not face, so memory answers
       // for it: the contract is read with the range memory has observed along
       // it, and where it has observed nothing the vehicle waits for the gaze
@@ -295,20 +288,15 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       // facing south-west, left it northward at the 1 m/s this rule then
       // admitted (1.5 m/s flown), and met a wall 1 m away that entered memory
       // 0.5 s before the contact, when the turning pair first saw it.
-      SensorBrakingContract3D memory_contract = config.sensor_braking_contract;
-      memory_contract.forward_vertical_half_angle_rad = 0.5 * std::numbers::pi;
-      memory_contract.guaranteed_detection_range_m =
-          std::min(memory_contract.guaranteed_detection_range_m,
+      result.unfaced_observed_range_m =
+          std::min(config.sensor_braking_contract.guaranteed_detection_range_m,
                    input.unfaced_observed_range_m.value_or(0.0));
-      result.unfaced_observed_range_m = memory_contract.guaranteed_detection_range_m;
       result.sensor_braking_limit_mps =
           std::min(result.sensor_braking_limit_mps,
-                   memory_contract.guaranteed_detection_range_m >
-                           memory_contract.physical_margin_m
-                       ? sensorBrakingMaximumSpeedMps(
-                             memory_contract, config.stopping_capability,
-                             config.absolute_speed_limit_mps, faced)
-                       : 0.0);
+                   sensorBrakingMemorySpeedMps(config.sensor_braking_contract,
+                                               config.stopping_capability,
+                                               config.absolute_speed_limit_mps, faced,
+                                               result.unfaced_observed_range_m));
     }
   }
   if (input.terminal_goal_limit_enabled) {
