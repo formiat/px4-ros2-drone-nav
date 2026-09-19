@@ -163,7 +163,13 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-cooperative-traffic-urban-gui", gui_wrapper)
         self.assertIn("sim-cooperative-traffic-urban-gui:", makefile)
         self.assertIn("sim-cooperative-traffic-urban-headless:", makefile)
-        self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_SENSOR_WORLD_SDF_PATH"', makefile)
+        # The camera profile needs the textured world; the lidar profile keeps
+        # the collision-only sensor world.
+        self.assertIn(
+            '[ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf \'%s\' '
+            '"$$SIM_SENSOR_WORLD_SDF_PATH"',
+            makefile,
+        )
         self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
         self.assertEqual(
             makefile.count(

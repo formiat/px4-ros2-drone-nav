@@ -21,6 +21,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from point_to_point_scenario import load_point_to_point_scenario
 from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
+from sensor_profile import (
+    DEFAULT_CAMERA_PROFILE,
+    DEFAULT_NAVIGATION_SENSOR_PROFILE,
+    STEREO_TOF_OBSERVABILITY,
+    VISION_MEMORY_OVERRIDES,
+    stereo_tof_topics,
+    validate_sensor_profiles,
+)
 
 
 def optional_bool_override(context, launch_config, argument_name):
@@ -90,44 +98,6 @@ def optional_waypoint_sequence_override(context, launch_config, argument_name):
     return result
 
 
-# What the sensor set of models/stereo_tof_v1 guarantees to see, for the braking
-# contract and the gaze (roadmap item 14, stage 3). The pair is confident to
-# 6.4 m (the disparity error at p90 on r476, one voxel of depth error) inside
-# 60 degrees either side of the heading and 52.4 degrees above and below the
-# horizon (120 degrees on a 4:3 imager); each time-of-flight sensor sees 2.8 m
-# inside 22.5 degrees of the vertical; a motion in neither field is held to the
-# speed a contact is left at. A vertical approach keeps 1.0 m: the body's half
-# height (0.35 m), the vertical estimate error, a voxel and the tracking error,
-# where the 2.0 m of a horizontal one is sized by the 0.82 m envelope.
-STEREO_TOF_OBSERVABILITY = {
-    "guaranteed_lidar_detection_range_m": 6.4,
-    "forward_detection_vertical_half_angle_deg": 52.4,
-    "forward_detection_horizontal_half_angle_deg": 60.0,
-    "vertical_detection_range_m": 2.8,
-    "vertical_detection_cone_half_angle_deg": 22.5,
-    "vertical_sensor_braking_physical_margin_m": 1.0,
-    "unobserved_motion_speed_mps": 1.0,
-    "gaze_follows_motion": True,
-}
-
-
-# What makes an obstacle memory a vision memory: the returns of the depth node,
-# each a ray of its own, from the left camera on the nose mount (body
-# forward-right-down). Two hits make a voxel occupied, not one: a matcher's
-# outliers beside depth edges do not repeat from frame to frame the way a
-# surface does (r481: 4.6 percent of the vision-occupied voxels had no lidar
-# voxel within two and 3 percent of those were truly occupied; with two hits
-# 0.7 percent, r483).
-VISION_MEMORY_OVERRIDES = {
-    "lidar_3d_topic": "/stereo_depth/points",
-    "lidar_3d_hit_only_returns": True,
-    "lidar_surface_interpolation_enabled": False,
-    "lidar_3d_minimum_range_m": 0.3,
-    "lidar_extrinsic_translation_body_frd_m": [0.32, -0.10, -0.02],
-    "hit_weight": 2,
-}
-
-
 def stereo_vision_nodes(
     params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name, shadow
 ):
@@ -136,22 +106,9 @@ def stereo_vision_nodes(
     shadow a second obstacle memory integrates those returns on topics of its
     own beside the lidar's, and nothing consumes it; otherwise the launch's one
     obstacle memory is the vision memory and this adds no memory of its own."""
-    sensor_prefix = (
-        f"/world/{gazebo_world_name}/model/{gazebo_model_name}"
-        "/link/stereo_tof_link/sensor"
+    bridge_arguments, remappings, depth_topics = stereo_tof_topics(
+        gazebo_world_name, gazebo_model_name
     )
-    bridge_arguments = []
-    remappings = []
-    for side in ("left", "right"):
-        gz_topic = f"{sensor_prefix}/stereo_{side}/image"
-        bridge_arguments.append(f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image")
-        remappings.extend(["-r", f"{gz_topic}:=/stereo/{side}/image"])
-    for side in ("up", "down"):
-        gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
-        bridge_arguments.append(
-            f"{gz_topic}@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked"
-        )
-        remappings.extend(["-r", f"{gz_topic}:=/tof/{side}/points"])
     with open(params_path, encoding="utf-8") as params_stream:
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
             "ros__parameters"
@@ -169,7 +126,7 @@ def stereo_vision_nodes(
             executable="stereo_depth_node",
             name="stereo_depth_node",
             output="screen",
-            parameters=[params_path, {"use_sim_time": True}],
+            parameters=[params_path, depth_topics, {"use_sim_time": True}],
         ),
     ]
     if shadow:
@@ -184,6 +141,7 @@ def stereo_vision_nodes(
                     obstacle_memory_overrides,
                     VISION_MEMORY_OVERRIDES,
                     {
+                        "lidar_3d_topic": depth_topics["returns_topic"],
                         "raw_obstacle_snapshot_3d_topic": (
                             "/drone_city_nav/vision_shadow/raw_obstacle_snapshot_3d"
                         ),
@@ -453,21 +411,17 @@ def generate_launch_description():
         )
         assert monitor_shutdown is not None
         mission_monitor_parameters.append({"shutdown_on_result": monitor_shutdown})
-        navigation_sensors = navigation_sensor_profile.perform(context).strip()
-        if navigation_sensors not in ("lidar", "stereo_tof"):
-            raise ValueError(
-                f"unsupported navigation sensor profile: {navigation_sensors}"
-            )
-        cameras_mounted = camera_profile.perform(context).strip() == "stereo_tof"
+        cameras, navigation_sensors = validate_sensor_profiles(
+            camera_profile.perform(context),
+            navigation_sensor_profile.perform(context),
+        )
+        cameras_mounted = cameras == "stereo_tof"
         if navigation_sensors == "stereo_tof":
-            if not cameras_mounted:
-                raise RuntimeError(
-                    "navigation_sensor_profile=stereo_tof requires "
-                    "camera_profile=stereo_tof"
-                )
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             # The launch's one obstacle memory is the vision memory.
-            obstacle_memory_parameters.append(VISION_MEMORY_OVERRIDES)
+            obstacle_memory_parameters.append(
+                {**VISION_MEMORY_OVERRIDES, "lidar_3d_topic": "/stereo_depth/points"}
+            )
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
@@ -820,20 +774,22 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "navigation_sensor_profile",
-                default_value="lidar",
+                default_value=DEFAULT_NAVIGATION_SENSOR_PROFILE,
                 description=(
-                    "Whose observability the speed law and the gaze answer to: "
-                    "lidar (the whole sphere) or stereo_tof (a forward pair and "
-                    "two time-of-flight sensors, roadmap item 14)."
+                    "What the vehicle navigates on, and whose observability the "
+                    "speed law and the gaze answer to: stereo_tof (a forward "
+                    "pair and two time-of-flight sensors, roadmap item 14; the "
+                    "lidar is absent from the vehicle) or lidar (the whole "
+                    "sphere)."
                 ),
             ),
             DeclareLaunchArgument(
                 "camera_profile",
-                default_value="none",
+                default_value=DEFAULT_CAMERA_PROFILE,
                 description=(
-                    "Camera sensor set mounted beside the lidar: none or "
-                    "stereo_tof (roadmap item 14). With it the vision path runs "
-                    "in shadow; the lidar stays authoritative."
+                    "Camera sensor set the vehicle carries: stereo_tof (roadmap "
+                    "item 14) or none. Beside a navigating lidar the vision "
+                    "path runs in shadow and the lidar stays authoritative."
                 ),
             ),
             DeclareLaunchArgument(

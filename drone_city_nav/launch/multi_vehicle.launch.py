@@ -31,6 +31,9 @@ _LIDAR_PROFILE_SUPPORT = runpy.run_path(
 _MULTI_VEHICLE_LIDAR_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_lidar_launch.py"))
 )
+_SENSOR_PROFILE_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("sensor_profile.py"))
+)
 _VALUE_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_launch_values.py"))
 )
@@ -56,6 +59,10 @@ _make_cooperative_mission_nodes = _MISSION_SUPPORT[
 _validate_lidar_profile = _LIDAR_PROFILE_SUPPORT["validate_lidar_profile"]
 _DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _make_lidar_topics = _MULTI_VEHICLE_LIDAR_SUPPORT["make_lidar_topics"]
+_validate_sensor_profiles = _SENSOR_PROFILE_SUPPORT["validate_sensor_profiles"]
+_stereo_tof_topics = _SENSOR_PROFILE_SUPPORT["stereo_tof_topics"]
+_STEREO_TOF_OBSERVABILITY = _SENSOR_PROFILE_SUPPORT["STEREO_TOF_OBSERVABILITY"]
+_VISION_MEMORY_OVERRIDES = _SENSOR_PROFILE_SUPPORT["VISION_MEMORY_OVERRIDES"]
 _make_memory_parameters = _MULTI_VEHICLE_LIDAR_SUPPORT["make_memory_parameters"]
 _optional_bool = _VALUE_SUPPORT["optional_bool"]
 
@@ -133,6 +140,10 @@ def generate_multi_vehicle_launch_description():
         with open(params_path, encoding="utf-8") as stream:
             document = yaml.safe_load(stream)
         profile = _validate_lidar_profile(lidar_profile.perform(context))
+        cameras, navigation_sensors = _validate_sensor_profiles(
+            LaunchConfiguration("camera_profile").perform(context),
+            LaunchConfiguration("navigation_sensor_profile").perform(context),
+        )
         scenario = _load_multi_vehicle_scenario(
             scenario_path.perform(context), profile
         )
@@ -284,9 +295,22 @@ def generate_multi_vehicle_launch_description():
             gz_scan, scan_topic, scan_bridge_contract = _make_lidar_topics(
                 profile, world_name, config["model"], prefix
             )
-            if lidar_enabled:
+            if lidar_enabled and navigation_sensors == "lidar":
                 scan_bridge_arguments.append(scan_bridge_contract)
                 scan_bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
+            depth_topics = None
+            if lidar_enabled and cameras == "stereo_tof":
+                # The vehicle's camera set, and the depth node that turns it
+                # into the returns its obstacle memory integrates. Beside a
+                # navigating lidar nothing consumes those returns here: the
+                # shadow memory is the single-vehicle launch's.
+                stereo_arguments, stereo_remaps, depth_topics = _stereo_tof_topics(
+                    world_name, config["model"], prefix
+                )
+                scan_bridge_arguments.extend(stereo_arguments)
+                scan_bridge_remaps.extend(stereo_remaps)
+                if navigation_sensors == "stereo_tof":
+                    scan_topic = depth_topics["returns_topic"]
 
             primary = config["rviz_primary"]
             raw_snapshot = (
@@ -409,6 +433,9 @@ def generate_multi_vehicle_launch_description():
                     ]["ros__parameters"]["maximum_horizontal_acceleration_mps2"],
                 },
             )
+            if navigation_sensors == "stereo_tof":
+                # Not flown: the cooperative scenario waits for roadmap item 15.
+                planner_params.update(_STEREO_TOF_OBSERVABILITY)
             if tracking_error_tube_response_time_override:
                 planner_params["tracking_error_tube_response_time_s"] = float(
                     tracking_error_tube_response_time_override
@@ -494,6 +521,23 @@ def generate_multi_vehicle_launch_description():
                 },
             )
             memory_params["gazebo_aligned_rviz_axes_swapped"] = gazebo_axes_swapped
+            if navigation_sensors == "stereo_tof":
+                memory_params.update(_VISION_MEMORY_OVERRIDES)
+            if depth_topics is not None:
+                nodes.append(
+                    Node(
+                        package="drone_city_nav",
+                        executable="stereo_depth_node",
+                        namespace=f"vehicles/{role}",
+                        name="stereo_depth_node",
+                        output="screen",
+                        prefix=planning_prefix,
+                        parameters=[
+                            _parameters(document, "stereo_depth_node", depth_topics),
+                            {"use_sim_time": True},
+                        ],
+                    )
+                )
             nodes.append(
                 Node(
                     package="drone_city_nav",
@@ -706,6 +750,16 @@ def generate_multi_vehicle_launch_description():
             DeclareLaunchArgument("enable_lidar_debug", default_value="false"),
             DeclareLaunchArgument(
                 "lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE
+            ),
+            DeclareLaunchArgument(
+                "camera_profile",
+                default_value=_SENSOR_PROFILE_SUPPORT["DEFAULT_CAMERA_PROFILE"],
+            ),
+            DeclareLaunchArgument(
+                "navigation_sensor_profile",
+                default_value=_SENSOR_PROFILE_SUPPORT[
+                    "DEFAULT_NAVIGATION_SENSOR_PROFILE"
+                ],
             ),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value="false"),

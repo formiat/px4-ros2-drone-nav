@@ -48,7 +48,7 @@ sim-cooperative-traffic-urban-headless: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$SIM_SENSOR_WORLD_SDF_PATH" \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
 		MISSION_TYPE=cooperative_traffic \
 		MULTI_VEHICLE_SCENARIO_PATH=drone_city_nav/config/cooperative_traffic_urban_scenario.json \
 		MULTI_VEHICLE_SPECTATOR_INITIAL_VEHICLE_ID=civilian_0 \
@@ -88,7 +88,7 @@ sim-urban-point-to-point-headless: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-none}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
@@ -97,7 +97,7 @@ sim-urban-point-to-point-headless: build
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
-		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-300}" \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-urban-point-to-point-gui

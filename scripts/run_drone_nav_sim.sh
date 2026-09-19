@@ -898,6 +898,8 @@ if bool_is_true "${multi_vehicle_mission}"; then
     "${scenario_argument}:=${multi_vehicle_scenario_path}"
     enable_lidar_debug:="${enable_lidar_debug}"
     lidar_profile:="${lidar_profile}"
+    camera_profile:="${camera_profile}"
+    navigation_sensor_profile:="${navigation_sensor_profile}"
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     spectator_initial_vehicle_id:="${multi_vehicle_spectator_initial_vehicle_id}"

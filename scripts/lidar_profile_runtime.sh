@@ -15,7 +15,9 @@ resolve_lidar_profile() {
 # The camera sensor set carried beside (roadmap item 14 stages 1 to 3) or
 # instead of the lidar.
 resolve_camera_profile() {
-  camera_profile="${CAMERA_PROFILE:-none}"
+  # Cameras are the default everywhere (roadmap item 14); the lidar profile
+  # is CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar.
+  camera_profile="${CAMERA_PROFILE:-stereo_tof}"
   camera_profile="${camera_profile,,}"
   case "${camera_profile}" in
   none | stereo_tof) ;;
@@ -25,7 +27,7 @@ resolve_camera_profile() {
     ;;
   esac
   # Whose observability the speed law and the gaze answer to.
-  navigation_sensor_profile="${NAVIGATION_SENSOR_PROFILE:-lidar}"
+  navigation_sensor_profile="${NAVIGATION_SENSOR_PROFILE:-stereo_tof}"
   navigation_sensor_profile="${navigation_sensor_profile,,}"
   case "${navigation_sensor_profile}" in
   lidar | stereo_tof) ;;
