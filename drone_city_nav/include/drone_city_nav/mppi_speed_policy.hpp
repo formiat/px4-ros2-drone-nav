@@ -56,6 +56,10 @@ struct MppiSpeedPolicyConfig {
   // acceleration. The vehicle's own horizontal acceleration is the honest
   // rate: the reference climbs no faster than the airframe can follow it.
   double reference_speed_rise_mps2{4.0};
+  // How late the vehicle follows a reference that falls: the distance laws
+  // owe it as latency, so the reference handed to the controller is the limit
+  // the vehicle meets once its response has taken effect.
+  double reference_tracking_lag_s{0.0};
 };
 
 struct MppiSpeedPolicyInput {

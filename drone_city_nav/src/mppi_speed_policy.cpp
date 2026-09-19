@@ -120,7 +120,8 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
   // ahead, and every horizon from there was rejected.
   StoppingCapability capability = config.stopping_capability;
   capability.reaction_latency_s +=
-      std::isfinite(evidence_age_s) ? std::max(0.0, evidence_age_s) : 0.0;
+      config.reference_tracking_lag_s +
+      (std::isfinite(evidence_age_s) ? std::max(0.0, evidence_age_s) : 0.0);
   double limit_mps = std::numeric_limits<double>::infinity();
   for (const ConstrainedHorizonSample3D& sample : samples) {
     // The progress floor stands on the margin the envelope keeps beyond the
@@ -168,7 +169,8 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
       !(config.clearance_response_time_s > 0.0) ||
       !(config.clearance_minimum_progress_speed_mps >= 0.0) ||
-      !(config.reference_speed_rise_mps2 > 0.0)) {
+      !(config.reference_speed_rise_mps2 > 0.0) ||
+      !(config.reference_tracking_lag_s >= 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
 }
@@ -244,6 +246,14 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       routeEndpointHasTerminalStop3D(input.route_endpoint_semantics);
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
   const Vec3 braking_direction = motionDirection(input);
+  // The laws that stop the vehicle short of evidence, or of the end of what
+  // was certified, owe the lag of the loop behind a falling reference. The
+  // goal and the turn ahead do not: arriving late at their speed meets
+  // nothing, and charged to the curvature law the lag doubled the share of
+  // the flight that law bound (6.8 to 15.1 percent of the ticks, r457 to
+  // r459 against r461 to r463) and took 0.3 m/s off the mean speed.
+  StoppingCapability law_capability = config.stopping_capability;
+  law_capability.reaction_latency_s += config.reference_tracking_lag_s;
   result.sensor_braking_limit_mps = sensorBrakingMaximumSpeedMps(
       config.sensor_braking_contract, config.stopping_capability,
       config.absolute_speed_limit_mps, braking_direction);
@@ -272,8 +282,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                               Point3{input.state.x, input.state.y, input.state.z}));
     }
     result.route_endpoint_limit_mps = stoppingLimitedSpeed(
-        route_endpoint_distance, 0.0, config.stopping_capability,
-        config.sensor_braking_contract, input.forward_acceleration_mps2);
+        route_endpoint_distance, 0.0, law_capability, config.sensor_braking_contract,
+        input.forward_acceleration_mps2);
   }
   if (input.blocked_route_remaining_m.has_value()) {
     // The raw world blocks the route ahead and a replacement is not certified
@@ -284,7 +294,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.blocked_route_limit_mps = stoppingLimitedSpeed(
         std::max(0.0, *input.blocked_route_remaining_m -
                           config.sensor_braking_contract.physical_margin_m),
-        0.0, config.stopping_capability, config.sensor_braking_contract,
+        0.0, law_capability, config.sensor_braking_contract,
         input.forward_acceleration_mps2);
   }
   if (input.executed_horizon_clearance.has_value() &&

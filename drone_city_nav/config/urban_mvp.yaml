@@ -452,6 +452,22 @@ production_mppi_node:
     guaranteed_vertical_stopping_deceleration_mps2: 1.4
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
+    # How late the vehicle follows a reference that falls, charged as latency
+    # by the distance laws of the speed policy that stop the vehicle short of
+    # evidence or of the end of what was certified (clearance, route
+    # clearance, blocked route, route endpoint). Measured on the urban
+    # flights r457 to r459 over 99 tick samples in which the reference had
+    # fallen for three logged ticks running, so the jerk ramp was over: the
+    # excess of the measured speed over the reference divided by the slope of
+    # the reference is 0.30 s at the median, 0.41 s at p75 and 0.64 s at p90
+    # (0.24 and 0.55 s over r453 to r459). The commanded speed equals the
+    # measured one within 0.2 m/s, and raising overspeed_weight fivefold
+    # changed nothing (r460): the lag is the velocity loop's, not the cost's.
+    # Without it the vehicle rides every falling limit 0.5 to 1.3 m/s above
+    # it. The tick lines are 0.2 s apart, so p90 is read coarsely; 0.5 s sits
+    # between p75 and p90. The sensor-braking contract does not take it: it
+    # reserves the worst-case ramp and the evidence age of its own.
+    reference_tracking_lag_s: 0.5
     # The range within which the lidar is guaranteed to have resolved an
     # obstacle at the occupancy resolution the validators reject on, not the
     # range at which it returns from a wall. With 360 by 181 beams over the

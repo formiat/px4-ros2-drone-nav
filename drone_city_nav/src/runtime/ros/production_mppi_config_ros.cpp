@@ -596,6 +596,8 @@ void ProductionMppiConfigLoader::declareControl() {
   // The reference climbs no faster than the airframe can follow it, so a
   // limit that lifts cannot snap the reference back up.
   control.speed_policy.reference_speed_rise_mps2 = maximum_horizontal_acceleration_mps2;
+  control.speed_policy.reference_tracking_lag_s =
+      declare<double>("reference_tracking_lag_s", 0.0);
   control.speed_policy.stopping_capability
       .maximum_commanded_horizontal_deceleration_mps2 =
       maximum_horizontal_acceleration_mps2;

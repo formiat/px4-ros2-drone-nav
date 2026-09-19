@@ -180,6 +180,29 @@ TEST(MppiSpeedPolicyTest, TheRouteClearanceBoundsTheSpeedTheHorizonCannotYetSee)
   EXPECT_DOUBLE_EQ(both.reference_speed_mps, 1.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheLagBehindAFallingReferenceIsLatencyInTheDistanceLaws) {
+  // The same tight spot 10 m ahead and the same block 8 m ahead: a vehicle
+  // that follows a falling reference half a second late is owed half a
+  // second of travel more, and the sensor-braking limit is not touched.
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.executed_horizon_clearance = executedClearance(10.0, 1.0);
+  input.blocked_route_remaining_m = 8.0;
+  const MppiSpeedPolicyResult prompt = evaluateMppiSpeedPolicy(config, input);
+  config.reference_tracking_lag_s = 0.5;
+  const MppiSpeedPolicyResult late = evaluateMppiSpeedPolicy(config, input);
+  StoppingCapability delayed = config.stopping_capability;
+  delayed.reaction_latency_s += 0.5;
+  EXPECT_NEAR(
+      late.clearance_limit_mps,
+      stoppingLimitedSpeed(10.0, 2.0, delayed, config.sensor_braking_contract, 0.0),
+      1.0e-9);
+  EXPECT_LT(late.clearance_limit_mps, prompt.clearance_limit_mps);
+  EXPECT_LT(late.blocked_route_limit_mps, prompt.blocked_route_limit_mps);
+  EXPECT_DOUBLE_EQ(late.sensor_braking_limit_mps, prompt.sensor_braking_limit_mps);
+}
+
 TEST(MppiSpeedPolicyTest, TheAgeOfTheClearanceEvidenceIsLatencyInTheStoppingLaw) {
   // The same tight spot 10 m ahead: read off evidence half a second old, the
   // free path to it is owed half a second of travel more than the reaction
