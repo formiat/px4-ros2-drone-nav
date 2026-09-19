@@ -38,11 +38,21 @@ stereoDepthReturnsConfigIsValid(const StereoPairGeometry& geometry,
 stereoConfidentDepthM(const StereoPairGeometry& geometry,
                       const StereoDepthReturnsConfig& config) noexcept;
 
+// One ray of the pair: a surface at `point`, or free space along the ray to
+// `point` with nothing said about what lies beyond it.
+struct StereoDepthReturn {
+  Point3 point{};
+  bool hit{false};
+};
+
 // The returns of a disparity image in the left camera's forward-left-up frame.
 // `disparity_16` holds sixteenths of a pixel row by row, non-positive where the
-// matcher found no depth; such a pixel, and one beyond the confident depth,
-// yields no return at all.
-[[nodiscard]] std::vector<Point3>
+// matcher found no depth; such a pixel yields no return at all. A matched
+// pixel within the confident depth is a hit. One matched deeper than that is
+// no surface measurement, but the match still says the surface is no nearer
+// than the disparity plus its error allows: the ray is free up to that depth,
+// or up to the confident depth if that is nearer.
+[[nodiscard]] std::vector<StereoDepthReturn>
 stereoDepthReturns(std::span<const std::int16_t> disparity_16, std::size_t width,
                    std::size_t height, const StereoPairGeometry& geometry,
                    const StereoDepthReturnsConfig& config);

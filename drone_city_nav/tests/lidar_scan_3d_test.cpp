@@ -59,7 +59,8 @@ TEST(LidarScan3D, HitOnlyReturnsCarryNoMisses) {
   const std::vector<Point3> points{Point3{3.0, 4.0, 0.0}, Point3{nan, nan, nan},
                                    Point3{0.0, 0.0, 9.0}, Point3{0.05, 0.0, 0.0}};
 
-  const OrganizedLidarScan3DResult result = decodeHitOnlyReturns3D(points, 0.2, 8.0);
+  const OrganizedLidarScan3DResult result =
+      decodeHitOnlyReturns3D(points, {}, 0.2, 8.0);
 
   ASSERT_EQ(result.beams.size(), 4U);
   EXPECT_EQ(result.hit_beams, 1U);
@@ -73,6 +74,25 @@ TEST(LidarScan3D, HitOnlyReturnsCarryNoMisses) {
     EXPECT_FALSE(result.beams[index].valid);
     EXPECT_FALSE(result.beams[index].hit);
   }
+}
+
+TEST(LidarScan3D, AFlaggedReturnIsFreeSpaceUpToItsEnd) {
+  // A match deeper than the confident depth measures no surface; its ray is
+  // free as far as the return, and the memory reads it as a miss that long.
+  const std::vector<Point3> points{Point3{3.0, 4.0, 0.0}, Point3{6.0, 0.0, 0.0}};
+  const std::vector<float> flags{1.0F, 0.0F};
+
+  const OrganizedLidarScan3DResult result =
+      decodeHitOnlyReturns3D(points, flags, 0.2, 8.0);
+
+  ASSERT_EQ(result.beams.size(), 2U);
+  EXPECT_EQ(result.hit_beams, 1U);
+  EXPECT_EQ(result.miss_beams, 1U);
+  EXPECT_TRUE(result.beams[1].valid);
+  EXPECT_FALSE(result.beams[1].hit);
+  EXPECT_NEAR(result.beams[1].range_m, 6.0, 1.0e-12);
+  EXPECT_FALSE(decodeHitOnlyReturns3D(points, std::vector<float>{1.0F}, 0.2, 8.0)
+                   .organized_dimensions_match);
 }
 
 TEST(LidarScan3D, JoinsAdjacentReturnsOfOneWallWithSurfaceSamples) {

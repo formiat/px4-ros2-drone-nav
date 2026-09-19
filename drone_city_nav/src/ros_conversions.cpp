@@ -299,4 +299,29 @@ decodePointCloudReturns(const sensor_msgs::msg::PointCloud2& cloud) {
   return points;
 }
 
+std::optional<std::vector<float>>
+decodePointCloudFloatField(const sensor_msgs::msg::PointCloud2& cloud,
+                           const std::string& field_name) {
+  const std::optional<std::uint32_t> field_offset = fieldOffset(cloud, field_name);
+  if (!field_offset.has_value() || cloud.point_step == 0U ||
+      cloud.row_step < cloud.point_step * cloud.width ||
+      cloud.data.size() < static_cast<std::size_t>(cloud.row_step) * cloud.height) {
+    return std::nullopt;
+  }
+  const std::span<const std::uint8_t> bytes{cloud.data};
+  std::vector<float> values;
+  values.reserve(static_cast<std::size_t>(cloud.width) * cloud.height);
+  for (std::uint32_t row = 0U; row < cloud.height; ++row) {
+    for (std::uint32_t column = 0U; column < cloud.width; ++column) {
+      const std::size_t offset = static_cast<std::size_t>(row) * cloud.row_step +
+                                 static_cast<std::size_t>(column) * cloud.point_step;
+      float value{0.0F};
+      std::memcpy(&value, bytes.subspan(offset + *field_offset, sizeof(float)).data(),
+                  sizeof(float));
+      values.push_back(value);
+    }
+  }
+  return values;
+}
+
 } // namespace drone_city_nav

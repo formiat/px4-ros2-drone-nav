@@ -1,5 +1,6 @@
 #include "drone_city_nav/stereo_depth_returns.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace drone_city_nav {
@@ -22,12 +23,12 @@ double stereoConfidentDepthM(const StereoPairGeometry& geometry,
                    geometry.focal_px / config.disparity_error_px);
 }
 
-std::vector<Point3> stereoDepthReturns(const std::span<const std::int16_t> disparity_16,
-                                       const std::size_t width,
-                                       const std::size_t height,
-                                       const StereoPairGeometry& geometry,
-                                       const StereoDepthReturnsConfig& config) {
-  std::vector<Point3> returns;
+std::vector<StereoDepthReturn>
+stereoDepthReturns(const std::span<const std::int16_t> disparity_16,
+                   const std::size_t width, const std::size_t height,
+                   const StereoPairGeometry& geometry,
+                   const StereoDepthReturnsConfig& config) {
+  std::vector<StereoDepthReturn> returns;
   if (!stereoDepthReturnsConfigIsValid(geometry, config) ||
       disparity_16.size() != width * height) {
     return returns;
@@ -41,11 +42,15 @@ std::vector<Point3> stereoDepthReturns(const std::span<const std::int16_t> dispa
       if (disparity <= 0) {
         continue;
       }
-      const double depth_m = geometry.focal_px * geometry.baseline_m * 16.0 /
-                             static_cast<double>(disparity);
-      if (depth_m > confident_depth_m) {
-        continue;
-      }
+      const double disparity_px = static_cast<double>(disparity) / 16.0;
+      const double matched_depth_m =
+          geometry.focal_px * geometry.baseline_m / disparity_px;
+      const bool hit = matched_depth_m <= confident_depth_m;
+      const double depth_m =
+          hit ? matched_depth_m
+              : std::min(confident_depth_m,
+                         geometry.focal_px * geometry.baseline_m /
+                             (disparity_px + config.disparity_error_px));
       // Optical frame (x right, y down, z forward) to forward-left-up.
       const double right_m = (static_cast<double>(column) - geometry.principal_x_px) *
                              depth_m / geometry.focal_px;
@@ -55,7 +60,7 @@ std::vector<Point3> stereoDepthReturns(const std::span<const std::int16_t> dispa
       if (std::hypot(std::hypot(point.x, point.y), point.z) < config.minimum_range_m) {
         continue;
       }
-      returns.push_back(point);
+      returns.push_back(StereoDepthReturn{.point = point, .hit = hit});
     }
   }
   return returns;

@@ -656,8 +656,11 @@ private:
     }
     OrganizedLidarScan3DResult decoded =
         hit_only_returns_
-            ? decodeHitOnlyReturns3D(*raw_returns, scan_config_.minimum_range_m,
-                                     scan_config_.maximum_range_m)
+            ? decodeHitOnlyReturns3D(
+                  *raw_returns,
+                  decodePointCloudFloatField(pending.cloud, "intensity")
+                      .value_or(std::vector<float>{}),
+                  scan_config_.minimum_range_m, scan_config_.maximum_range_m)
             : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
     if (!decoded.organized_dimensions_match) {
       RCLCPP_ERROR_THROTTLE(

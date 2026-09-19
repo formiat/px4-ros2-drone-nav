@@ -62,4 +62,10 @@ rawOccupancyGridViewFromRos(const nav_msgs::msg::OccupancyGrid& msg,
 [[nodiscard]] std::optional<std::vector<Point3>>
 decodePointCloudReturns(const sensor_msgs::msg::PointCloud2& cloud);
 
+// One float field of every point, in the order of decodePointCloudReturns;
+// nothing when the cloud has no such field.
+[[nodiscard]] std::optional<std::vector<float>>
+decodePointCloudFloatField(const sensor_msgs::msg::PointCloud2& cloud,
+                           const std::string& field_name);
+
 } // namespace drone_city_nav

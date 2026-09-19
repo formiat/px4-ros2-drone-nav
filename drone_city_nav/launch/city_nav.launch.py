@@ -107,6 +107,12 @@ def stereo_shadow_nodes(
         gz_topic = f"{sensor_prefix}/stereo_{side}/image"
         bridge_arguments.append(f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image")
         remappings.extend(["-r", f"{gz_topic}:=/stereo/{side}/image"])
+    for side in ("up", "down"):
+        gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
+        bridge_arguments.append(
+            f"{gz_topic}@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked"
+        )
+        remappings.extend(["-r", f"{gz_topic}:=/tof/{side}/points"])
     with open(params_path, encoding="utf-8") as params_stream:
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
             "ros__parameters"

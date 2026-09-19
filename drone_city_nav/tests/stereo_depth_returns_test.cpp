@@ -32,8 +32,8 @@ TEST(StereoDepthReturns, APixelWithoutConfidentDepthYieldsNoReturn) {
   config.pixel_stride = 1U;
   const std::size_t width = 4U;
   const std::size_t height = 1U;
-  // 4 m, no match, 12 m (beyond the confident depth), 0.1 m (inside the
-  // minimum range).
+  // 4 m, no match, 12 m (beyond the confident depth: a free ray), 0.1 m
+  // (inside the minimum range).
   const auto sixteenths = [](const double depth_m) {
     return static_cast<std::int16_t>(
         std::lround(16.0 * kGeometry.focal_px * kGeometry.baseline_m / depth_m));
@@ -41,15 +41,21 @@ TEST(StereoDepthReturns, APixelWithoutConfidentDepthYieldsNoReturn) {
   const std::vector<std::int16_t> disparity{sixteenths(4.0), -16, sixteenths(12.0),
                                             sixteenths(0.1)};
 
-  const std::vector<Point3> returns =
+  const std::vector<StereoDepthReturn> returns =
       stereoDepthReturns(disparity, width, height, kGeometry, config);
 
-  ASSERT_EQ(returns.size(), 1U);
+  ASSERT_EQ(returns.size(), 2U);
   // Pixel (0, 0) lies left of and above the principal point: forward, to the
   // left and up in the camera's forward-left-up frame.
-  EXPECT_NEAR(returns[0].x, 4.0, 0.01);
-  EXPECT_NEAR(returns[0].y, 640.0 * 4.0 / kGeometry.focal_px, 0.02);
-  EXPECT_NEAR(returns[0].z, 480.0 * 4.0 / kGeometry.focal_px, 0.02);
+  EXPECT_TRUE(returns[0].hit);
+  EXPECT_NEAR(returns[0].point.x, 4.0, 0.01);
+  EXPECT_NEAR(returns[0].point.y, 640.0 * 4.0 / kGeometry.focal_px, 0.02);
+  EXPECT_NEAR(returns[0].point.z, 480.0 * 4.0 / kGeometry.focal_px, 0.02);
+  // The match at 12 m measures no surface, but its ray is free as far as the
+  // confident depth: the disparity plus its error still puts the surface
+  // beyond it.
+  EXPECT_FALSE(returns[1].hit);
+  EXPECT_NEAR(returns[1].point.x, stereoConfidentDepthM(kGeometry, config), 1.0e-9);
 }
 
 TEST(StereoDepthReturns, TheStrideThinsTheReturns) {

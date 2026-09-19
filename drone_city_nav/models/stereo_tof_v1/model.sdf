@@ -9,7 +9,8 @@
          image is converted on the CPU in the render thread and held the
          simulation at a real-time factor of 0.39; RGB runs at 0.99). The two
          time-of-flight sensors are VL53L8 class: 8 x 8 zones whose centres span
-         45 degrees less one zone, 2.8 m, the published range in 5 000 lux, 15 Hz;
+         45 degrees less one zone, 2.8 m, the published range in 5 000 lux, at the pair's
+         7.5 Hz so that the three sensors fire on one simulation step;
          the zone centres are the rays, the adapter gives each its cone. -->
     <link name="stereo_tof_link">
       <pose>0.32 0 0.02 0 0 0</pose>
@@ -124,7 +125,7 @@
           </noise>
         </ray>
         <always_on>true</always_on>
-        <update_rate>15</update_rate>
+        <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
       <sensor name="tof_down" type="gpu_lidar">
@@ -157,7 +158,7 @@
           </noise>
         </ray>
         <always_on>true</always_on>
-        <update_rate>15</update_rate>
+        <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
     </link>

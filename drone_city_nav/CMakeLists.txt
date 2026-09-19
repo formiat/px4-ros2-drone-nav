@@ -284,6 +284,7 @@ add_drone_city_nav_layer(
   src/sensor_braking_contract_3d.cpp
   src/proprioceptive_contact_seed_3d.cpp
   src/swept_footprint.cpp
+  src/tof_zone_returns.cpp
   src/swept_footprint_2d.cpp
   src/swept_footprint_body.cpp
   src/swept_footprint_esdf.cpp
@@ -516,6 +517,7 @@ set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/raw_occupancy_clearance_3d.hpp
     include/drone_city_nav/sensor_braking_contract_3d.hpp
     include/drone_city_nav/swept_footprint.hpp
+    include/drone_city_nav/tof_zone_returns.hpp
     include/drone_city_nav/versioned_world_evidence_3d.hpp)
 
 set(DRONE_CITY_NAV_FINITE_EXECUTION_HEADERS
@@ -987,7 +989,8 @@ enable_project_warnings(simulation_truth_adapter_node)
 add_executable(stereo_depth_node src/stereo_depth_node.cpp)
 target_compile_features(stereo_depth_node PRIVATE cxx_std_20)
 target_include_directories(stereo_depth_node SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(stereo_depth_node drone_city_nav_core ${OpenCV_LIBS})
+target_link_libraries(stereo_depth_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${OpenCV_LIBS})
 ament_target_dependencies(stereo_depth_node rclcpp sensor_msgs)
 enable_project_warnings(stereo_depth_node)
 
@@ -1818,6 +1821,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_scan_3d_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_scan_3d_test drone_city_nav_core)
   enable_project_warnings(lidar_scan_3d_test)
+
+  ament_add_gtest(tof_zone_returns_test tests/tof_zone_returns_test.cpp)
+  target_compile_features(tof_zone_returns_test PRIVATE cxx_std_20)
+  target_link_libraries(tof_zone_returns_test drone_city_nav_core)
+  enable_project_warnings(tof_zone_returns_test)
 
   ament_add_gtest(stereo_depth_returns_test tests/stereo_depth_returns_test.cpp)
   target_compile_features(stereo_depth_returns_test PRIVATE cxx_std_20)
