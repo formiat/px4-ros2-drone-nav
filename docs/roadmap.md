@@ -42,6 +42,22 @@ surfaces as the remaining cause. This stage re-derives the availability
 threshold from the measured runs and records it in the mission check before
 stage B begins.
 
+State on 2026-09-19. Neither stage is closed. For stage A two things are
+missing. The availability threshold has a measured stand-in, 90 percent over
+the fifteen flights r430 to r434, r448 to r452 and r470 to r474 (lowest flight
+90.2, median 94.9), which item 14 was accepted against, but the mission check
+still carries 97 percent of availability and 3 percent of holds and is red on
+every lidar flight (91.0 to 96.5 percent and 3.7 to 9.2 percent over r511 to
+r515 and r528); writing the derived threshold into the check is a product
+decision that has not been taken. And the mean speed sits at its gate: two
+flights of r470 to r474 and r528 were under 2.5 m/s (2.32 to 2.45), five of
+r511 to r515 above it (2.65 to 2.82), on code the lidar profile does not
+distinguish. One more decision is open: this stage is written for the 3D
+lidar, and since item 14 the default sensor set is the stereo pair. Which
+profile closes stage A, the lidar's with these gates, the stereo profile's
+with its own speed gate (1.226 m/s), or both, is to be decided before the
+series is flown. Stage B has no environment yet.
+
 ### Stage B: Large-Scale Realistic City
 
 Find a suitably licensed high-quality city environment or build a new one for
@@ -117,6 +133,31 @@ channel carries, and makes the separation survive what the channel does. The
 navigation invariants hold throughout: a peer the vehicle does not hear of
 is unknown, not an obstacle and not a prohibition; nothing here adds a
 latch, a penalty on free space or a restriction of motion.
+
+Order and sensor profile. Items 15 and 16 do not depend on each other, and
+item 16 may be done first. Doing so has a reason: stage 4 below is written
+for the lidar-inertial profile, and the default sensor set since item 14 is
+the stereo pair, so a shared frame is better solved once, for the estimator
+item 16 adds, than twice. The cost of that order is that the cooperative
+mission stays unflown for longer: it has not been flown since stage 0 and
+not at all on the camera defaults the multi-vehicle launch now carries.
+
+Which sensor set this item flies is an open decision, because the
+workstation does not carry four camera vehicles. Measured on single flights:
+a lidar vehicle's onboard processes take 2.7 cores at p50 and a stereo
+vehicle's 3.8, of which 1.4 are the depth matcher on the CPU (OpenCV in the
+container has no CUDA); the simulator with one vehicle's two 1280 x 960
+cameras on the textured world takes 3.3 cores and drops its real-time factor
+to 0.35 to 0.45 for moments, which is what makes the autopilot reacquire its
+timestamps 10 to 15 times a flight (r518). Four vehicles are about 15 onboard
+cores and eight cameras on eight host cores; the lidar profile runs four
+vehicles on the collision-only world at a real-time factor of 1.00, as item
+6 was accepted. The exchange and the separation cost the same on either. The
+options: fly this item on the lidar profile, whose subject is the channel and
+not perception, as an exception to the camera default; move the matcher to
+the GPU; lower the cameras' resolution or rate, which shortens the confident
+depth and the speed with it; or a larger host. The extrapolation from one
+vehicle to four is not measured.
 
 ### Stage 0: Remove The Interception Missions And The Radar (Done)
 
@@ -245,6 +286,30 @@ sees), and alignment of frames through the shared world. This stage is
 complete when the cooperative acceptance series flies on the lidar-inertial
 profile with the multi-vehicle launch running one estimator per vehicle.
 
+The direction to measure first: vehicles share a frame, not a memory. Each
+vehicle keeps its own obstacle memory, as now; occupancy is not exchanged,
+because it is megabytes on a channel this item cuts to tens of bytes, and
+because merging maps built under different drifts corrupts both. The frame
+is fixed once, at the start, where every vehicle stands on a known pad, and
+the estimator's drift (0.1 to 0.2 m over the 400 m mission on the
+lidar-inertial profile) enters the separation as an uncertainty of the peer's
+position that grows with the distance each has flown. The stage measures the
+frame error between vehicles against the simulator's truth; if it stays
+inside the margin of the 5 m separation gate, nothing more is needed.
+Relative observation of peers is the second step, taken only if the first
+falls short, and it is a lidar's remedy: a stereo pair with 6.4 m of
+confident depth sees a peer too late for a separation of several times that.
+If item 16 is done first, this stage is rewritten for the visual-inertial
+estimator before it starts.
+
+Visualization stays as it is: one spectator owns the follow transform and the
+simulator's camera and moves to the next living vehicle when its own is lost;
+every vehicle's path is shown at once, and the heavy layers (the memory
+cloud, the planner's markers, the execution horizon) are the selected
+vehicle's only. What this stage adds is a diagnostic layer of frame
+disagreement, each peer's reported position against its true one, which is
+evaluation only and never reaches a vehicle.
+
 ### Measurement And Completion
 
 Measure, per flight and per channel class: message rate and bytes per
@@ -261,7 +326,9 @@ flies on the lidar-inertial profile.
 
 **Type:** dependent localization stage.
 
-**Hard prerequisites:** items 13 and 14.
+**Hard prerequisites:** items 13 and 14, both complete. Item 15 is not one:
+this item may be done before it, and item 15's shared-frame stage is then
+rewritten for this item's estimator.
 
 **Validation environment:** Urban Circuit Practice 01.
 
@@ -637,6 +704,11 @@ matcher; lateral tracking p99 0.305 and 0.320 m in two flights of five against
 0.25 m; the closest pass to truth occupancy was 0.41 to 0.75 m from the
 vehicle's centre to a 0.5 m voxel's centre against 0.84 m on the lidar; a
 faced motion between the pair's field and a time-of-flight cone (52.4 to 67.5
-degrees of elevation) is flown at the unobserved speed of 1 m/s; the
+degrees of elevation) is flown at the unobserved speed of 1 m/s, because
+the pair is mounted rigidly and only the heading turns it: a tilt servo on
+the pair or a third time-of-flight sensor would close that gap, and neither
+is scheduled; a motion the vehicle does not face is flown only through space
+memory has observed, so the vehicle turns before it enters unseen space
+sideways or backwards where the lidar flew every direction alike; the
 multi-vehicle launch carries the same defaults and has not been flown on them,
 which waits for item 15 and for a host that renders eight cameras.
