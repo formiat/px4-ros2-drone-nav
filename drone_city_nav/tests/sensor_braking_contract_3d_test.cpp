@@ -266,4 +266,35 @@ TEST(SensorBrakingContract3DTest, InvalidContractFailsClosed) {
 }
 
 } // namespace
+
+TEST(SensorBrakingContract3DTest, MemoryKeepsTheVerticalMarginForASteepMotion) {
+  // The stereo set: 6.4 m and 2.0 m forward, 2.8 m and 1.0 m vertically. The
+  // sensors that look up free 2.8 m above the vehicle; a climb leaning 30
+  // degrees off the vertical is outside their cone and answers to memory.
+  SensorBrakingContract3D contract;
+  contract.guaranteed_detection_range_m = 6.4;
+  contract.physical_margin_m = 2.0;
+  contract.forward_vertical_half_angle_rad = 0.9145;
+  contract.forward_horizontal_half_angle_rad = 1.0472;
+  contract.vertical_detection_range_m = 2.8;
+  contract.vertical_cone_half_angle_rad = 0.3927;
+  contract.vertical_physical_margin_m = 1.0;
+  const StoppingCapability capability;
+
+  const double steep = sensorBrakingMemorySpeedMps(contract, capability, 10.0,
+                                                   Vec3{0.5, 0.0, 0.87}, 2.8);
+  const double level =
+      sensorBrakingMemorySpeedMps(contract, capability, 10.0, Vec3{1.0, 0.0, 0.0}, 2.8);
+  EXPECT_GT(steep, 0.9);
+  EXPECT_LT(level, 0.7);
+  EXPECT_GT(level, 0.0);
+  // No more than the margin observed: nothing, at either.
+  EXPECT_DOUBLE_EQ(sensorBrakingMemorySpeedMps(contract, capability, 10.0,
+                                               Vec3{0.5, 0.0, 0.87}, 1.0),
+                   0.0);
+  EXPECT_DOUBLE_EQ(
+      sensorBrakingMemorySpeedMps(contract, capability, 10.0, Vec3{1.0, 0.0, 0.0}, 2.0),
+      0.0);
+}
+
 } // namespace drone_city_nav

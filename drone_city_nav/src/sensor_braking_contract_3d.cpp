@@ -278,6 +278,19 @@ double sensorBrakingMemorySpeedMps(const SensorBrakingContract3D& contract,
                                    const Vec3& direction,
                                    const double observed_range_m) noexcept {
   SensorBrakingContract3D memory_contract = contract;
+  // A motion steeper than the forward sensor's field approaches what it meets
+  // from below or above, and keeps the margin of a vertical approach, as the
+  // sensors that look up and down do. Read with the horizontal margin, 2.0 m
+  // against the 2.8 m those sensors free above the vehicle, memory admitted a
+  // climb that leans 30 degrees off the vertical almost nothing, and r529
+  // stood 31 s in a shaft with a reference of 1 to 2 m/s while every horizon
+  // was refused.
+  const MotionShares3D shares = motionShares(direction);
+  if (contract.vertical_cone_half_angle_rad > 0.0 && shares.specified() &&
+      std::asin(std::min(1.0, shares.vertical)) >
+          contract.forward_vertical_half_angle_rad) {
+    memory_contract.physical_margin_m = contract.vertical_physical_margin_m;
+  }
   // Memory has seen what it has seen at every elevation.
   memory_contract.forward_vertical_half_angle_rad = 0.5 * std::numbers::pi;
   memory_contract.guaranteed_detection_range_m =
