@@ -16,80 +16,6 @@ Numbers are stable identifiers. A completed item keeps its number, is
 summarized in the Completed section at the end of this file, and is never
 renumbered or reused; a new item takes the next free number.
 
-## 9. Large-Scale Realistic Location And Full-Mission Validation
-
-**Type:** integration and validation milestone in two stages.
-
-**Hard prerequisites:** item 12 (complete) and item 16 for stage A; stage B is
-done.
-
-Decided by the project owner on 2026-09-19. The project has two requirements
-and no others: the vehicle never crashes and always reaches its goal, and the
-mean flight speed, the only speed targeted, exceeds the figure of its sensor
-set (1.2 m/s on the stereo set, 2.4 m/s on the lidar). Stage A is closed by
-the camera profile without GNSS, not by the 3D lidar it was written for. And
-stage B was written for a city because a city was what was expected to be
-found; the imported underground locations are the better validation
-environment, and no city is needed any more.
-
-### Stage A: Point-To-Point On Urban Circuit Practice 01
-
-Fly the point-to-point mission on Urban Circuit Practice 01 on the default
-sensor set, the forward stereo pair and the two time-of-flight sensors, with
-no lidar on the vehicle, no static map and no GNSS, at one release commit,
-headless, with nothing changed between runs, as a series of five flights.
-
-The stage is complete when all five are collision-free and complete the
-mission, and each has a mean flight speed above 1.2 m/s. Everything else the
-mission check measures (route availability, which item 12 closed at 88 to 95
-percent and the lidar profile holds at 91 to 96.5, no-route holds, planner
-p95, the tick, the controller-dynamics measurements) is reported as a note and
-decides nothing ([`testing.md`](testing.md)).
-
-State on 2026-09-19. The profile that closes this stage does not exist yet:
-flight without GNSS on the cameras is item 16, whose completion flies exactly
-this series, so this stage closes with it, on the release commit that carries
-it. On the camera profile with GNSS the final series of item 14 (r523 to
-r527) was collision-free and complete in five of five with 1.17 to 1.57 m/s,
-one flight under the figure; part of that shortfall is the measurement's, the
-mean is taken over wall time and the camera simulation runs at a real-time
-factor of 0.8 to 1.0, which item 16's stage 0 removes. The lidar profile
-without GNSS, which does not close the stage, meets its own figure: r511 to
-r515 flew five of five at 2.65 to 2.82 m/s.
-
-### Stage B: Large-Scale Realistic Location (Done)
-
-The stage asked for a location substantially larger and more varied than the
-generated worlds the project began with, with complex physically traversable
-3D free space, explicit provenance and a license compatible with the
-repository, and one source of truth for what is rendered, what collides, what
-the sensors see and what the planner's artifacts are built from; and for that
-location to be the full-system validation environment, flown without
-scenario-specific route scripts or geometry exceptions.
-
-That is what the imported DARPA SubT locations are
-([`environment_candidates.md`](environment_candidates.md),
-`environments/environment_manifest.yaml`): Urban Circuit Practice 01, Cave
-Circuit Practice 01 and Finals Prize Round World 07, each under CC BY 4.0
-with a committed, SHA-pinned inventory of every transitive resource's
-license, each imported through one pipeline that derives the collision world,
-the textured world, the occupancy and the ESDF from the same source bundle.
-Urban Circuit Practice 01 (605 x 528 x 73 cells at 0.5 m: multi-level rooms,
-corridors, bends, two shafts, entrances at different heights) has been the
-project's validation environment since item 12: every acceptance series of
-items 12, 13 and 14 was flown on it with no static map, first on the 3D
-lidar and now on cameras, with physical collision detection, the planner's
-and the controller's diagnostics, the real-time factor and the CPU and GPU
-budgets recorded on every flight, and with no route script and no exception
-for its geometry anywhere in production code. The generated grid city was
-removed from the repository in item 15 stage 0.
-
-What the stage's text asked for and was not done: the mission has been flown
-from one start to one goal, not from several placements, and the cave and the
-finals world are imported and load but have not been flown. Neither is
-required any longer; a second placement or a second location is a scenario
-file away when a change needs one.
-
 ## 11. Valid 3D Static Maps For New Environments
 
 **Type:** dependent implementation and validation stage.
@@ -140,11 +66,11 @@ navigation invariants hold throughout: a peer the vehicle does not hear of
 is unknown, not an obstacle and not a prohibition; nothing here adds a
 latch, a penalty on free space or a restriction of motion.
 
-Order and sensor profile. Items 15 and 16 do not depend on each other, and
-item 16 may be done first. Doing so has a reason: stage 4 below is written
-for the lidar-inertial profile, and the default sensor set since item 14 is
-the stereo pair, so a shared frame is better solved once, for the estimator
-item 16 adds, than twice. The cost of that order is that the cooperative
+Order and sensor profile. Items 15 and 16 did not depend on each other, and
+item 16 was done first (closed 2026-09-20). That had a reason: stage 4 below
+was written for the lidar-inertial profile, and the default sensor set since
+item 14 is the stereo pair, so a shared frame is better solved once, for the
+estimator item 16 added, than twice. The cost of that order is that the cooperative
 mission stays unflown for longer: it has not been flown since stage 0 and
 not at all on the camera defaults the multi-vehicle launch now carries.
 
@@ -305,8 +231,9 @@ inside the margin of the 5 m separation gate, nothing more is needed.
 Relative observation of peers is the second step, taken only if the first
 falls short, and it is a lidar's remedy: a stereo pair with 6.4 m of
 confident depth sees a peer too late for a separation of several times that.
-If item 16 is done first, this stage is rewritten for the visual-inertial
-estimator before it starts.
+Item 16 was done first, so this stage is rewritten for the visual-inertial
+estimator before it starts: its drift, 0.1 to 0.4 percent of the path with no
+bound, is what two vehicles' frames will differ by.
 
 Visualization stays as it is: one spectator owns the follow transform and the
 simulator's camera and moves to the next living vehicle when its own is lost;
@@ -327,333 +254,6 @@ when stage 0 has landed, the cooperative acceptance series passes under the
 mesh and cellular classes with the intent within the channel's budget, the
 referee's separation gates hold under scripted outages, and the series
 flies on the lidar-inertial profile.
-
-## 16. Flight Without GNSS And Without Lidar
-
-**Type:** dependent localization stage.
-
-**Hard prerequisites:** items 13 and 14, both complete. Item 15 is not one:
-this item may be done before it, and item 15's shared-frame stage is then
-rewritten for this item's estimator.
-
-**Validation environment:** Urban Circuit Practice 01.
-
-Item 13 took away GNSS and the magnetometer while the lidar carried the
-position. Item 14 takes away the lidar while GNSS carries the position. Each
-removed one thing so that a failed flight had one possible cause. This item
-removes both at once: the vehicle carries the forward stereo pair and the two
-time-of-flight sensors of item 14 and the IMU, and nothing else. Position and
-heading come from a visual-inertial estimator on the `visual_inertial`
-profile, and the world is the vision raw world of item 14. Nothing below the
-estimator changes: the autopilot's EKF2 remains the owner of the estimate, the
-estimator publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`
-exactly as `lidar_inertial_odometry_node` does, and the map frame is still
-fixed by the scenario's start pose ([`localization.md`](localization.md)).
-
-The estimator is a separate component from the perception of item 14. Both
-read the same images, and neither reads the other's output: an estimator that
-takes its pose from the map built with that pose closes a loop that hides its
-own drift. The estimator keeps its own landmarks and its own window, as
-`LidarInertialOdometry` keeps its own submap and depends on Eigen alone
-(`test_navigation_dependency_contract.py` holds that boundary); it must not
-consume the obstacle memory's occupancy, the planner's route or the
-controller's state, and nothing in perception, planning or control may depend
-on its internals. The roadmap dependency between items 14 and 16 must not
-become a code dependency.
-
-### Decisions Before Implementation
-
-This item was written before item 14 flew, and item 14 changed what it can
-assume. What follows is settled before stage 1.
-
-**The simulation has to hold real time first.** On the camera profile the
-workstation runs 7.1 of its 8 cores (onboard 3.8, the simulator with the
-textured render and the image bridge 3.3), the real-time factor drops to 0.35
-to 0.45 for moments, and the autopilot reacquires its timestamps 10 to 15
-times a flight, against none or one on the lidar; r518 lost the vehicle to
-one of them. Every lost track of item 13 was an ordering or timing fault of
-the scan and IMU streams, and external-vision fusion is the most
-timing-sensitive path in the stack: an estimator cannot be judged on a
-timebase that steps every 20 s. Stage 0 below removes the cause before
-anything is built on it, and measures what the estimator may add: the
-estimator is budgeted at 0.5 to 1.5 cores, and stage 3, with the lidar
-rendered beside the pair, is the heaviest configuration this project has
-flown.
-
-**There are no recordings to replay.** Item 14 kept one recording (r476:
-every n-th frame, no IMU, a flight ended by a simulator stall); its accepting
-series recorded no images. Stage 1 starts with a recorder of every frame of
-both cameras, the IMU at its full rate and the true pose on one clock, and a
-set of flights recorded with it.
-
-**The frame rate is the estimator's, not the matcher's.** The pair runs at
-7.5 Hz because at 15 Hz the workstation no longer held real time (r478 to
-r480). The gaze turns the vehicle at 60 to 90 degrees a second, 8 to 12
-degrees between frames at 7.5 Hz, which a tracker survives only on the IMU's
-prior. Stage 1 measures tracking at 7.5, 15 and 30 Hz on the recordings; if
-the estimator needs more than the matcher, the pair renders at the
-estimator's rate and the depth node matches every n-th pair, and stage 0 has
-to make room for that.
-
-**The exposure stamp against the IMU is measured to a millisecond.** Item 14
-found a frame's stamp to be its render time within one frame, which is 130 ms
-at 7.5 Hz and was enough for mapping. The lidar's pose led its scan by 160 ms
-until that was measured, and the vehicle met walls for it; here the offset is
-calibrated on the recordings, from the rotation the images and the gyroscope
-both see, before any flight.
-
-**What the behaviour of item 14 does to a tracker is measured too.** The
-vehicle now turns in place while the gaze faces its route, stops before turns
-it has not looked into, and climbs shafts a metre from a wall. A stereo
-tracker survives pure rotation, but with 6.4 m of confident depth most of
-what it sees in a street constrains orientation only. Stage 1 reports drift
-by manoeuvre: straight flight, turn in place, stop and go, shaft.
-
-**Two errors, two numbers.** What the map needs is local: a beam integrated
-within two voxels of its surface, about 2 degrees of heading and the position
-error accrued over the few seconds a surface stays in view. That bound is
-hard, it is what keeps walls from smearing and passages from closing. What
-the mission needs is global: the monitor judges the goal by the autopilot's
-estimate inside a 2.0 m capture radius, so a drifted estimate "arrives" while
-the vehicle is elsewhere. Stereo visual-inertial odometry typically drifts
-0.5 to 1 percent of the path, 2 to 5 m over the 415 to 580 m a camera flight
-covers, and the point-to-point mission revisits almost nothing, so a closure
-against the estimator's own keyframes has little to close on. The mission
-check's gate on the position estimate is 0.35 m across the track at p95
-(lidar-inertial 0.15 to 0.22, GNSS 0.19 to 0.25). Decided by the project
-owner on 2026-09-19: the project has two requirements and no others. The
-vehicle never crashes and always reaches its goal; and the mean flight speed
-is the only speed targeted. The 0.35 m gate is therefore not a requirement of
-this profile: the estimate's error is measured and reported on every flight,
-as is its drift per 100 m, and neither decides completion. What follows from
-the first requirement does. "Reaches its goal" means the vehicle, not its
-estimate: on this profile the mission check holds the true position against
-the goal at the moment the goal is acknowledged, inside the capture radius,
-and stage 2 adds that check before anything flies on the estimate. And the
-local bound stays an engineering necessity, not a gate: a map smeared by its
-own pose is how this profile would come to crash.
-
-**A filter, not a window optimization.** Decided on 2026-09-19: the
-estimator is a stereo multi-state constraint Kalman filter on Eigen alone,
-and the feature front end may use the OpenCV the depth node already links.
-The alternatives were a sliding-window optimization with marginalization,
-written here or on Ceres or GTSAM. The filter wins on what binds this
-project. Its cost is fixed and small, a state of about a hundred variables
-and one compressed update a frame, where an optimization iterates for 10 to
-30 ms a keyframe with a time that varies, and the workstation has 0.5 to 1.5
-cores to give. It carries its covariance at every step, which the honesty
-rule, the health measurements and the autopilot's external-vision fusion all
-need, and which an optimization has to recover at a cost. It is the family
-item 13 already built: IMU integration, the gyroscope bias as a state, the
-level at rest, a Kalman step gated by innovation and by degenerate
-direction, and the handling of stream order and stamps that took five fixes
-to get right. Its one known trap, a filter that comes to believe a heading it
-cannot observe, has a standard remedy that is built in from the start, where
-a hand-written marginalization fails by a slow drift that stochastic flights
-make hard to find. Its accuracy on the public benchmarks is comparable to the
-optimizing systems'; its known weakness, a
-linearization made once, is met by predicting the rotation from the IMU and
-by the estimator's own frame rate. No new dependency enters the repository.
-
-### What The Simulator Provides### What The Simulator Provides
-
-The calibrated forward stereo pair of item 14, its intrinsics and baseline,
-the two time-of-flight sensors, and the IMU. No GNSS in the control path, no
-magnetometer fusion, no `simulation_heading_source_node`; the simulator's true
-pose and its depth stay where item 13 and item 14 put them, in evaluation and
-referee components only. The environment must carry the surface texture item
-14 already requires: a feature tracker fails on a flat untextured wall for the
-same reason a stereo matcher does.
-
-### The Estimator
-
-A stereo multi-state constraint Kalman filter, built on the contracts item 13
-established:
-
-- the state is the vehicle's pose, velocity and the IMU's two biases, and a
-  sliding set of 10 to 20 past camera poses cloned at frame times; landmarks
-  are not in it;
-- the IMU propagates the state and its covariance between frames, with the
-  level from the accelerometer at rest, as item 13 integrates it to a scan
-  stamp;
-- features are tracked between frames, from the rotation the IMU predicts,
-  and between the rectified images of the pair, so the scale is metric and
-  measured against the known baseline, never learnt;
-- when a track ends, or its oldest pose leaves the set, the landmark is
-  triangulated from all its observations, its residuals are projected onto
-  the left null space of its own Jacobian, so the landmark leaves the
-  equations, the stacked residuals are compressed, and one Kalman update is
-  made; removing the oldest pose is the removal of its rows and columns;
-- the Jacobians are evaluated at first estimates from the first commit: a
-  filter that relinearizes a pose it has already used gains information
-  about the heading it cannot observe, and believes a drifting yaw;
-- item 13's honesty rule in its own form: a residual outside its chi-square
-  gate is dropped for that update, a direction too few landmarks observe
-  carries no measurement, and a frame after which the filter is not healthy
-  is not published at all, so the autopilot sees no estimate rather than a
-  wrong one.
-
-The core is a library on Eigen alone, without ROS and without OpenCV,
-replayed offline on recordings and held to that by
-`test_navigation_dependency_contract.py`; the front end (corner detection and
-pyramidal tracking) is a separate layer that hands the core pixel tracks and
-nothing else. Escalation follows measurement only: if stage 1 shows drift
-while the vehicle hovers or turns in place, where tracks have no parallax
-between poses, a small set of long-lived landmarks joins the state; a window
-optimization is reconsidered only if that falls short of the local bound.
-
-The forward pair feeds the estimator. Its weak place is measured, not
-assumed: during the vertical motion through the two shafts a forward tracker
-watches a wall slide past at under a metre, fast in the image and poor in
-texture, and the time-of-flight ranges are the only other exteroception the
-vehicle has there. Stage 1 measures the drift through the shafts and whether
-those ranges are needed as a vertical constraint.
-
-A visual-inertial estimate drifts without a closure, and the mission is
-hundreds of metres long. The threshold is not chosen for the estimator, it is
-the one the stack already needs: the persistent memory integrates a beam only
-as far as the pose error keeps its hit within two voxels of the surface, which
-at 0.25 m voxels bounds the heading error to about 2 degrees
-(`lidar_pose_heading_uncertainty_rad`,
-[`gazebo_simulation.md`](gazebo_simulation.md)), and a map built with a worse
-pose smears its walls and closes the passages the
-planner is trying to use. Stage 1 measures drift against that bound and
-decides what it costs to hold: a closure against the estimator's own
-keyframes, or a mission short enough that pure odometry stays inside it.
-
-The health and failure contour of item 13 applies unchanged and gains no new
-latch: without odometry for 200 ms the autopilot's external-vision fusion
-stops, after `EKF2_NOAID_TOUT` it withdraws the horizontal estimate, the local
-position arrives with `xy_valid` false, the controller revokes execution on
-the stale pose and the offboard node holds.
-
-### Implementation Order
-
-0. Make the camera simulation hold real time. Find what drops the real-time
-   factor (the textured render, the image bridge's copies of two 1280 x 960
-   RGB streams, the matcher's two CPU threads beside them) and remove it:
-   the matcher on the GPU, a cheaper image path, or both. Done when a camera
-   flight holds a real-time factor of at least 0.95 throughout and the
-   autopilot's timestamp reacquisitions per flight are what the lidar
-   profile's are, with the headroom for the estimator measured. This also
-   retires the evidence-age debt of item 14, which has the same cause.
-1. Offline first, as item 13 set its filter: build the recorder named above,
-   record flights of the stereo profile, calibrate the exposure stamp against
-   the IMU, and replay (`log/tools/replay`): drift per 100 m, along-track and
-   cross-track error and heading error against the truth, by texture, speed,
-   lighting, frame rate and manoeuvre, and the local error over the seconds a
-   surface stays in view. An established open-source visual-inertial system
-   is run on the same recordings, offline and as an evaluation tool under
-   `log/tools` only, never as a dependency: it says what drift these images,
-   this depth and these manoeuvres admit at all, and how far this filter is
-   from it. Flights are stochastic; estimator parameters are set on
-   recordings and only confirmed in flight.
-2. Add the `visual_inertial_shadow` profile, as `gnss_shadow` did for item 13:
-   the estimator runs beside GNSS, publishes to the diagnostic topic only, and
-   the mission check compares it with the true pose on every flight. Add the
-   check that the goal was reached in truth: the vehicle's true position
-   inside the capture radius when the goal is acknowledged.
-3. Fly on `visual_inertial` with the lidar still mounted and still
-   authoritative for perception, so a failure separates the estimator from the
-   vision perception.
-4. Fly with the lidar absent from the vehicle model and item 14's vision raw
-   world: no GNSS, no magnetometer, no lidar.
-5. Make `visual_inertial` the default localization profile everywhere the
-   stereo sensor set is the default: scripts, both launches, Makefile
-   targets, configuration, contract tests and documentation, as items 13 and
-   14 closed. The lidar profile keeps `lidar_inertial`, and `gnss` stays
-   available on request. The multi-vehicle launch takes the default only with
-   item 15's shared frame; until then it keeps `gnss` and says so.
-
-Multi-vehicle missions stay out of this item; the shared frame between
-vehicles without GNSS is item 15 stage 4.
-
-### What The Stages Found (2026-09-20)
-
-- **Stage 0.** The autopilot's clock is the simulation's in lockstep and its
-  synchronisation with the wall clock was what failed at a real-time factor
-  under 1: `UXRCE_DDS_SYNCT 0` and an identity time mapper, reacquisitions 17
-  to 0 per flight. The pair's images are taken from Gazebo inside the
-  matcher's process, not over the bridge (55 MB/s of DDS), and the GPU is
-  polled every 10 s: the real-time factor went from 0.84 to 0.93 to 0.97 at
-  the mean. The matcher was not moved to the GPU: it was not what the
-  simulator stalled behind. Headroom: 1.5 busy cores beside a flight change
-  nothing; the pair at 15 Hz costs 0.05 to 0.1 of real-time factor and at
-  30 Hz real time is not held. Four navigation defects of the camera profile
-  were repaired on the way (a steep motion judged with the forward margin, a
-  memory revision published under two stamps, low-speed refusals of the
-  unseen-motion rule, a heading frozen while an arrival rests): five flights
-  of five at 1.59 to 1.76 m/s (r539 to r543).
-- **A defect older than this item**, found by a probe at 15 Hz that lost the
-  vehicle: a planning tick lasted up to 2.5 s (r545; 6 s of resident horizon
-  in r536) because the latest scan's returns, a centimetre apart on a wall the
-  envelope touches, were each walked against the departure at every body
-  position of every segment: 487 ms for one path validation. The scan is
-  thinned to the nearest return of every 0.05 m cell and the walk made once
-  per interval: 15 ms, the longest tick 226 ms (r548).
-- **Stage 1.** Recorder, recordings and the offline replay under
-  `log/tools/vio`; the frame stamp calibrated to the IMU (+4 ms, two records);
-  the filter on Eigen alone with first-estimate Jacobians and its unit tests;
-  the numbers in [localization.md](localization.md). The reference system
-  has not been run on the recordings; the filter's drift, 0.1 to 0.4 percent
-  of the path, is at the level such systems publish.
-- **Stage 2.** `visual_inertial_shadow` and the goal-in-truth check: five
-  flights of five (r555 to r559), the estimator 0.53 core, 0.17 to 1.73 m from
-  the truth after 400 to 490 m.
-- **Stage 3.** `visual_inertial` with the lidar perceiving: the heaviest
-  configuration (real-time factor 0.83, so its speeds of 1.9 to 2.4 m/s are
-  not the lidar set's). r561 did not reach its goal: the autopilot threw the
-  odometry away after a 0.4 m correction and reset its position by 1.19 m;
-  fused with the noise a frame's update moves the pose by (0.3 m) five flights
-  of five reached their goals, 1.19 to 1.62 m from them in truth (r566 to
-  r570). The time-of-flight ranges are not fused: the vertical is the
-  best-held axis.
-- **Stage 4.** First flights with no lidar, no GNSS and no magnetometer: no
-  crash, 1.41 to 1.60 m/s, but two of six were acknowledged 1.97 and 2.31 m
-  from the goal in truth (r572, r575): the heading had walked 2 to 4 degrees.
-  The filter had been told a gyroscope eighteen times noisier than it is; with
-  the gyroscope's own noise the recorded flights end within a degree and
-  0.25 to 0.89 m.
-
-### Measurement And Completion
-
-The mission check reports, as it does for item 13: the autopilot's position
-estimate against the true pose (cross-track p95 and along-track offset), the
-estimator's own published estimate against the true pose, drift per 100 m of
-flown route, the profile proved from the autopilot and ROS logs
-(`EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`, no
-heading source, odometry published at rate over the flight), and estimator
-health: tracked landmark count, reprojection residual, the observability of
-the weakest direction, gated and degenerate directions, and the frames that
-left the autopilot without an estimate, which must be none in a clean flight.
-
-This item is complete when, on one commit, two series have been flown on
-Urban Circuit Practice 01 in this order and each has been inspected flight by
-flight:
-
-1. five consecutive missions on the stereo sensor set without GNSS (the
-   defaults: no GNSS, no magnetometer, no lidar in the vehicle model), every
-   one complete and collision-free, with a mean flight speed above 1.2 m/s;
-2. five consecutive missions on the 3D lidar without GNSS
-   (`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`,
-   `LOCALIZATION_PROFILE=lidar_inertial`), every one complete and
-   collision-free, with a mean flight speed above 2.4 m/s.
-
-These are the project's two requirements and there are no others: the
-vehicle never crashes and always reaches its goal, in truth and not only in
-its own estimate; and the mean flight speed, the only speed the programme
-targets, exceeds the figure of its sensor set. Everything else the mission
-check measures (the estimate's error and drift, route availability, planner
-p95, the tick, the evidence age, tracking, the speed held in the shafts) is
-reported for every flight and read as a diagnosis: a figure that moves is
-looked into because it may be how one of the two requirements will fail, not
-because it is a gate of its own.
-
-Whatever a series shows to be wrong is fixed, with its measured cause, and the
-series is flown again; nothing is set aside because it is inconvenient. Debt
-may hold only what is very hard, what needs a deep rework of the code, or what
-needs the project owner's decision, and each such entry says which of the
-three it is.
 
 ## Completed
 
@@ -754,6 +354,52 @@ dirty-chunk transport and chunked immutable snapshots. Only confirmed
 `Occupied` is a hard prohibition; relabeling `Free` and `Unknown` changes
 nothing. No-static production navigation uses the 3D lidar profile; there is no
 2D-lidar production fallback.
+
+### 9. Large-Scale Realistic Location And Full-Mission Validation (Completed)
+
+Closed on 2026-09-20 with item 16. The project owner decided on 2026-09-19
+that the project has two requirements and no others (the vehicle never crashes
+and always reaches its goal, in truth; the mean flight speed exceeds the
+figure of its sensor set, 1.2 m/s on the stereo set and 2.4 m/s on the lidar),
+that stage A is closed by the camera profile without GNSS and not by the 3D
+lidar it was written for, and that stage B, written for a city, is met by the
+imported underground locations.
+
+**Stage A**, the point-to-point mission on Urban Circuit Practice 01 on the
+default sensor set, with no lidar on the vehicle, no static map and no GNSS,
+headless, five flights on one commit with nothing changed between them: r579
+to r583 on 7e95336e, the repository's defaults with no profile variable set
+(the manifests record `stereo_tof`, `stereo_tof`, `visual_inertial` and a clean
+checkout). Five of five complete and collision-free; mean flight speed
+1.58/1.79/1.60/1.60/1.48 m/s against 1.2; the true position 1.42, 1.14, 1.37,
+0.52 and 0.47 m from the goal at its acknowledgement; no failing line. The
+stage was written for a release commit: 7e95336e is the release candidate; the
+tag, the version and the push are the project owner's.
+
+**Stage B**, a large and varied realistic location as the full-system
+validation environment.
+That is what the imported DARPA SubT locations are
+([`environment_candidates.md`](environment_candidates.md),
+`environments/environment_manifest.yaml`): Urban Circuit Practice 01, Cave
+Circuit Practice 01 and Finals Prize Round World 07, each under CC BY 4.0
+with a committed, SHA-pinned inventory of every transitive resource's
+license, each imported through one pipeline that derives the collision world,
+the textured world, the occupancy and the ESDF from the same source bundle.
+Urban Circuit Practice 01 (605 x 528 x 73 cells at 0.5 m: multi-level rooms,
+corridors, bends, two shafts, entrances at different heights) has been the
+project's validation environment since item 12: every acceptance series of
+items 12, 13 and 14 was flown on it with no static map, first on the 3D
+lidar and now on cameras, with physical collision detection, the planner's
+and the controller's diagnostics, the real-time factor and the CPU and GPU
+budgets recorded on every flight, and with no route script and no exception
+for its geometry anywhere in production code. The generated grid city was
+removed from the repository in item 15 stage 0.
+
+What the stage's text asked for and was not done: the mission has been flown
+from one start to one goal, not from several placements, and the cave and the
+finals world are imported and load but have not been flown. Neither is
+required any longer; a second placement or a second location is a scenario
+file away when a change needs one.
 
 ### 10. Architectural Review And Optimization (Completed)
 
@@ -923,3 +569,93 @@ memory has observed, so the vehicle turns before it enters unseen space
 sideways or backwards where the lidar flew every direction alike; the
 multi-vehicle launch carries the same defaults and has not been flown on them,
 which waits for item 15 and for a host that renders eight cameras.
+
+### 16. Flight Without GNSS And Without Lidar (Completed)
+
+Closed on 2026-09-20. The vehicle flies the urban point-to-point mission with
+no GNSS, no magnetometer, no lidar and no static map: a visual-inertial
+estimator on the forward stereo pair is the autopilot's external odometry, and
+`visual_inertial` is the default localization profile wherever the stereo
+sensor set is the default (the lidar keeps `lidar_inertial`, `gnss` is a
+request, the multi-vehicle launches stay on `gnss` until item 15's shared
+frame). The estimator, its measurements and its health are in
+[`localization.md`](localization.md); the goal-in-truth check in
+[`testing.md`](testing.md); real time on the camera profile in
+[`gazebo_simulation.md`](gazebo_simulation.md).
+
+Decided before implementation: a stereo multi-state constraint Kalman filter
+written on Eigen alone with first-estimate Jacobians (OpenCV in the front end
+only), offline replay before any flight, a reference system as an offline tool
+and never a dependency, EKF2 the owner of the estimate, no code dependency
+between the estimator and the camera perception, and completion by two series
+on one commit.
+
+Acceptance on 7e95336e, each flight inspected before the next, no failing line
+in any of the ten:
+
+| Series | Flights | Mean flight speed, m/s | True position from the goal, m |
+|---|---|---|---|
+| Stereo set, no GNSS, the defaults (`visual_inertial`) | r579 to r583 | 1.58 / 1.79 / 1.60 / 1.60 / 1.48 (above 1.2) | 1.42 / 1.14 / 1.37 / 0.52 / 0.47 |
+| 3D lidar, no GNSS (`lidar_inertial`) | r584 to r588 | 2.67 / 2.51 / 2.53 / 2.42 / 2.65 (above 2.4) | 0.48 / 0.55 / 0.85 / 0.45 / 0.66 |
+
+No crash and no contact in either. Notes of the first series: the autopilot's
+position estimate 0.67 to 1.19 m from the truth across the track at p95 in
+four flights (the odometry's drift; the 0.35 m figure was the GNSS profile's).
+Notes of the second: route availability 93.4 to 96.7 percent and no-route
+holds 3.0 to 6.8 percent, as that profile has held since item 12.
+
+What the stages found:
+
+- **Stage 0.** The autopilot's clock is the simulation's in lockstep and its
+  synchronisation with the wall clock was what failed at a real-time factor
+  under 1: `UXRCE_DDS_SYNCT 0` and an identity time mapper, reacquisitions 17
+  to 0 per flight. The pair's images are taken from Gazebo inside the
+  matcher's process, not over the bridge (55 MB/s of DDS), and the GPU is
+  polled every 10 s: the real-time factor went from 0.84 to 0.93 to 0.97 at
+  the mean. The matcher was not moved to the GPU: it was not what the
+  simulator stalled behind. Headroom: 1.5 busy cores beside a flight change
+  nothing; the pair at 15 Hz costs 0.05 to 0.1 of real-time factor and at
+  30 Hz real time is not held. Four navigation defects of the camera profile
+  were repaired on the way (a steep motion judged with the forward margin, a
+  memory revision published under two stamps, low-speed refusals of the
+  unseen-motion rule, a heading frozen while an arrival rests): five flights
+  of five at 1.59 to 1.76 m/s (r539 to r543).
+- **A defect older than this item**, found by a probe at 15 Hz that lost the
+  vehicle: a planning tick lasted up to 2.5 s (r545; 6 s of resident horizon
+  in r536) because the latest scan's returns, a centimetre apart on a wall the
+  envelope touches, were each walked against the departure at every body
+  position of every segment: 487 ms for one path validation. The scan is
+  thinned to the nearest return of every 0.05 m cell and the walk made once
+  per interval: 15 ms, the longest tick 226 ms (r548).
+- **Stage 1.** Recorder, recordings and the offline replay under
+  `log/tools/vio`; the frame stamp calibrated to the IMU (+4 ms, two records);
+  the filter on Eigen alone with first-estimate Jacobians and its unit tests;
+  the numbers in [localization.md](localization.md). The reference system
+  has not been run on the recordings; the filter's drift, 0.1 to 0.4 percent
+  of the path, is at the level such systems publish.
+- **Stage 2.** `visual_inertial_shadow` and the goal-in-truth check: five
+  flights of five (r555 to r559), the estimator 0.53 core, 0.17 to 1.73 m from
+  the truth after 400 to 490 m.
+- **Stage 3.** `visual_inertial` with the lidar perceiving: the heaviest
+  configuration (real-time factor 0.83, so its speeds of 1.9 to 2.4 m/s are
+  not the lidar set's). r561 did not reach its goal: the autopilot threw the
+  odometry away after a 0.4 m correction and reset its position by 1.19 m;
+  fused with the noise a frame's update moves the pose by (0.3 m) five flights
+  of five reached their goals, 1.19 to 1.62 m from them in truth (r566 to
+  r570). The time-of-flight ranges are not fused: the vertical is the
+  best-held axis.
+- **Stage 4.** First flights with no lidar, no GNSS and no magnetometer: no
+  crash, 1.41 to 1.60 m/s, but two of six were acknowledged 1.97 and 2.31 m
+  from the goal in truth (r572, r575): the heading had walked 2 to 4 degrees.
+  The filter had been told a gyroscope eighteen times noisier than it is; with
+  the gyroscope's own noise the recorded flights end within a degree and
+  0.25 to 0.89 m.
+
+Known to remain. The estimate drifts 0.1 to 0.4 percent of the path and the
+vehicle was acknowledged up to 1.42 m from its goal in truth against a 2.0 m
+capture radius: an odometry without loop closure has no bound, and a mission
+several times longer needs long-lived points in the filter's state or a map to
+relocalize against (a deep rework). r587 flew 2.42 m/s against 2.4. The
+reference system has not been run on the recordings. The multi-vehicle path is
+not flight-verified on cameras or without GNSS (item 15).
+

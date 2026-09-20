@@ -17,7 +17,12 @@ release names the asset tags it was validated with.
   `lidar_inertial`, `gnss` is a request, and the multi-vehicle launches stay on
   `gnss` until the vehicles share a frame (item 15). `visual_inertial_shadow`
   runs the estimator beside GNSS for comparison. See
-  [docs/localization.md](docs/localization.md).
+  [docs/localization.md](docs/localization.md). Accepted on 7e95336e by two
+  series of five flights, none with a crash or a failing line: the stereo set
+  without GNSS on the defaults at 1.48 to 1.79 m/s with the true position 0.47
+  to 1.42 m from the goal at its acknowledgement (r579 to r583), and the 3D
+  lidar without GNSS at 2.42 to 2.67 m/s (r584 to r588). This closes roadmap
+  items 16 and 9; 7e95336e is the release candidate.
 - The mission check fails a flight whose goal was not reached in truth: at
   every goal acknowledgement the true position must be inside the 2.0 m
   capture radius. The estimator's health and its error against the true pose
