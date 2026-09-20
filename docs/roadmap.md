@@ -16,83 +16,79 @@ Numbers are stable identifiers. A completed item keeps its number, is
 summarized in the Completed section at the end of this file, and is never
 renumbered or reused; a new item takes the next free number.
 
-## 9. Large-Scale Realistic City And Full-Mission Validation
+## 9. Large-Scale Realistic Location And Full-Mission Validation
 
 **Type:** integration and validation milestone in two stages.
 
-**Hard prerequisites:** item 12 (complete) for stage A; a suitably licensed
-city for stage B.
+**Hard prerequisites:** item 12 (complete) and item 16 for stage A; stage B is
+done.
+
+Decided by the project owner on 2026-09-19. The project has two requirements
+and no others: the vehicle never crashes and always reaches its goal, and the
+mean flight speed, the only speed targeted, exceeds the figure of its sensor
+set (1.2 m/s on the stereo set, 2.4 m/s on the lidar). Stage A is closed by
+the camera profile without GNSS, not by the 3D lidar it was written for. And
+stage B was written for a city because a city was what was expected to be
+found; the imported underground locations are the better validation
+environment, and no city is needed any more.
 
 ### Stage A: Point-To-Point On Urban Circuit Practice 01
 
-Fly the point-to-point mission on Urban Circuit Practice 01 with the 3D lidar
-and no static map, at one release commit, headless, with nothing changed
-between runs, as a series of five flights. Stage A needs no new environment
-and may begin immediately.
+Fly the point-to-point mission on Urban Circuit Practice 01 on the default
+sensor set, the forward stereo pair and the two time-of-flight sensors, with
+no lidar on the vehicle, no static map and no GNSS, at one release commit,
+headless, with nothing changed between runs, as a series of five flights.
 
-Acceptance uses the numbers the mission check already enforces, as measured in
-the v0.2.0 series (r288 to r292) and the r303 to r307 series on the
-descent-arrest commit: zero building collisions, zero execution-ownership gaps,
-persistent planner p95 below 200 ms, a mean flight speed above 2.4 m/s on
-the urban point-to-point mission (the requirement of 2026-09-19, which
-replaced 2.5 m/s), and the controller-dynamics checks described
-in `testing.md`. Route availability after bootstrap is measured, not yet gated:
-item 12 closed at 88 to 95 percent against the 97 percent mission check and the
-99 percent target written before any measurement, with physical blocks at
-surfaces as the remaining cause. This stage re-derives the availability
-threshold from the measured runs and records it in the mission check before
-stage B begins.
+The stage is complete when all five are collision-free and complete the
+mission, and each has a mean flight speed above 1.2 m/s. Everything else the
+mission check measures (route availability, which item 12 closed at 88 to 95
+percent and the lidar profile holds at 91 to 96.5, no-route holds, planner
+p95, the tick, the controller-dynamics measurements) is reported as a note and
+decides nothing ([`testing.md`](testing.md)).
 
-State on 2026-09-19. Neither stage is closed. For stage A two things are
-missing. The availability threshold has a measured stand-in, 90 percent over
-the fifteen flights r430 to r434, r448 to r452 and r470 to r474 (lowest flight
-90.2, median 94.9), which item 14 was accepted against, but the mission check
-still carries 97 percent of availability and 3 percent of holds and is red on
-every lidar flight (91.0 to 96.5 percent and 3.7 to 9.2 percent over r511 to
-r515 and r528); writing the derived threshold into the check is a product
-decision that has not been taken. The mean speed sat at its former gate of
-2.5 m/s: two flights of r470 to r474 and r528 were under it (2.32 to 2.45),
-five of r511 to r515 above it (2.65 to 2.82), on code the lidar profile does
-not distinguish. The requirement is now a mean above 2.4 m/s on the lidar and
-above 1.2 m/s on the stereo sensor set, and the mean is the only speed the
-programme targets; one of those eleven flights (2.32) is under it. The
-owner's statement of the same day is that the project has two requirements
-and no others, the vehicle never crashes and always reaches its goal, and the
-mean speed; route availability is then a measurement and not a gate of this
-stage. The mission check follows: it fails a flight on a crash, an
-uncompleted mission, the mean speed, and on what says the flight was the one
-asked for; every other measurement is printed as a note
-([`testing.md`](testing.md)). One more decision is open: this stage is written for the 3D
-lidar, and since item 14 the default sensor set is the stereo pair. Which
-profile closes stage A, the lidar's with these gates, the stereo profile's
-with its own speed requirement (1.2 m/s), or both, is to be decided before the
-series is flown. Stage B has no environment yet.
+State on 2026-09-19. The profile that closes this stage does not exist yet:
+flight without GNSS on the cameras is item 16, whose completion flies exactly
+this series, so this stage closes with it, on the release commit that carries
+it. On the camera profile with GNSS the final series of item 14 (r523 to
+r527) was collision-free and complete in five of five with 1.17 to 1.57 m/s,
+one flight under the figure; part of that shortfall is the measurement's, the
+mean is taken over wall time and the camera simulation runs at a real-time
+factor of 0.8 to 1.0, which item 16's stage 0 removes. The lidar profile
+without GNSS, which does not close the stage, meets its own figure: r511 to
+r515 flew five of five at 2.65 to 2.82 m/s.
 
-### Stage B: Large-Scale Realistic City
+### Stage B: Large-Scale Realistic Location (Done)
 
-Find a suitably licensed high-quality city environment or build a new one for
-the project. The location should be substantially larger and more visually and
-geometrically varied than the current locations, with realistic street layouts,
-building shapes, heights, materials, and urban topology.
+The stage asked for a location substantially larger and more varied than the
+generated worlds the project began with, with complex physically traversable
+3D free space, explicit provenance and a license compatible with the
+repository, and one source of truth for what is rendered, what collides, what
+the sensors see and what the planner's artifacts are built from; and for that
+location to be the full-system validation environment, flown without
+scenario-specific route scripts or geometry exceptions.
 
-Where practical, include complex physically traversable 3D free-space
-structures such as multi-turn tunnels, junctions, shafts, and entrances at
-different altitudes. Imported visual assets must have explicit provenance and a
-license compatible with the repository. Rendering meshes, collision geometry,
-lidar-visible surfaces, static occupancy, and generated planning artifacts must
-remain aligned instead of becoming separate hand-maintained versions of the
-world.
+That is what the imported DARPA SubT locations are
+([`environment_candidates.md`](environment_candidates.md),
+`environments/environment_manifest.yaml`): Urban Circuit Practice 01, Cave
+Circuit Practice 01 and Finals Prize Round World 07, each under CC BY 4.0
+with a committed, SHA-pinned inventory of every transitive resource's
+license, each imported through one pipeline that derives the collision world,
+the textured world, the occupancy and the ESDF from the same source bundle.
+Urban Circuit Practice 01 (605 x 528 x 73 cells at 0.5 m: multi-level rooms,
+corridors, bends, two shafts, entrances at different heights) has been the
+project's validation environment since item 12: every acceptance series of
+items 12, 13 and 14 was flown on it with no static map, first on the 3D
+lidar and now on cameras, with physical collision detection, the planner's
+and the controller's diagnostics, the real-time factor and the CPU and GPU
+budgets recorded on every flight, and with no route script and no exception
+for its geometry anywhere in production code. The generated grid city was
+removed from the repository in item 15 stage 0.
 
-Use the new location as a full-system validation environment rather than only a
-visual showcase. Re-run stage A on it, covering multiple start and goal
-placements and repeated headless runs, and preserve physical
-outcome checks, zero tolerance for building collisions, planner and controller
-diagnostics, real-time-factor monitoring, and measured CPU/GPU timing.
-
-Stage B is complete only when the point-to-point mission succeeds on the new
-city without scenario-specific route scripts or geometry exceptions, at the
-stage A thresholds. One successful 3D-lidar exploration flight is integration
-evidence, not completion.
+What the stage's text asked for and was not done: the mission has been flown
+from one start to one goal, not from several placements, and the cave and the
+finals world are imported and load but have not been flown. Neither is
+required any longer; a second placement or a second location is a scenario
+file away when a change needs one.
 
 ## 11. Valid 3D Static Maps For New Environments
 
@@ -781,7 +777,9 @@ Not repeated at closure and carried into item 9 stage A: the three-run
 grid-city gate (that world has since been removed), the 97 and 99 percent
 availability targets (measured 88 to 95 percent after bootstrap), and the
 cooperative re-flights. The technical debt measured during closure is listed in
-item 10.
+item 10. Since 2026-09-19 the availability targets are measurements and no
+longer anyone's gate (item 9), and the cooperative re-flights wait for item
+15.
 
 ### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
 

@@ -125,6 +125,15 @@ release names the asset tags it was validated with.
   Against it the final stereo series has one flight of five under the figure
   (r524, 1.165 m/s), and the lidar flights of r470 to r474, r511 to r515 and
   r528 one of eleven (2.32 m/s).
+- Roadmap item 9 is restated by the project owner's decisions. Stage A is
+  closed by the camera profile without GNSS, five flights on one release
+  commit, each collision-free, complete and above 1.2 m/s, which is the
+  series item 16 completes on. Stage B is done and renamed from "city" to
+  "location": the imported DARPA SubT locations under CC BY 4.0, with Urban
+  Circuit Practice 01 the validation environment of every acceptance series
+  since item 12, are what the stage asked for; several start and goal
+  placements and flights on the cave and finals worlds were not done and are
+  no longer required.
 - The mission check fails a flight on the project's two requirements only: no
   crash and the mission completed, and the mean flight speed; and on what
   says the flight was the one asked for (the stack came up, the manifest, the
