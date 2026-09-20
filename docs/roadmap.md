@@ -568,6 +568,53 @@ the stale pose and the offboard node holds.
 Multi-vehicle missions stay out of this item; the shared frame between
 vehicles without GNSS is item 15 stage 4.
 
+### What The Stages Found (2026-09-20)
+
+- **Stage 0.** The autopilot's clock is the simulation's in lockstep and its
+  synchronisation with the wall clock was what failed at a real-time factor
+  under 1: `UXRCE_DDS_SYNCT 0` and an identity time mapper, reacquisitions 17
+  to 0 per flight. The pair's images are taken from Gazebo inside the
+  matcher's process, not over the bridge (55 MB/s of DDS), and the GPU is
+  polled every 10 s: the real-time factor went from 0.84 to 0.93 to 0.97 at
+  the mean. The matcher was not moved to the GPU: it was not what the
+  simulator stalled behind. Headroom: 1.5 busy cores beside a flight change
+  nothing; the pair at 15 Hz costs 0.05 to 0.1 of real-time factor and at
+  30 Hz real time is not held. Four navigation defects of the camera profile
+  were repaired on the way (a steep motion judged with the forward margin, a
+  memory revision published under two stamps, low-speed refusals of the
+  unseen-motion rule, a heading frozen while an arrival rests): five flights
+  of five at 1.59 to 1.76 m/s (r539 to r543).
+- **A defect older than this item**, found by a probe at 15 Hz that lost the
+  vehicle: a planning tick lasted up to 2.5 s (r545; 6 s of resident horizon
+  in r536) because the latest scan's returns, a centimetre apart on a wall the
+  envelope touches, were each walked against the departure at every body
+  position of every segment: 487 ms for one path validation. The scan is
+  thinned to the nearest return of every 0.05 m cell and the walk made once
+  per interval: 15 ms, the longest tick 226 ms (r548).
+- **Stage 1.** Recorder, recordings and the offline replay under
+  `log/tools/vio`; the frame stamp calibrated to the IMU (+4 ms, two records);
+  the filter on Eigen alone with first-estimate Jacobians and its unit tests;
+  the numbers in [localization.md](localization.md). The reference system
+  has not been run on the recordings; the filter's drift, 0.1 to 0.4 percent
+  of the path, is at the level such systems publish.
+- **Stage 2.** `visual_inertial_shadow` and the goal-in-truth check: five
+  flights of five (r555 to r559), the estimator 0.53 core, 0.17 to 1.73 m from
+  the truth after 400 to 490 m.
+- **Stage 3.** `visual_inertial` with the lidar perceiving: the heaviest
+  configuration (real-time factor 0.83, so its speeds of 1.9 to 2.4 m/s are
+  not the lidar set's). r561 did not reach its goal: the autopilot threw the
+  odometry away after a 0.4 m correction and reset its position by 1.19 m;
+  fused with the noise a frame's update moves the pose by (0.3 m) five flights
+  of five reached their goals, 1.19 to 1.62 m from them in truth (r566 to
+  r570). The time-of-flight ranges are not fused: the vertical is the
+  best-held axis.
+- **Stage 4.** First flights with no lidar, no GNSS and no magnetometer: no
+  crash, 1.41 to 1.60 m/s, but two of six were acknowledged 1.97 and 2.31 m
+  from the goal in truth (r572, r575): the heading had walked 2 to 4 degrees.
+  The filter had been told a gyroscope eighteen times noisier than it is; with
+  the gyroscope's own noise the recorded flights end within a degree and
+  0.25 to 0.89 m.
+
 ### Measurement And Completion
 
 The mission check reports, as it does for item 13: the autopilot's position

@@ -23,6 +23,7 @@ from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
 from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
+    DEFAULT_LOCALIZATION_PROFILES,
     DEFAULT_NAVIGATION_SENSOR_PROFILE,
     STEREO_TOF_OBSERVABILITY,
     VISION_MEMORY_OVERRIDES,
@@ -319,7 +320,14 @@ def generate_launch_description():
         # GNSS with the visual-inertial estimator beside it for comparison
         # (visual_inertial_shadow), or that estimator alone in the autopilot's
         # place for GNSS and compass (visual_inertial).
-        localization = localization_profile.perform(context).strip() or "lidar_inertial"
+        cameras, navigation_sensors = validate_sensor_profiles(
+            camera_profile.perform(context),
+            navigation_sensor_profile.perform(context),
+        )
+        localization = (
+            localization_profile.perform(context).strip()
+            or DEFAULT_LOCALIZATION_PROFILES[navigation_sensors]
+        )
         if localization not in (
             "gnss",
             "gnss_shadow",
@@ -447,10 +455,6 @@ def generate_launch_description():
         )
         assert monitor_shutdown is not None
         mission_monitor_parameters.append({"shutdown_on_result": monitor_shutdown})
-        cameras, navigation_sensors = validate_sensor_profiles(
-            camera_profile.perform(context),
-            navigation_sensor_profile.perform(context),
-        )
         cameras_mounted = cameras == "stereo_tof"
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
@@ -801,12 +805,14 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "localization_profile",
-                default_value="lidar_inertial",
+                default_value="",
                 description=(
-                    "lidar_inertial (default): the lidar-inertial estimator "
-                    "alone as the autopilot's external odometry; gnss: the "
-                    "autopilot's GNSS and the simulated heading; gnss_shadow: "
-                    "gnss with the estimator running beside it for comparison."
+                    "Empty (default): the estimator the navigation sensors feed, "
+                    "alone as the autopilot's external odometry: visual_inertial "
+                    "on the stereo set, lidar_inertial on the lidar. gnss: the "
+                    "autopilot's GNSS and the simulated heading; gnss_shadow and "
+                    "visual_inertial_shadow: gnss with an estimator running "
+                    "beside it for comparison."
                 ),
             ),
             DeclareLaunchArgument(

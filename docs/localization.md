@@ -1,8 +1,9 @@
 # Localization
 
 Where the vehicle's position and heading come from, per localization
-profile, and how the lidar-inertial estimator that replaces GNSS and the
-magnetometer works, is initialised, reports its health and is measured.
+profile, and how the two estimators that replace GNSS and the magnetometer,
+lidar-inertial and visual-inertial, work, are initialised, report their
+health and are measured.
 The autopilot's EKF2 remains the owner of the estimate in every profile:
 obstacle memory, the controller and the offboard node read
 `/fmu/out/vehicle_local_position_v1` and `/fmu/out/vehicle_attitude`, and
@@ -14,27 +15,30 @@ enters the estimator or the control path.
 
 `LOCALIZATION_PROFILE` selects the profile in `scripts/run_drone_nav_sim.sh`
 and reaches the launch file as `localization_profile`; the runtime manifest
-records it. Since roadmap item 13 closed, `lidar_inertial` is the default of
-every single-vehicle flight that carries the lidar; `gnss` remains for the
-multi-vehicle missions (their launches run no estimator, so they refuse the
-other profiles), for comparison, and, since roadmap item 14 made the stereo
-sensor set the default, for every flight on it: with the lidar absent the
-estimator has nothing to register, and `NAVIGATION_SENSOR_PROFILE=stereo_tof`
-defaults to `gnss` and refuses `lidar_inertial`. Flight without GNSS and
-without the lidar is roadmap item 16.
+records it. No single-vehicle flight flies on GNSS unless it is asked to: the
+default is the estimator the navigation sensors feed, `visual_inertial` on the
+stereo sensor set (the repository's default sensors, roadmap items 14 and 16)
+and `lidar_inertial` on the lidar (roadmap item 13). `gnss` remains for
+comparison and for the multi-vehicle missions: their launches run no estimator
+and the vehicles share no frame yet (roadmap item 15), so they refuse the
+other profiles and say so. `NAVIGATION_SENSOR_PROFILE=stereo_tof` refuses
+`lidar_inertial` (no lidar to register), and the visual-inertial profiles
+require `CAMERA_PROFILE=stereo_tof`.
 
 | Profile | EKF2 fuses | Heading | Estimator node |
 |---|---|---|---|
 | `gnss` | IMU, barometer, simulated GNSS position and velocity (the default height reference), the simulation heading source's attitude through external vision (`EKF2_EV_CTRL 8`) | the simulator's true attitude with a wandering bias and noise (`simulation_heading_source_node`, `ENABLE_SIMULATION_HEADING_SOURCE`) | not run |
 | `gnss_shadow` | as `gnss` | as `gnss` | run, publishes its estimate to the diagnostic topic only; the mission check compares it with the true pose |
-| `lidar_inertial` (default) | IMU and the estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`; the heading source is forced off |
+| `lidar_inertial` (default on the lidar) | IMU and the estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`; the heading source is forced off |
+| `visual_inertial_shadow` | as `gnss` | as `gnss` | the visual-inertial estimator runs inside the stereo process and publishes its estimate to the diagnostic topic only; the mission check compares it with the true pose |
+| `visual_inertial` (default on the stereo set) | IMU and the visual-inertial estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity), with a fixed noise (`EKF2_EV_NOISE_MD 1`, 0.3 m, 0.05 rad); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run inside the stereo process, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry` every 40 ms |
 
 The magnetometer is not fused in any profile: the simulated one sits five to
-six degrees off. In `lidar_inertial` nothing the autopilot fuses comes from
-the simulator's truth. `scripts/px4_parameter_runtime.sh` streams the
+six degrees off. In `lidar_inertial` and `visual_inertial` nothing the
+autopilot fuses comes from the simulator's truth. `scripts/px4_parameter_runtime.sh` streams the
 parameters and shows the four the mission check reads back.
 
-## The Estimator
+## The Lidar-Inertial Estimator
 
 `lidar_inertial_odometry_node` (`src/lidar_inertial_odometry_node.cpp`) is
 the ROS shell around `LidarInertialOdometry`
@@ -169,3 +173,105 @@ drifts 0.08 to 0.22 m there on the accepted flights. Loop closure is not
 implemented: over the 400 m mission the drift does not grow with the
 flight's length (the error at the goal, 0.1 to 0.2 m, is the corridor's,
 not the distance's), so it stays the next line of roadmap item 13.
+
+## The Visual-Inertial Estimator
+
+Roadmap item 16. `VisualInertialOdometry`
+(`include/drone_city_nav/visual_inertial_odometry.hpp`, the localization
+layer) is a stereo multi-state constraint Kalman filter. It reads Eigen and
+nothing else: `tests/test_navigation_dependency_contract.py` holds every
+system include of its header and source to the standard library and Eigen, so
+the filter is replayed offline (`log/tools/vio`) and carries no image library
+and no middleware. The images are followed outside it, by
+`StereoFeatureTracker` (`src/stereo_feature_tracker.cpp`, OpenCV behind its
+implementation), and reach the filter as normalized coordinates under stable
+ids.
+
+The state is the body pose, velocity and the two IMU biases with a sliding
+window of twelve cloned body poses, one per frame; no point is a state. The
+IMU propagates state and covariance between frames. A feature is used once,
+when its track ends or reaches the pose about to leave the window: it is
+triangulated from all its stereo observations, its residuals are projected
+onto the left null space of its own Jacobian, gated by chi-square, stacked,
+compressed by QR and applied in one Kalman step. Jacobians and the transition
+are evaluated at first estimates: the heading and the position of the whole
+scene, which no camera observes, are never learned from features, and the
+filter does not report a certainty it does not have (unit test).
+
+The tracker follows corners of the left image from frame to frame and into
+the right image of the same frame: pyramidal Lucas-Kanade both ways (a track
+survives when the way back ends within a pixel of where it started), started
+from the positions the gyroscope predicts (a turn of ten degrees between
+frames moves a corner sixty pixels), an epipolar RANSAC between frames, and
+the row between the rectified cameras. New corners fill a grid, up to 200.
+
+`visual_inertial_odometry_node` lives in the process that owns the pair's
+images (`gazebo_stereo_depth_node` or `stereo_depth_node`, switch
+`--visual-inertial-odometry`), so two 1.2 MB frames 7.5 times a second reach
+it without a copy. A frame waits for the autopilot's IMU up to its own stamp,
+in order. The estimator and the camera perception read the same frames and
+nothing of each other: an estimator that took its pose from a map built from
+that pose would hide its own drift.
+
+What the recorded flights set (`log/tools/vio`: a recorder of every frame,
+both IMU streams and the true pose on one clock; a replay of the tracker and
+the filter; reports by manoeuvre):
+
+- the frame stamp leads the IMU's clock by 4 ms: the share of gated features
+  over a sweep of the offset has its minimum at +4.1 ms (r547) and +3.8 ms
+  (r550) and doubles 10 ms either side (`frame_stamp_offset_s`);
+- the estimator runs at the matcher's 7.5 Hz: every second frame (3.75 Hz)
+  flies the same record as well, so the pair is not rendered at 15 or 30 Hz,
+  which costs the simulation its real time;
+- the accelerometer's noise density is 0.2 m/s^2/sqrt(Hz), not the sensor's
+  0.02: a tilt error of 0.2 degrees leaks 0.03 m/s^2 of gravity, and with 0.02
+  the filter refused a quarter of the features and measured every
+  displacement 1.6 percent short;
+- the gyroscope's is its own, 1.0e-4 rad/s/sqrt(Hz), with a bias walk of
+  2.0e-6 and the initial bias known to its scatter at rest: between frames the
+  heading is the gyroscope's, and told a gyroscope ten times noisier the
+  filter let every update's noise walk the heading 2 to 4 degrees over a
+  flight, 1.6 to 2.1 m at a goal 62 m away; with its own noise the heading
+  ends within a degree and the position 0.25 to 0.89 m from the truth on six
+  records;
+- samples farther apart than 50 ms are a hole in the IMU stream (the
+  autopilot's IMU crosses a best-effort transport at 83 to 92 Hz and loses
+  bursts when the host stalls): the uncertainty grows over a hole by what the
+  vehicle can do, and a point the cloned poses cannot agree on is placed by
+  the newest frame's own pair. Without these one 0.52 s hole refused every
+  feature for the rest of a flight;
+- the time-of-flight ranges are not fused: climbing a shaft a metre from its
+  wall the estimate loses 0.09 m over 3.4 m (0.28 m over 3.9 m on the record
+  with IMU holes), the vertical being the best-held axis.
+
+Over four seconds, the time a surface stays in view, the estimate loses
+0.11 to 0.18 m at the median and 0.25 to 0.45 m at p95, and 0.2 to 0.3
+degrees of heading, in every manoeuvre class (hover, shaft, stop and start,
+straight, turning flight): inside what the map tolerates.
+
+On `visual_inertial` the node hands the autopilot a pose every 40 ms, the
+last frame's estimate carried through the IMU samples received since
+(`predicted`): the pair gives a pose 7.5 times a second and the autopilot ends
+its external-vision fusion after 200 ms without one, so one late frame would
+end it. The autopilot fuses the poses with a fixed noise (0.3 m, 0.05 rad),
+not the estimator's variances: an odometry's honest variance of its position
+in the world grows without bound, and the autopilot has no other position.
+0.3 m is what a frame's update moves the pose by (up to 0.22 m between
+consecutive frames); with 0.1 m the autopilot's gate threw the odometry away
+after a 0.4 m correction, flew 1.8 s on its IMU alone and reset its position
+by 1.19 m, which closes the navigation for good (r561).
+
+Health: the estimate is healthy while features corrected it within a second
+and the IMU reaches the frame. The node prints once a second the tracked,
+offered, used, gated and untriangulated features, the residual in observation
+deviations, the standard deviation of the velocity along its least certain
+direction, the frame's cost, the IMU's lag and largest gap, and the frames
+without a healthy estimate. The mission check reports these and the estimate
+against the true pose as notes; what the estimate answers for is the
+programme's first requirement, checked by the truth: at every goal
+acknowledgement the true position is inside the 2.0 m capture radius
+([testing.md](testing.md)).
+
+Cost: 0.53 core beside the depth matcher (the stereo process 1.69 to 2.22
+cores), a frame 44 to 60 ms at the median and 72 to 82 ms at most, inside the
+0.5 to 1.5 cores stage 0 reserved.

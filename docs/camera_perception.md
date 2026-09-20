@@ -59,8 +59,9 @@ the correction is recorded beside it.
   speed, and one flight of the five is under the gate.
 - **Decisions the numbers made.** The speed gate of the stereo profile is
   half of what the contract admits forward: 1.226 m/s, not the 1.75 m/s
-  estimated from 8.6 m of expected depth. Camera flights use the `gnss`
-  localization profile: beside the textured render, the image bridge and the
+  estimated from 8.6 m of expected depth. Camera flights used the `gnss`
+  localization profile through item 14 (since roadmap item 16 they default to
+  `visual_inertial`, [localization.md](localization.md)): beside the textured render, the image bridge and the
   matcher the workstation does not carry the lidar-inertial estimator in real
   time, and without the lidar it has nothing to register. The evidence
   admitted for final revalidation is named latest sensor evidence, because

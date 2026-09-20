@@ -6,6 +6,35 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Roadmap item 16: flight without GNSS, without the magnetometer and without
+  the lidar. A visual-inertial estimator on the forward stereo pair (a stereo
+  multi-state constraint Kalman filter on Eigen alone with first-estimate
+  Jacobians, `visual_inertial_odometry.hpp`; a Lucas-Kanade feature tracker
+  with the gyroscope's prediction; `visual_inertial_odometry_node` inside the
+  process that owns the pair's images) replaces them as the autopilot's
+  external odometry. `LOCALIZATION_PROFILE=visual_inertial` is the default
+  wherever the stereo sensor set is the default; the lidar keeps
+  `lidar_inertial`, `gnss` is a request, and the multi-vehicle launches stay on
+  `gnss` until the vehicles share a frame (item 15). `visual_inertial_shadow`
+  runs the estimator beside GNSS for comparison. See
+  [docs/localization.md](docs/localization.md).
+- The mission check fails a flight whose goal was not reached in truth: at
+  every goal acknowledgement the true position must be inside the 2.0 m
+  capture radius. The estimator's health and its error against the true pose
+  are notes.
+- The simulated autopilot stamps on the simulation clock (`UXRCE_DDS_SYNCT 0`,
+  `px4_clock_is_ros_clock`), the pair's images are taken from Gazebo inside
+  the matcher's process (`gazebo_stereo_depth_node`), and the GPU is polled
+  every ten seconds: a camera flight holds a real-time factor of 0.93 to 0.97
+  and the autopilot no longer reacquires its timestamps (17 to 0 per flight).
+- Fixed: a planning tick could last 2.5 s beside a wall the envelope touches
+  (the latest scan's returns, a centimetre apart, each walked against the
+  departure at every body position); the scan is thinned to the nearest return
+  per 0.05 m cell. Every planning tick that ends without a horizon now names
+  its reason. Also fixed on the camera profile: a steep motion judged with the
+  forward sensor's margin, a memory revision published under two stamps,
+  low-speed refusals of the unseen-motion rule, and a heading frozen while an
+  arrival rests the vehicle.
 - Roadmap item 15 stage 0: the interception missions, the airborne radar and
   the grid-city world they flew in are removed from the repository. Gone are
   the radar simulators, trackers, interceptor guidance, target assignment, the

@@ -55,6 +55,14 @@ joins the set and the memory integrates a third of the lidar's volume:
 | `mppi_offboard_node` | 0.05 | 0.06 | 0.07 | 45 MiB | 16 |
 | `MicroXRCEAgent` | 0.04 | 0.05 | 0.06 | 28 MiB | 53 |
 
+With the visual-inertial estimator hosted in the same process (roadmap item
+16, r576: no lidar, no GNSS) `gazebo_stereo_depth_node` uses 2.26 cores at
+p50, 2.43 at p95 and 2.57 at most, 215 MiB and 27 threads: the simulated
+pair's image source, the matcher and the estimator, whose share is 0.53 core
+(a frame costs it 44 to 60 ms at the median, 72 to 82 ms at most, 7.5 times a
+second). The onboard processes together then use 4.89 cores at p50, 5.69 at
+p95, and 945 MiB.
+
 About 3.7 cores together at p50 against the lidar profile's 2.73: the matcher
 is the difference, and on an onboard computer it belongs to a GPU or a depth
 accelerator the workstation's container does not have (OpenCV there is built

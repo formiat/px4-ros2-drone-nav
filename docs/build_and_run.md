@@ -80,9 +80,10 @@ Point-to-point mission:
 ```
 
 Both fly the default sensor set, the forward stereo pair and the two
-time-of-flight sensors, with the lidar absent from the vehicle and the `gnss`
-localization profile. The 3D lidar profile, which defaults to
-`LOCALIZATION_PROFILE=lidar_inertial`, is a request:
+time-of-flight sensors, with the lidar absent from the vehicle, and the
+`visual_inertial` localization profile: no GNSS and no magnetometer either.
+The 3D lidar profile, which defaults to `LOCALIZATION_PROFILE=lidar_inertial`,
+is a request, as is `LOCALIZATION_PROFILE=gnss` on either sensor set:
 
 ```bash
 CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh

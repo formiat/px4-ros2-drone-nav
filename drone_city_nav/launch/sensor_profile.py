@@ -49,6 +49,14 @@ VISION_MEMORY_OVERRIDES = {
 }
 
 
+# The localization profile a flight flies when none is asked for: the
+# estimator the navigation sensors feed, and never GNSS.
+DEFAULT_LOCALIZATION_PROFILES = {
+    "stereo_tof": "visual_inertial",
+    "lidar": "lidar_inertial",
+}
+
+
 def validate_sensor_profiles(camera_profile: str, navigation_sensor_profile: str):
     """Return the two profiles, normalized; the stereo navigation profile needs
     the camera set mounted."""

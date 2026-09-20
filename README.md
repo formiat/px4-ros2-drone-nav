@@ -59,13 +59,14 @@ design, controlled test environment, and compliance with local regulations.
 No onboard computer has run it: the resource figures are from a workstation
 ([docs/resource_budget.md](docs/resource_budget.md)). By default the vehicle
 carries no lidar: it navigates on a forward stereo pair and two time-of-flight
-sensors ([docs/camera_perception.md](docs/camera_perception.md)), on the `gnss`
-localization profile. On the 3D lidar profile
-(`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`) the single-vehicle
-flights fly without GNSS: a lidar-inertial estimator replaces the simulated
-GNSS, the magnetometer and the simulation heading source
-(`LOCALIZATION_PROFILE=lidar_inertial`, [docs/localization.md](docs/localization.md)).
-Flight without GNSS and without the lidar is roadmap item 16.
+sensors ([docs/camera_perception.md](docs/camera_perception.md)), and it flies
+without GNSS: a visual-inertial estimator on the same pair replaces the
+simulated GNSS, the magnetometer and the simulation heading source
+(`LOCALIZATION_PROFILE=visual_inertial`, the default,
+[docs/localization.md](docs/localization.md)). On the 3D lidar profile
+(`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`) a lidar-inertial
+estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
+multi-vehicle missions fly until the vehicles share a frame (roadmap item 15).
 
 ## Approved Commands
 
@@ -239,8 +240,8 @@ with the vision path in shadow beside it. `LIDAR_PROFILE=3d` still names the
 3D perception pipeline and the vehicle wrapper either way. On the camera
 profile the headless flights run on the textured GUI world instead of the
 collision-only sensor world, which a camera sees nothing of, and
-single-vehicle flights use the `gnss` localization profile until roadmap
-item 16 adds visual-inertial odometry.
+single-vehicle flights default to the `visual_inertial` localization profile:
+no GNSS, no magnetometer, no lidar.
 
 No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
 starting the simulation. Unknown and free volume have identical traversability

@@ -577,15 +577,20 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('param show EKF2_GPS_DELAY', self.text)
 
     def test_single_vehicle_flights_fly_without_gnss_by_default(self) -> None:
-        # Roadmap item 13 closed on the lidar-inertial profile; it is what every
-        # single-vehicle flight flies unless a profile is asked for. The
-        # multi-vehicle launches run no estimator, so they stay on gnss and
-        # refuse the other profiles; the manifest records the profile flown.
+        # Roadmap items 13 and 16 closed on the estimators; every single-vehicle
+        # flight flies the one its navigation sensors feed unless a profile is
+        # asked for: visual_inertial on the stereo set, lidar_inertial on the
+        # lidar. The multi-vehicle launches run no estimator, so they stay on
+        # gnss and refuse the other profiles; the manifest records the profile
+        # flown.
         self.assertIn('localization_profile="${LOCALIZATION_PROFILE:-lidar_inertial}"',
                       self.text)
-        self.assertIn('localization_profile="${LOCALIZATION_PROFILE:-gnss}"', self.text)
+        self.assertIn('localization_profile="${LOCALIZATION_PROFILE:-visual_inertial}"',
+                      self.text)
+        self.assertEqual(
+            self.text.count('localization_profile="${LOCALIZATION_PROFILE:-gnss}"'), 1)
         self.assertIn('export LOCALIZATION_PROFILE="${localization_profile}"', self.text)
-        self.assertIn('default_value="lidar_inertial"', self.launch_text)
+        self.assertIn("DEFAULT_LOCALIZATION_PROFILES[navigation_sensors]", self.launch_text)
 
     def test_speed_profile_aligns_px4_horizontal_dynamics_with_mppi(self) -> None:
         self.assertIn(

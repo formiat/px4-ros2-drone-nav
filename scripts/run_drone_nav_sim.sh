@@ -220,14 +220,16 @@ fi
 # magnetic field. The single-vehicle simulation hands the autopilot the
 # simulator's true heading with reference-grade bias and noise instead.
 enable_simulation_heading_source="$(normalize_bool "${ENABLE_SIMULATION_HEADING_SOURCE:-true}")"
-# Where the vehicle's position comes from. lidar_inertial flies on the
-# lidar-inertial estimator alone: the autopilot fuses it as external
-# odometry, GNSS and magnetometer fusion are off, and the simulation heading
-# source, which is the simulator's truth, does not run. It is the default
-# since roadmap item 13 closed (r430 to r434): every single-vehicle flight
-# flies without GNSS unless a profile is asked for. The multi-vehicle
-# launches run no estimator, so those missions fly on gnss and refuse the
-# other profiles.
+# Where the vehicle's position comes from. Every single-vehicle flight flies
+# without GNSS unless a profile is asked for: the autopilot fuses an
+# estimator's odometry, GNSS and magnetometer fusion are off, and the
+# simulation heading source, which is the simulator's truth, does not run.
+# The estimator is the one the vehicle's sensors feed: visual_inertial on the
+# stereo sensor set, the default since roadmap item 16 closed, and
+# lidar_inertial on the lidar (roadmap item 13, r430 to r434). The
+# multi-vehicle launches run no estimator and share no frame between
+# vehicles yet (roadmap item 15), so those missions fly on gnss and refuse
+# the other profiles.
 if bool_is_true "${multi_vehicle_mission}"; then
   localization_profile="${LOCALIZATION_PROFILE:-gnss}"
   if [[ "${localization_profile}" != "gnss" ]]; then
@@ -236,8 +238,8 @@ if bool_is_true "${multi_vehicle_mission}"; then
   fi
 elif [[ "${navigation_sensor_profile}" == "stereo_tof" ]]; then
   # Without the lidar the lidar-inertial estimator has nothing to register;
-  # visual-inertial odometry is roadmap item 16.
-  localization_profile="${LOCALIZATION_PROFILE:-gnss}"
+  # the pair that perceives also localizes.
+  localization_profile="${LOCALIZATION_PROFILE:-visual_inertial}"
   if [[ "${localization_profile}" == "lidar_inertial" ]]; then
     echo "LOCALIZATION_PROFILE=lidar_inertial needs the lidar, which NAVIGATION_SENSOR_PROFILE=stereo_tof leaves out of the vehicle" >&2
     exit 1

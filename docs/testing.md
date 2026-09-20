@@ -83,7 +83,13 @@ project has two requirements, and the mission check fails on nothing else:
 - the vehicle does not crash and completes its mission: no crash event, no
   contact with a static obstacle, the mission monitor's successful result and
   every waypoint (for the cooperative mission, the referee's separation and
-  every vehicle at its goal);
+  every vehicle at its goal), and the goal reached in truth: at every goal
+  acknowledgement the TRUE position of the vehicle (`gz_pose.csv`) is inside
+  the 2.0 m capture radius of the goal the acknowledgement names
+  (`validate_goal_reached_in_truth`). The mission monitor judges by the
+  autopilot's estimate, and an odometry drifts by metres over a flight:
+  without this line a vehicle arrives in its own coordinates only. The truth
+  is read by the check and nowhere in the control loop;
 - the mean flight speed exceeds the figure of the sensor set: 2.4 m/s on the
   lidar, 1.2 m/s on the stereo set.
 
@@ -251,7 +257,14 @@ node's once-a-second line: the matched share, the registration residual and
 the weakest-axis information at p50 with their worst, and the scans that
 left the autopilot without an estimate; any such scan fails the flight
 (measured 0 of 1300 to 1700 on every accepted flight, matched share 0.88
-to 0.91 at p50, residual 0.047 to 0.050 m). The other profiles report their
+to 0.91 at p50, residual 0.047 to 0.050 m). On `visual_inertial` the same four autopilot parameters, the absence of the
+simulation heading source and of the lidar-inertial node, and a non-zero count
+of poses sent to the autopilot are what prove the profile; the estimator's
+health (features, residual, least certain velocity direction, frame cost, IMU
+gaps, frames without a healthy estimate) and its error against the true pose
+(`vio_estimate.csv`: cross-track, along-track, the error at the end of the
+flight and the most it grew over 100 m of path) are notes on it and on
+`visual_inertial_shadow`. The other profiles report their
 name and gate nothing; a manifest without a profile is read as
 `lidar_inertial`, the default. [localization.md](localization.md) describes the
 estimator and the profiles.

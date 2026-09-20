@@ -75,9 +75,25 @@ publishes it through PX4's external vision interface as orientation only.
 `EKF2_MAG_TYPE 5`, `EKF2_EV_NOISE_MD 1`, `EKF2_EVA_NOISE 0.01`);
 `ENABLE_SIMULATION_HEADING_SOURCE=false` restores the magnetometer. With the
 source enabled the measured heading error is 0.85 to 1.5 degrees standard
-deviation. The default profile since roadmap item 13, `lidar_inertial`, runs
-no heading source: the heading is the lidar-inertial estimator's
-([localization.md](localization.md)).
+deviation. The default profiles, `visual_inertial` on the stereo sensor set
+and `lidar_inertial` on the lidar, run no heading source: the heading is the
+estimator's ([localization.md](localization.md)).
+
+**Real time on the camera profile (roadmap item 16, stage 0).** The simulated
+autopilot runs in lockstep, so its clock is the simulation clock, and
+synchronising it with the agent's wall clock is what failed: whenever the
+simulation ran slower than the wall clock the autopilot reset the
+synchronisation every 15 s or so, and each reset cost the navigation about a
+second without an authoritative state (17 times in r531; the 1.7 s that lost
+r518). `UXRCE_DDS_SYNCT` is 0 and the nodes map the autopilot's stamps with the
+identity (`px4_clock_is_ros_clock`). The pair's images are taken from Gazebo
+inside the process that matches them (`gazebo_stereo_depth_node`): over the
+ROS-Gazebo bridge two 1280 x 960 RGB streams crossed DDS at 55 MB/s and the
+simulator stalled behind that subscriber. The GPU is asked for its utilisation
+every ten seconds, not every second, for the same reason. A flight then holds
+a real-time factor of 0.93 to 0.97 at the mean. The mean flight speed is
+measured on the wall clock, so foreign load on the host that slows the
+simulation lowers it: flights under such load are not counted.
 
 **Release assumption.** The navigation stack is validated only for a heading
 of that quality: a standard deviation of about 1.5 degrees or better, from a

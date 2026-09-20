@@ -34,6 +34,12 @@ class SensorProfileTest(unittest.TestCase):
         return subprocess.run(["bash", "-c", command], check=False,
                               capture_output=True, text=True, env=environment)
 
+    def test_no_default_localization_is_gnss(self) -> None:
+        # Every navigation sensor profile names the estimator it feeds.
+        self.assertEqual(
+            {"stereo_tof": "visual_inertial", "lidar": "lidar_inertial"},
+            SUPPORT["DEFAULT_LOCALIZATION_PROFILES"])
+
     def test_cameras_are_the_default_of_the_launch_support(self) -> None:
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_CAMERA_PROFILE"])
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_NAVIGATION_SENSOR_PROFILE"])
