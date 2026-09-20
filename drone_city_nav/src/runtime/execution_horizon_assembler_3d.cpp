@@ -1,5 +1,7 @@
 #include "execution_horizon_assembler_3d.hpp"
 
+#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -140,6 +142,23 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
   }
 
   const std::span<const mppi::State> states{result.horizon};
+  // A vehicle whose obstacle sensor looks forward keeps turning its heading
+  // while an arrival rests it: to where the planned motion goes, or where that
+  // goes nowhere, to where the route leaves.
+  mppi::FiniteHorizonConfig finite_horizon = config_.finite_horizon;
+  if (config_.sensor_braking_contract.forward_horizontal_half_angle_rad <
+          std::numbers::pi &&
+      !states.empty()) {
+    const float ahead_x = states.back().x - states.front().x;
+    const float ahead_y = states.back().y - states.front().y;
+    finite_horizon.rest_gaze_heading_rad =
+        std::hypot(ahead_x, ahead_y) >= kStationaryExecutionHoldPositionToleranceM
+            ? std::optional<float>{std::atan2(ahead_y, ahead_x)}
+            : mppi::gazeRestHeading(
+                  input.route,
+                  static_cast<float>(std::sin(
+                      config_.sensor_braking_contract.vertical_cone_half_angle_rad)));
+  }
   const std::span<const mppi::Control> controls{result.controls};
   if (states.size() < 2U || controls.empty()) {
     return failedCandidate(HorizonCandidateStatus3D::kInvalidControllerOutput);
@@ -229,7 +248,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       const std::vector<mppi::FiniteHorizon> braking_tails =
           buildFiniteBrakingHorizonsAlong3D(
               candidate, *evidence.execution_dynamics, evidence.exact_previous_control,
-              cycle.controller.arrival_search_step_controls, config_.finite_horizon);
+              cycle.controller.arrival_search_step_controls, finite_horizon);
       if (braking_tails.empty()) {
         route_certification.reset();
         certification_ms +=
@@ -273,7 +292,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       mppi::buildValidatedFiniteExecutionPath(
           states, controls, evidence.exact_previous_control,
           *evidence.execution_dynamics, cycle.controller.arrival_search_step_controls,
-          config_.finite_horizon, evidence.execution_path_world,
+          finite_horizon, evidence.execution_path_world,
           std::move(route_candidate_validator),
           mppi::FiniteExecutionPathBudget{.deadline = assembly_deadline});
   HorizonCandidate3D candidate = unseen_motion;

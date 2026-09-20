@@ -180,6 +180,49 @@ TEST(FiniteMotionHorizon3DTest, AnArrivalCancelsTheVelocityItsOwnRampInjects) {
             FiniteMotionHorizonConfig3D{}.terminal_velocity_tolerance_mps);
 }
 
+TEST(FiniteMotionHorizon3DTest, ARestingArrivalTurnsTheHeadingToItsGaze) {
+  // A vehicle whose sensor looks forward and whose horizon was shortened to a
+  // stop: the arrival turns the heading to where it is to look and rests
+  // there, where without a gaze it held the heading it stopped with.
+  MotionDynamicsConfig3D dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 12.0F;
+  dynamics.maximum_yaw_rate_radps = 1.5F;
+  dynamics.maximum_yaw_acceleration_radps2 = 2.0F;
+  constexpr std::size_t kControls{80U};
+  for (const float initial_yaw_rate : {0.0F, 0.6F, -0.6F}) {
+    const MotionState3D state{.vx = 0.8F, .yaw = 0.7F, .yaw_rate = initial_yaw_rate};
+    const std::optional<FiniteMotionHorizon3D> held =
+        buildFiniteBrakingHorizon3D(state, kControls, dynamics, MotionControl3D{});
+    FiniteMotionHorizonConfig3D gazing;
+    gazing.rest_gaze_heading_rad = -1.6F;
+    const std::optional<FiniteMotionHorizon3D> turned = buildFiniteBrakingHorizon3D(
+        state, kControls, dynamics, MotionControl3D{}, gazing);
+
+    ASSERT_TRUE(held.has_value());
+    ASSERT_TRUE(turned.has_value());
+    const FiniteMotionHorizon3D& turning =
+        turned.value(); // NOLINT(bugprone-unchecked-optional-access)
+    EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(turning));
+    EXPECT_NEAR(turning.states.back().yaw, -1.6F, 0.12F);
+    EXPECT_EQ(
+        finiteMotionHorizonDynamicsConsistency3D(turning, MotionControl3D{}, dynamics),
+        MotionDynamicsConsistency3D::kConsistent);
+    // The translation is the stop it was.
+    const FiniteMotionHorizon3D& resting =
+        held.value(); // NOLINT(bugprone-unchecked-optional-access)
+    EXPECT_FLOAT_EQ(turning.states.back().x, resting.states.back().x);
+    float peak_rate{0.0F};
+    for (std::size_t index = 0U; index < turning.controls.size(); ++index) {
+      peak_rate = std::max(peak_rate, std::abs(turning.states[index + 1U].yaw_rate));
+      EXPECT_LE(std::abs(turning.controls[index].yaw_accel), 2.0F + 1.0e-5F);
+    }
+    EXPECT_LE(peak_rate, 1.5F + 1.0e-4F);
+  }
+}
+
 TEST(FiniteMotionHorizon3DTest, ABrakingHorizonExistsFromEveryAdmissibleControl) {
   // A stop is the last thing the planner has for a vehicle without a plan.
   // The profile has to rest from every state the vehicle can be in, whatever

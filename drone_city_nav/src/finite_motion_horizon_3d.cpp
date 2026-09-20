@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -43,6 +44,60 @@ void appendControl(FiniteMotionHorizon3D& horizon, const MotionControl3D& contro
   horizon.controls.push_back(control);
   horizon.states.push_back(
       integrateMotionState3D(horizon.states.back(), control, dynamics));
+}
+
+// The yaw channel of the controls from `first_control` on is rewritten to turn
+// the heading to `heading_rad` and come to rest there or short of it: full yaw
+// acceleration toward it inside the yaw rate limit, then the deceleration that
+// lands the rate on zero, each control within one yaw acceleration of the one
+// before it, and the last control at rest. The translation is untouched: the
+// yaw channel does not act on it. The states are re-integrated to match.
+constexpr float kRestingHeadingToleranceRad{0.05F};
+
+void turnRestingHeading(FiniteMotionHorizon3D& horizon, const std::size_t first_control,
+                        const float heading_rad, const MotionControl3D& previous,
+                        const MotionDynamicsConfig3D& dynamics) {
+  if (first_control + 2U > horizon.controls.size()) {
+    return;
+  }
+  const float acceleration = dynamics.maximum_yaw_acceleration_radps2;
+  const float dt = dynamics.dt_s;
+  std::vector<MotionControl3D> controls(horizon.controls.begin() +
+                                            static_cast<std::ptrdiff_t>(first_control),
+                                        horizon.controls.end());
+  horizon.controls.resize(first_control);
+  horizon.states.resize(first_control + 1U);
+  float previous_yaw_accel =
+      first_control == 0U ? previous.yaw_accel : horizon.controls.back().yaw_accel;
+  for (std::size_t index = 0U; index < controls.size(); ++index) {
+    const MotionState3D& state = horizon.states.back();
+    const float error =
+        std::remainder(heading_rad - state.yaw, 2.0F * std::numbers::pi_v<float>);
+    const float rate = state.yaw_rate;
+    // The angle the heading still turns through if it starts to stop now, with
+    // two steps for the acceleration to come round.
+    const float stopping =
+        rate * rate / (2.0F * acceleration) + 2.0F * std::abs(rate) * dt;
+    const auto steps_to_stop =
+        static_cast<std::size_t>(std::ceil(std::abs(rate) / (acceleration * dt)));
+    const bool out_of_steps = controls.size() - index <= steps_to_stop + 3U;
+    const bool toward = rate * error >= 0.0F;
+    float wanted = std::clamp(-rate / dt, -acceleration, acceleration);
+    if (!out_of_steps && toward && std::abs(error) > kRestingHeadingToleranceRad &&
+        std::abs(error) > stopping &&
+        std::abs(rate) < dynamics.maximum_yaw_rate_radps) {
+      wanted = std::clamp(std::copysign(acceleration, error),
+                          (-dynamics.maximum_yaw_rate_radps - rate) / dt,
+                          (dynamics.maximum_yaw_rate_radps - rate) / dt);
+    }
+    controls[index].yaw_accel = std::clamp(wanted, previous_yaw_accel - acceleration,
+                                           previous_yaw_accel + acceleration);
+    if (index + 1U == controls.size()) {
+      controls[index].yaw_accel = 0.0F;
+    }
+    previous_yaw_accel = controls[index].yaw_accel;
+    appendControl(horizon, controls[index], dynamics);
+  }
 }
 
 // One jerk-limited step from `from` toward `target`: the translational
@@ -533,6 +588,15 @@ buildFiniteMotionHorizon3D(const std::span<const MotionState3D> planned_states,
   }
   if (horizon.controls.size() != planned_controls.size()) {
     return std::nullopt;
+  }
+  if (config.rest_gaze_heading_rad.has_value()) {
+    FiniteMotionHorizon3D turning = horizon;
+    turnRestingHeading(turning, nominal_prefix_control_count,
+                       *config.rest_gaze_heading_rad, previous, dynamics);
+    if (finiteMotionHorizonHasTerminalRestState3D(
+            turning, config.terminal_velocity_tolerance_mps)) {
+      horizon = std::move(turning);
+    }
   }
 
   // The horizon rests on the states the integrator produced. A terminal
