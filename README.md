@@ -6,11 +6,13 @@ The main package is `drone_city_nav`, an ament CMake package built with
 
 ## Demo Video
 
-[![Autonomous 3D navigation without a map through an urban location](https://img.youtube.com/vi/rKXcERqb9Ho/maxresdefault.jpg)](https://www.youtube.com/watch?v=rKXcERqb9Ho)
+[![Autonomous navigation of an urban location with no map, no GNSS and no lidar](https://img.youtube.com/vi/OUuAj2WNKzs/maxresdefault.jpg)](https://www.youtube.com/watch?v=OUuAj2WNKzs)
 
-[Watch on YouTube](https://www.youtube.com/watch?v=rKXcERqb9Ho): point-to-point
-flight through the Urban Circuit Practice 01 location with no static map, from
-3D-sensor evidence alone, as released in v0.2.1 (September 2026).
+[Watch on YouTube](https://www.youtube.com/watch?v=OUuAj2WNKzs): point-to-point
+flight through the Urban Circuit Practice 01 location with no static map, no
+GNSS, no magnetometer and no lidar, on the forward stereo pair that both
+perceives the building and localizes the vehicle, as released in v0.4.0
+(September 2026).
 
 ## Quick Start
 
