@@ -36,6 +36,9 @@ class LidarInertialOdometryNode final : public rclcpp::Node {
 public:
   LidarInertialOdometryNode()
       : Node("lidar_inertial_odometry_node") {
+    // Lockstep simulation: the autopilot stamps on the simulation clock.
+    time_mapper_ = Px4RosTimeMapper{Px4RosTimeMapperConfig{
+        .shared_clock = declare_parameter<bool>("px4_clock_is_ros_clock", false)}};
     LidarInertialOdometryConfig config;
     config.scan_voxel_m =
         declare_parameter<double>("scan_voxel_m", config.scan_voxel_m);

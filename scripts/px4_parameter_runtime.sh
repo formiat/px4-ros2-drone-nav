@@ -27,6 +27,18 @@ export_px4_estimator_parameters() {
   # obstacle memory's position source offset (lidar_position_source_time_offset_s)
   # compensated the same lead downstream and follows this value.
   export PX4_PARAM_EKF2_GPS_DELAY=0
+  # The simulated autopilot runs in lockstep: its clock is the simulation
+  # clock, the one ROS runs on (its boot-relative stamps read 12 to 20 ms behind
+  # the ROS time of the setpoint received beside them, r531). Synchronising it
+  # with the agent's wall clock is what fails: whenever the simulation runs
+  # slower than the wall clock the two drift apart, the autopilot resets the
+  # synchronisation every 15 s or so, emits one boot-relative stamp and steps
+  # its offset by 0.6 to 1.1 s, and each reset cost the navigation about 1.1 s
+  # without an authoritative state (17 times in r531; the 1.7 s that lost
+  # r518). Lidar flights at a real-time factor of 1.00 never reset. With the
+  # synchronisation off every stamp is the simulation clock, at any real-time
+  # factor, and the nodes map it with the identity (px4_clock_is_ros_clock).
+  export PX4_PARAM_UXRCE_DDS_SYNCT=0
   if [[ "${localization_profile}" == "lidar_inertial" ]]; then
     # The lidar-inertial estimator is the position and the heading: GNSS
     # off, magnetometer off, the barometer keeps the height reference, and

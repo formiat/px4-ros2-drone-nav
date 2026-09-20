@@ -238,6 +238,9 @@ public:
         "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
     const std::string timesync_status_topic = declare_parameter<std::string>(
         "px4_timesync_status_topic", "/fmu/out/timesync_status");
+    // Lockstep simulation: the autopilot stamps on the simulation clock.
+    px4_ros_time_mapper_ = Px4RosTimeMapper{Px4RosTimeMapperConfig{
+        .shared_clock = declare_parameter<bool>("px4_clock_is_ros_clock", false)}};
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status_v1");
     const DynamicAgentLidarStateConfig dynamic_agent_config =

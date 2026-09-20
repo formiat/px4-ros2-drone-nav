@@ -72,6 +72,9 @@ LidarDebugNode::LidarDebugNode(const rclcpp::NodeOptions& options)
     : Node{"lidar_debug_node", options} {
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*this);
   applyConfig(config);
+  // Lockstep simulation: the autopilot stamps on the simulation clock.
+  px4_ros_time_mapper_ = Px4RosTimeMapper{Px4RosTimeMapperConfig{
+      .shared_clock = declare_parameter<bool>("px4_clock_is_ros_clock", false)}};
   const LidarDebugNodeTopics& topics = config.topics;
   spectator_vehicle_id_ = declare_parameter<std::string>("spectator_vehicle_id", "");
   const std::string spectator_target_topic = declare_parameter<std::string>(

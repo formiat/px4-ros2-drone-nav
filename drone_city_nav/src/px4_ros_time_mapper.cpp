@@ -74,11 +74,15 @@ Px4RosTimeMapper::Px4RosTimeMapper(const Px4RosTimeMapperConfig& config)
       std::max<std::int64_t>(0, config_.max_clock_step_error_ns);
   config_.rebase_confirmation_samples = std::clamp(
       config_.rebase_confirmation_samples, config_.min_samples, config_.max_samples);
+  clear();
 }
 
 Px4RosTimeObservation Px4RosTimeMapper::observeTimesync(
     const std::uint64_t adjusted_timestamp_us, const std::int64_t estimated_offset_us,
     const std::uint32_t round_trip_time_us, const std::int64_t ros_receive_stamp_ns) {
+  if (config_.shared_clock) {
+    return Px4RosTimeObservation{Px4RosTimeObservationStatus::kAccepted, generation_};
+  }
   const auto px4_local_stamp_ns =
       checkedAdjustedTimestampNs(adjusted_timestamp_us, estimated_offset_us);
   const auto estimated_offset_ns = checkedOffsetNs(estimated_offset_us);
@@ -262,6 +266,12 @@ void Px4RosTimeMapper::clear() noexcept {
   rebase_count_ = 0U;
   offset_available_ = false;
   ready_ = false;
+  if (config_.shared_clock) {
+    // The identity: no offset to recover, nothing to fit.
+    recovery_offsets_us_.push_back(0);
+    offset_available_ = true;
+    ready_ = true;
+  }
 }
 
 void Px4RosTimeMapper::refit() noexcept {

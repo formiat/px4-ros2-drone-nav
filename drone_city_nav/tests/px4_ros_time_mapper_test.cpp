@@ -140,4 +140,26 @@ TEST(Px4RosTimeMapperTest, RecoversAdjustedSampleAcrossAlternatingTimesyncDomain
             std::optional<std::int64_t>{1'150'000'000});
 }
 
+TEST(Px4RosTimeMapperTest, ASharedClockIsTheIdentityAndNeedsNoTimesync) {
+  // Lockstep simulation: the autopilot stamps on the ROS clock and synchronises
+  // with nothing.
+  Px4RosTimeMapper mapper{Px4RosTimeMapperConfig{.shared_clock = true}};
+  ASSERT_TRUE(mapper.ready());
+  EXPECT_EQ(mapper.recoverPx4LocalTimeNs(120'500'000U), 120'500'000'000LL);
+  EXPECT_EQ(
+      mapper.recoverPx4LocalTimeNsClosestToRosTime(120'500'000U, 120'504'000'000LL),
+      120'500'000'000LL);
+  EXPECT_EQ(mapper.px4LocalToRosTimeNs(120'500'000'000LL), 120'500'000'000LL);
+  EXPECT_EQ(mapper.rosToPx4LocalTimeNs(120'500'000'000LL), 120'500'000'000LL);
+  EXPECT_EQ(mapper.diagnostics().latest_estimated_offset_ns, 0);
+
+  // A synchronisation message, were one to arrive, changes nothing; nor does a
+  // clear.
+  mapper.observeTimesync(1'789'000'000'000'000U, 1'788'999'880'000'000LL, 500U,
+                         120'600'000'000LL);
+  mapper.clear();
+  ASSERT_TRUE(mapper.ready());
+  EXPECT_EQ(mapper.px4LocalToRosTimeNs(121'000'000'000LL), 121'000'000'000LL);
+}
+
 } // namespace drone_city_nav

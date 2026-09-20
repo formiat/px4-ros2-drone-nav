@@ -6,6 +6,10 @@ obstacle_memory_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_timesync_status_topic: /fmu/out/timesync_status
+    # The simulated autopilot runs in lockstep on the simulation clock and is
+    # started with UXRCE_DDS_SYNCT 0 (scripts/px4_parameter_runtime.sh): its
+    # stamps are ROS time already.
+    px4_clock_is_ros_clock: true
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
@@ -105,6 +109,10 @@ obstacle_memory_3d_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_timesync_status_topic: /fmu/out/timesync_status
+    # The simulated autopilot runs in lockstep on the simulation clock and is
+    # started with UXRCE_DDS_SYNCT 0 (scripts/px4_parameter_runtime.sh): its
+    # stamps are ROS time already.
+    px4_clock_is_ros_clock: true
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     latest_sensor_obstacle_scan_topic: /drone_city_nav/latest_sensor_obstacle_scan
     current_lidar_3d_pointcloud_topic: /drone_city_nav/current_lidar_returns_3d
@@ -811,6 +819,10 @@ lidar_inertial_odometry_node:
     lidar_3d_topic: /lidar_3d/points
     px4_sensor_combined_topic: /fmu/out/sensor_combined
     px4_timesync_status_topic: /fmu/out/timesync_status
+    # The simulated autopilot runs in lockstep on the simulation clock and is
+    # started with UXRCE_DDS_SYNCT 0 (scripts/px4_parameter_runtime.sh): its
+    # stamps are ROS time already.
+    px4_clock_is_ros_clock: true
     px4_visual_odometry_topic: /fmu/in/vehicle_visual_odometry
     estimate_pose_topic: /drone_city_nav/lidar_inertial_odometry/pose
     # The same mounting the obstacle memory projects the scan with.
@@ -1019,6 +1031,10 @@ lidar_debug_node:
     px4_local_origin_x_m: 54.0
     px4_local_origin_y_m: 54.0
     px4_timesync_status_topic: /fmu/out/timesync_status
+    # The simulated autopilot runs in lockstep on the simulation clock and is
+    # started with UXRCE_DDS_SYNCT 0 (scripts/px4_parameter_runtime.sh): its
+    # stamps are ROS time already.
+    px4_clock_is_ros_clock: true
 
 mission_monitor_node:
   ros__parameters:

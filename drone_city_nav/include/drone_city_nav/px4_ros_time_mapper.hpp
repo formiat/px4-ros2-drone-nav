@@ -15,6 +15,16 @@ struct Px4RosTimeMapperConfig {
   std::int64_t max_round_trip_time_ns{50'000'000};
   std::int64_t max_clock_step_error_ns{2'000'000'000};
   std::size_t rebase_confirmation_samples{4U};
+  // The autopilot stamps on the ROS clock itself and synchronises with
+  // nothing: the mapping is the identity and is ready from the start. That is
+  // lockstep simulation, where the autopilot's clock is the simulation clock
+  // (its boot-relative stamps read 12 to 20 ms behind the ROS time of the
+  // setpoint received beside them, r531) and its synchronisation with the
+  // agent's wall clock is what fails: below a real-time factor of one the two
+  // drift apart, the autopilot resets the synchronisation every 15 s or so,
+  // and each reset cost the navigation 1.1 s of authority (17 times in r531,
+  // the 1.7 s that lost r518). Timesync observations are then ignored.
+  bool shared_clock{false};
 };
 
 struct Px4RosTimeMappingDiagnostics {
