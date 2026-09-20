@@ -317,13 +317,15 @@ def generate_launch_description():
         # lidar-inertial estimator alone, fed to the autopilot as external
         # odometry with GNSS and magnetometer fusion off (lidar_inertial), or
         # GNSS with the visual-inertial estimator beside it for comparison
-        # (visual_inertial_shadow).
+        # (visual_inertial_shadow), or that estimator alone in the autopilot's
+        # place for GNSS and compass (visual_inertial).
         localization = localization_profile.perform(context).strip() or "lidar_inertial"
         if localization not in (
             "gnss",
             "gnss_shadow",
             "lidar_inertial",
             "visual_inertial_shadow",
+            "visual_inertial",
         ):
             raise ValueError(f"unsupported localization profile: {localization}")
         lidar_inertial_overrides = {
@@ -331,7 +333,9 @@ def generate_launch_description():
             "publish_to_autopilot": localization == "lidar_inertial",
         }
         visual_inertial_overrides = (
-            {} if localization == "visual_inertial_shadow" else None
+            {"publish_to_autopilot": localization == "visual_inertial"}
+            if localization in ("visual_inertial_shadow", "visual_inertial")
+            else None
         )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:

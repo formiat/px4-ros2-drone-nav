@@ -557,6 +557,9 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
             report_visual_inertial_health(ros_log, float(readiness.group(1)),
                                           float(result.group(1)), notes)
         return
+    if profile == "visual_inertial":
+        validate_visual_inertial_profile(ros_log, px4_log, errors, notes)
+        return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")
         return
@@ -595,6 +598,52 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     if readiness is not None and result is not None:
         validate_lidar_inertial_health(ros_log, float(readiness.group(1)),
                                        float(result.group(1)), errors)
+
+
+VISUAL_INERTIAL_PUBLISHED_PATTERN = re.compile(
+    r"VISUAL_INERTIAL_ODOMETRY .*?published_poses=(\d+)")
+
+
+def validate_visual_inertial_profile(ros_log: str, px4_log: str, errors: list[str],
+                                     notes: list[str] | None) -> None:
+    """That the flight flew what the profile says: the visual-inertial estimator
+    in the autopilot's place for GNSS and compass, and no simulator truth as the
+    heading. The estimator's quality is a note; what it answers for is the goal
+    reached in truth."""
+    for name, expected in (("EKF2_GPS_CTRL", 0.0), ("EKF2_MAG_TYPE", 5.0),
+                           ("EKF2_EV_CTRL", 11.0), ("EKF2_HGT_REF", 3.0)):
+        shown = shown_px4_parameter(px4_log, name)
+        if shown is None:
+            errors.append(f"FAIL: visual_inertial profile shows {name} in the autopilot "
+                          "log")
+        elif shown != expected:
+            errors.append(f"FAIL: visual_inertial profile sets {name} to {expected:g} "
+                          f"({shown:g})")
+    if "[simulation_heading_source_node]" in ros_log:
+        errors.append("FAIL: visual_inertial profile runs without the simulation heading "
+                      "source")
+    if "[lidar_inertial_odometry_node]" in ros_log:
+        errors.append("FAIL: visual_inertial profile runs without the lidar-inertial "
+                      "estimator")
+    published = None
+    for published in VISUAL_INERTIAL_PUBLISHED_PATTERN.finditer(ros_log):
+        pass
+    readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
+    result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
+    if published is None or int(published.group(1)) == 0:
+        errors.append("FAIL: visual_inertial profile publishes the estimator's odometry")
+    elif readiness is not None and result is not None:
+        span_s = float(result.group(1)) - float(readiness.group(1))
+        rate_hz = int(published.group(1)) / span_s if span_s > 0.0 else 0.0
+        print(f"OK: localization profile is visual_inertial: GNSS and magnetometer "
+              f"fusion off, no simulation heading source, {published.group(1)} poses "
+              f"to the autopilot ({rate_hz:.1f} per second of flight)")
+        if notes is not None:
+            report_visual_inertial_health(ros_log, float(readiness.group(1)),
+                                          float(result.group(1)), notes)
+    else:
+        print("OK: localization profile is visual_inertial (no successful flight to "
+              "measure the odometry over)")
 
 
 # The visual-inertial estimator's health once a second.

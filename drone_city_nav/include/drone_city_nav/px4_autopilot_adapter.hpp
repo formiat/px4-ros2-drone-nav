@@ -3,6 +3,7 @@
 #include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
+#include "drone_city_nav/visual_inertial_odometry.hpp"
 
 #include <px4_msgs/msg/sensor_combined.hpp>
 #include <px4_msgs/msg/timesync_status.hpp>
@@ -37,6 +38,11 @@ px4TimesyncToAutopilotClockSync(const px4_msgs::msg::TimesyncStatus& message) no
 // its delayed horizon. The publication stamp is zero, dated at receipt.
 [[nodiscard]] px4_msgs::msg::VehicleOdometry
 px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
+                              std::uint64_t timestamp_sample_us) noexcept;
+
+// The visual-inertial estimate, likewise.
+[[nodiscard]] px4_msgs::msg::VehicleOdometry
+px4VisualOdometryFromEstimate(const VisualInertialEstimate& estimate,
                               std::uint64_t timestamp_sample_us) noexcept;
 
 [[nodiscard]] AutopilotStatus

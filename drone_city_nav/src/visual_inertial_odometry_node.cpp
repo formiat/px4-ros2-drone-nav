@@ -8,6 +8,7 @@
 
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
+#include "drone_city_nav/px4_autopilot_adapter.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/visual_inertial_odometry.hpp"
@@ -38,6 +39,7 @@ namespace {
 // The vehicle stands still this many IMU samples before its pose is declared:
 // roll, pitch and the gyroscope bias come from them.
 constexpr std::uint64_t kRestSamplesBeforeInitialPose{100U};
+constexpr std::int64_t kAutopilotOdometryPeriodNs{40'000'000};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along
 // the body's x axis, in the body forward-right-down frame.
@@ -114,6 +116,11 @@ public:
     initial_heading_ned_rad_ = transform_.mapYawToPx4Heading(
         declare_parameter<double>("initial_heading_rad", 0.0));
 
+    publish_to_autopilot_ = declare_parameter<bool>("publish_to_autopilot", false);
+    odometry_pub_ = create_publisher<px4_msgs::msg::VehicleOdometry>(
+        declare_parameter<std::string>("px4_visual_odometry_topic",
+                                       "/fmu/in/vehicle_visual_odometry"),
+        rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile());
     pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
         declare_parameter<std::string>("estimate_pose_topic",
                                        "/drone_city_nav/visual_inertial_odometry/pose"),
@@ -211,6 +218,36 @@ private:
       pending_.pop_front();
       onPair(pair);
     }
+    publishToAutopilot(stamp_ns);
+  }
+
+  // The autopilot receives the estimate every 40 ms, carried from the last
+  // frame through the IMU: at the pair's 7.5 Hz alone one late frame opens
+  // the 200 ms without odometry that end its external-vision fusion, and
+  // restarting that fusion reset the height by a metre and more in roadmap
+  // item 13 (r389, r393, r398). The stamp is the pose's own moment in the
+  // autopilot's synchronised clock, as the lidar-inertial node dates its.
+  void publishToAutopilot(const std::int64_t stamp_ns) {
+    if (!publish_to_autopilot_ || !odometry_->initialized() ||
+        stamp_ns - last_autopilot_stamp_ns_ < kAutopilotOdometryPeriodNs) {
+      return;
+    }
+    const VisualInertialEstimate estimate = odometry_->predicted(stamp_ns);
+    const std::optional<std::int64_t> px4_local_ns =
+        time_mapper_.rosToPx4LocalTimeNs(estimate.stamp_ns);
+    if (!estimate.healthy || estimate.stamp_ns != stamp_ns ||
+        !px4_local_ns.has_value()) {
+      return;
+    }
+    const std::int64_t synchronised_ns =
+        *px4_local_ns - time_mapper_.diagnostics().latest_estimated_offset_ns;
+    if (synchronised_ns <= 0) {
+      return;
+    }
+    odometry_pub_->publish(px4VisualOdometryFromEstimate(
+        estimate, static_cast<std::uint64_t>(synchronised_ns / 1000)));
+    last_autopilot_stamp_ns_ = stamp_ns;
+    ++published_poses_;
   }
 
   void queueIfPaired() {
@@ -310,7 +347,8 @@ private:
         "weakest_velocity_sigma_mps=%.3f "
         "clones=%zu speed_mps=%.2f frame_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
         "imu_samples=%" PRIu64 " frames=%" PRIu64 " frames_without_estimate=%" PRIu64
-        " unmapped_imu=%" PRIu64 " position=(%.2f,%.2f,%.2f) yaw=%.3f",
+        " unmapped_imu=%" PRIu64 " published_poses=%" PRIu64
+        " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", estimate.tracked_features,
         estimate.candidate_features, estimate.used_features, estimate.gated_features,
         estimate.untriangulated_features, estimate.residual_rms_sigma,
@@ -318,8 +356,9 @@ private:
         estimate.velocity_ned_mps.norm(), frame_ms,
         1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
         1.0e-6 * static_cast<double>(imu_gap_max_ns_), imu_samples_, frames_,
-        frames_without_estimate_, unmapped_imu_samples_, map_xy.x, map_xy.y,
-        -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
+        frames_without_estimate_, unmapped_imu_samples_, published_poses_, map_xy.x,
+        map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
+        mapYaw(estimate));
     if (frames_ % 8U == 0U) {
       imu_gap_max_ns_ = 0;
     }
@@ -358,6 +397,10 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+  rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
+  bool publish_to_autopilot_{false};
+  std::int64_t last_autopilot_stamp_ns_{0};
+  std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;
   std::deque<Pair> pending_;

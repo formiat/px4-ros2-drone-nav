@@ -364,6 +364,31 @@ class RuntimeManifestTest(unittest.TestCase):
             self.assertIn("visual_inertial_shadow", output.getvalue())
             self.assertIn(expected, output.getvalue() + "".join(notes))
 
+    def test_the_visual_inertial_profile_is_proved_from_the_logs(self) -> None:
+        shown = "".join(f"{name} [1,2] : {value}\n" for name, value in (
+            ("EKF2_GPS_CTRL", 0), ("EKF2_MAG_TYPE", 5), ("EKF2_EV_CTRL", 11),
+            ("EKF2_HGT_REF", 3)))
+        flown = ("[10.0] [mission_monitor_node]: MISSION_READINESS ready=true\n"
+                 "[20.0] [visual_inertial_odometry_node]: VISUAL_INERTIAL_ODOMETRY "
+                 "healthy=true published_poses=250 position=(0,0,0)\n"
+                 "[30.0] [mission_monitor_node]: MISSION_RESULT success=true\n")
+        cases = ((flown, shown, None),
+                 (flown, shown.replace("EKF2_GPS_CTRL [1,2] : 0", "EKF2_GPS_CTRL [1,2] : 7"),
+                  "EKF2_GPS_CTRL"),
+                 (flown + "[1.0] [simulation_heading_source_node]: up\n", shown,
+                  "simulation heading source"),
+                 (flown.replace("published_poses=250", "published_poses=0"), shown,
+                  "publishes the estimator's odometry"))
+        for ros_log, px4_log, expected in cases:
+            errors: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                validator.validate_localization_profile(
+                    self._manifest("visual_inertial"), ros_log, px4_log, errors, [])
+            if expected is None:
+                self.assertEqual(errors, [])
+            else:
+                self.assertTrue(any(expected in error for error in errors), errors)
+
     def test_the_goal_is_reached_in_truth_or_the_flight_fails(self) -> None:
         directory = Path(tempfile.mkdtemp())
         truth = directory / "gz_pose.csv"

@@ -69,6 +69,28 @@ export_px4_estimator_parameters() {
     export PX4_PARAM_EKF2_DELAY_MAX=300
     export PX4_PARAM_EKF2_EV_NOISE_MD=0
   fi
+  if [[ "${localization_profile}" == "visual_inertial" ]]; then
+    # The visual-inertial estimator is the position and the heading, fused as
+    # the lidar-inertial one is: GNSS off, magnetometer off, the vision the
+    # height reference, position and yaw from the external odometry and not
+    # its velocity, each pose at its own moment.
+    export PX4_PARAM_EKF2_GPS_CTRL=0
+    export PX4_PARAM_EKF2_MAG_TYPE=5
+    export PX4_PARAM_EKF2_HGT_REF=3
+    export PX4_PARAM_EKF2_EV_CTRL=11
+    export PX4_PARAM_EKF2_EV_DELAY=0
+    export PX4_PARAM_EKF2_DELAY_MAX=300
+    # Not the estimator's own variances: an odometry's honest variance of its
+    # position in the world grows without bound (its first-estimate Jacobians
+    # never let features shrink it), and the autopilot, which has no other
+    # position, would stop believing the only one it is given. The autopilot
+    # follows the odometry's frame with the noise of one pose in it: 0.1 m and
+    # 0.05 rad, against 0.11 to 0.18 m and 0.2 to 0.3 degrees the estimate
+    # loses over four seconds on the recorded flights.
+    export PX4_PARAM_EKF2_EV_NOISE_MD=1
+    export PX4_PARAM_EKF2_EVP_NOISE=0.1
+    export PX4_PARAM_EKF2_EVA_NOISE=0.05
+  fi
   if bool_is_true "${enable_simulation_heading_source}"; then
     # The simulated magnetometer's heading sits five to six degrees off the
     # true one at hover, independent of the world's magnetic field; the
@@ -87,7 +109,8 @@ px4_parameter_stream() {
   sleep "${px4_param_delay_s}"
   echo "param set CBRK_SUPPLY_CHK 894281"
   echo "param set NAV_DLL_ACT 0"
-  if [[ "${localization_profile}" == "lidar_inertial" ]]; then
+  if [[ "${localization_profile}" == "lidar_inertial" ||
+    "${localization_profile}" == "visual_inertial" ]]; then
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"
     echo "param show EKF2_EV_CTRL"

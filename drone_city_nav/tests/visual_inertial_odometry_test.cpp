@@ -235,6 +235,36 @@ TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
             0.999 * config.initial_position_sigma_m * config.initial_position_sigma_m);
 }
 
+TEST(VisualInertialOdometry, ThePoseBetweenFramesFollowsTheImu) {
+  const VisualInertialOdometryConfig config = testConfig();
+  std::mt19937 generator{7U};
+  const std::vector<Eigen::Vector3d> points = landmarks(generator);
+  VisualInertialOdometry odometry{config};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  std::int64_t imu_stamp = 0;
+  for (std::int64_t frame = 1; frame <= 100; ++frame) {
+    const std::int64_t stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    static_cast<void>(
+        odometry.addFrame(stamp, observe(config, static_cast<double>(stamp) * 1.0e-9,
+                                         points, config.observation_noise, generator)));
+  }
+  // Eighty milliseconds past the last frame, with the IMU that far ahead.
+  const std::int64_t ahead = 100 * kFramePeriodNs + 80'000'000;
+  for (; imu_stamp <= ahead; imu_stamp += kImuPeriodNs) {
+    odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+  }
+  const VisualInertialEstimate between = odometry.predicted(ahead);
+  const double t = static_cast<double>(ahead) * 1.0e-9;
+  EXPECT_EQ(between.stamp_ns, ahead);
+  EXPECT_TRUE(between.healthy);
+  EXPECT_LT((between.position_ned_m - Motion::position(t)).norm(), 0.1);
+  // The vehicle moved 0.12 m over those 80 ms: the pose is not the frame's.
+  EXPECT_GT((between.position_ned_m - Motion::position(t - 0.08)).norm(), 0.05);
+}
+
 TEST(VisualInertialOdometry, AFrameBeforeTheDeclaredPoseIsNoEstimate) {
   VisualInertialOdometry odometry{testConfig()};
   EXPECT_FALSE(odometry.initialized());

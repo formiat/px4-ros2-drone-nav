@@ -104,6 +104,7 @@ struct VisualInertialOdometry::Impl {
   bool initialized{false};
   std::int64_t stamp_ns{0};
   std::int64_t last_update_stamp_ns{0};
+  VisualInertialEstimate last_estimate;
   Eigen::Matrix3d body_to_ned{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
@@ -712,6 +713,59 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
                              .maxCoeff()));
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
+  state.last_estimate = estimate;
+  return estimate;
+}
+
+VisualInertialEstimate
+VisualInertialOdometry::predicted(const std::int64_t stamp_ns) const {
+  const Impl& state = *impl_;
+  VisualInertialEstimate estimate = state.last_estimate;
+  if (!state.initialized || stamp_ns <= state.stamp_ns || !state.last_imu.has_value()) {
+    return estimate;
+  }
+  Eigen::Matrix3d body_to_ned = state.body_to_ned;
+  Eigen::Vector3d position = state.position;
+  Eigen::Vector3d velocity = state.velocity;
+  std::int64_t at_ns = state.stamp_ns;
+  VisualInertialImuSample from = *state.last_imu;
+  const auto advance = [&](const VisualInertialImuSample& to,
+                           const std::int64_t end_ns) {
+    const double dt = static_cast<double>(end_ns - at_ns) * 1.0e-9;
+    if (dt <= 0.0) {
+      return;
+    }
+    const Eigen::Matrix3d half_turn =
+        expSo3(0.5 * dt * (0.5 * (from.gyro_radps + to.gyro_radps) - state.gyro_bias));
+    const Eigen::Vector3d acceleration =
+        body_to_ned * half_turn *
+            (0.5 * (from.accelerometer_mps2 + to.accelerometer_mps2) -
+             state.accelerometer_bias) +
+        state.gravity;
+    position += velocity * dt + 0.5 * acceleration * dt * dt;
+    velocity += acceleration * dt;
+    body_to_ned = body_to_ned * half_turn * half_turn;
+    at_ns = end_ns;
+  };
+  for (const VisualInertialImuSample& sample : state.imu) {
+    if (sample.stamp_ns > stamp_ns) {
+      break;
+    }
+    advance(sample, sample.stamp_ns);
+    from = sample;
+  }
+  estimate.imu_lag_ns = stamp_ns - at_ns;
+  advance(from, stamp_ns);
+  estimate.stamp_ns = stamp_ns;
+  estimate.position_ned_m = position;
+  estimate.velocity_ned_mps = velocity;
+  estimate.body_to_ned = Eigen::Quaterniond{orthonormalized(body_to_ned)};
+  estimate.healthy =
+      estimate.healthy &&
+      static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 <=
+          state.config.maximum_unaided_s &&
+      static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
+          state.config.maximum_imu_period_s;
   return estimate;
 }
 

@@ -251,11 +251,16 @@ else
 fi
 case "${localization_profile}" in
   gnss | gnss_shadow) ;;
-  visual_inertial_shadow)
-    # The visual-inertial estimator beside GNSS: it reads the pair's frames.
+  visual_inertial_shadow | visual_inertial)
+    # The visual-inertial estimator reads the pair's frames: beside GNSS, or
+    # alone, fed to the autopilot with GNSS, the magnetometer and the
+    # simulation heading source, which is the simulator's truth, off.
     if [[ "${camera_profile}" != "stereo_tof" ]]; then
-      echo "LOCALIZATION_PROFILE=visual_inertial_shadow requires CAMERA_PROFILE=stereo_tof" >&2
+      echo "LOCALIZATION_PROFILE=${localization_profile} requires CAMERA_PROFILE=stereo_tof" >&2
       exit 1
+    fi
+    if [[ "${localization_profile}" == "visual_inertial" ]]; then
+      enable_simulation_heading_source=false
     fi
     ;;
   lidar_inertial) enable_simulation_heading_source=false ;;

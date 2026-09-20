@@ -9,9 +9,9 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
-# The PX4 adapter (state and commands) and the two feeds into the PX4
-# estimator, the simulation's heading and the lidar-inertial odometry: the
-# only sources allowed to include px4_msgs.
+# The PX4 adapter (state and commands) and the three feeds into the PX4
+# estimator, the simulation's heading and the lidar-inertial and
+# visual-inertial odometries: the only sources allowed to include px4_msgs.
 PX4_ADAPTER_SOURCES = {
     "drone_city_nav/src/lidar_inertial_odometry_node.cpp",
     "drone_city_nav/include/drone_city_nav/px4_autopilot_adapter.hpp",
@@ -20,6 +20,7 @@ PX4_ADAPTER_SOURCES = {
     "drone_city_nav/src/px4_offboard_setpoint_io.cpp",
     "drone_city_nav/src/mppi_offboard_node.cpp",
     "drone_city_nav/src/simulation_heading_source_node.cpp",
+    "drone_city_nav/src/visual_inertial_odometry_node.cpp",
     "drone_city_nav/tests/px4_autopilot_adapter_test.cpp",
     "drone_city_nav/tests/px4_offboard_setpoint_io_test.cpp",
 }

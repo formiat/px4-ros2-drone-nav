@@ -158,6 +158,13 @@ public:
   addFrame(std::int64_t stamp_ns,
            const std::vector<StereoFeatureObservation>& observations);
 
+  // The last frame's estimate carried to `stamp_ns` through the IMU samples
+  // received since; the filter is not advanced. The pair gives a pose 7.5
+  // times a second, and the autopilot ends its external-vision fusion after
+  // 200 ms without one: a single late frame would end it, so the poses
+  // between frames come from here.
+  [[nodiscard]] VisualInertialEstimate predicted(std::int64_t stamp_ns) const;
+
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

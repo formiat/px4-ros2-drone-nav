@@ -135,9 +135,13 @@ px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) no
   };
 }
 
+namespace {
+
+// Both estimators report the same quantities under the same names.
+template<typename Estimate>
 px4_msgs::msg::VehicleOdometry
-px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
-                              const std::uint64_t timestamp_sample_us) noexcept {
+visualOdometryFrom(const Estimate& estimate,
+                   const std::uint64_t timestamp_sample_us) noexcept {
   px4_msgs::msg::VehicleOdometry odometry;
   odometry.timestamp = 0U;
   odometry.timestamp_sample = timestamp_sample_us;
@@ -169,6 +173,20 @@ px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
   odometry.reset_counter = 0U;
   odometry.quality = estimate.healthy ? 100 : 0;
   return odometry;
+}
+
+} // namespace
+
+px4_msgs::msg::VehicleOdometry
+px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
+                              const std::uint64_t timestamp_sample_us) noexcept {
+  return visualOdometryFrom(estimate, timestamp_sample_us);
+}
+
+px4_msgs::msg::VehicleOdometry
+px4VisualOdometryFromEstimate(const VisualInertialEstimate& estimate,
+                              const std::uint64_t timestamp_sample_us) noexcept {
+  return visualOdometryFrom(estimate, timestamp_sample_us);
 }
 
 AutopilotClockSync
