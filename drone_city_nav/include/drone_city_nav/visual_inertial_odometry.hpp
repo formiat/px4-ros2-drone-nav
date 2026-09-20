@@ -76,9 +76,18 @@ struct VisualInertialOdometryConfig {
   // short, on two recorded flights and both IMU streams; with 0.2 it refuses
   // 2 percent, the displacement ratio is 0.998, and the position error at
   // the goal of a 513 m flight is 0.7 m (r550).
-  double gyro_noise_radps_sqrt_hz{1.0e-3};
+  // The gyroscope's is its own, 1.0e-4 rad/s/sqrt(Hz): no camera observes the
+  // heading, so between frames it is the gyroscope's, and a filter told the
+  // gyroscope is ten times noisier lets every update's noise walk the
+  // heading instead. With 1.0e-3 the heading ended five recorded flights 2 to
+  // 4 degrees off and the position 1.6 to 2.1 m from the truth at a goal 62 m
+  // from the start (r572, r575: the vehicle was acknowledged 1.97 and 2.31 m
+  // from its goal); with 1.0e-4, within 1.1 degrees and 0.25 to 0.66 m.
+  double gyro_noise_radps_sqrt_hz{1.0e-4};
   double accelerometer_noise_mps2_sqrt_hz{0.2};
-  double gyro_bias_walk_radps2_sqrt_hz{2.0e-5};
+  // A bias that may wander 3.5e-4 rad/s over a flight (2.0e-5) is a heading
+  // that may drift 6 degrees; the recorded gyroscope holds 1.0e-4 rad/s.
+  double gyro_bias_walk_radps2_sqrt_hz{2.0e-6};
   double accelerometer_bias_walk_mps3_sqrt_hz{1.0e-3};
   // Two samples farther apart than this are a hole in the stream (the
   // autopilot's IMU crosses a best-effort transport: r547 lost 0.52 s of it),
@@ -96,7 +105,9 @@ struct VisualInertialOdometryConfig {
   double initial_heading_sigma_rad{1.0e-3};
   double initial_position_sigma_m{1.0e-3};
   double initial_velocity_sigma_mps{0.05};
-  double initial_gyro_bias_sigma_radps{5.0e-3};
+  // The gyroscope bias is the mean of the samples at rest, known to their
+  // scatter over the root of their number, and no better than this floor.
+  double minimum_gyro_bias_sigma_radps{3.0e-5};
   double initial_accelerometer_bias_sigma_mps2{0.1};
   double gravity_mps2{9.80665};
 };

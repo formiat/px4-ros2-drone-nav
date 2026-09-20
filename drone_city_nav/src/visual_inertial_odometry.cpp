@@ -125,6 +125,7 @@ struct VisualInertialOdometry::Impl {
   std::optional<VisualInertialImuSample> last_imu;
   // Samples seen before the declared initial pose: the vehicle is at rest.
   Eigen::Vector3d rest_gyro_sum{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d rest_gyro_square_sum{Eigen::Vector3d::Zero()};
   Eigen::Vector3d rest_accelerometer_sum{Eigen::Vector3d::Zero()};
   std::size_t rest_samples{0U};
 
@@ -580,9 +581,19 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   state.covariance.block<3, 3>(kVelocity, kVelocity)
       .diagonal()
       .setConstant(square(config.initial_velocity_sigma_mps));
+  // No sample at rest leaves the bias unknown to a consumer gyroscope's.
+  double gyro_bias_sigma = 5.0e-3;
+  if (state.rest_samples > 1U) {
+    const double count = static_cast<double>(state.rest_samples);
+    const Eigen::Vector3d variance =
+        (state.rest_gyro_square_sum / count - (state.rest_gyro_sum / count).cwiseAbs2())
+            .cwiseMax(0.0);
+    gyro_bias_sigma = std::max(config.minimum_gyro_bias_sigma_radps,
+                               std::sqrt(variance.maxCoeff() / count));
+  }
   state.covariance.block<3, 3>(kGyroBias, kGyroBias)
       .diagonal()
-      .setConstant(square(config.initial_gyro_bias_sigma_radps));
+      .setConstant(square(gyro_bias_sigma));
   state.covariance.block<3, 3>(kAccelerometerBias, kAccelerometerBias)
       .diagonal()
       .setConstant(square(config.initial_accelerometer_bias_sigma_mps2));
@@ -593,6 +604,7 @@ void VisualInertialOdometry::addImu(const VisualInertialImuSample& sample) {
   Impl& state = *impl_;
   if (!state.initialized) {
     state.rest_gyro_sum += sample.gyro_radps;
+    state.rest_gyro_square_sum += sample.gyro_radps.cwiseAbs2();
     state.rest_accelerometer_sum += sample.accelerometer_mps2;
     ++state.rest_samples;
     state.last_imu = sample;
