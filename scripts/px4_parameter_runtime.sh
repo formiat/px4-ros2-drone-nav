@@ -84,11 +84,16 @@ export_px4_estimator_parameters() {
     # position in the world grows without bound (its first-estimate Jacobians
     # never let features shrink it), and the autopilot, which has no other
     # position, would stop believing the only one it is given. The autopilot
-    # follows the odometry's frame with the noise of one pose in it: 0.1 m and
-    # 0.05 rad, against 0.11 to 0.18 m and 0.2 to 0.3 degrees the estimate
-    # loses over four seconds on the recorded flights.
+    # follows the odometry's frame with the noise of one pose in it. That
+    # noise is what a frame's update moves the pose by, up to 0.22 m between
+    # consecutive frames on the shadow flights r555 to r559. With 0.1 m the
+    # autopilot's five-sigma gate stood at 0.5 m: on r561 the pose moved 0.4 m
+    # and back within two frames of a fast turn, the autopilot threw the
+    # odometry away, flew 1.8 s of a 5 m/s dash on its IMU alone and reset its
+    # position by 1.19 m, which closed the navigation for the rest of the
+    # flight. 0.3 m puts the gate at 1.5 m.
     export PX4_PARAM_EKF2_EV_NOISE_MD=1
-    export PX4_PARAM_EKF2_EVP_NOISE=0.1
+    export PX4_PARAM_EKF2_EVP_NOISE=0.3
     export PX4_PARAM_EKF2_EVA_NOISE=0.05
   fi
   if bool_is_true "${enable_simulation_heading_source}"; then
