@@ -118,6 +118,18 @@ release names the asset tags it was validated with.
   gates the stereo profile's mean speed at half of what its braking contract
   admits forward (1.226 m/s), and counts `stereo_depth_node` among the onboard
   processes (1.4 cores at p50).
+- The mean flight speed requirement is restated by the project owner and is
+  the only speed the programme targets: above 2.4 m/s on the lidar (was
+  2.5 m/s) and above 1.2 m/s on the stereo sensor set (was the derived
+  1.226 m/s), whatever localizes the vehicle. The mission check gates it so.
+  Against it the final stereo series has one flight of five under the figure
+  (r524, 1.165 m/s), and the lidar flights of r470 to r474, r511 to r515 and
+  r528 one of eleven (2.32 m/s).
+- Roadmap item 16 is settled before implementation: a stage 0 that makes the
+  camera simulation hold real time, a recorder of frames, IMU and truth, a
+  stereo multi-state constraint Kalman filter on Eigen alone as the
+  estimator, and completion by two series on one commit, five flights on the
+  stereo set and five on the lidar, both without GNSS.
 - Known on the stereo profile (r506 to r510, r523 to r527): the mean speed
   gate of 1.226 m/s is missed by one flight of the final five (1.165 m/s); the
   evidence age exceeds the

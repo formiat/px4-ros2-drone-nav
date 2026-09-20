@@ -47,14 +47,17 @@ MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 # clearance was made to bound the progress floor (9ab94040, after the
 # crashes r281 and r286): the five flights r288 to r292 on it flew 372 to
 # 417 m in 124 to 149 s, 2.58 to 3.10 m/s, one of them above 3.0.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.5
-# The stereo navigation profile is not held to the lidar's figure: what its
-# flight may do forward is bounded by what the pair sees. The gate is half of
-# what the braking contract admits forward for the geometry roadmap item 14
-# fixed: 6.4 m of confident depth, 2.0 m of margin and 0.7 s of evidence age
-# and reaction admit 2.452 m/s (sensor_braking_speed_limit_mps of every forward
-# tick of r493). The rule was written before the first flight without the lidar.
-MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.226
+#
+# The two figures below are the project owner's requirement of 2026-09-19 and
+# the only speed the programme targets: the mean has to exceed 2.4 m/s on the
+# lidar and 1.2 m/s on the stereo sensor set, whatever localizes the vehicle.
+# They replace 2.5 m/s, which the lidar profile sat on (2.32 to 2.82 m/s over
+# r470 to r474, r511 to r515 and r528 on code it does not distinguish), and
+# the 1.226 m/s derived for the stereo profile as half of what its braking
+# contract admits forward (6.4 m of confident depth admit 2.452 m/s); the
+# stereo profile flew 1.17 to 1.57 m/s over r523 to r527.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.4
+MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.2
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
@@ -324,9 +327,9 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
         return
     speed_mps = path_m / duration_s
     detail = f"{speed_mps:.3f} m/s: {path_m:.1f} m in {duration_s:.1f} s"
-    if speed_mps < minimum_speed_mps:
+    if speed_mps <= minimum_speed_mps:
         errors.append(
-            "FAIL: mean flight speed reaches "
+            "FAIL: mean flight speed exceeds "
             f"{minimum_speed_mps:.3g} m/s ({detail})"
         )
     else:

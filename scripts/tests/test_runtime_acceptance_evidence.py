@@ -280,7 +280,22 @@ class RuntimeManifestTest(unittest.TestCase):
             self._flight_log(300.0, 300.0), errors, "stereo_tof"
         )
         self.assertEqual(len(errors), 1)
-        self.assertIn("reaches 1.23 m/s", errors[0])
+        self.assertIn("exceeds 1.2 m/s", errors[0])
+
+    def test_mean_flight_speed_has_to_exceed_the_requirement_on_either_profile(
+        self,
+    ) -> None:
+        # The owner's requirement: above 2.4 m/s on the lidar, above 1.2 m/s on
+        # the stereo sensor set. The figure itself is not enough.
+        for path_m, profile, passes in ((723.0, "lidar", True), (720.0, "lidar", False),
+                                        (363.0, "stereo_tof", True),
+                                        (360.0, "stereo_tof", False)):
+            with self.subTest(path_m=path_m, profile=profile):
+                errors: list[str] = []
+                validator.validate_mean_flight_speed(
+                    self._flight_log(path_m, 300.0), errors, profile
+                )
+                self.assertEqual(errors == [], passes, errors)
 
     def test_mean_flight_speed_needs_a_successful_mission(self) -> None:
         errors: list[str] = []

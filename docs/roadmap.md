@@ -33,8 +33,9 @@ and may begin immediately.
 Acceptance uses the numbers the mission check already enforces, as measured in
 the v0.2.0 series (r288 to r292) and the r303 to r307 series on the
 descent-arrest commit: zero building collisions, zero execution-ownership gaps,
-persistent planner p95 below 200 ms, mean flight speed of at least 2.5 m/s on
-the urban point-to-point mission, and the controller-dynamics checks described
+persistent planner p95 below 200 ms, a mean flight speed above 2.4 m/s on
+the urban point-to-point mission (the requirement of 2026-09-19, which
+replaced 2.5 m/s), and the controller-dynamics checks described
 in `testing.md`. Route availability after bootstrap is measured, not yet gated:
 item 12 closed at 88 to 95 percent against the 97 percent mission check and the
 99 percent target written before any measurement, with physical blocks at
@@ -49,13 +50,15 @@ the fifteen flights r430 to r434, r448 to r452 and r470 to r474 (lowest flight
 still carries 97 percent of availability and 3 percent of holds and is red on
 every lidar flight (91.0 to 96.5 percent and 3.7 to 9.2 percent over r511 to
 r515 and r528); writing the derived threshold into the check is a product
-decision that has not been taken. And the mean speed sits at its gate: two
-flights of r470 to r474 and r528 were under 2.5 m/s (2.32 to 2.45), five of
-r511 to r515 above it (2.65 to 2.82), on code the lidar profile does not
-distinguish. One more decision is open: this stage is written for the 3D
+decision that has not been taken. The mean speed sat at its former gate of
+2.5 m/s: two flights of r470 to r474 and r528 were under it (2.32 to 2.45),
+five of r511 to r515 above it (2.65 to 2.82), on code the lidar profile does
+not distinguish. The requirement is now a mean above 2.4 m/s on the lidar and
+above 1.2 m/s on the stereo sensor set, and the mean is the only speed the
+programme targets; one of those eleven flights (2.32) is under it. One more decision is open: this stage is written for the 3D
 lidar, and since item 14 the default sensor set is the stereo pair. Which
 profile closes stage A, the lidar's with these gates, the stereo profile's
-with its own speed gate (1.226 m/s), or both, is to be decided before the
+with its own speed requirement (1.2 m/s), or both, is to be decided before the
 series is flown. Stage B has no environment yet.
 
 ### Stage B: Large-Scale Realistic City
@@ -358,8 +361,8 @@ become a code dependency.
 ### Decisions Before Implementation
 
 This item was written before item 14 flew, and item 14 changed what it can
-assume. What follows is settled before stage 1; two of the points are product
-decisions and are open.
+assume. What follows is settled before stage 1; one point is a product
+decision and is open.
 
 **The simulation has to hold real time first.** On the camera profile the
 workstation runs 7.1 of its 8 cores (onboard 3.8, the simulator with the
@@ -422,17 +425,29 @@ a stated global one (for instance the true position within the capture radius
 when the goal is acknowledged) and the drift reported. Stage 1 supplies the
 numbers the decision needs; the decision is taken before stage 2.
 
-**What solves the window.** The estimator below is a sliding-window
-optimization with marginalization. Written on Eigen alone, as
-`LidarInertialOdometry` is, it is the largest single piece of new code since
-the persistent planner; Ceres or GTSAM would shorten it and add a dependency
-the dependency contract test has to admit; a filter of the MSCKF kind is a
-different algorithm with a smaller state. *Open decision:* which of the
-three, and whether the feature front end may use the OpenCV the depth node
-already links (built without CUDA). Whatever is chosen, the boundary stands:
-the estimator depends on nothing of perception, planning or control.
+**A filter, not a window optimization.** Decided on 2026-09-19: the
+estimator is a stereo multi-state constraint Kalman filter on Eigen alone,
+and the feature front end may use the OpenCV the depth node already links.
+The alternatives were a sliding-window optimization with marginalization,
+written here or on Ceres or GTSAM. The filter wins on what binds this
+project. Its cost is fixed and small, a state of about a hundred variables
+and one compressed update a frame, where an optimization iterates for 10 to
+30 ms a keyframe with a time that varies, and the workstation has 0.5 to 1.5
+cores to give. It carries its covariance at every step, which the honesty
+rule, the health measurements and the autopilot's external-vision fusion all
+need, and which an optimization has to recover at a cost. It is the family
+item 13 already built: IMU integration, the gyroscope bias as a state, the
+level at rest, a Kalman step gated by innovation and by degenerate
+direction, and the handling of stream order and stamps that took five fixes
+to get right. Its one known trap, a filter that comes to believe a heading it
+cannot observe, has a standard remedy that is built in from the start, where
+a hand-written marginalization fails by a slow drift that stochastic flights
+make hard to find. Its accuracy on the public benchmarks is comparable to the
+optimizing systems'; its known weakness, a
+linearization made once, is met by predicting the rotation from the IMU and
+by the estimator's own frame rate. No new dependency enters the repository.
 
-### What The Simulator Provides
+### What The Simulator Provides### What The Simulator Provides
 
 The calibrated forward stereo pair of item 14, its intrinsics and baseline,
 the two time-of-flight sensors, and the IMU. No GNSS in the control path, no
@@ -444,21 +459,40 @@ same reason a stereo matcher does.
 
 ### The Estimator
 
-Keyframe visual-inertial odometry, built on the contracts item 13 established:
+A stereo multi-state constraint Kalman filter, built on the contracts item 13
+established:
 
-- features tracked across the rectified images of a pair and triangulated
-  against the known baseline, so the scale is metric and measured, never
-  learnt;
-- the IMU preintegrated between frames as the motion prior, with the
-  gyroscope bias as a state and the level from the accelerometer at rest, as
-  item 13 integrates it to a scan stamp;
-- the pose from minimizing reprojection error over a sliding window of
-  keyframes with a robust cost, the window marginalized rather than grown;
-- item 13's honesty rule in its own form: a direction observed by too few
-  landmarks carries no measurement, a landmark whose reprojection lies
-  outside the gate is dropped for that frame, and a frame that did not
-  converge is not published at all, so the autopilot sees no estimate rather
-  than a wrong one.
+- the state is the vehicle's pose, velocity and the IMU's two biases, and a
+  sliding set of 10 to 20 past camera poses cloned at frame times; landmarks
+  are not in it;
+- the IMU propagates the state and its covariance between frames, with the
+  level from the accelerometer at rest, as item 13 integrates it to a scan
+  stamp;
+- features are tracked between frames, from the rotation the IMU predicts,
+  and between the rectified images of the pair, so the scale is metric and
+  measured against the known baseline, never learnt;
+- when a track ends, or its oldest pose leaves the set, the landmark is
+  triangulated from all its observations, its residuals are projected onto
+  the left null space of its own Jacobian, so the landmark leaves the
+  equations, the stacked residuals are compressed, and one Kalman update is
+  made; removing the oldest pose is the removal of its rows and columns;
+- the Jacobians are evaluated at first estimates from the first commit: a
+  filter that relinearizes a pose it has already used gains information
+  about the heading it cannot observe, and believes a drifting yaw;
+- item 13's honesty rule in its own form: a residual outside its chi-square
+  gate is dropped for that update, a direction too few landmarks observe
+  carries no measurement, and a frame after which the filter is not healthy
+  is not published at all, so the autopilot sees no estimate rather than a
+  wrong one.
+
+The core is a library on Eigen alone, without ROS and without OpenCV,
+replayed offline on recordings and held to that by
+`test_navigation_dependency_contract.py`; the front end (corner detection and
+pyramidal tracking) is a separate layer that hands the core pixel tracks and
+nothing else. Escalation follows measurement only: if stage 1 shows drift
+while the vehicle hovers or turns in place, where tracks have no parallax
+between poses, a small set of long-lived landmarks joins the state; a window
+optimization is reconsidered only if that falls short of the local bound.
 
 The forward pair feeds the estimator. Its weak place is measured, not
 assumed: during the vertical motion through the two shafts a forward tracker
@@ -500,9 +534,14 @@ the stale pose and the offboard node holds.
    the IMU, and replay (`log/tools/replay`): drift per 100 m, along-track and
    cross-track error and heading error against the truth, by texture, speed,
    lighting, frame rate and manoeuvre, and the local error over the seconds a
-   surface stays in view. Flights are stochastic; estimator parameters are
-   set on recordings and only confirmed in flight. The stage ends with the
-   two open decisions above taken on its numbers.
+   surface stays in view. An established open-source visual-inertial system
+   is run on the same recordings, offline and as an evaluation tool under
+   `log/tools` only, never as a dependency: it says what drift these images,
+   this depth and these manoeuvres admit at all, which is the number the open
+   decision on the position gate needs, and how far this filter is from it.
+   Flights are stochastic; estimator parameters are set on recordings and
+   only confirmed in flight. The stage ends with the open decision above
+   taken on its numbers.
 2. Add the `visual_inertial_shadow` profile, as `gnss_shadow` did for item 13:
    the estimator runs beside GNSS, publishes to the diagnostic topic only, and
    the mission check compares it with the true pose on every flight.
@@ -533,18 +572,31 @@ health: tracked landmark count, reprojection residual, the observability of
 the weakest direction, gated and degenerate directions, and the frames that
 left the autopilot without an estimate, which must be none in a clean flight.
 
-This item is complete when a series of five consecutive Urban Circuit
-Practice 01 missions on one commit runs on the defaults with no GNSS, no
-magnetometer and no lidar in the vehicle model, and a control series of five
-on the `gnss` profile runs on the same commit; the estimate holds the local
-bound above and the global one the open decision fixes; and the gates of the
-stereo profile as item 14 closed them hold: mission complete, collision-free,
-route availability at item 9 stage A's threshold (until it is derived, the 90
-percent floor item 14 was accepted against), planner p95 below 200 ms, the
-mean speed gate of the stereo profile (1.226 m/s), and the shafts climbed at
-no less than half of what the time-of-flight range admits. The lidar
-profile's speeds are not this item's measure: the stereo profile is bounded
-by what it sees, not by where it thinks it is.
+This item is complete when, on one commit, two series have been flown on
+Urban Circuit Practice 01 in this order and each has been inspected flight by
+flight:
+
+1. five consecutive missions on the stereo sensor set without GNSS (the
+   defaults: no GNSS, no magnetometer, no lidar in the vehicle model), every
+   one complete and collision-free, with a mean flight speed above 1.2 m/s;
+2. five consecutive missions on the 3D lidar without GNSS
+   (`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`,
+   `LOCALIZATION_PROFILE=lidar_inertial`), every one complete and
+   collision-free, with a mean flight speed above 2.4 m/s.
+
+The mean flight speed is the only speed the programme targets, and these two
+figures are requirements, not measurements to report. In both series the
+estimate holds the local bound above and the global one the open decision
+fixes, route availability is at item 9 stage A's threshold (until it is
+derived, the 90 percent floor item 14 was accepted against), planner p95 is
+below 200 ms, and on the stereo set the shafts are climbed at no less than
+half of what the time-of-flight range admits.
+
+Whatever a series shows to be wrong is fixed, with its measured cause, and the
+series is flown again; nothing is set aside because it is inconvenient. Debt
+may hold only what is very hard, what needs a deep rework of the code, or what
+needs the project owner's decision, and each such entry says which of the
+three it is.
 
 ## Completed
 
@@ -795,8 +847,9 @@ memory (stage 2): occupied precision 97 to 98 percent within one voxel,
 recall 96 to 99 percent inside the third of the lidar's volume the vision
 memory observes.
 
-Known and not gated: the mean speed gate of 1.226 m/s is missed by one flight
-of the final five (1.165 m/s); the evidence age exceeds the 600 ms the contract charges
+Known and not gated: the mean speed gate of 1.226 m/s, and the requirement of
+1.2 m/s that replaced it, is missed by one flight of the final five
+(1.165 m/s); the evidence age exceeds the 600 ms the contract charges
 on about 1 percent of the ticks (624 to 832 ms at most) on a workstation that
 holds a real-time factor of 0.9 beside the render, the image bridge and the
 matcher; lateral tracking p99 0.305 and 0.320 m in two flights of five against

@@ -163,10 +163,13 @@ at, and the lateral-tracking and position-estimate measurements read that
 clock when the record carries it; the lidar-inertial comparison stays on the
 simulation clock, which both of its records share.
 
-The mean flight speed is gated by the navigation sensor profile the manifest
-records: 2.5 m/s on the lidar, and on the stereo profile half of what its
-braking contract admits forward, 1.226 m/s (6.4 m of confident depth admit
-2.452 m/s).
+The mean flight speed is the only speed the programme targets, and it is
+gated by the navigation sensor profile the manifest records, whatever
+localizes the vehicle: it has to exceed 2.4 m/s on the lidar and 1.2 m/s on
+the stereo sensor set. These are the project owner's requirements of
+2026-09-19; they replaced 2.5 m/s and the 1.226 m/s derived for the stereo
+profile as half of what its braking contract admits forward (6.4 m of
+confident depth admit 2.452 m/s).
 
 ### Resource record
 
