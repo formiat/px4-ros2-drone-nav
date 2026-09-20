@@ -71,7 +71,8 @@ the correction is recorded beside it.
   pair's field and a time-of-flight cone is flown at 1 m/s unobserved; lateral
   deviations of the horizon from the route enter unknown space at the
   validators' speed, as they did under the lidar, where the lidar had already
-  seen it; the multi-vehicle launch has not been flown on the profile.
+  seen it; the multi-vehicle launch has not been flown on the profile. What is
+  still open is in [technical_debt.md](technical_debt.md).
 
 ## The Item As It Stood
 

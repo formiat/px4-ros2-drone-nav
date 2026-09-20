@@ -641,3 +641,4 @@ Key pages:
 - `docs/development.md`
 - `docs/troubleshooting.md`
 - `docs/performance.md`
+- `docs/technical_debt.md`

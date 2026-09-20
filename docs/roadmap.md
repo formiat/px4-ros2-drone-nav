@@ -419,7 +419,8 @@ way the tick went from 55 to 23 ms at p50 (one collision oracle per path),
 the position estimate from 0.11 s ahead of the true pose to 0.01 s
 (`EKF2_GPS_DELAY 0`) and the vertical law from 2.0 to the measured 1.4 m/s².
 
-Known leftovers, measured and not gated: the loop runs near 43 Hz with about
+Known leftovers, measured and not gated (those still open are in
+[`technical_debt.md`](technical_debt.md)): the loop runs near 43 Hz with about
 80 percent of ticks over the 20 ms deadline and no single bottleneck left;
 the planner spends its whole 150 ms budget, so the p95 check measures the
 configuration; a holding vehicle drifts 0.37 m at p95 while the rest
@@ -660,5 +661,7 @@ capture radius: an odometry without loop closure has no bound, and a mission
 several times longer needs long-lived points in the filter's state or a map to
 relocalize against (a deep rework). r587 flew 2.42 m/s against 2.4. No
 reference system has been run on the recordings. The multi-vehicle path is
-not flight-verified on cameras or without GNSS (item 15).
+not flight-verified on cameras or without GNSS (item 15). The register of
+what is set aside, with the class of every entry, is
+[`technical_debt.md`](technical_debt.md).
 
