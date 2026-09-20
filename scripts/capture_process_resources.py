@@ -64,9 +64,55 @@ def parse_gpu_sample(gpu_rows: list[list[str]],
     return utilization, used, by_name
 
 
-def gpu_sample() -> tuple[float, int, dict[str, int]]:
-    return parse_gpu_sample(nvidia_smi("gpu", "utilization.gpu,memory.used"),
-                            nvidia_smi("compute-apps", "process_name,used_memory"))
+class NvidiaSmiStream:
+    """One nvidia-smi query kept running in its loop mode at a period of ten
+    seconds, the latest complete answer held for the sampler. Asking the driver
+    is not free for what it measures: with the stereo pair rendering, two
+    queries a second held the simulator's real-time factor under 0.9 for 31 to
+    36 percent of the seconds of a flight (mean 0.92 to 0.94), whether each was
+    a fresh process or one kept running, against 13 percent and 0.99 with no
+    query and 20 percent and 0.97 at this period; the lidar profile's light
+    render never showed it. The GPU figures are slow quantities, and a sample
+    every ten seconds still gives thirty a flight. Rows of one answer share
+    their timestamp."""
+
+    def __init__(self, query: str, fields: str) -> None:
+        self._rows: list[list[str]] = []
+        self._lock = threading.Lock()
+        try:
+            self._process: subprocess.Popen[str] | None = subprocess.Popen(
+                ["nvidia-smi", f"--query-{query}=timestamp,{fields}",
+                 "--format=csv,noheader,nounits", "-l", "10"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        except OSError:
+            self._process = None
+            return
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self) -> None:
+        assert self._process is not None and self._process.stdout is not None
+        stamp = ""
+        answer: list[list[str]] = []
+        for line in self._process.stdout:
+            cells = [cell.strip() for cell in line.split(",")]
+            if len(cells) < 2:
+                continue
+            # A new timestamp closes the previous answer.
+            if cells[0] != stamp and answer:
+                with self._lock:
+                    self._rows = answer
+                answer = []
+            stamp = cells[0]
+            answer.append(cells[1:])
+
+    def latest(self) -> list[list[str]]:
+        with self._lock:
+            return list(self._rows)
+
+
+def gpu_sample(gpu: NvidiaSmiStream,
+               apps: NvidiaSmiStream) -> tuple[float, int, dict[str, int]]:
+    return parse_gpu_sample(gpu.latest(), apps.latest())
 
 
 INTERPRETERS = {"python3", "python", "bash", "sh", "ruby"}
@@ -170,6 +216,8 @@ def main() -> int:
     Path(args.host_output).write_text(json.dumps(host_description(args.world), indent=2),
                                       encoding="utf-8")
     rtf = RealTimeFactor(args.world)
+    gpu_stream = NvidiaSmiStream("gpu", "utilization.gpu,memory.used")
+    apps_stream = NvidiaSmiStream("compute-apps", "process_name,used_memory")
     rows: list[tuple[object, ...]] = []
     lock = threading.Lock()
     processes: dict[int, psutil.Process] = {}
@@ -189,7 +237,7 @@ def main() -> int:
         time.sleep(max(0.0, next_sample - time.monotonic()))
         next_sample += 1.0
         stamp = time.time()
-        utilization, gpu_used, gpu_by_name = gpu_sample()
+        utilization, gpu_used, gpu_by_name = gpu_sample(gpu_stream, apps_stream)
         cgroup_cpu, cgroup_memory = cgroup_sample()
         seen = set()
         for process in psutil.process_iter(["pid"]):

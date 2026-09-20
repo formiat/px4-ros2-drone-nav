@@ -202,9 +202,11 @@ confident depth admit 2.452 m/s).
 
 Every flight, headless or not, records what its processes consume
 (`resources.csv`, `scripts/capture_process_resources.py`): once a second,
-per process, CPU in cores, resident memory and threads; the GPU's
-utilisation and memory with the memory by process name; the container's
-cgroup totals; and Gazebo's real-time factor. The host is described once in
+per process, CPU in cores, resident memory and threads; the container's
+cgroup totals; and Gazebo's real-time factor; and every ten seconds the GPU's
+utilisation and memory with the memory by process name (asking the driver
+every second stalled the simulator while the stereo pair rendered: real-time
+factor under 0.9 for a third of a flight's seconds). The host is described once in
 `resources_host.json`. `scripts/resource_budget_evidence.py` holds the record
 against two gates and reports the rest, so a change of cost is seen on the
 next flight:

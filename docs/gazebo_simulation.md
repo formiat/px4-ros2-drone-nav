@@ -309,6 +309,17 @@ RGB runs at 0.99 on the sensor world and 0.84 to 0.90 on the GUI world. The
 cameras' visibility mask leaves out the vehicle's own GUI markers, which
 filled a third of the frame, and the grey collision proxies the lidar reads.
 
+The pair's images do not cross the ROS-Gazebo bridge. Two 1280 x 960 RGB
+streams through `parameter_bridge` and DDS are 55 MB/s, and the simulator
+stalled behind that subscriber: with the pair rendering and the navigation
+stack idle the real-time factor was under 0.9 for 16 to 24 percent of the
+seconds through the bridge and for 3 percent with a Gazebo subscriber in its
+place. `gazebo_stereo_depth_node` hosts the depth node beside a simulation-only
+image source that takes the images from Gazebo inside the same process and
+hands them over as grey frames without a copy, the way a camera driver and a
+matcher share memory on a vehicle; `stereo_depth_node` is the same node fed
+over ROS. Only the two time-of-flight clouds still use the bridge.
+
 The headless flights run on `world_sensor.sdf`, a collision-only
 materialization with no textures and no lights; a camera sees nothing there.
 With the camera profile on, both headless targets run on

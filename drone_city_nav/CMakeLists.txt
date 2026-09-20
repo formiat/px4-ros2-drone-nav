@@ -986,13 +986,25 @@ target_link_libraries(
 ament_target_dependencies(simulation_truth_adapter_node rclcpp)
 enable_project_warnings(simulation_truth_adapter_node)
 
-add_executable(stereo_depth_node src/stereo_depth_node.cpp)
-target_compile_features(stereo_depth_node PRIVATE cxx_std_20)
-target_include_directories(stereo_depth_node SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(stereo_depth_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${OpenCV_LIBS})
-ament_target_dependencies(stereo_depth_node rclcpp sensor_msgs)
-enable_project_warnings(stereo_depth_node)
+# The depth node in a process whose images arrive over ROS, and the same node
+# hosted beside the simulated pair's image source, which hands them over inside
+# the process.
+foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
+  add_executable(${stereo_depth_process} src/stereo_depth_node.cpp)
+  target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
+  target_include_directories(${stereo_depth_process} SYSTEM
+                             PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_include_directories(${stereo_depth_process}
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(${stereo_depth_process} drone_city_nav_core
+                        drone_city_nav_ros_adapters ${OpenCV_LIBS})
+  ament_target_dependencies(${stereo_depth_process} rclcpp sensor_msgs)
+  enable_project_warnings(${stereo_depth_process})
+endforeach()
+target_sources(stereo_depth_node PRIVATE src/stereo_depth_main.cpp)
+target_sources(gazebo_stereo_depth_node PRIVATE src/gazebo_stereo_depth_main.cpp)
+target_link_libraries(gazebo_stereo_depth_node gz-transport13::gz-transport13
+                      gz-msgs10::gz-msgs10)
 
 add_executable(lidar_inertial_odometry_node src/lidar_inertial_odometry_node.cpp)
 target_compile_features(lidar_inertial_odometry_node PRIVATE cxx_std_20)
@@ -1212,6 +1224,7 @@ install(
     simulation_heading_source_node
     lidar_inertial_odometry_node
     stereo_depth_node
+    gazebo_stereo_depth_node
     cooperative_traffic_agent_node
     drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components

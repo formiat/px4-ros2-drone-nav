@@ -527,9 +527,8 @@ def generate_multi_vehicle_launch_description():
                 nodes.append(
                     Node(
                         package="drone_city_nav",
-                        executable="stereo_depth_node",
+                        executable="gazebo_stereo_depth_node",
                         namespace=f"vehicles/{role}",
-                        name="stereo_depth_node",
                         output="screen",
                         prefix=planning_prefix,
                         parameters=[

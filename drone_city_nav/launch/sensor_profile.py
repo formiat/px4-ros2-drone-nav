@@ -73,9 +73,12 @@ def validate_sensor_profiles(camera_profile: str, navigation_sensor_profile: str
 
 
 def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""):
-    """The Gazebo-to-ROS bridge of one vehicle's camera set and the depth
-    node's topic parameters that read it: (bridge arguments, bridge remaps,
-    depth node parameters). The returns topic is the vision memory's input."""
+    """How one vehicle's camera set reaches its depth node: (bridge arguments,
+    bridge remaps, parameters of the `gazebo_stereo_depth_node` process). Only
+    the two time-of-flight clouds cross the ROS-Gazebo bridge; the pair's
+    images are taken from Gazebo inside the depth node's process, because the
+    bridge of two 1280 x 960 streams stalled the simulator. The returns topic
+    is the vision memory's input."""
     sensor_prefix = (
         f"/world/{world_name}/model/{model_name}/link/stereo_tof_link/sensor"
     )
@@ -83,11 +86,12 @@ def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""
     remappings = []
     depth_parameters = {"returns_topic": f"{vehicle_prefix}/stereo_depth/points"}
     for side in ("left", "right"):
-        gz_topic = f"{sensor_prefix}/stereo_{side}/image"
-        ros_topic = f"{vehicle_prefix}/stereo/{side}/image"
-        bridge_arguments.append(f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image")
-        remappings.extend(["-r", f"{gz_topic}:={ros_topic}"])
-        depth_parameters[f"{side}_image_topic"] = ros_topic
+        depth_parameters[f"{side}_gazebo_image_topic"] = (
+            f"{sensor_prefix}/stereo_{side}/image"
+        )
+        depth_parameters[f"{side}_image_topic"] = (
+            f"{vehicle_prefix}/stereo/{side}/image"
+        )
     for side in ("up", "down"):
         gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
         ros_topic = f"{vehicle_prefix}/tof/{side}/points"

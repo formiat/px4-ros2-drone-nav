@@ -61,10 +61,17 @@ class SensorProfileTest(unittest.TestCase):
     def test_each_vehicle_bridges_its_own_camera_set(self) -> None:
         arguments, remaps, depth = stereo_tof_topics("world", "x500_lidar_3d_2",
                                                      "/vehicles/civilian_2")
-        self.assertEqual(4, len(arguments))
-        self.assertTrue(all("/model/x500_lidar_3d_2/link/stereo_tof_link/" in argument
-                            for argument in arguments))
-        self.assertEqual(8, len(remaps))
+        # Only the time-of-flight clouds cross the bridge; the images are taken
+        # from Gazebo inside the depth node's process.
+        self.assertEqual(2, len(arguments))
+        self.assertTrue(all("/model/x500_lidar_3d_2/link/stereo_tof_link/sensor/tof_"
+                            in argument for argument in arguments))
+        self.assertEqual(4, len(remaps))
+        self.assertEqual(
+            "/world/world/model/x500_lidar_3d_2/link/stereo_tof_link/sensor/"
+            "stereo_left/image",
+            depth["left_gazebo_image_topic"],
+        )
         self.assertEqual("/vehicles/civilian_2/stereo_depth/points",
                          depth["returns_topic"])
         self.assertEqual("/vehicles/civilian_2/stereo/left/image",

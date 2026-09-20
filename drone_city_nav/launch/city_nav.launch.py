@@ -123,8 +123,9 @@ def stereo_vision_nodes(
         ),
         Node(
             package="drone_city_nav",
-            executable="stereo_depth_node",
-            name="stereo_depth_node",
+            # The depth node beside the simulated pair's image source, in one
+            # process; no name, which would rename both of its nodes.
+            executable="gazebo_stereo_depth_node",
             output="screen",
             parameters=[params_path, depth_topics, {"use_sim_time": True}],
         ),

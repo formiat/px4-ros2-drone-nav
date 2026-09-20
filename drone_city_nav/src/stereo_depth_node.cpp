@@ -1,3 +1,5 @@
+#include "stereo_depth_node.hpp"
+
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
@@ -32,8 +34,8 @@ namespace drone_city_nav {
 // A pixel without a match is no observation.
 class StereoDepthNode final : public rclcpp::Node {
 public:
-  StereoDepthNode()
-      : rclcpp::Node{"stereo_depth_node"} {
+  explicit StereoDepthNode(const rclcpp::NodeOptions& options)
+      : rclcpp::Node{"stereo_depth_node", options} {
     const double horizontal_fov_rad =
         declare_parameter<double>("horizontal_fov_rad", 2.0943951023931953);
     image_width_ =
@@ -344,15 +346,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr tof_down_sub_;
 };
 
-} // namespace drone_city_nav
-
-int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
-  // One thread matches pairs, the other takes the time-of-flight scans.
-  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
-  const auto node = std::make_shared<drone_city_nav::StereoDepthNode>();
-  executor.add_node(node);
-  executor.spin();
-  rclcpp::shutdown();
-  return 0;
+std::shared_ptr<rclcpp::Node> makeStereoDepthNode(const rclcpp::NodeOptions& options) {
+  return std::make_shared<StereoDepthNode>(options);
 }
+
+} // namespace drone_city_nav

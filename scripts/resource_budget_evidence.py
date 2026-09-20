@@ -44,7 +44,8 @@ HORIZON_TRANSPORT_PATTERN = re.compile(
 # The depth node is the stereo profile's perception and flies with it: left
 # with the simulator it hid 1.4 cores of the onboard budget (r506).
 ONBOARD_PROCESSES = ("production_mppi_node", "obstacle_memory_3d_node",
-                     "stereo_depth_node", "lidar_inertial_odometry_node",
+                     "stereo_depth_node", "gazebo_stereo_depth_node",
+                     "lidar_inertial_odometry_node",
                      "mppi_offboard_node", "MicroXRCEAgent")
 MINIMUM_RECORD_COVERAGE = 0.90
 SAMPLE_PERIOD_S = 1.0
