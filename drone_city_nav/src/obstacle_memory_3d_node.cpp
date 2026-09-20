@@ -774,7 +774,8 @@ private:
     std_msgs::msg::Header source_header = pending.cloud.header;
     LatestSensorObstacleScanBuildResult latest;
     latest.acquisition_body_frame = body_frame;
-    latest.hit_points_body_frd = hit_points_body;
+    latest.hit_points_body_frd =
+        thinnedNearestReturns(hit_points_body, kLatestSensorScanCellM);
     latest.source_beam_count = decoded.beams.size();
     const std::size_t dynamic_filtered = cooperative_filtered;
     latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;

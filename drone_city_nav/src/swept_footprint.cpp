@@ -469,9 +469,7 @@ struct ContactExemption3D {
       return true;
     }
     return seed != nullptr &&
-           std::ranges::all_of(positions, [&](const Point3& position) {
-             return proprioceptiveSeedExemptsPoint(*seed, position, obstacle_point);
-           });
+           proprioceptiveSeedExemptsPointAtAll(*seed, positions, obstacle_point);
   }
 };
 
@@ -881,9 +879,10 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
          reference_depth_m + kContactDepthToleranceM;
 }
 
-bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
-                                    const Point3& candidate_position,
-                                    const Point3& obstacle_point) noexcept {
+bool proprioceptiveSeedExemptsPointAtAll(
+    const ProprioceptiveFreeSpaceSeed3D& seed,
+    const std::span<const Point3> candidate_positions,
+    const Point3& obstacle_point) noexcept {
   const double tolerance_m = seedContactToleranceM(seed);
   const SweptFootprintConfig contact_envelope =
       contactWidenedFootprint(seed.footprint, tolerance_m);
@@ -899,11 +898,18 @@ bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
         std::max(reference_depth_m,
                  bodyDepthAtPointM(obstacle_point, pose, seed.body_axis, body));
   });
-  if (!contact) {
-    return false;
-  }
-  return bodyDepthAtPointM(obstacle_point, candidate_position, seed.body_axis, body) <=
-         reference_depth_m + kContactDepthToleranceM;
+  return contact &&
+         std::ranges::all_of(candidate_positions, [&](const Point3& position) {
+           return bodyDepthAtPointM(obstacle_point, position, seed.body_axis, body) <=
+                  reference_depth_m + kContactDepthToleranceM;
+         });
+}
+
+bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
+                                    const Point3& candidate_position,
+                                    const Point3& obstacle_point) noexcept {
+  return proprioceptiveSeedExemptsPointAtAll(
+      seed, std::span<const Point3>{&candidate_position, 1U}, obstacle_point);
 }
 
 SweptFootprintResult validateRawFootprintAt(

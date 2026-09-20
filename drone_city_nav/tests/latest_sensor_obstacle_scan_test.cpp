@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <limits>
 #include <numbers>
 #include <vector>
@@ -152,6 +153,36 @@ TEST(LatestSensorObstacleScanTest, RejectsScanWhenEveryBeamIsInvalid) {
   EXPECT_FALSE(result.valid);
   EXPECT_EQ(result.invalid_beam_count, ranges.size());
   EXPECT_TRUE(result.hit_points_body_frd.empty());
+}
+
+TEST(LatestSensorObstacleScanTest, ThinningKeepsTheNearestReturnOfEveryCell) {
+  // A wall one metre ahead sampled every centimetre, and one return behind it.
+  std::vector<Point3> returns;
+  for (int y = 0; y < 100; ++y) {
+    for (int z = 0; z < 100; ++z) {
+      returns.push_back(Point3{1.02 + 0.0001 * static_cast<double>((y + z) % 7),
+                               0.01 * static_cast<double>(y) + 0.005,
+                               0.01 * static_cast<double>(z) + 0.005});
+    }
+  }
+  returns.push_back(Point3{4.0, 0.5, 0.5});
+
+  const std::vector<Point3> thinned = thinnedNearestReturns(returns, 0.05);
+
+  // Twenty cells either way on the wall, and the far return's own cell.
+  ASSERT_EQ(thinned.size(), 401U);
+  for (const Point3& kept : thinned) {
+    for (const Point3& original : returns) {
+      if (std::floor(original.x / 0.05) == std::floor(kept.x / 0.05) &&
+          std::floor(original.y / 0.05) == std::floor(kept.y / 0.05) &&
+          std::floor(original.z / 0.05) == std::floor(kept.z / 0.05)) {
+        EXPECT_LE(kept.x * kept.x + kept.y * kept.y + kept.z * kept.z,
+                  original.x * original.x + original.y * original.y +
+                      original.z * original.z);
+      }
+    }
+  }
+  EXPECT_EQ(thinnedNearestReturns(returns, 0.0).size(), returns.size());
 }
 
 TEST(LatestSensorObstacleScanTest, CreatesStableNonzeroProducerEpochValues) {

@@ -3,6 +3,7 @@
 #include "drone_city_nav/producer_instance_id.hpp"
 
 #include <cmath>
+#include <unordered_map>
 
 namespace drone_city_nav {
 namespace {
@@ -52,6 +53,39 @@ buildLatestSensorObstacleScan(const LatestSensorObstacleScanBuildInput& input) {
   // with a snapshot every consumer must discard.
   result.valid = result.invalid_beam_count < result.source_beam_count;
   return result;
+}
+
+std::vector<Point3>
+thinnedNearestReturns(const std::span<const Point3> hit_points_body_frd,
+                      const double cell_m) {
+  std::vector<Point3> kept;
+  if (!(cell_m > 0.0)) {
+    kept.assign(hit_points_body_frd.begin(), hit_points_body_frd.end());
+    return kept;
+  }
+  const auto squaredRange = [](const Point3& point) {
+    return point.x * point.x + point.y * point.y + point.z * point.z;
+  };
+  // 21 bits an axis: 52 km of 0.05 m cells either way, past any sensor.
+  const auto cellCoordinate = [cell_m](const double value) {
+    return static_cast<std::uint64_t>(
+               static_cast<std::int64_t>(std::floor(value / cell_m)) + (1LL << 20U)) &
+           ((1ULL << 21U) - 1ULL);
+  };
+  std::unordered_map<std::uint64_t, std::size_t> kept_index_by_cell;
+  kept_index_by_cell.reserve(hit_points_body_frd.size());
+  for (const Point3& point : hit_points_body_frd) {
+    const std::uint64_t cell = (cellCoordinate(point.x) << 42U) |
+                               (cellCoordinate(point.y) << 21U) |
+                               cellCoordinate(point.z);
+    const auto [entry, inserted] = kept_index_by_cell.try_emplace(cell, kept.size());
+    if (inserted) {
+      kept.push_back(point);
+    } else if (squaredRange(point) < squaredRange(kept[entry->second])) {
+      kept[entry->second] = point;
+    }
+  }
+  return kept;
 }
 
 std::uint64_t createLatestSensorObstacleProducerInstanceId() noexcept {

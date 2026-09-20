@@ -77,6 +77,17 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
                                const Point3& candidate_position,
                                const Point3& obstacle_point) noexcept;
 
+// The same verdict for every listed body position at once. The contact the
+// seed has with the point depends on the seed and the point alone, so one
+// walk of the departure serves them all: beside a wall the envelope touches,
+// a scan's returns lie a centimetre apart, every one inside the envelope is
+// asked for, and a walk per position made one path validation cost half a
+// second there.
+[[nodiscard]] bool
+proprioceptiveSeedExemptsPointAtAll(const ProprioceptiveFreeSpaceSeed3D& seed,
+                                    std::span<const Point3> candidate_positions,
+                                    const Point3& obstacle_point) noexcept;
+
 // The 3D validators accept two kinds of contact evidence: the anchored launch
 // support and the proprioceptive seed. Either exempts the occupied evidence it
 // covers; a sweep interval is exempt only when its begin, midpoint, and end
