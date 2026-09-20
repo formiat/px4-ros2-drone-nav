@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace drone_city_nav {
@@ -157,13 +158,18 @@ std::size_t firstUnseenMotionState3D(const std::span<const MotionState3D> horizo
                                      const StoppingCapability& stopping_capability,
                                      const double absolute_speed_limit_mps,
                                      const double body_radius_m,
-                                     const double rest_speed_mps) {
+                                     const double rest_speed_mps,
+                                     const double travel_allowance_m) {
+  double unseen_travel_m{0.0};
+  double previous_speed_mps{std::numeric_limits<double>::infinity()};
   for (std::size_t index = 0U; index < horizon.size(); ++index) {
     const MotionState3D& state = horizon[index];
     const Vec3 velocity{static_cast<double>(state.vx), static_cast<double>(state.vy),
                         static_cast<double>(state.vz)};
     const double speed_mps = std::hypot(std::hypot(velocity.x, velocity.y), velocity.z);
-    if (speed_mps <= rest_speed_mps ||
+    const bool slowing = speed_mps < previous_speed_mps;
+    previous_speed_mps = speed_mps;
+    if (index == 0U || slowing || speed_mps <= rest_speed_mps ||
         !sensorBrakingMotionUnfaced3D(contract, velocity,
                                       static_cast<double>(state.yaw))) {
       continue;
@@ -173,9 +179,16 @@ std::size_t firstUnseenMotionState3D(const std::span<const MotionState3D> horizo
         Point3{static_cast<double>(state.x), static_cast<double>(state.y),
                static_cast<double>(state.z)},
         velocity, body_radius_m, contract.guaranteed_detection_range_m);
-    if (speed_mps > sensorBrakingMemorySpeedMps(contract, stopping_capability,
-                                                absolute_speed_limit_mps, velocity,
-                                                observed_range_m)) {
+    if (speed_mps <= sensorBrakingMemorySpeedMps(contract, stopping_capability,
+                                                 absolute_speed_limit_mps, velocity,
+                                                 observed_range_m)) {
+      continue;
+    }
+    const MotionState3D& before = horizon[index - 1U];
+    unseen_travel_m += std::hypot(std::hypot(static_cast<double>(state.x - before.x),
+                                             static_cast<double>(state.y - before.y)),
+                                  static_cast<double>(state.z - before.z));
+    if (unseen_travel_m > travel_allowance_m) {
       return index;
     }
   }
@@ -215,21 +228,31 @@ double measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
       Vec3{-other.x * body_radius_m, -other.y * body_radius_m,
            -other.z * body_radius_m},
   };
-  double observed_m = body_radius_m;
-  for (double range_m = body_radius_m + step_m; range_m <= maximum_range_m;
-       range_m += step_m) {
-    for (const Vec3& offset : offsets) {
+  // Each line across the body is followed until memory has not observed a
+  // voxel, which ends what is observed along the motion, or until it meets a
+  // voxel memory holds occupied, which closes that line: what lies behind a
+  // known surface is unobserved and cannot be entered, and the clearance laws
+  // own the surface. Read through it, a body's width beside a wall reached the
+  // unobserved inside of the wall at once, and a vehicle in a corridor was
+  // refused every motion it did not face.
+  double observed_m = maximum_range_m;
+  for (const Vec3& offset : offsets) {
+    for (double range_m = body_radius_m + step_m; range_m <= maximum_range_m;
+         range_m += step_m) {
       const std::optional<GridIndex3D> cell =
           occupancy.worldToCell(Point3{origin.x + along.x * range_m + offset.x,
                                        origin.y + along.y * range_m + offset.y,
                                        origin.z + along.z * range_m + offset.z});
       if (!cell.has_value() || !occupancy.isKnown(*cell)) {
-        return observed_m;
+        observed_m = std::min(observed_m, range_m - step_m);
+        break;
+      }
+      if (occupancy.isOccupied(*cell)) {
+        break;
       }
     }
-    observed_m = range_m;
   }
-  return observed_m;
+  return std::max(observed_m, body_radius_m);
 }
 
 } // namespace drone_city_nav

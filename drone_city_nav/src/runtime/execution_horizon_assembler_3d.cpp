@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <utility>
@@ -165,6 +167,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
   std::optional<FiniteExecutionPlanCertificationResult3D> route_certification;
   double certification_ms{0.0};
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
+  HorizonCandidate3D unseen_motion;
   {
     route_certification_target = route_execution.pending_activation
                                      ? route_execution.route.get()
@@ -190,15 +193,33 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       }
       // Shortened like any other refused prefix: the arrival search ends the
       // horizon at rest before the motion no sensor would see.
-      if (route_certification_target->observed_raw_world != nullptr &&
-          firstUnseenMotionState3D(
-              candidate.states,
-              route_certification_target->observed_raw_world->occupancy(),
-              config_.sensor_braking_contract, config_.stopping_capability,
-              config_.absolute_speed_limit_mps, config_.body_radius_m,
-              kStationaryExecutionHoldSpeedToleranceMps) < candidate.states.size()) {
-        route_certification.reset();
-        return false;
+      if (route_certification_target->observed_raw_world != nullptr) {
+        const ObservedOccupancyGrid3D& occupancy =
+            route_certification_target->observed_raw_world->occupancy();
+        const std::size_t unseen = firstUnseenMotionState3D(
+            candidate.states, occupancy, config_.sensor_braking_contract,
+            config_.stopping_capability, config_.absolute_speed_limit_mps,
+            config_.body_radius_m, kStationaryExecutionHoldSpeedToleranceMps,
+            config_.unseen_travel_allowance_m);
+        if (unseen < candidate.states.size()) {
+          if (unseen_motion.unseen_motion_refusals++ == 0U) {
+            const mppi::State& state = candidate.states[unseen];
+            const Vec3 velocity{state.vx, state.vy, state.vz};
+            unseen_motion.unseen_motion_state_index = unseen;
+            unseen_motion.unseen_motion_candidate_states = candidate.states.size();
+            unseen_motion.unseen_motion_speed_mps =
+                std::hypot(std::hypot(velocity.x, velocity.y), velocity.z);
+            unseen_motion.unseen_motion_heading_error_rad = std::remainder(
+                std::atan2(velocity.y, velocity.x) - static_cast<double>(state.yaw),
+                2.0 * std::numbers::pi);
+            unseen_motion.unseen_motion_observed_range_m = measureObservedRangeAlong3D(
+                occupancy, Point3{state.x, state.y, state.z}, velocity,
+                config_.body_radius_m,
+                config_.sensor_braking_contract.guaranteed_detection_range_m);
+          }
+          route_certification.reset();
+          return false;
+        }
       }
       const auto certification_started = std::chrono::steady_clock::now();
       // The braking tail is the earliest stop along the candidate the
@@ -255,7 +276,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
           config_.finite_horizon, evidence.execution_path_world,
           std::move(route_candidate_validator),
           mppi::FiniteExecutionPathBudget{.deadline = assembly_deadline});
-  HorizonCandidate3D candidate;
+  HorizonCandidate3D candidate = unseen_motion;
   candidate.certification_ms = certification_ms;
   captureValidationTelemetry(candidate, validated_path, nominal_candidate_degraded);
   if (route_certification.has_value()) {
@@ -285,6 +306,13 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
   }
   mppi::FiniteHorizon executable_path =
       std::move(validated_path.horizon).value_or(mppi::FiniteHorizon{});
+  if (candidate.unseen_motion_refusals > 0U && !executable_path.states.empty()) {
+    candidate.unseen_motion_accepted_states = executable_path.states.size();
+    candidate.unseen_motion_accepted_yaw_change_rad =
+        std::remainder(static_cast<double>(executable_path.states.back().yaw -
+                                           executable_path.states.front().yaw),
+                       2.0 * std::numbers::pi);
+  }
 
   const std::shared_ptr<const ExecutionPlan3D>& expected = expected_snapshot;
   {

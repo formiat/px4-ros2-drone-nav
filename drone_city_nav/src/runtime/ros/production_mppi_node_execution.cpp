@@ -13,6 +13,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -535,6 +536,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   const auto assemble_started = std::chrono::steady_clock::now();
   HorizonCandidate3D candidate =
       execution_horizon_assembler_->assemble(cycle, execution_supervisor_.plan());
+  if (candidate.unseen_motion_refusals > 0U) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "UNSEEN_MOTION refusals=%zu state=%zu of=%zu speed_mps=%.2f "
+        "heading_error_deg=%.0f observed_range_m=%.2f accepted_states=%zu "
+        "accepted_yaw_change_deg=%.0f status=%.*s",
+        candidate.unseen_motion_refusals, candidate.unseen_motion_state_index,
+        candidate.unseen_motion_candidate_states, candidate.unseen_motion_speed_mps,
+        candidate.unseen_motion_heading_error_rad * 180.0 / std::numbers::pi,
+        candidate.unseen_motion_observed_range_m,
+        candidate.unseen_motion_accepted_states,
+        candidate.unseen_motion_accepted_yaw_change_rad * 180.0 / std::numbers::pi,
+        static_cast<int>(horizonCandidateStatus3DName(candidate.status).size()),
+        horizonCandidateStatus3DName(candidate.status).data());
+  }
   latest_horizon_assemble_ms_ = std::chrono::duration<double, std::milli>(
                                     std::chrono::steady_clock::now() - assemble_started)
                                     .count();

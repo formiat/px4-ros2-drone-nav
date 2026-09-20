@@ -125,7 +125,13 @@ measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
 // The first state of `horizon` that carries speed along a motion no sensor
 // sees at that state's own planned heading, faster than memory admits along
 // it; the horizon's size when there is none. States no faster than
-// `rest_speed_mps` carry nothing.
+// `rest_speed_mps` carry nothing, a state that is slowing down is the horizon
+// doing what it should about a speed the vehicle already has, and the rule
+// refuses only once the unseen motion has travelled `travel_allowance_m`, the
+// clearance the validation envelope keeps beyond the body: a horizon's hover
+// corrections drift at 0.27 to 0.33 m/s a few centimetres into space beside
+// the body that nothing has looked at, and refused for them the vehicle stood
+// with a reference of 2 m/s (r532: 78 standstills, 120 s of 461).
 //
 // A published horizon owns the vehicle for its whole lease, and the lease
 // outlives the tick that published it: r518 lost the autopilot's position for
@@ -139,7 +145,7 @@ measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
     std::span<const MotionState3D> horizon, const ObservedOccupancyGrid3D& occupancy,
     const SensorBrakingContract3D& contract,
     const StoppingCapability& stopping_capability, double absolute_speed_limit_mps,
-    double body_radius_m, double rest_speed_mps);
+    double body_radius_m, double rest_speed_mps, double travel_allowance_m);
 
 // Where the route ahead of `from_station_m` comes close to known occupied
 // evidence, probing no farther than `lookahead_m`, in the same form the

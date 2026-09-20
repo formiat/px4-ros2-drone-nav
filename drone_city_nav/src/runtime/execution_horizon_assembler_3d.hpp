@@ -143,6 +143,19 @@ struct HorizonCandidate3D {
   std::optional<HorizonCandidatePhysicalRejection3D> physical_rejection;
   std::size_t arrival_shaping_attempts{0U};
   bool arrival_shaping_budget_exhausted{false};
+  // Candidates the unseen-motion rule refused in this assembly, and the state
+  // of the longest one it refused: how far into the horizon, how fast, and how
+  // far memory had observed along that state's motion.
+  std::size_t unseen_motion_refusals{0U};
+  std::size_t unseen_motion_state_index{0U};
+  std::size_t unseen_motion_candidate_states{0U};
+  double unseen_motion_speed_mps{0.0};
+  double unseen_motion_heading_error_rad{0.0};
+  double unseen_motion_observed_range_m{0.0};
+  // The horizon accepted after those refusals: its length and how far its
+  // heading turns.
+  std::size_t unseen_motion_accepted_states{0U};
+  double unseen_motion_accepted_yaw_change_rad{0.0};
   mppi::FiniteExecutionPathStatus validation_status{
       mppi::FiniteExecutionPathStatus::kInvalidContract};
   mppi::FiniteExecutionPathStatus first_failed_validation_status{
@@ -193,6 +206,9 @@ struct ExecutionHorizonAssemblerConfig3D {
   StoppingCapability stopping_capability{};
   double absolute_speed_limit_mps{0.0};
   double body_radius_m{0.0};
+  // How far a horizon may carry an unseen motion before it is refused: the
+  // clearance the validation envelope keeps beyond the body.
+  double unseen_travel_allowance_m{0.0};
 };
 
 // Produces an immutable execution-plan candidate without ROS dependencies.

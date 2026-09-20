@@ -248,6 +248,21 @@ TEST(ExecutedHorizonClearance3DTest, MemoryAnswersHowFarAMotionWasObserved) {
               0.55, 1.0e-9);
   EXPECT_DOUBLE_EQ(measureObservedRangeAlong3D(occupancy, vehicle, Vec3{}, 0.55, 30.0),
                    0.0);
+
+  // A known wall closes the lines that meet it: beside a wall along x = 4 m
+  // the body's width brushes it, and what lies unobserved behind the wall is
+  // not what a motion along it enters.
+  for (int y = 0; y < 80; ++y) {
+    for (int z = 0; z < 80; ++z) {
+      occupancy.setState(GridIndex3D{16, y, z}, ObservedVoxelState::kOccupied);
+      for (int x = 17; x < 24; ++x) {
+        occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kUnknown);
+      }
+    }
+  }
+  EXPECT_NEAR(measureObservedRangeAlong3D(occupancy, Point3{3.4, 10.0, 10.0},
+                                          Vec3{0.2, 1.0, 0.0}, 0.55, 6.0),
+              6.0, 0.25);
 }
 
 TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothingSees) {
@@ -273,7 +288,7 @@ TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothing
   const StoppingCapability capability;
   const auto first_unseen = [&](const std::vector<MotionState3D>& horizon) {
     return firstUnseenMotionState3D(horizon, occupancy, contract, capability, 10.0,
-                                    0.55, 0.25);
+                                    0.55, 0.25, 0.27);
   };
 
   // r518: the horizon turns toward the unobserved space at 2 m/s while its
@@ -300,6 +315,32 @@ TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothing
       MotionState3D{.x = 5.5F, .y = 10.0F, .z = 10.0F, .vx = 0.2F, .yaw = 3.0F},
   };
   EXPECT_EQ(first_unseen(backing), backing.size());
+
+  // A hover correction drifts a few centimetres beside the body and is not
+  // refused for it; the same drift kept up is, once it has travelled the
+  // envelope's clearance.
+  std::vector<MotionState3D> drifting;
+  for (int step = 0; step < 30; ++step) {
+    drifting.push_back(MotionState3D{.x = 5.6F + 0.015F * static_cast<float>(step),
+                                     .y = 10.0F,
+                                     .z = 10.0F,
+                                     .vx = 0.3F,
+                                     .yaw = 3.0F});
+  }
+  EXPECT_EQ(
+      first_unseen(std::vector<MotionState3D>(drifting.begin(), drifting.begin() + 15)),
+      15U);
+  EXPECT_EQ(first_unseen(drifting), 19U);
+
+  // A horizon that is slowing down is answering for a speed the vehicle
+  // already has, however it got it.
+  const std::vector<MotionState3D> braking{
+      MotionState3D{.x = 5.0F, .y = 10.0F, .z = 10.0F, .vx = 2.5F, .yaw = 3.0F},
+      MotionState3D{.x = 5.12F, .y = 10.0F, .z = 10.0F, .vx = 2.3F, .yaw = 3.0F},
+      MotionState3D{.x = 5.23F, .y = 10.0F, .z = 10.0F, .vx = 2.1F, .yaw = 3.0F},
+      MotionState3D{.x = 5.33F, .y = 10.0F, .z = 10.0F, .vx = 1.9F, .yaw = 3.0F},
+  };
+  EXPECT_EQ(first_unseen(braking), braking.size());
 
   // A lidar that sees all around refuses nothing.
   contract.forward_horizontal_half_angle_rad = 3.141592653589793;

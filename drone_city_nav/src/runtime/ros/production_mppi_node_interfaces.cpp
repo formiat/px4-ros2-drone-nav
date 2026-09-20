@@ -301,6 +301,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .absolute_speed_limit_mps =
               config_.control.speed_policy.absolute_speed_limit_mps,
           .body_radius_m = config_.world.physical_footprint.body_radius_m,
+          .unseen_travel_allowance_m = config_.world.physical_footprint.radius_m -
+                                       config_.world.physical_footprint.body_radius_m,
       });
   route_lifecycle_coordinator_ = std::make_unique<RouteLifecycleCoordinator3D>(
       execution_supervisor_,
