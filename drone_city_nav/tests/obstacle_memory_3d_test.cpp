@@ -367,4 +367,26 @@ TEST(ObstacleMemory3D, ForgetsOnlyVoxelsOverlappedByDynamicVolumes) {
 }
 
 } // namespace
+
+TEST(ObstacleMemory3D, AScanThatChangesNothingIsStillARevision) {
+  // The published revision carries the scan's stamp; two stamps under one
+  // revision are an identity conflict to the consumer.
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 4.0, .hit = true, .valid = true}};
+  const auto scan = [&](const std::int64_t stamp_ns) {
+    return memory.integrateScan(LidarScan3DView{.origin_map = Point3{2.0, 2.0, 2.0},
+                                                .beams = beams,
+                                                .acquisition_stamp_ns = stamp_ns});
+  };
+  for (std::int64_t index = 1; index <= 20; ++index) {
+    scan(index * 100'000'000LL);
+  }
+  const std::uint64_t settled = memory.revision();
+  const ObstacleMemory3DStats unchanged = scan(2'100'000'000LL);
+  EXPECT_EQ(unchanged.state_transitions, 0U);
+  EXPECT_EQ(memory.revision(), settled + 1U);
+}
+
 } // namespace drone_city_nav

@@ -249,9 +249,15 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
     applyChunkEvidence(chunk_index, chunk_evidence, stats);
   }
-  if (stats.state_transitions > 0U) {
-    ++revision_;
-  }
+  // Every integrated scan is a revision, whether or not a voxel changed state:
+  // the revision is published with the scan's stamp, and the consumer holds a
+  // revision to one stamp and one content. A lidar's scan always moves some
+  // voxel; the stereo pair of a hovering vehicle looks at the same wall and
+  // moves none, the same revision went out under the next scan's stamp, and
+  // the planner refused it as an identity conflict and then the snapshots
+  // after it (1 to 16 times a camera flight, never on the lidar; r530 waited
+  // 31 s for a world it would accept, r529 the same).
+  ++revision_;
   return stats;
 }
 
