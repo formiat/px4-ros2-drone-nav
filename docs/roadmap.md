@@ -55,7 +55,12 @@ decision that has not been taken. The mean speed sat at its former gate of
 five of r511 to r515 above it (2.65 to 2.82), on code the lidar profile does
 not distinguish. The requirement is now a mean above 2.4 m/s on the lidar and
 above 1.2 m/s on the stereo sensor set, and the mean is the only speed the
-programme targets; one of those eleven flights (2.32) is under it. One more decision is open: this stage is written for the 3D
+programme targets; one of those eleven flights (2.32) is under it. The
+owner's statement of the same day is that the project has two requirements
+and no others, the vehicle never crashes and always reaches its goal, and the
+mean speed; route availability is then a measurement and not a gate of this
+stage. The mission check still fails a flight on it, and on its other
+measurements; whether those lines become reports is not yet decided. One more decision is open: this stage is written for the 3D
 lidar, and since item 14 the default sensor set is the stereo pair. Which
 profile closes stage A, the lidar's with these gates, the stereo profile's
 with its own speed requirement (1.2 m/s), or both, is to be decided before the
@@ -361,8 +366,7 @@ become a code dependency.
 ### Decisions Before Implementation
 
 This item was written before item 14 flew, and item 14 changed what it can
-assume. What follows is settled before stage 1; one point is a product
-decision and is open.
+assume. What follows is settled before stage 1.
 
 **The simulation has to hold real time first.** On the camera profile the
 workstation runs 7.1 of its 8 cores (onboard 3.8, the simulator with the
@@ -418,12 +422,18 @@ the vehicle is elsewhere. Stereo visual-inertial odometry typically drifts
 covers, and the point-to-point mission revisits almost nothing, so a closure
 against the estimator's own keyframes has little to close on. The mission
 check's gate on the position estimate is 0.35 m across the track at p95
-(lidar-inertial 0.15 to 0.22, GNSS 0.19 to 0.25). *Open decision:* whether
-that gate stands for this profile, which likely means a global correction
-this item does not yet name, or the item is accepted on the local bound with
-a stated global one (for instance the true position within the capture radius
-when the goal is acknowledged) and the drift reported. Stage 1 supplies the
-numbers the decision needs; the decision is taken before stage 2.
+(lidar-inertial 0.15 to 0.22, GNSS 0.19 to 0.25). Decided by the project
+owner on 2026-09-19: the project has two requirements and no others. The
+vehicle never crashes and always reaches its goal; and the mean flight speed
+is the only speed targeted. The 0.35 m gate is therefore not a requirement of
+this profile: the estimate's error is measured and reported on every flight,
+as is its drift per 100 m, and neither decides completion. What follows from
+the first requirement does. "Reaches its goal" means the vehicle, not its
+estimate: on this profile the mission check holds the true position against
+the goal at the moment the goal is acknowledged, inside the capture radius,
+and stage 2 adds that check before anything flies on the estimate. And the
+local bound stays an engineering necessity, not a gate: a map smeared by its
+own pose is how this profile would come to crash.
 
 **A filter, not a window optimization.** Decided on 2026-09-19: the
 estimator is a stereo multi-state constraint Kalman filter on Eigen alone,
@@ -537,14 +547,14 @@ the stale pose and the offboard node holds.
    surface stays in view. An established open-source visual-inertial system
    is run on the same recordings, offline and as an evaluation tool under
    `log/tools` only, never as a dependency: it says what drift these images,
-   this depth and these manoeuvres admit at all, which is the number the open
-   decision on the position gate needs, and how far this filter is from it.
-   Flights are stochastic; estimator parameters are set on recordings and
-   only confirmed in flight. The stage ends with the open decision above
-   taken on its numbers.
+   this depth and these manoeuvres admit at all, and how far this filter is
+   from it. Flights are stochastic; estimator parameters are set on
+   recordings and only confirmed in flight.
 2. Add the `visual_inertial_shadow` profile, as `gnss_shadow` did for item 13:
    the estimator runs beside GNSS, publishes to the diagnostic topic only, and
-   the mission check compares it with the true pose on every flight.
+   the mission check compares it with the true pose on every flight. Add the
+   check that the goal was reached in truth: the vehicle's true position
+   inside the capture radius when the goal is acknowledged.
 3. Fly on `visual_inertial` with the lidar still mounted and still
    authoritative for perception, so a failure separates the estimator from the
    vision perception.
@@ -584,13 +594,15 @@ flight:
    `LOCALIZATION_PROFILE=lidar_inertial`), every one complete and
    collision-free, with a mean flight speed above 2.4 m/s.
 
-The mean flight speed is the only speed the programme targets, and these two
-figures are requirements, not measurements to report. In both series the
-estimate holds the local bound above and the global one the open decision
-fixes, route availability is at item 9 stage A's threshold (until it is
-derived, the 90 percent floor item 14 was accepted against), planner p95 is
-below 200 ms, and on the stereo set the shafts are climbed at no less than
-half of what the time-of-flight range admits.
+These are the project's two requirements and there are no others: the
+vehicle never crashes and always reaches its goal, in truth and not only in
+its own estimate; and the mean flight speed, the only speed the programme
+targets, exceeds the figure of its sensor set. Everything else the mission
+check measures (the estimate's error and drift, route availability, planner
+p95, the tick, the evidence age, tracking, the speed held in the shafts) is
+reported for every flight and read as a diagnosis: a figure that moves is
+looked into because it may be how one of the two requirements will fail, not
+because it is a gate of its own.
 
 Whatever a series shows to be wrong is fixed, with its measured cause, and the
 series is flown again; nothing is set aside because it is inconvenient. Debt
