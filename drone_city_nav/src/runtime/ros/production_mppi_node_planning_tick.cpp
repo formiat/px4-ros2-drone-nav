@@ -37,6 +37,9 @@ namespace {
   return "none";
 }
 
+// Ten nominal periods: the timer was not served, whatever the tick then does.
+constexpr std::int64_t kReportedPlanningTickPeriodNs{200'000'000};
+
 } // namespace
 
 void ProductionMppiNode::planningTick() {
@@ -47,6 +50,10 @@ void ProductionMppiNode::planningTick() {
   if (last_planning_tick_entry_ns_ > 0 &&
       tick_entry_ns > last_planning_tick_entry_ns_) {
     last_planning_tick_period_ns_ = tick_entry_ns - last_planning_tick_entry_ns_;
+    if (last_planning_tick_period_ns_ > kReportedPlanningTickPeriodNs) {
+      RCLCPP_INFO(get_logger(), "PLANNING_TICK late=true period_ms=%.1f",
+                  static_cast<double>(last_planning_tick_period_ns_) * 1.0e-6);
+    }
   }
   last_planning_tick_entry_ns_ = tick_entry_ns;
   const std::shared_ptr<const ProductionNavigationObjectiveState> objective_state =
@@ -56,9 +63,14 @@ void ProductionMppiNode::planningTick() {
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const bool terminal_hold_enabled = true;
   const bool observed_3d_world = !config_.world.use_static_map;
+  // Every way a tick ends without a horizon names itself once a second: a
+  // vehicle that flies its resident horizon for seconds with no successor
+  // (r536, 6 s from 2.4 m/s to rest) left no line saying which of these it was.
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch is a hard barrier; retain it until revoke
     // publication has linearized with the exact snapshot.
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PLANNING_TICK horizon=none reason=requested_revocation");
     return;
   }
   const auto snapshot_started = std::chrono::steady_clock::now();
@@ -179,6 +191,9 @@ void ProductionMppiNode::planningTick() {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       static_cast<void>(handleRequestedExecutionRevocation(now_ns));
     }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "PLANNING_TICK horizon=none reason=vehicle_status_not_authoritative");
     return;
   }
   const bool goal_capture_latched =
@@ -211,11 +226,15 @@ void ProductionMppiNode::planningTick() {
     // Freeze one committed lease/identity for the full acknowledgement attempt.
     // The offboard process repeats feedback for this exact tuple; superseding it
     // every planning tick would make continuous exact witnessing impossible.
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PLANNING_TICK horizon=none reason=goal_capture_attempt");
     return;
   }
   if (!navigation.valid || pose_age_ms < 0.0) {
     publishFailClosedExecutionRevocation(
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PLANNING_TICK horizon=none reason=navigation_not_valid");
     return;
   }
   bool pose_predicted = false;
@@ -226,6 +245,8 @@ void ProductionMppiNode::planningTick() {
     if (!predicted.valid) {
       publishFailClosedExecutionRevocation(
           ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "PLANNING_TICK horizon=none reason=pose_prediction_refused");
       return;
     }
     navigation.state = predicted.state;
@@ -251,6 +272,8 @@ void ProductionMppiNode::planningTick() {
   if (!mppi_controller_->ready()) {
     publishFailClosedExecutionRevocation(
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PLANNING_TICK horizon=none reason=controller_not_ready");
     return;
   }
   const char* const owner_witness_failure = appliedControlAuthorityFailure3D(
@@ -504,6 +527,8 @@ void ProductionMppiNode::planningTick() {
   if (planning.status == PlanningCycleStatus3D::kTrackingHandoffRetained) {
     // The resident connector remains the sole finite execution owner until its
     // bounded handoff completes.
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "PLANNING_TICK horizon=none reason=tracking_handoff_retained");
     return;
   }
   if (!planning.ready()) {
