@@ -290,6 +290,23 @@ class NavigationDependencyContractTest(unittest.TestCase):
                             f"({included_layer}), which is not below {layer}",
                         )
 
+    def test_the_visual_inertial_estimator_reads_eigen_and_nothing_else(self) -> None:
+        """The filter is replayed offline and carries no image library and no
+        middleware: features reach it as coordinates. Every system include of
+        its header and source is the standard library or Eigen."""
+        standard = re.compile(r"^[a-z_]+$")
+        for path in (INCLUDE / "visual_inertial_odometry.hpp",
+                     SOURCE / "visual_inertial_odometry.cpp"):
+            text = path.read_text(encoding="utf-8")
+            for include in re.findall(r"^\s*#\s*include\s*<([^>]+)>", text, re.MULTILINE):
+                self.assertTrue(
+                    include.startswith("Eigen/") or standard.match(include),
+                    f"{path.name} includes <{include}>")
+            self.assertEqual(
+                [name for name in LOCAL_INCLUDE_PATTERN.findall(text)
+                 if name != "drone_city_nav/visual_inertial_odometry.hpp"],
+                [], path.name)
+
     def test_orchestration_contracts_do_not_parse_source_order(self) -> None:
         test_directory = REPOSITORY / "scripts" / "tests"
         for name in LEGACY_ORCHESTRATION_CONTRACT_TESTS:

@@ -215,10 +215,12 @@ add_drone_city_nav_layer(
   src/motion_dynamics_3d.cpp)
 target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_model)
 
-# Where the vehicle is from its own lidar and IMU: Eigen for the geometry,
-# nothing of the world, the planner or the controller.
+# Where the vehicle is from its own sensors and IMU, by lidar or by the stereo
+# pair: Eigen for the geometry, nothing of the world, the planner or the
+# controller, and no image library: the features arrive as coordinates.
 add_drone_city_nav_layer(drone_city_nav_localization
-                         src/lidar_inertial_odometry.cpp)
+                         src/lidar_inertial_odometry.cpp
+                         src/visual_inertial_odometry.cpp)
 target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
                                                          Eigen3::Eigen)
 
@@ -449,7 +451,8 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/world_generation.hpp)
 
 set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
-    include/drone_city_nav/lidar_inertial_odometry.hpp)
+    include/drone_city_nav/lidar_inertial_odometry.hpp
+    include/drone_city_nav/visual_inertial_odometry.hpp)
 
 set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
     include/drone_city_nav/control_contracts_3d.hpp
@@ -1490,6 +1493,12 @@ if(BUILD_TESTING)
   target_compile_features(lidar_inertial_odometry_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_inertial_odometry_test drone_city_nav_localization)
   enable_project_warnings(lidar_inertial_odometry_test)
+
+  ament_add_gtest(visual_inertial_odometry_test
+                  tests/visual_inertial_odometry_test.cpp)
+  target_compile_features(visual_inertial_odometry_test PRIVATE cxx_std_20)
+  target_link_libraries(visual_inertial_odometry_test drone_city_nav_localization)
+  enable_project_warnings(visual_inertial_odometry_test)
 
   ament_add_gtest(transport_latency_ros_test tests/transport_latency_ros_test.cpp)
   target_compile_features(transport_latency_ros_test PRIVATE cxx_std_20)
