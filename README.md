@@ -71,6 +71,43 @@ simulated GNSS, the magnetometer and the simulation heading source
 estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
 multi-vehicle missions fly until the vehicles share a frame (roadmap item 15).
 
+## Integration Notes
+
+What cost the most flights was rarely the algorithm. These are the findings
+that are easy to lose weeks to, each with the flight it was measured on:
+
+- **The autopilot's clock.** PX4 SITL is lockstep, so its clock is the
+  simulation clock, but uXRCE-DDS synchronises it against the agent's wall
+  clock. Below a real-time factor of 1 the two drift, PX4 resets the
+  synchronisation every 15 s or so, and each reset left the stack about a
+  second without an authoritative state, 17 times in one flight, and lost one
+  vehicle. `UXRCE_DDS_SYNCT` is 0 and the nodes map the stamps with the
+  identity ([docs/gazebo_simulation.md](docs/gazebo_simulation.md)).
+- **What an odometry's noise means to EKF2.** `EKF2_EVP_NOISE` has to cover
+  what one update moves the pose by, not how accurate the estimate is: at
+  0.1 m a 0.4 m correction was gated out, the vehicle dead-reckoned 1.8 s and
+  reset its position by 1.19 m. The estimator's own variances are not passed
+  at all, because an odometry's honest variance grows without bound and the
+  autopilot has no other position ([docs/localization.md](docs/localization.md)).
+- **The noise densities are not the sensor's.** A filter told the gyroscope is
+  eighteen times noisier than it is lets every visual update walk the heading,
+  which no camera observes: 2 to 4 degrees per flight, 1.6 to 2.1 m at the
+  goal. The accelerometer's is not its datasheet figure either, because tilt
+  error leaks gravity ([docs/localization.md](docs/localization.md)).
+- **One sensor, two consumers, no dependency between them.** The stereo pair
+  both perceives and localizes, but the estimator never reads the obstacle
+  memory: a pose taken from a map built from that pose hides its own drift.
+  A contract test holds the estimator's library to Eigen and the standard
+  library alone.
+- **Arrival has to be judged by the truth.** The mission monitor asks the
+  vehicle where it thinks it is, so with an odometry it can arrive in its own
+  coordinates while standing elsewhere. Every flight fails unless the true
+  pose is inside the 2.0 m capture radius at the acknowledgement
+  ([docs/testing.md](docs/testing.md)).
+
+What is known to be wrong or unfinished, with the class of each entry, is in
+[docs/technical_debt.md](docs/technical_debt.md).
+
 ## Approved Commands
 
 Run commands from the repository root through the dev container. The container
