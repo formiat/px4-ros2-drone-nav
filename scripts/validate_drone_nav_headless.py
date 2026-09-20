@@ -21,6 +21,7 @@ from headless_topology_validation import (
 from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E402
 from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from headless_runtime_evidence import (
+    validate_goal_reached_in_truth,
     validate_localization_profile,
     validate_mean_flight_speed,
     validate_persistent_3d_acceptance_metrics,
@@ -432,7 +433,10 @@ def main() -> int:
         validate_controller_dynamics(args.runtime_manifest.parent, ros_log, notes)
     if args.runtime_manifest is not None:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
-        validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors)
+        validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors,
+                                      notes)
+        validate_goal_reached_in_truth(args.runtime_manifest.parent / "gz_pose.csv",
+                                       ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,

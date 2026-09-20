@@ -68,9 +68,16 @@ struct VisualInertialOdometryConfig {
   double maximum_depth_m{60.0};
   // A feature's projected residual is gated at this quantile of chi-square.
   double gate_normal_quantile{1.645};
-  // Continuous-time IMU noise densities and bias random walks.
+  // Continuous-time IMU noise densities and bias random walks. The
+  // accelerometer's is not the sensor's own: a tilt error of 0.2 degrees
+  // leaks 0.03 m/s^2 of gravity into the horizontal acceleration. With the
+  // sensor's 0.02 the filter believed the IMU over the pair, refused a
+  // quarter of the features and measured every displacement 1.6 percent
+  // short, on two recorded flights and both IMU streams; with 0.2 it refuses
+  // 2 percent, the displacement ratio is 0.998, and the position error at
+  // the goal of a 513 m flight is 0.7 m (r550).
   double gyro_noise_radps_sqrt_hz{1.0e-3};
-  double accelerometer_noise_mps2_sqrt_hz{2.0e-2};
+  double accelerometer_noise_mps2_sqrt_hz{0.2};
   double gyro_bias_walk_radps2_sqrt_hz{2.0e-5};
   double accelerometer_bias_walk_mps3_sqrt_hz{1.0e-3};
   // Two samples farther apart than this are a hole in the stream (the
@@ -81,6 +88,9 @@ struct VisualInertialOdometryConfig {
   double maximum_imu_period_s{0.05};
   double unobserved_turn_rate_radps{2.6};
   double unobserved_acceleration_mps2{4.0};
+  // The estimate is healthy while features corrected it within this long;
+  // past it the IMU alone carries the state.
+  double maximum_unaided_s{1.0};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};
@@ -103,6 +113,7 @@ struct VisualInertialEstimate {
   // About the NED axes: the third is the heading.
   Eigen::Vector3d orientation_variance_rad2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity_variance_m2ps2{Eigen::Vector3d::Zero()};
+  bool healthy{false};
   // How far behind the frame the last IMU sample was when the frame was
   // taken in; the propagation held the last sample over that interval.
   std::int64_t imu_lag_ns{0};
@@ -117,10 +128,11 @@ struct VisualInertialEstimate {
   // Root mean square of the used residuals in observation deviations;
   // about one when the noise model fits.
   double residual_rms_sigma{0.0};
-  // The smallest eigenvalue of the information this update added to the
-  // newest pose's position, per used feature: a direction no feature
-  // constrained reads zero here.
-  double weakest_position_information{0.0};
+  // The standard deviation of the velocity along its least certain
+  // direction. Features constrain the velocity in every direction they give
+  // parallax in; along one they do not, only the accelerometer holds it and
+  // this grows.
+  double weakest_velocity_sigma_mps{0.0};
 };
 
 class VisualInertialOdometry {

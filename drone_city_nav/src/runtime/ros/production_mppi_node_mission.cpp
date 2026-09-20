@@ -269,10 +269,12 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   if (!update.advanced) {
     RCLCPP_INFO(get_logger(),
                 "MISSION_WAYPOINT_ACKNOWLEDGED completed_index=%zu waypoint_count=%zu "
-                "terminal=true horizon=%" PRIu64 " offboard=%" PRIu64,
+                "terminal=true horizon=%" PRIu64 " offboard=%" PRIu64
+                " goal=(%.3f,%.3f,%.3f)",
                 update.completed_index, mission_waypoint_sequence_->waypointCount(),
                 execution_horizon_owner.sequence,
-                execution_horizon_owner.target_offboard_instance_id);
+                execution_horizon_owner.target_offboard_instance_id, objective->goal.x,
+                objective->goal.y, objective->goal.z);
     return update;
   }
 
@@ -280,11 +282,13 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
   RCLCPP_INFO(get_logger(),
               "MISSION_WAYPOINT_ACKNOWLEDGED completed_index=%zu waypoint_count=%zu "
-              "horizon=%" PRIu64 " offboard=%" PRIu64 " next_goal=(%.2f,%.2f,%.2f)",
+              "horizon=%" PRIu64 " offboard=%" PRIu64
+              " goal=(%.3f,%.3f,%.3f) next_goal=(%.2f,%.2f,%.2f)",
               update.completed_index, mission_waypoint_sequence_->waypointCount(),
               execution_horizon_owner.sequence,
-              execution_horizon_owner.target_offboard_instance_id, mission_goal_.x,
-              mission_goal_.y, mission_goal_.z);
+              execution_horizon_owner.target_offboard_instance_id, objective->goal.x,
+              objective->goal.y, objective->goal.z, mission_goal_.x, mission_goal_.y,
+              mission_goal_.z);
   return update;
 }
 

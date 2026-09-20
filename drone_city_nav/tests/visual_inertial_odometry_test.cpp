@@ -190,7 +190,7 @@ TEST(VisualInertialOdometry, TheImuAloneCarriesTheMotionAndItsUncertaintyGrows) 
   const Flight flight = fly(testConfig(), 4.0, Eigen::Vector3d::Zero(), false, false);
   EXPECT_LT(flight.maximum_position_error_m, 0.02);
   EXPECT_EQ(flight.last.used_features, 0U);
-  EXPECT_DOUBLE_EQ(flight.last.weakest_position_information, 0.0);
+  EXPECT_FALSE(flight.last.healthy);
   EXPECT_GT(flight.last.position_variance_m2.x(), 1.0e-4);
 }
 
@@ -208,14 +208,18 @@ TEST(VisualInertialOdometry, FeaturesHoldThePositionAgainstAGyroscopeBias) {
   const Flight sighted = fly(testConfig(), 30.0, bias, true, false);
   EXPECT_GT(blind.maximum_position_error_m, 3.0);
   EXPECT_LT(sighted.maximum_position_error_m, 0.3);
+  EXPECT_TRUE(sighted.last.healthy);
+  EXPECT_LT(sighted.last.weakest_velocity_sigma_mps,
+            0.2 * blind.last.weakest_velocity_sigma_mps);
   EXPECT_NEAR(sighted.last.gyro_bias_radps.z(), bias.z(), 1.5e-3);
   EXPECT_LT(sighted.last.residual_rms_sigma, 1.5);
 }
 
 TEST(VisualInertialOdometry, APointThatMovesInTheWorldIsGatedOut) {
+  const Flight clean = fly(testConfig(), 10.0, Eigen::Vector3d::Zero(), true, false);
   const Flight flight = fly(testConfig(), 10.0, Eigen::Vector3d::Zero(), true, true);
-  EXPECT_GT(flight.gated, 0U);
-  EXPECT_LT(flight.maximum_position_error_m, 0.15);
+  EXPECT_GT(flight.gated, clean.gated);
+  EXPECT_LT(flight.maximum_position_error_m, clean.maximum_position_error_m + 0.03);
 }
 
 TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {

@@ -231,7 +231,7 @@ enable_simulation_heading_source="$(normalize_bool "${ENABLE_SIMULATION_HEADING_
 if bool_is_true "${multi_vehicle_mission}"; then
   localization_profile="${LOCALIZATION_PROFILE:-gnss}"
   if [[ "${localization_profile}" != "gnss" ]]; then
-    echo "LOCALIZATION_PROFILE=${localization_profile} needs the lidar-inertial estimator, which the multi-vehicle launches do not run; multi-vehicle missions fly on gnss" >&2
+    echo "LOCALIZATION_PROFILE=${localization_profile} needs an estimator, which the multi-vehicle launches do not run; multi-vehicle missions fly on gnss" >&2
     exit 1
   fi
 elif [[ "${navigation_sensor_profile}" == "stereo_tof" ]]; then
@@ -251,6 +251,13 @@ else
 fi
 case "${localization_profile}" in
   gnss | gnss_shadow) ;;
+  visual_inertial_shadow)
+    # The visual-inertial estimator beside GNSS: it reads the pair's frames.
+    if [[ "${camera_profile}" != "stereo_tof" ]]; then
+      echo "LOCALIZATION_PROFILE=visual_inertial_shadow requires CAMERA_PROFILE=stereo_tof" >&2
+      exit 1
+    fi
+    ;;
   lidar_inertial) enable_simulation_heading_source=false ;;
   *)
     echo "Unsupported LOCALIZATION_PROFILE: ${localization_profile}" >&2

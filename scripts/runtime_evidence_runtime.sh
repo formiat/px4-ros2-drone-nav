@@ -92,5 +92,10 @@ start_runtime_evidence_capture() {
     python3 "${repo_root}/scripts/capture_lidar_inertial_estimate.py" \
       "${runtime_artifact_dir}/lio_estimate.csv" \
       > "${runtime_artifact_dir}/lio_estimate.log" 2>&1 &
+    # The visual-inertial estimate, likewise.
+    python3 "${repo_root}/scripts/capture_lidar_inertial_estimate.py" \
+      "${runtime_artifact_dir}/vio_estimate.csv" \
+      --topic /drone_city_nav/visual_inertial_odometry/pose \
+      > "${runtime_artifact_dir}/vio_estimate.log" 2>&1 &
   fi
 }

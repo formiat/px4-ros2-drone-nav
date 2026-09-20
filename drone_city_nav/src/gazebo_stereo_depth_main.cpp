@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <gz/msgs/image.pb.h>
 #include <gz/transport/Node.hh>
@@ -8,8 +9,10 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "stereo_depth_node.hpp"
+#include "visual_inertial_odometry_node.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -95,17 +98,28 @@ private:
 } // namespace drone_city_nav
 
 int main(int argc, char** argv) {
-  rclcpp::init(argc, argv);
+  const std::vector<std::string> arguments =
+      rclcpp::init_and_remove_ros_arguments(argc, argv);
+  const bool estimator =
+      std::find(arguments.begin(), arguments.end(),
+                drone_city_nav::kVisualInertialOdometrySwitch) != arguments.end();
   const rclcpp::NodeOptions in_process =
       rclcpp::NodeOptions{}.use_intra_process_comms(true);
-  // One thread matches pairs, the other takes the time-of-flight scans; the
-  // images arrive on Gazebo's own threads.
-  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 2U};
+  // One thread matches pairs, one takes the time-of-flight scans, and one
+  // more tracks features when the estimator is hosted; the images arrive on
+  // Gazebo's own threads.
+  rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{},
+                                                    estimator ? 3U : 2U};
   const auto source =
       std::make_shared<drone_city_nav::GazeboStereoImageSource>(in_process);
   const auto depth = drone_city_nav::makeStereoDepthNode(in_process);
   executor.add_node(source);
   executor.add_node(depth);
+  std::shared_ptr<rclcpp::Node> odometry;
+  if (estimator) {
+    odometry = drone_city_nav::makeVisualInertialOdometryNode(in_process);
+    executor.add_node(odometry);
+  }
   executor.spin();
   rclcpp::shutdown();
   return 0;

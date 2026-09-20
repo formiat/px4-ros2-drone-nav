@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
@@ -534,7 +535,8 @@ def shown_px4_parameter(px4_log: str, name: str) -> float | None:
 
 
 def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: str,
-                                  errors: list[str]) -> None:
+                                  errors: list[str],
+                                  notes: list[str] | None = None) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     profile = manifest.get("effective_overrides", {}).get("LOCALIZATION_PROFILE",
                                                           "lidar_inertial")
@@ -545,6 +547,15 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     if profile == "gnss_shadow":
         print("OK: localization profile is gnss_shadow (the lidar-inertial estimator "
               "beside GNSS, compared and not flown)")
+        return
+    if profile == "visual_inertial_shadow":
+        print("OK: localization profile is visual_inertial_shadow (the visual-inertial "
+              "estimator beside GNSS, compared and not flown)")
+        readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
+        result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
+        if readiness is not None and result is not None and notes is not None:
+            report_visual_inertial_health(ros_log, float(readiness.group(1)),
+                                          float(result.group(1)), notes)
         return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")
@@ -584,6 +595,95 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     if readiness is not None and result is not None:
         validate_lidar_inertial_health(ros_log, float(readiness.group(1)),
                                        float(result.group(1)), errors)
+
+
+# The visual-inertial estimator's health once a second.
+VISUAL_INERTIAL_HEALTH_PATTERN = re.compile(
+    r"\[(\d+\.\d+)\] \[visual_inertial_odometry_node\]: VISUAL_INERTIAL_ODOMETRY "
+    r"healthy=(\w+) tracked=(\d+) candidates=(\d+) used=(\d+) gated=(\d+) "
+    r"untriangulated=(\d+) residual_sigma=([\d.]+) weakest_velocity_sigma_mps=([\d.]+) "
+    r".*? frame_ms=([\d.]+) imu_lag_ms=([\d.]+) imu_gap_max_ms=([\d.]+) "
+    r".*? frames=(\d+) frames_without_estimate=(\d+)")
+
+
+def report_visual_inertial_health(ros_log: str, start_s: float, end_s: float,
+                                  notes: list[str]) -> None:
+    """What the estimator says of itself over the flight. Nothing here fails a
+    flight: the requirement the estimate answers for is the goal reached in
+    truth."""
+    samples = [match for match in VISUAL_INERTIAL_HEALTH_PATTERN.finditer(ros_log)
+               if start_s <= float(match.group(1)) <= end_s]
+    if len(samples) < 2:
+        notes.append("NOTE: visual-inertial estimator health is reported over the flight "
+                     f"({len(samples)} reports)")
+        return
+    column = lambda index: sorted(float(match.group(index)) for match in samples)
+    median = lambda values: values[len(values) // 2]
+    tracked, residual, information = column(3), column(8), column(9)
+    frame_ms, gap_ms = column(10), column(12)
+    candidates = sum(int(match.group(4)) for match in samples)
+    gated = sum(int(match.group(6)) for match in samples)
+    untriangulated = sum(int(match.group(7)) for match in samples)
+    frames = int(samples[-1].group(13)) - int(samples[0].group(13))
+    without = int(samples[-1].group(14)) - int(samples[0].group(14))
+    summary = (f"tracked features p50 {median(tracked):.0f} min {tracked[0]:.0f}, residual "
+               f"p50 {median(residual):.2f} sigma, least certain velocity direction "
+               f"at most {information[-1]:.3f} m/s, gated {gated} and untriangulated "
+               f"{untriangulated} of {candidates} sampled features, frame cost p50 "
+               f"{median(frame_ms):.1f} "
+               f"ms max {frame_ms[-1]:.1f} ms, IMU gap max {gap_ms[-1]:.0f} ms, "
+               f"{without} of {frames} frames without a healthy estimate")
+    if without > 0:
+        notes.append(f"NOTE: visual-inertial estimate stays healthy through the flight "
+                     f"({summary})")
+    else:
+        print(f"OK: visual-inertial estimator health: {summary}")
+
+
+# Requirement 1 by the truth. The mission monitor judges the goal by the
+# autopilot's estimate, and a visual odometry drifts by metres over a flight:
+# without this a vehicle arrives in its own coordinates only. The truth is read
+# here and nowhere in the control loop.
+GOAL_ACKNOWLEDGED_PATTERN = re.compile(
+    r"\[(\d+\.\d+)\] \[production_mppi_node\]: MISSION_WAYPOINT_ACKNOWLEDGED "
+    r"[^\n]*? goal=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)")
+GOAL_CAPTURE_RADIUS_M = 2.0
+
+
+def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
+                                   errors: list[str]) -> None:
+    acknowledgements = list(GOAL_ACKNOWLEDGED_PATTERN.finditer(ros_log))
+    if not acknowledgements:
+        errors.append("FAIL: a goal acknowledgement names its goal")
+        return
+    rows = []
+    if truth_path.is_file():
+        with truth_path.open(newline="", encoding="utf-8") as stream:
+            for row in csv.reader(stream):
+                if len(row) >= 9:
+                    rows.append((float(row[8]), float(row[1]), float(row[2]),
+                                 float(row[3])))
+    if len(rows) < 2:
+        errors.append(f"FAIL: the flight recorded the true pose with its reception "
+                      f"time ({truth_path.name})")
+        return
+    for acknowledgement in acknowledgements:
+        at_s = float(acknowledgement.group(1))
+        goal = tuple(float(acknowledgement.group(index)) for index in (2, 3, 4))
+        nearest = min(rows, key=lambda row: abs(row[0] - at_s))
+        if abs(nearest[0] - at_s) > 1.0:
+            errors.append("FAIL: the true pose is recorded at the goal acknowledgement "
+                          f"({abs(nearest[0] - at_s):.1f} s apart)")
+            continue
+        distance_m = math.dist(goal, nearest[1:])
+        if distance_m > GOAL_CAPTURE_RADIUS_M:
+            errors.append(
+                "FAIL: the true position is inside the goal's capture radius at the "
+                f"acknowledgement ({distance_m:.2f} m from the goal, radius "
+                f"{GOAL_CAPTURE_RADIUS_M:.1f} m)")
+        else:
+            print(f"OK: the true position is {distance_m:.2f} m from the goal at its "
+                  f"acknowledgement (capture radius {GOAL_CAPTURE_RADIUS_M:.1f} m)")
 
 
 def validate_lidar_inertial_health(ros_log: str, start_s: float, end_s: float,

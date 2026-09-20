@@ -208,6 +208,32 @@ TICK_LIDAR_AGE_PATTERN = re.compile(
 )
 
 
+@dataclass(frozen=True)
+class EstimateDrift:
+    path_m: float
+    final_error_m: float
+    worst_per_100_m: float
+
+
+def estimate_drift(estimate: np.ndarray, truth: np.ndarray) -> EstimateDrift:
+    """How far an odometry has wandered from the true pose over the ground: its
+    error where the record ends, and the most it grew over any 100 m of true
+    path. Both records are on the simulation clock."""
+    true_at = np.column_stack([np.interp(estimate[:, 0], truth[:, 0], truth[:, axis])
+                               for axis in (1, 2)])
+    error = np.linalg.norm(estimate[:, 1:3] - true_at, axis=1)
+    path = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(true_at, axis=0),
+                                                           axis=1))])
+    worst = 0.0
+    for start in range(0, len(path), 10):
+        end = int(np.searchsorted(path, path[start] + 100.0))
+        if end >= len(path):
+            break
+        worst = max(worst, float(error[end] - error[start]))
+    return EstimateDrift(path_m=float(path[-1]), final_error_m=float(error[-1]),
+                         worst_per_100_m=worst)
+
+
 def sensor_evidence_age_max_ms(ros_log: str) -> DynamicsMeasurement:
     ages = [float(m.group(1)) for m in TICK_LIDAR_AGE_PATTERN.finditer(ros_log)]
     ages = [age for age in ages if age >= 0.0]
@@ -325,6 +351,21 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
                   f"({error.samples} samples)")
         else:
             print(f"OK: lidar-inertial estimate was not flown ({len(lio)} healthy samples)")
+    vio_path = run_directory / "vio_estimate.csv"
+    if vio_path.is_file() and truth_path.is_file():
+        vio = load_lidar_inertial_csv(vio_path)
+        if len(vio) >= 50:
+            truth = load_truth_csv(truth_path)
+            error = position_estimate_error(vio, truth)
+            drift = estimate_drift(vio, truth)
+            print(f"OK: visual-inertial estimate cross-track error p95 is "
+                  f"{error.cross_track_p95_m:.3f} m, along-track offset "
+                  f"{error.along_track_offset_s:+.3f} s, total p95 {error.total_p95_m:.3f} m "
+                  f"({error.samples} samples); error {drift.final_error_m:.2f} m at the end "
+                  f"of {drift.path_m:.0f} m, {drift.worst_per_100_m:.2f} m at most per "
+                  f"100 m of path")
+        else:
+            print(f"OK: visual-inertial estimate was not flown ({len(vio)} healthy samples)")
     age = sensor_evidence_age_max_ms(ros_log)
     if age.samples == 0:
         errors.append("FAIL: the planning tick reports the sensor evidence age")

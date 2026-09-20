@@ -103,6 +103,7 @@ struct VisualInertialOdometry::Impl {
 
   bool initialized{false};
   std::int64_t stamp_ns{0};
+  std::int64_t last_update_stamp_ns{0};
   Eigen::Matrix3d body_to_ned{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
@@ -557,6 +558,7 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   state.first_position = state.position;
   state.first_velocity = state.velocity;
   state.stamp_ns = stamp_ns;
+  state.last_update_stamp_ns = 0;
   state.clones.clear();
   state.tracks.clear();
 
@@ -674,19 +676,15 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
     estimate.residual_rms_sigma =
         std::sqrt(residual.squaredNorm() / static_cast<double>(total_rows)) /
         state.config.observation_noise;
-    const Eigen::Index newest =
-        kImuStates +
-        kCloneStates * static_cast<Eigen::Index>(state.clones.size() - 1U) + kPosition;
-    const Eigen::Matrix3d information =
-        jacobian.middleCols(newest, 3).transpose() * jacobian.middleCols(newest, 3) /
-        (state.config.observation_noise * state.config.observation_noise);
-    estimate.weakest_position_information =
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d>{information}
-            .eigenvalues()
-            .minCoeff() /
-        static_cast<double>(accepted.size());
     state.update(jacobian, residual);
+    state.last_update_stamp_ns = stamp_ns;
   }
+  estimate.healthy =
+      state.last_update_stamp_ns > 0 &&
+      static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 <=
+          state.config.maximum_unaided_s &&
+      static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
+          state.config.maximum_imu_period_s;
   if (window_full) {
     state.marginalizeOldestClone();
   }
@@ -706,6 +704,12 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
           .diagonal();
   estimate.velocity_variance_m2ps2 =
       state.covariance.block<3, 3>(kVelocity, kVelocity).diagonal();
+  estimate.weakest_velocity_sigma_mps =
+      std::sqrt(std::max(0.0,
+                         Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d>{
+                             state.covariance.block<3, 3>(kVelocity, kVelocity)}
+                             .eigenvalues()
+                             .maxCoeff()));
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
   return estimate;

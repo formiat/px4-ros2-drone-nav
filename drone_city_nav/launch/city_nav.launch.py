@@ -99,13 +99,20 @@ def optional_waypoint_sequence_override(context, launch_config, argument_name):
 
 
 def stereo_vision_nodes(
-    params_path, obstacle_memory_overrides, gazebo_world_name, gazebo_model_name, shadow
+    params_path,
+    obstacle_memory_overrides,
+    gazebo_world_name,
+    gazebo_model_name,
+    shadow,
+    visual_inertial_overrides,
 ):
     """The vision path of roadmap item 14: the pair's images and the
     time-of-flight scans bridged to ROS and depth recovered from them. In
     shadow a second obstacle memory integrates those returns on topics of its
     own beside the lidar's, and nothing consumes it; otherwise the launch's one
-    obstacle memory is the vision memory and this adds no memory of its own."""
+    obstacle memory is the vision memory and this adds no memory of its own.
+    With visual-inertial overrides the process that owns the pair's images
+    also hosts the visual-inertial estimator of roadmap item 16."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
         gazebo_world_name, gazebo_model_name
     )
@@ -127,7 +134,17 @@ def stereo_vision_nodes(
             # process; no name, which would rename both of its nodes.
             executable="gazebo_stereo_depth_node",
             output="screen",
-            parameters=[params_path, depth_topics, {"use_sim_time": True}],
+            arguments=(
+                ["--visual-inertial-odometry"]
+                if visual_inertial_overrides is not None
+                else []
+            ),
+            parameters=[
+                params_path,
+                depth_topics,
+                {"use_sim_time": True},
+                visual_inertial_overrides or {},
+            ],
         ),
     ]
     if shadow:
@@ -296,16 +313,26 @@ def generate_launch_description():
         )
         # Where the vehicle's position comes from: the autopilot's GNSS and
         # the simulated heading (gnss), the same with the lidar-inertial
-        # estimator running beside it for comparison (gnss_shadow), or the
+        # estimator running beside it for comparison (gnss_shadow), the
         # lidar-inertial estimator alone, fed to the autopilot as external
-        # odometry with GNSS and magnetometer fusion off (lidar_inertial).
+        # odometry with GNSS and magnetometer fusion off (lidar_inertial), or
+        # GNSS with the visual-inertial estimator beside it for comparison
+        # (visual_inertial_shadow).
         localization = localization_profile.perform(context).strip() or "lidar_inertial"
-        if localization not in ("gnss", "gnss_shadow", "lidar_inertial"):
+        if localization not in (
+            "gnss",
+            "gnss_shadow",
+            "lidar_inertial",
+            "visual_inertial_shadow",
+        ):
             raise ValueError(f"unsupported localization profile: {localization}")
         lidar_inertial_overrides = {
             "use_sim_time": True,
             "publish_to_autopilot": localization == "lidar_inertial",
         }
+        visual_inertial_overrides = (
+            {} if localization == "visual_inertial_shadow" else None
+        )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
@@ -352,6 +379,10 @@ def generate_launch_description():
             lidar_inertial_overrides.update(
                 {**px4_frame_overrides, "initial_heading_rad": scenario["yaw_rad"]}
             )
+            if visual_inertial_overrides is not None:
+                visual_inertial_overrides.update(
+                    {**px4_frame_overrides, "initial_heading_rad": scenario["yaw_rad"]}
+                )
             gazebo_world_name = scenario["gazebo_world_name"]
             gazebo_model_name = scenario["gazebo_model_name"]
             lidar_gz_topic = (
@@ -530,6 +561,7 @@ def generate_launch_description():
                     gazebo_world_name,
                     gazebo_model_name,
                     shadow=navigation_sensors == "lidar",
+                    visual_inertial_overrides=visual_inertial_overrides,
                 )
             )
         nodes.append(
@@ -642,7 +674,7 @@ def generate_launch_description():
                 ],
             )
         )
-        if localization != "gnss":
+        if localization in ("gnss_shadow", "lidar_inertial"):
             nodes.append(
                 Node(
                     package="drone_city_nav",

@@ -336,6 +336,54 @@ class RuntimeManifestTest(unittest.TestCase):
             validator.validate_localization_profile(path, "", "", errors)
         self.assertTrue(any("lidar_inertial profile" in error for error in errors))
 
+    def test_the_visual_inertial_shadow_profile_reports_health_and_fails_nothing(
+            self) -> None:
+        line = ("[{stamp:.1f}] [visual_inertial_odometry_node]: VISUAL_INERTIAL_ODOMETRY "
+                "healthy={healthy} tracked=150 candidates=20 used=18 gated=1 "
+                "untriangulated=1 residual_sigma=0.60 weakest_velocity_sigma_mps=0.042 clones=12 "
+                "speed_mps=1.50 frame_ms=36.0 imu_lag_ms=0.0 imu_gap_max_ms=12.0 "
+                "imu_samples=100 frames={frames} frames_without_estimate={without} "
+                "unmapped_imu=0 position=(0.00,0.00,0.00) yaw=0.000")
+        flight = ("[10.0] [mission_monitor_node]: MISSION_READINESS ready=true "
+                  "mission_ready=true\n"
+                  "{reports}\n"
+                  "[30.0] [mission_monitor_node]: MISSION_RESULT success=true\n")
+        for without, expected in ((0, "OK: visual-inertial estimator health"),
+                                  (3, "NOTE: visual-inertial estimate stays healthy")):
+            reports = "\n".join(
+                line.format(stamp=11.0 + index, healthy="true", frames=8 * index,
+                            without=without if index else 0) for index in range(5))
+            errors: list[str] = []
+            notes: list[str] = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                validator.validate_localization_profile(
+                    self._manifest("visual_inertial_shadow"),
+                    flight.format(reports=reports), "", errors, notes)
+            self.assertEqual(errors, [])
+            self.assertIn("visual_inertial_shadow", output.getvalue())
+            self.assertIn(expected, output.getvalue() + "".join(notes))
+
+    def test_the_goal_is_reached_in_truth_or_the_flight_fails(self) -> None:
+        directory = Path(tempfile.mkdtemp())
+        truth = directory / "gz_pose.csv"
+        truth.write_text("".join(
+            f"{0.02 * index:.3f},{58.0 + 0.025 * index:.3f},24.0,12.3,1,0,0,0,"
+            f"{1000.0 + 0.02 * index:.3f}\n" for index in range(200)), encoding="utf-8")
+        acknowledged = ("[{at:.3f}] [production_mppi_node]: MISSION_WAYPOINT_ACKNOWLEDGED "
+                        "completed_index=0 waypoint_count=1 terminal=true horizon=7 "
+                        "offboard=9 goal=(63.009,23.857,12.593)\n")
+        for at_s, passes in ((1003.9, True), (1000.1, False)):
+            errors: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                validator.validate_goal_reached_in_truth(
+                    truth, acknowledged.format(at=at_s), errors)
+            self.assertEqual(errors == [], passes, errors)
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            validator.validate_goal_reached_in_truth(truth, "", errors)
+        self.assertTrue(any("names its goal" in error for error in errors))
+
     def test_the_gnss_profiles_report_and_gate_nothing(self) -> None:
         for profile in ("gnss", "gnss_shadow"):
             errors: list[str] = []

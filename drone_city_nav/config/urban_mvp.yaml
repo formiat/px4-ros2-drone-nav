@@ -814,6 +814,11 @@ production_mppi_node:
     route_stall_minimum_predicted_head_progress_m: 0.5
     route_stall_recovery_enabled: false
 
+visual_inertial_odometry_node:
+  ros__parameters:
+    # Lockstep simulation: the autopilot stamps on the simulation clock.
+    px4_clock_is_ros_clock: true
+
 lidar_inertial_odometry_node:
   ros__parameters:
     lidar_3d_topic: /lidar_3d/points

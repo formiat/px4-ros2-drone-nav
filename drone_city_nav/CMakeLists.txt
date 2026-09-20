@@ -47,7 +47,7 @@ find_package(gz-msgs10 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-transport13 REQUIRED)
 find_package(nav_msgs REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
 find_package(PkgConfig REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -993,15 +993,21 @@ enable_project_warnings(simulation_truth_adapter_node)
 # hosted beside the simulated pair's image source, which hands them over inside
 # the process.
 foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
-  add_executable(${stereo_depth_process} src/stereo_depth_node.cpp)
+  # The process that owns the pair's images hosts the depth node and, when
+  # asked, the visual-inertial estimator that reads the same frames.
+  add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
+                                         src/stereo_feature_tracker.cpp
+                                         src/visual_inertial_odometry_node.cpp)
   target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
   target_include_directories(${stereo_depth_process} SYSTEM
                              PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(${stereo_depth_process}
                              PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(${stereo_depth_process} drone_city_nav_core
-                        drone_city_nav_ros_adapters ${OpenCV_LIBS})
-  ament_target_dependencies(${stereo_depth_process} rclcpp sensor_msgs)
+                        drone_city_nav_localization drone_city_nav_ros_adapters
+                        ${OpenCV_LIBS})
+  ament_target_dependencies(${stereo_depth_process} rclcpp sensor_msgs
+                            geometry_msgs px4_msgs)
   enable_project_warnings(${stereo_depth_process})
 endforeach()
 target_sources(stereo_depth_node PRIVATE src/stereo_depth_main.cpp)
