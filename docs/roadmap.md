@@ -631,8 +631,11 @@ What the stages found:
   `log/tools/vio`; the frame stamp calibrated to the IMU (+4 ms, two records);
   the filter on Eigen alone with first-estimate Jacobians and its unit tests;
   the numbers in [localization.md](localization.md). The reference system
-  has not been run on the recordings; the filter's drift, 0.1 to 0.4 percent
-  of the path, is at the level such systems publish.
+  was not run on the recordings: OpenVINS without ROS needs Ceres, which
+  builds from source, and Boost.Filesystem, which the container image does
+  not carry, and then a runner for these records; the attempt stopped there,
+  as a tool and not a criterion. The filter's drift, 0.1 to 0.4 percent of the
+  path, is at the level such systems publish.
 - **Stage 2.** `visual_inertial_shadow` and the goal-in-truth check: five
   flights of five (r555 to r559), the estimator 0.53 core, 0.17 to 1.73 m from
   the truth after 400 to 490 m.
@@ -655,7 +658,7 @@ Known to remain. The estimate drifts 0.1 to 0.4 percent of the path and the
 vehicle was acknowledged up to 1.42 m from its goal in truth against a 2.0 m
 capture radius: an odometry without loop closure has no bound, and a mission
 several times longer needs long-lived points in the filter's state or a map to
-relocalize against (a deep rework). r587 flew 2.42 m/s against 2.4. The
-reference system has not been run on the recordings. The multi-vehicle path is
+relocalize against (a deep rework). r587 flew 2.42 m/s against 2.4. No
+reference system has been run on the recordings. The multi-vehicle path is
 not flight-verified on cameras or without GNSS (item 15).
 
