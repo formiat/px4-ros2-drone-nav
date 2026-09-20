@@ -367,7 +367,15 @@ def main() -> int:
     expected_static = parse_bool(args.expected_static)
     expected_memory = parse_bool(args.expected_memory)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
+    # The project has two requirements and the check fails on nothing else:
+    # the vehicle does not crash and completes its mission, and its mean flight
+    # speed exceeds the figure of its sensor set. What says the flight was the
+    # one asked for (the stack came up, the manifest, the profile) fails too,
+    # or a pass would say nothing. Every other measurement is a note: printed
+    # with the reference figure it is outside of, for diagnosis, and never a
+    # reason to fail.
     errors: list[str] = []
+    notes: list[str] = []
     validate_building_collisions(ros_log, errors)
 
     expected_vehicles = args.expected_vehicles
@@ -413,7 +421,7 @@ def main() -> int:
             expected_static_map=expected_static,
         )
     if args.require_persistent_3d_acceptance:
-        validate_persistent_3d_acceptance_metrics(ros_log, errors)
+        validate_persistent_3d_acceptance_metrics(ros_log, notes)
         manifest_overrides = json.loads(
             args.runtime_manifest.read_text(encoding="utf-8")
         ).get("effective_overrides", {})
@@ -421,9 +429,9 @@ def main() -> int:
             ros_log, errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
         )
-        validate_controller_dynamics(args.runtime_manifest.parent, ros_log, errors)
+        validate_controller_dynamics(args.runtime_manifest.parent, ros_log, notes)
     if args.runtime_manifest is not None:
-        validate_resource_budget(args.runtime_manifest.parent, ros_log, errors)
+        validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
         validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors)
     require(
         "production offboard is ready",
@@ -477,7 +485,7 @@ def main() -> int:
             validate_observed_3d_route_volume(
                 ros_log,
                 args.observed_3d_route_volume_bounds_m,
-                errors,
+                notes,
             )
     if re.search(r"CRASH_EVENT|cause=physical_collision", ros_log):
         errors.append("FAIL: crash was reported")
@@ -510,6 +518,8 @@ def main() -> int:
     else:
         print("OK: no critical PX4 simulator errors found")
 
+    for note in notes:
+        print(note.replace("FAIL:", "NOTE:", 1))
     for error in errors:
         print(error, file=sys.stderr)
     return 0 if not errors else 1

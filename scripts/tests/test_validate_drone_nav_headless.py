@@ -7,6 +7,7 @@ import contextlib
 import importlib.util
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -42,6 +43,44 @@ class ValidatorCliTest(unittest.TestCase):
 
         self.assertEqual(result, 1)
         self.assertIn("FAIL: production MPPI is ready", stderr.getvalue())
+
+    def test_a_measurement_outside_its_reference_is_a_note_and_never_a_failure(
+        self,
+    ) -> None:
+        # The project's requirements are no crash, the mission completed and the
+        # mean speed. Everything else the check measures is reported.
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text("{}", encoding="utf-8")
+            argv = [
+                str(VALIDATOR_PATH), "--ros-log", "ros.log", "--px4-log", "px4.log",
+                "--runtime-manifest", str(manifest), "--expected-static", "false",
+                "--lidar-profile", "3d", "--mission-check",
+                "--require-observed-3d-route-volume-crossing",
+                "--observed-3d-route-volume-bounds-m", "4,20,9,16,32,18",
+                "--require-persistent-3d-acceptance",
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(VALIDATOR, "read_text", return_value=""),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                VALIDATOR.main()
+
+        notes = [line for line in stdout.getvalue().splitlines()
+                 if line.startswith("NOTE:")]
+        failures = stderr.getvalue()
+        for measurement in ("persistent 3D acceptance", "sensor evidence age",
+                            "setpoints and local position", "route validation"):
+            with self.subTest(measurement=measurement):
+                self.assertTrue(any(measurement in note for note in notes), notes)
+                self.assertNotIn(measurement, failures)
+        for requirement in ("mean flight speed", "mission monitor verifies"):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, failures)
 
 
 class MappingPipelineValidationTest(unittest.TestCase):

@@ -59,8 +59,10 @@ programme targets; one of those eleven flights (2.32) is under it. The
 owner's statement of the same day is that the project has two requirements
 and no others, the vehicle never crashes and always reaches its goal, and the
 mean speed; route availability is then a measurement and not a gate of this
-stage. The mission check still fails a flight on it, and on its other
-measurements; whether those lines become reports is not yet decided. One more decision is open: this stage is written for the 3D
+stage. The mission check follows: it fails a flight on a crash, an
+uncompleted mission, the mean speed, and on what says the flight was the one
+asked for; every other measurement is printed as a note
+([`testing.md`](testing.md)). One more decision is open: this stage is written for the 3D
 lidar, and since item 14 the default sensor set is the stereo pair. Which
 profile closes stage A, the lidar's with these gates, the stereo profile's
 with its own speed requirement (1.2 m/s), or both, is to be decided before the

@@ -77,6 +77,33 @@ normalizing the project.
 
 ## Headless Acceptance Gate
 
+**What fails a flight, and what does not (project owner, 2026-09-19).** The
+project has two requirements, and the mission check fails on nothing else:
+
+- the vehicle does not crash and completes its mission: no crash event, no
+  contact with a static obstacle, the mission monitor's successful result and
+  every waypoint (for the cooperative mission, the referee's separation and
+  every vehicle at its goal);
+- the mean flight speed exceeds the figure of the sensor set: 2.4 m/s on the
+  lidar, 1.2 m/s on the stereo set.
+
+What says the flight was the one asked for fails too, because a pass would
+otherwise say nothing: the stack came up and flew (memory, ESDF, a route, an
+applied horizon, arming, take-off), the runtime manifest binds the commit, the
+configuration, the world and the scenario, the localization profile is proved
+from the logs, and the autopilot logged no critical simulator error.
+
+Every other measurement described below is a **note**: route availability and
+no-route holds, execution-ownership gaps, the planner's p95, the tick's wall
+time, the controller-dynamics measurements, the sensor evidence age, the
+resource record and the route-volume witness. A measurement outside its
+reference figure is printed as `NOTE:` with the figure it is outside of, where
+it used to print `FAIL:`, and never changes the check's result. The reference
+figures stay in the code as what the programme has measured before; they are
+for reading a flight and for optimization work, which may add any metric it
+needs as long as it fails nothing. A note that moves is looked into because it
+may be how one of the two requirements will fail.
+
 `scripts/headless_runtime_evidence.py` evaluates every no-static single-vehicle
 headless run. Besides the artifact and reserve proofs it holds two flight
 metrics from the final `PRODUCTION_MPPI_SUMMARY` to thresholds that are a

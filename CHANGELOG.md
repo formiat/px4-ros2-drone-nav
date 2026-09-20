@@ -125,6 +125,14 @@ release names the asset tags it was validated with.
   Against it the final stereo series has one flight of five under the figure
   (r524, 1.165 m/s), and the lidar flights of r470 to r474, r511 to r515 and
   r528 one of eleven (2.32 m/s).
+- The mission check fails a flight on the project's two requirements only: no
+  crash and the mission completed, and the mean flight speed; and on what
+  says the flight was the one asked for (the stack came up, the manifest, the
+  localization profile, no critical simulator error). Route availability and
+  holds, ownership gaps, planner p95, the tick, the controller-dynamics
+  measurements, the evidence age, the resource record and the route-volume
+  witness are printed as `NOTE:` with their reference figure and no longer
+  change the result.
 - Roadmap item 16 is settled before implementation: a stage 0 that makes the
   camera simulation hold real time, a recorder of frames, IMU and truth, a
   stereo multi-state constraint Kalman filter on Eigen alone as the
