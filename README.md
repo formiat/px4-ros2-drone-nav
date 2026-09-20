@@ -42,10 +42,11 @@ flight without GNSS and without lidar.
 
 Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
 [`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
-`environment-assets-*` tags. The current release is `v0.3.0`: point-to-point
-navigation without a static map through a complex 3D urban location, without
-GNSS or a magnetometer. Each
-flight's runtime manifest records the package version and `git describe`.
+`environment-assets-*` tags. The current release is `v0.4.0`: point-to-point
+navigation through a complex 3D urban location with no static map, no GNSS, no
+magnetometer and no lidar, on a stereo pair that both perceives and
+localizes. Each flight's runtime manifest records the package version and
+`git describe`.
 
 ## Status And Safety
 

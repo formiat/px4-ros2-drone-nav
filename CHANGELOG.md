@@ -4,7 +4,21 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
-## Unreleased
+## v0.4.0 (2026-09-20)
+
+Flight with no map, no GNSS, no magnetometer and no lidar: the vehicle
+navigates a multi-level 3D building on a forward stereo pair and two
+time-of-flight sensors, and a visual-inertial estimator on that same pair is
+its position and heading. Both are the defaults of every single-vehicle
+flight; the 3D lidar and its estimator stay available on request. The release
+also carries the goal-in-truth requirement in the mission check, the camera
+simulation holding real time, and the removal of the interception missions and
+the airborne radar. Validated on Urban Circuit Practice 01
+(`environment-assets-urban-v1`) with no static map, on 7e95336e: r579 to r583
+on the stereo set without GNSS and r584 to r588 on the 3D lidar without GNSS,
+ten flights of ten complete and collision-free with no failing line. Roadmap
+items 9, 14 and 16 close with it.
+
 
 - Roadmap item 16: flight without GNSS, without the magnetometer and without
   the lidar. A visual-inertial estimator on the forward stereo pair (a stereo

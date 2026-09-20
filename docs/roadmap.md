@@ -357,7 +357,8 @@ nothing. No-static production navigation uses the 3D lidar profile; there is no
 
 ### 9. Large-Scale Realistic Location And Full-Mission Validation (Completed)
 
-Closed on 2026-09-20 with item 16. The project owner decided on 2026-09-19
+Shipped in [v0.4.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.4.0)
+on 2026-09-20, closed with item 16. The project owner decided on 2026-09-19
 that the project has two requirements and no others (the vehicle never crashes
 and always reaches its goal, in truth; the mean flight speed exceeds the
 figure of its sensor set, 1.2 m/s on the stereo set and 2.4 m/s on the lidar),
@@ -509,9 +510,10 @@ not of the registration.
 
 ### 14. Camera-Based 3D Perception Without Lidar Or Static Maps (Completed)
 
-Closed on 2026-09-19 on the urban point-to-point mission with no lidar on the
-vehicle and no static map; the design, the measurements behind it and what is
-known to remain are in [`camera_perception.md`](camera_perception.md), the
+Shipped in [v0.4.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.4.0)
+on 2026-09-20, closed on 2026-09-19 on the urban point-to-point mission with
+no lidar on the vehicle and no static map; the design, the measurements
+behind it and what is known to remain are in [`camera_perception.md`](camera_perception.md), the
 vision path of the memory in [`obstacle_mapping.md`](obstacle_mapping.md), the
 sensors in [`gazebo_simulation.md`](gazebo_simulation.md). The vehicle carries
 a forward stereo pair (1280 x 960, 120 degrees, 0.20 m baseline, 7.5 Hz) and
@@ -573,7 +575,8 @@ which waits for item 15 and for a host that renders eight cameras.
 
 ### 16. Flight Without GNSS And Without Lidar (Completed)
 
-Closed on 2026-09-20. The vehicle flies the urban point-to-point mission with
+Shipped in [v0.4.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.4.0)
+on 2026-09-20. The vehicle flies the urban point-to-point mission with
 no GNSS, no magnetometer, no lidar and no static map: a visual-inertial
 estimator on the forward stereo pair is the autopilot's external odometry, and
 `visual_inertial` is the default localization profile wherever the stereo
