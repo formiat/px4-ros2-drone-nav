@@ -255,7 +255,7 @@ mesh and cellular classes with the intent within the channel's budget, the
 referee's separation gates hold under scripted outages, and the series
 flies on the lidar-inertial profile.
 
-## 17. Flight With Degraded Or Absent Illumination
+## 17. Flight In Degraded Visual Conditions
 
 **Type:** dependent realism stage, with one repair that does not wait for it.
 
@@ -264,8 +264,11 @@ flies on the lidar-inertial profile.
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission.
 
-The camera stack flies on light it never measures. Two facts established on
-2026-09-20 set this item up:
+The camera stack flies on light it never measures, over surfaces whose texture
+it has never varied. Those are two different failures and the item carries
+both: too few photons, where the matcher has signal it cannot trust, and too
+little texture, where it has all the signal it wants and nothing to match.
+Three facts established on 2026-09-20 set the item up:
 
 - **The location has no lamp in it.** The imported
   `urban_circuit_practice_01.sdf` carries no `<light>` element at all; every
@@ -281,6 +284,14 @@ The camera stack flies on light it never measures. Two facts established on
   when 8-bit quantization removes the texture. A ramp without a noise model
   tests quantization, not low light.
 
+- **One location's surfaces are the only ones ever rendered.** The confident
+  depth of 6.4 m was measured on Urban Circuit Practice 01, whose materials
+  carry the photographed grain of a real industrial interior. Camera flights
+  render `world_gui.sdf` for that reason: the collision-only `world_sensor.sdf`
+  carries no textures and a camera sees nothing on it
+  ([`gazebo_simulation.md`](gazebo_simulation.md)). The project has flown the
+  two extremes and nothing in between.
+
 So the vehicle's guaranteed 6.4 m is an assumption about the world, and the
 world is incapable of violating it. A real building loses its light, and an
 airframe that carries its own loses that instead: a brownout, a driver, a hot
@@ -294,7 +305,7 @@ exactly that reason: "stand no closer to an obstacle than where the vehicle
 stood when the light went out" is the "no closer than now" form the project
 forbids, and in the dark it is worse than anywhere else, because a vehicle
 drifting onto a surface would be forbidden to leave it. The behaviour that rule
-asked for comes out of stage 3 with no new rule at all: a ring of
+asked for comes out of stage 4 with no new rule at all: a ring of
 time-of-flight sensors is another sensor with its own range and field inside
 the same braking contract, which makes the speed towards a surface 1.2 m away
 small and never zero.
@@ -342,7 +353,33 @@ Transitions are ramps and not switches, as the project owner asked on
 in the range where it is partly right. That range is the interesting one and a
 hard switch skips it.
 
-### Stage 2: Light On The Vehicle
+### Stage 2: Surfaces The Matcher Cannot Match
+
+Darkness and texture fail differently, and only one of them is about photons. A
+blank painted wall, poured concrete, a large uniform panel: fully lit, all the
+signal an imager wants, and nothing to match between the two images.
+Semi-global matching answers with nothing, or with an interpolated surface that
+is not there. Depth that is absent is survivable once stage 0 lands, because
+the contract sees the range collapse; depth that is confidently wrong is the
+dangerous case and it is the one this stage has to bound.
+
+A materialization variant renders the same geometry on progressively poorer
+surfaces: the location's own materials, then uniform matte at a stated albedo,
+then a weak procedural grain between the two. Nothing reaches production code,
+as in stage 1. Measured on each: depth coverage, depth error against
+evaluation-only truth, the rate of matches the filter has to gate, and the
+range the depth still stands behind. The result is a curve of confident range
+against surface texture, and stage 0's measured range has to track it at run
+time: if a bare wall leaves a metre of confident depth, the contract must say
+one metre and the vehicle must fly what one metre admits.
+
+The remedies are compared in the same place and none is assumed: a wider
+matching window, a different matcher, and the projected pattern of active
+stereo, which makes the vehicle carry its own texture exactly as stage 3 makes
+it carry its own light. That one device answers both failures of this item at
+once, which is the argument for its price in the cost section below.
+
+### Stage 3: Light On The Vehicle
 
 A dark location turns the question into a hardware one: an airframe that flies
 on video underground carries its own light. In the simulator that is a
@@ -366,7 +403,7 @@ and active stereo of the RealSense class, which projects its own texture and
 needs no ambient light at all. The last is the strongest and the most
 expensive, which is what the cost section below has to settle.
 
-### Stage 3: A Time-Of-Flight Ring As A Bumper
+### Stage 4: A Time-Of-Flight Ring As A Bumper
 
 Four more time-of-flight sensors on the horizontal, beside the two of item 14.
 They are the one part of the sensor set that does not care about light: the
@@ -383,7 +420,7 @@ to fly on. They enter the braking contract as sensors with their own range and
 field, exactly as the two vertical ones already do, and that is the whole
 integration. No new rule, no latch, no mode.
 
-### Stage 4: The Light Fails, And What The Vehicle Does
+### Stage 5: The Light Fails, And What The Vehicle Does
 
 Deterministic injection of a failure of the source the perception depends on,
 seeded and written into the flight's manifest like every other scenario
@@ -425,12 +462,12 @@ as it is today.
 A condition the project owner set on 2026-09-20: these additions must not
 approach the price of one ordinary 3D lidar, or the exercise is pointless.
 Order of magnitude, single units, 2026, to be replaced by sourced figures
-before stage 2 is built:
+before stage 3 is built:
 
 | Set | Parts | USD |
 |---|---|---|
 | Today | stereo pair, two time-of-flight sensors | 80 to 170 |
-| Stage 3 with a LED flood | pair, six time-of-flight sensors, emitter | 140 to 320 |
+| Stages 3 and 4, a flood and the ring | pair, six time-of-flight sensors, emitter | 140 to 320 |
 | Active stereo with the ring | RealSense-class module, six time-of-flight sensors | 360 to 550 |
 | A cheap solid-state 3D lidar | Livox Mid-360, Unitree class | 500 to 1000 |
 
@@ -445,21 +482,24 @@ Carried light can cost more battery than the lidar it replaces, and on a
 multirotor that is flight minutes. **Integration**: six sensors on one bus are
 six addresses, six mounts, six extrinsic calibrations and six failure modes,
 which is free in money and not in the project's time. Both are stated with
-measurements before stage 3 is built.
+measurements before stage 4 is built.
 
 ### Measurement And Completion
 
 Measure, per flight: the illumination at the vehicle over time; depth coverage
-and depth error against evaluation-only truth at each illumination level; the
+and depth error against evaluation-only truth at each illumination level and on
+each surface variant; the
 contract's forward range and the speed it admits; the time spent on each rung
 of the ladder above; the estimate's error against truth through an outage and
 after it; the minimum distance to true occupancy; and physical collisions.
 
 This item is complete when stage 0 has landed and both acceptance series have
-been re-flown on it; when five long flights on the dark world, with the carried
-light and the outages running, reach the goal in truth with no collision; and
-when five short flights under the most aggressive outage the parameters allow
-end with the vehicle intact, whether landed or flying.
+been re-flown on it; when the confident range is published as a curve against
+surface texture and the contract is shown to track it; when five long flights
+on the dark world, with the carried light and the outages running, reach the
+goal in truth with no collision; and when five short flights under the most
+aggressive outage the parameters allow end with the vehicle intact, whether
+landed or flying.
 
 ## Completed
 

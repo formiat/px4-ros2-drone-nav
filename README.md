@@ -38,8 +38,8 @@ The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
 covers cooperative air traffic, generalized static 3D passages, no-static 3D
 lidar perception, lidar-inertial localization, realistic cooperative
 communication, camera-based 3D perception without lidar or static maps,
-flight without GNSS and without lidar, and flight with degraded or absent
-illumination. What is known to be wrong or unfinished and has been set aside
+flight without GNSS and without lidar, and flight in degraded visual
+conditions. What is known to be wrong or unfinished and has been set aside
 is in [`docs/technical_debt.md`](docs/technical_debt.md).
 
 ## Releases
@@ -71,7 +71,11 @@ simulated GNSS, the magnetometer and the simulation heading source
 [docs/localization.md](docs/localization.md)). On the 3D lidar profile
 (`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`) a lidar-inertial
 estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
-multi-vehicle missions fly until the vehicles share a frame (roadmap item 15).
+multi-vehicle missions fly until the vehicles share a frame (roadmap item 15). Both camera assumptions are untested: every flight so far was lit by a uniform
+ambient fill, because the imported world carries no light source at all and the
+cameras carry no noise model, and the 6.4 m of confident depth was measured on
+one location's photogrammetric surfaces rather than on the blank walls a matcher
+cannot match (roadmap item 17).
 
 ## Integration Notes
 
