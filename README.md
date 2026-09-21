@@ -32,6 +32,14 @@ same flight headless with the mission check; `--no-run` only prepares. Every
 step is skipped when its result already exists, so the script can be rerun.
 The first run downloads several gigabytes and builds for tens of minutes.
 
+The GUI run needs no `xhost` grant: the container carries no X authority cookie
+of its own, so `scripts/container_run.sh` mounts the one the session uses
+read-only and names it in `XAUTHORITY`. On a Wayland session that is the
+compositor's file under `/run/user`, which is why `DISPLAY` must be set and
+XWayland running. If no window appears, the reason is usually the first lines
+of `log/gz_gui_drone_nav.log`; the server's own output is in
+`log/gz_drone_nav.log`. Stop everything with `./scripts/stop_sim.sh`.
+
 ## Roadmap
 
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
@@ -283,6 +291,42 @@ remains available on request:
 ```bash
 CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh
 ```
+
+The sensor set and the position source are independent switches, and the four
+combinations of the two are:
+
+```bash
+# Cameras, no GNSS - the repository default, nothing to set
+./scripts/sim_urban_point_to_point_gui.sh
+
+# 3D lidar, no GNSS
+CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar \
+  ./scripts/sim_urban_point_to_point_gui.sh
+
+# Cameras, with GNSS
+LOCALIZATION_PROFILE=gnss ./scripts/sim_urban_point_to_point_gui.sh
+
+# 3D lidar, with GNSS
+CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar LOCALIZATION_PROFILE=gnss \
+  ./scripts/sim_urban_point_to_point_gui.sh
+```
+
+The estimator is not named when GNSS is left off: each sensor set has its own
+default, and the two cannot be crossed, since `visual_inertial` needs the
+cameras mounted and `lidar_inertial` has no scans to register without a lidar
+([`docs/localization.md`](docs/localization.md)). The same variables work on
+`sim_urban_point_to_point_headless.sh`.
+
+The sensor set is visible in the GUI and the position source is not. With the
+lidar the vehicle carries the sensor, RViz shows a full spherical scan, the
+obstacle memory fills in every direction to about 35 m and the flights run at
+2.4 to 2.7 m/s; with the cameras there is a forward depth cone about 6.4 m
+deep and two small time-of-flight cones, memory grows only where the vehicle
+has looked, the vehicle turns to face where it is going, and the flights run at
+1.5 to 1.8 m/s. GNSS changes only what EKF2 fuses as its position, so the
+airframe, the sensors, the world and every RViz layer look the same; where it
+shows is the records, in the profile the runtime manifest names and in how far
+the true position stood from the goal at its acknowledgement.
 
 `CAMERA_PROFILE=stereo_tof NAVIGATION_SENSOR_PROFILE=lidar` flies on the lidar
 with the vision path in shadow beside it. `LIDAR_PROFILE=3d` still names the

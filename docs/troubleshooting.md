@@ -126,3 +126,27 @@ Run:
 Inspect stale container, Gazebo, PX4, Micro XRCE-DDS, RViz, and ROS process
 lists printed by the script. Do not start another GUI world until cleanup
 finishes.
+
+## No Gazebo Or RViz Window Appears
+
+The container is a separate X client with its own `HOME`, so it carries no
+authority cookie of its own. `scripts/container_run.sh` mounts the session's
+cookie read-only and names it in `XAUTHORITY`, which is why no `xhost` grant is
+needed; the file it takes is the one the host's `XAUTHORITY` names, and on a
+Wayland session that is a compositor path under `/run/user`, not the
+`~/.Xauthority` that is usually present and empty.
+
+Verify:
+
+- `DISPLAY` is set in the shell that starts the run, and XWayland is running
+  on a Wayland session;
+- `XAUTHORITY` names a file that exists and is not empty, or `~/.Xauthority`
+  is not empty if it is unset;
+- the first lines of `log/gz_gui_drone_nav.log`, where a refused display is
+  reported as a Qt platform plugin that could not be initialized;
+- `log/gz_drone_nav.log` for the simulator itself, which runs whether or not
+  its window opens.
+
+A host that cannot present a window at all runs the same flight with
+`./scripts/bootstrap.sh --headless`, which writes the full record under
+`log/runs/`.

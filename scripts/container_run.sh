@@ -6,6 +6,7 @@ user_uid="$(id -u)"
 user_gid="$(id -g)"
 container_home="/tmp/drone-gazebo-home-${user_uid}"
 container_runtime="/tmp/drone-gazebo-runtime-${user_uid}"
+container_xauthority="/tmp/drone-gazebo-xauthority-${user_uid}"
 image_name="${DRONE_GAZEBO_DEV_IMAGE:-drone-gazebo-dev:latest}"
 
 group_args=()
@@ -35,6 +36,20 @@ env_args=(
   # The resource record of a flight names the image it ran in.
   --env DRONE_GAZEBO_DEV_IMAGE="${image_name}"
 )
+
+# A GUI run needs the X server to accept the container. The container has its
+# own HOME, so it carries no authority cookie of its own and would need an
+# `xhost` grant on the host; mounting the session's cookie read-only removes
+# that step. The file in use is the one XAUTHORITY names, which on a Wayland
+# session is a compositor path under /run/user and not ~/.Xauthority (often
+# present and empty), so an empty or missing file is skipped rather than
+# mounted.
+xauthority_args=()
+host_xauthority="${XAUTHORITY:-${HOME}/.Xauthority}"
+if [[ -n "${DISPLAY:-}" && -s "${host_xauthority}" ]]; then
+  xauthority_args=(--volume "${host_xauthority}:${container_xauthority}:ro")
+  env_args+=(--env XAUTHORITY="${container_xauthority}")
+fi
 
 optional_env_vars=(
   ALLOW_MISSION_FAILURE
@@ -165,6 +180,7 @@ docker run --rm "${tty_args[@]}" \
   "${env_args[@]}" \
   --volume "${repo_root}:/workspace:rw" \
   --volume /tmp/.X11-unix:/tmp/.X11-unix:ro \
+  "${xauthority_args[@]}" \
   --workdir /workspace \
   "${image_name}" \
   bash -c "${container_command}" bash "$@"
