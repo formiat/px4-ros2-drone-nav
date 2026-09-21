@@ -37,8 +37,10 @@ The first run downloads several gigabytes and builds for tens of minutes.
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
 covers cooperative air traffic, generalized static 3D passages, no-static 3D
 lidar perception, lidar-inertial localization, realistic cooperative
-communication, camera-based 3D perception without lidar or static maps, and
-flight without GNSS and without lidar.
+communication, camera-based 3D perception without lidar or static maps,
+flight without GNSS and without lidar, and flight with degraded or absent
+illumination. What is known to be wrong or unfinished and has been set aside
+is in [`docs/technical_debt.md`](docs/technical_debt.md).
 
 ## Releases
 

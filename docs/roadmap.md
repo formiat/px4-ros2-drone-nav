@@ -255,6 +255,212 @@ mesh and cellular classes with the intent within the channel's budget, the
 referee's separation gates hold under scripted outages, and the series
 flies on the lidar-inertial profile.
 
+## 17. Flight With Degraded Or Absent Illumination
+
+**Type:** dependent realism stage, with one repair that does not wait for it.
+
+**Hard prerequisites:** item 14 for the sensor set; stage 0 below has none.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission.
+
+The camera stack flies on light it never measures. Two facts established on
+2026-09-20 set this item up:
+
+- **The location has no lamp in it.** The imported
+  `urban_circuit_practice_01.sdf` carries no `<light>` element at all; every
+  photon of every camera flight comes from
+  `<scene><ambient>0.1 0.1 0.1</ambient>`, a uniform fill that nothing shadows
+  and no failure can touch. "Turning the light off" here is one number set to
+  zero.
+- **The pair carries no noise model.** The cameras of
+  `drone_city_nav/models/stereo_tof_v1/model.sdf` have no `<noise>` element, so
+  an image is a noiseless render scaled by the ambient. Dividing every pixel by
+  the same number leaves the local contrast the matcher works on intact, so
+  dimming alone does not degrade depth gradually: it holds, and then collapses
+  when 8-bit quantization removes the texture. A ramp without a noise model
+  tests quantization, not low light.
+
+So the vehicle's guaranteed 6.4 m is an assumption about the world, and the
+world is incapable of violating it. A real building loses its light, and an
+airframe that carries its own loses that instead: a brownout, a driver, a hot
+emitter, a splashed lens. This item makes the illumination something that can
+fail and makes the vehicle answer for it.
+
+The navigation invariants hold throughout. Unknown space stays traversable at
+no penalty, there are no prohibited zones, vertical motion stays free, and
+nothing here is a latch. One rule was proposed and rejected on 2026-09-20 for
+exactly that reason: "stand no closer to an obstacle than where the vehicle
+stood when the light went out" is the "no closer than now" form the project
+forbids, and in the dark it is worse than anywhere else, because a vehicle
+drifting onto a surface would be forbidden to leave it. The behaviour that rule
+asked for comes out of stage 3 with no new rule at all: a ring of
+time-of-flight sensors is another sensor with its own range and field inside
+the same braking contract, which makes the speed towards a surface 1.2 m away
+small and never zero.
+
+### Stage 0: The Guaranteed Range Becomes A Measurement
+
+Independent of light, and a hole in the first requirement today.
+`SensorBrakingContract3D::guaranteed_detection_range_m` is a configured
+constant (6.4 m on the stereo profile, `launch/sensor_profile.py`), and nothing
+lowers it when the pair returns nothing. The only reduction in the code is
+`min(guaranteed_detection_range_m, observed_range_m)` in
+`sensor_braking_contract_3d.cpp`, and it applies to a motion the vehicle does
+not face, where the range comes from what memory has already observed. A faced
+motion is flown at the speed 6.4 m admits whether the last frame carried 74 000
+returns or none. The returns already vary by a factor of five inside one lit
+flight (14 172 to 74 099 points per frame, r579 and r583) and the contract
+never learns of it.
+
+The repair: the contract's forward range becomes what the depth of the recent
+frames actually stood behind, and the admitted speed follows it down when the
+pair goes blind. The judgement is made for the frame as a whole and not per
+ray, because a bare corridor legitimately returns little and a per-ray rule
+would crawl the vehicle through every empty room. What it costs: the contract's
+central input starts moving, so both acceptance series are re-flown and the
+speed figures of items 14 and 16 are re-measured against it. Carried in
+[`technical_debt.md`](technical_debt.md) until it lands.
+
+### Stage 1: A Dark World And A Camera That Has Noise
+
+`<noise type="gaussian">` on both cameras, so that the signal falls with the
+light while the noise does not and the matcher degrades with the ratio, which
+is what a real imager does at low light: read noise is what dominates there.
+The noise is stated with its source, and its cost is stated with it — it
+lowers the confident depth item 14 stage 1 measured, so 6.4 m is re-measured by
+the same procedure and the speed baseline moves.
+
+The world's `ambient` becomes a parameter of the scenario and a permanently
+dark variant of the urban location (`ambient 0`) becomes one of its worlds. The
+resource materialization already rewrites the SDFs it installs
+(`configure_lidar_visibility.py`, `configure_drone_lidar_model.py`), which is
+where this belongs: no production code learns that a world can be dark.
+
+Transitions are ramps and not switches, as the project owner asked on
+2026-09-20: the illumination moves over seconds, so that the depth spends time
+in the range where it is partly right. That range is the interesting one and a
+hard switch skips it.
+
+### Stage 2: Light On The Vehicle
+
+A dark location turns the question into a hardware one: an airframe that flies
+on video underground carries its own light. In the simulator that is a
+`<light type="spot">` inside the vehicle model's link, which gz-sim attaches to
+the link and the sensor cameras see. It has to be a flood over the pair's
+field and not a beam: stereo matches the whole overlap, and a bright circle in
+the middle of the frame buys depth in the middle of the frame. The DARPA SubT
+teams carried panels of high-power LEDs behind diffusers, tens of watts.
+
+The trade this stage measures instead of assuming: a carried light guarantees a
+shorter range than an ambient fill does, because illuminance falls with the
+square of the distance and a 120 degree field has to be flooded rather than
+spotted. The confident depth probably lands at 3 to 4 m instead of 6.4, and the
+admitted speed with it. What it buys is that the guarantee becomes a property
+of the vehicle instead of a property of the location, which is what the braking
+contract has always claimed it was.
+
+Three options are compared before one is built: a white LED flood; an infrared
+flood with the pair's filters removed, which is the same photons and invisible;
+and active stereo of the RealSense class, which projects its own texture and
+needs no ambient light at all. The last is the strongest and the most
+expensive, which is what the cost section below has to settle.
+
+### Stage 3: A Time-Of-Flight Ring As A Bumper
+
+Four more time-of-flight sensors on the horizontal, beside the two of item 14.
+They are the one part of the sensor set that does not care about light: the
+simulated sensor is a `gpu_lidar`, which raycasts, and the real VL53L8 class
+emits its own pulse, reaching 4 m in the dark against the 2.8 m on a bright
+target in 5 000 lux that the model takes
+([`camera_perception.md`](camera_perception.md)). Its range grows when the
+light goes.
+
+The scope is the point of the stage. This is a proximity bumper, not a cheap
+lidar: four metres and 45 degrees per sensor are enough to hold a position
+without touching a surface, to leave one, and to land, and they are not enough
+to fly on. They enter the braking contract as sensors with their own range and
+field, exactly as the two vertical ones already do, and that is the whole
+integration. No new rule, no latch, no mode.
+
+### Stage 4: The Light Fails, And What The Vehicle Does
+
+Deterministic injection of a failure of the source the perception depends on,
+seeded and written into the flight's manifest like every other scenario
+parameter, expressible at the carried light and at the world's illumination
+alike. The project owner's range, 2026-09-20: an outage arriving every 1 s to
+1 min and lasting 1 s to 1 min. The injector is an evaluation component; no
+fault injection enters production code, as in item 15 stage 3.
+
+The vehicle's answer is a ladder whose first rung is free:
+
+1. **Stop.** Stage 0 does this by itself. The measured range collapses, the
+   contract admits almost no speed, and the vehicle brakes. No new mechanism,
+   only an honest input.
+2. **Hold on what is still active.** The time-of-flight ring, the downward
+   sensor for height, the IMU for attitude. The position drifts, because the
+   filter has no images, and the ring bounds how far it drifts into a surface.
+3. **Descend and land** if the light has not returned within a stated time. A
+   controlled landing beats an uncontrolled drift, and a landed vehicle with a
+   dead emitter is recoverable where a crashed one is not.
+4. **Relocalize** when the light returns. The estimate has moved and the memory
+   was built under the old one. This is the unbounded-drift entry the debt
+   register carries as a deep rework; this item does not solve it, it states
+   where it bites.
+
+This is a failsafe against a crash and not a way to keep flying. Its honest
+scope is stop, hold, land.
+
+Two kinds of flight, and neither is a speed measurement: the mean flight speed
+of the project's second requirement is measured with the illumination healthy,
+as it is today.
+
+- A **long** flight with the outages running, which must still reach its goal
+  in truth.
+- A **short** flight of about five minutes whose only question is whether the
+  vehicle survives.
+
+### What The Additions May Cost
+
+A condition the project owner set on 2026-09-20: these additions must not
+approach the price of one ordinary 3D lidar, or the exercise is pointless.
+Order of magnitude, single units, 2026, to be replaced by sourced figures
+before stage 2 is built:
+
+| Set | Parts | USD |
+|---|---|---|
+| Today | stereo pair, two time-of-flight sensors | 80 to 170 |
+| Stage 3 with a LED flood | pair, six time-of-flight sensors, emitter | 140 to 320 |
+| Active stereo with the ring | RealSense-class module, six time-of-flight sensors | 360 to 550 |
+| A cheap solid-state 3D lidar | Livox Mid-360, Unitree class | 500 to 1000 |
+
+The first path is honestly two to four times cheaper than the lidar. The second
+reaches the cheaper lidars, and there the question "why not a lidar then" is
+fair and this item either answers it or takes the first path.
+
+Two costs the table does not carry, and one of them can invert the answer.
+**Power**: a time-of-flight sensor is a tenth of a watt, but flooding a 120
+degree field to 6 m is tens of watts, while a solid-state lidar draws 8 to 15.
+Carried light can cost more battery than the lidar it replaces, and on a
+multirotor that is flight minutes. **Integration**: six sensors on one bus are
+six addresses, six mounts, six extrinsic calibrations and six failure modes,
+which is free in money and not in the project's time. Both are stated with
+measurements before stage 3 is built.
+
+### Measurement And Completion
+
+Measure, per flight: the illumination at the vehicle over time; depth coverage
+and depth error against evaluation-only truth at each illumination level; the
+contract's forward range and the speed it admits; the time spent on each rung
+of the ladder above; the estimate's error against truth through an outage and
+after it; the minimum distance to true occupancy; and physical collisions.
+
+This item is complete when stage 0 has landed and both acceptance series have
+been re-flown on it; when five long flights on the dark world, with the carried
+light and the outages running, reach the goal in truth with no collision; and
+when five short flights under the most aggressive outage the parameters allow
+end with the vehicle intact, whether landed or flying.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

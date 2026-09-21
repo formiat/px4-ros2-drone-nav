@@ -39,6 +39,8 @@ unless the entry says so ([testing.md](testing.md)).
 | Lateral deviations of the horizon from the route enter unknown space at the validators' speed; under the lidar that space had already been seen. | not measured as a separate figure | (b) | item 14 |
 | The sensor evidence age exceeds the 600 ms the braking contract charges on a small share of ticks of the camera profile. | up to 628 ms on one flight of five after stage 0 (r541), 624 to 948 ms before it | (a) | items 14 and 16 |
 | The nearest pass to true occupancy is closer on the vision memory than on the lidar's. | 0.41 to 0.75 m centre to centre of 0.5 m voxels against 0.84 m | (a) | item 14 |
+| The braking contract's forward range is a configured constant (6.4 m in `sensor_profile.py`) and nothing lowers it when the pair returns nothing. The one reduction in the code, `min(guaranteed_detection_range_m, observed_range_m)`, applies to a motion the vehicle does not face and reads memory, not the sensor. A blind pair is therefore flown at the speed a healthy one admits, which is a hole in the first requirement at full illumination, not only in the dark. The repair makes the range a measurement of the recent frames, judged for the frame as a whole and not per ray, and moves the contract's central input, so both acceptance series are re-flown and the speed figures of items 14 and 16 re-measured. | the pair returns 14 172 to 74 099 points per frame within one lit flight (r579, r583) and the admitted speed does not move | (b) | item 17 |
+| The simulated cameras carry no noise model and the location carries no lamp (the urban world has no `<light>` element; all of its illumination is `<scene><ambient>0.1 0.1 0.1</ambient>`), so every flight so far was lit by a constant that no failure can touch. Adding the noise lowers the measured confident depth and moves the speed baseline with it, which is why it waits for a series of its own. | the confident depth 6.4 m was measured with no noise on the imager (item 14 stage 1) | (c) | item 17 |
 
 ## Planning, Execution And Control
 
@@ -64,3 +66,5 @@ camera defaults, nor without GNSS, nor since the interception missions were
 removed (roadmap item 15 waits for them); the cave and the finals locations
 are imported and load but have not been flown; the point-to-point mission has
 been flown from one start to one goal.
+
+The chain that a blinded vehicle would take has never been exercised deliberately: the estimator reports itself unhealthy and stops publishing, the autopilot ends its external-vision fusion after 200 ms, its position ages out, the controller revokes the execution authority and the offboard path holds. r561 walked part of it by accident (the autopilot rejected the odometry, dead-reckoned 1.8 s and reset its position by 1.19 m) and the flight did not recover. Until roadmap item 17 injects the failure, no flight has tested degraded or absent illumination at all.

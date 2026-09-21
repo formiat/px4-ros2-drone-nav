@@ -31,6 +31,9 @@ the correction is recorded beside it.
   while the vehicle rests, in a position hold as well; a motion the vehicle
   does not face is admitted what memory has observed along it, the body's
   radius wide, and nothing where it has observed no more than the margin.
+  The 6.4 m is a configured constant and not a reading of the pair: a frame
+  that returns nothing is flown at the speed a full one admits, which roadmap
+  item 17 stage 0 repairs ([`technical_debt.md`](technical_debt.md)).
 - **What the flights found.** r498: a goal capture broken by one lost
   feedback sample could not be taken again over the resident hold 0.03 m
   away. r500, the one crash of the stage: the vehicle climbed a shaft facing

@@ -137,7 +137,11 @@ the same minimum progress speed.
 `guaranteed_lidar_detection_range_m` and
 `sensor_braking_physical_margin_m` define the physical sensor side of the
 speed contract. The guaranteed range must not exceed either the modeled 3D
-lidar range or the range admitted by obstacle memory. The organized scan spans
+lidar range or the range admitted by obstacle memory. It is a configured
+constant: nothing lowers it when the sensor itself returns nothing, and the
+reduction above applies to an unfaced motion and reads memory rather than the
+sensor. Roadmap item 17 stage 0 makes it a measurement of the sensor's recent
+frames ([`technical_debt.md`](technical_debt.md)). The organized scan spans
 the complete vertical `[-90 deg, +90 deg]` interval so pure climb and descent
 do not enter a polar blind cone, and its row and column spacing is bound to the
 guaranteed range: at that range adjacent rows land no farther apart than the
