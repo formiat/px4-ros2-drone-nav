@@ -310,7 +310,7 @@ time-of-flight sensors is another sensor with its own range and field inside
 the same braking contract, which makes the speed towards a surface 1.2 m away
 small and never zero.
 
-### Stage 0: The Guaranteed Range Becomes A Measurement
+### Stage 0: Both Inputs Of The Contract Become Measurements
 
 Independent of light, and a hole in the first requirement today.
 `SensorBrakingContract3D::guaranteed_detection_range_m` is a configured
@@ -324,14 +324,47 @@ returns or none. The returns already vary by a factor of five inside one lit
 flight (14 172 to 74 099 points per frame, r579 and r583) and the contract
 never learns of it.
 
-The repair: the contract's forward range becomes what the depth of the recent
-frames actually stood behind, and the admitted speed follows it down when the
-pair goes blind. The judgement is made for the frame as a whole and not per
-ray, because a bare corridor legitimately returns little and a per-ray rule
-would crawl the vehicle through every empty room. What it costs: the contract's
-central input starts moving, so both acceptance series are re-flown and the
-speed figures of items 14 and 16 are re-measured against it. Carried in
+The same is true of the other input, and it is the cheaper of the two. The
+inequality charges `maximum_evidence_age_s` as a fixed term of the latency
+(`sensor_braking_contract_3d.cpp`), fed by `latest_sensor_obstacle_maximum_age_ms`,
+600 ms in `urban_mvp.yaml`. The speed law never reads how old the newest
+observation actually is. The stack already computes it:
+`latestSensorEvidenceFreshness` in `production_mppi_node_execution.cpp` hands
+the real age and a freshness flag to the validator, which drops a stale scan
+from the points it checks the body against. So the question "will I hit what I
+can see" is answered on measured evidence and the question "how fast may I fly"
+on a constant, and the debt register already records the measured age reaching
+624 to 948 ms against the 600 charged.
+
+The repair, for both: the contract's forward range becomes what the depth of
+the recent frames actually stood behind, and its evidence age becomes the age
+the freshness computation already produces. The admitted speed then follows the
+sensor down when the pair goes blind and follows the clock up when the returns
+stop arriving. The range is judged for the frame as a whole and not per ray,
+because a bare corridor legitimately returns little and a per-ray rule would
+crawl the vehicle through every empty room; the age needs no new computation at
+all, only that the speed law stop charging a constant where a measurement
+exists. What it costs: the contract's two central inputs start moving, so both
+acceptance series are re-flown and the speed figures of items 14 and 16 are
+re-measured against them. Carried in
 [`technical_debt.md`](technical_debt.md) until it lands.
+
+This stage is also what answers a stalled stream rather than a blinded one, and
+the two halves of the stack answer it very differently today. The estimator is
+built for it: an estimate goes unhealthy once `maximum_unaided_s` (1.0 s) has
+passed since the last visual update, the node stops publishing, the autopilot
+ends its external-vision fusion 200 ms later, the pose ages out and the
+controller revokes the execution authority. Under that timeout the node
+deliberately carries the last state forward through the IMU every 40 ms, so
+that one late frame does not restart the fusion (item 16). The perception has
+no such rule: the returns ride the frame pair, so a stalled stream stops them
+all, including the time-of-flight cones folded into the same message
+(`stereo_depth_node.cpp`), and the speed law goes on admitting what 6.4 m and
+600 ms admit. The two timeouts are therefore asymmetric, and between them lies
+a window nobody has flown on purpose: from 0.6 s, where the charged age is
+already exceeded, to 1.0 s, where the pose is pure dead reckoning and still
+declared healthy. At 2.45 m/s that window is 2.4 m of travel against a 2.0 m
+margin, which is why it eats the margin without crossing it.
 
 ### Stage 1: A Dark World And A Camera That Has Noise
 
@@ -428,6 +461,16 @@ parameter, expressible at the carried light and at the world's illumination
 alike. The project owner's range, 2026-09-20: an outage arriving every 1 s to
 1 min and lasting 1 s to 1 min. The injector is an evaluation component; no
 fault injection enters production code, as in item 15 stage 3.
+
+The stream is injected as a second and separate fault, because it is a
+different failure that reaches different code. A dark frame arrives on time and
+is useless by its content: the matcher returns nothing and the range collapses,
+while the evidence stays as fresh as the clock says. A dropped or delayed frame
+does not arrive at all: the range input has nothing new to say and the age is
+what moves, together with the estimator's unaided timeout, since one pair feeds
+both consumers. Frames are dropped and delayed over the range that brackets
+stage 0's two timeouts, from a single frame to several seconds, and the flight
+records which rung of the ladder below the vehicle reached and when.
 
 The vehicle's answer is a ladder whose first rung is free:
 

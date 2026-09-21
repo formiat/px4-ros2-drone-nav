@@ -104,7 +104,10 @@ that are easy to lose weeks to, each with the flight it was measured on:
   both perceives and localizes, but the estimator never reads the obstacle
   memory: a pose taken from a map built from that pose hides its own drift.
   A contract test holds the estimator's library to Eigen and the standard
-  library alone.
+  library alone. What that buys is a drift we can measure instead of
+  one that looks self-consistent; what it does not buy is independent
+  failure. One pair blinds both consumers at once, and their timeouts are
+  not the same length (roadmap item 17 stage 0).
 - **Arrival has to be judged by the truth.** The mission monitor asks the
   vehicle where it thinks it is, so with an odometry it can arrive in its own
   coordinates while standing elsewhere. Every flight fails unless the true
