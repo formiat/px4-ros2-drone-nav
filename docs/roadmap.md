@@ -74,22 +74,134 @@ estimator item 16 added, than twice. The cost of that order is that the cooperat
 mission stays unflown for longer: it has not been flown since stage 0 and
 not at all on the camera defaults the multi-vehicle launch now carries.
 
-Which sensor set this item flies is an open decision, because the
-workstation does not carry four camera vehicles. Measured on single flights:
-a lidar vehicle's onboard processes take 2.7 cores at p50 and a stereo
-vehicle's 3.8, of which 1.4 are the depth matcher on the CPU (OpenCV in the
-container has no CUDA); the simulator with one vehicle's two 1280 x 960
-cameras on the textured world takes 3.3 cores and drops its real-time factor
-to 0.35 to 0.45 for moments, which is what makes the autopilot reacquire its
-timestamps 10 to 15 times a flight (r518). Four vehicles are about 15 onboard
-cores and eight cameras on eight host cores; the lidar profile runs four
-vehicles on the collision-only world at a real-time factor of 1.00, as item
-6 was accepted. The exchange and the separation cost the same on either. The
-options: fly this item on the lidar profile, whose subject is the channel and
-not perception, as an exception to the camera default; move the matcher to
-the GPU; lower the cameras' resolution or rate, which shortens the confident
-depth and the speed with it; or a larger host. The extrapolation from one
-vehicle to four is not measured.
+### The Host, The Sensor Set, And Why Two Vehicles And Not Four
+
+Decided by the project owner on 2026-09-21, from the budget below rather than
+from preference: **this item flies two vehicles on the 3D lidar profile**, as
+an exception to the camera default of item 14. Four camera vehicles are
+impossible on this workstation and four lidar vehicles would only run at a
+real-time factor that makes half the record meaningless. What follows is the
+arithmetic, so that the decision can be re-checked on another machine instead
+of taken on trust.
+
+The reference workstation, the one every figure in this repository was
+measured on:
+
+| | |
+|---|---|
+| CPU | AMD Ryzen 9 5900HX, **8 physical cores, 16 threads** |
+| Memory | 30 GiB |
+| GPU | NVIDIA GeForce RTX 3060 Laptop, 6 GiB |
+
+The unit of every CPU figure below is a core as `/proc` reports it: 1.00 is
+one logical CPU fully busy, and the nominal ceiling is 16.0. That ceiling is
+not the usable one. Each process was measured while the machine was otherwise
+idle, so it had a physical core to itself; once both SMT siblings of a core
+are loaded, each thread retires less per second, the work stretches, and the
+demand in wall-clock terms grows further. With the p95 of these processes
+sitting 25 to 30 percent above their p50, and with the operating system and
+the desktop to leave room for, **the practical ceiling for real-time work is
+about 10 to 11 of the 16**, not 16.
+
+Measured per vehicle, on single flights, from the records
+([`resource_budget.md`](resource_budget.md)):
+
+| Vehicle | Onboard cores p50 | p95 | Flights |
+|---|---|---|---|
+| Lidar, `gnss` (what the cooperative mission flies today) | 3.03 to 3.43 | 3.85 to 4.14 | r352 to r356 |
+| Lidar, `lidar_inertial` (what stage 4 accepts on) | 3.5 to 3.8 | 4.4 to 4.7 | r405 to r434 |
+| Stereo pair, `visual_inertial` | 4.89 | 5.69 | r576 |
+
+`multi_vehicle.launch.py` gives every vehicle its own full set — the MPPI
+controller in its own container, the obstacle memory, the offboard node, the
+crash node, and on cameras the depth node — so those figures multiply by the
+number of vehicles almost exactly. Beside them the host carries the simulator:
+the Gazebo server with one GPU lidar is 0.59 cores, a PX4 SITL instance 0.19,
+and the bridges, the referee, the spectator, the truth adapters and the
+captures 0.3 to 1.3 together. The simulator with **one** vehicle's two
+1280 x 960 cameras on the textured world is 3.3 cores on its own.
+
+The GPU on one lidar vehicle is 42 percent at p50 and 51 at p95. It divides,
+by inference and not by measurement, into the controller's 8192 rollouts
+(6.4 ms of GPU time at p50 inside a tick of 23 to 25 ms, so 26 to 28 percent)
+and the simulated lidar's rendering (the remaining 14 to 16). `nvidia-smi pmon
+-s um` reports `sm%` per process and would settle the split on one
+single-vehicle flight; it has not been run.
+
+**Four vehicles, 3D lidar:** 12.8 cores of onboard work at p50, 0.8 of PX4,
+1.5 to 2.5 of a Gazebo server rendering four lidars and serialising four
+clouds, and about 1.0 of referee, spectator, bridges and captures — **about 16
+at p50 and 20 at p95** against a usable 10 to 11. The GPU is 168 percent at
+p50 on its own. It runs, at a real-time factor near 0.6.
+
+**Four vehicles, stereo pairs:** 19.6 cores of onboard work at p50 before the
+simulator, which must render eight 1280 x 960 cameras. **About 34 cores**, or
+three to four times the machine. No parameter closes that gap; it needs a
+different host.
+
+**Two vehicles, 3D lidar on `lidar_inertial`:** 7.3 cores of onboard work at
+p50 and 9.1 at p95, 0.4 of PX4, about 1.0 of a two-lidar Gazebo server and
+about 1.0 of the harness — **about 8.7 at p50 and 10.6 at p95**, and 84
+percent of the GPU at p50, 102 at p95. That fits at the median and touches the
+ceiling in bursts. Two cheap levers are held in reserve for the bursts: the
+obstacle memory's transport at 5 Hz instead of 10 (about 0.3 cores a vehicle,
+and the observation age goes from 190 to 252 ms against the 600 the braking
+contract charges), and the diagnostic captures off (up to 1.1 cores at p95).
+
+### What A Low Real-Time Factor Does And Does Not Invalidate
+
+Worth stating, because it is what makes two vehicles sufficient rather than a
+retreat. PX4 SITL is lockstep, so the autopilot waits for the simulator and
+the flight dynamics are not distorted by a slow host: the flight merely takes
+longer in wall-clock time. The quantities this item measures — minimum
+separation and its margin in metres, delivery latency and loss, the share of
+flight time a peer is unknown, the frame error between vehicles — are metres,
+fractions and simulation-time intervals, and none of them is corrupted.
+
+What a low real-time factor does corrupt: the mean flight speed, which is
+measured on the wall clock and is a requirement of the single-vehicle
+missions, not of this item; and the tick and planner percentiles, which
+measure this code in real time. And one effect that runs the wrong way and is
+easy to miss — the onboard nodes are **not** in lockstep. At a real-time
+factor of 0.6 the planner takes about 72 ticks per simulated second instead of
+43, so the vehicle flies with an effectively faster computer and the
+navigation looks better than it is. A slow host flatters this stack rather
+than punishing it, which is why such flights may not be mixed with the
+single-vehicle series.
+
+### What Two Vehicles Cover, And What They Do Not
+
+Every subject of this item is pairwise. The link model of stage 1 is a
+component with its own contract test and is exercised by any linked pair. The
+intent of stage 2 is a message size and a rate, measured per vehicle. The
+separation of stage 3 is computed per pair, and the cases that matter —
+a peer whose intent is late, lost or expired, an asymmetric link where one
+vehicle hears and the other does not, and the determinism of complementary
+maneuver choice under that asymmetry — all appear with two. The frame error of
+stage 4 is a difference between two frames.
+
+What two vehicles do not cover: a partition that hides half the fleet, the
+shared budget of the telemetry-radio class across four senders, the mesh's
+multi-hop relaying through a peer that hears both, and the lane capacity of a
+static passage with deterministic right-of-way that item 6 accepted on four.
+Those need the fleet, and the way to reach them on this host is a confirmation
+flight of four lidar vehicles at a real-time factor near 0.6, whose separation,
+channel and frame figures are valid and whose timing figures are stated as not
+comparable. Item 6's acceptance was on four vehicles, so narrowing the
+acceptance here is a deliberate narrowing and is recorded as one.
+
+If four vehicles at a real-time factor of 1.00 are ever wanted on this
+machine, the levers, with the measured or expected effect of each: the
+controller's rollouts from 8192 to 2048, which divides the MPPI's share of the
+GPU by about four (112 percent of the GPU for four vehicles becomes 28) at the
+cost of a worse local optimum that is not measured; the lidar from 360 x 181
+to 180 x 91, which divides the render, the bridge and the memory node's 0.83
+cores by about four, but which is an input of the braking contract and not a
+quality knob — `configuration.md` records a wall that sailed between two rows
+at 10 degree spacing; the transport rate and the captures above. Together they
+bring four lidar vehicles to roughly 8 to 9 onboard cores and 60 percent of the
+GPU, at the price that the cooperative figures are then no longer comparable
+with any single-vehicle series.
 
 ### Stage 0: Remove The Interception Missions And The Radar (Done)
 
@@ -162,8 +274,9 @@ first is the one to build:
    engine's collision meshes (`GetRayIntersection` of gz-physics 7, which
    the dartsim plugin of the container implements, with gz-sim 8's
    `RaycastData` component) and publishes the pair matrix on a Gazebo topic
-   the bridge carries to the link simulator: exact geometry, no map, six
-   pairs at 10 Hz for four vehicles; it is checked on Urban Circuit Practice
+   the bridge carries to the link simulator: exact geometry, no map, one pair
+   at 10 Hz for the two vehicles of the acceptance and six for a fleet of
+   four; it is checked on Urban Circuit Practice
    01 against pairs known to stand inside and outside the same structure;
 2. a sampled walk along the segment through an
    evaluation-only voxel occupancy of the world built offline from the
@@ -216,7 +329,9 @@ where the sky is open, relative observation of peers by each vehicle's own
 lidar (a vehicle at 10 to 30 m is a return the obstacle memory already
 sees), and alignment of frames through the shared world. This stage is
 complete when the cooperative acceptance series flies on the lidar-inertial
-profile with the multi-vehicle launch running one estimator per vehicle.
+profile with the multi-vehicle launch running one estimator per vehicle. Two
+vehicles carry it: a frame error is a difference between two frames, and the
+budget above is what the host holds at a real-time factor of 1.
 
 The direction to measure first: vehicles share a frame, not a memory. Each
 vehicle keeps its own obstacle memory, as now; occupancy is not exchanged,
@@ -249,11 +364,21 @@ Measure, per flight and per channel class: message rate and bytes per
 vehicle, delivery latency and loss, the share of flight time each vehicle
 spends with each peer unknown, minimum separation and its margin over the
 gate, maneuver decisions taken under asymmetric knowledge, and the frame
-error between vehicles on the lidar-inertial profile. This item is complete
-when stage 0 has landed, the cooperative acceptance series passes under the
-mesh and cellular classes with the intent within the channel's budget, the
-referee's separation gates hold under scripted outages, and the series
-flies on the lidar-inertial profile.
+error between vehicles on the lidar-inertial profile. Every flight records
+the resources as the single-vehicle flights do, so that the budget above is
+re-derived rather than assumed, and states its real-time factor.
+
+This item is complete when stage 0 has landed and, with **two vehicles on the
+3D lidar and the `lidar_inertial` profile** at a real-time factor of 1, the
+acceptance series passes under the mesh and cellular classes with the intent
+within the channel's budget, the referee's separation gates hold under
+scripted outages, and the frame error stays inside the margin of the
+separation gate. One further flight of four vehicles confirms what a pair
+cannot show — a partition that hides half the fleet, the shared radio budget
+across four senders, multi-hop relaying, and passage lane capacity — and it is
+flown at whatever real-time factor the host gives, with its separation,
+channel and frame figures counted and its timing figures recorded as not
+comparable.
 
 ## 17. Flight In Degraded Visual Conditions
 
