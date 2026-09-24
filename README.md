@@ -31,6 +31,8 @@ environment assets, and launches the Gazebo GUI flight. `--headless` runs the
 same flight headless with the mission check; `--no-run` only prepares. Every
 step is skipped when its result already exists, so the script can be rerun.
 The first run downloads several gigabytes and builds for tens of minutes.
+Every scenario the repository can run, with one command and a description of
+what it shows, is listed in [`docs/scenarios.md`](docs/scenarios.md).
 
 The GUI run needs no `xhost` grant: the container carries no X authority cookie
 of its own, so `scripts/container_run.sh` mounts the one the session uses
@@ -719,6 +721,7 @@ The main documentation set starts at `docs/overview.md`.
 
 Key pages:
 
+- `docs/scenarios.md`
 - `docs/installation.md`
 - `docs/build_and_run.md`
 - `docs/gazebo_simulation.md`
