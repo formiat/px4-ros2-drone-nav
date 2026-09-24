@@ -587,6 +587,16 @@ alike. The project owner's range, 2026-09-20: an outage arriving every 1 s to
 1 min and lasting 1 s to 1 min. The injector is an evaluation component; no
 fault injection enters production code, as in item 15 stage 3.
 
+The carried light fails the way stage 1 dims the world: over a ramp of seconds
+in both directions, never as a switch. A real emitter goes that way — a
+battery browning out, a driver overheating, a lens fouling — and the ramp is
+what puts the depth through the range where it is partly right, which the
+short outages of a hard switch would skip entirely. The ramp's length is a
+parameter of the injection beside the interval and the duration, recorded in
+the manifest with them, and the shortest ramp the parameters allow is one the
+flights actually fly, so that the switch-like case is measured rather than
+assumed away.
+
 The stream is injected as a second and separate fault, because it is a
 different failure that reaches different code. A dark frame arrives on time and
 is useless by its content: the matcher returns nothing and the range collapses,
