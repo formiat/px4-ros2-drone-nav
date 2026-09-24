@@ -738,6 +738,16 @@ a route replacement, and a trail left where the vehicle does not return is a
 wall for the rest of the flight. Smoke is the case that rays cannot clear at
 all while it lasts, because to a stereo pair it is a surface.
 
+Three independent axes, decided by the project owner on 2026-09-23, so
+that no one builds the item as a mode of one sensor. **Smoke is a switch of
+the scenario**: particle emitters in a variant of the location, over the
+ordinary point-to-point mission, which does not change. **The perception
+profile is the vehicle's**: the stereo set or the 3D lidar, either one flown
+into the same plume. **The thermal channel is an addition to the vehicle**,
+not a part of the smoke scenario: it belongs to the sensor set that the
+scenario tests, and a flight may carry it on either profile or on neither.
+The acceptance matrix is the product of the three, not a list of modes.
+
 The navigation invariants hold. Unknown space stays traversable at no
 penalty, no zone is prohibited, vertical motion stays free, and nothing here
 is a latch.
@@ -797,8 +807,49 @@ smoke: the wavelength is far larger than the particles and there is little
 scattering. It is why firefighters carry it, and the simulator models it: the
 thermal camera is the sensor type the particle emitter does not touch.
 
-Its honest role here is a detector, not a perception sensor. Prices, single
-units, 2026, sourced before the stage is built:
+**Price is not a criterion of the exploration, and it is a criterion of the
+accepted build.** Both halves were decided by the project owner on
+2026-09-23. The first follows from the cost section below: the thermal
+channel is an addition to either sensor set and competes with nothing, so the
+comparison that made price matter in item 17 does not exist here, and the
+stage takes the best and most suitable core first to learn what the problem
+needs — if the best cannot make smoke workable, no cheaper core will, and a
+cheaper core is a harder problem taken up afterwards, not a simplification
+lost. In the simulator that costs nothing: a thermal camera is a resolution,
+a rate and a field, so the best core and the cheapest fly in the same series
+and the downgrade is measured beside the target rather than deferred.
+
+The second half is why the exploration is not the target. The simulated
+vehicle stands for an industrial prototype with a bill of materials, and a
+build nobody would assemble proves nothing about the product: a pair of
+Boson 640 cores is 7 100 USD on an airframe whose whole sensor set is 80 to
+170. The item therefore completes on a core of a class someone would mount —
+the Lepton class, or a Chinese 256 x 192 or 640 x 512 core at a sourced
+quote — and every result records what in it rests on the resolution and the
+rate, so that the distance between the best core and the accepted one is a
+measured loss and not a redesign.
+
+The role, and it is the ambitious one because price no longer argues
+against it: **thermal stereo, a pair of the best cores, for metric depth
+through smoke.** That is the only role that returns flight through a plume
+rather than an informed stop, because it is the only one that gives the
+braking contract a measured range. It is its own hard problem — the band
+carries little texture, matchers built for visible light do poorly on it,
+and the cheap cores run at 9 Hz — and the stage measures whether it works
+before anything is built on it. The detector role is what remains if it does
+not: one core, no depth, answering whether there is a surface or a body
+behind the smoke and whether what the pair sees is smoke or a wall.
+
+The first action of the stage, before any design, is a check of the world's
+thermal model. Gazebo's thermal camera renders the temperature of visuals
+that carry one, and a location that carries none is a flat image to the best
+core on earth. The imported SubT world almost certainly carries none, so the
+materialization variant of stage 1 is expected to tag its surfaces with
+temperature the way item 17's variants change their materials, and the check
+says whether that is enough for geometry to appear.
+
+Prices, single units, 2026, for the record and for the day hardware is
+scheduled, not as an input to this stage:
 
 | Module | Resolution | USD |
 |---|---|---|
@@ -809,23 +860,18 @@ units, 2026, sourced before the stage is built:
 | Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
 | Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
 
-A thermal stereo pair is out: two Bosons are 3 100 to 7 100 USD, and thermal
-stereo is its own hard problem — little texture in the band, low resolution,
-and 9 Hz on the cheap core. One Lepton at 164 USD gives no metric depth and
-so cannot feed the speed law, but it answers the two questions nothing else
-does: whether there is a surface or a body behind the smoke, and whether what
-the pair sees is smoke or a wall. The Chinese 640 x 512 cores may fit the
-budget and are quoted, not assumed.
-
 ### Stage 4: What The Vehicle Does
 
 The ladder of item 17 stage 5, with the rung that item added between holding
 and landing: **retreat along the flown path**. The path just flown is in
 memory as observed and free, and for smoke as for darkness a vehicle that
 backs out to where it could see is better placed than one that lands where it
-cannot. Through dense smoke the cameras do not fly, and this item does not
-try; what the thermal channel changes is that the stop becomes an informed
-one, with a retreat or a landing chosen on what is actually behind the plume.
+cannot. Through dense smoke the visible cameras do not fly, and this item does not
+try. What the thermal channel changes depends on which role stage 3
+delivers: thermal stereo hands the braking contract a measured range through
+the plume and the vehicle flies what that range admits, as it does in the
+dark on any other sensor; a detector alone makes the stop an informed one,
+with a retreat or a landing chosen on what is actually behind the plume.
 
 ### What The Additions Cost, And Against What
 
@@ -835,8 +881,11 @@ compares a substitute against what it replaces: the stereo set with its
 flood and its ring against a lidar. Everything in this item is an addition on
 top of either set. Smoke scatters a lidar's 905 or 1550 nm as it scatters a
 time-of-flight pulse, and a thermal core costs the same 164 or 3 558 USD
-whichever sensor it sits beside. So the bar is whether each addition earns
-its place, charged once to both profiles.
+whichever sensor it sits beside. So there is no comparative bar: each
+addition is judged on whether it earns its place, charged once to both
+profiles. What remains is the bar every addition of this project answers to,
+that the vehicle stays a build someone would assemble; stage 3 explores at
+the best core and completes on a plausible one.
 
 One asymmetry keeps the separation from being perfectly clean. A lidar gets
 part of its smoke robustness for free: it is active, so it needs no contrast,
