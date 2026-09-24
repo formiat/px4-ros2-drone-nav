@@ -423,13 +423,18 @@ airframe that carries its own loses that instead: a brownout, a driver, a hot
 emitter, a splashed lens. This item makes the illumination something that can
 fail and makes the vehicle answer for it.
 
-The navigation invariants hold throughout. Unknown space stays traversable at
-no penalty, there are no prohibited zones, vertical motion stays free, and
-nothing here is a latch. One rule was proposed and rejected on 2026-09-20 for
-exactly that reason: "stand no closer to an obstacle than where the vehicle
-stood when the light went out" is the "no closer than now" form the project
-forbids, and in the dark it is worse than anywhere else, because a vehicle
-drifting onto a surface would be forbidden to leave it. The behaviour that rule
+The navigation invariants hold throughout, in the form the project owner
+restated on 2026-09-23 (item 18 stage 0 carries the full text): space the
+sensor has not looked at is free at no penalty, the only prohibitions are
+measurements — a surface, or space observed unobservable — and nothing keyed
+on the vehicle's own history is a rule. Vertical motion stays free. One rule
+was proposed and rejected on 2026-09-20 for exactly that reason: "stand no
+closer to an obstacle than where the vehicle stood when the light went out"
+is keyed on history, not on a measurement, and in the dark it is worse than
+anywhere else, because a vehicle drifting onto a surface would be forbidden
+to leave it. Darkness itself, observed by a sensor that looked and saw
+nothing, is a measured prohibition under the restated invariant, and that is
+item 18's business. The behaviour that rule
 asked for comes out of stage 4 with no new rule at all: a ring of
 time-of-flight sensors is another sensor with its own range and field inside
 the same braking contract, which makes the speed towards a surface 1.2 m away
@@ -748,11 +753,11 @@ not a part of the smoke scenario: it belongs to the sensor set that the
 scenario tests, and a flight may carry it on either profile or on neither.
 The acceptance matrix is the product of the three, not a list of modes.
 
-The navigation invariants hold. Unknown space stays traversable at no
-penalty, no zone is prohibited, vertical motion stays free, and nothing here
-is a latch.
+The navigation invariants hold in the form restated for this item, below.
+Vertical motion stays free, and nothing keyed on the vehicle's history is a
+rule.
 
-### Stage 0: Transient Occupancy
+### Stage 0: Transient Occupancy And Observed Unobservability
 
 Independent of smoke, and the repair that does not wait. The direction to
 measure first: a confirmation count per voxel, with decay toward unknown at a
@@ -771,6 +776,85 @@ unknown means slower, never faster. What it costs is speed and route
 stability, and both are measured. Because the memory changes, both acceptance
 series are re-flown, as for item 17 stage 0. Carried in
 [`technical_debt.md`](technical_debt.md) until it lands.
+
+**A third kind of evidence.** The memory scores hits and misses and has no
+representation of a sensor that looked and failed: the visible pair
+integrates hits only, so a dark frame is silence, neither a hit nor a miss,
+and a lidar in smoke returns near scattered hits that become a phantom wall.
+Sensing failure is either invisible to the map or written into it as the
+wrong thing. This stage gives it its own evidence, **fail** — the sensor
+looked there and could not see — with its own confirmation count, its own
+decay by the rule above, and its own meaning to the planner. That meaning is
+the restatement of the invariant the project owner made on 2026-09-23, which
+replaces "no penalty on free space" and "no prohibited zones" as written
+until then:
+
+**A prohibition is a measurement** (the invariant as the project owner
+restated it on 2026-09-23). Space is closed to entry in exactly two cases: it
+was observed occupied — a surface — or it was observed unobservable: the
+sensor looked there and the measured range in it lies below the physical
+margin, which is smoke, darkness or a blinded sensor. Both are measurements,
+both decay when they are not confirmed, both lift when the space is observed
+again. Space the sensor has not looked at is free at no penalty. No
+prohibition comes from configuration, from knowledge of the location or from
+the vehicle's own history, and the vehicle's own position and the path it has
+observed are never closed to it.
+
+The two halves that keep the restatement from swallowing the old rule:
+
+- **Unobservable is not unknown.** Unknown is space the sensor has not
+  looked at, and it stays free: the braking contract is what protects the
+  vehicle there, and a navigation without a map does not exist without it.
+  Unobservable is a positive measurement of failure — the sensor was pointed
+  there and the measured range of item 17 stage 0 came back below the
+  physical margin, the level at which the contract admits no motion at all.
+  Thin smoke that shortens the range to three metres is observable and
+  slower, not unobservable; the contract handles it and the planner is not
+  told.
+- **The ban is on entry, and the exit is guaranteed.** Entry into observed
+  unobservable space is closed hard, as a surface is, not priced: a blind
+  region is not flown into "a little". But the hard rules of this project
+  were once what trapped it, and a vehicle inside a plume when it forms, or
+  in a building whose light goes out, must not find its own cell forbidden.
+  The vehicle's own position and the path it has observed are never closed,
+  so in a building gone dark the one legal motion is back along its own
+  track — which is the ladder of item 17 stage 5 written as a rule of the
+  planner.
+
+What counts as a sensor's failure is defined per sensor, because "no signal
+came back" means different things to different sensors:
+
+- **The stereo pair.** A frame whose signal has collapsed — mean brightness
+  and contrast, properties of the image that need no knowledge of the
+  geometry — and the frustum beyond the range that frame's depth stands
+  behind. This is literally darkness. A textureless wall under full light is
+  not this: it has all the signal and no matches, and it is item 17 stage 2's
+  confidently wrong depth, which brightness separates from darkness.
+- **The lidar.** A single ray with no return is ambiguous: nothing within
+  range, or something that absorbed or deflected the beam — black smoke, a
+  matte black surface, glass at an angle, water, a grazing wall. One ray
+  cannot tell them apart and the sensor does not know what should have been
+  there; only the pattern of returns can. Two patterns are failure: an
+  **aerosol**, weak, near, scattered returns across neighbouring rays (the
+  `particle_scatter_ratio` model), with the space behind them unobservable;
+  and a **dropout**, a bundle of rays with no return surrounded by rays that
+  return at moderate range. A ray with no return whose neighbours have none
+  either is open space and stays a free ray to the maximum range, as now.
+
+That last line is a change to the lidar's free-ray logic and it belongs to
+this stage: a missing return is a miss to the maximum range only when it is
+not a dropout. It carries a bonus the simulator cannot check. A matte black
+wall that returns nothing is a classic hazard of lidar navigation — the
+memory as it stands would integrate it as free and the vehicle would fly
+into it — and under the restated rule it is unobservable and closed. But
+`gpu_lidar` returns geometry whatever the material, so the case never occurs
+in this simulator; the repair is recorded as designed and not verified until
+a dropout by material is modelled.
+
+Under this restatement the rule item 17 rejected stays rejected, and the
+reason is sharper: it was keyed on where the vehicle *had been* when the
+light went out, which is history; a measured unobservability is keyed on
+what the sensor *sees now*, and it lifts the moment the sensor sees again.
 
 ### Stage 1: Smoke In The Simulator
 
@@ -973,6 +1057,25 @@ delivers: thermal stereo hands the braking contract a measured range through
 the plume and the vehicle flies what that range admits, as it does in the
 dark on any other sensor; a detector alone makes the stop an informed one,
 with a retreat or a landing chosen on what is actually behind the plume.
+
+With stage 0's evidence the plume is a measured prohibition, and routing
+around it is legitimate — not as a cost on free space, which stays
+forbidden, but as the planner's ordinary answer to a closed region. The
+sequence is then: the vehicle approaches, the range collapses at the plume's
+edge, the region behind the edge is written unobservable, and the planner
+replaces the route around it if one exists. If none exists the ladder runs.
+Two rules close the loop that the ladder alone leaves open. **After a
+retreat the vehicle holds where it can see for a stated time** — the plume
+is transient and expected to move — and if the range ahead has not returned
+by then it lands there, in sight, and not inside the plume; that is a rule
+of time on the vehicle's own state, not a prohibition of space, and it is
+the same time the light of item 17 stage 5 is given to return. And the
+closed region **decays** by stage 0's rule when it is not re-observed, so a
+plume that has drifted out of view does not close its corridor for the rest
+of the flight: the region returns to unknown, the vehicle approaches again,
+and the sensor either sees through, which lifts the closure by measurement,
+or does not, which restores it. That re-approach is a probe bounded by the
+decay time, not an oscillation.
 
 ### What The Additions Cost, And Against What
 

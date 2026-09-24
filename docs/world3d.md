@@ -125,8 +125,10 @@ Static point-to-point search uses the same persistent sparse D* Lite graph as
 no-static navigation. The graph is world-fixed and full-3D; its edges use the
 shared flight-time objective and are accepted only after exact swept-footprint
 validation against raw Occupancy3D. Physical occupied voxels and the
-flight envelope remain the only hard geometry. The ESDF cache supplies derived
-distance evidence but cannot create an occupied or prohibited region.
+flight envelope remain the only hard geometry in the code as it stands; the
+invariant restated on 2026-09-23 adds space observed unobservable as a second
+measured prohibition, delivered by roadmap item 18. The ESDF cache supplies
+derived distance evidence but cannot create an occupied or prohibited region.
 
 `FreeSpaceTopology3D` is an offline, fingerprint-bound passage evidence index.
 It does not add a second strategic search, inject macro-edges into D* Lite, or
@@ -174,7 +176,9 @@ geometry, so a physical topology change may produce a new ID.
 No-static production navigation requires `LIDAR_PROFILE=3d`. It builds
 revisioned observed Occupancy3D, local occupied-distance evidence, and persistent
 `RouteSample3D` routes. Confirmed free and unknown voxels have identical
-strategic traversability and base cost. The mode does not divide the world into
+strategic traversability and base cost; unknown is space the sensor has not
+looked at, not space it looked at and could not see, which is a measured
+prohibition once roadmap item 18 lands. The mode does not divide the world into
 open space and semantic passages and does not load the static topology artifact.
 
 A world SDF may mark simulation-only lidar occluders with a dedicated

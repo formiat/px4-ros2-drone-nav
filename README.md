@@ -338,7 +338,11 @@ no GNSS, no magnetometer, no lidar.
 
 No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
 starting the simulation. Unknown and free volume have identical traversability
-and base cost; only confirmed occupied geometry is a hard spatial obstacle.
+and base cost; only confirmed occupied geometry is a hard spatial obstacle in
+the code as it stands. The invariant as restated on 2026-09-23 admits one more
+measured prohibition, space the sensor looked at and could not see (smoke,
+darkness), which roadmap item 18 delivers; space the sensor has not looked at
+stays free ([`docs/navigation_architecture_remediation.md`](docs/navigation_architecture_remediation.md)).
 
 Acceptance uses the urban environment, no static map, and only the 3D profile:
 
@@ -570,7 +574,8 @@ every organized scan into hit and miss beams, resolves the full 6DoF acquisition
 pose, and integrates the rays into revisioned `unknown/free/occupied`
 `Occupancy3D`. Dirty chunks update derived distance evidence without giving it
 collision authority. Planning treats free and unknown identically; exact raw
-occupied geometry remains the only hard spatial obstacle.
+occupied geometry remains the only hard spatial obstacle until roadmap item 18
+adds the second measured one, space observed unobservable.
 
 The static free-space topology index remains an optional compatibility
 acceleration for static planning. It is not generated or consumed by

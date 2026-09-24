@@ -251,8 +251,11 @@ doing:
   the lidar looks in. Along the executed horizon the evidence reaches only as
   far as the first sample whose body envelope enters unobserved space, and the
   contract is read with that range in place of the guaranteed one — the same
-  latency, stopping distance and physical margin. Unobserved space stays
-  traversable and carries no penalty: inside the margin the limiter is the
+  latency, stopping distance and physical margin. Space the sensor has not
+  looked at stays traversable and carries no penalty (space it looked at and
+  could not see is another matter, a measured prohibition under the invariant
+  restated on 2026-09-23 and roadmap item 18's work): inside the margin the
+  limiter is the
   tube limiter's progress floor, the speed the raw validators certify every
   horizon for, and the range grows back as the view opens. Without it a jamb
   the lidar revealed late was met at four to five metres per second, the

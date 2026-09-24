@@ -12,10 +12,21 @@ covered by executable tests, and the acceptance gate in
 
 ## Non-Negotiable Invariants
 
-- Confirmed raw occupied geometry and the physical flight envelope are the only
-  hard spatial constraints.
+- A prohibition is a measurement. As the code stands, confirmed raw occupied
+  geometry and the physical flight envelope are the only hard spatial
+  constraints. The project owner restated the invariant on 2026-09-23 with a
+  second measured prohibition, space observed unobservable — the sensor
+  looked there and the measured range in it lies below the physical margin
+  (smoke, darkness, a blinded sensor) — which roadmap item 18 stage 0
+  delivers; until it lands only the first exists. Both are measurements, both
+  decay when not confirmed, both lift when the space is observed again. No
+  prohibition comes from configuration, from knowledge of the location or
+  from the vehicle's own history, and the vehicle's own position and the path
+  it has observed are never closed to it.
 - `Free` and `Unknown` have identical traversability and base cost throughout
-  search, compilation, admission, execution, and publication.
+  search, compilation, admission, execution, and publication. `Unknown` is
+  space the sensor has not looked at; it is not the unobservable space above,
+  which is a positive measurement of failure.
 - Derived ESDF, clearance, topology, observability, and tracking evidence cannot
   manufacture `raw_collision` or independently reject raw-safe geometry.
 - Navigation is genuinely three-dimensional. Search policy, progress, reserve,

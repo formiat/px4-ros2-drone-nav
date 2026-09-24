@@ -255,7 +255,10 @@ vegetation, vehicles — is a separate stage; this stage recovers geometry only.
 ### What Changes Above The Sensor Boundary
 
 Unknown space stays traversable without penalty; nothing in this stage may
-add a prohibition, a penalty or a latch on space the camera has not seen. What
+add a prohibition, a penalty or a latch on space the camera has not seen.
+Space the camera looked at and could not see — darkness — is a different
+thing, a measured prohibition under the invariant restated on 2026-09-23,
+which roadmap item 18 delivers and this stage did not have. What
 protects the vehicle in unobserved space is the sensor braking law the speed
 policy already applies: the vehicle never moves faster than it can stop within
 the range at which it is guaranteed to detect an obstacle. The lidar profile
