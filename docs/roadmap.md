@@ -597,6 +597,21 @@ alike. The project owner's range, 2026-09-20: an outage arriving every 1 s to
 1 min and lasting 1 s to 1 min. The injector is an evaluation component; no
 fault injection enters production code, as in item 15 stage 3.
 
+**The vehicle does not know when or how its light fails.** Stated by the
+project owner on 2026-09-24 as a rule of the stage. A failing light is not a
+mode of operation the vehicle is told about: no signal from the emitter, its
+driver or the injector reaches the navigation, the estimator, the memory or
+the braking contract, and nothing in the stack reads the light's state,
+schedule or seed. The vehicle sees exactly one thing, the light that comes
+back from the surfaces in front of its cameras, and everything it concludes
+about the illumination it concludes from the frames — the brightness and
+contrast of stage 0's failure measurement, the range its depth stands behind,
+the returns that are or are not there. The injector of this stage is an
+evaluation component with a contract test that holds it there: it moves the
+light and writes the manifest, and no production node subscribes to it. A
+stack that handled a flicker because it was told the flicker was coming
+would have proved nothing.
+
 The carried light fails the way stage 1 dims the world: over a ramp of seconds
 in both directions, never as a switch. A real emitter goes that way — a
 battery browning out, a driver overheating, a lens fouling — and the ramp is
