@@ -823,11 +823,10 @@ The second half is why the exploration is not the target. The simulated
 vehicle stands for an industrial prototype with a bill of materials, and a
 build nobody would assemble proves nothing about the product: a pair of
 Boson 640 cores is 7 100 USD on an airframe whose whole sensor set is 80 to
-170. The item therefore completes on a core of a class someone would mount —
-the Lepton class, or a Chinese 256 x 192 or 640 x 512 core at a sourced
-quote — and every result records what in it rests on the resolution and the
-rate, so that the distance between the best core and the accepted one is a
-measured loss and not a redesign.
+170. The item therefore completes on a core of a class someone would mount,
+and every result records what in it rests on the resolution and the rate, so
+that the distance between the best core and the accepted one is a measured
+loss and not a redesign.
 
 The role, and it is the ambitious one because price no longer argues
 against it: **thermal stereo, a pair of the best cores, for metric depth
@@ -840,16 +839,118 @@ before anything is built on it. The detector role is what remains if it does
 not: one core, no depth, answering whether there is a surface or a body
 behind the smoke and whether what the pair sees is smoke or a wall.
 
-The first action of the stage, before any design, is a check of the world's
-thermal model. Gazebo's thermal camera renders the temperature of visuals
-that carry one, and a location that carries none is a flat image to the best
-core on earth. The imported SubT world almost certainly carries none, so the
-materialization variant of stage 1 is expected to tag its surfaces with
-temperature the way item 17's variants change their materials, and the check
-says whether that is enough for geometry to appear.
+**The core the exploration starts from: a synchronised pair of Teledyne
+FLIR Boson+ 640** — 640 x 512 at a 12 µm pitch, NETD under 20 mK, 60 Hz, an
+external frame-sync input, controllable flat-field correction, and the widest
+lens of the family, about 95 degrees horizontal, on the 0.20 m baseline the
+visible pair uses. About 7 000 to 8 000 USD the pair. Nothing above it is
+worth the exploration: a cooled mid-wave camera is better in noise and speed
+but carries a Stirling cooler — hundreds of grams, tens of watts, from
+20 000 USD — and is not a drone even for an experiment, and its advantage
+does not reproduce in the simulator; the 1280 x 1024 uncooled cores that
+exist add pixels where the bottleneck is not, since 640 x 512 is already
+forty times fewer pixels than the visible pair and the limit is the texture
+of the band. In the simulator the Boson+ 640 is a bound on the parameters,
+tied to a device that exists — 640 x 512, 60 Hz, 95 degrees, 20 mK of noise —
+so that the exploration does not drift into a sensor nobody makes.
+
+**Four properties of every microbolometer decide suitability more than the
+module does**, and three of them reach the braking contract:
+
+- **The shutter.** A microbolometer closes a shutter for its flat-field
+  correction, for hundreds of milliseconds every tens of seconds or on a
+  drift of its own temperature, and delivers no frame meanwhile. To this
+  stack that is a hole in the evidence age — the constant that item 17
+  stage 0 turns into a measurement — so any core in the speed path must
+  expose control of its correction, to schedule it into a hover, and the
+  measured age must cover the gap. The FLIR cores expose it; the Chinese
+  cores vary. This is a selection criterion, not a detail.
+- **Texture in the band**, the chief risk of the stereo role, and
+  independent of the module. Longwave infrared sees differences of
+  temperature and emissivity; a corridor of evenly warmed concrete is smooth
+  in the band however cracked and stained it is to the eye, and no
+  resolution repairs that. It has a consequence for the simulator that is
+  written here so that it is not forgotten: Gazebo's thermal camera renders
+  the temperature of visuals that carry one, the imported SubT world almost
+  certainly carries none, and so the materialization variant of stage 1 will
+  have to tag its surfaces with a temperature the way item 17's variants
+  change their materials. The thermal texture is then **ours to choose**, and
+  the answer "does thermal stereo work" is conditional on what we chose. The
+  simulator cannot say how much thermal texture a real corridor has; the
+  literature and a core in hand can. The first action of the stage is that
+  check of the world's thermal model, and every stereo result of the stage is
+  labelled as conditional on the assumed texture.
+- **Frame synchronisation.** Stereo on a moving vehicle needs synchronous
+  frames. Boson has a sync input, Lepton 3.x a VSYNC line, the Chinese OEM
+  cores usually one of the two, the Chinese consumer USB modules none. The
+  detector role does not care.
+- **Field of view.** The visible pair covers 120 degrees; a Lepton 57, the
+  Chinese cores about 56, a Boson with its widest lens about 95. A narrower
+  field shrinks the contract's faced zone, so more of the motion becomes
+  unfaced and answers to memory; the gaze policy compensates in part, and the
+  cost is measured.
+
+The thermal time constant of a bolometer, about 10 ms, is not a criterion:
+at 2.45 m/s and a yaw rate of 80 degrees a second it is two to four pixels of
+blur on a 640 core.
+
+**The modules, judged against the two roles and the two phases:**
+
+| Module | Detector | Stereo, exploration in the simulator | Accepted build | Verdict |
+|---|---|---|---|---|
+| FLIR Lepton 3.5 | the natural choice: 164 USD, a gram, 150 mW | the lowest point of the curve | yes, as a detector | fits, as a detector |
+| FLIR Boson 320 | more than the role needs | the middle point | no | simulator only |
+| FLIR Boson+ 640 | more than the role needs | the top point, the core above | no | simulator only |
+| FLIR Hadron 640R | no | no | no | excluded |
+| Chinese 256 x 192 (InfiRay class) | yes, and better than a Lepton: 2.6 times the pixels, 25 Hz | marginal | yes, as a detector | fits, as a detector |
+| Chinese 640 x 512 OEM | more than the role needs | yes | **the one stereo candidate**, on a quote and a sync line | fits, conditionally |
+
+The Lepton is not a stereo core: 160 x 120 is sixty-four times fewer pixels
+than the visible pair, and the depth would be sparse and noisy — though its
+9 Hz is not what disqualifies it, since the visible pair flies at 7.5. The
+Hadron is the Boson 640 with a 64-megapixel visible camera in the same
+housing: the visible half duplicates the pair, the pixels are useless to
+this pipeline, radiometry adds nothing to geometry, and two of them are
+8 000 USD. The Chinese 256 x 192 modules are consumer USB devices whose
+drivers and software are a lottery and which carry no sync between two of
+them, which the detector does not need and stereo does. The Chinese
+640 x 512 OEM cores are the only path to thermal stereo in a build someone
+would assemble — 1 000 to 1 600 USD the pair, the same order as a lidar, and
+nothing below that exists — on two conditions: a quote that lands in the
+lower half of the range, and a frame-sync line, which OEM cores usually
+carry.
+
+**The ladder of cheapening.** Each step changes one variable, so that the
+loss is attributed to it and not to "worse"; the ladder is also the ablation
+of the stereo role.
+
+| Step | Core | What it isolates | The pair, USD |
+|---|---|---|---|
+| 0 | Boson+ 640, 60 Hz, 95 degrees, synced | the reference | 7 000 to 8 000 |
+| 1 | the same core, the 9 Hz variant | frame rate | about 5 000 to 6 000 |
+| 2 | Boson 320, the same lens family | resolution | about 3 100 |
+| 3 | Chinese 640 x 512 OEM | the core itself: noise, sync, correction control, software | 1 000 to 1 600 |
+| 4 | Chinese 256 x 192 | resolution and synchronisation together | about 600 |
+| 5 | one core: Lepton 3.5 or Chinese 256 x 192 | the role: stereo becomes a detector | 164 to 300 |
+| 6 | no thermal core | the floor: stage 2 alone, the ladder without seeing behind the plume | 0 |
+
+Steps 1 and 2 answer what thermal stereo actually needs, rate or pixels.
+Step 3 is the accepted build's target point: on paper the same specification
+as step 0, in the hand a different noise, a different sync, a different
+correction control and different software, and it is where thermal stereo in
+a plausible build is decided. Step 4 is where stereo most likely dies. Step 5
+is the change of role, and still better than nothing. Step 6 is what the
+item gives without a thermal core at all.
+
+The simulator varies **resolution, rate, field and noise**, so steps 0, 1,
+2, 4 and 5 fly in one series as parameters. It does not vary the reliability
+of a sync line, the control of the correction or the quality of a driver —
+what actually separates step 3 from step 0 — and those are learned only with
+a core in hand. In the simulator step 3 is therefore step 0 with 40 to 50 mK
+of noise, and it is recorded as that assumption and not as a result.
 
 Prices, single units, 2026, for the record and for the day hardware is
-scheduled, not as an input to this stage:
+scheduled, not as an input to the exploration:
 
 | Module | Resolution | USD |
 |---|---|---|
