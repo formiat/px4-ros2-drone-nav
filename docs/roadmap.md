@@ -449,6 +449,11 @@ returns or none. The returns already vary by a factor of five inside one lit
 flight (14 172 to 74 099 points per frame, r579 and r583) and the contract
 never learns of it.
 
+None of this is a property of the cameras. The lidar profile charges its own
+constant, 14 m (`guaranteed_lidar_detection_range_m` in `urban_mvp.yaml`),
+and a lidar in smoke or dust loses its far returns exactly as a pair does in
+the dark; the repair lands on both profiles and is accepted on both.
+
 The same is true of the other input, and it is the cheaper of the two. The
 inequality charges `maximum_evidence_age_s` as a fixed term of the latency
 (`sensor_braking_contract_3d.cpp`), fed by `latest_sensor_obstacle_maximum_age_ms`,
@@ -615,16 +620,21 @@ The vehicle's answer is a ladder whose first rung is free:
 2. **Hold on what is still active.** The time-of-flight ring, the downward
    sensor for height, the IMU for attitude. The position drifts, because the
    filter has no images, and the ring bounds how far it drifts into a surface.
-3. **Descend and land** if the light has not returned within a stated time. A
+3. **Retreat along the flown path.** The path just flown is in memory as
+   observed and free, and a vehicle that backs out to where it could see is
+   better placed than one that lands where it cannot. The rung is cheap,
+   because it asks nothing the memory does not already hold, and it serves
+   smoke (item 18) as it serves darkness.
+4. **Descend and land** if the light has not returned within a stated time. A
    controlled landing beats an uncontrolled drift, and a landed vehicle with a
    dead emitter is recoverable where a crashed one is not.
-4. **Relocalize** when the light returns. The estimate has moved and the memory
+5. **Relocalize** when the light returns. The estimate has moved and the memory
    was built under the old one. This is the unbounded-drift entry the debt
    register carries as a deep rework; this item does not solve it, it states
    where it bites.
 
 This is a failsafe against a crash and not a way to keep flying. Its honest
-scope is stop, hold, land.
+scope is stop, hold, retreat, land.
 
 Two kinds of flight, and neither is a speed measurement: the mean flight speed
 of the project's second requirement is measured with the illumination healthy,
@@ -662,6 +672,21 @@ six addresses, six mounts, six extrinsic calibrations and six failure modes,
 which is free in money and not in the project's time. Both are stated with
 measurements before stage 4 is built.
 
+### Not In This Item: Smoke
+
+Smoke is the third way a pair goes blind and it is deliberately not here. It
+is a scattering medium, not a shortage of photons or texture, and it differs
+from both in two ways that earn it an item of its own: it blinds the active
+sensors as well — the time-of-flight ring and a lidar scatter on the same
+particles — and to a stereo pair it is a surface, so it enters the memory as
+occupancy that free rays cannot clear while it lasts. Stage 0 and stage 5
+already give it most of the safety answer for nothing: the measured range
+collapses, the vehicle stops, and the ladder applies. What they do not give
+is the phantom occupancy it leaves behind and the sensor that sees through
+it, and the simulator's tool for it (`ParticleEmitter`, built for the SubT
+smoke machines) is a stage of item 18, which depends on stage 0 here and on
+nothing else in this item.
+
 ### Measurement And Completion
 
 Measure, per flight: the illumination at the vehicle over time; depth coverage
@@ -678,6 +703,168 @@ on the dark world, with the carried light and the outages running, reach the
 goal in truth with no collision; and when five short flights under the most
 aggressive outage the parameters allow end with the vehicle intact, whether
 landed or flying.
+
+## 18. Flight Through Transient And Scattering Obstacles
+
+**Type:** dependent realism stage, with one repair that does not wait for it.
+
+**Hard prerequisites:** item 17 stage 0 for stages 1 to 4 (smoke is detected
+through the measured range); stage 0 below has none.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission, on both sensor profiles.
+
+Two readers of the v0.4.0 release found the same hole from opposite sides. One
+asked what the obstacle memory does with a person walking through the frame;
+another asked what smoke would do to the vision. The answer to both is the
+same, and it is not about the sensor: an obstacle that was there and is not
+any more stays in the map. Smoke adds two things of its own — it blinds the
+active sensors as well, and it looks like a surface — which is why it gets an
+item and not a paragraph.
+
+**What the memory already does, stated precisely, because this item was
+first described wrongly.** `obstacle_memory_3d.cpp` scores every voxel by
+hits and misses: a free ray through a voxel lowers its score by
+`miss_weight`, and a Schmitt trigger returns it to free at `free_score`
+([`obstacle_mapping.md`](obstacle_mapping.md)). A person who walks away is
+therefore cleared as soon as rays pass through where they stood.
+`forgetDynamicVolumes` erases the volumes of known dynamic agents, the
+cooperative vehicles whose positions arrive by intent. What is missing is
+narrower than "no forgetting": clearing needs re-observation, so a voxel
+never looked at again is occupied forever, and nothing distinguishes an
+occupancy confirmed by a thousand scans from one that collected two hits and
+vanished. The planner treats both as a wall — a person crossing the frame is
+a route replacement, and a trail left where the vehicle does not return is a
+wall for the rest of the flight. Smoke is the case that rays cannot clear at
+all while it lasts, because to a stereo pair it is a surface.
+
+The navigation invariants hold. Unknown space stays traversable at no
+penalty, no zone is prohibited, vertical motion stays free, and nothing here
+is a latch.
+
+### Stage 0: Transient Occupancy
+
+Independent of smoke, and the repair that does not wait. The direction to
+measure first: a confirmation count per voxel, with decay toward unknown at a
+rate inversely proportional to it. A wall confirmed a thousand times does not
+decay within any flight; a trail confirmed three times decays in seconds; and
+neither needs a detector of moving objects or a new concept in the planner.
+The alternatives are measured beside it and none is assumed: a plain time
+decay, and an explicit transient classification of voxel clusters that appear
+and vanish.
+
+The interplay with the invariants is stated so it is not rediscovered later.
+Decay ends in `unknown`, and unknown is free. Under the braking contract that
+is safe: a faced motion re-observes the surface as it approaches, and an
+unfaced motion is admitted only what memory has observed along it, so more
+unknown means slower, never faster. What it costs is speed and route
+stability, and both are measured. Because the memory changes, both acceptance
+series are re-flown, as for item 17 stage 0. Carried in
+[`technical_debt.md`](technical_debt.md) until it lands.
+
+### Stage 1: Smoke In The Simulator
+
+Gazebo already carries the tool, built for this purpose: the
+`ParticleEmitter` system was added for the DARPA SubT virtual track to mimic
+the smoke machines of the systems track and the dust of collapses, and its
+`particle_scatter_ratio` sets how the particles reach each sensor. The
+effects are defined per sensor type: an RGB camera sees the particles, a
+depth camera and a GPU lidar scatter on them with added Gaussian noise, and a
+thermal camera does not see them at all. Our time-of-flight sensors are
+`gpu_lidar`, so a plume blinds them in simulation as it does in reality, and
+so is the 3D lidar of the lidar profile. A plume is a materialization variant
+of the location, as the dark world of item 17 is; nothing reaches production
+code. Global fog through `<scene><fog>` under ogre2 is checked before it is
+relied on.
+
+### Stage 2: Detecting Smoke
+
+Mostly free. Item 17 stage 0 already turns the contract's forward range into
+a measurement, and smoke is one more way that range collapses: the vehicle
+slows and stops without a classifier. Two signatures separate smoke from a
+wall where that matters: the time-of-flight zones report signal rate and
+ambient per zone, and smoke is a low signal spread over every zone at short
+range in every direction, which no wall is; and a surface the pair sees that
+the time-of-flight ring does not, or that moves, is not a surface. An optical
+particle counter of the Sensirion SPS30 class — about 25 USD, grams — is the
+independent channel, and it is compared against the free ones before it is
+mounted.
+
+### Stage 3: A Thermal Channel
+
+Longwave infrared (8 to 14 µm) is the one passive sensor that sees through
+smoke: the wavelength is far larger than the particles and there is little
+scattering. It is why firefighters carry it, and the simulator models it: the
+thermal camera is the sensor type the particle emitter does not touch.
+
+Its honest role here is a detector, not a perception sensor. Prices, single
+units, 2026, sourced before the stage is built:
+
+| Module | Resolution | USD |
+|---|---|---|
+| FLIR Lepton 3.5 | 160 x 120, 57 degrees, about 9 Hz | 164 |
+| FLIR Boson 320 | 320 x 256 | 1 539 without a lens, up to 2 549 |
+| FLIR Boson 640 | 640 x 512 | 3 558 |
+| FLIR Hadron 640R, thermal beside visible | 640 x 512 | 3 992 to 4 330 |
+| Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
+| Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
+
+A thermal stereo pair is out: two Bosons are 3 100 to 7 100 USD, and thermal
+stereo is its own hard problem — little texture in the band, low resolution,
+and 9 Hz on the cheap core. One Lepton at 164 USD gives no metric depth and
+so cannot feed the speed law, but it answers the two questions nothing else
+does: whether there is a surface or a body behind the smoke, and whether what
+the pair sees is smoke or a wall. The Chinese 640 x 512 cores may fit the
+budget and are quoted, not assumed.
+
+### Stage 4: What The Vehicle Does
+
+The ladder of item 17 stage 5, with the rung that item added between holding
+and landing: **retreat along the flown path**. The path just flown is in
+memory as observed and free, and for smoke as for darkness a vehicle that
+backs out to where it could see is better placed than one that lands where it
+cannot. Through dense smoke the cameras do not fly, and this item does not
+try; what the thermal channel changes is that the stop becomes an informed
+one, with a retreat or a landing chosen on what is actually behind the plume.
+
+### What The Additions Cost, And Against What
+
+The rule of item 17 — the additions must not approach the price of a 3D
+lidar — does not apply here, and the reason is worth writing down. That rule
+compares a substitute against what it replaces: the stereo set with its
+flood and its ring against a lidar. Everything in this item is an addition on
+top of either set. Smoke scatters a lidar's 905 or 1550 nm as it scatters a
+time-of-flight pulse, and a thermal core costs the same 164 or 3 558 USD
+whichever sensor it sits beside. So the bar is whether each addition earns
+its place, charged once to both profiles.
+
+One asymmetry keeps the separation from being perfectly clean. A lidar gets
+part of its smoke robustness for free: it is active, so it needs no contrast,
+and most 3D lidars carry multi-echo returns and per-return intensity, where
+the last return passes thin smoke and a weak return is an aerosol and not a
+wall. The stereo pair has none of that, and thin smoke that a lidar filters
+already kills its contrast. The camera set's smoke addition therefore does
+more work, and in the substitution comparison of item 17 it is the difference
+between the two additions that is charged, not the whole.
+
+### Measurement And Completion
+
+Measure, per flight and per profile: the particle density along the path;
+depth coverage and error against evaluation-only truth in and out of the
+plume; the time-of-flight signal rates; the contract's forward range and the
+speed it admits; the number and size of occupied voxels that were never true
+occupancy, and how long each survived; route replacements caused by them;
+the rung of the ladder reached and when; the minimum distance to true
+occupancy; and physical collisions.
+
+This item is complete when stage 0 has landed and both acceptance series
+have been re-flown on it, with the route stability and the speed it costs
+stated; and when, **on the camera profile and on the lidar profile alike**,
+five flights through the plumed location reach the goal in truth or retreat
+and land without a collision, with no phantom occupancy older than the stated
+decay surviving the flight. Accepting on one profile would prove the
+addition only on the set where it has the most to do and say nothing about
+the set where it should be least needed.
 
 ## Completed
 
