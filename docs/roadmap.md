@@ -1082,7 +1082,10 @@ around it is legitimate — not as a cost on free space, which stays
 forbidden, but as the planner's ordinary answer to a closed region. The
 sequence is then: the vehicle approaches, the range collapses at the plume's
 edge, the region behind the edge is written unobservable, and the planner
-replaces the route around it if one exists. If none exists the ladder runs.
+replaces the route around it if one exists. If none exists the ladder runs,
+and when the ladder is spent and the goal has been proven unreachable in
+item 19's sense, the general return home of item 19 applies — a policy of
+the mission, not of this item.
 Two rules close the loop that the ladder alone leaves open. **After a
 retreat the vehicle holds where it can see for a stated time** — the plume
 is transient and expected to move — and if the range ahead has not returned
@@ -1137,6 +1140,91 @@ and land without a collision, with no phantom occupancy older than the stated
 decay surviving the flight. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
+
+## 19. A Goal Proven Unreachable: Return Home
+
+**Type:** mission policy, general; not tied to any sensor or scenario.
+
+**Hard prerequisites:** item 18 stage 0, because "unreachable" is provable
+only against measured prohibitions that decay, and the proof has to outlive
+the decay.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission, with the unreachability injected.
+
+Decided by the project owner on 2026-09-23, out of the smoke discussion and
+deliberately separated from it. Item 17's ladder and item 18's closure both
+contain a **local** retreat: metres back along the flown path, to where the
+sensor can see, as a motion of safety that asks no proof of anything. This
+item is the other retreat, the **mission-level** one: the goal is given up
+and the vehicle returns to where it started. The two are not the same rung
+and must not be confused. The local retreat stays where it is, triggered by a
+sensing failure; the return home is triggered by one thing only, a proof that
+the goal cannot be reached, and it is the same rule whatever made the goal
+unreachable — a plume across the only corridor, a collapsed passage, a door
+that was open on the map and is not.
+
+**The mechanism is a substitution of the goal, and nothing else.** The
+mission monitor, which owns the goal sequence and judges the arrival,
+replaces the goal with the start. The navigation does not change by a line:
+the same planner, the same memory, the same braking contract, now aimed at a
+different point. There is no return mode in the planner, no hold and no
+latch — a return is a new mission, not a suspended one — and the invariants
+of items 12 and 18 hold throughout it. The log records the outcome as its
+own: `goal_unreachable`, with the proof that established it and the moment
+the goal was substituted, distinct from `mission_incomplete`, which stays
+what it is.
+
+**What "proven" means, because with unknown free it is not obvious.** The
+planner routes through space it has not looked at, so a route exists almost
+always; unreachability is provable only when the reachable component of the
+world is **bounded entirely by measured prohibitions** — occupied surfaces
+and observed unobservable regions — with no unknown on its boundary. Two
+triggers, each named in the log for what it is:
+
+1. **Topological.** No route exists through free and unknown space, and
+   none has existed for longer than the decay of the closures that bound the
+   component, with at least one re-probe of each: item 18's closed regions
+   decay when not re-observed, so a proof taken in one instant is worth only
+   that instant, and a plume that drifts away a minute later must not find
+   the vehicle already home. This is "proven impossible".
+2. **Budget.** A route is still being sought through unexplored space and
+   the flight's window, less the time the return itself will take along the
+   observed path, is spent. This is not "proven impossible", it is "proven
+   too late", and the log says which.
+
+**Three guards, without which the policy is a loophole.**
+
+- **In an ordinary acceptance flight a return home is a failure.** The
+  second requirement of the project is that the vehicle always reaches its
+  goal, in truth. A return that counted as success would let the vehicle
+  "prove" a hard corridor unreachable and go home instead of flying it. A
+  return counts as a graceful outcome only in a flight whose unreachability
+  was **injected** by the scenario and is recorded in its manifest; in every
+  other flight it fails the mission as `mission_incomplete` does, and the
+  check says the vehicle returned rather than reached.
+- **A return needs a position source**, exactly as item 17's local retreat
+  does: the return path is flown on the estimator, and in total darkness
+  there is no estimator to fly it on. Without one the ladder's landing is
+  what remains, and the outcome is recorded as a landing, not a return.
+- **The return path is not privileged.** It is whatever the planner finds
+  toward the start, which is usually the flown path, held in memory as
+  observed and free; if that path has closed behind the vehicle, the return
+  is subject to the same proof, and a start proven unreachable too is a
+  landing in place, logged as such.
+
+### Measurement And Completion
+
+Measure, per flight: the moment of the proof and which trigger gave it; the
+time between the first "no route" and the proof (the re-probes it took); the
+path and duration of the return against the flown path; the true position at
+the start on arrival, judged by the same capture radius as a goal; and that
+no ordinary acceptance flight of any series produced a return.
+
+Complete when, on the camera profile and the lidar profile alike, five
+flights with an injected unreachable goal return to the start in truth
+without a collision, each logging its proof and its trigger, and when the
+acceptance series of items 9, 16, 17 and 18 show no return in any flight.
 
 ## Completed
 
