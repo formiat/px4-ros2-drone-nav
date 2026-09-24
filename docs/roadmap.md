@@ -625,11 +625,30 @@ The vehicle's answer is a ladder whose first rung is free:
 2. **Hold on what is still active.** The time-of-flight ring, the downward
    sensor for height, the IMU for attitude. The position drifts, because the
    filter has no images, and the ring bounds how far it drifts into a surface.
-3. **Retreat along the flown path.** The path just flown is in memory as
-   observed and free, and a vehicle that backs out to where it could see is
-   better placed than one that lands where it cannot. The rung is cheap,
-   because it asks nothing the memory does not already hold, and it serves
-   smoke (item 18) as it serves darkness.
+3. **Retreat along the flown path, as far as a position source allows.**
+   The path just flown is in memory as observed and free, and a vehicle that
+   backs out to where it could see is better placed than one that lands where
+   it cannot. The map is not what limits this rung; the rung above is. Rung 2
+   has just said the filter has no images and the position drifts, and a
+   path cannot be flown without a position, so how far the retreat reaches
+   depends on what is left to localize on. Three cases: in smoke (item 18)
+   the gaze turns the pair toward the motion, so retreating turns it out of
+   the plume to where it came from, and the estimator may recover its
+   tracking there — the retreat is real; when the light returns during the
+   retreat, the same; in total darkness — the carried light gone in a world
+   with none — no heading brings features into view, the estimator has the
+   IMU alone, and dead reckoning is honest for metres, not tens of metres, so
+   the rung is "back off the surface by a few metres" and rung 4 follows.
+   Flying on the time-of-flight ring is excluded, as stage 4 says.
+
+   An open question of this stage, recorded and not decided: whether the
+   estimator should, after its 1.0 s of unaided flight, keep publishing a
+   pose by dead reckoning in a declared mode rather than fall silent, so that
+   a short retreat is a controlled motion instead of a drift. The price is
+   that the autopilot then fuses a pose known to be drifting, and something
+   must own the decision to stop trusting it; item 16 chose silence for that
+   reason, and the choice is reopened only with the measurement of how far a
+   retreat on the IMU actually stays inside the corridor it came down.
 4. **Descend and land** if the light has not returned within a stated time. A
    controlled landing beats an uncontrolled drift, and a landed vehicle with a
    dead emitter is recoverable where a crashed one is not.
