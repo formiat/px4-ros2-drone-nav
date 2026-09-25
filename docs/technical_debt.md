@@ -21,23 +21,136 @@ and here, with where the work lands.
 
 | Entry | Decision | Lands in |
 |---|---|---|
-| Navigation closed after an autopilot position reset | Shift the map anchor by the reset the autopilot reports (`delta_xy`, `delta_z` of `vehicle_local_position`), hold a tick or two, continue; landing rejected as a policy because it fails "always reaches its goal". Proved with an injected reset of the external-vision pose. | roadmap item 17, stage 6 |
-| The 0.35 m cross-track reference | Re-derive per localization profile: 0.35 m on GNSS (measured), 1.0 m on the odometry profiles, half the capture radius the note guards. | mission check |
+| Navigation closed after an autopilot position reset | The repair as seen: the map anchor shifts by the reset the autopilot reports (`delta_xy`, `delta_z` of `vehicle_local_position`), a hold of a tick or two, then the flight goes on; landing rejected as a policy because it fails "always reaches its goal"; proof by an injected reset of the external-vision pose. | roadmap item 17, stage 6 |
+| The 0.35 m cross-track reference | A reference per localization profile: 0.35 m on GNSS (measured), 1.0 m on the odometry profiles, half the capture radius the note guards. | mission check |
 | A reference visual-inertial system | Not now; the drift is already measured against truth. Built as a tool image (not the production one) when the unbounded-drift work starts. | with the drift rework |
-| The uncovered elevation band | The survey turn (3df703ce) stays. Route shaping is not pursued: the band lives in shafts, where a diagonal has no room. What remains is a sensor. | done; remainder (c) |
+| The uncovered elevation band | The survey turn (3df703ce) stays; route shaping is not pursued, because the band lives in shafts, where a diagonal has no room; what remains is a sensor. | done; remainder (c) |
 | Camera noise and a lamp | Together, in item 17 stage 1: one move of the speed baseline, not two. | roadmap item 17, stage 1 |
 | Surfaces the matcher cannot match | The measurement first: the panel world, one flight, the confident range against it; the behaviour is decided on the number. | roadmap item 17, stage 2 |
-| The mean flight speed's clock | The simulation clock replaces the wall clock as the requirement's measurement; the thresholds 2.4 and 1.2 m/s stand, and the base series are re-expressed in simulation time when the check changes. Flights under foreign host load are excluded regardless, by the quiet-host gate before the flight, not by hand after it. | mission check, [testing.md](testing.md) |
+| The mean flight speed's clock | The simulation clock replaces the wall clock as the requirement's measurement; the thresholds 2.4 and 1.2 m/s stand, and the base series are re-expressed in simulation time when the check changes. Flights under foreign host load stay excluded regardless, by the quiet-host gate before the flight rather than by hand after it. | mission check, [testing.md](testing.md) |
 | The chords of a wide fillet | Not on its own; `static_route_corner_curve_samples` 4 to 8 rides with the next change that needs a lidar series. | next lidar series |
-| The 2D obstacle memory node | Delete the node, its launch branch and its tests once a grep shows no scenario selects it. | repository |
-| The route-volume crossing heuristic | Keep the check; one pass spans the first entry to the last exit, with a unit test on the r600 geometry. | mission check |
+| The 2D obstacle memory node | Removal of the node, its launch branch and its tests, once a grep shows no scenario selects it. | repository |
+| The route-volume crossing heuristic | The check stays; as seen, one pass spans the first entry to the last exit, with a unit test on the r600 geometry. | mission check |
+
+## Assessment Of 2026-09-25
+
+Every entry, rated on the day the owner reviewed the register, so that the
+picture as a whole can be read at once. The codes name the entries of the
+tables below in their order (L localization, S speed, C camera perception, P
+planning, R repository, N not flight-verified). "Repair as seen" is the
+repair as it looked on that day, not an instruction: by the time an entry
+is worked on, the view of it may have changed, and the register does not
+bind it.
+
+| Entry | Urgent | Important | Risk of the change | Risk of leaving it | Repair as seen on 2026-09-25 | Size | What it touches, what to expect |
+|---|---|---|---|---|---|---|---|
+| L1 unbounded odometry drift | not for 400 to 600 m missions; yes as they lengthen | high: the first requirement on long missions | high: the estimator's core, the frame already costs 55 ms | low now, high for a mission two or three times longer | in concept: long-lived points in the filter's state, or relocalization against a map; no design | XL | the estimator, the tick budget, both series; the error at the goal under 0.5 m whatever the length |
+| L2 navigation closed after a position reset | no, not seen since the 0.3 m EV noise | high: on a repeat the flight holds to its timeout | medium: a recovery policy reaches the controller and the memory | medium: rare and fatal for the first requirement | decided, see above | S to M | the controller; a camera series |
+| L3 the 0.35 m cross-track reference | no | low: noise in the reports | low | low | decided, see above | S | the mission check only |
+| L4 a reference visual-inertial system | no | medium: without one, nobody knows how good the estimator is | low | low | decided, see above | M | the container image; a tool, not a criterion |
+| L5 the IMU over a best-effort transport | no | medium: a real vehicle has another link | medium: the uXRCE transport and its QoS | low in simulation on a quiet host | in part: a reliable QoS or a higher rate | M | the estimators, both series; holes under 0.1 s under any load |
+| S1 the lidar profile's small speed margin | no | medium: not the target profile, but its series flake | high: what remains is the physical blocks at surfaces, three laws already reverted | medium: any lidar series may fall on one flight | not known | L | the clearance laws, the route beside walls; a series minimum at 2.6 |
+| S2 the speed measured on the wall clock | no | low | low | low: the quiet-host gate already covers it | decided, see above | S | the mission check |
+| S3 the pair beside the lidar below real time | no | low: not a target configuration | low | low | not known: the host's power | none | comparability of the figures only |
+| C1 the uncovered elevation band | no | medium: 2 percent directly, the shafts behind it | medium | low: slow but safe | decided, see above | done | the shafts; the remainder is a sensor |
+| C2 the horizon's lateral deviations into unknown space | no | medium | medium: a tube about the route for the horizon | low: the validators hold the speed | not known, only the direction | L | the controller and the tube; the effect on speed unmeasured |
+| C3 the evidence age above the charged 600 ms | medium | high: a hole in the first requirement, 0.12 m of 2.0 | low if done with C4 | low to medium | the measured age read into the contract | with C4 | the ticks with old evidence a little slower |
+| C4 the contract never reads the measured age | medium to high: item 17 stage 0 | high: a window of 2.4 m of travel against a 2.0 m margin | medium: the contract's central input | medium: not seen in a lit world, to be seen in item 17 | item 17 stage 0 | M | both series anew, the camera speed a little lower |
+| C5 the nearest pass closer on the vision memory | no | medium: the margin to a wall | medium | low to medium: no contact in twenty flights | not known | M to L | the camera profile's clearance |
+| C6 the contract's range a constant, a blind pair flown as a healthy one | **high**: a hole at full illumination | **high**: the first requirement | medium to high: the contract's central input, the speed baseline moves | **high**: the pair can return nothing and the speed does not move | the range as a measurement of the recent frames (item 17 stage 0) | M to L | both series anew; the camera speed lower on ticks of weak depth |
+| C7 no camera noise, no lamp | no | medium: realism | medium: the speed baseline moves | low in simulation | decided, see above | M plus series | the confident depth below 6.4 m, the camera speed lower |
+| C8 textureless surfaces unmeasured | no | medium in simulation, high in reality | low for the measurement | medium in the real world | decided, see above | M to measure, XL to remedy | the contract's range |
+| P1 lidar availability and holds off their figures | no | medium | high: physical blocks, three laws reverted | low | not known | L | with S1 |
+| P2 the tick past its 20 ms, the planner spending its whole budget | no | low: it works | high: the tick's architecture | low | not known | XL | all of execution |
+| P3 the hover drifts past the rest clearance | no | medium | high: three laws reverted | low: no contacts | not known | M to L | the rest clearance |
+| P4 a path validation beside a wall, the budget checked between attempts | no | low | medium | low | the check inside an attempt | S to M | the horizon assembly |
+| P5 the planner's stages unscheduled, the livelock closed by the probe deadline only | medium | high: the first requirement (a mission incomplete) | high: the planner | medium: a rare trigger, none in twenty flights after the repair | in part: a deadline on every stage, stall recovery as the lever | L | the planner, both series |
+| P6 the recovery at 2 m/s^2 against the 4 admitted | no | medium to high: 150 to 200 s of the budget, 10 to 15 percent on cameras | medium | low | not known: the cause not found, the seed excluded | M of investigation | the camera speed |
+| P7 the curvature law reading a wide fillet as chords | no | low: the lidar above 2.8 m/s only | low: the samples and a lidar series | low | decided, see above | S plus a series | a longer sweep per fillet; the lidar 0.05 to 0.1 m/s |
+| P8 the memory forgets nothing, a transient is a wall | not in a static world | high for item 18 and for reality | medium to high: the memory is the planner's input | low in simulation, high in reality | in concept: item 18 stage 0 (transient occupancy, decay) | L | the memory, the planner, both series |
+| R1 the 2D memory node still selectable | no | low | low | low | decided, see above | S | the launch files |
+| R2 the route-volume heuristic | no | low | low: a script and a test | low | decided, see above | S | the mission check |
+| R3 sources near the cap, a flat `src/` | no | medium: maintenance | medium: moves, the gates | low | mechanical | L | the structure |
+| N1 multi-vehicle missions on the camera defaults | no | high for item 15 | none | medium: item 15 may uncover defects | none | series | the cooperative missions |
+| N2 the cave and the finals locations | no | medium | none | medium: location-independent code unproved | none | series | none |
+| N3 one start, one goal | no | medium | none | medium | none | series | none |
+| N4 the blinded chain never exercised | medium: item 17 | high: the first requirement | none | high outside the simulator | item 17's injected failure | series | the estimator, the offboard path |
+
+Read together: first C6, then C4 with C3 in one step, all three item 17
+stage 0, all three moving the speed baseline and needing both series; then
+P5, dear and with a trigger that has not returned since its repair. The
+cheap and safe ones, R2, R1, L3, P4 and P7, close in one pass of scripts
+and documents plus one lidar series. S1 with P1, P3, C5 and P6 are not to be
+touched before a cause is measured: their laws have been flown and reverted
+before. P8, C8, L5 and N4 do not hurt in the simulator and are each a hole on
+a real vehicle.
+
+### The Options Weighed For The Decided Entries
+
+For each entry the owner decided on, the two ways it could go, as they were
+laid out on 2026-09-25, with the effort and the quality each was given.
+
+- **L2.** Minimal: the anchor shift by the autopilot's reported delta (M,
+  medium risk, needs an injected reset to prove; removes the fatal latch of
+  item 13's rule; a sound solution). Architectural: navigation in the
+  estimator's frame, setpoints translated into the autopilot's by a live
+  offset, so that resets stop existing for the memory (L to XL, every
+  consumer of the pose, both series; clean, but a rework of the whole
+  stack's pose). Landing as the policy was set aside: it keeps the first
+  requirement and fails the second by construction. Chosen: the minimal one.
+- **L3.** Drop the note for the odometry profiles (S, the drift loses its
+  watchman), or a reference per profile tied to the capture radius (S).
+  Chosen: the reference per profile.
+- **L4.** Not now, the drift is measured against truth already; or a tool
+  image with Ceres and OpenVINS and a runner on the records r550, r571 to
+  r576 (M). Chosen: not now, the tool image when the drift rework starts,
+  where a reference says how much of the drift is the algorithm's and how
+  much the data's.
+- **C1.** A route and horizon shape that climbs and descends at 50 degrees
+  or less, inside the pair's field, at 2.45 m/s instead of 1.0 (M, medium
+  risk; the vertical stays free by the invariant, what is charged is the
+  unobservability of a motion, which the speed law charges already); or a
+  sensor, a third time-of-flight unit or a wider cone (L, a decision about
+  the real vehicle, and outside the speed goal's rule on sensor models). The
+  measurement that came first showed the band lives in shafts, where a
+  diagonal has no room, and what the band hid was the walls a climb never
+  faced; the survey turn answered that. Chosen: the survey; the sensor
+  remains.
+- **C7.** The noise now, on a series of its own, with the confident depth
+  re-measured and a new baseline (M plus series); or the noise together with
+  the lamp in item 17, since the lamp is needed there anyway. Chosen:
+  together, one move of the baseline.
+- **C8.** The measurement alone, a panel the matcher cannot match on the
+  route, one flight, the confident range against it (S to M); or the
+  behaviour at once, a matcher confidence by texture and a matched nothing at
+  short range read as observed unobservability (L, and without the number
+  nobody knows whether it is needed). Chosen: the measurement, inside item
+  17.
+- **S2.** The wall clock kept, with the quiet-host gate moved into
+  `scripts/` and the simulation-time figure printed beside it as a note (S,
+  the metric unchanged); or the simulation clock as the requirement's
+  measurement, stable and independent of the host, at the price of
+  re-expressing the thresholds' base and of no longer measuring whether the
+  stack keeps real time. The agent recommended the first; the owner chose
+  the second, and kept the rule that no flight under foreign load counts.
+- **P7.** `static_route_corner_curve_samples` 4 to 8 with a lidar series (S
+  plus five flights, 0.05 to 0.1 m/s on the lidar, a sweep twice as long per
+  fillet); or the curvature read from the fillet itself through arc metadata
+  in the route samples (M, across modules). Chosen: the first, and not on
+  its own, with the next change that needs a lidar series.
+- **R1.** Removal after a grep shows no scenario selects the node (S to M),
+  or leaving it. Chosen: removal; dead code since the 3D memory of item 10.
+- **R2.** One pass counted from the first entry to the last exit, with a unit
+  test on the r600 geometry (S); or dropping the check, which was set aside
+  because it certifies the physical passage through the observed 3D volume
+  of a scenario. Chosen: the first.
 
 ## Localization
 
 | Debt | Measured | Class | Found by |
 |---|---|---|---|
 | The visual-inertial estimate drifts without bound: an odometry with no loop closure. The goal-in-truth check leaves 0.6 m of margin on the worst accepted flight, and a mission several times longer will exceed the 2.0 m capture radius. The remedy is long-lived points in the filter's state or relocalization against a map. | 0.1 to 0.4 percent of the path; the true position 0.47 to 1.42 m from the goal at its acknowledgement (r579 to r583), 1.97 and 2.31 m before the gyroscope noise was corrected (r572, r575) | (b) | item 16 |
-| The controller closes the navigation for the rest of the flight when the autopilot resets its position by more than 0.33 m (the rule roadmap item 13 made). With an odometry as the only position such a reset is possible; the vehicle then holds until the flight's window ends, which fails "always reaches its goal". Not seen again since the autopilot fuses the poses with 0.3 m of noise. What the stack should do after such a reset (hold and re-anchor, discard the map near the vehicle, land) is a policy. Decided 2026-09-25: re-anchor by the autopilot's reported delta and continue (item 17, stage 6). | r561: a 0.4 m correction, the odometry rejected, 1.8 s on the IMU alone, a reset of 1.19 m, mission incomplete | (c) | item 16 |
+| The controller closes the navigation for the rest of the flight when the autopilot resets its position by more than 0.33 m (the rule roadmap item 13 made). With an odometry as the only position such a reset is possible; the vehicle then holds until the flight's window ends, which fails "always reaches its goal". Not seen again since the autopilot fuses the poses with 0.3 m of noise. What the stack should do after such a reset (hold and re-anchor, discard the map near the vehicle, land) is a policy. Decided 2026-09-25: a re-anchor by the autopilot's reported delta, as seen then (item 17, stage 6). | r561: a 0.4 m correction, the odometry rejected, 1.8 s on the IMU alone, a reset of 1.19 m, mission incomplete | (c) | item 16 |
 | The autopilot's position estimate follows the odometry, so its error across the track against the true pose is the odometry's drift; the 0.35 m reference figure was measured on GNSS and is printed as a note on every camera flight. Whether the figure is re-derived for the odometry profiles or dropped is a decision. Decided 2026-09-25: re-derived, 1.0 m on the odometry profiles. | 0.67 to 1.19 m at p95 in four of five flights (r579 to r582) | (c) | item 16 |
 | No reference visual-inertial system has been run on the recorded flights. OpenVINS without ROS needs Ceres, which builds from source in the container, and Boost.Filesystem, which the container image does not carry, and then a runner for these records. It is a tool and no criterion; adding the package to the image is a decision about the image. Decided 2026-09-25: not now; a tool image when the drift rework starts. | attempted 2026-09-20, stopped at configuration | (c) | item 16 |
 | The autopilot's IMU reaches the estimators over a best-effort transport at 83 to 92 Hz and loses bursts when the host stalls. The filter grows its uncertainty over a hole and recovers; a reliable or higher-rate IMU path is a change of the autopilot's transport configuration. | holes of 0.33 to 0.69 s under a stalled host (r547, r549), at most 0.1 s otherwise (r550) | (b) | item 16 |
@@ -80,8 +193,8 @@ and here, with where the work lands.
 
 | Debt | Measured | Class | Found by |
 |---|---|---|---|
-| The 2D obstacle memory node is still selectable by the launch files. Decided 2026-09-25: delete it. | one node and its launch branch | (c) | item 10 |
-| The mission check's route-volume crossing (`headless_topology_validation.py`, the box 4..16 x 20..32 x 9..18 m) counts one pass as two when the vehicle grazes the box's side inside the pass, and prints a NOTE for a flight that crossed the volume end to end (r600: y 19.6 to 19.8 m at x 14.7 to 15.4; r609, r610 the same at the far side). Whether the heuristic should tolerate a side excursion is a decision about what it certifies. Decided 2026-09-25: keep it, one pass from the first entry to the last exit. | three of twenty acceptance flights | (c) | speed goal 2026-09-25 |
+| The 2D obstacle memory node is still selectable by the launch files. Decided 2026-09-25: to be removed. | one node and its launch branch | (c) | item 10 |
+| The mission check's route-volume crossing (`headless_topology_validation.py`, the box 4..16 x 20..32 x 9..18 m) counts one pass as two when the vehicle grazes the box's side inside the pass, and prints a NOTE for a flight that crossed the volume end to end (r600: y 19.6 to 19.8 m at x 14.7 to 15.4; r609, r610 the same at the far side). Whether the heuristic should tolerate a side excursion is a decision about what it certifies. Decided 2026-09-25: it stays; as seen, one pass from the first entry to the last exit. | three of twenty acceptance flights | (c) | speed goal 2026-09-25 |
 | Fourteen sources sit near the 1000-line cap and most of the package lies flat in `src/`. | `swept_footprint.cpp` at 994 non-blank lines | (b) | item 10 |
 
 ## Not Flight-Verified
