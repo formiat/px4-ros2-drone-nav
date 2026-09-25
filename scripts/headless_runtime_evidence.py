@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import csv
 import hashlib
 import json
@@ -289,8 +290,41 @@ def validate_runtime_manifest(
         )
 
 
+def simulation_clock_from_truth(truth_path: Path) -> list[tuple[float, float]]:
+    """(reception wall time, simulation time) of every true pose recorded:
+    the map from the log's wall clock to the simulation clock."""
+    pairs: list[tuple[float, float]] = []
+    if truth_path.is_file():
+        with truth_path.open(newline="", encoding="utf-8") as stream:
+            for row in csv.reader(stream):
+                if len(row) >= 9:
+                    pairs.append((float(row[8]), float(row[0])))
+    pairs.sort()
+    return pairs
+
+
+def simulation_time_at(pairs: list[tuple[float, float]], wall_s: float) -> float:
+    index = bisect.bisect_left(pairs, (wall_s, -math.inf))
+    if index == 0:
+        return pairs[0][1]
+    if index >= len(pairs):
+        return pairs[-1][1]
+    (wall_before, sim_before), (wall_after, sim_after) = pairs[index - 1], pairs[index]
+    if wall_after <= wall_before:
+        return sim_before
+    share = (wall_s - wall_before) / (wall_after - wall_before)
+    return sim_before + share * (sim_after - sim_before)
+
+
 def validate_mean_flight_speed(ros_log: str, errors: list[str],
-                               navigation_sensor_profile: str = "lidar") -> None:
+                               navigation_sensor_profile: str = "lidar",
+                               truth_path: Path | None = None) -> None:
+    """The path the vehicle flew between mission readiness and the successful
+    result over the simulation time that passed between them. The project
+    owner's decision of 2026-09-25: the wall clock measured this until then,
+    and a host slower than real time lowered the figure by as much; the
+    simulation clock is read from the true pose record, whose rows carry both
+    clocks, and the wall-clock figure is printed beside it."""
     minimum_speed_mps = (MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS
                          if navigation_sensor_profile == "stereo_tof"
                          else MINIMUM_MEAN_FLIGHT_SPEED_MPS)
@@ -303,9 +337,21 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
         return
     started_s = float(readiness.group(1))
     finished_s = float(result.group(1))
-    duration_s = finished_s - started_s
-    if duration_s <= 0.0:
+    wall_duration_s = finished_s - started_s
+    if wall_duration_s <= 0.0:
         errors.append("FAIL: the mission result follows mission readiness")
+        return
+    clock = simulation_clock_from_truth(truth_path) if truth_path is not None else []
+    if len(clock) < 2:
+        errors.append("FAIL: the flight recorded the true pose with its reception "
+                      "time, which the mean flight speed's simulation clock is read "
+                      "from (gz_pose.csv)")
+        return
+    duration_s = (simulation_time_at(clock, finished_s)
+                  - simulation_time_at(clock, started_s))
+    if duration_s <= 0.0:
+        errors.append("FAIL: the simulation clock advances between mission readiness "
+                      "and the result")
         return
     path_m = 0.0
     previous: tuple[float, float, float] | None = None
@@ -327,7 +373,9 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
         )
         return
     speed_mps = path_m / duration_s
-    detail = f"{speed_mps:.3f} m/s: {path_m:.1f} m in {duration_s:.1f} s"
+    detail = (f"{speed_mps:.3f} m/s: {path_m:.1f} m in {duration_s:.1f} s of "
+              f"simulation time ({path_m / wall_duration_s:.3f} m/s on the wall "
+              f"clock, {wall_duration_s:.1f} s)")
     if speed_mps <= minimum_speed_mps:
         errors.append(
             "FAIL: mean flight speed exceeds "

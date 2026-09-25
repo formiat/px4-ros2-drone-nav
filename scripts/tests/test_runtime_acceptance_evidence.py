@@ -254,17 +254,43 @@ class RuntimeManifestTest(unittest.TestCase):
     ) -> None:
         errors: list[str] = []
 
-        validator.validate_mean_flight_speed(self._flight_log(540.0, 200.0), errors)
+        validator.validate_mean_flight_speed(self._flight_log(540.0, 200.0), errors,
+                                             truth_path=self._truth(1.0))
 
         self.assertEqual(errors, [])
 
     def test_mean_flight_speed_counts_holds_against_the_vehicle(self) -> None:
         errors: list[str] = []
 
-        validator.validate_mean_flight_speed(self._flight_log(500.0, 300.0), errors)
+        validator.validate_mean_flight_speed(self._flight_log(500.0, 300.0), errors,
+                                             truth_path=self._truth(1.0))
 
         self.assertEqual(len(errors), 1)
-        self.assertIn("1.667 m/s: 500.0 m in 300.0 s", errors[0])
+        self.assertIn("1.667 m/s: 500.0 m in 300.0 s of simulation time", errors[0])
+
+    def test_mean_flight_speed_is_read_on_the_simulation_clock(self) -> None:
+        # A host at a real-time factor of 0.8: 300 s of the wall clock are 240 s
+        # of simulation time, and 600 m in 240 s clears the lidar's 2.4 m/s
+        # where 600 m in 300 s did not. The wall-clock figure is printed beside.
+        errors: list[str] = []
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            validator.validate_mean_flight_speed(self._flight_log(600.0, 300.0), errors,
+                                                 truth_path=self._truth(0.8))
+
+        self.assertEqual(errors, [])
+        self.assertIn("2.500 m/s: 600.0 m in 240.0 s of simulation time "
+                      "(2.000 m/s on the wall clock, 300.0 s)", stdout.getvalue())
+
+    def test_mean_flight_speed_needs_the_true_pose_record(self) -> None:
+        errors: list[str] = []
+
+        validator.validate_mean_flight_speed(self._flight_log(540.0, 200.0), errors,
+                                             truth_path=Path(tempfile.mkdtemp()) / "gz_pose.csv")
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("gz_pose.csv", errors[0])
 
     def test_mean_flight_speed_of_the_stereo_profile_answers_to_its_own_gate(
         self,
@@ -272,12 +298,12 @@ class RuntimeManifestTest(unittest.TestCase):
         errors: list[str] = []
 
         validator.validate_mean_flight_speed(
-            self._flight_log(500.0, 300.0), errors, "stereo_tof"
+            self._flight_log(500.0, 300.0), errors, "stereo_tof", self._truth(1.0)
         )
         self.assertEqual(errors, [])
 
         validator.validate_mean_flight_speed(
-            self._flight_log(300.0, 300.0), errors, "stereo_tof"
+            self._flight_log(300.0, 300.0), errors, "stereo_tof", self._truth(1.0)
         )
         self.assertEqual(len(errors), 1)
         self.assertIn("exceeds 1.2 m/s", errors[0])
@@ -293,7 +319,7 @@ class RuntimeManifestTest(unittest.TestCase):
             with self.subTest(path_m=path_m, profile=profile):
                 errors: list[str] = []
                 validator.validate_mean_flight_speed(
-                    self._flight_log(path_m, 300.0), errors, profile
+                    self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0)
                 )
                 self.assertEqual(errors == [], passes, errors)
 
@@ -301,10 +327,22 @@ class RuntimeManifestTest(unittest.TestCase):
         errors: list[str] = []
         log = self._flight_log(540.0, 200.0).replace("success=true", "success=false")
 
-        validator.validate_mean_flight_speed(log, errors)
+        validator.validate_mean_flight_speed(log, errors, truth_path=self._truth(1.0))
 
         self.assertEqual(len(errors), 1)
         self.assertIn("successful result", errors[0])
+
+    @staticmethod
+    def _truth(real_time_factor: float) -> Path:
+        # The true pose record: simulation time first, the reception wall time
+        # last, one row a second of the wall clock from t = 80 s to 500 s.
+        path = Path(tempfile.mkdtemp()) / "gz_pose.csv"
+        rows = []
+        for wall_s in range(80, 501):
+            sim_s = (wall_s - 80) * real_time_factor
+            rows.append(f"{sim_s:.3f},0,0,7.5,0,0,0,1,{wall_s:.6f}")
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return path
 
     def test_simulator_wires_per_run_manifest_capture_and_strict_gate(self) -> None:
         runner = RUNNER.read_text(encoding="utf-8")

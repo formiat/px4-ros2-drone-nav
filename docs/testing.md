@@ -91,7 +91,11 @@ project has two requirements, and the mission check fails on nothing else:
   without this line a vehicle arrives in its own coordinates only. The truth
   is read by the check and nowhere in the control loop;
 - the mean flight speed exceeds the figure of the sensor set: 2.4 m/s on the
-  lidar, 1.2 m/s on the stereo set.
+  lidar, 1.2 m/s on the stereo set. The path is the vehicle's positions
+  between mission readiness and the successful result, the time is the
+  simulation clock between the two, read from the true pose record
+  (`gz_pose.csv` carries both clocks); the wall-clock figure is printed
+  beside it.
 
 What says the flight was the one asked for fails too, because a pass would
 otherwise say nothing: the stack came up and flew (memory, ESDF, a route, an
@@ -213,14 +217,23 @@ slower than real time lowered the figure by as much (r577: 1.22 m/s on the
 wall clock for 1.53 m/s of simulation time under foreign desktop load; the
 camera profile runs at a real-time factor of 0.89 to 1.00 on the reference
 host). On 2026-09-25 the project owner decided that the requirement is
-measured on the simulation clock: the thresholds 2.4 and 1.2 m/s stand, and
-when the check changes the base series are re-expressed in simulation time
-(cameras r607 to r611 on 8f6d248f: 1.66 to 1.84 m/s, mean 1.76; lidar r612
-to r616: 2.40 to 2.59 over the track span). Until then the wall-clock figure
-is the one printed. Whatever the clock, a flight under foreign host load is
-not counted: the host is checked before the flight (no `rustc`, `cargo` or
-`clippy` above 5 percent of a core, a one-minute load under 3, no other
-`gz sim`), and a flight the load reaches anyway is replayed.
+measured on the simulation clock, with the thresholds 2.4 and 1.2 m/s
+unchanged, and the check reads it so since then. The base series, re-read by
+the same check:
+
+| Series | Commit | Wall clock, m/s | Simulation clock, m/s |
+|---|---|---|---|
+| cameras r607 to r611 | 8f6d248f | 1.572, 1.572, 1.728, 1.604, 1.742 (mean 1.644) | 1.702, 1.798, 1.842, 1.754, 1.858 (mean 1.791) |
+| lidar r612 to r616 | 8f6d248f | 2.705, 2.604, 2.718, 2.666, 2.493 (mean 2.637) | the same: the lidar profile runs at real time |
+| cameras r617, r618, r620 to r622 | 3df703ce | 1.706, 1.628, 1.689, 1.614, 1.637 (mean 1.655) | 1.928, 1.858, 1.866, 1.778, 1.761 (mean 1.838) |
+| lidar r623 to r627 | 3df703ce | 2.580, 2.433, 2.703, 2.654, 2.606 (mean 2.595) | 2.587, 2.433, 2.703, 2.654, 2.614 (mean 2.598) |
+
+Whatever the clock, a flight under foreign host load is not counted:
+`scripts/quiet_host_gate.sh`, run by the simulation wrapper before every
+flight, waits until the host has been quiet for a minute (no `rustc`, `cargo`
+or `clippy` above 5 percent of a core, a one-minute load under 3, no other
+`gz sim`), foreign processes are never touched, and a flight the load reaches
+anyway is replayed.
 
 ### Resource record
 

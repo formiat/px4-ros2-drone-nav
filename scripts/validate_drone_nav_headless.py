@@ -429,6 +429,7 @@ def main() -> int:
         validate_mean_flight_speed(
             ros_log, errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
+            args.runtime_manifest.parent / "gz_pose.csv",
         )
         validate_controller_dynamics(
             args.runtime_manifest.parent, ros_log, notes,
