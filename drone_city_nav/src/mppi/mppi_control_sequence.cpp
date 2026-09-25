@@ -683,15 +683,9 @@ RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
   return result == RiskTier::kCollision ? RiskTier::kCritical : result;
 }
 
-// The rate that closes the remaining angle: a quarter turn closes to within
-// five degrees in 1.5 s. The autopilot's yaw response stays well inside
-// that: on the camera flight r592 it followed the commanded yaw rate at a
-// ratio of 1.08 to 1.15 with 0.05 s of lag and overshot the commanded yaw
-// by more than 15 degrees on 2 of 120 crossings. At the former 1.5 1/s the
-// heading lagged its target by more than 30 degrees for 38 percent of the
-// moving time of r591 (2.0 rad/s cap, 3.0 rad/s^2), because at errors of 30
-// to 45 degrees the law asked only 45 to 68 deg/s of a cap of 115.
-constexpr float kGazeRateGainPerSecond{2.0F};
+// A quarter turn closes to within five degrees in two seconds; the
+// autopilot's yaw response, a few tenths of a second, stays well inside that.
+constexpr float kGazeRateGainPerSecond{1.5F};
 
 GazeDecision applyGazeYawControls(const std::span<Control> controls,
                                   const std::span<State> horizon,
