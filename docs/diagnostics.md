@@ -90,7 +90,9 @@ and actual speeds, whether the rise limit held the reference, every limit the
 reference was the minimum of (`limits`: sensor braking, clearance, route
 clearance, blocked route, curvature, unobserved frontier, goal, route endpoint,
 route constraint; `-1` where a law did not apply), the range memory answered
-with for an unfaced motion, the yaw and yaw rate, the gaze's decision at the
+with for an unfaced motion, the yaw and yaw rate the autopilot reports and the
+ones the executed horizon commands next (`commanded_yaw`,
+`commanded_yaw_rate`), the gaze's decision at the
 first step (`gaze_rule` of `motion`, `rest` or `none` and `gaze_target_yaw`),
 the route's heading at the vehicle's station and toward the point about 1.5 s
 of travel ahead (`null` where none is named). A throttled record cannot answer

@@ -862,9 +862,15 @@ void ProductionMppiNode::processDiagnostics(
           << finiteOrNegative(speed_policy.route_constraint_limit_mps) << '}'
           << ",\"unfaced_observed_range_m\":"
           << finiteOrNegative(speed_policy.unfaced_observed_range_m)
-          << ",\"yaw\":" << input.initial_state.yaw
-          << ",\"yaw_rate\":" << input.initial_state.yaw_rate << ",\"gaze_rule\":\""
-          << mppi::gazeRuleName(result.gaze.rule) << "\",\"gaze_target_yaw\":";
+          << ",\"yaw\":" << input.initial_state.yaw << ",\"yaw_rate\":"
+          << input.initial_state.yaw_rate
+          // The yaw the executed horizon hands the autopilot next, beside
+          // the yaw the autopilot reports: their gap is the autopilot's own
+          // lag, which the gaze law's gain cannot see.
+          << ",\"commanded_yaw\":" << commanded_state.yaw
+          << ",\"commanded_yaw_rate\":" << commanded_state.yaw_rate
+          << ",\"gaze_rule\":\"" << mppi::gazeRuleName(result.gaze.rule)
+          << "\",\"gaze_target_yaw\":";
     writeHeading(track, result.gaze.rule == mppi::GazeRule::kNone
                             ? std::nullopt
                             : std::optional<double>{result.gaze.target_yaw_rad});
