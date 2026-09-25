@@ -43,7 +43,8 @@ constexpr std::size_t kReportedSequenceCount{2U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 // The gaze looks where the horizon is 1.5 s on, about the time a quarter turn
-// of the heading takes (1.5 rad/s, 2 rad/s^2), and holds the heading where the
+// of the heading took under the original yaw limits (1.5 rad/s, 2 rad/s^2;
+// the configured ones are in urban_mvp.yaml), and holds the heading where the
 // horizon moves less than the body's radius in that time.
 constexpr float kGazeLookaheadS{1.5F};
 constexpr float kGazeMinimumDisplacementM{0.55F};

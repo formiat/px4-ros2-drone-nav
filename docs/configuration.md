@@ -179,7 +179,11 @@ lowered the speed the contract admitted in level flight. The reference speed
 applies the vehicle's velocity direction (the route tangent while it stands);
 the worst direction over all of them is the hard norm limit for the complete
 `(vx, vy, vz)` vector in CPU and CUDA dynamics and is also part of strategic ETA
-and route time parameterization. The same jerk-limited stopping implementation
+and route time parameterization. `maximum_yaw_rate_radps` and
+`maximum_yaw_acceleration_radps2` bound the yaw the gaze may command; the
+time model's stationary turns and the angular-derivative contract read the
+same two values, and the configured ones carry their measurement in
+`urban_mvp.yaml`. The same jerk-limited stopping implementation
 is used by route-reserve certification. A measured speed above the contract
 requests braking instead of new motion. Free and unknown space use the same
 limit; freshness changes admission, not occupancy semantics.

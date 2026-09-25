@@ -688,6 +688,12 @@ void ProductionMppiConfigLoader::declareControl() {
       mppi::makeFiniteHorizonConfig(control.speed_policy.stopping_capability);
   mppi.dynamics.maximum_control_jerk_mps3 =
       static_cast<float>(maximum_control_jerk_mps3);
+  // The yaw the gaze may command; the time model's stationary turns and the
+  // angular-derivative contract read the same two values below.
+  mppi.dynamics.maximum_yaw_rate_radps =
+      static_cast<float>(declare<double>("maximum_yaw_rate_radps", 1.5));
+  mppi.dynamics.maximum_yaw_acceleration_radps2 =
+      static_cast<float>(declare<double>("maximum_yaw_acceleration_radps2", 2.0));
   mppi.dynamics.maximum_vertical_acceleration_mps2 =
       static_cast<float>(maximum_vertical_acceleration_mps2);
   mppi.altitude_envelope.guaranteed_vertical_deceleration_mps2 = static_cast<float>(

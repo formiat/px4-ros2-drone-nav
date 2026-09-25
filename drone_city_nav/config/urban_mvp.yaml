@@ -459,6 +459,24 @@ production_mppi_node:
     # 0.85 m/s. 1.4 is the fifth percentile of the plateau.
     guaranteed_vertical_stopping_deceleration_mps2: 1.4
     maximum_control_jerk_mps3: 12.0
+    # The yaw rate and yaw acceleration the gaze may command, for a vehicle
+    # whose obstacle sensor looks forward and has to turn to face its route.
+    # Measured on the camera flight r590 (9fcdff9c, 432 m in 258 s at
+    # 1.68 m/s) under the former 1.5 rad/s and 2.0 rad/s^2: the route asked
+    # 8110 degrees of heading change, the heading lagged its target by more
+    # than 30 degrees for 44 percent of the moving time and stood more than
+    # 60 degrees off the route ahead for 30 percent of the flight, where the
+    # motion is unfaced and flies 1.75 m/s against 2.08 when faced; the
+    # recovery from a slowdown ran at 0.45 m/s^2 with the heading more than
+    # 90 degrees off its target against 1.89 within 20 degrees; and one
+    # target that flipped mid-turn turned the vehicle 250 degrees the long way
+    # because 2.0 rad/s^2 cannot reverse a 79 deg/s turn in time. The
+    # estimator does not object: on the same flight the tracked features
+    # fell from 153 at rest to 142 at 60 to 90 deg/s at the median and the
+    # depth returns per scan from 28.6 to 27.4 thousand, no cliff. PX4's own
+    # yaw rate limit (MC_YAWRATE_MAX, 200 deg/s) is above both.
+    maximum_yaw_rate_radps: 2.0
+    maximum_yaw_acceleration_radps2: 3.0
     speed_reaction_latency_s: 0.10
     # How late the vehicle follows a reference that falls, charged as latency
     # by the distance laws of the speed policy that stop the vehicle short of
