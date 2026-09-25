@@ -304,7 +304,8 @@ the vertical (1.29 m/s). Two cases have no sensor behind them:
 
 Waiting for the gaze is not a latch because the gaze turns a vehicle at rest:
 `applyGazeYawControls` turns the heading to where the horizon moves over 1.5 s
-at a rate proportional to the remaining angle (gain 1.5 1/s, inside the yaw
+at a rate proportional to the remaining angle (gain 2.0 1/s since the speed
+work of 2026-09-24, 1.5 before it, inside the yaw
 limits), and where the horizon goes nowhere to the route's tangent at the
 vehicle's station; a position hold other than a goal capture carries the same
 heading (`gazeRestHeading`), so a held vehicle looks where its route leaves
