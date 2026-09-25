@@ -826,7 +826,15 @@ production_mppi_node:
     # every corner that 2 m did not clear a stop-and-turn.
     static_route_corner_smoothing_distance_m: 6.0
     static_route_corner_smoothing_minimum_distance_m: 0.5
-    static_route_corner_curve_samples: 4
+    # Samples on each fillet's curve before the route is resampled. With four,
+    # a wide fillet in open space (a 6 m control distance) is three chords of
+    # 2.8 m with 30 degree kinks, and the curvature law, reading a corner over
+    # 2 m of route, admitted 2.8 m/s at a right angle where the arc supports
+    # 3.9 (the speed goal of 2026-09-25, the lidar series r612 to r616 at
+    # 2.49 to 2.72 m/s); only the lidar profile cruises above 2.8. Eight
+    # samples halve the kinks; the raw swept validation of each fillet grows
+    # with them.
+    static_route_corner_curve_samples: 8
     # A route corner sharper than this alignment (the cosine of the turn) is a
     # stop-and-turn: the sample's speed is zero, the time model charges a
     # stationary turn, and the vehicle brakes to rest, turns its heading and
