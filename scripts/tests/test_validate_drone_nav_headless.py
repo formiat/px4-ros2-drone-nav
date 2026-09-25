@@ -278,6 +278,26 @@ class MappingPipelineValidationTest(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    def test_observed_route_volume_tolerates_entering_through_the_floor(self) -> None:
+        # r633 and r637: in from beyond the near face while under the floor,
+        # up into the volume, out beyond the far face.
+        log = (
+            "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
+            "certified_pending=true validation=accepted route_generation=3\n"
+            "PRODUCTION_MPPI_TICK tick=1 state_position=(3.0,21.0,8.7)\n"
+            "PRODUCTION_MPPI_TICK tick=2 state_position=(10.6,21.3,8.9)\n"
+            "PRODUCTION_MPPI_TICK tick=3 state_position=(10.9,21.3,9.0)\n"
+            "PRODUCTION_MPPI_TICK tick=4 state_position=(13.0,22.5,9.4)\n"
+            "PRODUCTION_MPPI_TICK tick=5 state_position=(17.0,25.0,9.6)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log, (4.0, 20.0, 9.0, 16.0, 32.0, 18.0), errors
+        )
+
+        self.assertEqual(errors, [])
+
     def test_observed_route_volume_rejects_two_visits_from_opposite_sides(
         self,
     ) -> None:

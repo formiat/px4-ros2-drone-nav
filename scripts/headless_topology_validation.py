@@ -102,14 +102,19 @@ def validate_observed_3d_route_volume(
     # Between them the vehicle may leave through a side that is not the
     # dominant axis and come back (r600: 0.2 to 0.4 m below the box's
     # y-minimum halfway through a crossing along x); it may not leave through
-    # the dominant faces, or the pass would be two. It enters from beyond one
-    # dominant face, and after its last sample inside it reaches beyond the
-    # other before it is ever back beyond the first: r629 left the volume
-    # through its floor 1.8 m short of the far face and went on past it.
-    def beyond_first(coordinate: float, low_to_high: bool) -> bool:
-        return coordinate > maximum[dominant_axis] if low_to_high else (
-            coordinate < minimum[dominant_axis]
-        )
+    # the dominant faces, or the pass would be two. Before its first sample
+    # inside it was beyond one dominant face, and after its last it reaches
+    # beyond the other, in each case before it is ever beyond the opposite
+    # one: r629 left the volume through its floor 1.8 m short of the far face
+    # and went on past it, r633 and r637 entered through the floor.
+    def first_face_beyond(samples) -> str | None:
+        for position in samples:
+            coordinate = position[dominant_axis]
+            if coordinate < minimum[dominant_axis]:
+                return "low"
+            if coordinate > maximum[dominant_axis]:
+                return "high"
+        return None
 
     for logger, positions in positions_by_logger.items():
         inside_indices = [
@@ -118,29 +123,16 @@ def validate_observed_3d_route_volume(
         if len(inside_indices) < 2:
             continue
         first, last = inside_indices[0], inside_indices[-1]
-        if first == 0 or last + 1 >= len(positions):
-            continue
         if any(
             not minimum[dominant_axis] <= positions[index][dominant_axis]
             <= maximum[dominant_axis]
             for index in range(first, last + 1)
         ):
             continue
-        before = positions[first - 1][dominant_axis]
-        low_to_high = before < minimum[dominant_axis]
-        high_to_low = before > maximum[dominant_axis]
-        if not low_to_high and not high_to_low:
-            continue
-        reached_far_face = False
-        for position in positions[last + 1:]:
-            coordinate = position[dominant_axis]
-            if beyond_first(coordinate, low_to_high):
-                reached_far_face = True
-                break
-            if beyond_first(coordinate, not low_to_high):
-                break
-        if not reached_far_face:
-            continue
+        entered_from = first_face_beyond(reversed(positions[:first]))
+        left_to = first_face_beyond(positions[last + 1:])
+        low_to_high = entered_from == "low" and left_to == "high"
+        high_to_low = entered_from == "high" and left_to == "low"
         if low_to_high or high_to_low:
             direction = "low_to_high" if low_to_high else "high_to_low"
             print(
