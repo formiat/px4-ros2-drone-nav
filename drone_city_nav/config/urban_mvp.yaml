@@ -790,6 +790,21 @@ production_mppi_node:
     static_route_corner_smoothing_distance_m: 6.0
     static_route_corner_smoothing_minimum_distance_m: 0.5
     static_route_corner_curve_samples: 4
+    # A route corner sharper than this alignment (the cosine of the turn) is a
+    # stop-and-turn: the sample's speed is zero, the time model charges a
+    # stationary turn, and the vehicle brakes to rest, turns its heading and
+    # accelerates again. Measured on the camera flight r589 (8ef87d68, 433 m
+    # in 276 s at 1.57 m/s) with the default of cos 45 degrees: 15 of the 34
+    # slowdowns below 1 m/s, 28 s of the flight, were corners of 60 to 180
+    # degrees on which the reference speed stayed at 2.4 to 2.5 m/s (memory
+    # covered the motion) while the route itself demanded a stop; the planner
+    # budgeted 2.8 s of stationary turns per route at the median, 13.2 at
+    # most, and the recovery from such a stop ran at 0.45 m/s^2 while the
+    # heading was still more than 90 degrees from its target. At cos 90
+    # degrees a corner up to a right angle is flown continuously, bounded by
+    # the curvature limiter and the clearance laws instead; a reversal still
+    # stops.
+    route_connector_minimum_continuous_turn_alignment: 0.0
     static_route_replan_remaining_m: 45.0
     no_static_route_replan_remaining_m: 15.0
     route_required_certified_overlap_m: 8.0
