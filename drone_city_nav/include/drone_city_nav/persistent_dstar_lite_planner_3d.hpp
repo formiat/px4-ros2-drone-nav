@@ -337,6 +337,7 @@ struct PlannerTelemetry3D {
   std::size_t departure_rejected_legs{0U};
   std::size_t departure_refinement_probes{0U};
   std::size_t departure_refinement_reachable{0U};
+  bool departure_refinement_deadline_hit{false};
   Point3 departure_first_failure{};
   bool departure_first_failure_available{false};
   // No anchor cleared the departure envelope and the hull was asked instead.

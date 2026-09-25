@@ -275,6 +275,8 @@ public:
     std::size_t valid_nodes{0U};
     std::size_t rejected_legs{0U};
     std::size_t refinement_probes{0U};
+    // The update's deadline ended the probing before the grid was exhausted.
+    bool refinement_deadline_hit{false};
     std::size_t refinement_reachable{0U};
     OccupiedCollisionResult3D first_leg_failure{};
     bool first_leg_failure_available{false};
@@ -337,10 +339,18 @@ public:
   // `excluded` names anchors the caller has already exhausted a search
   // from; the walk over the anchors passes them by while any other anchor
   // remains, and falls back to all of them when none does.
+  // The refinement's probes each sweep the body through raw occupancy, and
+  // a probe count alone does not bound them in time: on r596 a start beside
+  // roof geometry ran all 512, 4.3 s of sweeps in a 150 ms update, on every
+  // update for 106 s, and no later stage ever ran. Probing stops at
+  // `deadline`; the closed-anchor cycle then stands in for a refined
+  // departure as it does when the probes run out.
   [[nodiscard]] DepartureConnection3D selectDepartureConnection(
       const Point3& start, std::size_t skipped_connections = 0U,
       std::optional<PersistentPlannerNode3D> preferred = std::nullopt,
-      const std::function<bool(PersistentPlannerNode3D)>& excluded = {});
+      const std::function<bool(PersistentPlannerNode3D)>& excluded = {},
+      std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::time_point::max());
   // The departure legs answer to the envelope again.
   void resetDepartureBody() noexcept;
   // How many admissible connections the start has, for bounding that walk.
@@ -366,8 +376,10 @@ public:
   // point a hand's breadth above a floor the lidar only now sees — would
   // otherwise leave the planner with no search at all until that evidence
   // clears, and a vehicle that has stopped never clears it.
-  [[nodiscard]] GoalConnection3D selectGoalConnection(const Point3& goal,
-                                                      double tolerance_m) const;
+  [[nodiscard]] GoalConnection3D
+  selectGoalConnection(const Point3& goal, double tolerance_m,
+                       std::chrono::steady_clock::time_point deadline =
+                           std::chrono::steady_clock::time_point::max()) const;
   // Whether the body reaches `target` from `start`, through `waypoint` when
   // one is set. The leg leaving the vehicle carries the departure exemption
   // for contact evidence the body already holds; every later leg is ordinary

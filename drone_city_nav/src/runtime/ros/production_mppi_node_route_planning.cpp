@@ -126,7 +126,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "escape_found=%s "
         "escape_active=%s escape_exhausted=%s escape_probes=%zu escape_cells=%zu "
         "escape_ms=%.1f departure_nodes=%zu/%zu departure_rejected_legs=%zu "
-        "departure_probes=%zu/%zu departure_failure=%s(%.2f,%.2f,%.2f) "
+        "departure_probes=%zu/%zu departure_deadline_hit=%s "
+        "departure_failure=%s(%.2f,%.2f,%.2f) "
         "seed_distance_m=%.2f seed_tolerance_m=%.3f",
         planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
         plannerInputStatus3DName(planner_update.planner_input_status),
@@ -196,6 +197,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.departure_rejected_legs,
         planner_telemetry.departure_refinement_reachable,
         planner_telemetry.departure_refinement_probes,
+        planner_telemetry.departure_refinement_deadline_hit ? "true" : "false",
         planner_telemetry.departure_first_failure_available ? "" : "none",
         planner_telemetry.departure_first_failure.x,
         planner_telemetry.departure_first_failure.y,

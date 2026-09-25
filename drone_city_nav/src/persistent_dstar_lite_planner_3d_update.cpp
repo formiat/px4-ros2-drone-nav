@@ -340,9 +340,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
                   return feasibility_search_.inClosedComponent(node);
                 }}
               : std::function<bool(PersistentPlannerNode3D)>{};
+      // The probes may run until the searches' guaranteed share is all that
+      // is left of the update.
       return lattice_.selectDepartureConnection(
           request.start, departure_anchor_skip_,
-          initialized_ ? std::optional{start_} : std::nullopt, closed);
+          initialized_ ? std::optional{start_} : std::nullopt, closed,
+          deadline - spatial_search_reserve);
     }
     // The escape fill found this connection under the envelope, so the rest of
     // the update answers to the envelope as well.
@@ -356,6 +359,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.departure_valid_nodes = departure.diagnostics.valid_nodes;
   telemetry.departure_rejected_legs = departure.diagnostics.rejected_legs;
   telemetry.departure_refinement_probes = departure.diagnostics.refinement_probes;
+  telemetry.departure_refinement_deadline_hit =
+      departure.diagnostics.refinement_deadline_hit;
   telemetry.departure_refinement_reachable = departure.diagnostics.refinement_reachable;
   telemetry.departure_first_failure_available =
       departure.diagnostics.first_leg_failure_available;
@@ -371,7 +376,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.departure_waypoint_used = !departure.waypoints.empty();
   telemetry.departure_waypoint_count = departure.waypoints.size();
   const PlannerLattice3D::GoalConnection3D goal_connection =
-      lattice_.selectGoalConnection(request.mission_goal, config_.goal_tolerance_m);
+      lattice_.selectGoalConnection(request.mission_goal, config_.goal_tolerance_m,
+                                    deadline - spatial_search_reserve);
   if (!goal_connection.available()) {
     update.input_status = PlannerInputStatus3D::kGoalUnavailable;
     return update;

@@ -1,6 +1,7 @@
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <iterator>
@@ -110,7 +111,8 @@ std::size_t PlannerLattice3D::departureConnectionCount(const Point3& start) cons
 PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnection(
     const Point3& start, const std::size_t skipped_connections,
     const std::optional<PersistentPlannerNode3D> preferred,
-    const std::function<bool(PersistentPlannerNode3D)>& excluded) {
+    const std::function<bool(PersistentPlannerNode3D)>& excluded,
+    const std::chrono::steady_clock::time_point deadline) {
   DepartureConnection3D result;
   departure_uses_hull_ = false;
   std::vector<PersistentPlannerNode3D> anchors =
@@ -199,6 +201,10 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
     if (probes >= config_->maximum_departure_refinement_probes) {
       break;
     }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      result.diagnostics.refinement_deadline_hit = true;
+      break;
+    }
     ++probes;
     result.diagnostics.refinement_probes = probes;
     if (!departureSegmentValid(start, waypoint)) {
@@ -215,9 +221,9 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
   return cycle_closed_anchors();
 }
 
-PlannerLattice3D::GoalConnection3D
-PlannerLattice3D::selectGoalConnection(const Point3& goal,
-                                       const double tolerance_m) const {
+PlannerLattice3D::GoalConnection3D PlannerLattice3D::selectGoalConnection(
+    const Point3& goal, const double tolerance_m,
+    const std::chrono::steady_clock::time_point deadline) const {
   GoalConnection3D result{.endpoint = goal};
   result.anchor = selectAnchor(goal, false);
   if (result.available() || config_->departure_refinement_subdivisions == 0U ||
@@ -260,7 +266,8 @@ PlannerLattice3D::selectGoalConnection(const Point3& goal,
   });
   std::size_t attempts{0U};
   for (const Point3& probe : probes) {
-    if (attempts >= config_->maximum_departure_refinement_probes) {
+    if (attempts >= config_->maximum_departure_refinement_probes ||
+        std::chrono::steady_clock::now() >= deadline) {
       break;
     }
     ++attempts;
