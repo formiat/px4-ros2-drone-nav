@@ -204,6 +204,21 @@ the stereo sensor set. These are the project owner's requirements of
 profile as half of what its braking contract admits forward (6.4 m of
 confident depth admit 2.452 m/s).
 
+The clock the speed is measured on was the wall clock through the acceptance
+series of items 14, 16 and the speed work of 2026-09-24/25, so a simulation
+slower than real time lowered the figure by as much (r577: 1.22 m/s on the
+wall clock for 1.53 m/s of simulation time under foreign desktop load; the
+camera profile runs at a real-time factor of 0.89 to 1.00 on the reference
+host). On 2026-09-25 the project owner decided that the requirement is
+measured on the simulation clock: the thresholds 2.4 and 1.2 m/s stand, and
+when the check changes the base series are re-expressed in simulation time
+(cameras r607 to r611 on 8f6d248f: 1.66 to 1.84 m/s, mean 1.76; lidar r612
+to r616: 2.40 to 2.59 over the track span). Until then the wall-clock figure
+is the one printed. Whatever the clock, a flight under foreign host load is
+not counted: the host is checked before the flight (no `rustc`, `cargo` or
+`clippy` above 5 percent of a core, a one-minute load under 3, no other
+`gz sim`), and a flight the load reaches anyway is replayed.
+
 ### Resource record
 
 Every flight, headless or not, records what its processes consume

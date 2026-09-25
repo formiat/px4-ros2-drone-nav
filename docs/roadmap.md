@@ -508,7 +508,9 @@ light while the noise does not and the matcher degrades with the ratio, which
 is what a real imager does at low light: read noise is what dominates there.
 The noise is stated with its source, and its cost is stated with it — it
 lowers the confident depth item 14 stage 1 measured, so 6.4 m is re-measured by
-the same procedure and the speed baseline moves.
+the same procedure and the speed baseline moves. Decided by the project owner
+on 2026-09-25: the noise and the lamp of stage 3 land together in this stage,
+so the baseline moves once and not twice.
 
 The world's `ambient` becomes a parameter of the scenario and a permanently
 dark variant of the urban location (`ambient 0`) becomes one of its worlds. The
@@ -540,6 +542,11 @@ range the depth still stands behind. The result is a curve of confident range
 against surface texture, and stage 0's measured range has to track it at run
 time: if a bare wall leaves a metre of confident depth, the contract must say
 one metre and the vehicle must fly what one metre admits.
+
+Decided by the project owner on 2026-09-25: the measurement comes first, one
+flight against a panel the matcher cannot match, and whether a matched
+nothing at short range is read as observed unobservability (item 18's
+sense) is decided on that number.
 
 The remedies are compared in the same place and none is assumed: a wider
 matching window, a different matcher, and the projected pattern of active
@@ -683,6 +690,24 @@ as it is today.
   in truth.
 - A **short** flight of about five minutes whose only question is whether the
   vehicle survives.
+
+### Stage 6: A Position Reset Of The Autopilot
+
+Item 13's rule closes the navigation for the rest of the flight when the
+autopilot resets its position by more than 0.33 m, and with an odometry as the
+only position such a reset is possible (r561: a 0.4 m correction, the
+odometry rejected, 1.8 s on the IMU alone, a reset of 1.19 m, mission
+incomplete). The project owner decided on 2026-09-25 how the stack answers
+it: the autopilot reports every reset with its size (`delta_xy` and `delta_z`
+of `vehicle_local_position`, counted by `xy_reset_counter` and
+`z_reset_counter`), so the map anchor between the navigation frame and the
+autopilot's local frame shifts by that delta, the vehicle holds for the tick
+or two the shift takes, and the flight goes on with its memory and route
+intact. Landing was rejected as the policy: it keeps the first requirement
+and fails the second by construction. The stage is proved with an injected
+reset of the external-vision pose fed to the autopilot, the same machinery
+stage 5 uses to fail the light, on the camera profile, and it is accepted
+with both series.
 
 ### What The Additions May Cost
 
