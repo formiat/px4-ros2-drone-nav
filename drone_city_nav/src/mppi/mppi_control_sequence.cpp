@@ -687,13 +687,15 @@ RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
 // autopilot's yaw response, a few tenths of a second, stays well inside that.
 constexpr float kGazeRateGainPerSecond{1.5F};
 
-void applyGazeYawControls(const std::span<Control> controls,
-                          const std::span<State> horizon,
-                          const DynamicsConfig& dynamics, const float lookahead_s,
-                          const float minimum_displacement_m,
-                          const std::optional<float> rest_heading_rad) {
+GazeDecision applyGazeYawControls(const std::span<Control> controls,
+                                  const std::span<State> horizon,
+                                  const DynamicsConfig& dynamics,
+                                  const float lookahead_s,
+                                  const float minimum_displacement_m,
+                                  const std::optional<float> rest_heading_rad) {
+  GazeDecision decision{};
   if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
-    return;
+    return decision;
   }
   const float maximum_acceleration = dynamics.maximum_yaw_acceleration_radps2;
   const auto lookahead_steps = std::max<std::size_t>(
@@ -709,6 +711,13 @@ void applyGazeYawControls(const std::span<Control> controls,
     const float ahead_x = ahead.x - state.x;
     const float ahead_y = ahead.y - state.y;
     const bool moving = std::hypot(ahead_x, ahead_y) >= minimum_displacement_m;
+    if (index == 0U) {
+      decision.rule = moving                         ? GazeRule::kMotion
+                      : rest_heading_rad.has_value() ? GazeRule::kRest
+                                                     : GazeRule::kNone;
+      decision.target_yaw_rad =
+          moving ? std::atan2(ahead_y, ahead_x) : rest_heading_rad.value_or(state.yaw);
+    }
     const float error_rad = moving || rest_heading_rad.has_value()
                                 ? std::remainder((moving ? std::atan2(ahead_y, ahead_x)
                                                          : *rest_heading_rad) -
@@ -732,6 +741,7 @@ void applyGazeYawControls(const std::span<Control> controls,
     horizon[index + 1U].yaw = integrated.yaw;
     horizon[index + 1U].yaw_rate = integrated.yaw_rate;
   }
+  return decision;
 }
 
 std::optional<float> gazeRestHeading(const std::optional<RouteReference>& route,

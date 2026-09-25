@@ -937,6 +937,7 @@ else
     params_file:="${city_nav_params_file}"
     lidar_debug_output_dir:="${lidar_debug_dir}"
     lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
+    mppi_diagnostics_output_dir:="${runtime_artifact_dir}/mppi"
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
     enable_simulation_heading_source:="${enable_simulation_heading_source}"

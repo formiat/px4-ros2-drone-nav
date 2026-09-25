@@ -26,6 +26,32 @@ struct RouteReference {
   std::optional<float> terminal_cross_track_tolerance_m;
 };
 
+// What the gaze policy decided for the first step of the horizon: which rule
+// named the heading, and the heading it named. Diagnostics only; the yaw
+// controls carry the decision itself.
+enum class GazeRule : std::uint8_t {
+  kNone,
+  kMotion,
+  kRest,
+};
+
+struct GazeDecision {
+  GazeRule rule{GazeRule::kNone};
+  float target_yaw_rad{0.0F};
+};
+
+[[nodiscard]] inline const char* gazeRuleName(const GazeRule rule) noexcept {
+  switch (rule) {
+    case GazeRule::kNone:
+      return "none";
+    case GazeRule::kMotion:
+      return "motion";
+    case GazeRule::kRest:
+      return "rest";
+  }
+  return "unknown";
+}
+
 enum class DeterministicCandidateKind : std::uint8_t {
   kDisabled,
   kTargetDirectedReacquisition,
@@ -131,6 +157,7 @@ mppiControlSelectionName(const MppiControlSelection selection) noexcept {
 struct MppiTickResult {
   std::vector<State> horizon;
   std::vector<Control> controls;
+  GazeDecision gaze{};
   MppiFeasibilityContract feasibility_contract{};
   MppiPostUpdateClassificationResult post_update_classification{};
   MppiControlSelection control_selection{MppiControlSelection::kWeightedUpdate};

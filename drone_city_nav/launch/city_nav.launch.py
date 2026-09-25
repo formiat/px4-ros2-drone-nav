@@ -192,6 +192,7 @@ def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
     lidar_debug_output_dir = LaunchConfiguration("lidar_debug_output_dir")
     lidar_memory_hit_dump_path = LaunchConfiguration("lidar_memory_hit_dump_path")
+    mppi_diagnostics_output_dir = LaunchConfiguration("mppi_diagnostics_output_dir")
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
@@ -465,6 +466,12 @@ def generate_launch_description():
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
+        diagnostics_dir_override = mppi_diagnostics_output_dir.perform(context).strip()
+        if diagnostics_dir_override:
+            # The per-tick records go with the run they describe.
+            production_mppi_parameters.append(
+                {"diagnostics_output_dir": diagnostics_dir_override}
+            )
         waypoint_sequence_override = optional_waypoint_sequence_override(
             context, mission_goal_sequence_xyz_m, "mission_goal_sequence_xyz_m"
         )
@@ -775,6 +782,15 @@ def generate_launch_description():
                 description=(
                     "Optional per-run JSONL path for accepted obstacle-memory "
                     "lidar-hit diagnostics. Leave empty to use params_file."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "mppi_diagnostics_output_dir",
+                default_value="",
+                description=(
+                    "Optional per-run directory for the controller's per-tick "
+                    "records (mppi_track.jsonl, mppi_ticks.jsonl). Leave empty "
+                    "to use params_file."
                 ),
             ),
             DeclareLaunchArgument(

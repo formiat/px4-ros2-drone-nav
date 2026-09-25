@@ -1,8 +1,10 @@
 #include "drone_city_nav/json_output.hpp"
+#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <numeric>
@@ -16,6 +18,44 @@
 #include "production_mppi_node_diagnostics_format.hpp"
 
 namespace drone_city_nav {
+
+namespace {
+
+// The heading from the vehicle to the route point about `distance_m` beyond
+// its station: what the gaze would face if it followed the route rather than
+// the horizon. Absent where there is no route, or the point is under half a
+// metre away and names no direction.
+[[nodiscard]] std::optional<double>
+routeHeadingAheadRad(const std::optional<mppi::RouteReference>& route,
+                     const mppi::State& state, const double distance_m) {
+  if (!route.has_value() || route->points == nullptr || route->points->empty()) {
+    return std::nullopt;
+  }
+  const double station_m = static_cast<double>(route->initial_station_m) + distance_m;
+  const auto sample =
+      std::ranges::find_if(*route->points, [&](const mppi::RouteSample3D& candidate) {
+        return static_cast<double>(candidate.station_m) >= station_m;
+      });
+  const mppi::RouteSample3D& at =
+      sample != route->points->end() ? *sample : route->points->back();
+  const double dx = static_cast<double>(at.x_m) - static_cast<double>(state.x);
+  const double dy = static_cast<double>(at.y_m) - static_cast<double>(state.y);
+  if (std::hypot(dx, dy) < 0.5) {
+    return std::nullopt;
+  }
+  return std::atan2(dy, dx);
+}
+
+// Since gaze diagnostics: a heading, or `null` where none is named.
+void writeHeading(JsonOutputStream& out, const std::optional<double> heading_rad) {
+  if (heading_rad.has_value()) {
+    out << *heading_rad;
+  } else {
+    out << "null";
+  }
+}
+
+} // namespace
 
 void ProductionMppiNode::processDiagnostics(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {
@@ -798,7 +838,46 @@ void ProductionMppiNode::processDiagnostics(
           << (execution_route != nullptr ? execution_route->identity.generation : 0U)
           << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
           << "\",\"execution_reason\":\""
-          << productionMppiExecutionReasonName(snapshot.execution.reason) << "\"}\n";
+          << productionMppiExecutionReasonName(snapshot.execution.reason) << '"';
+    // Since the speed goal of 2026-09-24: every limit the reference was the
+    // minimum of, so that the tick a dip begins on names the law that cut
+    // it, and where the gaze pointed and why, against the route.
+    track << ",\"commanded_speed_mps\":" << commanded_speed_mps
+          << ",\"actual_speed_mps\":" << actual_speed_mps << ",\"rise_limited\":"
+          << (speed_policy.reference_speed_rise_limited ? "true" : "false")
+          << ",\"limits\":{\"sensor_braking\":"
+          << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+          << ",\"clearance\":" << finiteOrNegative(speed_policy.clearance_limit_mps)
+          << ",\"route_clearance\":"
+          << finiteOrNegative(speed_policy.route_clearance_limit_mps)
+          << ",\"blocked_route\":"
+          << finiteOrNegative(speed_policy.blocked_route_limit_mps)
+          << ",\"curvature\":" << finiteOrNegative(speed_policy.curvature_limit_mps)
+          << ",\"unobserved_frontier\":"
+          << finiteOrNegative(speed_policy.unobserved_frontier_limit_mps)
+          << ",\"goal\":" << finiteOrNegative(speed_policy.goal_limit_mps)
+          << ",\"route_endpoint\":"
+          << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
+          << ",\"route_constraint\":"
+          << finiteOrNegative(speed_policy.route_constraint_limit_mps) << '}'
+          << ",\"unfaced_observed_range_m\":"
+          << finiteOrNegative(speed_policy.unfaced_observed_range_m)
+          << ",\"yaw\":" << input.initial_state.yaw
+          << ",\"yaw_rate\":" << input.initial_state.yaw_rate << ",\"gaze_rule\":\""
+          << mppi::gazeRuleName(result.gaze.rule) << "\",\"gaze_target_yaw\":";
+    writeHeading(track, result.gaze.rule == mppi::GazeRule::kNone
+                            ? std::nullopt
+                            : std::optional<double>{result.gaze.target_yaw_rad});
+    track << ",\"route_heading_station\":";
+    const std::optional<float> route_heading_station = mppi::gazeRestHeading(
+        input.route, config_.control.mppi.gaze_minimum_horizontal_share);
+    writeHeading(track, route_heading_station.has_value()
+                            ? std::optional<double>{*route_heading_station}
+                            : std::nullopt);
+    track << ",\"route_heading_ahead\":";
+    writeHeading(track, routeHeadingAheadRad(input.route, input.initial_state,
+                                             std::max(2.0, actual_speed_mps * 1.5)));
+    track << "}\n";
     diagnostics_sink_->appendTrackRecord(track.str());
   }
   diagnostics_sink_->flushFileIfDue();

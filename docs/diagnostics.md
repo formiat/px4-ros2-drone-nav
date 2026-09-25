@@ -85,9 +85,20 @@ minimum ESDF distance, the selected sequence's head speed and contact distance,
 the executed horizon's first constrained clearance and its distance (`-1` when
 unconstrained), the distance to its first unobserved sample (`-1` when the
 motion is observed throughout), the risk tier, the route generation, the planning state and
-the execution reason. A throttled record cannot answer how often the reference
-speed flips, how often the first control opposes the velocity, or how long a
-stall lasted — those are properties of the ticks it skips.
+the execution reason; and, since the speed work of 2026-09-24, the commanded
+and actual speeds, whether the rise limit held the reference, every limit the
+reference was the minimum of (`limits`: sensor braking, clearance, route
+clearance, blocked route, curvature, unobserved frontier, goal, route endpoint,
+route constraint; `-1` where a law did not apply), the range memory answered
+with for an unfaced motion, the yaw and yaw rate, the gaze's decision at the
+first step (`gaze_rule` of `motion`, `rest` or `none` and `gaze_target_yaw`),
+the route's heading at the vehicle's station and toward the point about 1.5 s
+of travel ahead (`null` where none is named). A throttled record cannot answer
+how often the reference speed flips, how often the first control opposes the
+velocity, or how long a stall lasted — those are properties of the ticks it
+skips. A single-vehicle run writes both files under its own record,
+`log/runs/<run-id>/mppi/` (`mppi_diagnostics_output_dir`), so the series keeps
+them; the parameter file's `log/mppi` remains the default elsewhere.
 
 ## Timing
 
