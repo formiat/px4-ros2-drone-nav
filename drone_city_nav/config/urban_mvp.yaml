@@ -434,14 +434,17 @@ production_mppi_node:
     # 9.8; the airframe reaches 5 to 6 in transients.
     maximum_horizontal_acceleration_mps2: 4.0
     # Lateral acceleration a turn may demand, for the curvature limiter and
-    # the route time profile. The airframe banks for it: PX4's 45 degree tilt
-    # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
-    # acceleration the speed profile is built from. Measured on the true pose
-    # in the urban flights r222 and r223 the lateral acceleration reached
-    # 3.95 m/s^2 at p99, bounded by this limit through the curvature limiter
-    # (7 percent of the logged ticks at 2.1 m/s in the flights r230 to r233)
-    # rather than by the airframe; 8 keeps 1.8 m/s^2 below the tilt limit.
-    maximum_lateral_acceleration_mps2: 8.0
+    # the route time profile. It cannot exceed the horizontal acceleration
+    # above: every published control is clamped to that magnitude as a
+    # vector, so a turn and a braking share the one budget, whatever the
+    # airframe's tilt would admit. At 8 the law let a right-angle corner in a
+    # passage be entered at 3.0 to 4.2 m/s; the vehicle, braking under the
+    # clearance law at the same time, turned at 1.8 m/s^2, cut the corner by
+    # 1.4 m and stopped against the wall, eight times in 25 s on the lidar
+    # flight r605 (f0d64d86, 2.29 m/s against 2.4). Measured on the flights
+    # r599 to r605 the lateral acceleration reached 3.4 to 3.7 m/s^2 at p99
+    # and 4.0 to 4.5 at most.
+    maximum_lateral_acceleration_mps2: 4.0
     # The vertical deceleration the stopping laws may rely on in the worst
     # direction, a pure climb or descent. Arresting a descent is bound by the
     # thrust the airframe has above hover, not by MPC_ACC_UP_MAX (4 m/s^2).
@@ -530,7 +533,15 @@ production_mppi_node:
     # the margin only shapes where the approach comes to rest.
     goal_braking_margin_m: 0.125
     curvature_preview_distance_m: 60.0
-    route_curvature_measurement_window_m: 5.0
+    # The curvature limiter reads a corner's turn over this length of route,
+    # half on each side. A corner in a passage is filleted at the minimum
+    # control distance (0.5 m) or left sharp, so its turn spans about a
+    # metre; over 5 m the law read a right angle there as a gentle arc of
+    # 0.63 1/m and admitted 2.5 m/s where the fillet supports 1.6 (the
+    # corner cutting of r605 above). Two metres reads that corner as it is;
+    # a wide fillet in open space, sampled as a few chords, reads as 2.8 m/s
+    # for a right angle instead of 3.9, above the camera profile's cruise.
+    route_curvature_measurement_window_m: 2.0
     constrained_route_speed_limit_mps: 10.0
     constrained_route_alignment_distance_buffer_m: 5.0
     constrained_route_stationary_hold_distance_m: 2.0

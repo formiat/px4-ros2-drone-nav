@@ -114,8 +114,10 @@ Mode policy:
 - map-independent cruise and absolute speed;
 - acceleration, braking, and jerk limits, and `maximum_lateral_acceleration_mps2`,
   the acceleration a turn may demand for the curvature limiter and the route
-  time profile — a separate capability, since the airframe banks for it and
-  PX4's tilt limit admits more than the longitudinal acceleration;
+  time profile — no more than the horizontal acceleration, since every
+  published control is clamped to that magnitude as a vector and a turn shares
+  it with braking; `route_curvature_measurement_window_m` is the length of
+  route a corner's turn is read over, the scale of the tightest fillet;
 - the conservative terminal-path horizontal deceleration limit, independently
   of the larger acceleration available to ordinary manoeuvres;
 - route lookahead and curvature preview;
