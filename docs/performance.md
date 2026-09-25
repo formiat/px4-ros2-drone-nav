@@ -20,7 +20,10 @@ re-doing work already done:
   leading points whose sweep the caller has discharged.
   `execution_maximum_assembly_ms` bounds the whole search, so a bad tick
   degrades into a hold rather than into a horizon delivered several periods
-  late.
+  late; the deadline is read between attempts and, carried by the
+  certification request, between the segments of each sweep, so one
+  validation beside a wall (15 ms on r548 against the 12 ms budget) no longer
+  runs to its end once the budget is spent (`validation_budget_exhausted`).
 - **The commit revalidation.** A commit whose evidence moved since the
   candidate was prepared revalidates the published horizon, and swept all of
   it. The part the vehicle has already flown will not be flown again, so the

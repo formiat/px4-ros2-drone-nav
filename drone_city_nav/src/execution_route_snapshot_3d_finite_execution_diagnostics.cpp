@@ -52,6 +52,8 @@ std::string_view finiteExecutionCertificationStatus3DName(
       return "validation_contract_invalid";
     case FiniteExecutionCertificationStatus3D::kInvalidArtifact:
       return "invalid_artifact";
+    case FiniteExecutionCertificationStatus3D::kValidationBudgetExhausted:
+      return "validation_budget_exhausted";
   }
   return "unknown";
 }

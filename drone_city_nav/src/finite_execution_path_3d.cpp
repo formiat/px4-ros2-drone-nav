@@ -283,7 +283,8 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     const std::span<const TimedExecutionPathPoint3D> points,
     const MotionControl3D& previous_applied_control,
     const FiniteExecutionPathWorld3D& world,
-    const std::size_t discharged_leading_point_count) noexcept {
+    const std::size_t discharged_leading_point_count,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) noexcept {
   if (!validWorld(world) || !finite(previous_applied_control)) {
     return {};
   }
@@ -335,6 +336,13 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     if (index < discharged_leading_point_count) {
       result.physically_validated_point_count = index + 1U;
       continue;
+    }
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      FiniteExecutionPathValidation3D rejection =
+          reject(FiniteExecutionPathStatus3D::kValidationBudgetExhausted, 0U,
+                 index - 1U, position(first.state), 0.0);
+      rejection.physically_validated_point_count = index;
+      return rejection;
     }
     const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
         position(first.state), kUprightBodyAxis, position(second.state),
@@ -798,6 +806,8 @@ finiteExecutionPathStatus3DName(const FiniteExecutionPathStatus3D status) noexce
       return "raw_collision";
     case FiniteExecutionPathStatus3D::kLatestSensorRawCollision:
       return "latest_sensor_raw_collision";
+    case FiniteExecutionPathStatus3D::kValidationBudgetExhausted:
+      return "validation_budget_exhausted";
   }
   return "unknown";
 }

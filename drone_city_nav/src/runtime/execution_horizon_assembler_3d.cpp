@@ -182,6 +182,21 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     return failedCandidate(HorizonCandidateStatus3D::kStaleExecutionSnapshot);
   }
 
+  // The arrival-shaping search is the largest single cost of the planning
+  // cycle, and it grows with the number of prefixes it has to try. Past this
+  // point the cycle is already late, so the search returns what it has and the
+  // vehicle holds instead of receiving a horizon several periods old. The
+  // deadline is read between attempts and, through the certification request,
+  // inside each sweep.
+  const std::optional<std::chrono::steady_clock::time_point> assembly_deadline =
+      config_.maximum_assembly_ms > 0.0
+          ? std::optional<std::chrono::steady_clock::
+                              time_point>{std::chrono::steady_clock::now() +
+                                          std::chrono::duration_cast<
+                                              std::chrono::steady_clock::duration>(
+                                              std::chrono::duration<double, std::milli>{
+                                                  config_.maximum_assembly_ms})}
+          : std::nullopt;
   const CertifiedRouteSuffix3D* route_certification_target{nullptr};
   std::optional<FiniteExecutionPlanCertificationResult3D> route_certification;
   double certification_ms{0.0};
@@ -266,6 +281,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
               .latest_sensor_evidence = evidence.latest_sensor_evidence,
               .valid_from_ns = cycle.controller.now_ns,
               .kind = FiniteExecutionKind3D::kNominal,
+              .deadline = assembly_deadline,
           },
           braking_tails));
       certification_ms += std::chrono::duration<double, std::milli>(
@@ -275,19 +291,6 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     };
   }
 
-  // The arrival-shaping search is the largest single cost of the planning
-  // cycle, and it grows with the number of prefixes it has to try. Past this
-  // point the cycle is already late, so the search returns what it has and the
-  // vehicle holds instead of receiving a horizon several periods old.
-  const std::optional<std::chrono::steady_clock::time_point> assembly_deadline =
-      config_.maximum_assembly_ms > 0.0
-          ? std::optional<std::chrono::steady_clock::
-                              time_point>{std::chrono::steady_clock::now() +
-                                          std::chrono::duration_cast<
-                                              std::chrono::steady_clock::duration>(
-                                              std::chrono::duration<double, std::milli>{
-                                                  config_.maximum_assembly_ms})}
-          : std::nullopt;
   mppi::ValidatedFiniteExecutionPath validated_path =
       mppi::buildValidatedFiniteExecutionPath(
           states, controls, evidence.exact_previous_control,

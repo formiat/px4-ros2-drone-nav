@@ -4,6 +4,7 @@
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -33,6 +34,9 @@ struct FiniteExecutionCertification3D {
   std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence;
   std::int64_t valid_from_ns{0};
   FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
+  // The assembly budget's end, read inside the swept validation: a sweep that
+  // runs past it stops and the request is rejected as budget-exhausted.
+  std::optional<std::chrono::steady_clock::time_point> deadline;
 };
 
 struct FiniteExecutionPlanCertification3D {
@@ -59,6 +63,7 @@ enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
   kValidationLineageRejected,
   kValidationContractInvalid,
   kInvalidArtifact,
+  kValidationBudgetExhausted,
 };
 
 enum class FiniteExecutionRouteAdherenceStatus3D : std::uint8_t {

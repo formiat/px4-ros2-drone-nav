@@ -446,7 +446,11 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   const FiniteExecutionPathValidation3D validation =
       validateCompleteFiniteExecutionPath3D(
           validation_points, certification.execution_input->previousControl(),
-          validation_world);
+          validation_world, 0U, certification.deadline);
+  if (validation.status == FiniteExecutionPathStatus3D::kValidationBudgetExhausted) {
+    return rejectedFiniteExecution(
+        FiniteExecutionCertificationStatus3D::kValidationBudgetExhausted);
+  }
   if (!validation.accepted()) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kPathValidationRejected);
@@ -629,6 +633,8 @@ FiniteExecutionPlanCertificationResult3D certifyFiniteExecutionPlan3DDetailed(
   const std::shared_ptr<const VersionedLatestSensorEvidence3D> latest_sensor_evidence =
       command_horizon.latest_sensor_evidence;
   const std::int64_t valid_from_ns = command_horizon.valid_from_ns;
+  const std::optional<std::chrono::steady_clock::time_point> deadline =
+      command_horizon.deadline;
   result.command_horizon = certifyFiniteExecution3DDetailed(current, target_route,
                                                             std::move(command_horizon));
   if (!result.command_horizon.certified() ||
@@ -645,6 +651,7 @@ FiniteExecutionPlanCertificationResult3D certifyFiniteExecutionPlan3DDetailed(
             .latest_sensor_evidence = latest_sensor_evidence,
             .valid_from_ns = valid_from_ns,
             .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
+            .deadline = deadline,
         },
         target_route.observed_raw_world,
         result.command_horizon.execution->begin_route_station_m);

@@ -349,6 +349,26 @@ TEST(FiniteExecutionPathTest, ADischargedLeadingPrefixIsNotSweptAgain) {
   EXPECT_EQ(partial.status, FiniteExecutionPathStatus::kRawCollision);
 }
 
+TEST(FiniteExecutionPathTest, ASweepPastItsDeadlineStopsAndSaysSo) {
+  // The occupied cell under the second segment would reject the path; a
+  // deadline already passed ends the sweep before it, keeps the first point
+  // validated and names the budget, not a collision.
+  TestWorld world;
+  world.occupancy.setOccupied(GridIndex3D{7, 2, 10});
+  const std::vector<TimedExecutionPathPoint> path = testPath();
+
+  const FiniteExecutionPathValidation stopped = validateCompleteFiniteExecutionPath3D(
+      path, Control{}, world.view(), 0U,
+      std::chrono::steady_clock::now() - std::chrono::milliseconds(1));
+  EXPECT_EQ(stopped.status, FiniteExecutionPathStatus::kValidationBudgetExhausted);
+  EXPECT_EQ(stopped.physically_validated_point_count, 1U);
+
+  const FiniteExecutionPathValidation unhurried = validateCompleteFiniteExecutionPath3D(
+      path, Control{}, world.view(), 0U,
+      std::chrono::steady_clock::now() + std::chrono::seconds(10));
+  EXPECT_EQ(unhurried.status, FiniteExecutionPathStatus::kRawCollision);
+}
+
 TEST(FiniteExecutionPathTest, TheArrivalSearchStopsWhenItsBudgetIsSpent) {
   // A deadline already in the past: the first attempt still runs, and the
   // search then returns without shortening the prefix any further.

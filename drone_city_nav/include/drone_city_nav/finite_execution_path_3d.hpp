@@ -41,6 +41,9 @@ enum class FiniteExecutionPathStatus3D {
   kRawWorldUnavailable,
   kRawCollision,
   kLatestSensorRawCollision,
+  // The sweep ran past the deadline it was given and stopped; the points it
+  // had swept stay validated, the rest were not judged.
+  kValidationBudgetExhausted,
 };
 
 // Whether a verdict means the swept body met occupied evidence, as opposed to
@@ -167,11 +170,17 @@ using FiniteExecutionPathCandidateValidator3D =
 // re-running it made horizon assembly and the commit the two largest costs of
 // the planning cycle. Everything else is still checked for every point: the
 // contract, the dynamics, the flight envelope and the terminal boundary.
+// A `deadline` ends the sweep between two segments once it has passed
+// (kValidationBudgetExhausted): one validation beside a wall the envelope
+// touches cost 15 ms against an assembly budget of 12 that was read only
+// between attempts (r548, the longest tick 226 ms).
 [[nodiscard]] FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     std::span<const TimedExecutionPathPoint3D> points,
     const MotionControl3D& previous_applied_control,
     const FiniteExecutionPathWorld3D& world,
-    std::size_t discharged_leading_point_count = 0U) noexcept;
+    std::size_t discharged_leading_point_count = 0U,
+    std::optional<std::chrono::steady_clock::time_point> deadline =
+        std::nullopt) noexcept;
 
 // A wall-clock bound on the whole arrival-shaping search. The search rebuilds
 // and revalidates the horizon once per shortened prefix, and each rebuild
