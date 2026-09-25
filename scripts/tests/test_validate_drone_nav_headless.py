@@ -238,6 +238,50 @@ class MappingPipelineValidationTest(unittest.TestCase):
             errors,
         )
 
+    def test_observed_route_volume_tolerates_a_side_excursion(self) -> None:
+        # r600: the vehicle grazed the box's y-minimum halfway through its
+        # crossing along x; one pass, not two.
+        log = (
+            "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
+            "certified_pending=true validation=accepted route_generation=3\n"
+            "PRODUCTION_MPPI_TICK tick=1 state_position=(3.9,21.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=2 state_position=(10.0,24.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=3 state_position=(14.7,19.8,12.2)\n"
+            "PRODUCTION_MPPI_TICK tick=4 state_position=(15.4,20.4,11.7)\n"
+            "PRODUCTION_MPPI_TICK tick=5 state_position=(16.4,26.6,10.1)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log, (4.0, 20.0, 9.0, 16.0, 32.0, 18.0), errors
+        )
+
+        self.assertEqual(errors, [])
+
+    def test_observed_route_volume_rejects_two_visits_from_opposite_sides(
+        self,
+    ) -> None:
+        log = (
+            "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
+            "certified_pending=true validation=accepted route_generation=3\n"
+            "PRODUCTION_MPPI_TICK tick=1 state_position=(3.0,25.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=2 state_position=(6.0,25.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=3 state_position=(3.0,25.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=4 state_position=(17.0,25.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=5 state_position=(14.0,25.0,10.5)\n"
+            "PRODUCTION_MPPI_TICK tick=6 state_position=(17.0,25.0,10.5)\n"
+        )
+        errors: list[str] = []
+
+        VALIDATOR.validate_observed_3d_route_volume(
+            log, (4.0, 20.0, 9.0, 16.0, 32.0, 18.0), errors
+        )
+
+        self.assertIn(
+            "FAIL: vehicle physically crosses the observed 3D route volume",
+            errors,
+        )
+
     def test_route_volume_parser_rejects_inverted_bounds(self) -> None:
         with self.assertRaises(VALIDATOR.argparse.ArgumentTypeError):
             VALIDATOR.parse_route_volume_bounds("42,123,8.5,66,201,1.5")

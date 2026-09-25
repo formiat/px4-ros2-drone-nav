@@ -98,42 +98,41 @@ def validate_observed_3d_route_volume(
             for axis in range(3)
         )
 
+    # One pass runs from the first sample inside the volume to the last one.
+    # Between them the vehicle may leave through a side that is not the
+    # dominant axis and come back (r600: 0.2 to 0.4 m below the box's
+    # y-minimum halfway through a crossing along x); it may not leave through
+    # the dominant faces, or the pass would be two.
     for logger, positions in positions_by_logger.items():
-        inside_flags = [inside(position) for position in positions]
-        block_start = 0
-        while block_start < len(inside_flags):
-            if not inside_flags[block_start]:
-                block_start += 1
-                continue
-            block_end = block_start
-            while (
-                block_end + 1 < len(inside_flags) and inside_flags[block_end + 1]
-            ):
-                block_end += 1
-            sample_count = block_end - block_start + 1
-            if (
-                block_start > 0
-                and block_end + 1 < len(positions)
-                and sample_count >= 2
-            ):
-                before = positions[block_start - 1][dominant_axis]
-                after = positions[block_end + 1][dominant_axis]
-                low_to_high = (
-                    before < minimum[dominant_axis]
-                    and after > maximum[dominant_axis]
-                )
-                high_to_low = (
-                    before > maximum[dominant_axis]
-                    and after < minimum[dominant_axis]
-                )
-                if low_to_high or high_to_low:
-                    direction = "low_to_high" if low_to_high else "high_to_low"
-                    print(
-                        "OK: vehicle physically crosses the observed 3D route volume "
-                        f"(logger={logger}, axis={'xyz'[dominant_axis]}, "
-                        f"direction={direction}, inside_samples={sample_count})"
-                    )
-                    return
-            block_start = block_end + 1
+        inside_indices = [
+            index for index, position in enumerate(positions) if inside(position)
+        ]
+        if len(inside_indices) < 2:
+            continue
+        first, last = inside_indices[0], inside_indices[-1]
+        if first == 0 or last + 1 >= len(positions):
+            continue
+        if any(
+            not minimum[dominant_axis] <= positions[index][dominant_axis]
+            <= maximum[dominant_axis]
+            for index in range(first, last + 1)
+        ):
+            continue
+        before = positions[first - 1][dominant_axis]
+        after = positions[last + 1][dominant_axis]
+        low_to_high = (
+            before < minimum[dominant_axis] and after > maximum[dominant_axis]
+        )
+        high_to_low = (
+            before > maximum[dominant_axis] and after < minimum[dominant_axis]
+        )
+        if low_to_high or high_to_low:
+            direction = "low_to_high" if low_to_high else "high_to_low"
+            print(
+                "OK: vehicle physically crosses the observed 3D route volume "
+                f"(logger={logger}, axis={'xyz'[dominant_axis]}, "
+                f"direction={direction}, inside_samples={len(inside_indices)})"
+            )
+            return
 
     errors.append("FAIL: vehicle physically crosses the observed 3D route volume")
