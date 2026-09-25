@@ -33,6 +33,7 @@ enum class GazeRule : std::uint8_t {
   kNone,
   kMotion,
   kRest,
+  kSurvey,
 };
 
 struct GazeDecision {
@@ -48,6 +49,8 @@ struct GazeDecision {
       return "motion";
     case GazeRule::kRest:
       return "rest";
+    case GazeRule::kSurvey:
+      return "survey";
   }
   return "unknown";
 }

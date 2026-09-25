@@ -22,6 +22,14 @@ DEFAULT_NAVIGATION_SENSOR_PROFILE = "stereo_tof"
 # vertical approach keeps 1.0 m: the body's half height (0.35 m), the vertical
 # estimate error, a voxel and the tracking error, where the 2.0 m of a
 # horizontal one is sized by the 0.82 m envelope.
+# A climb or a descent with no heading to face surveys the walls it passes at
+# 1.5 rad/s: the pair's 120 degree field leaves 240 degrees to sweep, 2.8 s at
+# that rate, 2.8 m of climb at the 1 m/s the cone admits, inside the 3.9 m of
+# wall the pair's vertical half-angle covers 1.5 m away. Measured before it on
+# the camera flights r607 and r600 (8f6d248f, f0d64d86): one or two of eight
+# heading sectors faced per half metre of a 12 m shaft, then 20 s of probing
+# exits at the top through 39 routes; the estimator stayed healthy through
+# the 1988 degrees the vehicle turned there (tracked features p50 170).
 STEREO_TOF_OBSERVABILITY = {
     "guaranteed_lidar_detection_range_m": 6.4,
     "forward_detection_vertical_half_angle_deg": 52.4,
@@ -31,6 +39,7 @@ STEREO_TOF_OBSERVABILITY = {
     "vertical_sensor_braking_physical_margin_m": 1.0,
     "unobserved_motion_speed_mps": 1.0,
     "gaze_follows_motion": True,
+    "gaze_survey_yaw_rate_radps": 1.5,
 }
 
 # What makes an obstacle memory a vision memory: the returns of the depth node,

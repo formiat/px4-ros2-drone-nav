@@ -182,7 +182,10 @@ applies the vehicle's velocity direction (the route tangent while it stands);
 the worst direction over all of them is the hard norm limit for the complete
 `(vx, vy, vz)` vector in CPU and CUDA dynamics and is also part of strategic ETA
 and route time parameterization. `maximum_yaw_rate_radps` and
-`maximum_yaw_acceleration_radps2` bound the yaw the gaze may command; the
+`maximum_yaw_acceleration_radps2` bound the yaw the gaze may command, and
+`gaze_survey_yaw_rate_radps` is the rate at which a climb or a descent with no
+heading to face surveys the walls it passes (the stereo profile sets it, a
+lidar profile leaves it at zero); the
 time model's stationary turns and the angular-derivative contract read the
 same two values, and the configured ones carry their measurement in
 `urban_mvp.yaml`. The same jerk-limited stopping implementation

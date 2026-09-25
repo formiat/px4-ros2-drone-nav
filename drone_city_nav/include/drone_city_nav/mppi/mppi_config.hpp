@@ -162,6 +162,9 @@ struct BenchmarkConfig {
   // face: the sine of the half-angle of the sensors that look up and down,
   // inside whose cone a climb has none.
   float gaze_minimum_horizontal_share{0.0F};
+  // The yaw rate at which a vehicle that climbs or descends with no heading
+  // to face turns to survey the walls it passes; zero holds the heading.
+  float gaze_survey_yaw_rate_radps{0.0F};
 };
 
 [[nodiscard]] bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept;

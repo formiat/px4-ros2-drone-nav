@@ -634,6 +634,8 @@ void ProductionMppiConfigLoader::declareControl() {
           declare<double>("vertical_sensor_braking_physical_margin_m", 0.0),
   };
   mppi.gaze_follows_motion = declare<bool>("gaze_follows_motion", false);
+  mppi.gaze_survey_yaw_rate_radps =
+      static_cast<float>(declare<double>("gaze_survey_yaw_rate_radps", 0.0));
   mppi.gaze_minimum_horizontal_share = static_cast<float>(std::sin(
       control.speed_policy.sensor_braking_contract.vertical_cone_half_angle_rad));
   // Braking completes at the goal capture's stationary tolerance: a wider

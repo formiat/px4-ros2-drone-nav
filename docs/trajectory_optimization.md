@@ -308,8 +308,14 @@ at a rate proportional to the remaining angle (gain 1.5 1/s, inside the yaw
 limits), and where the horizon goes nowhere to the route's tangent at the
 vehicle's station; a position hold other than a goal capture carries the same
 heading (`gazeRestHeading`), so a held vehicle looks where its route leaves
-and the space ahead becomes observed. A lidar that sees all around enters none
-of this (`forward_detection_horizontal_half_angle_deg` 180).
+and the space ahead becomes observed. A climb or a descent with no heading to
+face, inside the cone of the sensors that look up and down, turns at
+`gaze_survey_yaw_rate_radps` (1.5 rad/s on the stereo profile) so that the
+pair sweeps the walls it passes: held still, it saw one or two of eight
+heading sectors per half metre of a 12 m shaft (r607, r600), and the planner
+went on hoping for exits in the walls it had not seen, 20 s of probing at the
+top through 39 routes. A lidar that sees all around enters none of this
+(`forward_detection_horizontal_half_angle_deg` 180).
 
 The same rule binds every published horizon, not only the reference of the
 tick. A horizon owns the vehicle for its whole lease, and the lease outlives

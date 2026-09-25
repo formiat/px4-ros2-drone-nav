@@ -62,13 +62,16 @@ projectForwardRouteStation(std::span<const RouteSample3D> route, const State& st
 // and arriving without overshoot, and the yaw states of `horizon` are
 // re-integrated to match. Where the horizon moves less than
 // `minimum_displacement_m` over the lookahead the motion names no direction:
-// the heading turns to `rest_heading_rad`, where the route leaves, and is held
-// where there is none. The translation is untouched: the yaw channel does not
-// act on it. Returns the decision taken at the first step, for diagnostics.
+// the heading turns to `rest_heading_rad`, where the route leaves; where there
+// is none and the horizon climbs or descends, it turns at
+// `survey_yaw_rate_radps` to sweep the walls it passes (zero holds it), and is
+// held otherwise. The translation is untouched: the yaw channel does not act
+// on it. Returns the decision taken at the first step, for diagnostics.
 GazeDecision applyGazeYawControls(std::span<Control> controls, std::span<State> horizon,
                                   const DynamicsConfig& dynamics, float lookahead_s,
                                   float minimum_displacement_m,
-                                  std::optional<float> rest_heading_rad);
+                                  std::optional<float> rest_heading_rad,
+                                  float survey_yaw_rate_radps);
 
 // The heading of the route where the vehicle stands on it: what a vehicle at
 // rest has to face before the speed law lets it leave along a route it has

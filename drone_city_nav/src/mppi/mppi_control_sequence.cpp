@@ -692,7 +692,8 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
                                   const DynamicsConfig& dynamics,
                                   const float lookahead_s,
                                   const float minimum_displacement_m,
-                                  const std::optional<float> rest_heading_rad) {
+                                  const std::optional<float> rest_heading_rad,
+                                  const float survey_yaw_rate_radps) {
   GazeDecision decision{};
   if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
     return decision;
@@ -700,6 +701,9 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
   const float maximum_acceleration = dynamics.maximum_yaw_acceleration_radps2;
   const auto lookahead_steps = std::max<std::size_t>(
       1U, static_cast<std::size_t>(std::lround(lookahead_s / dynamics.dt_s)));
+  // A survey keeps turning the way it already turns, so a climb that began
+  // its sweep does not reverse it at every horizon.
+  const float survey_direction = horizon.front().yaw_rate < 0.0F ? -1.0F : 1.0F;
   for (std::size_t index = 0U; index < controls.size(); ++index) {
     State& state = horizon[index];
     // Where the motion is headed over the lookahead, not where the velocity
@@ -711,12 +715,40 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
     const float ahead_x = ahead.x - state.x;
     const float ahead_y = ahead.y - state.y;
     const bool moving = std::hypot(ahead_x, ahead_y) >= minimum_displacement_m;
+    // A climb or a descent with no heading to face, inside the cone of the
+    // sensors that look up and down: the pair sees one wall of the shaft and
+    // the planner keeps hoping for exits in the walls it has not seen (r607:
+    // one or two of eight heading sectors faced per half metre of a 12 m
+    // climb, then 20 s of probing exits at the top, 39 routes; r600 the
+    // same). The survey turns the pair around the walls as they pass.
+    const bool surveying = !moving && !rest_heading_rad.has_value() &&
+                           survey_yaw_rate_radps > 0.0F &&
+                           std::abs(ahead.z - state.z) >= minimum_displacement_m;
     if (index == 0U) {
-      decision.rule = moving                         ? GazeRule::kMotion
-                      : rest_heading_rad.has_value() ? GazeRule::kRest
-                                                     : GazeRule::kNone;
-      decision.target_yaw_rad =
-          moving ? std::atan2(ahead_y, ahead_x) : rest_heading_rad.value_or(state.yaw);
+      if (moving) {
+        decision.rule = GazeRule::kMotion;
+        decision.target_yaw_rad = std::atan2(ahead_y, ahead_x);
+      } else if (rest_heading_rad.has_value()) {
+        decision.rule = GazeRule::kRest;
+        decision.target_yaw_rad = *rest_heading_rad;
+      } else if (surveying) {
+        decision.rule = GazeRule::kSurvey;
+        decision.target_yaw_rad = std::remainder(
+            state.yaw + survey_direction * survey_yaw_rate_radps * lookahead_s,
+            2.0F * std::numbers::pi_v<float>);
+      } else {
+        decision.rule = GazeRule::kNone;
+        decision.target_yaw_rad = state.yaw;
+      }
+    }
+    if (surveying) {
+      controls[index].yaw_accel = std::clamp(
+          (survey_direction * survey_yaw_rate_radps - state.yaw_rate) / dynamics.dt_s,
+          -maximum_acceleration, maximum_acceleration);
+      const State integrated = integrateReference(state, controls[index], dynamics);
+      horizon[index + 1U].yaw = integrated.yaw;
+      horizon[index + 1U].yaw_rate = integrated.yaw_rate;
+      continue;
     }
     const float error_rad = moving || rest_heading_rad.has_value()
                                 ? std::remainder((moving ? std::atan2(ahead_y, ahead_x)
