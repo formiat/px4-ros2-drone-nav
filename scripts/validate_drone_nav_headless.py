@@ -430,7 +430,10 @@ def main() -> int:
             ros_log, errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
         )
-        validate_controller_dynamics(args.runtime_manifest.parent, ros_log, notes)
+        validate_controller_dynamics(
+            args.runtime_manifest.parent, ros_log, notes,
+            manifest_overrides.get("LOCALIZATION_PROFILE", "lidar_inertial"),
+        )
     if args.runtime_manifest is not None:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
         validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors,

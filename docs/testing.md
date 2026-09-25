@@ -165,10 +165,13 @@ that breaks one is seen on the next flight rather than in a crash:
   percentile of the plateau over 91 episodes of 25 flights; measured 2.0 to
   2.13 at the median on r312 to r314);
 - the position estimate against the true pose, with the clocks aligned on the
-  speed profile: the cross-track error at p95 within 0.35 m (measured 0.19 to
-  0.25) and the offset along the motion within 0.20 s (measured 0.10 to
-  0.11 s, 0.3 m at 3 m/s: how far apart in time the estimate a tick reads and
-  the true pose are stamped);
+  speed profile: the cross-track error at p95 within 0.35 m on GNSS (measured
+  0.19 to 0.25) and within 1.0 m, half the capture radius, on the odometry
+  profiles, whose autopilot position follows the estimate and carries its
+  drift (measured 0.42 to 0.99 m on the camera flights r607 to r622; the
+  owner's decision of 2026-09-25), and the offset along the motion within
+  0.20 s (measured 0.10 to 0.11 s, 0.3 m at 3 m/s: how far apart in time the
+  estimate a tick reads and the true pose are stamped);
 - the sensor evidence age the planning tick reports at most 600 ms, the bound
   the braking contract charges (measured 200 to 376 ms at most on the lidar;
   on the stereo profile 256 to 284 ms at p50, 436 to 508 at p95 and 624 to

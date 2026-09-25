@@ -45,6 +45,13 @@ MINIMUM_DESCENT_ARREST_EPISODES = 3
 # body model keeps 0.16 m beyond the rotor tips beside a wall mapped in the
 # estimate's frame.
 MAXIMUM_POSITION_ESTIMATE_CROSS_TRACK_P95_M = 0.35
+# On an odometry (visual-inertial, lidar-inertial) the autopilot's position
+# follows the estimate, so its error across the track is the odometry's drift
+# and 0.35 m, measured on GNSS, is not its figure. The note then guards the
+# goal-in-truth requirement: half of the 2.0 m capture radius (the project
+# owner's decision of 2026-09-25; measured 0.42 to 0.99 m at p95 on the camera
+# flights r607 to r622 and 0.48 m on the lidar flight r614).
+MAXIMUM_ODOMETRY_CROSS_TRACK_P95_M = 1.0
 MAXIMUM_POSITION_ESTIMATE_ALONG_TRACK_OFFSET_S = 0.20
 # The braking contract charges latest_sensor_obstacle_maximum_age_ms (600 ms) of
 # evidence age; the planning tick reports the age it saw. Measured p99 192 to
@@ -275,7 +282,8 @@ def load_truth_csv(path: Path, received_clock: bool = False) -> np.ndarray:
 
 
 def validate_controller_dynamics(run_directory: Path, ros_log: str,
-                                 errors: list[str]) -> None:
+                                 errors: list[str],
+                                 localization_profile: str = "gnss") -> None:
     """The four checks, each on the flight's own records under run_directory."""
     tracking_path = run_directory / "tracking.npz"
     truth_path = run_directory / "gz_pose.csv"
@@ -315,6 +323,10 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
     else:
         errors.append("FAIL: the flight recorded its setpoints and local position "
                       f"({tracking_path.name})")
+    cross_track_reference_m = (
+        MAXIMUM_POSITION_ESTIMATE_CROSS_TRACK_P95_M
+        if localization_profile in ("gnss", "gnss_shadow")
+        else MAXIMUM_ODOMETRY_CROSS_TRACK_P95_M)
     if truth_path.is_file():
         truth = load_truth_csv(truth_path, received_clock=True)
         estimate = estimate_positions_from_log(ros_log)
@@ -323,10 +335,10 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
                 error.along_track_offset_s):
             errors.append("FAIL: the position estimate is compared against the true "
                           f"pose in motion ({error.samples} samples)")
-        elif error.cross_track_p95_m > MAXIMUM_POSITION_ESTIMATE_CROSS_TRACK_P95_M:
+        elif error.cross_track_p95_m > cross_track_reference_m:
             errors.append(
                 "FAIL: position estimate cross-track error p95 stays within "
-                f"{MAXIMUM_POSITION_ESTIMATE_CROSS_TRACK_P95_M:.2f} m "
+                f"{cross_track_reference_m:.2f} m "
                 f"({error.cross_track_p95_m:.3f} m over {error.samples} samples)")
         elif abs(error.along_track_offset_s) > MAXIMUM_POSITION_ESTIMATE_ALONG_TRACK_OFFSET_S:
             errors.append(
