@@ -102,7 +102,15 @@ def validate_observed_3d_route_volume(
     # Between them the vehicle may leave through a side that is not the
     # dominant axis and come back (r600: 0.2 to 0.4 m below the box's
     # y-minimum halfway through a crossing along x); it may not leave through
-    # the dominant faces, or the pass would be two.
+    # the dominant faces, or the pass would be two. It enters from beyond one
+    # dominant face, and after its last sample inside it reaches beyond the
+    # other before it is ever back beyond the first: r629 left the volume
+    # through its floor 1.8 m short of the far face and went on past it.
+    def beyond_first(coordinate: float, low_to_high: bool) -> bool:
+        return coordinate > maximum[dominant_axis] if low_to_high else (
+            coordinate < minimum[dominant_axis]
+        )
+
     for logger, positions in positions_by_logger.items():
         inside_indices = [
             index for index, position in enumerate(positions) if inside(position)
@@ -119,13 +127,20 @@ def validate_observed_3d_route_volume(
         ):
             continue
         before = positions[first - 1][dominant_axis]
-        after = positions[last + 1][dominant_axis]
-        low_to_high = (
-            before < minimum[dominant_axis] and after > maximum[dominant_axis]
-        )
-        high_to_low = (
-            before > maximum[dominant_axis] and after < minimum[dominant_axis]
-        )
+        low_to_high = before < minimum[dominant_axis]
+        high_to_low = before > maximum[dominant_axis]
+        if not low_to_high and not high_to_low:
+            continue
+        reached_far_face = False
+        for position in positions[last + 1:]:
+            coordinate = position[dominant_axis]
+            if beyond_first(coordinate, low_to_high):
+                reached_far_face = True
+                break
+            if beyond_first(coordinate, not low_to_high):
+                break
+        if not reached_far_face:
+            continue
         if low_to_high or high_to_low:
             direction = "low_to_high" if low_to_high else "high_to_low"
             print(
