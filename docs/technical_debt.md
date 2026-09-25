@@ -29,7 +29,7 @@ and here, with where the work lands.
 | Surfaces the matcher cannot match | The measurement first: the panel world, one flight, the confident range against it; the behaviour is decided on the number. | roadmap item 17, stage 2 |
 | The mean flight speed's clock | The simulation clock replaces the wall clock as the requirement's measurement; the thresholds 2.4 and 1.2 m/s stand, and the base series are re-expressed in simulation time when the check changes. Flights under foreign host load stay excluded regardless, by the quiet-host gate before the flight rather than by hand after it. | done, 559d97f1; [testing.md](testing.md) |
 | The chords of a wide fillet | Not on its own; `static_route_corner_curve_samples` 4 to 8 rides with the next change that needs a lidar series. | done, 0c8b3f9f, accepted on a34690ba |
-| The 2D obstacle memory node | Removal of the node, its launch branch and its tests, once a grep shows no scenario selects it. | blocked: `LIDAR_PROFILE=none` selects it, see the entry |
+| The 2D obstacle memory node | The whole 2D lidar path goes, not the node alone: the sensor model, the `none` profile, the 2D-named base model and airframe, the scenarios' names, the checks and the pages; a static-map request refuses to start while there is no map. | reshaped 2026-09-25 after the grep, see the entry; both series |
 | The route-volume crossing heuristic | The check stays; as seen, one pass spans the first entry to the last exit, with a unit test on the r600 geometry. | done, 29917b62, a34690ba and the entry-through-the-floor rule after them |
 
 ## Assessment Of 2026-09-25
@@ -68,7 +68,7 @@ bind it.
 | P6 the recovery at 2 m/s^2 against the 4 admitted | no | medium to high: 150 to 200 s of the budget, 10 to 15 percent on cameras | medium | low | not known: the cause not found, the seed excluded | M of investigation | the camera speed |
 | P7 the curvature law reading a wide fillet as chords | no | low: the lidar above 2.8 m/s only | low: the samples and a lidar series | low | decided, see above | S plus a series | a longer sweep per fillet; the lidar 0.05 to 0.1 m/s |
 | P8 the memory forgets nothing, a transient is a wall | not in a static world | high for item 18 and for reality | medium to high: the memory is the planner's input | low in simulation, high in reality | in concept: item 18 stage 0 (transient occupancy, decay) | L | the memory, the planner, both series |
-| R1 the 2D memory node still selectable | no | low | low | low | decided, see above | S | the launch files |
+| R1 the 2D lidar path still in the tree | no | low | medium: the base model and the airframe change under every flight | low | decided, see above | L | models, launches, scripts, scenarios, checks, pages; both series |
 | R2 the route-volume heuristic | no | low | low: a script and a test | low | decided, see above | S | the mission check |
 | R3 sources near the cap, a flat `src/` | no | medium: maintenance | medium: moves, the gates | low | mechanical | L | the structure |
 | N1 multi-vehicle missions on the camera defaults | no | high for item 15 | none | medium: item 15 may uncover defects | none | series | the cooperative missions |
@@ -145,8 +145,11 @@ laid out on 2026-09-25, with the effort and the quality each was given.
   fillet); or the curvature read from the fillet itself through arc metadata
   in the route samples (M, across modules). Chosen: the first, and not on
   its own, with the next change that needs a lidar series.
-- **R1.** Removal after a grep shows no scenario selects the node (S to M),
-  or leaving it. Chosen: removal; dead code since the 3D memory of item 10.
+- **R1.** Removal of the node after a grep shows no scenario selects it (S
+  to M), or leaving it. The grep showed the `none` profile selects it, and
+  that the documented static-map command silently flies without a map; the
+  owner chose the whole 2D path out, with a static-map request that refuses
+  to start (L, both series). Dead code since the 3D memory of item 10.
 - **R2.** One pass counted from the first entry to the last exit, with a unit
   test on the r600 geometry (S); or dropping the check, which was set aside
   because it certifies the physical passage through the observed 3D volume
@@ -196,7 +199,7 @@ laid out on 2026-09-25, with the effort and the quality each was given.
 
 | Debt | Measured | Class | Found by |
 |---|---|---|---|
-| The 2D obstacle memory node is still selectable by the launch files. Decided 2026-09-25: to be removed, once a grep shows no scenario selects it; the grep showed one does: `LIDAR_PROFILE=none`, the static-map flight of the README and of scenarios.md, routes `city_nav.launch.py` to `obstacle_memory_node` and to the 2D model names, and `lidar_profile.py` still knows only `none` and `3d`. The removal therefore moves the `none` profile onto the 3D memory node and proves the static-map flight after it, which is a flight, not a deletion. | one node, one launch branch, one scenario that selects it | (c) | item 10 |
+| The 2D lidar path is still in the tree, and its tails reach every layer: the node `obstacle_memory_node` with its helpers, types and 2D transport and their build and tests; the sensor model `lidar_2d_v2` and the `2d` entry of `configure_drone_lidar_model.py`; the lidar profile `none`, which `lidar_profile.py`, `lidar_profile_runtime.sh`, `run_drone_nav_sim.sh`, `simulation_resource_runtime.sh` and the launches still branch on (`none` picks the 2D node, the 2D sensor and the 2D model names; through the Makefile targets, which fix `LIDAR_PROFILE=3d`, it is unreachable); the base vehicle model `x500_lidar_2d`, which the 3D profile copies under the name `x500_lidar_3d`, with the stock PX4 airframe 4013 (`gz_x500_lidar_2d`, which only names that model and sources the plain `4001_gz_x500`) as `PX4_SYS_AUTOSTART`; the scenarios' `px4_model_target` and `gazebo_model_name`, which carry `x500_lidar_2d` for the profile token to rewrite; the process-cleanup patterns, the mapping-pipeline check's `2d` branch, the spectator and truth-adapter defaults, and the pages of README, architecture, configuration, gazebo_simulation, obstacle_mapping, overview, scenarios and troubleshooting that describe them. The README's and scenarios.md's static-map flight, `ENABLE_STATIC_MAP=true LIDAR_PROFILE=none`, does none of what it says: the target overrides both variables and an ordinary camera flight starts, and the environment has no static map to fly (item 11). Decided 2026-09-25, the owner's word: no 2D tail remains. The repair as seen: remove the node, the sensor model, the `none` profile and every branch on it; the base model takes a name of its own with the plain `gz_x500` airframe and `PX4_SIM_MODEL` naming it, so the profile token and the `_3d` copy go too; the scenarios, the checks and the pages follow; a static-map request refuses to start while the environment has no static map, and the pages say so until item 11 delivers one. The vehicle model and the airframe change under every flight, so both acceptance series. | one node, one sensor model, one profile, one base model, two scenarios, eight pages; the documented static-map command silently flies without a map | (b) | item 10, R1 2026-09-25 |
 | Fourteen sources sit near the 1000-line cap and most of the package lies flat in `src/`. | `swept_footprint.cpp` at 994 non-blank lines | (b) | item 10 |
 
 ## Not Flight-Verified
