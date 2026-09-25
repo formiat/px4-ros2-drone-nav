@@ -159,12 +159,19 @@ an old or colliding path is never
 executed as a fallback.
 
 The deterministic route-directed candidate connects a straight route interval
-with a cubic rest-to-rest maneuver solved in the shortest duration whose peak
-acceleration, peak speed, and deceleration of the current speed fit the
-dynamics; it then holds the terminal rest for the remainder of the horizon.
-A connector stretched over the whole horizon would be re-solved every tick
-for "rest at the horizon end" and creep toward a near route end at ever
-smaller accelerations without reaching it.
+that ends at the route's end with a cubic rest-to-rest maneuver solved in the
+shortest duration whose peak acceleration, peak speed, and deceleration of the
+current speed fit the dynamics; it then holds the terminal rest for the
+remainder of the horizon. A connector stretched over the whole horizon would
+be re-solved every tick for "rest at the horizon end" and creep toward a near
+route end at ever smaller accelerations without reaching it. A straight
+interval that continues beyond the maneuver is not an arrival, and since the
+speed work of 2026-09-24 it follows the route at the reference speed under the
+dynamics' full acceleration instead, with the terminal rest attached after:
+the rest-to-rest profile re-solved every tick accelerated at
+`6 d / T^2 - 4 v / T`, 1.9 to 2.0 m/s^2 at the median on the camera flights
+r589 to r591 once the heading faced its target, against the 4 m/s^2 the
+dynamics allow.
 
 Arrival shaping uses
 `finite_path_arrival_maximum_horizontal_deceleration_mps2`, a conservative contract

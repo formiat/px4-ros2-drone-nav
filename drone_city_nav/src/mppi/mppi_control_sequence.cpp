@@ -377,6 +377,22 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
       std::min(route.back().station_m,
                maneuver_begin_station_m +
                    0.5F * std::max(0.0F, reference_speed_mps) * horizon_duration_s);
+  // The connector below is an arrival: it comes to rest at the terminal it
+  // is solved for. Where the route continues beyond that terminal the
+  // maneuver is not an arrival but a stretch of cruise, and a rest-to-rest
+  // profile re-solved every tick accelerates at 6 d / T^2 - 4 v / T, about
+  // half the dynamics at 1 m/s and less above it: on the camera flights r589
+  // to r591 the recovery from a slowdown ran at 1.9 to 2.0 m/s^2 at the
+  // median once the heading was within 20 degrees of its target, against the
+  // 4 m/s^2 the dynamics allow, and the cruise settled at 2.38 to 2.41 m/s
+  // under a 2.45 m/s reference. Such a stretch follows the route at the
+  // reference speed instead; the terminal rest the executor needs is
+  // attached by the caller.
+  if (terminal_station_m < route.back().station_m - 1.0e-3F) {
+    return buildGuideDirectedSeed(initial, target, route, maneuver_begin_station_m,
+                                  reference_speed_mps, dynamics, steps,
+                                  previous_applied_control, stopping_capability);
+  }
   const RouteSample initial_route = sampleRoute(route, maneuver_begin_station_m);
   const RouteSample terminal_route = sampleRoute(route, terminal_station_m);
   if (!initial_route.valid || !terminal_route.valid) {
