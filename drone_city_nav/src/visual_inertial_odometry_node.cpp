@@ -30,6 +30,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <opencv2/core.hpp>
 #include <optional>
 #include <string>
@@ -82,6 +83,32 @@ constexpr double kMapCorrectionReachM{1.5};
 // The offset the autopilot sees follows the target at this rate: its fusion
 // of the external position takes motion, and a jump it may refuse.
 constexpr double kMapOffsetRateMps{0.2};
+// The heading the filter holds drifts too, one to four degrees over the
+// doubled path (r683 to r692), and a degree is 0.9 m over the 50 m of an
+// open stretch where nothing within the depth range fixes the position. A
+// registration whose depth fixes the heading, with the translation left
+// free, moves the target heading by this share of what it measured, by no
+// more than the step, and the published heading follows at the rate.
+constexpr double kMapYawGain{0.5};
+constexpr double kMapYawStepRad{0.0087};
+constexpr double kMapYawReachRad{0.087};
+constexpr double kMapMinimumYawInformationPerPoint{0.5};
+constexpr double kMapYawRateRadps{0.0175};
+
+// From the filter's frame to the map's: a turn about the vertical, then a
+// shift.
+struct MapFrameOffset {
+  double yaw_rad{0.0};
+  Eigen::Vector3d translation{Eigen::Vector3d::Zero()};
+
+  [[nodiscard]] Eigen::Matrix3d rotation() const {
+    return Eigen::AngleAxisd{yaw_rad, Eigen::Vector3d::UnitZ()}.toRotationMatrix();
+  }
+
+  [[nodiscard]] Eigen::Vector3d apply(const Eigen::Vector3d& position) const {
+    return rotation() * position + translation;
+  }
+};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along
 // the body's x axis, in the body forward-right-down frame.
@@ -291,7 +318,7 @@ private:
       return;
     }
     VisualInertialEstimate estimate = odometry_->predicted(stamp_ns);
-    estimate.position_ned_m += appliedOffset(stamp_ns);
+    applyMapFrame(estimate, stamp_ns);
     const std::optional<std::int64_t> px4_local_ns =
         time_mapper_.rosToPx4LocalTimeNs(estimate.stamp_ns);
     if (!estimate.healthy || estimate.stamp_ns != stamp_ns ||
@@ -396,7 +423,7 @@ private:
       ++frames_without_estimate_;
     }
     // The pose in the map's frame, as the autopilot receives it.
-    estimate.position_ned_m += appliedOffset(pair.stamp_ns);
+    applyMapFrame(estimate, pair.stamp_ns);
     publishPose(estimate, pair.left->header.stamp);
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
@@ -453,8 +480,10 @@ private:
     if (!pose.has_value()) {
       return;
     }
-    const Eigen::Matrix3d rotation = pose->body_to_ned.toRotationMatrix();
-    const Eigen::Vector3d position = pose->position_ned_m + targetOffset();
+    const MapFrameOffset target = targetFrame();
+    const Eigen::Matrix3d rotation =
+        target.rotation() * pose->body_to_ned.toRotationMatrix();
+    const Eigen::Vector3d position = target.apply(pose->position_ned_m);
     for (Eigen::Vector3d& point : points_body) {
       point = rotation * point + position;
     }
@@ -508,9 +537,9 @@ private:
     return thinned;
   }
 
-  [[nodiscard]] Eigen::Vector3d targetOffset() {
+  [[nodiscard]] MapFrameOffset targetFrame() {
     const std::scoped_lock lock{odometry_mutex_};
-    return map_target_offset_ned_;
+    return map_target_;
   }
 
   // The frame's depth registered against what was mapped long enough ago,
@@ -520,9 +549,12 @@ private:
                           const std::vector<Eigen::Vector3d>& points_body,
                           const VisualInertialClonePose& pose) {
     const auto started = std::chrono::steady_clock::now();
-    const Eigen::Vector3d prior = pose.position_ned_m + targetOffset();
+    const MapFrameOffset frame = targetFrame();
+    const Eigen::Vector3d prior = frame.apply(pose.position_ned_m);
+    const Eigen::Matrix3d prior_rotation =
+        frame.rotation() * pose.body_to_ned.toRotationMatrix();
     const PointPlaneRegistration3D registration = registerPointsToPlanes(
-        map_, points_body, prior, pose.body_to_ned,
+        map_, points_body, prior, Eigen::Quaterniond{prior_rotation},
         PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
                                        .maximum_iterations = 10U,
                                        .convergence_translation_m = 1.0e-3,
@@ -534,16 +566,22 @@ private:
     ++map_registrations_;
     const char* outcome = "weak";
     const Eigen::Vector3d innovation = registration.position - prior;
+    const Eigen::Matrix3d turn =
+        registration.rotation.toRotationMatrix() * prior_rotation.transpose();
+    const double yaw_innovation = std::atan2(turn(1, 0), turn(0, 0));
     Eigen::Vector3d correction = Eigen::Vector3d::Zero();
+    double yaw_step = 0.0;
     int observed_axes = 0;
+    double yaw_information_per_point = 0.0;
     if (registration.converged &&
         registration.matched_fraction >= kMapMinimumMatchedFraction &&
         matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
         registration.residual_rms_m <= kMapMaximumResidualRmsM) {
       outcome = "far";
       if (innovation.norm() <= kMapCorrectionReachM) {
-        const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
-            registration.information.bottomRightCorner<3, 3>()};
+        const Eigen::Matrix3d translational =
+            registration.information.bottomRightCorner<3, 3>();
+        const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
         for (int axis = 0; axis < 3; ++axis) {
           if (solver.eigenvalues()(axis) / matched_points <
               kMapMinimumInformationPerPoint) {
@@ -553,19 +591,36 @@ private:
           correction += kMapCorrectionGain * direction.dot(innovation) * direction;
           ++observed_axes;
         }
-        outcome = observed_axes > 0 ? "applied" : "degenerate";
+        // The heading's information with the translation left free.
+        const Eigen::Matrix<double, 1, 3> coupling =
+            registration.information.block<1, 3>(2, 3);
+        const double yaw_information =
+            registration.information(2, 2) -
+            coupling.dot(translational.ldlt().solve(coupling.transpose()));
+        yaw_information_per_point = yaw_information / matched_points;
+        if (yaw_information_per_point >= kMapMinimumYawInformationPerPoint &&
+            std::abs(yaw_innovation) <= kMapYawReachRad) {
+          yaw_step =
+              std::clamp(kMapYawGain * yaw_innovation, -kMapYawStepRad, kMapYawStepRad);
+        }
+        outcome = observed_axes > 0 || yaw_step != 0.0 ? "applied" : "degenerate";
       }
     }
     if (correction.norm() > kMapCorrectionStepM) {
       correction *= kMapCorrectionStepM / correction.norm();
     }
-    Eigen::Vector3d target;
+    MapFrameOffset target;
     {
+      // The turn is about the vehicle, not about the frame's origin: the
+      // frame's position there moves by the correction alone.
       const std::scoped_lock lock{odometry_mutex_};
-      map_target_offset_ned_ += correction;
-      target = map_target_offset_ned_;
+      const Eigen::Vector3d mapped =
+          map_target_.apply(pose.position_ned_m) + correction;
+      map_target_.yaw_rad += yaw_step;
+      map_target_.translation = mapped - map_target_.rotation() * pose.position_ned_m;
+      target = map_target_;
     }
-    if (observed_axes > 0) {
+    if (observed_axes > 0 || yaw_step != 0.0) {
       ++map_corrections_;
     }
     const double registration_ms = std::chrono::duration<double, std::milli>(
@@ -575,31 +630,50 @@ private:
         get_logger(), *get_clock(), 1000,
         "VIO_MAP_REGISTRATION outcome=%s matched=%.2f matched_points=%.0f "
         "residual_m=%.3f information_per_point=%.4f observed_axes=%d "
-        "innovation_m=%.3f correction_m=%.3f target_offset=(%.2f,%.2f,%.2f) "
-        "registration_ms=%.1f scan_points=%zu map_points=%zu registrations=%" PRIu64
-        " corrections=%" PRIu64 " frames_without_clone=%" PRIu64,
+        "innovation_m=%.3f correction_m=%.3f yaw_information_per_point=%.2f "
+        "yaw_innovation_deg=%.2f yaw_step_deg=%.3f target_yaw_deg=%.2f "
+        "target_translation=(%.2f,%.2f,%.2f) registration_ms=%.1f scan_points=%zu "
+        "map_points=%zu registrations=%" PRIu64 " corrections=%" PRIu64
+        " frames_without_clone=%" PRIu64,
         outcome, registration.matched_fraction, matched_points,
         registration.residual_rms_m, registration.information_per_point, observed_axes,
-        innovation.norm(), correction.norm(), target.x(), target.y(), target.z(),
-        registration_ms, points_body.size(), map_.pointCount(), map_registrations_,
-        map_corrections_, map_frames_without_clone_);
+        innovation.norm(), correction.norm(), yaw_information_per_point,
+        yaw_innovation * 180.0 / std::numbers::pi, yaw_step * 180.0 / std::numbers::pi,
+        target.yaw_rad * 180.0 / std::numbers::pi, target.translation.x(),
+        target.translation.y(), target.translation.z(), registration_ms,
+        points_body.size(), map_.pointCount(), map_registrations_, map_corrections_,
+        map_frames_without_clone_);
   }
 
-  // The offset the estimate is published with, carried toward the target at
-  // the offset rate over the interval since the last publication.
-  [[nodiscard]] Eigen::Vector3d appliedOffset(const std::int64_t stamp_ns) {
+  // The estimate in the map's frame, as published: the published frame
+  // follows the target, its heading at the heading rate and its position at
+  // the vehicle at the offset rate, over the interval since the last
+  // publication. Under the odometry mutex.
+  void applyMapFrame(VisualInertialEstimate& estimate, const std::int64_t stamp_ns) {
+    const Eigen::Vector3d position = estimate.position_ned_m;
     if (map_offset_stamp_ns_ > 0 && stamp_ns > map_offset_stamp_ns_) {
-      const double reach = kMapOffsetRateMps * 1.0e-9 *
-                           static_cast<double>(stamp_ns - map_offset_stamp_ns_);
-      const Eigen::Vector3d remaining =
-          map_target_offset_ned_ - map_applied_offset_ned_;
-      map_applied_offset_ned_ +=
-          remaining.norm() <= reach
-              ? remaining
-              : Eigen::Vector3d{remaining * (reach / remaining.norm())};
+      const double interval_s =
+          1.0e-9 * static_cast<double>(stamp_ns - map_offset_stamp_ns_);
+      const double yaw_reach = kMapYawRateRadps * interval_s;
+      const double yaw_change =
+          std::clamp(map_target_.yaw_rad - map_applied_.yaw_rad, -yaw_reach, yaw_reach);
+      const Eigen::Vector3d published = map_applied_.apply(position);
+      Eigen::Vector3d remaining = map_target_.apply(position) - published;
+      const double reach = kMapOffsetRateMps * interval_s;
+      if (remaining.norm() > reach) {
+        remaining *= reach / remaining.norm();
+      }
+      map_applied_.yaw_rad += yaw_change;
+      map_applied_.translation =
+          published + remaining - map_applied_.rotation() * position;
     }
     map_offset_stamp_ns_ = std::max(map_offset_stamp_ns_, stamp_ns);
-    return map_applied_offset_ned_;
+    const Eigen::Matrix3d rotation = map_applied_.rotation();
+    estimate.position_ned_m = map_applied_.apply(position);
+    estimate.velocity_ned_mps = rotation * estimate.velocity_ned_mps;
+    estimate.body_to_ned =
+        Eigen::Quaterniond{rotation * estimate.body_to_ned.toRotationMatrix()}
+            .normalized();
   }
 
   [[nodiscard]] double mapYaw(const VisualInertialEstimate& estimate) const noexcept {
@@ -640,9 +714,10 @@ private:
   std::int64_t last_map_registration_ns_{0};
   std::uint64_t map_registrations_{0U};
   std::uint64_t map_corrections_{0U};
-  // From the filter's frame to the map's, under the odometry mutex.
-  Eigen::Vector3d map_target_offset_ned_{Eigen::Vector3d::Zero()};
-  Eigen::Vector3d map_applied_offset_ned_{Eigen::Vector3d::Zero()};
+  // From the filter's frame to the map's, under the odometry mutex: the
+  // registrations' target and the published frame that follows it.
+  MapFrameOffset map_target_;
+  MapFrameOffset map_applied_;
   std::int64_t map_offset_stamp_ns_{0};
   std::uint64_t map_frames_without_clone_{0U};
   std::unique_ptr<StereoFeatureTracker> tracker_;
