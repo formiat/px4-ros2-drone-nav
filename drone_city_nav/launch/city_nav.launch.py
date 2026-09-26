@@ -199,6 +199,7 @@ def generate_launch_description():
     )
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
+    mission_window_s = LaunchConfiguration("mission_window_s")
     camera_profile = LaunchConfiguration("camera_profile")
     navigation_sensor_profile = LaunchConfiguration("navigation_sensor_profile")
     localization_profile = LaunchConfiguration("localization_profile")
@@ -423,7 +424,10 @@ def generate_launch_description():
         ]
         mission_monitor_parameters = [
             params_file.perform(context),
-            {"use_sim_time": True},
+            {
+                "use_sim_time": True,
+                "mission_window_s": float(mission_window_s.perform(context)),
+            },
         ]
         monitor_shutdown = optional_bool_override(
             context, shutdown_on_mission_result, "shutdown_on_mission_result"
@@ -808,6 +812,15 @@ def generate_launch_description():
                 "enable_obstacle_memory",
                 default_value="true",
                 description="Run lidar obstacle memory; required without a static map.",
+            ),
+            DeclareLaunchArgument(
+                "mission_window_s",
+                default_value="0",
+                description=(
+                    "The flight's window in seconds, handed to the mission monitor "
+                    "for the budget trigger of the return home (roadmap item 19); "
+                    "0 disables it."
+                ),
             ),
             DeclareLaunchArgument(
                 "enable_rviz",

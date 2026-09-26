@@ -1,10 +1,15 @@
 #include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/autopilot_state_source.hpp"
+#include "drone_city_nav/goal_reachability_proof_3d.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/navigation_health.hpp"
+#include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/raw_obstacle_delta3_d.hpp"
+#include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -17,6 +22,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -245,6 +251,38 @@ public:
         [this](const msg::NavigationHealth::SharedPtr message) {
           onNavigationHealth(*message);
         });
+    // Roadmap item 19: the goal proven unreachable is given up for the start.
+    // The flight's window is the run's, handed to the monitor as a mission
+    // parameter (0 disables the budget trigger); the proof floods the memory
+    // the navigation publishes, on its own thread, within a voxel budget.
+    mission_window_s_ = declare_parameter<double>("mission_window_s", 0.0);
+    const std::int64_t proof_budget = declare_parameter<std::int64_t>(
+        "unreachable_goal_proof_voxel_budget", 20'000'000);
+    if (!std::isfinite(mission_window_s_) || mission_window_s_ < 0.0 ||
+        proof_budget <= 0) {
+      throw std::invalid_argument{"mission window and proof budget must be valid"};
+    }
+    proof_voxel_budget_ = static_cast<std::size_t>(proof_budget);
+    objective_pub_ = create_publisher<msg::NavigationObjective>(
+        declare_parameter<std::string>("navigation_objective_topic",
+                                       "/drone_city_nav/navigation_objective"),
+        rclcpp::QoS{1}.reliable().transient_local());
+    memory_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
+        declare_parameter<std::string>("raw_obstacle_snapshot_3d_topic",
+                                       "/drone_city_nav/raw_obstacle_snapshot_3d"),
+        rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const msg::RawObstacleSnapshot3D::SharedPtr message) {
+          onMemorySnapshot(*message);
+        });
+    memory_delta_sub_ = create_subscription<msg::RawObstacleDelta3D>(
+        declare_parameter<std::string>("raw_obstacle_delta_3d_topic",
+                                       "/drone_city_nav/raw_obstacle_delta_3d"),
+        rclcpp::QoS{1}.best_effort().transient_local(),
+        [this](const msg::RawObstacleDelta3D::SharedPtr message) {
+          onMemoryDelta(*message);
+        });
+    proof_timer_ =
+        create_wall_timer(std::chrono::seconds{10}, [this] { judgeReturnHome(); });
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this] { logSummary(); });
     RCLCPP_INFO(get_logger(),
@@ -272,6 +310,7 @@ private:
       navigation_health_sequence_ = 0U;
     }
     navigation_health_sequence_ = health.sequence;
+    navigation_mission_epoch_ = health.mission_epoch;
     if (health.mission_ready && !navigation_mission_ready_) {
       navigation_mission_ready_ = true;
       RCLCPP_INFO(get_logger(),
@@ -293,6 +332,14 @@ private:
       latest_position_valid_ = false;
       return;
     }
+    const Point3 position{message.position.x, message.position.y, message.position.z};
+    if (latest_position_valid_) {
+      flown_path_m_ += distance3D(latest_map_position_, position);
+    } else if (mission_start_ns_ == 0) {
+      mission_start_ns_ = now().nanoseconds();
+    }
+    latest_map_position_ = position;
+    latest_position_stamp_ns_ = now().nanoseconds();
     latest_position_ = Point2{message.position.x, message.position.y};
     // The contract carries the map altitude; the monitor keeps the altitude
     // above the autopilot's origin it has always reported.
@@ -408,7 +455,157 @@ private:
                 acknowledgement.completed_waypoint_index, waypoints_.size(),
                 acknowledgement.producer_instance_id,
                 acknowledgement.acknowledgement_sequence);
+    if (goal_substituted_) {
+      // The start was reached in place of the goal. A return is not the
+      // mission's success: the check counts it only where the manifest says
+      // the unreachability was injected.
+      report(false, "goal_unreachable_returned");
+      return;
+    }
     report(spawn_ok_ && moved_, spawn_ok_ && moved_ ? "none" : "mission_contract");
+  }
+
+  void onMemorySnapshot(const msg::RawObstacleSnapshot3D& snapshot) {
+    const GridBounds3D bounds{
+        .origin_x = snapshot.origin_x_m,
+        .origin_y = snapshot.origin_y_m,
+        .origin_z = snapshot.origin_z_m,
+        .resolution_m = snapshot.resolution_m,
+        .width_cells = static_cast<int>(snapshot.width_cells),
+        .height_cells = static_cast<int>(snapshot.height_cells),
+        .depth_cells = static_cast<int>(snapshot.depth_cells),
+    };
+    if (!std::isfinite(bounds.resolution_m) || bounds.resolution_m <= 0.0 ||
+        bounds.width_cells <= 0 || bounds.height_cells <= 0 ||
+        bounds.depth_cells <= 0 ||
+        static_cast<int>(snapshot.chunk_size_cells) !=
+            ObservedOccupancyGrid3D::kChunkSize) {
+      return;
+    }
+    auto grid = std::make_shared<ObservedOccupancyGrid3D>(bounds);
+    applyMemoryChunks(*grid, snapshot.chunks);
+    memory_ = std::move(grid);
+    memory_producer_instance_id_ = snapshot.producer_instance_id;
+    memory_base_revision_ = snapshot.obstacle_snapshot_revision;
+  }
+
+  void onMemoryDelta(const msg::RawObstacleDelta3D& delta) {
+    if (memory_ == nullptr ||
+        delta.producer_instance_id != memory_producer_instance_id_ ||
+        delta.base_snapshot_revision != memory_base_revision_) {
+      return;
+    }
+    // The proof reads a grid of its own on another thread: a delta writes a
+    // fresh grid object, whose untouched chunks share the old storage.
+    auto grid = std::make_shared<ObservedOccupancyGrid3D>(*memory_);
+    applyMemoryChunks(*grid, delta.chunks);
+    memory_ = std::move(grid);
+  }
+
+  static void
+  applyMemoryChunks(ObservedOccupancyGrid3D& grid,
+                    const std::vector<msg::ObservedObstacleChunk3D>& chunks) {
+    for (const msg::ObservedObstacleChunk3D& message : chunks) {
+      ObservedOccupancyGrid3D::Chunk chunk;
+      chunk.observed = message.observed_words;
+      chunk.occupied = message.occupied_words;
+      static_cast<void>(grid.replaceChunk(
+          OccupancyChunkIndex3D{message.x, message.y, message.z}, chunk));
+    }
+  }
+
+  void judgeReturnHome() {
+    if (result_reported_ || goal_substituted_ || !navigation_mission_ready_ ||
+        active_waypoint_index_ >= waypoints_.size()) {
+      return;
+    }
+    const std::int64_t now_ns = now().nanoseconds();
+    if (proof_future_.valid() &&
+        proof_future_.wait_for(std::chrono::seconds{0}) == std::future_status::ready) {
+      latest_proof_ = proof_future_.get();
+      RCLCPP_INFO(get_logger(),
+                  "GOAL_REACHABILITY_PROOF verdict=%s component_voxels=%zu "
+                  "goal_inside=%s touches_grid_edge=%s budget_exhausted=%s",
+                  goalReachabilityProofVerdict(latest_proof_),
+                  latest_proof_.component_voxels,
+                  latest_proof_.goal_inside ? "true" : "false",
+                  latest_proof_.touches_grid_edge ? "true" : "false",
+                  latest_proof_.budget_exhausted ? "true" : "false");
+      if (latest_proof_.provenUnreachable() &&
+          substituteGoalWithStart("topological", now_ns)) {
+        return;
+      }
+    }
+    if (mission_window_s_ > 0.0 && mission_start_ns_ > 0) {
+      const double elapsed_s = static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9;
+      if (elapsed_s + returnEstimateS() >= mission_window_s_ &&
+          substituteGoalWithStart("budget", now_ns)) {
+        return;
+      }
+    }
+    if (!proof_future_.valid() && memory_ != nullptr && latest_position_valid_) {
+      const std::shared_ptr<const ObservedOccupancyGrid3D> grid = memory_;
+      const Point3 vehicle = latest_map_position_;
+      const Point3 goal = waypoints_[active_waypoint_index_];
+      const std::size_t budget = proof_voxel_budget_;
+      proof_future_ = std::async(std::launch::async, [grid, vehicle, goal, budget] {
+        return proveGoalUnreachable3D(*grid, vehicle, goal, budget);
+      });
+    }
+  }
+
+  // The way back is known and observed: the path flown so far at the
+  // flight's mean speed so far errs on the long side.
+  [[nodiscard]] double returnEstimateS() const noexcept {
+    const double mean = meanSpeed();
+    return flown_path_m_ / std::max(std::isfinite(mean) ? mean : 0.0, 0.5);
+  }
+
+  // The goal is given up for the start, through the channel any objective
+  // enters the navigation by; the mission's waypoint list becomes the start
+  // alone, so the arrival there is judged as any goal's. A return needs a
+  // position source: without a fresh position nothing is substituted.
+  [[nodiscard]] bool substituteGoalWithStart(const char* trigger,
+                                             const std::int64_t now_ns) {
+    if (!latest_position_valid_ || latest_position_stamp_ns_ <= 0 ||
+        static_cast<double>(now_ns - latest_position_stamp_ns_) * 1.0e-9 > 1.0) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+                           "GOAL_UNREACHABLE_HELD trigger=%s reason=no_position_source",
+                           trigger);
+      return false;
+    }
+    const Point3 original_goal = waypoints_[active_waypoint_index_];
+    const Point3 start{start_.x, start_.y, waypoints_.front().z};
+    msg::NavigationObjective objective;
+    objective.stamp = now();
+    objective.mission_epoch = navigation_mission_epoch_ + 1U;
+    objective.sample_sequence = 1U;
+    objective.position.x = start.x;
+    objective.position.y = start.y;
+    objective.position.z = start.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
+    objective_pub_->publish(objective);
+    waypoints_ = {start};
+    goal_ = start_;
+    active_waypoint_index_ = 0U;
+    completed_waypoint_count_ = 0U;
+    minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
+    goal_substituted_ = true;
+    const double elapsed_s =
+        mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
+                              : 0.0;
+    RCLCPP_WARN(get_logger(),
+                "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
+                "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
+                " elapsed_s=%.1f return_estimate_s=%.1f window_s=%.1f "
+                "flown_path_m=%.1f proof=%s component_voxels=%zu",
+                trigger, original_goal.x, original_goal.y, original_goal.z, start.x,
+                start.y, start.z, objective.mission_epoch, elapsed_s, returnEstimateS(),
+                mission_window_s_, flown_path_m_,
+                goalReachabilityProofVerdict(latest_proof_),
+                latest_proof_.component_voxels);
+    return true;
   }
 
   [[nodiscard]] double meanSpeed() const noexcept {
@@ -490,6 +687,23 @@ private:
   bool shutdown_on_result_{false};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
+  std::uint64_t navigation_mission_epoch_{0U};
+  double mission_window_s_{0.0};
+  std::size_t proof_voxel_budget_{20'000'000U};
+  Point3 latest_map_position_{};
+  std::int64_t latest_position_stamp_ns_{0};
+  std::int64_t mission_start_ns_{0};
+  double flown_path_m_{0.0};
+  bool goal_substituted_{false};
+  GoalReachabilityProof3D latest_proof_{};
+  std::future<GoalReachabilityProof3D> proof_future_;
+  std::shared_ptr<const ObservedOccupancyGrid3D> memory_;
+  std::uint64_t memory_producer_instance_id_{0U};
+  std::uint64_t memory_base_revision_{0U};
+  rclcpp::Publisher<msg::NavigationObjective>::SharedPtr objective_pub_;
+  rclcpp::Subscription<msg::RawObstacleSnapshot3D>::SharedPtr memory_snapshot_sub_;
+  rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr memory_delta_sub_;
+  rclcpp::TimerBase::SharedPtr proof_timer_;
   MissionWaypointAcknowledgementAdmissionState waypoint_acknowledgement_admission_{};
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;

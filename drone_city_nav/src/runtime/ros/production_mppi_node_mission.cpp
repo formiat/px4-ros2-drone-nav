@@ -2,6 +2,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "production_mppi_node.hpp"
 
@@ -39,6 +40,26 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
       mission_waypoint_capture_gate_->reset();
     }
     return {};
+  }
+  // A goal that came in on the objective channel while the mission flew (the
+  // mission monitor's return home of roadmap item 19) is the mission's new
+  // and only remaining waypoint: the sequence follows the objective, so the
+  // capture and its acknowledgement work for it as for a configured goal.
+  // The sequence belongs to the planning tick, which is why it is rebased
+  // here and not in the channel's callback.
+  if (config_.planning.configured_mission_objective_enabled &&
+      distance3D(mission_waypoint_sequence_->activeGoal(), objective->goal) >
+          config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m) {
+    mission_waypoint_sequence_ = std::make_unique<MissionWaypointSequence>(
+        std::vector<Point3>{objective->goal},
+        config_.planning.mission_waypoint_sequence);
+    mission_goal_ = objective->goal;
+    mission_waypoint_capture_gate_->reset();
+    RCLCPP_INFO(get_logger(),
+                "MISSION_WAYPOINT_SEQUENCE substituted goal=(%.3f,%.3f,%.3f) "
+                "mission_epoch=%" PRIu64,
+                objective->goal.x, objective->goal.y, objective->goal.z,
+                objective->mission_epoch);
   }
   const AppliedControlEvidence3D& applied_control = execution_authority->control();
   const ExecutionOwnerIdentity3D& execution_horizon_owner =

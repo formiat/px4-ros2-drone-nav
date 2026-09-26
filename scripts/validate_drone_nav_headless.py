@@ -22,6 +22,7 @@ from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E
 from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from headless_runtime_evidence import (
     validate_goal_reached_in_truth,
+    validate_injected_goal_unreachable_in_truth,
     validate_localization_profile,
     validate_mean_flight_speed,
     validate_persistent_3d_acceptance_metrics,
@@ -264,6 +265,40 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
         )
 
 
+def validate_return_home(ros_log: str, injected: bool, errors: list[str]) -> None:
+    """Roadmap item 19. A return home counts as the outcome asked for only in
+    a flight whose unreachability the manifest records as injected; in every
+    other flight the vehicle returned rather than reached, which fails the
+    mission as an incomplete one does."""
+    returned = re.search(r"GOAL_UNREACHABLE trigger=(\w+)", ros_log)
+    if not injected:
+        if returned is not None:
+            errors.append("FAIL: the vehicle reached its goal rather than returned "
+                          f"home (trigger={returned.group(1)})")
+        return
+    if returned is None:
+        errors.append("FAIL: the injected unreachability is proven and the goal "
+                      "given up (no GOAL_UNREACHABLE)")
+        return
+    trigger = returned.group(1)
+    if trigger not in ("topological", "budget"):
+        errors.append(f"FAIL: the proof names its trigger (got '{trigger}')")
+    else:
+        print(f"OK: the goal was proven unreachable by the {trigger} trigger")
+    require(
+        "the vehicle returned to the start and the monitor reported it",
+        ros_log,
+        r"MISSION_RESULT success=false reason='goal_unreachable_returned'",
+        errors,
+    )
+    require(
+        "the arrival at the start was acknowledged as a goal's",
+        ros_log,
+        r"MISSION_WAYPOINT_REACHED completed_index=0 waypoint_count=1 .*terminal=true",
+        errors,
+    )
+
+
 def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true .*waypoint_count=([0-9]+) "
@@ -405,13 +440,24 @@ def main() -> int:
             expected_lidar_profile=args.lidar_profile,
             expected_static_map=expected_static,
         )
+    unreachable_goal_injected = False
+    truth_occupancy_3d = ""
+    if args.runtime_manifest is not None:
+        manifest_mission = json.loads(
+            args.runtime_manifest.read_text(encoding="utf-8")
+        ).get("mission", {})
+        unreachable_goal_injected = bool(
+            manifest_mission.get("unreachable_goal_injected", False))
+        truth_occupancy_3d = str(manifest_mission.get("truth_occupancy_3d", ""))
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, notes)
         manifest_overrides = json.loads(
             args.runtime_manifest.read_text(encoding="utf-8")
         ).get("effective_overrides", {})
+        # An injected flight flies out and back to a proof, not to a speed:
+        # the mean speed is no requirement of it.
         validate_mean_flight_speed(
-            ros_log, errors,
+            ros_log, notes if unreachable_goal_injected else errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
         )
@@ -486,13 +532,22 @@ def main() -> int:
 
     mission_failed = re.search(r"MISSION_RESULT success=false", ros_log) is not None
     if args.mission_check and not args.allow_mission_failure:
-        require(
-            "mission monitor verifies complete flight",
-            ros_log,
-            r"MISSION_RESULT success=true",
-            errors,
-        )
-        if args.mission_type == "cooperative_traffic":
+        if unreachable_goal_injected:
+            validate_return_home(ros_log, True, errors)
+            if args.runtime_manifest is not None:
+                validate_injected_goal_unreachable_in_truth(
+                    Path(truth_occupancy_3d), ros_log, errors)
+        else:
+            validate_return_home(ros_log, False, errors)
+            require(
+                "mission monitor verifies complete flight",
+                ros_log,
+                r"MISSION_RESULT success=true",
+                errors,
+            )
+        if unreachable_goal_injected:
+            pass
+        elif args.mission_type == "cooperative_traffic":
             validate_cooperative_traffic(
                 ros_log,
                 expected_vehicles,

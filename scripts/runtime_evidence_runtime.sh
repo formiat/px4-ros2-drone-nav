@@ -25,6 +25,8 @@ prepare_runtime_evidence() {
     --mission-goals "${mission_goal_sequence_xyz_m}"
     --lidar-profile "${lidar_profile}"
     --static-map-enabled "${active_static_map}"
+    --unreachable-goal-injected "${mission_goal_unreachable}"
+    --truth-occupancy-3d "${truth_occupancy_3d_path}"
   )
   if [[ -n "${runtime_scenario_path}" ]]; then
     runtime_manifest_args+=(--scenario "${runtime_scenario_path}")

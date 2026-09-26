@@ -445,5 +445,50 @@ class BuildingCollisionValidationTest(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+class ReturnHomeValidationTest(unittest.TestCase):
+    RETURNED = (
+        "GOAL_UNREACHABLE trigger=budget goal=(200.000,100.000,5.000) "
+        "substituted_goal=(0.750,21.250,12.500) mission_epoch=2 elapsed_s=480.0 "
+        "return_estimate_s=110.0 window_s=600.0 flown_path_m=310.0\n"
+        "MISSION_WAYPOINT_REACHED completed_index=0 waypoint_count=1 planner=1 "
+        "acknowledgement=2 terminal=true\n"
+        "MISSION_RESULT success=false reason='goal_unreachable_returned'\n"
+    )
+
+    def test_an_injected_flight_accepts_the_return_by_its_trigger(self) -> None:
+        errors: list[str] = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            VALIDATOR.validate_return_home(self.RETURNED, True, errors)
+        self.assertEqual(errors, [])
+
+    def test_an_injected_flight_needs_the_proof_and_the_arrival(self) -> None:
+        errors: list[str] = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            VALIDATOR.validate_return_home(
+                "MISSION_RESULT success=true reason='none'\n", True, errors)
+        self.assertIn(
+            "FAIL: the injected unreachability is proven and the goal given up "
+            "(no GOAL_UNREACHABLE)",
+            errors,
+        )
+
+    def test_an_ordinary_flight_that_returned_home_fails(self) -> None:
+        errors: list[str] = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            VALIDATOR.validate_return_home(self.RETURNED, False, errors)
+        self.assertEqual(
+            errors,
+            ["FAIL: the vehicle reached its goal rather than returned home "
+             "(trigger=budget)"],
+        )
+
+    def test_an_ordinary_flight_without_a_return_passes_the_guard(self) -> None:
+        errors: list[str] = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            VALIDATOR.validate_return_home(
+                "MISSION_RESULT success=true reason='none'\n", False, errors)
+        self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()

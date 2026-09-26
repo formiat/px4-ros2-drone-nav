@@ -149,6 +149,12 @@ def create_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "mission": {
             "type": args.mission_type,
             "goal_sequence_xyz_m": args.mission_goals,
+            # Roadmap item 19: the goal placed outside the location on purpose;
+            # the check counts the return home only when this is true, and
+            # confirms the injection on the truth occupancy named beside it.
+            "unreachable_goal_injected": args.unreachable_goal_injected.strip().lower()
+            in ("1", "true", "yes", "on"),
+            "truth_occupancy_3d": args.truth_occupancy_3d,
         },
         "runtime_profile": {
             "lidar_profile": args.lidar_profile,
@@ -192,6 +198,8 @@ def main() -> int:
     parser.add_argument("--scenario", type=Path)
     parser.add_argument("--mission-type", required=True)
     parser.add_argument("--mission-goals", default="")
+    parser.add_argument("--unreachable-goal-injected", default="false")
+    parser.add_argument("--truth-occupancy-3d", default="")
     parser.add_argument("--lidar-profile", required=True)
     parser.add_argument(
         "--static-map-enabled", required=True, choices=("true", "false")

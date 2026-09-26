@@ -277,6 +277,14 @@ enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
 active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
+# Roadmap item 19: the goal placed outside the location on purpose, recorded
+# in the manifest so the check counts the return home as the outcome asked
+# for, and confirmed by the check against the truth occupancy named here.
+mission_goal_unreachable="$(normalize_bool "${MISSION_GOAL_UNREACHABLE:-false}")"
+truth_occupancy_3d_path=""
+if [[ -n "${TRUTH_OCCUPANCY_3D_PATH:-}" ]]; then
+  truth_occupancy_3d_path="$(make_abs_path "${TRUTH_OCCUPANCY_3D_PATH}")"
+fi
 enable_liveness_recovery="$(
   normalize_bool "${ENABLE_LIVENESS_RECOVERY:-true}"
 )"
@@ -933,6 +941,7 @@ else
     rviz_config:="${rviz_config_file}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
     shutdown_on_mission_result:="${point_to_point_shutdown_on_mission_result}"
+    mission_window_s:="${smoke_duration_s}"
   )
   if [[ -n "${point_to_point_scenario_path}" ]]; then
     ros_launch_args+=(

@@ -783,6 +783,89 @@ def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                   f"acknowledgement (capture radius {GOAL_CAPTURE_RADIUS_M:.1f} m)")
 
 
+GOAL_UNREACHABLE_PATTERN = re.compile(
+    r"GOAL_UNREACHABLE trigger=(\w+) goal=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\) "
+    r"substituted_goal=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)")
+
+
+def validate_injected_goal_unreachable_in_truth(truth_occupancy_path: Path,
+                                                ros_log: str,
+                                                errors: list[str]) -> None:
+    """The check does not take the manifest's word for the injected
+    unreachability (roadmap item 19): it floods the truth collision world of
+    the location from the start, through every free voxel, and confirms that
+    the goal lies outside the start's component. A goal outside the truth grid
+    is unreachable only while the component stays off the grid's edge."""
+    substitution = GOAL_UNREACHABLE_PATTERN.search(ros_log)
+    if substitution is None:
+        errors.append("FAIL: the injected unreachability names the goal it gave up")
+        return
+    goal = tuple(float(substitution.group(index)) for index in (2, 3, 4))
+    start = tuple(float(substitution.group(index)) for index in (5, 6, 7))
+    if not truth_occupancy_path.is_file():
+        errors.append("FAIL: the injected unreachability is confirmed on the truth "
+                      f"occupancy ({truth_occupancy_path} is not a file)")
+        return
+    import numpy as np  # noqa: PLC0415
+    from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D  # noqa: PLC0415
+
+    occupancy = Occupancy3D.load(truth_occupancy_path)
+    bounds = occupancy.bounds
+    occupied = np.zeros((bounds.width, bounds.height, bounds.depth), dtype=bool)
+    for (chunk_x, chunk_y, chunk_z), words in occupancy.chunks.items():
+        bits = np.unpackbits(
+            np.frombuffer(np.array(words, dtype="<u8").tobytes(), dtype=np.uint8),
+            bitorder="little")
+        block = bits.reshape(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE).transpose(2, 1, 0)
+        x0, y0, z0 = chunk_x * CHUNK_SIZE, chunk_y * CHUNK_SIZE, chunk_z * CHUNK_SIZE
+        x1 = min(x0 + CHUNK_SIZE, bounds.width)
+        y1 = min(y0 + CHUNK_SIZE, bounds.height)
+        z1 = min(z0 + CHUNK_SIZE, bounds.depth)
+        occupied[x0:x1, y0:y1, z0:z1] |= block[:x1 - x0, :y1 - y0, :z1 - z0].astype(bool)
+    start_cell = occupancy.world_to_cell(start)
+    if occupancy.occupied(start_cell):
+        errors.append("FAIL: the start of the injected flight lies in free truth space")
+        return
+    component = np.zeros_like(occupied)
+    component[start_cell] = True
+    frontier = component.copy()
+    touches_edge = False
+    while True:
+        grown = np.zeros_like(frontier)
+        grown[1:, :, :] |= frontier[:-1, :, :]
+        grown[:-1, :, :] |= frontier[1:, :, :]
+        grown[:, 1:, :] |= frontier[:, :-1, :]
+        grown[:, :-1, :] |= frontier[:, 1:, :]
+        grown[:, :, 1:] |= frontier[:, :, :-1]
+        grown[:, :, :-1] |= frontier[:, :, 1:]
+        fresh = grown & ~occupied & ~component
+        if not fresh.any():
+            break
+        component |= fresh
+        frontier = fresh
+    # The truth grid ends in z below the location's height (23.5 m against
+    # halls that rise higher), and the project owner states the location is
+    # closed: the grid's top counts as the location's ceiling, its sides and
+    # its floor as the way out.
+    touches_edge = bool(component[0, :, :].any() or component[-1, :, :].any() or
+                        component[:, 0, :].any() or component[:, -1, :].any() or
+                        component[:, :, 0].any())
+    goal_cell = occupancy.world_to_cell(goal)
+    goal_in_grid = all(0 <= goal_cell[axis] < occupied.shape[axis] for axis in range(3))
+    goal_reachable = goal_in_grid and bool(component[goal_cell])
+    voxels = int(component.sum())
+    if goal_reachable or (not goal_in_grid and touches_edge):
+        errors.append(
+            "FAIL: the injected goal is unreachable in the truth world (the start's "
+            f"component of {voxels} voxels "
+            + ("reaches the goal" if goal_reachable else "reaches the grid's edge")
+            + ")")
+    else:
+        print(f"OK: the injected goal is unreachable in the truth world (the start's "
+              f"component of {voxels} free voxels at {bounds.resolution_m:.2f} m "
+              f"neither reaches the goal nor the grid's edge)")
+
+
 def validate_lidar_inertial_health(ros_log: str, start_s: float, end_s: float,
                                    errors: list[str]) -> None:
     """The estimator's quality over the flight, and the scans that left the
