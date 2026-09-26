@@ -66,7 +66,7 @@ public:
         "vehicle_ids", {"civilian_0", "civilian_1", "civilian_2", "civilian_3"});
     gazebo_model_names_ = declare_parameter<std::vector<std::string>>(
         "gazebo_model_names",
-        {"x500_lidar_2d_0", "x500_lidar_2d_1", "x500_lidar_2d_2", "x500_lidar_2d_3"});
+        {"x500_lidar_3d_0", "x500_lidar_3d_1", "x500_lidar_3d_2", "x500_lidar_3d_3"});
     navigation_state_topics_ = declare_parameter<std::vector<std::string>>(
         "navigation_state_topics",
         {"/vehicles/civilian_0/state", "/vehicles/civilian_1/state",

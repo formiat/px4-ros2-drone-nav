@@ -10,9 +10,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
-LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
-LIDAR_3D_SDF = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_3d/model.sdf"
+LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+LIDAR_3D_SDF = LIDAR_SDF
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 
 GZ_VISIBILITY_ALL = 0x0FFFFFFF
@@ -43,7 +43,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         root = parse_sdf(WRAPPER_SDF)
         uris = [element.text for element in root.iter("uri")]
 
-        self.assertEqual(["x500", "model://lidar_2d_v2"], uris)
+        self.assertEqual(["x500", "model://lidar_3d_v1"], uris)
 
     def test_wrapper_contains_visibility_marker_link_and_joint(self) -> None:
         root = parse_sdf(WRAPPER_SDF)
@@ -93,7 +93,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         sensors = {
             element.attrib.get("type")
             for element in root.iter("sensor")
-            if element.attrib.get("name") == "lidar_2d_v2"
+            if element.attrib.get("name") == "lidar_3d_v1"
         }
 
         self.assertIn("gpu_lidar", sensors)
@@ -101,23 +101,6 @@ class DroneModelSdfContractTest(unittest.TestCase):
             any(name.startswith("yellow_") for name in visuals),
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
         )
-
-    def test_lidar_covers_every_omnidirectional_motion_direction(self) -> None:
-        root = parse_sdf(LIDAR_SDF)
-        sensor = next(
-            element
-            for element in root.iter("sensor")
-            if element.attrib.get("name") == "lidar_2d_v2"
-        )
-        horizontal = sensor.find("ray/scan/horizontal")
-        self.assertIsNotNone(horizontal)
-        samples = int(horizontal.findtext("samples", "0"))
-        min_angle = float(horizontal.findtext("min_angle", "nan"))
-        max_angle = float(horizontal.findtext("max_angle", "nan"))
-
-        self.assertEqual(720, samples)
-        self.assertAlmostEqual(2.0 * math.pi, max_angle - min_angle, places=5)
-        self.assertLessEqual((max_angle - min_angle) / (samples - 1), 0.01)
 
     def test_3d_lidar_is_organized_and_covers_vertical_passage_geometry(self) -> None:
         root = parse_sdf(LIDAR_3D_SDF)
@@ -157,7 +140,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         sensor = next(
             element
             for element in lidar_root.iter("sensor")
-            if element.attrib.get("name") == "lidar_2d_v2"
+            if element.attrib.get("name") == "lidar_3d_v1"
         )
         lidar_mask = int(sensor.findtext("ray/visibility_mask", ""))
 
@@ -171,29 +154,29 @@ class DroneModelSdfContractTest(unittest.TestCase):
         include = next(
             element
             for element in wrapper_root.iter("include")
-            if element.findtext("uri") == "model://lidar_2d_v2"
+            if element.findtext("uri") == "model://lidar_3d_v1"
         )
         sensor = next(
             element
             for element in lidar_root.iter("sensor")
-            if element.attrib.get("name") == "lidar_2d_v2"
+            if element.attrib.get("name") == "lidar_3d_v1"
         )
         include_pose = [float(value) for value in include.findtext("pose", "").split()]
         sensor_pose = [float(value) for value in sensor.findtext("pose", "").split()]
 
         self.assertEqual([0.12, 0.0, 0.26], include_pose[:3])
         self.assertEqual([0.0, 0.0, 0.055], sensor_pose[:3])
-        # The obstacle memory, the lidar debug node, the 2D memory and the
-        # lidar-inertial odometry all project the scan with the one mounting.
+        # The obstacle memory and the lidar-inertial odometry project the scan
+        # with the one mounting.
         config_text = NAV_CONFIG.read_text(encoding="utf-8")
         self.assertEqual(
-            4,
+            2,
             config_text.count(
                 "lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]"
             ),
         )
         self.assertEqual(
-            4,
+            2,
             config_text.count(
                 "lidar_extrinsic_quaternion_lidar_flu_to_body_frd: "
                 "[0.0, 1.0, 0.0, 0.0]"

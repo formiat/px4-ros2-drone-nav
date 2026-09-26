@@ -25,9 +25,7 @@ PROJECT_RUN_SCRIPTS = ("run_drone_nav_sim.sh", "run_environment_demo.sh")
 
 PROJECT_NODE_EXECUTABLES = {
     "collision_crash_node",
-    "lidar_debug_node",
     "mission_monitor_node",
-    "obstacle_memory_node",
     "production_mppi_node",
     "mppi_offboard_node",
 }

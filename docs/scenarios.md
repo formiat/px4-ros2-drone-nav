@@ -32,7 +32,7 @@ flight the stack would fly alone.
 | **Either flight with GNSS** | add `LOCALIZATION_PROFILE=gnss` | Nothing visible changes. GNSS only changes what the autopilot fuses as its position; it is the comparison baseline, and the records show it in the manifest and in the truth-at-goal figure. |
 | **Cooperative traffic, GUI** | `./scripts/sim_cooperative_traffic_urban_gui.sh` | Four drones in the urban world exchanging flight intents and choosing complementary maneuvers to keep 5 m apart; a spectator camera follows one and moves on if it is lost. Flies the `gnss` profile. **Not flight-verified since the interception missions were removed** (roadmap item 15 waits for it), and this workstation holds two lidar vehicles at real time, not four: expect the simulation to run below real time. |
 | **Cooperative traffic, headless** | `./scripts/sim_cooperative_traffic_urban_headless.sh` | The same with the cooperative referee's separation gates instead of windows. |
-| **A static-map flight** | `ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_urban_point_to_point_gui.sh` | The flight against a precomputed map instead of one built in flight; kept for comparison, not what the project is about. |
+| **A static-map flight** | `ENABLE_STATIC_MAP=true STATIC_OCCUPANCY_3D_PATH=<occupancy3d> ./scripts/sim_urban_point_to_point_gui.sh` | The flight against a precomputed 3D map instead of one built in flight; kept for comparison, not what the project is about. No environment has such a map yet (roadmap item 11), and the request refuses to start without one. |
 
 The sensor set and the position source are independent switches, so the
 four combinations of cameras or lidar with or without GNSS are all one

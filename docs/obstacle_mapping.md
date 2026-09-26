@@ -17,37 +17,11 @@ static_occupancy_3d_path: <environment occupancy3d>
 
 Both are empty by default because every current mission runs no-static. The
 sparse static world describes the same geometry as the Gazebo world and is used
-only in static mode. `production_mppi_node`, not `obstacle_memory_node`, owns
-this map. The current static path does not fuse 2D lidar memory into
-Occupancy3D. Derived regions, portals, and traversal edges are stored in the
-separate fingerprint-bound FreeSpaceTopology3D artifact.
-
-## Compatibility 2D Lidar Input
-
-`obstacle_memory_node` first resolves one strict full-6DoF acquisition pose for
-every `/scan` beam. Only then does it integrate accepted beams into scored
-memory and publish the resulting runtime state. An unresolved temporal binding
-rejects the complete scan before either hit integration or free-space carving.
-
-Important parameters:
-
-- `max_lidar_range_m`
-- `range_hit_epsilon_m`
-- calibrated sensor time offset and attitude compensation settings;
-- source timestamp receive-delay and future-skew limits;
-- latest-sensor safety scan age limit in the planner.
-
-The vehicle can accelerate in any horizontal body direction, so the shipped
-2D lidar covers the full 360-degree horizontal sector. It retains 720 samples;
-the wider sector therefore does not increase scan size or DDS traffic. This
-profile remains a single horizontal 2D lidar. Complete azimuth coverage is
-required so a backwards or sideways stopping path cannot fall into a sensor
-blind sector.
-
-Sensor evidence is never filtered against hand-authored route geometry. This
-planar node is retained for compatibility diagnostics; it is not a production
-strategic-planning source. Static planning reads raw Occupancy3D, and
-no-static production navigation requires the 3D profile.
+only in static mode. `production_mppi_node`, not `obstacle_memory_3d_node`,
+owns this map. Derived regions, portals, and traversal edges are stored in the
+separate fingerprint-bound FreeSpaceTopology3D artifact. No environment has a
+3D static map yet (roadmap item 11); a static-map request refuses to start
+without one.
 
 ## 3D Lidar Input
 
@@ -55,7 +29,11 @@ no-static production navigation requires the 3D profile.
 GPU lidar. The known beam geometry reconstructs both finite hits and maximum
 range misses. One timestamp-aligned full-6DoF acquisition pose transforms every
 accepted beam into map coordinates; an unresolved pose bracket rejects the
-complete scan instead of mixing times or frames. A scan whose bracket has not
+complete scan instead of mixing times or frames. The important parameters are
+`max_lidar_range_m`, `range_hit_epsilon_m`, the calibrated sensor time offsets
+and attitude compensation settings, the source-timestamp receive-delay and
+future-skew limits, and the latest-sensor safety scan age limit in the planner.
+Sensor evidence is never filtered against hand-authored route geometry. A scan whose bracket has not
 arrived yet waits for it, bounded by `lidar_scan_alignment_maximum_wait_s`, and
 keeps its place ahead of the scans that arrive meanwhile; those coalesce to the
 newest behind it. Letting each newer scan replace the waiting one starved the
@@ -137,8 +115,8 @@ over 35 percent of the lidar's observed volume (r487).
 
 ## Obstacle Memory
 
-`obstacle_memory_node` accumulates scan evidence into
-`/drone_city_nav/obstacle_memory_grid`.
+`obstacle_memory_3d_node` accumulates scan evidence into its sparse
+`Occupancy3D`.
 
 Memory uses hit/miss scoring:
 
@@ -161,36 +139,10 @@ Mapping activates after the vehicle first reaches `min_mapping_altitude_m` and
 remains latched for the airborne mission. Descending through a low passage does
 not freeze lidar snapshots.
 
-All first occupied transitions are additionally written to a bounded JSONL dump
-configured by `lidar_memory_hit_dump_enabled`, `lidar_memory_hit_dump_path`,
-and `lidar_memory_hit_dump_max_records`. The default runner supplies a distinct
-`log/lidar_memory_hits/<run-id>.jsonl` file. A row preserves the complete 3D
-ray, scan and callback timestamps, pose/attitude inputs, motion compensation,
-the ground range candidate and the decision that retained
-the hit. It is a post-run diagnostic artifact, not a planner input.
-
-Every active occupied memory cell also owns sparse 3D diagnostic provenance:
-the hit that first made the cell occupied, the latest accepted hit, the observed
-minimum/maximum endpoint Z, the accepted-hit count, the score transition that
-first crossed the occupied threshold, that threshold, and the number of
-independent scans supporting the trigger decision. This metadata never
-participates in risk scoring, persistent route search, MPPI, or trajectory control. It is
-published on `/drone_city_nav/obstacle_memory_provenance` and in the atomic
-`/drone_city_nav/obstacle_memory_snapshot` at the standalone debug cadence. The
-planner does not deserialize this provenance; it receives a lightweight status
-heartbeat and the raw runtime obstacle snapshot.
-
-For the 2D profile, `obstacle_memory_node` also derives
-`/drone_city_nav/raw_memory_obstacle_points_3d` directly from the same active
-provenance at the standalone debug cadence. The cloud contains exactly the
-finite XYZ from each cell's `occupancy_trigger`, not the cell center or
-`last_hit`, and applies only the established visualization Z compensation. It
-contains no inflation and no removed-cell history. The existing
-`/drone_city_nav/raw_memory_obstacle_points` remains a separate ground-plane
-view of active 2D cell centers. Neither visualization cloud is a planner input.
-In the 3D profile, `obstacle_memory_3d_node` publishes the same
-selected-spectator topic from occupied voxel centers and separately publishes
-the current scan on `/drone_city_nav/current_lidar_returns_3d`.
+`obstacle_memory_3d_node` publishes the selected-spectator accumulated cloud
+from occupied voxel centers and separately publishes the current scan on
+`/drone_city_nav/current_lidar_returns_3d`. Neither visualization cloud is a
+planner input.
 
 The planner replaces its current memory state only when stamp, frame, complete
 map metadata, raw row-major grid hash, occupied count, and every provenance
@@ -253,8 +205,7 @@ placed the returns correctly and tilted them by the attitude the vehicle had
 120 ms earlier, 4–7 degrees at the angular rates of a turn, which rocked the
 current cloud in RViz and smeared the persistent memory on every manoeuvre.
 Re-run the three measurements when the sensor model, its update rate, the
-estimator or the simulator changes. The 2D profile keeps its previous value
-for the position source because it has not been measured.
+estimator or the simulator changes.
 
 ## Motion Compensation
 
@@ -322,69 +273,6 @@ spectator target. Only the selected vehicle integrates and publishes this
 memory. No-static mode does not apply this gate because every vehicle requires
 its own persistent map for navigation.
 
-## Per-Beam Expected-Surface Rejection
-
-Obstacle memory creates one immutable `LidarBeamObservation` and one ingestion
-decision before changing its grid. The decision compares the measured range
-with the nearest configured expected surface along the map-frame ray. In the
-current production configuration, the flat ground plane is the only enabled
-expected-surface provider; no legacy passage/known-solid classifier is loaded.
-
-Expected ray intersections are bounded by the beam's effective sensor range.
-Ground rejection is range based, not endpoint-distance based and not a global
-vehicle-tilt cutoff. A fast level-flight attitude therefore does not disable
-lidar mapping. For a downward ray, the expected flat-ground range is computed
-from the ray origin, ray direction, and `ground_lidar_altitude_m`:
-
-```text
-expected_ground_range =
-    (ground_altitude - ray_origin.z) / ray_direction.z
-```
-
-The resulting policy is asymmetric:
-
-- a hit clearly before every nearest expected surface remains unknown-obstacle
-  evidence when its endpoint is spatially detached from known geometry;
-- a return consistent with the ground is suppressed;
-- a ground-facing return beyond the allowed farther tolerance is ambiguous and
-  is also suppressed fail-safe;
-- a ground-facing no-return beam whose finite sensor range reaches the ground
-  is suppressed without free-space clearing, but remains classified as
-  `ambiguous_ground` because no measured return confirms the ground surface;
-- expected or ambiguous ground beams perform neither endpoint-hit integration
-  nor 2D free-space clearing.
-
-The last rule is essential. A downward 3D ray passes through air before reaching
-the ground, but its XY projection does not prove that the same cells are free at
-the executable trajectory altitude.
-
-Before the 2D grid is updated, a confidence stage separates certain obstacles
-from uncertain candidates. Confident obstacles before the expected ground
-surface are integrated immediately with the normal memory hit weight. Low
-contradictory ground returns and unknown returns with uncertain timestamp
-alignment or range-limit geometry remain pending. A pending candidate performs
-no hit update and no free-space clearing.
-
-Candidates are keyed by hypothesis kind, associated surface, and 3D endpoint
-voxel. Multiple beams from one scan provide only one vote. Confirmation requires
-independent scans plus sufficient viewpoint translation or ray-direction change.
-Repeated surface-attached evidence is suppressed; a stable detached cluster is
-integrated as an obstacle. Unconfirmed candidates expire without leaving state
-in either grid. This keeps `hit_weight=4` and fast occupancy transitions for
-accepted obstacles while preventing one geometrically uncertain scan from
-creating a replan blocker.
-
-Provider failures are isolated. Disabling ground rejection is reported as
-`disabled`; invalid ground parameters or missing required 3D attitude geometry
-are reported as `unavailable`. The generic ingestion library can represent
-multiple expected-surface providers, but production does not configure a static
-passage provider.
-
-The projected-altitude filter remains a final non-mutating veto. Ground
-classification happens first for diagnostics, including beams whose endpoint
-is below `min_projected_lidar_altitude_m`, but an `altitude_rejected` beam still
-cannot mutate the grid.
-
 ## Raw Occupancy And Soft Risk
 
 Raw obstacles are direct evidence. The planner selects the mode-authoritative
@@ -405,8 +293,6 @@ which larger artifacts were emitted for that update. The planner consumes this
 message for memory revision diagnostics without receiving the grid or sparse
 provenance payload.
 
-The compatibility 2D transport can still publish `RawObstacleSnapshot` for
-diagnostic consumers, but it is not a production strategic-planning input.
 No-static production planning receives an adaptive `RawObstacleSnapshot3D` base and the latest
 cumulative `RawObstacleDelta3D` dirty chunks relative to that base. The direct
 current-scan safety message is published before persistent-memory integration.
@@ -437,17 +323,12 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_provenance`
 - `/drone_city_nav/obstacle_memory_snapshot`
 - `/drone_city_nav/obstacle_memory_status`
-- `/drone_city_nav/raw_obstacle_snapshot`
 - `/drone_city_nav/raw_obstacle_snapshot_3d`
 - `/drone_city_nav/raw_obstacle_delta_3d`
 - `/drone_city_nav/raw_obstacle_grid`
 - `/drone_city_nav/latest_sensor_obstacle_scan`
 - `/drone_city_nav/current_lidar_returns_3d`
-- `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
-- `/drone_city_nav/remembered_lidar_points`
-- `/drone_city_nav/raw_occupied_cells`
-- `/drone_city_nav/raw_memory_obstacle_points`
 - `/drone_city_nav/raw_memory_obstacle_points_3d`
 
 ## Common Problems
@@ -489,12 +370,6 @@ These are the two production planning sources, selected by mode:
 
 They are not merged in the current implementation. Each occupied distance
 field turns its selected raw source into risk tiers.
-
-The compatibility 2D provider does not add a production planning layer. Its
-obstacle memory remains a scored planar diagnostic grid. Accepted occupied cells
-carry sparse diagnostic 3D provenance from the observation that created and last
-confirmed the cell; rejected ground observations are kept only in bounded
-counters/log samples and never become obstacle-memory provenance.
 
 ## Risk And Distance Fields
 

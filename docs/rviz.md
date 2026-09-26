@@ -36,7 +36,6 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Selected MPPI Markers | `/drone_city_nav/mppi/markers` |
 | Vehicle Directions | `/drone_city_nav/vehicle_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
-| Lidar Hit Points | `/drone_city_nav/lidar_debug_points` |
 | Current 3D Lidar Returns | `/drone_city_nav/current_lidar_returns_3d` |
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |

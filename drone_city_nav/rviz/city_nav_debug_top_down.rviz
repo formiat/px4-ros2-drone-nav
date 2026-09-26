@@ -115,20 +115,6 @@ Visualization Manager:
         drone: true
       Topic:
         Value: /drone_city_nav/drone_marker
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Class: rviz_default_plugins/PointCloud2
-      Color: 255; 64; 64
-      Color Transformer: FlatColor
-      Decay Time: 2
-      Enabled: true
-      Name: Lidar Hit Points
-      Position Transformer: XYZ
-      Size (Pixels): 5
-      Size (m): 0.35
-      Style: Spheres
-      Topic:
-        Value: /drone_city_nav/lidar_debug_points
     - Alpha: 0.95
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

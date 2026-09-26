@@ -150,7 +150,6 @@ GUI output to `log/gz_gui_drone_nav.log`.
 Important runtime artifacts:
 
 - `log/mppi/` - production MPPI JSONL diagnostics;
-- `log/lidar_debug/` - lidar snapshots and projection diagnostics;
 - `log/lidar_memory_hits/` - accepted and classified lidar-memory hits;
 - `log/gazebo_scene_debug/` - bounded Gazebo scene diagnostics;
 - `build/` - colcon build tree;

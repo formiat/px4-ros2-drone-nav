@@ -40,7 +40,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
                 diagnostics.CommandResult(
                     0,
                     (
-                        'name: "x500_lidar_2d_0"\n'
+                        'name: "x500_lidar_3d_0"\n'
                         'name: "base_link_visual"\n'
                         'name: "yellow_ground_projection_disc"\n'
                     ),
@@ -51,7 +51,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
                     0,
                     (
                         "track_mode: FOLLOW\n"
-                        'follow_target { name: "x500_lidar_2d_0" }\n'
+                        'follow_target { name: "x500_lidar_3d_0" }\n'
                     ),
                     "",
                 ),
@@ -61,7 +61,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
             output_dir = Path(temp_dir)
             summary = diagnostics.capture_diagnostics(
                 world="urban_circuit_practice_01",
-                target="x500_lidar_2d_0",
+                target="x500_lidar_3d_0",
                 output_dir=output_dir,
                 topic_duration_s=0.2,
                 command_timeout_s=1.0,
@@ -101,7 +101,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             summary = diagnostics.capture_diagnostics(
                 world="urban_circuit_practice_01",
-                target="x500_lidar_2d_0",
+                target="x500_lidar_3d_0",
                 output_dir=Path(temp_dir),
                 topic_duration_s=0.2,
                 command_timeout_s=1.0,
@@ -116,12 +116,12 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
     def test_follow_capture_retries_until_target_is_seen(self) -> None:
         runner = FakeRunner(
             [
-                diagnostics.CommandResult(0, 'name: "x500_lidar_2d_0"\n', ""),
+                diagnostics.CommandResult(0, 'name: "x500_lidar_3d_0"\n', ""),
                 diagnostics.CommandResult(0, "", ""),
                 diagnostics.CommandResult(0, "follow_target {}\n", ""),
                 diagnostics.CommandResult(
                     0,
-                    'follow_target { name: "x500_lidar_2d_0" }\n',
+                    'follow_target { name: "x500_lidar_3d_0" }\n',
                     "",
                 ),
             ]
@@ -130,7 +130,7 @@ class GazeboSceneDiagnosticsTest(unittest.TestCase):
             with mock.patch.object(diagnostics.time, "sleep"):
                 summary = diagnostics.capture_diagnostics(
                     world="urban_circuit_practice_01",
-                    target="x500_lidar_2d_0",
+                    target="x500_lidar_3d_0",
                     output_dir=Path(temp_dir),
                     topic_duration_s=0.2,
                     command_timeout_s=1.0,

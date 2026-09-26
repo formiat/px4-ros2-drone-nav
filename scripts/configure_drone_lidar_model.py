@@ -8,10 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-PROFILE_SENSOR_MODELS = {
-    "2d": "lidar_2d_v2",
-    "3d": "lidar_3d_v1",
-}
+NAVIGATION_LIDAR_MODEL = "lidar_3d_v1"
 CAMERA_PROFILE_MODELS = {
     "stereo_tof": ("stereo_tof_v1", "stereo_tof_link"),
 }
@@ -20,14 +17,10 @@ CAMERA_PROFILE_MODELS = {
 def configure_model(
     model_directory: Path,
     model_name: str,
-    lidar_profile: str,
     camera_profile: str = "none",
     lidar_mounted: bool = True,
 ) -> str:
-    sensor_model = PROFILE_SENSOR_MODELS.get(lidar_profile)
-    if sensor_model is None:
-        raise ValueError(f"unsupported materialized lidar profile: {lidar_profile}")
-
+    sensor_model = NAVIGATION_LIDAR_MODEL
     model_sdf = model_directory / "model.sdf"
     model_config = model_directory / "model.config"
     sdf_tree = ET.parse(model_sdf)
@@ -40,8 +33,7 @@ def configure_model(
     sensor_includes = [
         include
         for include in model.findall("include")
-        if (include.findtext("uri") or "").removeprefix("model://")
-        in PROFILE_SENSOR_MODELS.values()
+        if (include.findtext("uri") or "").removeprefix("model://") == sensor_model
     ]
     if len(sensor_includes) != 1:
         raise RuntimeError(
@@ -83,7 +75,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model_directory", type=Path)
     parser.add_argument("--model-name", required=True)
-    parser.add_argument("--lidar-profile", choices=("2d", "3d"), required=True)
     parser.add_argument(
         "--camera-profile",
         choices=("none", *CAMERA_PROFILE_MODELS),
@@ -102,13 +93,12 @@ def main() -> int:
     sensor_model = configure_model(
         args.model_directory,
         args.model_name,
-        args.lidar_profile,
         args.camera_profile,
         not args.without_lidar,
     )
     print(
         "Drone lidar model configured: "
-        f"model={args.model_name} profile={args.lidar_profile} sensor={sensor_model} "
+        f"model={args.model_name} sensor={sensor_model} "
         f"camera_profile={args.camera_profile}"
     )
     return 0

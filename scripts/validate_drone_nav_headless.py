@@ -120,28 +120,22 @@ def validate_mapping_pipeline(
     enable_lidar_debug: bool,
     errors: list[str],
 ) -> None:
-    if lidar_profile == "3d":
-        scan_pattern = (
-            r"LIDAR3D_MEMORY accepted=true stamp_ns=[1-9][0-9]* .*"
-            r"hits=[1-9][0-9]* "
-            r"misses=[1-9][0-9]*"
-        )
-        update_pattern = (
-            r"ONLINE_OCCUPANCY3D_UPDATE .*revision=[1-9][0-9]* .*"
-            r"(?:snapshot=true|delta=true)"
-        )
-        memory_activity_pattern = (
-            r"LIDAR3D_(?:CURRENT_SCAN|MEMORY) accepted=true|"
-            r"ONLINE_OCCUPANCY3D_UPDATE"
-        )
-        scan_label = "3D obstacle memory receives timestamped hit/miss scans"
-        update_label = "revisioned Occupancy3D snapshots or deltas are published"
-    else:
-        scan_pattern = r"First lidar scan|Obstacle memory update:"
-        update_pattern = r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision="
-        memory_activity_pattern = scan_pattern
-        scan_label = "obstacle memory receives lidar"
-        update_label = "raw obstacle snapshots are published"
+    del lidar_profile  # the 3D lidar is the only profile
+    scan_pattern = (
+        r"LIDAR3D_MEMORY accepted=true stamp_ns=[1-9][0-9]* .*"
+        r"hits=[1-9][0-9]* "
+        r"misses=[1-9][0-9]*"
+    )
+    update_pattern = (
+        r"ONLINE_OCCUPANCY3D_UPDATE .*revision=[1-9][0-9]* .*"
+        r"(?:snapshot=true|delta=true)"
+    )
+    memory_activity_pattern = (
+        r"LIDAR3D_(?:CURRENT_SCAN|MEMORY) accepted=true|"
+        r"ONLINE_OCCUPANCY3D_UPDATE"
+    )
+    scan_label = "3D obstacle memory receives timestamped hit/miss scans"
+    update_label = "revisioned Occupancy3D snapshots or deltas are published"
 
     if expected_memory is not False:
         require(scan_label, ros_log, scan_pattern, errors)
@@ -153,26 +147,18 @@ def validate_mapping_pipeline(
 
     if not enable_lidar_debug:
         return
-    if lidar_profile == "3d":
-        require(
-            "current 3D lidar cloud is published",
-            ros_log,
-            r"LIDAR3D_CURRENT_SCAN accepted=true .*debug=true",
-            errors,
-        )
-        require(
-            "selected-spectator accumulated 3D memory cloud is published",
-            ros_log,
-            r"ONLINE_OCCUPANCY3D_UPDATE .*debug_cloud=true",
-            errors,
-        )
-    else:
-        require(
-            "lidar debug snapshots are written",
-            ros_log,
-            r"LIDAR_DEBUG snapshot=",
-            errors,
-        )
+    require(
+        "current 3D lidar cloud is published",
+        ros_log,
+        r"LIDAR3D_CURRENT_SCAN accepted=true .*debug=true",
+        errors,
+    )
+    require(
+        "selected-spectator accumulated 3D memory cloud is published",
+        ros_log,
+        r"ONLINE_OCCUPANCY3D_UPDATE .*debug_cloud=true",
+        errors,
+    )
 
 
 def validate_cooperative_traffic(
@@ -244,12 +230,10 @@ def validate_cooperative_traffic(
     else:
         print("OK: cooperative traffic has no vehicle destruction")
     if expected_memory is True:
+        del lidar_profile  # the 3D lidar is the only profile
         peer_filter_pattern = (
             r"COOPERATIVE_PEER_LIDAR_FILTER3D filtered_beams=[0-9]+ "
             r"known_peers=[1-9][0-9]* forgotten_voxels=[0-9]+"
-            if lidar_profile == "3d"
-            else r"COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=[0-9]+ "
-            r"matched_peers=[0-9]+ known_peers=[1-9][0-9]*"
         )
         require(
             "cooperative peer memory filtering is active",
@@ -332,7 +316,7 @@ def main() -> int:
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument(
-        "--lidar-profile", choices=("none", "3d"), default="3d"
+        "--lidar-profile", choices=("3d",), default="3d"
     )
     parser.add_argument(
         "--require-observed-3d-route-volume-crossing", action="store_true"
@@ -485,7 +469,7 @@ def main() -> int:
             print("OK: no static occupancy, ESDF, or topology is loaded")
 
     if args.require_observed_3d_route_volume_crossing:
-        if args.lidar_profile != "3d" or expected_static is not False:
+        if expected_static is not False:
             errors.append(
                 "FAIL: observed 3D route validation requires no-static 3D lidar"
             )

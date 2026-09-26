@@ -18,7 +18,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import configure_drone_lidar_model as lidar_model  # noqa: E402
 
 
-SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d"
+SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/x500_lidar_3d"
 
 
 class ConfigureDroneLidarModelTest(unittest.TestCase):
@@ -27,9 +27,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             destination = Path(temp_dir) / "x500_lidar_3d"
             shutil.copytree(SOURCE_MODEL, destination)
 
-            sensor_model = lidar_model.configure_model(
-                destination, "x500_lidar_3d", "3d"
-            )
+            sensor_model = lidar_model.configure_model(destination, "x500_lidar_3d")
 
             sdf_root = ET.parse(destination / "model.sdf").getroot()
             config_root = ET.parse(destination / "model.config").getroot()
@@ -46,9 +44,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             destination = Path(temp_dir) / "x500_lidar_3d"
             shutil.copytree(SOURCE_MODEL, destination)
 
-            lidar_model.configure_model(
-                destination, "x500_lidar_3d", "3d", "stereo_tof"
-            )
+            lidar_model.configure_model(destination, "x500_lidar_3d", "stereo_tof")
 
             model = ET.parse(destination / "model.sdf").getroot().find("model")
             self.assertIn(
@@ -64,7 +60,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             shutil.copytree(SOURCE_MODEL, destination)
 
             lidar_model.configure_model(
-                destination, "x500_lidar_3d", "3d", "stereo_tof", lidar_mounted=False
+                destination, "x500_lidar_3d", "stereo_tof", lidar_mounted=False
             )
 
             model = ET.parse(destination / "model.sdf").getroot().find("model")
@@ -91,14 +87,6 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             },
             sensors,
         )
-
-    def test_rejects_non_materialized_none_profile(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            destination = Path(temp_dir) / "x500_lidar_none"
-            shutil.copytree(SOURCE_MODEL, destination)
-
-            with self.assertRaisesRegex(ValueError, "unsupported"):
-                lidar_model.configure_model(destination, "x500_lidar_none", "none")
 
 
 if __name__ == "__main__":

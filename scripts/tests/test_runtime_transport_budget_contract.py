@@ -37,18 +37,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         self.assertIn("memory_status_sub_", header)
         self.assertNotIn("memory_snapshot_sub_", header)
 
-    def test_full_memory_snapshot_is_debug_cadence_only(self) -> None:
-        source = (PACKAGE / "src" / "obstacle_memory_transport.cpp").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("if (publish_debug)", source)
-        self.assertIn("makeObstacleMemorySnapshotMessage", source)
-        self.assertIn("raw_base_revision_ = sequence_", source)
-        self.assertIn("dirty_chunks_since_base_", source)
-        self.assertIn("makeRawObstacleDelta", source)
-        self.assertIn("status_pub_->publish(status)", source)
-
+    def test_planner_consumes_the_3d_delta_transport(self) -> None:
         planner = _read_planner_sources()
         self.assertIn("create_subscription<msg::RawObstacleDelta3D>", planner)
         self.assertNotIn("create_subscription<msg::RawObstacleDelta>", planner)

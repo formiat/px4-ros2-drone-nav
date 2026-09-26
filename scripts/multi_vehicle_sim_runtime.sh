@@ -166,7 +166,7 @@ check_headless_run() {
       "${observed_3d_route_volume_bounds_m}"
     )
     if ! bool_is_true "${multi_vehicle_mission}" &&
-      ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" == "3d" ]]; then
+      ! bool_is_true "${active_static_map}"; then
       validation_args+=(--require-persistent-3d-acceptance)
     fi
   fi

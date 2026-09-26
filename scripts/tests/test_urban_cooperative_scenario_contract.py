@@ -208,7 +208,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             "px4_to_map_m11",
             "gazebo_aligned_rviz_axes_swapped",
         ):
-            self.assertGreaterEqual(launch.count(f'"{parameter}"'), 4)
+            self.assertGreaterEqual(launch.count(f'"{parameter}"'), 3)
         self.assertIn('"tracking_error_tube_response_time_s"', launch)
 
 

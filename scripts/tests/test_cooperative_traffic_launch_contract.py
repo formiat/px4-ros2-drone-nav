@@ -109,7 +109,7 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
             PACKAGE / "src" / "cooperative_traffic_referee_node.cpp"
         ).read_text(encoding="utf-8")
         obstacle_memory = (
-            PACKAGE / "src" / "obstacle_memory_node.cpp"
+            PACKAGE / "src" / "obstacle_memory_3d_node.cpp"
         ).read_text(encoding="utf-8")
 
         self.assertNotIn("inputFresh(execution_horizon_receive_ns_", agent)

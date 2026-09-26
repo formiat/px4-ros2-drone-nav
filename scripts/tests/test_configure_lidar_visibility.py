@@ -19,8 +19,8 @@ import configure_lidar_visibility as visibility  # noqa: E402
 import gazebo_visibility as layers  # noqa: E402
 
 
-SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
-SOURCE_MODEL_3D = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+SOURCE_MODEL_3D = SOURCE_MODEL
 
 
 def read_sensor(path: Path) -> ET.Element:

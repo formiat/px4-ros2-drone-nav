@@ -246,20 +246,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertLess(truncate_index, cleanup_index)
         self.assertLess(cleanup_index, launch_redirect_index)
 
-    def test_lidar_debug_uses_per_run_directory_without_cleanup_race(self) -> None:
-        self.assertIn("run_id=", self.text)
-        self.assertIn(
-            'lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"',
-            self.text,
-        )
-        self.assertNotIn('rm -rf "${lidar_debug_dir}"', self.text)
-
-    def test_memory_hit_diagnostics_use_a_per_run_dump(self) -> None:
-        self.assertIn("LIDAR_MEMORY_HIT_DUMP_PATH", self.text)
-        self.assertIn("lidar_memory_hits/${run_id}.jsonl", self.text)
-        self.assertIn('lidar_memory_hit_dump_path:=', self.text)
-        self.assertIn("lidar_memory_hit_dump_path", self.launch_text)
-
     def test_rviz_follow_camera_defaults_on_and_can_be_disabled(self) -> None:
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA:-true", self.text)
         self.assertIn("city_nav_debug.rviz", self.text)
@@ -447,10 +433,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('enable_obstacle_memory:="${enable_obstacle_memory}"', self.text)
         self.assertIn('elif ! bool_is_true "${active_static_map}" ||', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
-        self.assertIn(
-            "No-static navigation requires LIDAR_PROFILE=3d",
-            self.text,
-        )
         self.assertIn("LIDAR_PROFILE", self.container_text)
         self.assertIn(
             'DeclareLaunchArgument("enable_obstacle_memory", default_value="true")',
@@ -516,12 +498,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('lidar_visibility_mode="static"', self.text)
         self.assertIn("configure_lidar_visibility.py", self.text)
         self.assertIn('--mode "${lidar_visibility_mode}"', self.text)
-        self.assertIn('[[ "${lidar_profile}" == "none" ]]', self.text)
+        self.assertNotIn('"none"', self.text.split("resolve_camera_profile")[0])
         self.assertIn(
             'models/${runtime_sensor_model_name}',
             self.text,
         )
-        self.assertIn('if [[ "${lidar_profile}" == "3d" ]]', self.text)
         self.assertIn('"${px4_build_dir}/bin/px4" -i 0', self.text)
         self.assertIn('PX4_SIM_MODEL="${px4_model_target}"', self.text)
         self.assertIn(

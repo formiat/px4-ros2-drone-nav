@@ -8,8 +8,6 @@ mkdir -p "$(dirname "${output_dir}")"
 
 ros2 bag record \
   --output "${output_dir}" \
-  /scan \
-  /drone_city_nav/lidar_debug_points \
   /drone_city_nav/remembered_lidar_points \
   /drone_city_nav/raw_memory_obstacle_points \
   /drone_city_nav/raw_memory_obstacle_points_3d \

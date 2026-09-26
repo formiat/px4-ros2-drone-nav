@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for mutually exclusive lidar profile model resolution."""
+"""Tests for the navigation lidar profile and model identity resolution."""
 
 from __future__ import annotations
 
@@ -21,38 +21,20 @@ class LidarProfileTest(unittest.TestCase):
     def test_default_profile_is_3d(self) -> None:
         self.assertEqual("3d", DEFAULT_LIDAR_PROFILE)
 
-    def test_supported_profiles_are_normalized(self) -> None:
+    def test_supported_profile_is_normalized(self) -> None:
         self.assertEqual("3d", validate_lidar_profile(" 3D "))
 
-    def test_none_preserves_lidar_free_static_model_identity(self) -> None:
-        identity = ("gz_x500_lidar_2d", "x500_lidar_2d_0")
+    def test_3d_profile_keeps_the_scenario_model_identity(self) -> None:
+        identity = ("gz_x500_lidar_3d", "x500_lidar_3d_0")
 
-        self.assertEqual(identity, resolve_model_identity(*identity, "none"))
+        self.assertEqual(identity, resolve_model_identity(*identity, "3d"))
 
-    def test_3d_profile_resolves_standard_and_role_specific_models(self) -> None:
-        self.assertEqual(
-            ("gz_x500_lidar_3d", "x500_lidar_3d_0"),
-            resolve_model_identity(
-                "gz_x500_lidar_2d", "x500_lidar_2d_0", "3d"
-            ),
-        )
-        self.assertEqual(
-            ("gz_x500_lidar_3d_civilian", "x500_lidar_3d_civilian_3"),
-            resolve_model_identity(
-                "gz_x500_lidar_2d_civilian",
-                "x500_lidar_2d_civilian_3",
-                "3d",
-            ),
-        )
-
-    def test_unknown_profile_and_incompatible_model_are_rejected(self) -> None:
-        for profile in ("2d", "dual"):
+    def test_other_profiles_are_rejected(self) -> None:
+        for profile in ("2d", "none", "dual"):
             with self.subTest(profile=profile), self.assertRaisesRegex(
                 ValueError, "lidar profile"
             ):
                 validate_lidar_profile(profile)
-        with self.assertRaisesRegex(ValueError, "compatible PX4 model"):
-            resolve_model_identity("gz_x500", "x500_0", "3d")
 
 
 if __name__ == "__main__":

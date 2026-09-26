@@ -17,17 +17,17 @@ no-static planning uses lidar only, which is what every current mission runs.
 
 ## Drone Model
 
-The launch scripts use a PX4-spawned `x500_lidar_2d_0` model with a 2D lidar.
-Gazebo publishes the lidar scan on a Gazebo topic, and the launch file starts a
-`ros_gz_bridge` parameter bridge that remaps it to `/scan`.
+The launch scripts use a PX4-spawned `x500_lidar_3d_0` model with the 3D
+lidar (or, on the camera profile, the stereo pair and the time-of-flight
+sensors in its place). Gazebo publishes the lidar cloud on a Gazebo topic, and
+the launch file starts a `ros_gz_bridge` parameter bridge that remaps it to
+`/lidar_3d/points`.
 
 The lidar topic configured in `city_nav.launch.py` is:
 
 ```text
-/world/<world name>/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan
+/world/<world name>/model/x500_lidar_3d_0/link/link/sensor/lidar_3d_v1/scan/points
 ```
-
-ROS nodes consume the bridged `/scan` topic.
 
 ## PX4 SITL
 
@@ -182,7 +182,7 @@ planning_grid_origin_y: -30.0
 ## GUI Camera
 
 The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
-`x500_lidar_2d_0`. Useful environment variables:
+`x500_lidar_3d_0`. Useful environment variables:
 
 - `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`
 - `ENABLE_RVIZ_FOLLOW_CAMERA=false`

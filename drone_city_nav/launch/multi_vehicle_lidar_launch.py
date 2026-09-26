@@ -2,22 +2,16 @@
 
 
 def make_lidar_topics(profile, world_name, model_name, vehicle_prefix):
-    sensor_name = "lidar_3d_v1" if profile == "3d" else "lidar_2d_v2"
+    del profile  # the 3D lidar is the only profile
     gazebo_topic = (
         f"/world/{world_name}/model/{model_name}/link/link/"
-        f"sensor/{sensor_name}/scan"
+        "sensor/lidar_3d_v1/scan/points"
     )
-    ros_topic = f"{vehicle_prefix}/scan"
+    ros_topic = f"{vehicle_prefix}/lidar_3d/points"
     bridge_contract = (
-        f"{gazebo_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
+        f"{gazebo_topic}@sensor_msgs/msg/PointCloud2"
+        "[gz.msgs.PointCloudPacked"
     )
-    if profile == "3d":
-        gazebo_topic += "/points"
-        ros_topic = f"{vehicle_prefix}/lidar_3d/points"
-        bridge_contract = (
-            f"{gazebo_topic}@sensor_msgs/msg/PointCloud2"
-            "[gz.msgs.PointCloudPacked"
-        )
     return gazebo_topic, ros_topic, bridge_contract
 
 
@@ -41,11 +35,8 @@ def make_memory_parameters(
     latest_sensor_obstacle_scan_topic,
     enable_lidar_debug,
 ):
-    selected_memory_vehicle = (
-        role
-        if obstacle_memory_enabled and (use_static_map or profile == "3d")
-        else ""
-    )
+    del profile  # the 3D lidar is the only profile
+    selected_memory_vehicle = role if obstacle_memory_enabled else ""
     overrides = {
         "persistent_memory_enabled": obstacle_memory_enabled,
         "persistent_memory_diagnostics_enabled": enable_lidar_debug,
@@ -76,35 +67,19 @@ def make_memory_parameters(
             "/cooperative_traffic/flight_intents"
         ),
     }
-    node_name = "obstacle_memory_node"
-    if profile == "3d":
-        node_name = "obstacle_memory_3d_node"
-        overrides.update(
-            {
-                "lidar_3d_topic": scan_topic,
-                "current_lidar_3d_pointcloud_topic": (
-                    f"{prefix}/current_lidar_points_3d"
-                ),
-                "raw_obstacle_snapshot_3d_topic": (
-                    f"{prefix}/raw_obstacle_snapshot_3d"
-                ),
-                "raw_obstacle_delta_3d_topic": f"{prefix}/raw_obstacle_delta_3d",
-            }
-        )
-    else:
-        overrides.update(
-            {
-                "lidar_topic": scan_topic,
-                "obstacle_memory_grid_topic": f"{prefix}/obstacle_memory_grid",
-                "obstacle_memory_provenance_topic": f"{prefix}/memory_provenance",
-                "obstacle_memory_snapshot_topic": memory_snapshot_topic,
-                "raw_obstacle_snapshot_topic": raw_snapshot_topic,
-                "raw_obstacle_delta_topic": raw_delta_topic,
-                "lidar_memory_hit_dump_path": (
-                    f"log/{mission_kind}/{role}/lidar_hits.jsonl"
-                ),
-            }
-        )
+    node_name = "obstacle_memory_3d_node"
+    overrides.update(
+        {
+            "lidar_3d_topic": scan_topic,
+            "current_lidar_3d_pointcloud_topic": (
+                f"{prefix}/current_lidar_points_3d"
+            ),
+            "raw_obstacle_snapshot_3d_topic": (
+                f"{prefix}/raw_obstacle_snapshot_3d"
+            ),
+            "raw_obstacle_delta_3d_topic": f"{prefix}/raw_obstacle_delta_3d",
+        }
+    )
     parameters = dict(document[node_name]["ros__parameters"])
     parameters.update(overrides)
     return node_name, parameters

@@ -6,7 +6,6 @@ execution-horizon publication.
 ## Main Artifacts
 
 - `log/mppi/`: MPPI JSONL summaries.
-- `log/lidar_debug/`: synchronized lidar/grid/path snapshots.
 - `log/lidar_memory_hits/`: accepted and classified memory-hit records.
 - `log/gz_drone_nav.log`: Gazebo server and orchestration log.
 - `log/gz_gui_drone_nav.log`: Gazebo GUI log.

@@ -10,15 +10,15 @@ Node constructors declare and validate the same parameters. This document
 describes ownership and tuning order instead of duplicating every numeric
 default.
 
-## `obstacle_memory_node`
+## `obstacle_memory_3d_node`
 
 World inputs:
 
 - `grid_*`, `initial_*`, `px4_local_origin_*`;
 - `risk_critical_distance_m`, `risk_preferred_distance_m`.
 
-`use_static_map` is still declared on this node for launch compatibility, but
-it does not load or merge static geometry. Static Occupancy3D belongs to
+`use_static_map` is declared on this node for launch compatibility, but it
+does not load or merge static geometry. Static Occupancy3D belongs to
 `production_mppi_node` and `world_visualization_node`.
 
 Lidar projection:
@@ -33,14 +33,12 @@ Lidar projection:
 Memory:
 
 - hit/miss weights and score thresholds;
-- scan stride;
-- debug/snapshot publication periods;
-- provenance transport limits.
+- snapshot/delta cadence and transport limits.
 
-`obstacle_memory_3d_node` owns the 3D-profile equivalents: organized beam
-geometry, full-6DoF acquisition-pose alignment, sparse Occupancy3D bounds and
-chunk size, hit/miss integration, snapshot/delta cadence, self-return filtering,
-and selected-spectator current/accumulated point clouds.
+The node owns the organized beam geometry, full-6DoF acquisition-pose
+alignment, sparse Occupancy3D bounds and chunk size, hit/miss integration,
+snapshot/delta cadence, self-return filtering, and selected-spectator
+current/accumulated point clouds.
 
 Beam-adjacent surface reconstruction (`lidar_surface_interpolation_enabled`,
 `lidar_surface_interpolation_maximum_incidence_deg`,
@@ -334,15 +332,14 @@ static point cloud. It does not change Occupancy3D or ESDF3D resolution.
 after exit constrained-route lifecycle diagnostics report approach/departure.
 It is observational and does not alter planning or speed policy.
 `mission_monitor_node` owns mission success and crash metrics.
-`lidar_debug_node` owns snapshot cadence, projection diagnostics, and point
-cloud topics.
 
 ## Environment Overrides
 
 Simulation scripts translate environment variables such as
-`ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|3d`, `ENABLE_RVIZ`, and camera toggles
-into launch arguments or temporary parameter overrides. No-static mode requires
-the 3D profile and rejects `none`. All simulation entry points default to 3D.
+`ENABLE_STATIC_MAP`, `ENABLE_RVIZ`, and camera toggles into launch arguments
+or temporary parameter overrides. The 3D lidar is the one lidar profile
+(`LIDAR_PROFILE=3d`); a static-map flight needs `STATIC_OCCUPANCY_3D_PATH`
+and refuses to start without it.
 `CAMERA_PROFILE=none|stereo_tof` and `NAVIGATION_SENSOR_PROFILE=lidar|stereo_tof`
 select the sensor set and what navigates on it; both default to `stereo_tof`
 everywhere (`launch/sensor_profile.py` holds the defaults, what the set

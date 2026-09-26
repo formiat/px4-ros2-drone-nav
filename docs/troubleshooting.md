@@ -106,7 +106,7 @@ Verify reliable/transient-local QoS for durable world markers.
 
 Verify:
 
-- the spawned entity is `x500_lidar_2d_0`;
+- the spawned entity is `x500_lidar_3d_0`;
 - `ENABLE_GZ_GUI_FOLLOW_CAMERA` is true;
 - CameraTracking diagnostics show a non-empty entity id;
 - stale Gazebo processes were stopped before launch.

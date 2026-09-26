@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sdf version="1.9">
-  <model name="x500_lidar_2d">
+  <model name="x500_lidar_3d">
     <include merge="true">
       <uri>x500</uri>
     </include>
     <include merge="true">
-      <uri>model://lidar_2d_v2</uri>
+      <uri>model://lidar_3d_v1</uri>
       <pose>0.12 0 0.26 0 0 0</pose>
     </include>
     <joint name="LidarJoint" type="fixed">

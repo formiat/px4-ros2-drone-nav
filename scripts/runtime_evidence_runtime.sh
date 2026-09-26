@@ -66,7 +66,7 @@ start_runtime_evidence_capture() {
     --world "${world_name}" \
     > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
   if bool_is_true "${multi_vehicle_mission}" ||
-    bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]] ||
+    bool_is_true "${active_static_map}" ||
     [[ -z "${raw_snapshot_bounds_m}" ]]; then
     return
   fi

@@ -235,7 +235,6 @@ add_drone_city_nav_layer(
   drone_city_nav_world
   src/ambiguous_lidar_hit_tracker.cpp
   src/collision_voxelizer.cpp
-  src/debug_image.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
   src/esdf_query.cpp
@@ -246,8 +245,6 @@ add_drone_city_nav_layer(
   src/latest_sensor_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_beam_observation.cpp
-  src/lidar_debug_renderer.cpp
-  src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_ingestion_confidence.cpp
   src/lidar_ingestion_decision.cpp
   src/lidar_memory_hit_diagnostics.cpp
@@ -255,8 +252,6 @@ add_drone_city_nav_layer(
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
-  src/lidar_snapshot_writer.cpp
-  src/local_esdf_2d.cpp
   src/mapping_lifecycle.cpp
   src/obstacle_memory.cpp
   src/obstacle_memory_3d.cpp
@@ -472,7 +467,6 @@ set(DRONE_CITY_NAV_ROUTE_CONTRACTS_HEADERS
 set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/ambiguous_lidar_hit_tracker.hpp
     include/drone_city_nav/collision_voxelizer.hpp
-    include/drone_city_nav/debug_image.hpp
     include/drone_city_nav/distance_field.hpp
     include/drone_city_nav/distance_field_3d.hpp
     include/drone_city_nav/esdf_grid_3d.hpp
@@ -484,8 +478,6 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/latest_sensor_obstacle_scan.hpp
     include/drone_city_nav/lidar_acquisition_pose.hpp
     include/drone_city_nav/lidar_beam_observation.hpp
-    include/drone_city_nav/lidar_debug_renderer.hpp
-    include/drone_city_nav/lidar_debug_snapshot_pipeline.hpp
     include/drone_city_nav/lidar_ingestion_decision.hpp
     include/drone_city_nav/lidar_memory_hit_diagnostics.hpp
     include/drone_city_nav/lidar_motion_compensation.hpp
@@ -493,8 +485,6 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/lidar_projection.hpp
     include/drone_city_nav/lidar_scan_3d.hpp
     include/drone_city_nav/lidar_self_filter.hpp
-    include/drone_city_nav/lidar_snapshot_writer.hpp
-    include/drone_city_nav/local_esdf_2d.hpp
     include/drone_city_nav/map_to_sdf_transform.hpp
     include/drone_city_nav/mapping_lifecycle.hpp
     include/drone_city_nav/observed_esdf_3d.hpp
@@ -612,11 +602,9 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/multi_vehicle_diagnostics_mux_node.hpp
     include/drone_city_nav/multi_vehicle_spectator_node.hpp
     include/drone_city_nav/latest_sensor_obstacle_scan_ros.hpp
-    include/drone_city_nav/lidar_debug_node_config.hpp
     include/drone_city_nav/lidar_debug_pointclouds.hpp
     include/drone_city_nav/local_hold_pin.hpp
     include/drone_city_nav/mppi_debug_markers.hpp
-    include/drone_city_nav/obstacle_memory_provenance_ros.hpp
     include/drone_city_nav/autopilot_state_source.hpp
     include/drone_city_nav/px4_autopilot_adapter.hpp
     include/drone_city_nav/px4_offboard_setpoint_io.hpp
@@ -871,9 +859,6 @@ add_library(
   src/cooperative_traffic_ros.cpp
   src/execution_horizon_contract_ros.cpp
   src/latest_sensor_obstacle_scan_ros.cpp
-  src/lidar_debug_node_config.cpp
-  src/memory_provenance_audit_tracker.cpp
-  src/obstacle_memory_provenance_ros.cpp
   src/px4_autopilot_adapter.cpp
   src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
@@ -898,22 +883,6 @@ ament_target_dependencies(
   std_msgs
   visualization_msgs)
 enable_project_warnings(drone_city_nav_ros_adapters)
-
-add_executable(obstacle_memory_node src/obstacle_memory_node.cpp
-                                    src/obstacle_memory_node_helpers.cpp
-                                    src/obstacle_memory_transport.cpp
-                                    src/obstacle_memory_transport_3d.cpp
-                                    src/raw_world_snapshot.cpp)
-target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
-target_link_libraries(obstacle_memory_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
-ament_target_dependencies(
-  obstacle_memory_node
-  ament_index_cpp
-  nav_msgs
-  rclcpp
-  sensor_msgs)
-enable_project_warnings(obstacle_memory_node)
 
 add_executable(obstacle_memory_3d_node src/obstacle_memory_3d_node.cpp
                                        src/obstacle_memory_3d_worker.cpp
@@ -1062,12 +1031,7 @@ add_library(
   drone_city_nav_diagnostics_components SHARED
   src/world_visualization_node.cpp
   src/multi_vehicle_spectator_node.cpp
-  src/multi_vehicle_diagnostics_mux_node.cpp
-  src/lidar_debug_component.cpp
-  src/lidar_debug_node_callbacks.cpp
-  src/lidar_debug_node_lifecycle.cpp
-  src/lidar_debug_node_points.cpp
-  src/lidar_debug_node_snapshot.cpp)
+  src/multi_vehicle_diagnostics_mux_node.cpp)
 target_compile_features(drone_city_nav_diagnostics_components PRIVATE cxx_std_20)
 target_link_libraries(
   drone_city_nav_diagnostics_components
@@ -1089,8 +1053,7 @@ rclcpp_components_register_nodes(
   drone_city_nav_diagnostics_components
   "drone_city_nav::WorldVisualizationNode"
   "drone_city_nav::MultiVehicleSpectatorNode"
-  "drone_city_nav::MultiVehicleDiagnosticsMuxNode"
-  "drone_city_nav::LidarDebugNode")
+  "drone_city_nav::MultiVehicleDiagnosticsMuxNode")
 enable_project_warnings(drone_city_nav_diagnostics_components)
 
 add_executable(world_visualization_node src/world_visualization_main.cpp)
@@ -1115,11 +1078,6 @@ target_link_libraries(multi_vehicle_diagnostics_mux_node
 ament_target_dependencies(multi_vehicle_diagnostics_mux_node rclcpp)
 enable_project_warnings(multi_vehicle_diagnostics_mux_node)
 
-add_executable(lidar_debug_node src/lidar_debug_node.cpp)
-target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
-target_link_libraries(lidar_debug_node drone_city_nav_diagnostics_components)
-ament_target_dependencies(lidar_debug_node rclcpp)
-enable_project_warnings(lidar_debug_node)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
@@ -1222,8 +1180,6 @@ install(
     drone_city_nav_ros_adapters
     drone_contact_system
     collision_crash_node
-    lidar_debug_node
-    obstacle_memory_node
     obstacle_memory_3d_node
     mppi_offboard_node
     world_visualization_node
@@ -1369,27 +1325,14 @@ if(BUILD_TESTING)
 
   add_drone_city_nav_core_gtest(ambiguous_lidar_hit_tracker_test
                                 tests/ambiguous_lidar_hit_tracker_test.cpp)
-  add_drone_city_nav_core_gtest(debug_image_test tests/debug_image_test.cpp)
-  add_drone_city_nav_ros_adapter_gtest(
-    lidar_debug_node_config_test tests/lidar_debug_node_config_test.cpp)
   add_drone_city_nav_ros_adapter_gtest(
     lidar_debug_pointclouds_test tests/lidar_debug_pointclouds_test.cpp)
-  add_drone_city_nav_core_gtest(lidar_debug_renderer_test
-                                tests/lidar_debug_renderer_test.cpp)
-  add_drone_city_nav_core_gtest(
-    lidar_debug_snapshot_pipeline_test
-    tests/lidar_debug_snapshot_pipeline_test.cpp)
   add_drone_city_nav_core_gtest(lidar_ingestion_decision_test
                                 tests/lidar_ingestion_decision_test.cpp)
   add_drone_city_nav_core_gtest(lidar_memory_hit_diagnostics_test
                                 tests/lidar_memory_hit_diagnostics_test.cpp)
   add_drone_city_nav_core_gtest(lidar_motion_compensation_test
                                 tests/lidar_motion_compensation_test.cpp)
-  add_drone_city_nav_core_gtest(lidar_snapshot_writer_test
-                                tests/lidar_snapshot_writer_test.cpp)
-  add_drone_city_nav_ros_adapter_gtest(
-    obstacle_memory_provenance_ros_test
-    tests/obstacle_memory_provenance_ros_test.cpp)
 
   add_drone_city_nav_private_runtime_gtest(
     production_mppi_route_world_test
@@ -1478,10 +1421,6 @@ if(BUILD_TESTING)
   target_link_libraries(esdf_query_test drone_city_nav_core)
   enable_project_warnings(esdf_query_test)
 
-  ament_add_gtest(local_esdf_2d_test tests/local_esdf_2d_test.cpp)
-  target_compile_features(local_esdf_2d_test PRIVATE cxx_std_20)
-  target_link_libraries(local_esdf_2d_test drone_city_nav_core)
-  enable_project_warnings(local_esdf_2d_test)
 
   ament_add_gtest(raw_obstacle_delta_test tests/raw_obstacle_delta_test.cpp)
   target_compile_features(raw_obstacle_delta_test PRIVATE cxx_std_20)
@@ -2222,12 +2161,6 @@ if(BUILD_TESTING)
                         drone_city_nav_ros_adapters)
   enable_project_warnings(mppi_debug_markers_test_current)
 
-  ament_add_gtest(lidar_debug_heading_gate_test
-                  tests/lidar_debug_heading_gate_test.cpp)
-  target_compile_features(lidar_debug_heading_gate_test PRIVATE cxx_std_20)
-  target_include_directories(lidar_debug_heading_gate_test PRIVATE include)
-  target_link_libraries(lidar_debug_heading_gate_test drone_city_nav_core)
-  enable_project_warnings(lidar_debug_heading_gate_test)
 
   ament_add_gtest(lidar_projection_test_current tests/lidar_projection_test.cpp)
   target_compile_features(lidar_projection_test_current PRIVATE cxx_std_20)

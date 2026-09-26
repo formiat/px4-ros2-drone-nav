@@ -4,17 +4,6 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 
 
-def make_lidar_debug_component(role, debug_params):
-    return ComposableNode(
-        package="drone_city_nav",
-        plugin="drone_city_nav::LidarDebugNode",
-        namespace=f"vehicles/{role}",
-        name="lidar_debug_node",
-        parameters=[debug_params, {"use_sim_time": True}],
-        extra_arguments=[{"use_intra_process_comms": True}],
-    )
-
-
 def make_world_visualization_component(world_params):
     return ComposableNode(
         package="drone_city_nav",

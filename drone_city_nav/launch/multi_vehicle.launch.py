@@ -46,7 +46,6 @@ _gazebo_aligned_map_transform_arguments = _PX4_MAP_FRAME_SUPPORT[
 _load_multi_vehicle_scenario = _SCENARIO_SUPPORT["load_multi_vehicle_scenario"]
 _make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
 _make_diagnostics_container = _DIAGNOSTICS_SUPPORT["make_diagnostics_container"]
-_make_lidar_debug_component = _DIAGNOSTICS_SUPPORT["make_lidar_debug_component"]
 _make_selected_diagnostics_components = _DIAGNOSTICS_SUPPORT[
     "make_selected_diagnostics_components"
 ]
@@ -184,18 +183,13 @@ def generate_multi_vehicle_launch_description():
         lidar_debug_enabled = _optional_bool(
             enable_lidar_debug.perform(context), False
         )
-        lidar_enabled = profile != "none"
         obstacle_memory_enabled = _optional_bool(
             enable_obstacle_memory.perform(context), True
         )
         if not use_static_map and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
-        if not use_static_map and profile != "3d":
-            raise RuntimeError("No-static navigation requires the 3D lidar profile")
         if lidar_debug_enabled and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
-        if lidar_debug_enabled and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires the 3D lidar profile")
         static_path_override = LaunchConfiguration(
             "static_occupancy_3d_path"
         ).perform(context)
@@ -570,56 +564,6 @@ def generate_multi_vehicle_launch_description():
                     ),
                 ]
             )
-            debug_params = _parameters(
-                document,
-                "lidar_debug_node",
-                {
-                    "lidar_topic": scan_topic,
-                    "px4_local_position_topic": f"{px4}/out/vehicle_local_position_v1",
-                    "px4_vehicle_attitude_topic": f"{px4}/out/vehicle_attitude",
-                    "px4_timesync_status_topic": f"{px4}/out/timesync_status",
-                    "px4_local_origin_x_m": config["map_start_x"],
-                    "px4_local_origin_y_m": config["map_start_y"],
-                    "px4_local_origin_z_m": config["map_start_z"],
-                    "px4_to_map_m00": px4_to_map_matrix[0],
-                    "px4_to_map_m01": px4_to_map_matrix[1],
-                    "px4_to_map_m10": px4_to_map_matrix[2],
-                    "px4_to_map_m11": px4_to_map_matrix[3],
-                    "gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped,
-                    "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
-                    "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
-                    "path_topic": path_topic,
-                    "pointcloud_topic": f"{prefix}/lidar_debug_points",
-                    "raw_lidar_3d_pointcloud_topic": (
-                        f"{prefix}/raw_lidar_hit_points_3d"
-                    ),
-                    "remembered_pointcloud_topic": (
-                        f"{prefix}/remembered_lidar_points"
-                    ),
-                    "occupied_pointcloud_topic": f"{prefix}/raw_occupied_cells",
-                    "raw_memory_pointcloud_topic": (
-                        f"{prefix}/raw_memory_obstacle_points"
-                    ),
-                    "output_dir": f"log/{mission_kind}/{role}/lidar_debug",
-                    "max_snapshots": (
-                        1
-                        if use_static_map
-                        else document["lidar_debug_node"]["ros__parameters"][
-                            "max_snapshots"
-                        ]
-                    ),
-                    "spectator_vehicle_id": role,
-                    "spectator_target_topic": (
-                        "/drone_city_nav/spectator_target"
-                    ),
-                },
-            )
-            if lidar_debug_enabled:
-                if profile == "2d":
-                    diagnostics_components.append(
-                        _make_lidar_debug_component(role, debug_params)
-                    )
-
         nodes.append(
             ComposableNodeContainer(
                 package="rclcpp_components",

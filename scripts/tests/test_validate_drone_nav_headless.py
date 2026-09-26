@@ -159,14 +159,6 @@ class MappingPipelineValidationTest(unittest.TestCase):
             errors,
         )
 
-    def test_2d_pipeline_preserves_legacy_contract(self) -> None:
-        log = "First lidar scan\nRaw obstacle snapshot revision=3\n"
-        errors: list[str] = []
-
-        VALIDATOR.validate_mapping_pipeline(log, "2d", True, False, errors)
-
-        self.assertEqual(errors, [])
-
     def test_observed_route_volume_requires_generic_route_and_physical_crossing(
         self,
     ) -> None:
@@ -352,7 +344,7 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
         )
         errors: list[str] = []
 
-        VALIDATOR.validate_cooperative_traffic(log, 4, False, errors, "2d")
+        VALIDATOR.validate_cooperative_traffic(log, 4, False, errors, "3d")
 
         self.assertEqual(errors, [])
 
@@ -363,41 +355,9 @@ class CooperativeTrafficValidationTest(unittest.TestCase):
             4,
             False,
             errors,
-            "2d",
+            "3d",
         )
         self.assertIn("FAIL: cooperative traffic contains a physical loss", errors)
-
-    def test_no_static_accepts_active_peer_filter_without_incidental_lidar_hit(
-        self,
-    ) -> None:
-        errors: list[str] = []
-        VALIDATOR.validate_cooperative_traffic(
-            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
-            "known_peers=3",
-            4,
-            True,
-            errors,
-            "2d",
-        )
-        self.assertNotIn(
-            "FAIL: cooperative peer memory filtering is active",
-            errors,
-        )
-
-    def test_no_static_requires_peer_filter_wiring(self) -> None:
-        errors: list[str] = []
-        VALIDATOR.validate_cooperative_traffic(
-            "COOPERATIVE_PEER_LIDAR_FILTER filtered_beams=0 matched_peers=0 "
-            "known_peers=0",
-            4,
-            True,
-            errors,
-            "2d",
-        )
-        self.assertIn(
-            "FAIL: cooperative peer memory filtering is active",
-            errors,
-        )
 
     def test_no_static_3d_accepts_active_peer_filter_without_incidental_hit(
         self,

@@ -61,12 +61,12 @@ class GazeboProcessCleanupTest(unittest.TestCase):
                     ),
                     (
                         "102 101 100 /workspace/install/drone_city_nav/lib/"
-                        "drone_city_nav/lidar_debug_node --ros-args"
+                        "drone_city_nav/obstacle_memory_3d_node --ros-args"
                     ),
                     "103 100 100 MicroXRCEAgent udp4 -p 8888",
                     (
                         "104 100 100 make -C /workspace/external/PX4-Autopilot "
-                        "px4_sitl gz_x500_lidar_2d"
+                        "px4_sitl gz_x500_lidar_3d"
                     ),
                     (
                         "105 104 100 /workspace/external/PX4-Autopilot/build/"

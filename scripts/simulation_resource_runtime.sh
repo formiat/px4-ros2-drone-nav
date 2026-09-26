@@ -16,30 +16,20 @@ prepare_runtime_resources() {
   for px4_model in "${px4_models_dir}"/*; do
     [[ -d "${px4_model}" ]] || continue
     model_name="$(basename "${px4_model}")"
-    if [[ "${model_name}" == "x500_lidar_2d" ||
-      "${model_name}" == "lidar_2d_v2" ||
+    if [[ "${model_name}" == "x500_lidar_3d" ||
       "${model_name}" == "lidar_3d_v1" ]]; then
       continue
     fi
     ln -s "${px4_model}" "${runtime_models_dir}/${model_name}"
   done
 
-  # The lidar-free static profile keeps the base PX4 model identity but disables
-  # its sensor. No production navigation consumes the materialized 2D sensor.
-  local runtime_drone_model_name="x500_lidar_2d"
-  local runtime_sensor_model_name="lidar_2d_v2"
-  local materialized_lidar_profile="2d"
-  if [[ "${lidar_profile}" == "3d" ]]; then
-    runtime_drone_model_name="x500_lidar_3d"
-    runtime_sensor_model_name="lidar_3d_v1"
-    materialized_lidar_profile="3d"
-  fi
-  cp -a "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
+  local runtime_drone_model_name="x500_lidar_3d"
+  local runtime_sensor_model_name="lidar_3d_v1"
+  cp -a "${repo_root}/drone_city_nav/models/x500_lidar_3d" \
     "${runtime_models_dir}/${runtime_drone_model_name}"
   python3 "${repo_root}/scripts/configure_drone_lidar_model.py" \
     "${runtime_models_dir}/${runtime_drone_model_name}" \
     --model-name "${runtime_drone_model_name}" \
-    --lidar-profile "${materialized_lidar_profile}" \
     --camera-profile "${camera_profile}" \
     $([[ "${navigation_sensor_profile}" == "stereo_tof" ]] && printf '%s' '--without-lidar')
   cp -a "${repo_root}/drone_city_nav/models/${runtime_sensor_model_name}" \
@@ -56,5 +46,5 @@ prepare_runtime_resources() {
   python3 "${repo_root}/scripts/configure_lidar_visibility.py" \
     "${runtime_models_dir}/${runtime_sensor_model_name}/model.sdf" \
     --mode "${lidar_visibility_mode}" \
-    --enabled "$([[ "${lidar_profile}" == "none" ]] && printf 'false' || printf 'true')"
+    --enabled true
 }

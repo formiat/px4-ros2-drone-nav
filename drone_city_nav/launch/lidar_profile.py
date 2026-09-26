@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Resolve mutually exclusive navigation lidar profiles and model identities."""
+"""Resolve the navigation lidar profile and the vehicle model identities."""
 
 from __future__ import annotations
 
 from typing import Any
 
 
-LIDAR_PROFILES = ("none", "3d")
+LIDAR_PROFILES = ("3d",)
 DEFAULT_LIDAR_PROFILE = "3d"
-_MODEL_2D_TOKEN = "x500_lidar_2d"
-_MODEL_3D_TOKEN = "x500_lidar_3d"
 
 
 def validate_lidar_profile(value: str) -> str:
@@ -24,22 +22,9 @@ def validate_lidar_profile(value: str) -> str:
 def resolve_model_identity(
     px4_model_target: str, gazebo_model_name: str, lidar_profile: str
 ) -> tuple[str, str]:
-    """Return the profile-specific model target and exact Gazebo entity name."""
-    profile = validate_lidar_profile(lidar_profile)
-    if profile != "3d":
-        return px4_model_target, gazebo_model_name
-    if _MODEL_2D_TOKEN not in px4_model_target:
-        raise ValueError(
-            "3D lidar profile requires an x500_lidar_2d-compatible PX4 model target"
-        )
-    if _MODEL_2D_TOKEN not in gazebo_model_name:
-        raise ValueError(
-            "3D lidar profile requires an x500_lidar_2d-compatible Gazebo model name"
-        )
-    return (
-        px4_model_target.replace(_MODEL_2D_TOKEN, _MODEL_3D_TOKEN, 1),
-        gazebo_model_name.replace(_MODEL_2D_TOKEN, _MODEL_3D_TOKEN, 1),
-    )
+    """Return the PX4 model target and exact Gazebo entity name of a vehicle."""
+    validate_lidar_profile(lidar_profile)
+    return px4_model_target, gazebo_model_name
 
 
 def apply_profile_to_vehicle(

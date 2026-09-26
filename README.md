@@ -276,13 +276,10 @@ The first three IDs use versioned release artifacts. The remaining IDs are
 local evaluation candidates and report a clear error if their cached source
 assets are absent.
 
-`LIDAR_PROFILE=none|3d` selects the production perception profile. Every
-simulation entry point defaults to the 3D lidar. A static-map run may disable
-lidar entirely:
-
-```bash
-ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_urban_point_to_point_gui.sh
-```
+The 3D lidar is the one lidar profile (`LIDAR_PROFILE=3d`). A static-map
+flight (`ENABLE_STATIC_MAP=true`) needs a 3D static occupancy of its
+environment (`STATIC_OCCUPANCY_3D_PATH`); none exists yet, so the request
+refuses to start until roadmap item 11 delivers one.
 
 Since roadmap item 14 closed, every simulation entry point flies on cameras:
 `CAMERA_PROFILE=stereo_tof` mounts a forward stereo pair (1280 x 960, 120
@@ -340,8 +337,7 @@ collision-only sensor world, which a camera sees nothing of, and
 single-vehicle flights default to the `visual_inertial` localization profile:
 no GNSS, no magnetometer, no lidar.
 
-No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
-starting the simulation. Unknown and free volume have identical traversability
+Unknown and free volume have identical traversability
 and base cost; only confirmed occupied geometry is a hard spatial obstacle in
 the code as it stands. The invariant as restated on 2026-09-23 admits one more
 measured prohibition, space the sensor looked at and could not see (smoke,
@@ -501,7 +497,7 @@ all candidate containers and PIDs before terminating them. Use
 `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
 
 By default, the Gazebo 3D view uses Gazebo's `CameraTracking` plugin. The
-point-to-point mission follows the PX4-spawned model `x500_lidar_2d_0`;
+point-to-point mission follows the PX4-spawned model `x500_lidar_3d_0`;
 multi-vehicle missions derive the model from the typed spectator selection. Disable the
 camera with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the point-to-point target
 with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
@@ -629,19 +625,10 @@ only after complete raw-world validation and never past the previous deadline.
 It therefore reaches its own terminal rest instead of being discarded solely
 because the next update failed.
 
-After a headless run, validate lidar projection snapshots without GUI:
-
-```bash
-python3 scripts/analyze_lidar_projection_snapshots.py \
-  log/lidar_debug/snapshots.jsonl
-```
-
 Production MPPI diagnostics are written as rate-limited JSON Lines under
 `log/mppi/`; recent full records are also retained in a bounded ring and dumped
 to `mppi_error_context.jsonl` when a collision episode begins.
-Synchronized lidar, raw-grid, and local-horizon snapshots are written under
-`log/lidar_debug/`. The simulation wrapper prints the exact per-run artifact
-directory.
+The simulation wrapper prints the exact per-run artifact directory.
 
 ## Resource Budget
 

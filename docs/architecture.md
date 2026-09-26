@@ -9,8 +9,8 @@ PX4 orchestration scripts, and container tooling.
 Gazebo stereo pair + time-of-flight sensors -> stereo_depth_node (hit / free rays)
   or Gazebo GPU lidar (NAVIGATION_SENSOR_PROFILE=lidar)
 + PX4 pose
-  -> selected 2D or 3D obstacle-memory node
-  -> raw snapshot or revisioned Occupancy3D base + dirty chunks
+  -> obstacle_memory_3d_node
+  -> revisioned Occupancy3D base + dirty chunks
 
 static:
   raw Occupancy3D + precomputed chunked ESDF3D
@@ -45,25 +45,18 @@ Gazebo contact involving the drone
 
 ## Node Ownership
 
-### `obstacle_memory_node`
+### `obstacle_memory_3d_node`
 
-- projects lidar scans into `map`;
+- owns the organized 3D hit/miss beam pipeline;
 - requires a configured number of mutually stable PX4 heading samples before
-  accepting scan geometry;
-- starts a new pose-history generation at every valid PX4-heading handoff;
-- maintains 2D occupancy memory and sparse 3D diagnostic provenance;
+  accepting scan geometry, and resolves one full-6DoF acquisition pose per
+  scan;
+- maintains the sparse observed Occupancy3D and its revisioned snapshot/delta
+  transport;
 - publishes a lightweight `/drone_city_nav/obstacle_memory_status` after every
-  accepted update;
-- publishes the compatibility 2D `/drone_city_nav/raw_obstacle_snapshot` for
-  diagnostics; production no-static navigation does not consume it;
-- publishes the full atomic memory/provenance snapshot at the debug cadence;
-- publishes timestamp-aligned raw lidar hit endpoints independently of
-  persistent-memory integration;
+  accepted update, the current scan's returns and the selected-spectator 3D
+  clouds;
 - does not load or merge the static map.
-
-`obstacle_memory_3d_node` owns the corresponding organized 3D hit/miss beam
-pipeline, full-6DoF acquisition pose, sparse observed Occupancy3D, revisioned
-snapshot/delta transport, and selected-spectator 3D clouds.
 
 ### `production_mppi_node`
 
@@ -188,7 +181,6 @@ compiled as the first and only include in an independent translation unit.
 `world_visualization_node` publishes downsampled static Occupancy3D points, the
 raw compatibility grid, and stale legacy-marker cleanup. The production MPPI
 markers include mission start, mission goal, persistent route, and local target.
-`lidar_debug_node` writes synchronized diagnostic snapshots.
 `mission_monitor_node` and `collision_crash_node` observe the mission without
 participating in route selection.
 

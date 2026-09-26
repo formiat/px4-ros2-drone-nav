@@ -133,8 +133,7 @@ if bool_is_true "${enable_subsystem_cpu_affinity}" &&
     fi
   fi
 fi
-default_px4_model_target="gz_x500_lidar_2d"
-[[ "${lidar_profile}" == "3d" ]] && default_px4_model_target="gz_x500_lidar_3d"
+default_px4_model_target="gz_x500_lidar_3d"
 px4_model_target="${PX4_MODEL_TARGET:-${point_to_point_px4_model_target:-${default_px4_model_target}}}"
 if bool_is_true "${multi_vehicle_mission}"; then
   px4_model_target="${multi_vehicle_px4_model_targets[0]}"
@@ -199,8 +198,6 @@ gz_log_file="${GZ_LOG_FILE:-${runtime_artifact_dir}/gz_drone_nav.log}"
 gz_gui_log_file="${GZ_GUI_LOG_FILE:-${runtime_artifact_dir}/gz_gui_drone_nav.log}"
 gz_spectator_log_file="${GZ_SPECTATOR_LOG_FILE:-${runtime_artifact_dir}/gz_spectator_follow.log}"
 gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${runtime_artifact_dir}/gazebo_scene_debug}"
-lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
-lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 cruise_speed_override="${CRUISE_SPEED_MPS:-}"
@@ -345,9 +342,7 @@ rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
 if ! bool_is_true "${enable_rviz}"; then
   rviz_drone_follow_tf_enabled="false"
 fi
-default_point_to_point_model_name="x500_lidar_2d_0"
-[[ "${lidar_profile}" == "3d" ]] && \
-  default_point_to_point_model_name="x500_lidar_3d_0"
+default_point_to_point_model_name="x500_lidar_3d_0"
 default_gazebo_follow_target="${point_to_point_gazebo_model_name:-${default_point_to_point_model_name}}"
 gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-${multi_vehicle_spectator_initial_model:-${default_gazebo_follow_target}}}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--7 0 3.5}"
@@ -459,6 +454,13 @@ px4_max_climb_speed_mps="$(
 )"
 px4_max_descent_speed_mps="${px4_max_climb_speed_mps}"
 if bool_is_true "${active_static_map}"; then
+  # A static-map flight needs a 3D static map of its environment, and none
+  # exists yet (roadmap item 11): the request refuses to start instead of
+  # flying an ordinary flight under a name that promises a map.
+  if [[ -z "${static_occupancy_3d_path_override}" ]]; then
+    echo "ENABLE_STATIC_MAP=true needs a 3D static occupancy for this environment (STATIC_OCCUPANCY_3D_PATH); none exists yet, see roadmap item 11" >&2
+    exit 1
+  fi
   for static_artifact in \
     "${static_occupancy_3d_path_override}" \
     "${static_esdf_3d_cache_path_override}" \
@@ -471,8 +473,6 @@ if bool_is_true "${active_static_map}"; then
 fi
 if [[ -n "${enable_lidar_debug_override}" ]]; then
   enable_lidar_debug="${enable_lidar_debug_override}"
-elif [[ "${lidar_profile}" == "none" ]]; then
-  enable_lidar_debug="false"
 elif [[ -n "${headless}" ]]; then
   enable_lidar_debug="false"
 else
@@ -491,13 +491,9 @@ if ! bool_is_true "${active_static_map}" &&
   echo "No-static navigation requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
-if ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" != "3d" ]]; then
-  echo "No-static navigation requires LIDAR_PROFILE=3d" >&2
-  exit 1
-fi
 if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
-  { bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]]; }; then
-  echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires no-static LIDAR_PROFILE=3d" >&2
+  bool_is_true "${active_static_map}"; then
+  echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires a no-static flight" >&2
   exit 1
 fi
 if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
@@ -508,10 +504,6 @@ fi
 if bool_is_true "${enable_lidar_debug}" &&
   ! bool_is_true "${enable_obstacle_memory}"; then
   echo "Lidar debug requires ENABLE_OBSTACLE_MEMORY=true" >&2
-  exit 1
-fi
-if bool_is_true "${enable_lidar_debug}" && [[ "${lidar_profile}" == "none" ]]; then
-  echo "Lidar debug requires LIDAR_PROFILE=3d" >&2
   exit 1
 fi
 px4_active_max_horizontal_speed_mps="${speed_limit_override:-$(
@@ -576,7 +568,6 @@ mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
 if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
-  mkdir -p "${lidar_debug_dir}"
 fi
 if [[ "${enable_gz_scene_diagnostics}" == "true" ||
   "${enable_gz_scene_diagnostics}" == "1" ]]; then
@@ -668,13 +659,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 run_px4_sitl() {
-  if [[ "${lidar_profile}" == "3d" ]]; then
-    cd "${px4_dir}"
-    exec_with_cpu_affinity "${control_cpu_list}" \
-      "${px4_build_dir}/bin/px4" -i 0
-  fi
-  run_with_cpu_affinity "${control_cpu_list}" \
-    make -C "${px4_dir}" px4_sitl "${px4_model_target}"
+  cd "${px4_dir}"
+  exec_with_cpu_affinity "${control_cpu_list}" \
+    "${px4_build_dir}/bin/px4" -i 0
 }
 
 run_px4_instance() {
@@ -717,7 +704,6 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
-echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "Obstacle memory: enabled=${enable_obstacle_memory}"
 echo "Lidar profile: ${lidar_profile}"
 echo "Camera profile: ${camera_profile}"
@@ -854,7 +840,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
           PX4_GZ_MODEL_POSE="${multi_vehicle_gazebo_spawn_poses[instance]}" \
           PX4_SIM_MODEL="${multi_vehicle_px4_model_targets[instance]}" \
           PX4_UXRCE_DDS_NS="${multi_vehicle_px4_namespaces[instance]}" \
-          PX4_SYS_AUTOSTART=4013 \
+          PX4_SYS_AUTOSTART=4001 \
           HEADLESS="${headless}" \
           run_px4_instance "${instance}"
     ) > "${multi_vehicle_px4_logs[instance]}" 2>&1 &
@@ -871,7 +857,7 @@ else
       PX4_GZ_STANDALONE=1 \
       PX4_GZ_MODEL_POSE="${point_gazebo_spawn_x_m},${point_gazebo_spawn_y_m},${point_gazebo_spawn_z_m},0,0,${point_gazebo_spawn_yaw_rad}" \
         PX4_SIM_MODEL="${px4_model_target}" \
-        PX4_SYS_AUTOSTART=4013 \
+        PX4_SYS_AUTOSTART=4001 \
         HEADLESS="${headless}" \
         run_px4_sitl
   ) > "${px4_log_file}" 2>&1 &
@@ -935,8 +921,6 @@ if bool_is_true "${multi_vehicle_mission}"; then
 else
   ros_launch_args=(
     params_file:="${city_nav_params_file}"
-    lidar_debug_output_dir:="${lidar_debug_dir}"
-    lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
     mppi_diagnostics_output_dir:="${runtime_artifact_dir}/mppi"
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
@@ -1000,7 +984,6 @@ if [[ -n "${static_free_space_topology_3d_path_override}" ]]; then
   )
 fi
 echo "ROS launch log: ${ros_log_file}"
-echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
 start_runtime_evidence_capture
 if bool_is_true "${multi_vehicle_mission}" && [[ -z "${headless}" ]] &&
   bool_is_true "${enable_gazebo_gui_follow_camera}"; then

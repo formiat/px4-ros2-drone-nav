@@ -31,7 +31,7 @@ real-aircraft operation.
 
 ## Main Runtime Nodes
 
-- `obstacle_memory_node` owns lidar ingestion, memory, and raw world snapshots.
+- `obstacle_memory_3d_node` owns lidar ingestion, memory, and raw world snapshots.
 - `world_visualization_node` publishes static and raw world geometry.
 - `production_mppi_node` is the ROS composition root and adapter for immutable
   world, planning, route, execution, controller, and diagnostics services.
@@ -42,7 +42,6 @@ real-aircraft operation.
 - `collision_crash_node` converts Gazebo contacts into typed physical-destruction
   events.
 - `mission_monitor_node` observes mission completion and physical crashes.
-- `lidar_debug_node` records map-frame lidar and navigation snapshots.
 
 ## Main Run Modes
 
@@ -84,7 +83,7 @@ repository container workflow.
 
 - Offline `FreeSpaceTopology3D` is optional static passage evidence; it is not a
   competing route producer or a source of hard occupancy.
-- There is no 2D production navigation branch, online frontier planner,
+- There is no 2D lidar path, online frontier planner,
   direct-versus-topology arbitration, or location-specific opening logic.
 - The persistent graph uses a complete minimum-resolution 26-connected lattice
   plus world-aligned multiresolution overlays. Lazy exact raw validation admits

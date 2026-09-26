@@ -66,7 +66,7 @@ public:
             "vehicle_roles", std::vector<std::int64_t>(
                                  ids_.size(), msg::VehicleDestroyed::ROLE_CIVILIAN));
     models_ = declare_parameter<std::vector<std::string>>(
-        "gazebo_models", {"x500_lidar_2d_0", "x500_lidar_2d_1", "x500_lidar_2d_2"});
+        "gazebo_models", {"x500_lidar_3d_0", "x500_lidar_3d_1", "x500_lidar_3d_2"});
     requireCount(state_topics, ids_.size(), "vehicle_state_topics");
     requireCount(destroyed_topics, ids_.size(), "vehicle_destroyed_topics");
     requireCount(role_values, ids_.size(), "vehicle_roles");

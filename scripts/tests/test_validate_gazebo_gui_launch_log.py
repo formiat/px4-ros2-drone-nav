@@ -26,10 +26,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                     (
                         "Gazebo GUI follow camera state confirmed: "
-                        "target=x500_lidar_2d_0"
+                        "target=x500_lidar_3d_0"
                     ),
                 ]
             )
@@ -42,10 +42,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
             "\n".join(
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
-                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                     (
                         "Gazebo GUI follow camera state confirmed: "
-                        "target=x500_lidar_2d_0"
+                        "target=x500_lidar_3d_0"
                     ),
                 ]
             )
@@ -60,7 +60,7 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                 ]
             )
         )
@@ -77,10 +77,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                     (
                         "Gazebo GUI follow camera state confirmed: "
-                        "target=x500_lidar_2d_0"
+                        "target=x500_lidar_3d_0"
                     ),
                 ]
             ),
@@ -102,10 +102,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 [
                     "Gazebo stale cleanup: no conflicting Gazebo processes found",
                     "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                    "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                     (
                         "Gazebo GUI follow camera state confirmed: "
-                        "target=x500_lidar_2d_0"
+                        "target=x500_lidar_3d_0"
                     ),
                 ]
             ),
@@ -125,7 +125,7 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 "\n".join(
                     [
                         "Gazebo scene diagnostics summary:",
-                        "target=x500_lidar_2d_0",
+                        "target=x500_lidar_3d_0",
                         "target_model_seen=false",
                         "target_visual_seen=false",
                         "yellow_visual_seen=false",
@@ -142,10 +142,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                     [
                         "Gazebo stale cleanup: no conflicting Gazebo processes found",
                         "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                         (
                             "Gazebo GUI follow camera state confirmed: "
-                            "target=x500_lidar_2d_0"
+                            "target=x500_lidar_3d_0"
                         ),
                     ]
                 ),
@@ -165,7 +165,7 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                 "\n".join(
                     [
                         "Gazebo scene diagnostics summary:",
-                        "target=x500_lidar_2d_0",
+                        "target=x500_lidar_3d_0",
                         "target_model_seen=false",
                         "target_visual_seen=false",
                         "yellow_visual_seen=false",
@@ -182,10 +182,10 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                     [
                         "Gazebo stale cleanup: no conflicting Gazebo processes found",
                         "Gazebo world running command confirmed: world=urban_circuit_practice_01",
-                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_2d_0",
+                        "Gazebo GUI follow camera: enabled=true target=x500_lidar_3d_0",
                         (
                             "Gazebo GUI follow camera state confirmed: "
-                            "target=x500_lidar_2d_0"
+                            "target=x500_lidar_3d_0"
                         ),
                     ]
                 ),

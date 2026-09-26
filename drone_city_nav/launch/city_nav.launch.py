@@ -190,8 +190,6 @@ def generate_launch_description():
     contacts_gz_topic = "/drone_city_nav/drone_contacts"
 
     params_file = LaunchConfiguration("params_file")
-    lidar_debug_output_dir = LaunchConfiguration("lidar_debug_output_dir")
-    lidar_memory_hit_dump_path = LaunchConfiguration("lidar_memory_hit_dump_path")
     mppi_diagnostics_output_dir = LaunchConfiguration("mppi_diagnostics_output_dir")
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
@@ -248,26 +246,13 @@ def generate_launch_description():
         profile = validate_lidar_profile(lidar_profile.perform(context))
         obstacle_memory_overrides = {"use_sim_time": True}
         navigation_overrides = {}
-        default_model_name = (
-            "x500_lidar_3d_0" if profile == "3d" else "x500_lidar_2d_0"
-        )
+        default_model_name = "x500_lidar_3d_0"
         gazebo_world_name = "urban_circuit_practice_01"
         gazebo_model_name = default_model_name
-        sensor_name = "lidar_3d_v1" if profile == "3d" else "lidar_2d_v2"
         lidar_gz_topic = (
             f"/world/{gazebo_world_name}/model/{default_model_name}/link/link/"
-            f"sensor/{sensor_name}/scan"
+            "sensor/lidar_3d_v1/scan/points"
         )
-        if profile == "3d":
-            lidar_gz_topic += "/points"
-
-        memory_hit_dump_path_override = (
-            lidar_memory_hit_dump_path.perform(context).strip()
-        )
-        if memory_hit_dump_path_override and profile == "2d":
-            obstacle_memory_overrides["lidar_memory_hit_dump_path"] = (
-                memory_hit_dump_path_override
-            )
 
         static_map_override = optional_bool_override(
             context, use_static_map, "use_static_map"
@@ -278,7 +263,6 @@ def generate_launch_description():
         obstacle_memory_override = optional_bool_override(
             context, enable_obstacle_memory, "enable_obstacle_memory"
         )
-        lidar_enabled = profile != "none"
         gazebo_bridge_enabled = optional_bool_override(
             context, enable_gazebo_bridge, "enable_gazebo_bridge"
         )
@@ -297,10 +281,6 @@ def generate_launch_description():
         )
         if not static_map_enabled and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
-        if not static_map_enabled and profile != "3d":
-            raise RuntimeError("No-static navigation requires the 3D lidar profile")
-        if lidar_debug_override is True and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires the 3D lidar profile")
         if lidar_debug_override is True and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
@@ -401,10 +381,8 @@ def generate_launch_description():
             lidar_gz_topic = (
                 f"/world/{gazebo_world_name}"
                 f"/model/{gazebo_model_name}"
-                f"/link/link/sensor/{sensor_name}/scan"
+                "/link/link/sensor/lidar_3d_v1/scan/points"
             )
-            if profile == "3d":
-                lidar_gz_topic += "/points"
 
         # RViz shows the `gazebo_map` fixed frame, the Gazebo SDF frame of the
         # canonical world. Without a scenario the legacy generated-city
@@ -433,10 +411,6 @@ def generate_launch_description():
         )
 
         static_world_path_override = static_occupancy_3d_path.perform(context).strip()
-        if static_world_path_override and profile != "3d":
-            obstacle_memory_overrides["static_occupancy_3d_path"] = (
-                static_world_path_override
-            )
         obstacle_memory_parameters = [params_file.perform(context)]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
@@ -550,10 +524,8 @@ def generate_launch_description():
             bridge_contract = (
                 f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
                 "[gz.msgs.PointCloudPacked"
-                if profile == "3d"
-                else f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan"
             )
-            ros_lidar_topic = "/lidar_3d/points" if profile == "3d" else "/scan"
+            ros_lidar_topic = "/lidar_3d/points"
             nodes.append(
                 Node(
                     package="ros_gz_bridge",
@@ -582,16 +554,8 @@ def generate_launch_description():
         nodes.append(
             Node(
                 package="drone_city_nav",
-                executable=(
-                    "obstacle_memory_3d_node"
-                    if profile == "3d"
-                    else "obstacle_memory_node"
-                ),
-                name=(
-                    "obstacle_memory_3d_node"
-                    if profile == "3d"
-                    else "obstacle_memory_node"
-                ),
+                executable="obstacle_memory_3d_node",
+                name="obstacle_memory_3d_node",
                 output="screen",
                 parameters=obstacle_memory_parameters,
             )
@@ -653,23 +617,6 @@ def generate_launch_description():
                 ),
             ]
         )
-        if lidar_debug_override is True and profile == "2d":
-            nodes.append(
-                Node(
-                    package="drone_city_nav",
-                    executable="lidar_debug_node",
-                    name="lidar_debug_node",
-                    output="screen",
-                    parameters=[
-                        params_file.perform(context),
-                        {
-                            "use_sim_time": True,
-                            "output_dir": lidar_debug_output_dir.perform(context),
-                            **navigation_overrides,
-                        },
-                    ],
-                )
-            )
         # Simulation-only: the autopilot's heading from the simulator's true
         # attitude, with the bias and noise of a calibrated attitude
         # reference, in place of the simulated magnetometer's.
@@ -772,19 +719,6 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
-                "lidar_debug_output_dir",
-                default_value="log/lidar_debug",
-                description="Directory for lidar debug CSV, JSONL, and PPM files.",
-            ),
-            DeclareLaunchArgument(
-                "lidar_memory_hit_dump_path",
-                default_value="",
-                description=(
-                    "Optional per-run JSONL path for accepted obstacle-memory "
-                    "lidar-hit diagnostics. Leave empty to use params_file."
-                ),
-            ),
-            DeclareLaunchArgument(
                 "mppi_diagnostics_output_dir",
                 default_value="",
                 description=(
@@ -868,7 +802,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "lidar_profile",
                 default_value=DEFAULT_LIDAR_PROFILE,
-                description="Navigation sensor profile: none or production 3d lidar.",
+                description="Navigation lidar profile: 3d, the production lidar.",
             ),
             DeclareLaunchArgument(
                 "enable_obstacle_memory",
