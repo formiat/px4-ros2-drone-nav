@@ -33,11 +33,11 @@ prepare_runtime_evidence() {
   fi
   if [[ -n "${observed_3d_route_volume_bounds_m}" ]]; then
     runtime_manifest_args+=(
-      --route-volume-bounds "${observed_3d_route_volume_bounds_m}"
+      --route-volume-bounds="${observed_3d_route_volume_bounds_m}"
     )
   fi
   if [[ -n "${raw_snapshot_bounds_m}" ]]; then
-    runtime_manifest_args+=(--raw-snapshot-bounds "${raw_snapshot_bounds_m}")
+    runtime_manifest_args+=(--raw-snapshot-bounds="${raw_snapshot_bounds_m}")
   fi
   # The launch overrides that change what was flown. Without them the manifest
   # binds a configuration file two runs share while their speed limits differ.
@@ -76,7 +76,7 @@ start_runtime_evidence_capture() {
     --topic /drone_city_nav/raw_obstacle_snapshot_3d \
     --output-directory "${runtime_artifact_dir}" \
     --manifest "${runtime_manifest_path}" \
-    --bounds "${raw_snapshot_bounds_m}" \
+    --bounds="${raw_snapshot_bounds_m}" \
     > "${raw_snapshot_capture_log_file}" 2>&1 &
   # The controller-dynamics records the mission check reads: the setpoints
   # against the local position, and the true pose. Every headless flight
