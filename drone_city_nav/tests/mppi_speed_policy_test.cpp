@@ -524,6 +524,28 @@ TEST(MppiSpeedPolicyTest, TheReferenceSpeedRisesNoFasterThanTheAirframeFollows) 
   EXPECT_DOUBLE_EQ(falling.reference_speed_mps, 1.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheReferenceSpeedClimbsFromTheActualSpeedAfterAFall) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.reference_speed_rise_mps2 = 4.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 2.4F;
+  input.elapsed_since_previous_reference_s = 0.05;
+
+  // A law fell to 0 for one tick while the vehicle flew at 2.4 m/s: the
+  // climb resumes from the speed the vehicle has, not from 0.
+  input.previous_reference_speed_mps = 0.0;
+  const MppiSpeedPolicyResult resumed = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(resumed.reference_speed_rise_limited);
+  EXPECT_NEAR(resumed.reference_speed_mps, 2.4 + 4.0 * 0.05, 1.0e-6);
+
+  // The floor never lifts the reference above what the laws admit.
+  input.executed_horizon_clearance = executedClearance(0.0, 0.0);
+  const MppiSpeedPolicyResult bounded = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_FALSE(bounded.reference_speed_rise_limited);
+  EXPECT_DOUBLE_EQ(bounded.reference_speed_mps, 1.0);
+}
+
 TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;

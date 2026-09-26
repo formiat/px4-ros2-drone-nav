@@ -335,7 +335,18 @@ The reference may fall as fast as any limiter asks — a cap is always allowed t
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the
 vehicle's own horizontal acceleration. A limit that lifts as the horizon shifts
 therefore cannot snap the reference back up, because the controller answers
-each step with a fresh burst of acceleration.
+each step with a fresh burst of acceleration. The climb starts from the
+previous reference or from the vehicle's actual horizontal speed, whichever is
+higher: a reference at the actual speed asks no acceleration at that instant.
+Started from the previous reference alone, a law that fell for one tick (a
+fresh route's first projection, a raw voxel that appeared and cleared, the
+gaze crossing the pair's field) sent the reference to 0 and climbed it from 0
+while the vehicle still flew at 2.4 m/s, and the route-directed seed braked
+the vehicle toward it until the two met; on the acceptance flights r632 to
+r642 the reference sat rise-limited below the actual speed for 10.3 s per
+camera flight and 14.8 s per lidar flight, and such flips of the laws cost
+13.4 and 20.6 s of flight. The fall stays instant, and the reference never
+exceeds what the laws admit.
 
 ## Clearance Costs And Control Selection
 

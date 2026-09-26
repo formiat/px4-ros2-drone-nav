@@ -497,8 +497,26 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   if (input.previous_reference_speed_mps.has_value() &&
       input.elapsed_since_previous_reference_s > 0.0 &&
       config.reference_speed_rise_mps2 > 0.0) {
+    // The climb starts from the previous reference or from the speed the
+    // vehicle already has, whichever is higher. A reference at the actual
+    // speed asks no acceleration at that instant, so the airframe follows it
+    // as it follows the climb. Started from the previous reference alone,
+    // every fall of a law for one tick (a fresh route's first projection, a
+    // raw voxel that appears and clears, the gaze crossing the pair's field)
+    // sent the reference to 0 and then climbed it from 0 while the vehicle
+    // still flew at 2.4 m/s; the route-directed seed braked the vehicle toward
+    // it at -4 m/s^2 until the two met (r632, ticks 3448 to 3451: reference
+    // 0 -> 0.29 m/s, speed 2.55 -> 2.38). On the acceptance flights r632 to
+    // r642 the reference sat rise-limited below the actual speed, with every
+    // law admitting more, for 10.3 s per camera flight and 14.8 s per lidar
+    // flight, and the flips of the laws cost 13.4 and 20.6 s of flight. The
+    // fall stays instant: the reference never exceeds what the laws admit.
+    const double rise_floor_mps =
+        std::max(std::max(0.0, *input.previous_reference_speed_mps),
+                 std::hypot(static_cast<double>(input.state.vx),
+                            static_cast<double>(input.state.vy)));
     const double rise_ceiling_mps =
-        std::max(0.0, *input.previous_reference_speed_mps) +
+        rise_floor_mps +
         config.reference_speed_rise_mps2 * input.elapsed_since_previous_reference_s;
     if (result.reference_speed_mps > rise_ceiling_mps) {
       result.reference_speed_mps = rise_ceiling_mps;
