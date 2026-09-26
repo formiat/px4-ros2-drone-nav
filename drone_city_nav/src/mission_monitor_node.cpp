@@ -313,6 +313,12 @@ private:
     navigation_mission_epoch_ = health.mission_epoch;
     if (health.mission_ready && !navigation_mission_ready_) {
       navigation_mission_ready_ = true;
+      // The altitude the mission started at: where the return home ends. The
+      // configured start is the pad, and r667 sent the vehicle 2.8 m below
+      // its surface, to a goal it could only stand 12 m short of.
+      if (latest_position_valid_) {
+        mission_ready_altitude_z_m_ = latest_map_position_.z;
+      }
       RCLCPP_INFO(get_logger(),
                   "MISSION_READINESS ready=true mission_epoch=%" PRIu64
                   " health_sequence=%" PRIu64,
@@ -536,12 +542,11 @@ private:
         return;
       }
     }
-    if (mission_window_s_ > 0.0 && mission_start_ns_ > 0) {
-      const double elapsed_s = static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9;
-      if (elapsed_s + returnEstimateS() >= mission_window_s_ &&
-          substituteGoalWithStart("budget", now_ns)) {
-        return;
-      }
+    if (mission_window_s_ > 0.0 && mission_start_ns_ > 0 &&
+        wallElapsedS() + returnEstimateWallS(now_ns) + kWindowReserveS >=
+            mission_window_s_ &&
+        substituteGoalWithStart("budget", now_ns)) {
+      return;
     }
     if (!proof_future_.valid() && memory_ != nullptr && latest_position_valid_) {
       const std::shared_ptr<const ObservedOccupancyGrid3D> grid = memory_;
@@ -561,6 +566,31 @@ private:
     return flown_path_m_ / std::max(std::isfinite(mean) ? mean : 0.0, 0.5);
   }
 
+  // The window is the run's, on the wall clock (the script's timeout), while
+  // the monitor's clock is the simulation's, which runs slower than the wall
+  // on the camera profile. Until roadmap item 20 puts the run on one clock,
+  // the budget is judged on the wall: the time since this node started, and
+  // the return's estimate stretched by the factor the two clocks have shown
+  // so far. r667 substituted at 307 s of simulation time with a 306 s
+  // estimate and the window ended 10 m short of the start.
+  static constexpr double kWindowReserveS{20.0};
+
+  [[nodiscard]] double wallElapsedS() const noexcept {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                         wall_started_)
+        .count();
+  }
+
+  [[nodiscard]] double returnEstimateWallS(const std::int64_t now_ns) const noexcept {
+    const double sim_elapsed_s =
+        mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
+                              : 0.0;
+    const double wall_elapsed_s = std::max(wallElapsedS(), 1.0);
+    const double real_time_factor =
+        std::clamp(sim_elapsed_s / wall_elapsed_s, 0.3, 1.0);
+    return returnEstimateS() / real_time_factor;
+  }
+
   // The goal is given up for the start, through the channel any objective
   // enters the navigation by; the mission's waypoint list becomes the start
   // alone, so the arrival there is judged as any goal's. A return needs a
@@ -575,7 +605,10 @@ private:
       return false;
     }
     const Point3 original_goal = waypoints_[active_waypoint_index_];
-    const Point3 start{start_.x, start_.y, waypoints_.front().z};
+    const Point3 start{start_.x, start_.y,
+                       std::isfinite(mission_ready_altitude_z_m_)
+                           ? mission_ready_altitude_z_m_
+                           : waypoints_.front().z};
     msg::NavigationObjective objective;
     objective.stamp = now();
     objective.mission_epoch = navigation_mission_epoch_ + 1U;
@@ -598,12 +631,13 @@ private:
     RCLCPP_WARN(get_logger(),
                 "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
                 "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
-                " elapsed_s=%.1f return_estimate_s=%.1f window_s=%.1f "
-                "flown_path_m=%.1f proof=%s component_voxels=%zu",
+                " elapsed_s=%.1f wall_elapsed_s=%.1f return_estimate_s=%.1f "
+                "return_estimate_wall_s=%.1f window_s=%.1f flown_path_m=%.1f "
+                "proof=%s component_voxels=%zu",
                 trigger, original_goal.x, original_goal.y, original_goal.z, start.x,
-                start.y, start.z, objective.mission_epoch, elapsed_s, returnEstimateS(),
-                mission_window_s_, flown_path_m_,
-                goalReachabilityProofVerdict(latest_proof_),
+                start.y, start.z, objective.mission_epoch, elapsed_s, wallElapsedS(),
+                returnEstimateS(), returnEstimateWallS(now_ns), mission_window_s_,
+                flown_path_m_, goalReachabilityProofVerdict(latest_proof_),
                 latest_proof_.component_voxels);
     return true;
   }
@@ -693,6 +727,8 @@ private:
   Point3 latest_map_position_{};
   std::int64_t latest_position_stamp_ns_{0};
   std::int64_t mission_start_ns_{0};
+  std::chrono::steady_clock::time_point wall_started_{std::chrono::steady_clock::now()};
+  double mission_ready_altitude_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double flown_path_m_{0.0};
   bool goal_substituted_{false};
   GoalReachabilityProof3D latest_proof_{};
