@@ -1242,14 +1242,35 @@ that was open on the map and is not.
 
 **The mechanism is a substitution of the goal, and nothing else.** The
 mission monitor, which owns the goal sequence and judges the arrival,
-replaces the goal with the start. The navigation does not change by a line:
-the same planner, the same memory, the same braking contract, now aimed at a
-different point. There is no return mode in the planner, no hold and no
-latch — a return is a new mission, not a suspended one — and the invariants
-of items 12 and 18 hold throughout it. The log records the outcome as its
-own: `goal_unreachable`, with the proof that established it and the moment
-the goal was substituted, distinct from `mission_incomplete`, which stays
-what it is.
+replaces the goal with the start, through the same channel by which any
+objective enters the navigation while it flies: a change of goal on the
+move, as a mission with a further waypoint changes it. The navigation does
+not change by a line: the same planner, the same memory, the same braking
+contract, now aimed at a different point. There is no return mode in the
+planner, no hold and no latch — a return is a new mission, not a suspended
+one — and the invariants of items 12 and 18 hold throughout it. The arrival
+at the start is a goal's arrival like any other: the same capture radius,
+the same hold at the goal, and nothing more; decided by the project owner on
+2026-09-26, no landing is added for it, that is the ladder's of item 17 and
+not this item's. The log records the outcome as its own: `goal_unreachable`,
+with the proof that established it and the moment the goal was substituted,
+distinct from `mission_incomplete`, which stays what it is.
+
+**Who proves, and with what.** The proof reads the obstacle memory and the
+memory lives in the navigation, so the proof is an evaluation component
+beside the mission monitor, reading the memory the navigation already
+publishes, never a rule inside the planner or the memory: the navigation
+publishes what it knows, the monitor decides what the mission does with it.
+Three inputs the monitor has to be given, each named here so that none is
+invented at implementation: the flight's window, today a parameter of the
+run's scripts that the vehicle does not know, becomes a parameter of the
+mission written into the manifest and handed to the monitor; the return's
+duration is estimated as the length of the path flown so far divided by the
+flight's mean speed so far, a figure the monitor can compute from what it
+records and that errs on the long side, since the way back is known and
+observed; and "a position source" means the estimator declared healthy by
+the navigation's own health report, the same signal whose loss withdraws the
+execution, and nothing finer.
 
 **What "proven" means, because with unknown free it is not obvious.** The
 planner routes through space it has not looked at, so a route exists almost
@@ -1271,8 +1292,8 @@ triggers, each named in the log for what it is:
    unbounded today, so that the clause is an extension and not a rework.
 2. **Budget.** A route is still being sought through unexplored space and
    the flight's window, less the time the return itself will take along the
-   observed path, is spent. This is not "proven impossible", it is "proven
-   too late", and the log says which.
+   observed path (the estimate above), is spent. This is not "proven
+   impossible", it is "proven too late", and the log says which.
 
 **The proof is a check of the map, never a reading of the planner.** The
 planner fails to find a route for reasons that have nothing to do with the
@@ -1285,30 +1306,40 @@ it fills: whether the goal lies inside it, and whether any unknown voxel lies
 on its boundary. A component that holds no goal and has no unknown on its
 boundary is closed by measurement, whatever the planner says; a component
 with unknown on its boundary is open, whatever the planner says, and the
-budget trigger is the only one that can end the flight from there.
+budget trigger is the only one that can end the flight from there. The
+memory's grid is finite and its edge is not a measurement: under the
+invariant that only a measurement prohibits, a component that reaches the
+edge of the grid has unknown on its boundary and is open, and the flood
+treats the edge so. The topological proof can therefore be taken only for a
+component enclosed entirely inside the grid by measured surfaces, which the
+interior of a closed location is once every opening of it has been looked
+at; the space above the flight band and every unobserved corner count as
+unknown until they are observed, and no shortcut around that is admitted.
 
-**The unreachability is injected, and today it is static.** Decided by the
-project owner on 2026-09-26: the check of the algorithm places the goal, the
-point B of the ordinary point-to-point mission, deliberately beyond the
-vehicle's reach — outside the map, behind the outer walls of the location —
-so that no route to it can exist, the vehicle cannot reach it, and the return
-home has to run. Nothing but the goal's coordinates changes: the same
-location, the same start, the same mission, and the goal written into the
+**The unreachability is injected by the goal alone; the location does not
+change.** Decided by the project owner on 2026-09-26: the check of the
+algorithm places the goal, the point B of the ordinary point-to-point
+mission, deliberately beyond the vehicle's reach — outside the location,
+behind its outer walls — so that no route to it can exist, the vehicle
+cannot reach it, and the return home has to run. Nothing but the goal's
+coordinates changes: the same location, which the owner states is closed to
+the outside, the same start, the same mission, and the goal written into the
 manifest as the injected unreachability, which is what lets the check count
-the return as the outcome asked for. What the flight then measures is the
-proof itself. The vehicle's reachable component is the building's interior,
-and the topological trigger fires only once every opening of that interior
-has been looked at and closed by measurement — until then unknown lies on
-the boundary and the component is open, whatever the planner finds — so on
-a location of this size the budget trigger may come first, and the flight
-records which one it was; both are accepted outcomes, and a return on
-neither, or a return in a flight whose goal was reachable, is a failure. A
-second injection, a variant of the location that closes a corridor with a
-surface (a collapsed passage, a door that was open on the map and is not),
-puts the goal inside the map and cut off from it, so the proof is taken
-against a closure the vehicle has to find rather than against the outer
-wall; when item 18 delivers a plume, that variant is flown with the plume
-as the closure and the proof has to outlive its decay.
+the return as the outcome asked for. No variant of the location, no closed
+corridor, no added surface belongs to this item: the closures that decay
+are item 18's, flown there with its plume and the re-probe clause. The
+check does not take the manifest's word for the unreachability: it floods
+the truth collision world of the location from the start and confirms that
+the goal lies outside the start's component, so that a location open to the
+outside cannot turn the flight silently into an ordinary one. What the
+flight then measures is the proof itself. The vehicle's reachable component
+is the location's interior, and the topological trigger fires only once
+every opening of that interior has been looked at and closed by measurement
+— until then unknown lies on the boundary and the component is open,
+whatever the planner finds — so on a location of this size the budget
+trigger may come first, and the flight records which one it was; both are
+accepted outcomes, and a return on neither, or a return in a flight whose
+goal was reachable, is a failure.
 
 **Three guards, without which the policy is a loophole.**
 
@@ -1349,8 +1380,8 @@ where the register's unbounded drift (L1) first meets a requirement, and
 the item measures it as such (the true position at the start against the
 2.0 m radius, per profile) before any rework of the estimator is designed.
 The return is also the first flight of the mission in the other direction
-and, with the goal outside the map, the first with another goal (N3); other
-starts and goals stay a series of their own.
+and, with the goal outside the location, the first with another goal (N3);
+other starts and goals stay a series of their own.
 
 ### Measurement And Completion
 
@@ -1361,10 +1392,10 @@ the start on arrival, judged by the same capture radius as a goal; and that
 no ordinary acceptance flight of any series produced a return.
 
 Complete when, on the camera profile and the lidar profile alike, five
-flights with the goal placed outside the map return to the start in truth
-without a collision, each logging its proof and its trigger, five more with
-the goal cut off inside the map do the same, and when the acceptance series
-of items 9, 16, 17 and 18 show no return in any flight.
+flights with the goal placed outside the location return to the start in
+truth without a collision, each logging its proof and its trigger, and when
+the acceptance series of items 9, 16, 17 and 18 show no return in any
+flight.
 
 ## 20. Slowed Simulation And Unattended Recording
 
