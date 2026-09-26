@@ -579,7 +579,10 @@ private:
   // return's altitude. r668 substituted with a 246 s estimate, flew 546 m of
   // return in 285 s and stood 40 m short of the start when the window ended;
   // r667's return ran 261 s against a 306 s estimate and stopped 10 m short.
-  static constexpr double kReturnEstimateMargin{1.5};
+  // Over twelve returns the return took 0.72 to 1.40 times the flight out,
+  // and r687's, exploring north, back over the shaft and west again, more
+  // than 1.65 times; it ended 24 m short at a margin of 1.5.
+  static constexpr double kReturnEstimateMargin{2.0};
 
   [[nodiscard]] double wallElapsedS() const noexcept {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() -
