@@ -671,16 +671,21 @@ The vehicle's answer is a ladder whose first rung is free:
    must own the decision to stop trusting it; item 16 chose silence for that
    reason, and the choice is reopened only with the measurement of how far a
    retreat on the IMU actually stays inside the corridor it came down.
-4. **Descend and land** if the light has not returned within a stated time. A
-   controlled landing beats an uncontrolled drift, and a landed vehicle with a
-   dead emitter is recoverable where a crashed one is not.
+4. **Return home or land.** A vehicle that retreated to where it can see
+   has a position source, and when the flight's window less the return is
+   spent, item 19's budget trigger gives the goal up and flies it home: the
+   ladder does not wait out a stated time to land in a place it can see. A
+   vehicle with no position source, in total darkness, **descends and
+   lands** if the light has not returned within a stated time: a controlled
+   landing beats an uncontrolled drift, and a landed vehicle with a dead
+   emitter is recoverable where a crashed one is not.
 5. **Relocalize** when the light returns. The estimate has moved and the memory
    was built under the old one. This is the unbounded-drift entry the debt
    register carries as a deep rework; this item does not solve it, it states
    where it bites.
 
 This is a failsafe against a crash and not a way to keep flying. Its honest
-scope is stop, hold, retreat, land.
+scope is stop, hold, retreat, then home or land.
 
 Two kinds of flight, and neither is a speed measurement: the mean flight speed
 of the project's second requirement is measured with the illumination healthy,
@@ -1129,9 +1134,11 @@ the mission, not of this item.
 Two rules close the loop that the ladder alone leaves open. **After a
 retreat the vehicle holds where it can see for a stated time** — the plume
 is transient and expected to move — and if the range ahead has not returned
-by then it lands there, in sight, and not inside the plume; that is a rule
-of time on the vehicle's own state, not a prohibition of space, and it is
-the same time the light of item 17 stage 5 is given to return. And the
+by then, item 19's budget trigger sends it home while it still has a
+position source, and it lands there, in sight, only when the start too is
+proven unreachable; that is a rule of time on the vehicle's own state, not a
+prohibition of space, and it is the same time the light of item 17 stage 5
+is given to return. And the
 closed region **decays** by stage 0's rule when it is not re-observed, so a
 plume that has drifted out of view does not close its corridor for the rest
 of the flight: the region returns to unknown, the vehicle approaches again,
@@ -1185,9 +1192,13 @@ the set where it should be least needed.
 
 **Type:** mission policy, general; not tied to any sensor or scenario.
 
-**Hard prerequisites:** item 18 stage 0, because "unreachable" is provable
-only against measured prohibitions that decay, and the proof has to outlive
-the decay.
+**Hard prerequisites:** none for the substitution of the goal, the budget
+trigger and the topological proof against prohibitions that do not decay,
+which is what the memory holds today; item 18 stage 0 for the decay and
+re-probe clause of the topological proof, because once closures decay a
+proof has to outlive the decay. Reordered by the project owner on
+2026-09-26: this item is built before items 17 and 18, and the clause lands
+with item 18 stage 0.
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission, with the unreachability injected.
@@ -1227,11 +1238,36 @@ triggers, each named in the log for what it is:
    component, with at least one re-probe of each: item 18's closed regions
    decay when not re-observed, so a proof taken in one instant is worth only
    that instant, and a plume that drifts away a minute later must not find
-   the vehicle already home. This is "proven impossible".
+   the vehicle already home. This is "proven impossible". Until item 18
+   stage 0 the memory forgets nothing and the only measured prohibition is
+   an occupied surface, so a closure holds for the rest of the flight and
+   the proof, once taken, stands; the decay and the re-probes are added
+   then, and a prohibition carries its validity from the first version,
+   unbounded today, so that the clause is an extension and not a rework.
 2. **Budget.** A route is still being sought through unexplored space and
    the flight's window, less the time the return itself will take along the
    observed path, is spent. This is not "proven impossible", it is "proven
    too late", and the log says which.
+
+**The proof is a check of the map, never a reading of the planner.** The
+planner fails to find a route for reasons that have nothing to do with the
+world: on r596 (2026-09-25) it found none for 106 s in a fully open world,
+a livelock of its own budget, and a trigger keyed on "no route for so many
+seconds" would have proven that world closed and sent the vehicle home. The
+topological proof is therefore a flood of the memory from the vehicle's
+position through free and unknown space, asking two things of the component
+it fills: whether the goal lies inside it, and whether any unknown voxel lies
+on its boundary. A component that holds no goal and has no unknown on its
+boundary is closed by measurement, whatever the planner says; a component
+with unknown on its boundary is open, whatever the planner says, and the
+budget trigger is the only one that can end the flight from there.
+
+**The unreachability is injected, and today it is static.** A variant of the
+location closes the corridor with a surface (a collapsed passage, a door
+that was open on the map and is not), recorded in the manifest as the
+scenario's parameter, so the acceptance flights of this item exist before
+item 18 delivers a plume; when it does, the same flights are flown with the
+plume as the closure and the proof has to outlive its decay.
 
 **Three guards, without which the policy is a loophole.**
 
@@ -1252,6 +1288,18 @@ triggers, each named in the log for what it is:
   observed and free; if that path has closed behind the vehicle, the return
   is subject to the same proof, and a start proven unreachable too is a
   landing in place, logged as such.
+
+**Where it ends the ladders of items 17 and 18.** Both ladders retreat to
+where the sensor can see and then hold for a stated time before landing. A
+vehicle holding where it can see has a position source, so the budget
+trigger applies to it as to any other: when the window less the return is
+spent, the goal is given up and the vehicle flies home rather than waiting
+out the time and landing in a place it can see. The landing stays for the
+vehicle that has no position source, in total darkness, and for a start
+proven unreachable too. The plume across the only corridor is the
+topological trigger's case and needs the decay clause, so it is item 18's
+to fly; the long outage of the light, held out where the vehicle can see, is
+the budget trigger's case and needs nothing from item 18.
 
 ### Measurement And Completion
 
