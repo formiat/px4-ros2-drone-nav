@@ -574,6 +574,12 @@ private:
   // so far. r667 substituted at 307 s of simulation time with a 306 s
   // estimate and the window ended 10 m short of the start.
   static constexpr double kWindowReserveS{20.0};
+  // The way back is not the flown path: the planner routes anew through the
+  // observed space and explores where that space does not connect at the
+  // return's altitude. r668 substituted with a 246 s estimate, flew 546 m of
+  // return in 285 s and stood 40 m short of the start when the window ended;
+  // r667's return ran 261 s against a 306 s estimate and stopped 10 m short.
+  static constexpr double kReturnEstimateMargin{1.5};
 
   [[nodiscard]] double wallElapsedS() const noexcept {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -588,7 +594,7 @@ private:
     const double wall_elapsed_s = std::max(wallElapsedS(), 1.0);
     const double real_time_factor =
         std::clamp(sim_elapsed_s / wall_elapsed_s, 0.3, 1.0);
-    return returnEstimateS() / real_time_factor;
+    return kReturnEstimateMargin * returnEstimateS() / real_time_factor;
   }
 
   // The goal is given up for the start, through the channel any objective
