@@ -781,4 +781,115 @@ VisualInertialOdometry::predicted(const std::int64_t stamp_ns) const {
   return estimate;
 }
 
+const char* visualInertialMeasurementStatusName(
+    const VisualInertialMeasurementStatus status) noexcept {
+  switch (status) {
+    case VisualInertialMeasurementStatus::kApplied:
+      return "applied";
+    case VisualInertialMeasurementStatus::kNoClone:
+      return "no_clone";
+    case VisualInertialMeasurementStatus::kNoInformation:
+      return "no_information";
+    case VisualInertialMeasurementStatus::kGated:
+      return "gated";
+    case VisualInertialMeasurementStatus::kRejected:
+      return "rejected";
+  }
+  return "unknown";
+}
+
+std::optional<VisualInertialClonePose>
+VisualInertialOdometry::clonePose(const std::int64_t stamp_ns) const {
+  for (const Clone& clone : impl_->clones) {
+    if (clone.stamp_ns == stamp_ns) {
+      return VisualInertialClonePose{
+          .position_ned_m = clone.position,
+          .body_to_ned = Eigen::Quaterniond{clone.body_to_ned}.normalized()};
+    }
+  }
+  return std::nullopt;
+}
+
+VisualInertialMeasurementResult VisualInertialOdometry::addPositionMeasurement(
+    const VisualInertialPositionMeasurement& measurement) {
+  Impl& state = *impl_;
+  VisualInertialMeasurementResult result;
+  if (!state.initialized || !measurement.position_ned_m.allFinite() ||
+      !measurement.covariance_m2.allFinite()) {
+    return result;
+  }
+  Eigen::Index clone_index = -1;
+  const Clone* clone = nullptr;
+  for (std::size_t i = 0U; i < state.clones.size(); ++i) {
+    if (state.clones[i].stamp_ns == measurement.stamp_ns) {
+      clone = &state.clones[i];
+      clone_index = kImuStates + kCloneStates * static_cast<Eigen::Index>(i);
+      break;
+    }
+  }
+  if (clone == nullptr) {
+    result.status = VisualInertialMeasurementStatus::kNoClone;
+    return result;
+  }
+  result.innovation_ned_m = measurement.position_ned_m - clone->position;
+  // One row per axis the measurement observes, whitened to the noise the
+  // update adds to every row.
+  const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
+      0.5 * (measurement.covariance_m2 + measurement.covariance_m2.transpose())};
+  const Eigen::Index size = state.covariance.rows();
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(3, size);
+  Eigen::VectorXd residual = Eigen::VectorXd::Zero(3);
+  Eigen::MatrixXd raw_jacobian = Eigen::MatrixXd::Zero(3, size);
+  Eigen::VectorXd raw_residual = Eigen::VectorXd::Zero(3);
+  Eigen::VectorXd variances = Eigen::VectorXd::Zero(3);
+  Eigen::Index rows = 0;
+  for (Eigen::Index axis = 0; axis < 3; ++axis) {
+    const double variance = solver.eigenvalues()(axis);
+    if (!(variance > 0.0) || variance >= kVisualInertialUnobservedVarianceM2) {
+      continue;
+    }
+    const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+    raw_jacobian.block(rows, clone_index + kPosition, 1, 3) = direction.transpose();
+    raw_residual(rows) = direction.dot(result.innovation_ned_m);
+    variances(rows) = variance;
+    const double scale = state.config.observation_noise / std::sqrt(variance);
+    jacobian.row(rows) = scale * raw_jacobian.row(rows);
+    residual(rows) = scale * raw_residual(rows);
+    ++rows;
+  }
+  result.rows = static_cast<std::size_t>(rows);
+  if (rows == 0) {
+    result.status = VisualInertialMeasurementStatus::kNoInformation;
+    return result;
+  }
+  jacobian.conservativeResize(rows, Eigen::NoChange);
+  residual.conservativeResize(rows);
+  raw_jacobian.conservativeResize(rows, Eigen::NoChange);
+  raw_residual.conservativeResize(rows);
+  Eigen::MatrixXd innovation =
+      raw_jacobian * state.covariance * raw_jacobian.transpose();
+  innovation.diagonal() += variances.head(rows);
+  const Eigen::LLT<Eigen::MatrixXd> factor{innovation};
+  if (factor.info() != Eigen::Success) {
+    return result;
+  }
+  result.mahalanobis = raw_residual.dot(factor.solve(raw_residual));
+  const double innovation_norm = result.innovation_ned_m.norm();
+  if (innovation_norm > 1.0e-9) {
+    const Eigen::Vector3d along = result.innovation_ned_m / innovation_norm;
+    const Eigen::Matrix3d clone_covariance =
+        state.covariance.block(clone_index + kPosition, clone_index + kPosition, 3, 3);
+    result.prior_sigma_m =
+        std::sqrt(std::max(0.0, along.dot(clone_covariance * along)));
+  }
+  if (!(result.mahalanobis <
+        chiSquareQuantile(rows, state.config.position_gate_normal_quantile))) {
+    result.status = VisualInertialMeasurementStatus::kGated;
+    return result;
+  }
+  state.update(jacobian, residual);
+  result.status = VisualInertialMeasurementStatus::kApplied;
+  return result;
+}
+
 } // namespace drone_city_nav

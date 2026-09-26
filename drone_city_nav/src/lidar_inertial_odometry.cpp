@@ -1,8 +1,9 @@
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
 
+#include "drone_city_nav/point_plane_map_3d.hpp"
+
 #include <Eigen/Dense>
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +16,6 @@ namespace drone_city_nav {
 
 namespace {
 
-using Vector6d = Eigen::Matrix<double, 6, 1>;
 using Matrix6d = Eigen::Matrix<double, 6, 6>;
 
 // The measurement variance of an axis the registration could not observe.
@@ -64,18 +64,6 @@ struct CellKeyHash {
   return angle * axis.axis();
 }
 
-// One cell of the submap: its points and the plane through them, fitted
-// over the cell and its neighbours once enough points are there.
-struct SubmapCell {
-  std::vector<Eigen::Vector3d> points;
-  // The keyframe each point came from, so that a keyframe leaving the submap
-  // takes its own points with it and nothing else is touched.
-  std::vector<std::uint64_t> owners;
-  Eigen::Vector3d normal{Eigen::Vector3d::Zero()};
-  bool normal_valid{false};
-  bool normal_stale{true};
-};
-
 struct Keyframe {
   std::uint64_t id{0U};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
@@ -83,189 +71,51 @@ struct Keyframe {
   std::vector<Eigen::Vector3d> points_world;
 };
 
+// A sliding window of keyframes over the point-plane map: the oldest
+// keyframe leaves first and takes its own points with it.
 class Submap {
 public:
   explicit Submap(const LidarInertialOdometryConfig& config)
-      : config_(config) {
+      : config_(config),
+        map_(PointPlaneMapConfig3D{.cell_m = config.scan_voxel_m,
+                                   .maximum_points_per_cell =
+                                       config.maximum_points_per_cell}) {
   }
 
   [[nodiscard]] bool empty() const noexcept {
-    return cells_.empty();
+    return map_.empty();
   }
 
   [[nodiscard]] std::size_t pointCount() const noexcept {
-    return point_count_;
+    return map_.pointCount();
   }
 
   [[nodiscard]] std::size_t keyframeCount() const noexcept {
     return keyframes_.size();
   }
 
+  [[nodiscard]] PointPlaneMap3D& map() noexcept {
+    return map_;
+  }
+
   void insert(Keyframe keyframe) {
     // The oldest keyframe leaves first, so the cells it frees are refilled by
     // the keyframe arriving now rather than standing empty until the next.
     while (!keyframes_.empty() && keyframes_.size() >= config_.maximum_keyframes) {
-      evictOldest();
+      const Keyframe oldest = std::move(keyframes_.front());
+      keyframes_.pop_front();
+      map_.remove(oldest.points_world, oldest.id);
     }
     keyframe.id = ++last_keyframe_id_;
-    for (const Eigen::Vector3d& point : keyframe.points_world) {
-      SubmapCell& cell = cells_[cellOf(point, config_.scan_voxel_m)];
-      if (cell.points.size() >= config_.maximum_points_per_cell) {
-        continue;
-      }
-      cell.points.push_back(point);
-      cell.owners.push_back(keyframe.id);
-      cell.normal_stale = true;
-      ++point_count_;
-      markNeighboursStale(point);
-    }
+    map_.insert(keyframe.points_world, keyframe.id, 0);
     keyframes_.push_back(std::move(keyframe));
   }
 
-  // The nearest submap point to `query` with its cell's plane normal.
-  [[nodiscard]] bool nearest(const Eigen::Vector3d& query, Eigen::Vector3d& point,
-                             Eigen::Vector3d& normal) {
-    const CellKey center = cellOf(query, config_.scan_voxel_m);
-    const double limit =
-        config_.maximum_correspondence_m * config_.maximum_correspondence_m;
-    double best = limit;
-    SubmapCell* best_cell = nullptr;
-    for (std::int32_t dx = -1; dx <= 1; ++dx) {
-      for (std::int32_t dy = -1; dy <= 1; ++dy) {
-        for (std::int32_t dz = -1; dz <= 1; ++dz) {
-          const auto found =
-              cells_.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-          if (found == cells_.end()) {
-            continue;
-          }
-          for (const Eigen::Vector3d& candidate : found->second.points) {
-            const double distance = (candidate - query).squaredNorm();
-            if (distance < best) {
-              best = distance;
-              point = candidate;
-              best_cell = &found->second;
-            }
-          }
-        }
-      }
-    }
-    if (best_cell == nullptr) {
-      return false;
-    }
-    if (best_cell->normal_stale) {
-      fitNormal(*best_cell, point);
-    }
-    normal = best_cell->normal;
-    return best_cell->normal_valid;
-  }
-
 private:
-  // A new point refits the planes of its own cell and the ring around it;
-  // the outer ring the fit reads keeps its plane, which one point two
-  // cells away hardly moves, and refitting it on every insertion took the
-  // registration past the scan period (r364: 86 ms at p95, 125 at most).
-  void markNeighboursStale(const Eigen::Vector3d& point) {
-    const CellKey center = cellOf(point, config_.scan_voxel_m);
-    for (std::int32_t dx = -1; dx <= 1; ++dx) {
-      for (std::int32_t dy = -1; dy <= 1; ++dy) {
-        for (std::int32_t dz = -1; dz <= 1; ++dz) {
-          const auto found =
-              cells_.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-          if (found != cells_.end()) {
-            found->second.normal_stale = true;
-          }
-        }
-      }
-    }
-  }
-
-  // The plane through the points of the cell and its two rings of
-  // neighbours: the smallest principal axis, valid once the points are many
-  // and flat enough. Two rings, because a scan thinned coarser than the
-  // cell leaves one ring with too few points for a plane.
-  void fitNormal(SubmapCell& cell, const Eigen::Vector3d& around) {
-    const CellKey center = cellOf(around, config_.scan_voxel_m);
-    Eigen::Vector3d mean = Eigen::Vector3d::Zero();
-    std::size_t count = 0U;
-    std::vector<const Eigen::Vector3d*> neighbours;
-    for (std::int32_t dx = -2; dx <= 2; ++dx) {
-      for (std::int32_t dy = -2; dy <= 2; ++dy) {
-        for (std::int32_t dz = -2; dz <= 2; ++dz) {
-          const auto found =
-              cells_.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-          if (found == cells_.end()) {
-            continue;
-          }
-          for (const Eigen::Vector3d& point : found->second.points) {
-            neighbours.push_back(&point);
-            mean += point;
-            ++count;
-          }
-        }
-      }
-    }
-    cell.normal_stale = false;
-    cell.normal_valid = false;
-    if (count < 6U) {
-      return;
-    }
-    mean /= static_cast<double>(count);
-    Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
-    for (const Eigen::Vector3d* point : neighbours) {
-      const Eigen::Vector3d offset = *point - mean;
-      covariance += offset * offset.transpose();
-    }
-    covariance /= static_cast<double>(count);
-    const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{covariance};
-    const Eigen::Vector3d values = solver.eigenvalues();
-    // A plane: the smallest spread is well below the middle one.
-    if (!(values(0) < 0.25 * values(1))) {
-      return;
-    }
-    cell.normal = solver.eigenvectors().col(0).normalized();
-    cell.normal_valid = true;
-  }
-
-  // Removes the oldest keyframe's own points and refits only the planes they
-  // belonged to. Rebuilding the whole hash on every eviction cost the full
-  // submap per keyframe, and at 5 m/s every scan is a keyframe: on r447 the
-  // submap held 112 thousand points, a scan took 155 to 266 ms against a
-  // 100 ms period, the odometry reached the autopilot 1.2 to 1.5 s old, the
-  // autopilot stopped fusing it and lost its position four seconds later.
-  void evictOldest() {
-    const Keyframe oldest = std::move(keyframes_.front());
-    keyframes_.pop_front();
-    for (const Eigen::Vector3d& point : oldest.points_world) {
-      const auto found = cells_.find(cellOf(point, config_.scan_voxel_m));
-      if (found == cells_.end()) {
-        continue;
-      }
-      SubmapCell& cell = found->second;
-      bool removed = false;
-      for (std::size_t index = cell.owners.size(); index-- > 0U;) {
-        if (cell.owners[index] != oldest.id) {
-          continue;
-        }
-        cell.points.erase(cell.points.begin() + static_cast<std::ptrdiff_t>(index));
-        cell.owners.erase(cell.owners.begin() + static_cast<std::ptrdiff_t>(index));
-        --point_count_;
-        removed = true;
-      }
-      if (!removed) {
-        continue;
-      }
-      markNeighboursStale(point);
-      if (cell.points.empty()) {
-        cells_.erase(found);
-      }
-    }
-  }
-
   const LidarInertialOdometryConfig& config_;
-  std::unordered_map<CellKey, SubmapCell, CellKeyHash> cells_;
+  PointPlaneMap3D map_;
   std::deque<Keyframe> keyframes_;
   std::uint64_t last_keyframe_id_{0U};
-  std::size_t point_count_{0U};
 };
 
 // One point per cell, the cell's centroid, within the range band.
@@ -300,91 +150,23 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
   return thinned;
 }
 
-struct RegistrationResult {
-  Eigen::Vector3d position{Eigen::Vector3d::Zero()};
-  Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
-  Matrix6d information{Matrix6d::Zero()};
-  double matched_fraction{0.0};
-  double residual_rms_m{0.0};
-  double information_per_point{0.0};
-  std::size_t iterations{0U};
-  bool converged{false};
-};
-
-// Point-to-plane registration of the thinned scan against the submap from
-// the prior pose: Gauss-Newton over the left perturbation [rotation;
-// translation] of the world pose with a Huber weight on each residual.
-[[nodiscard]] RegistrationResult
+// The registration of the thinned scan against the submap from the prior
+// pose. The correspondence search reads the submap's own configured distance.
+[[nodiscard]] PointPlaneRegistration3D
 registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
              const Eigen::Vector3d& prior_position,
              const Eigen::Quaterniond& prior_rotation,
-             const LidarInertialOdometryConfig& config) {
-  RegistrationResult result;
-  result.position = prior_position;
-  result.rotation = prior_rotation;
-  if (points_body.empty()) {
-    return result;
-  }
-  Eigen::Vector3d map_point;
-  Eigen::Vector3d normal;
-  for (std::size_t iteration = 0U; iteration < config.maximum_iterations; ++iteration) {
-    Matrix6d hessian = Matrix6d::Zero();
-    Vector6d gradient = Vector6d::Zero();
-    double weighted_square = 0.0;
-    std::size_t matched = 0U;
-    const Eigen::Matrix3d rotation = result.rotation.toRotationMatrix();
-    for (const Eigen::Vector3d& point_body : points_body) {
-      const Eigen::Vector3d rotated = rotation * point_body;
-      const Eigen::Vector3d point_world = rotated + result.position;
-      if (!submap.nearest(point_world, map_point, normal)) {
-        continue;
-      }
-      const double residual = normal.dot(point_world - map_point);
-      const double magnitude = std::abs(residual);
-      const double weight =
-          magnitude <= config.robust_width_m ? 1.0 : config.robust_width_m / magnitude;
-      Vector6d jacobian;
-      jacobian.head<3>() = rotated.cross(normal);
-      jacobian.tail<3>() = normal;
-      hessian += weight * jacobian * jacobian.transpose();
-      gradient += weight * residual * jacobian;
-      weighted_square += weight * residual * residual;
-      ++matched;
-    }
-    result.iterations = iteration + 1U;
-    result.matched_fraction =
-        static_cast<double>(matched) / static_cast<double>(points_body.size());
-    result.residual_rms_m =
-        matched > 0U ? std::sqrt(weighted_square / static_cast<double>(matched)) : 0.0;
-    result.information = hessian;
-    if (matched < 6U) {
-      return result;
-    }
-    // A touch of damping keeps a weakly observed axis from running away.
-    const Matrix6d damped = hessian + 1.0e-6 * Matrix6d::Identity();
-    const Vector6d delta = damped.ldlt().solve(-gradient);
-    if (!delta.allFinite()) {
-      return result;
-    }
-    result.rotation = (expSmallAngle(delta.head<3>()) * result.rotation).normalized();
-    result.position += delta.tail<3>();
-    if (delta.tail<3>().norm() < config.convergence_translation_m &&
-        delta.head<3>().norm() < config.convergence_rotation_rad) {
-      result.converged = true;
-      break;
-    }
-  }
-  if (result.iterations > 0U && !result.converged) {
-    // The last step was applied; the fit is what its own step size says.
-    result.converged = true;
-  }
-  const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
-      result.information.bottomRightCorner<3, 3>()};
-  const double matched_points =
-      result.matched_fraction * static_cast<double>(points_body.size());
-  result.information_per_point =
-      matched_points > 0.0 ? solver.eigenvalues()(0) / matched_points : 0.0;
-  return result;
+             const LidarInertialOdometryConfig& config, const double correspondence_m) {
+  return registerPointsToPlanes(
+      submap.map(), points_body, prior_position, prior_rotation,
+      PointPlaneRegistrationConfig3D{
+          .maximum_correspondence_m = correspondence_m,
+          .maximum_iterations = config.maximum_iterations,
+          .convergence_translation_m = config.convergence_translation_m,
+          .convergence_rotation_rad = config.convergence_rotation_rad,
+          .robust_width_m = config.robust_width_m,
+          .born_by_ns = std::numeric_limits<std::int64_t>::max(),
+      });
 }
 
 } // namespace
@@ -609,19 +391,23 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     healthy = !thinned.empty();
     estimate.matched_fraction = healthy ? 1.0 : 0.0;
   } else {
-    const auto assess = [&impl](const RegistrationResult& registration) {
+    const auto assess = [&impl](const PointPlaneRegistration3D& registration) {
       return registration.converged &&
              registration.matched_fraction >= impl.config.minimum_matched_fraction &&
              registration.residual_rms_m <= impl.config.maximum_residual_rms_m;
     };
-    RegistrationResult registration =
-        registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config);
+    PointPlaneRegistration3D registration =
+        registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config,
+                     impl.config.maximum_correspondence_m);
     healthy = assess(registration);
     if (!healthy && impl.has_registered) {
       LidarInertialOdometryConfig wide = impl.config;
       wide.maximum_correspondence_m *= impl.config.recovery_correspondence_factor;
-      const RegistrationResult recovered = registerScan(
-          impl.submap, thinned, impl.carriedPosition(stamp_ns), prior_rotation, wide);
+      // The search keeps the configured distance, as it always has: the
+      // widened configuration reaches the registration's other settings only.
+      const PointPlaneRegistration3D recovered =
+          registerScan(impl.submap, thinned, impl.carriedPosition(stamp_ns),
+                       prior_rotation, wide, impl.config.maximum_correspondence_m);
       if (assess(recovered)) {
         registration = recovered;
         healthy = true;

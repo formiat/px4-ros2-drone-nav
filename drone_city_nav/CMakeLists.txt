@@ -220,6 +220,7 @@ target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_mod
 # controller, and no image library: the features arrive as coordinates.
 add_drone_city_nav_layer(drone_city_nav_localization
                          src/lidar_inertial_odometry.cpp
+                         src/point_plane_map_3d.cpp
                          src/visual_inertial_odometry.cpp)
 target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
                                                          Eigen3::Eigen)
@@ -448,6 +449,7 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
 
 set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
     include/drone_city_nav/lidar_inertial_odometry.hpp
+    include/drone_city_nav/point_plane_map_3d.hpp
     include/drone_city_nav/visual_inertial_odometry.hpp)
 
 set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
@@ -1440,6 +1442,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_inertial_odometry_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_inertial_odometry_test drone_city_nav_localization)
   enable_project_warnings(lidar_inertial_odometry_test)
+
+  ament_add_gtest(point_plane_map_3d_test tests/point_plane_map_3d_test.cpp)
+  target_compile_features(point_plane_map_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(point_plane_map_3d_test drone_city_nav_localization)
+  enable_project_warnings(point_plane_map_3d_test)
 
   ament_add_gtest(visual_inertial_odometry_test
                   tests/visual_inertial_odometry_test.cpp)

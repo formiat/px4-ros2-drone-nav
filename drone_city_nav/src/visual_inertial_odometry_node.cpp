@@ -8,6 +8,7 @@
 
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
+#include "drone_city_nav/point_plane_map_3d.hpp"
 #include "drone_city_nav/px4_autopilot_adapter.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
@@ -16,7 +17,10 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
+#include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <chrono>
@@ -25,9 +29,11 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <opencv2/core.hpp>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -40,6 +46,30 @@ namespace {
 // roll, pitch and the gyroscope bias come from them.
 constexpr std::uint64_t kRestSamplesBeforeInitialPose{100U};
 constexpr std::int64_t kAutopilotOdometryPeriodNs{40'000'000};
+
+// The long-lived map the depth is registered against where the vehicle has
+// been before (roadmap item 19 measured the drift of a doubled path at 0.4
+// to 4.1 m, r670 to r689, and r689 flew into the launch platform 4.1 m from
+// where the estimate put it). Surfaces within the confident depth only, in
+// the cells of the lidar-inertial estimator's map.
+constexpr double kMapCellM{0.4};
+constexpr std::size_t kMapPointsPerCell{6U};
+constexpr double kMapRangeM{6.0};
+constexpr std::size_t kMapMaximumScanPoints{3000U};
+// Only what was mapped this long ago is registered against: the depth
+// just laid down carries the same drift as the pose it is laid from.
+constexpr std::int64_t kMapAgeNs{20'000'000'000};
+// A registration every this long; the drift the map corrects accrues over
+// minutes.
+constexpr std::int64_t kMapRegistrationPeriodNs{500'000'000};
+// What makes a registration a measurement: most of the scan matched old
+// cells, the fit is tight, and an axis carries information per matched
+// point above the floor (the lidar-inertial estimator's gates).
+constexpr double kMapMinimumMatchedFraction{0.3};
+constexpr std::size_t kMapMinimumMatchedPoints{150U};
+constexpr double kMapMaximumResidualRmsM{0.25};
+constexpr double kMapMinimumInformationPerPoint{0.01};
+constexpr double kMapMinimumPositionVarianceM2{0.01};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along
 // the body's x axis, in the body forward-right-down frame.
@@ -78,6 +108,7 @@ public:
       throw std::invalid_argument{"the left camera position needs three values"};
     }
     const double baseline_m = declare_parameter<double>("baseline_m", 0.20);
+    left_camera_body_ = Eigen::Vector3d{left[0], left[1], left[2]};
     camera_to_body_ = forwardCameraToBody();
     VisualInertialOdometryConfig config;
     config.left_camera = {.camera_to_body = Eigen::Quaterniond{camera_to_body_},
@@ -170,6 +201,20 @@ public:
           queueIfPaired();
         },
         in_group);
+    // The depth is registered on a thread of its own: a registration takes
+    // tens of milliseconds, and the frames and the IMU do not wait for it.
+    depth_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions depth_options;
+    depth_options.callback_group = depth_group_;
+    depth_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        // The depth node's own returns topic: both nodes of the process read
+        // the one parameter.
+        declare_parameter<std::string>("returns_topic", "/stereo_depth/points"),
+        rclcpp::SensorDataQoS{}.keep_last(2),
+        [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) {
+          onDepth(*cloud);
+        },
+        depth_options);
     RCLCPP_INFO(get_logger(),
                 "VISUAL_INERTIAL_ODOMETRY ready initial_heading_ned=%.3f "
                 "frame_stamp_offset_ms=%.1f",
@@ -190,6 +235,7 @@ private:
   };
 
   void onImu(const AutopilotImuSample& sample) {
+    const std::scoped_lock lock{odometry_mutex_};
     const LidarPoseSourceStampResult source = resolveLidarPoseSourceStamp(
         time_mapper_, sample.timestamp_us, get_clock()->now().nanoseconds());
     if (!source.resolved()) {
@@ -364,6 +410,157 @@ private:
     }
   }
 
+  // One depth frame: registered against the old part of the long-lived map
+  // when one is due, then laid into it at the frame's pose as the filter now
+  // holds it. The returns are forward-left-up at the left camera.
+  void onDepth(const sensor_msgs::msg::PointCloud2& cloud) {
+    const std::int64_t stamp_ns =
+        rclcpp::Time{cloud.header.stamp}.nanoseconds() + frame_stamp_offset_ns_;
+    std::vector<Eigen::Vector3d> points_body = thinnedDepth(cloud);
+    if (points_body.empty()) {
+      return;
+    }
+    std::optional<VisualInertialClonePose> pose;
+    {
+      const std::scoped_lock lock{odometry_mutex_};
+      pose = odometry_->clonePose(stamp_ns);
+    }
+    if (!pose.has_value()) {
+      ++map_frames_without_clone_;
+      return;
+    }
+    if (!map_.empty() &&
+        stamp_ns - last_map_registration_ns_ >= kMapRegistrationPeriodNs) {
+      last_map_registration_ns_ = stamp_ns;
+      registerAgainstMap(stamp_ns, points_body, *pose);
+      const std::scoped_lock lock{odometry_mutex_};
+      pose = odometry_->clonePose(stamp_ns);
+    }
+    if (!pose.has_value()) {
+      return;
+    }
+    const Eigen::Matrix3d rotation = pose->body_to_ned.toRotationMatrix();
+    for (Eigen::Vector3d& point : points_body) {
+      point = rotation * point + pose->position_ned_m;
+    }
+    map_.insert(points_body, 0U, stamp_ns);
+  }
+
+  // The surface returns within the confident depth, in the body frame, one
+  // per cell: the centroid of the cell's returns.
+  [[nodiscard]] std::vector<Eigen::Vector3d>
+  thinnedDepth(const sensor_msgs::msg::PointCloud2& cloud) const {
+    struct Accumulator {
+      Eigen::Vector3d sum{Eigen::Vector3d::Zero()};
+      std::size_t count{0U};
+    };
+
+    double cell_m = kMapCellM;
+    std::vector<Eigen::Vector3d> body;
+    body.reserve(cloud.width * cloud.height);
+    sensor_msgs::PointCloud2ConstIterator<float> x{cloud, "x"};
+    sensor_msgs::PointCloud2ConstIterator<float> y{cloud, "y"};
+    sensor_msgs::PointCloud2ConstIterator<float> z{cloud, "z"};
+    sensor_msgs::PointCloud2ConstIterator<float> surface{cloud, "intensity"};
+    for (; x != x.end(); ++x, ++y, ++z, ++surface) {
+      const Eigen::Vector3d flu{*x, *y, *z};
+      if (*surface < 0.5F || !flu.allFinite() || flu.norm() > kMapRangeM) {
+        continue;
+      }
+      body.push_back(Eigen::Vector3d{flu.x(), -flu.y(), -flu.z()} + left_camera_body_);
+    }
+    std::vector<Eigen::Vector3d> thinned;
+    // A frame too dense for the budget is thinned coarser, not sampled, as
+    // the lidar-inertial estimator thins its scans.
+    do {
+      std::unordered_map<std::int64_t, Accumulator> cells;
+      for (const Eigen::Vector3d& point : body) {
+        const auto index = [cell_m](const double value) {
+          return static_cast<std::int64_t>(std::floor(value / cell_m)) & 0x1FFFFF;
+        };
+        Accumulator& cell = cells[(index(point.x()) << 42) | (index(point.y()) << 21) |
+                                  index(point.z())];
+        cell.sum += point;
+        ++cell.count;
+      }
+      thinned.clear();
+      thinned.reserve(cells.size());
+      for (const auto& [key, cell] : cells) {
+        thinned.push_back(cell.sum / static_cast<double>(cell.count));
+      }
+      cell_m *= 1.25;
+    } while (thinned.size() > kMapMaximumScanPoints);
+    return thinned;
+  }
+
+  // The frame's depth registered against what was mapped long enough ago
+  // from the frame's pose; the registered position, along the axes the fit
+  // observes, is a position measurement of the frame's clone.
+  void registerAgainstMap(const std::int64_t stamp_ns,
+                          const std::vector<Eigen::Vector3d>& points_body,
+                          const VisualInertialClonePose& pose) {
+    const auto started = std::chrono::steady_clock::now();
+    const PointPlaneRegistration3D registration = registerPointsToPlanes(
+        map_, points_body, pose.position_ned_m, pose.body_to_ned,
+        PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
+                                       .maximum_iterations = 10U,
+                                       .convergence_translation_m = 1.0e-3,
+                                       .convergence_rotation_rad = 1.0e-4,
+                                       .robust_width_m = 0.2,
+                                       .born_by_ns = stamp_ns - kMapAgeNs});
+    const double matched_points =
+        registration.matched_fraction * static_cast<double>(points_body.size());
+    ++map_registrations_;
+    const char* outcome = "weak";
+    VisualInertialMeasurementResult applied;
+    if (registration.converged &&
+        registration.matched_fraction >= kMapMinimumMatchedFraction &&
+        matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
+        registration.residual_rms_m <= kMapMaximumResidualRmsM) {
+      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
+          registration.information.bottomRightCorner<3, 3>()};
+      const double residual_variance =
+          std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
+      Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
+      for (int axis = 0; axis < 3; ++axis) {
+        const double information = solver.eigenvalues()(axis);
+        const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+        const double variance =
+            information / matched_points < kMapMinimumInformationPerPoint
+                ? kVisualInertialUnobservedVarianceM2
+                : std::max(residual_variance / information,
+                           kMapMinimumPositionVarianceM2);
+        covariance += variance * direction * direction.transpose();
+      }
+      {
+        const std::scoped_lock lock{odometry_mutex_};
+        applied = odometry_->addPositionMeasurement(
+            VisualInertialPositionMeasurement{.stamp_ns = stamp_ns,
+                                              .position_ned_m = registration.position,
+                                              .covariance_m2 = covariance});
+      }
+      outcome = visualInertialMeasurementStatusName(applied.status);
+      if (applied.status == VisualInertialMeasurementStatus::kApplied) {
+        ++map_measurements_applied_;
+      }
+    }
+    const double registration_ms = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - started)
+                                       .count();
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "VIO_MAP_REGISTRATION outcome=%s matched=%.2f matched_points=%.0f "
+        "residual_m=%.3f information_per_point=%.4f rows=%zu innovation_m=%.3f "
+        "prior_sigma_m=%.3f mahalanobis=%.2f registration_ms=%.1f scan_points=%zu "
+        "map_points=%zu registrations=%" PRIu64 " applied=%" PRIu64
+        " frames_without_clone=%" PRIu64,
+        outcome, registration.matched_fraction, matched_points,
+        registration.residual_rms_m, registration.information_per_point, applied.rows,
+        applied.innovation_ned_m.norm(), applied.prior_sigma_m, applied.mahalanobis,
+        registration_ms, points_body.size(), map_.pointCount(), map_registrations_,
+        map_measurements_applied_, map_frames_without_clone_);
+  }
+
   [[nodiscard]] double mapYaw(const VisualInertialEstimate& estimate) const noexcept {
     const Eigen::Quaterniond& q = estimate.body_to_ned;
     const double heading = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
@@ -390,7 +587,19 @@ private:
     pose_pub_->publish(pose);
   }
 
+  // The filter is read and advanced by the IMU and frame thread and by the
+  // depth thread.
+  std::mutex odometry_mutex_;
   std::unique_ptr<VisualInertialOdometry> odometry_;
+  rclcpp::CallbackGroup::SharedPtr depth_group_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr depth_sub_;
+  PointPlaneMap3D map_{PointPlaneMapConfig3D{
+      .cell_m = kMapCellM, .maximum_points_per_cell = kMapPointsPerCell}};
+  Eigen::Vector3d left_camera_body_{Eigen::Vector3d::Zero()};
+  std::int64_t last_map_registration_ns_{0};
+  std::uint64_t map_registrations_{0U};
+  std::uint64_t map_measurements_applied_{0U};
+  std::uint64_t map_frames_without_clone_{0U};
   std::unique_ptr<StereoFeatureTracker> tracker_;
   std::unique_ptr<AutopilotStateSource> autopilot_;
   rclcpp::CallbackGroup::SharedPtr group_;

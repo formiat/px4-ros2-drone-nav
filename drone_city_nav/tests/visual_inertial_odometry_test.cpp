@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -263,6 +264,68 @@ TEST(VisualInertialOdometry, ThePoseBetweenFramesFollowsTheImu) {
   EXPECT_LT((between.position_ned_m - Motion::position(t)).norm(), 0.1);
   // The vehicle moved 0.12 m over those 80 ms: the pose is not the frame's.
   EXPECT_GT((between.position_ned_m - Motion::position(t - 0.08)).norm(), 0.05);
+}
+
+TEST(VisualInertialOdometry, AMapPositionPullsTheFramesCloneTowardIt) {
+  // Four seconds on the IMU alone, then a position of the last frame's clone
+  // measured 0.2 m ahead along x: the clone moves toward it, not past it.
+  VisualInertialOdometry odometry{testConfig()};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  std::int64_t imu_stamp = 0;
+  std::int64_t stamp = 0;
+  for (std::int64_t frame = 1; frame <= 40; ++frame) {
+    stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    static_cast<void>(odometry.addFrame(stamp, {}));
+  }
+  const std::optional<VisualInertialClonePose> before = odometry.clonePose(stamp);
+  ASSERT_TRUE(before.has_value());
+  const Eigen::Vector3d measured =
+      before->position_ned_m + Eigen::Vector3d{0.2, 0.0, 0.0};
+  const VisualInertialMeasurementResult result =
+      odometry.addPositionMeasurement(VisualInertialPositionMeasurement{
+          .stamp_ns = stamp,
+          .position_ned_m = measured,
+          .covariance_m2 = 0.01 * Eigen::Matrix3d::Identity()});
+  EXPECT_EQ(result.status, VisualInertialMeasurementStatus::kApplied);
+  EXPECT_EQ(result.rows, 3U);
+  const std::optional<VisualInertialClonePose> after = odometry.clonePose(stamp);
+  ASSERT_TRUE(after.has_value());
+  const double moved = after->position_ned_m.x() - before->position_ned_m.x();
+  EXPECT_GT(moved, 0.0);
+  EXPECT_LE(moved, 0.2);
+  EXPECT_LT((after->position_ned_m - measured).norm(),
+            (before->position_ned_m - measured).norm());
+}
+
+TEST(VisualInertialOdometry, APositionFarOffTheCloneOrWithoutOneIsNoMeasurement) {
+  VisualInertialOdometry odometry{testConfig()};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  std::int64_t imu_stamp = 0;
+  const std::int64_t stamp = kFramePeriodNs;
+  for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+    odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+  }
+  static_cast<void>(odometry.addFrame(stamp, {}));
+  const std::optional<VisualInertialClonePose> clone = odometry.clonePose(stamp);
+  ASSERT_TRUE(clone.has_value());
+  const auto measure = [&](const std::int64_t at, const Eigen::Vector3d& offset,
+                           const double variance) {
+    return odometry
+        .addPositionMeasurement(VisualInertialPositionMeasurement{
+            .stamp_ns = at,
+            .position_ned_m = clone->position_ned_m + offset,
+            .covariance_m2 = variance * Eigen::Matrix3d::Identity()})
+        .status;
+  };
+  EXPECT_EQ(measure(stamp, Eigen::Vector3d{50.0, 0.0, 0.0}, 0.01),
+            VisualInertialMeasurementStatus::kGated);
+  EXPECT_EQ(measure(stamp + 1, Eigen::Vector3d::Zero(), 0.01),
+            VisualInertialMeasurementStatus::kNoClone);
+  EXPECT_EQ(measure(stamp, Eigen::Vector3d::Zero(), 2.0e6),
+            VisualInertialMeasurementStatus::kNoInformation);
 }
 
 TEST(VisualInertialOdometry, AFrameBeforeTheDeclaredPoseIsNoEstimate) {
