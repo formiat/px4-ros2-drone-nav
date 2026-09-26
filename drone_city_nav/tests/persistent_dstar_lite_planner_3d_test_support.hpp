@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -92,15 +93,33 @@ inline void expectSamePath(const std::vector<Point3>& first,
   }
 }
 
+// The path clears the body as the planner accepts it: the departure swept
+// whole, every later segment in the pieces the route sampler cuts it into.
 inline void expectRawValid(const std::vector<Point3>& path,
                            const ObservedOccupancyGrid3D& occupancy,
-                           const SweptFootprintConfig& footprint) {
+                           const SweptFootprintConfig& footprint,
+                           const double route_sampling_step_m = 0.5) {
   ASSERT_GE(path.size(), 2U);
-  for (std::size_t index = 1U; index < path.size(); ++index) {
-    EXPECT_TRUE(validateRawSweptFootprint(occupancy, path[index - 1U],
-                                          FootprintBodyAxis{}, path[index],
-                                          FootprintBodyAxis{}, footprint)
-                    .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, path[0], FootprintBodyAxis{},
+                                        path[1], FootprintBodyAxis{}, footprint)
+                  .accepted());
+  for (std::size_t index = 2U; index < path.size(); ++index) {
+    const Point3& first = path[index - 1U];
+    const Point3& second = path[index];
+    const auto pieces = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(
+                std::ceil(distance3D(first, second) / route_sampling_step_m)));
+    Point3 previous = first;
+    for (std::size_t piece = 1U; piece <= pieces; ++piece) {
+      const double ratio = static_cast<double>(piece) / static_cast<double>(pieces);
+      const Point3 next{std::lerp(first.x, second.x, ratio),
+                        std::lerp(first.y, second.y, ratio),
+                        std::lerp(first.z, second.z, ratio)};
+      EXPECT_TRUE(validateRawSweptFootprint(occupancy, previous, FootprintBodyAxis{},
+                                            next, FootprintBodyAxis{}, footprint)
+                      .accepted());
+      previous = next;
+    }
   }
 }
 

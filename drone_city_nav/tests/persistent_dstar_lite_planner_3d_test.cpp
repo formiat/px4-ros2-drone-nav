@@ -334,6 +334,9 @@ TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReach
   config.feasibility_first_enabled = true;
   config.maximum_feasibility_expansions_per_update = 4096U;
   config.maximum_feasibility_compute_time_ms = 500.0;
+  // One route piece per lattice step: the jambs clip the straight edges out
+  // of the placed node as the route validators sweep them.
+  config.route_sampling_step_m = 2.0;
   const Point3 start{2.5, 5.5, 2.5};
   const Point3 goal{14.5, 2.5, 2.5};
 
@@ -351,7 +354,8 @@ TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReach
   ASSERT_GE(points.size(), 2U);
   EXPECT_NEAR(points.front().x, start.x, 1.0e-9);
   EXPECT_NEAR(points.front().y, start.y, 1.0e-9);
-  expectRawValid(points, *occupancy, refined.config().physical_footprint);
+  expectRawValid(points, *occupancy, refined.config().physical_footprint,
+                 refined.config().route_sampling_step_m);
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

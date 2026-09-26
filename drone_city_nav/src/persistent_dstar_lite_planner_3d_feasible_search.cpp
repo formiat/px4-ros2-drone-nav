@@ -145,7 +145,7 @@ bool FeasiblePathSearch3D::goalConnectorValid(const FeasibilityQueueEntry3D& cur
     return true;
   }
   ++connector_sweep_count_;
-  return lattice_->rawSegmentValid(current_point, endpoints.exact_goal);
+  return lattice_->routePiecesValid(current_point, endpoints.exact_goal);
 }
 
 std::size_t FeasiblePathSearch3D::connectorSweepCount() const noexcept {

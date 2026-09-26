@@ -546,8 +546,8 @@ PlannerLattice3D::refineBlockedEdge(const PersistentPlannerNode3D first,
           return std::nullopt;
         }
         ++edge_refinement_probes_;
-        if (rawSegmentValid(first_point, waypoint) &&
-            rawSegmentValid(waypoint, second_point)) {
+        if (routePiecesValid(first_point, waypoint) &&
+            routePiecesValid(waypoint, second_point)) {
           return waypoint;
         }
       }
@@ -760,7 +760,11 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
       }
       if (state == kLevelZeroEdgeUnknown) {
         ++raw_edge_validation_checks_;
-        if (rawSegmentValid(pointFor(first), pointFor(second))) {
+        // Priced as the path is accepted: an edge clear only when swept
+        // whole is refused by the acceptance, and a search pricing it clear
+        // finds it again after every refusal (r693 searched 90 s within
+        // 0.4 m of the goal, refusing one such edge after another).
+        if (routePiecesValid(pointFor(first), pointFor(second))) {
           state = kLevelZeroEdgeClear;
           setLevelZeroState(slot, state);
         } else if (const std::optional<Point3> waypoint =
@@ -816,7 +820,7 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
     const Point3 first_point = pointFor(first);
     const Point3 second_point = pointFor(second);
     ++raw_edge_validation_checks_;
-    raw_cost = rawSegmentValid(first_point, second_point)
+    raw_cost = routePiecesValid(first_point, second_point)
                    ? minimumFlightTranslationTime3D(first_point, second_point,
                                                     config_->time_model)
                    : std::numeric_limits<double>::infinity();
