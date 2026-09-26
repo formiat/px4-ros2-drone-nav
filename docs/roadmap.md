@@ -1266,6 +1266,115 @@ flights with an injected unreachable goal return to the start in truth
 without a collision, each logging its proof and its trigger, and when the
 acceptance series of items 9, 16, 17 and 18 show no return in any flight.
 
+## 20. Slowed Simulation And Unattended Recording
+
+**Type:** simulation infrastructure and one honesty repair of the onboard
+loop; no navigation policy.
+
+**Hard prerequisites:** none for stages 0 to 2; stage 3 is optional and
+depends on nothing but a display server.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission for the acceptance of stage 0, the cooperative-traffic mission for
+what the item is for.
+
+Asked by the project owner on 2026-09-25. The reference workstation holds two
+lidar vehicles at real time and not four (item 15), and a demonstration
+recording today means a person at the desk with the GUI open for six
+minutes. Both have the same answer: let the simulation run slower than the
+wall clock on purpose, and let the picture be rendered and written without a
+screen. The facts this item rests on were established on 2026-09-25:
+
+- **The simulator's clock rate is a world parameter.** The materialized
+  worlds carry `<max_step_size>0.004</max_step_size>` and
+  `<real_time_factor>1.0</real_time_factor>`; Gazebo throttles its server to
+  the factor, PX4 SITL runs in lockstep and follows, and since item 16
+  (`UXRCE_DDS_SYNCT=0`) every autopilot stamp is the simulation clock at any
+  factor. The mean flight speed of the second requirement is measured on the
+  simulation clock since 2026-09-25, so the check does not care either.
+- **Slowing the simulator halves only what runs on the simulation clock.**
+  Physics, the GPU lidars, the stereo pair and the depth node (215 percent
+  of a core, per frame), the obstacle memory (72 percent, per scan) and the
+  autopilot all take half the wall time per simulated second at a factor of
+  0.5. The planning tick (`tick_rate_hz`, a wall-clock rate) and the
+  offboard tick (`create_wall_timer`, 20 ms) do not: `production_mppi_node`
+  at 186 percent of a core costs the same wall second whatever the factor,
+  and with four vehicles that is 7.4 of the 8 physical cores before anything
+  else runs. Item 15 already records the other half of this fact: at a
+  real-time factor of 0.6 the planner takes about 72 ticks per simulated
+  second instead of 43, so a slow simulation flies the vehicle with a faster
+  computer than it has.
+- **The server already renders without a display.** Headless flights run
+  `gz sim -s --headless-rendering`; the stereo pair is rendered that way. A
+  camera sensor placed in the world for the picture renders the same way and
+  its frames carry the simulation stamp, so a recording made from them plays
+  at the flight's true speed whatever the factor was.
+- **RViz does not.** Its overlays (the memory, the current depth, the
+  committed route, the goal) exist only in RViz, which needs a display
+  server, and a capture of that display runs on the wall clock.
+
+### Stage 0: The Onboard Loop Keeps Simulation Time
+
+The planning tick and the offboard tick move from wall-clock timers to the
+node clock under `use_sim_time`, which every onboard node already declares
+for its stamps. At a factor of 1.0 nothing should change but timer jitter,
+which is what the acceptance measures: both series on the one commit, the
+camera series against the 1.798 m/s of a34690ba and the lidar series against
+2.617, the tick and planner percentiles beside their debt figures. At a
+factor below 1.0 the loop then slows with the world and the load falls with
+the factor; what remains unequal is the wall-clock latency of the transport
+and the planner's 150 ms budget, which become shorter in simulated seconds by
+the factor, so a slowed flight still flatters the stack by that much and its
+speed figures are never compared with a real-time series. The stage lands
+first because without it a slowed run neither lightens the host nor tells
+the truth.
+
+### Stage 1: The Factor As A Parameter Of The Run
+
+`<real_time_factor>` becomes an input of the environment materialization,
+which already rewrites the worlds it installs, and an environment variable
+of the simulation scripts with 1.0 as the default; the runtime manifest
+records the factor asked for and the resource record keeps reporting the
+one achieved. The quiet-host gate is unaffected: it reads processes, not the
+factor. A cooperative flight of four lidar vehicles at 0.5 then costs the
+host what two cost at 1.0, which the workstation holds (item 15), at twice
+the wall time: twelve minutes for a six-minute flight.
+
+### Stage 2: The Picture Written Without A Screen
+
+A spectator camera as a sensor of the world, on the vehicle the spectator
+selection names (the cooperative missions already select and reselect a
+spectator) or at a stated pose, bridged like the pair's frames and written
+to a video file by a recorder that consumes the image topic, in the run's
+directory beside the logs. Resolution, rate and the camera's placement are
+stated with the cost of the extra render on the GPU, which the camera
+profile already loads to 40 percent at real time and which the factor of
+stage 1 relieves. The recording plays at the flight's true speed and is a
+product of every headless run that asks for it, with nobody at the desk.
+
+### Stage 3: RViz In The Background, If Wanted
+
+The only way to record RViz without a person is a virtual display: `Xvfb`
+with software rendering, or a second X server on the GPU with a dummy
+screen, and `ffmpeg` capturing it. It is a workaround and is named one: the
+capture runs on the wall clock, so at a factor below 1.0 it is slow motion
+by a varying amount and is re-timed afterwards from the factor the resource
+record sampled. The stage is optional; the honest recording of the item is
+stage 2, and a project that wants the overlays in the picture without RViz
+would have to render them in the world, which this item does not do.
+
+### Measurement And Completion
+
+Stage 0 is complete with both acceptance series green on its commit and the
+tick and planner percentiles reported beside the previous ones. Stage 1 is
+complete when a four-vehicle cooperative flight at a factor of 0.5 runs on
+the reference workstation with the load recorded, its separation figures
+read in metres and simulation time as item 15 prescribes. Stage 2 is
+complete when a headless run writes a playable recording of its whole flight
+without a display server, with the GPU cost stated. Stage 3, if built, is
+complete when a background capture of RViz is re-timed to the flight's clock
+within one second over the flight.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

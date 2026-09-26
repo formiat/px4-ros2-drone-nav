@@ -80,6 +80,8 @@ So that nobody searches for a script that does not exist. The roadmap
 - **item 18** — smoke, transient obstacles such as a person crossing the
   frame, and a thermal channel; today a moving body stays in the map until
   the sensor looks there again;
-- **item 19** — the return home from a goal proven unreachable.
+- **item 19** — the return home from a goal proven unreachable;
+- **item 20** — the simulation slowed on purpose so that four vehicles fit
+  the workstation, and a recording of the flight written without a screen.
 
 None of these has a command yet. What exists is in the two tables above.

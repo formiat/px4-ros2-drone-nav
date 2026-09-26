@@ -49,8 +49,9 @@ covers cooperative air traffic, generalized static 3D passages, no-static 3D
 lidar perception, lidar-inertial localization, realistic cooperative
 communication, camera-based 3D perception without lidar or static maps,
 flight without GNSS and without lidar, flight in degraded visual
-conditions, flight through transient and scattering obstacles, and the
-return home from a goal proven unreachable. What is known to be wrong or unfinished and has been set aside
+conditions, flight through transient and scattering obstacles, the
+return home from a goal proven unreachable, and a simulation slowed on
+purpose with its flight recorded without a screen. What is known to be wrong or unfinished and has been set aside
 is in [`docs/technical_debt.md`](docs/technical_debt.md).
 
 ## Releases
