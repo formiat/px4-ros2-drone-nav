@@ -1262,12 +1262,28 @@ boundary is closed by measurement, whatever the planner says; a component
 with unknown on its boundary is open, whatever the planner says, and the
 budget trigger is the only one that can end the flight from there.
 
-**The unreachability is injected, and today it is static.** A variant of the
-location closes the corridor with a surface (a collapsed passage, a door
-that was open on the map and is not), recorded in the manifest as the
-scenario's parameter, so the acceptance flights of this item exist before
-item 18 delivers a plume; when it does, the same flights are flown with the
-plume as the closure and the proof has to outlive its decay.
+**The unreachability is injected, and today it is static.** Decided by the
+project owner on 2026-09-26: the check of the algorithm places the goal, the
+point B of the ordinary point-to-point mission, deliberately beyond the
+vehicle's reach — outside the map, behind the outer walls of the location —
+so that no route to it can exist, the vehicle cannot reach it, and the return
+home has to run. Nothing but the goal's coordinates changes: the same
+location, the same start, the same mission, and the goal written into the
+manifest as the injected unreachability, which is what lets the check count
+the return as the outcome asked for. What the flight then measures is the
+proof itself. The vehicle's reachable component is the building's interior,
+and the topological trigger fires only once every opening of that interior
+has been looked at and closed by measurement — until then unknown lies on
+the boundary and the component is open, whatever the planner finds — so on
+a location of this size the budget trigger may come first, and the flight
+records which one it was; both are accepted outcomes, and a return on
+neither, or a return in a flight whose goal was reachable, is a failure. A
+second injection, a variant of the location that closes a corridor with a
+surface (a collapsed passage, a door that was open on the map and is not),
+puts the goal inside the map and cut off from it, so the proof is taken
+against a closure the vehicle has to find rather than against the outer
+wall; when item 18 delivers a plume, that variant is flown with the plume
+as the closure and the proof has to outlive its decay.
 
 **Three guards, without which the policy is a loophole.**
 
@@ -1310,9 +1326,10 @@ the start on arrival, judged by the same capture radius as a goal; and that
 no ordinary acceptance flight of any series produced a return.
 
 Complete when, on the camera profile and the lidar profile alike, five
-flights with an injected unreachable goal return to the start in truth
-without a collision, each logging its proof and its trigger, and when the
-acceptance series of items 9, 16, 17 and 18 show no return in any flight.
+flights with the goal placed outside the map return to the start in truth
+without a collision, each logging its proof and its trigger, five more with
+the goal cut off inside the map do the same, and when the acceptance series
+of items 9, 16, 17 and 18 show no return in any flight.
 
 ## 20. Slowed Simulation And Unattended Recording
 
