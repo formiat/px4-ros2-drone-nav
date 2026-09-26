@@ -567,8 +567,6 @@ prepare_runtime_evidence
 mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
-if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
-fi
 if [[ "${enable_gz_scene_diagnostics}" == "true" ||
   "${enable_gz_scene_diagnostics}" == "1" ]]; then
   rm -rf "${gz_scene_diagnostics_dir}"
