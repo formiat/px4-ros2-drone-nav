@@ -520,7 +520,7 @@ def generate_launch_description():
                 {"static_free_space_topology_3d_path": ""}
             )
         nodes = [gazebo_aligned_map_tf]
-        if gazebo_bridge_enabled and lidar_enabled and navigation_sensors == "lidar":
+        if gazebo_bridge_enabled and navigation_sensors == "lidar":
             bridge_contract = (
                 f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
                 "[gz.msgs.PointCloudPacked"

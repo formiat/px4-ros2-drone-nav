@@ -289,11 +289,11 @@ def generate_multi_vehicle_launch_description():
             gz_scan, scan_topic, scan_bridge_contract = _make_lidar_topics(
                 profile, world_name, config["model"], prefix
             )
-            if lidar_enabled and navigation_sensors == "lidar":
+            if navigation_sensors == "lidar":
                 scan_bridge_arguments.append(scan_bridge_contract)
                 scan_bridge_remaps.extend(["-r", f"{gz_scan}:={scan_topic}"])
             depth_topics = None
-            if lidar_enabled and cameras == "stereo_tof":
+            if cameras == "stereo_tof":
                 # The vehicle's camera set, and the depth node that turns it
                 # into the returns its obstacle memory integrates. Beside a
                 # navigating lidar nothing consumes those returns here: the
