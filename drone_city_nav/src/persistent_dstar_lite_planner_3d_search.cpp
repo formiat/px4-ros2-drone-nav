@@ -761,10 +761,12 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::refinePublishedPath(
   if (path.size() < 3U) {
     return path;
   }
+  // Validated as the path is accepted: a shortcut clear only when swept whole
+  // would be refused by the acceptance and the candidate lost with it.
   const auto segment_valid = [this](const Point3& first, const Point3& second,
                                     const bool departure) {
     return departure ? lattice_.departureSegmentValid(first, second)
-                     : lattice_.rawSegmentValid(first, second);
+                     : lattice_.routePiecesValid(first, second);
   };
   // Every published path, anytime or converged, is shortcut-simplified: each
   // shortcut is raw-validated, and a lattice zig-zag left in a route costs a

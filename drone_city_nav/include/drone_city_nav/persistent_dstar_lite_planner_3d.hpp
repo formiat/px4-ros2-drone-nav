@@ -208,6 +208,11 @@ struct PersistentPlannerConfig3D {
   // physical_footprint.
   std::optional<SweptFootprintConfig> departure_footprint;
   FlightEnvelopeConfig flight_envelope{};
+  // The step the route planner samples an accepted path at. Every validator
+  // downstream sweeps the route piece by piece, and a conservative sweep of a
+  // whole segment does not answer for the pieces it is cut into, so a path is
+  // accepted only as those pieces clear.
+  double route_sampling_step_m{0.5};
 };
 
 struct PersistentPlannerRequest3D {

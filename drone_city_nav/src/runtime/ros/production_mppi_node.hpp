@@ -353,8 +353,6 @@ private:
   Point3 mission_goal_{216.0, 378.0, 18.0};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
-  // The last candidate whose raw-collision refusal was described in the log.
-  std::uint64_t route_refusal_diagnostic_fingerprint_{0U};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;

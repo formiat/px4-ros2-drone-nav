@@ -1,6 +1,7 @@
 #include "route_materializer_3d.hpp"
 
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/passage_traversal_selection_3d.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
@@ -39,6 +40,22 @@ routeMaterializerConfigValid(const RouteMaterializerConfig3D& config) noexcept {
          std::isfinite(config.route_geometry.corner_smoothing_distance_m) &&
          config.route_geometry.corner_smoothing_distance_m >= 0.0 &&
          config.route_geometry.corner_curve_samples >= 2U;
+}
+
+// Whether every piece of the sampled route clears the physical body, swept as
+// the activation and the tracking tube sweep it.
+[[nodiscard]] bool routePiecesClear(const std::vector<RouteSample3D>& route,
+                                    const OccupiedCollisionWorld3D& world) noexcept {
+  const OccupiedCollisionOracle3D oracle{world};
+  for (std::size_t index = 1U; index < route.size(); ++index) {
+    if (!oracle
+             .validateSegment(route[index - 1U].position, FootprintBodyAxis{},
+                              route[index].position, FootprintBodyAxis{})
+             .clear()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -319,6 +336,23 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
     materialization.route_shortcuts_applied = 0U;
     materialization.route_corners_smoothed = 0U;
     result.geometry_optimization_fallback = optimized_risk_assignment;
+  }
+  // The optimizer validated its shortcuts and fillets as whole chords, and
+  // every validator after it sweeps the route in the pieces it is sampled
+  // into. A conservative sweep of a chord does not answer for its pieces: at
+  // a surface the body barely clears, one of them is refused, and r681 stood
+  // six minutes while the activation refused a fillet under a plate on every
+  // update. The optimized route stands only as its pieces clear; otherwise
+  // the planner's own geometry, which the planner accepted piece by piece, is
+  // materialized.
+  if (optimized_risk_assignment.accepted() &&
+      (materialization.route_shortcuts_applied > 0U ||
+       materialization.route_corners_smoothed > 0U) &&
+      !routePiecesClear(*mutable_route, geometry_collision_world)) {
+    *mutable_route = canonical_route;
+    geometry.constrained_spans = initial_spans;
+    materialization.route_shortcuts_applied = 0U;
+    materialization.route_corners_smoothed = 0U;
   }
   for (ConstrainedRouteSpan& span : geometry.constrained_spans) {
     span.route_generation = candidate_generation;

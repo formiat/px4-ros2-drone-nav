@@ -387,6 +387,7 @@ void ProductionMppiConfigLoader::declarePlanning() {
   planning.static_esdf_route_lookahead_m =
       declare<double>("static_esdf_route_lookahead_m", 180.0);
   planning.static_route_geometry.sample_step_m = planning.route_sampling_step_m;
+  planner.route_sampling_step_m = planning.route_sampling_step_m;
   planning.static_route_geometry.enabled =
       planning.optional_constraints.static_route_geometry_optimization_enabled;
   planning.static_route_geometry.shortcut_optimization_enabled =

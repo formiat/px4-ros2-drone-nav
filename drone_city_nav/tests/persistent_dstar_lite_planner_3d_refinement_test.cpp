@@ -197,6 +197,47 @@ TEST(PersistentDStarLitePlanner3DTest, ARejectedSegmentNamesTheEdgeThatAdmittedI
   EXPECT_TRUE(lattice.takeSweepRejectedEdges().empty());
 }
 
+TEST(PersistentDStarLitePlanner3DTest, APathIsAcceptedOnlyAsItsRoutePiecesClear) {
+  // A plate over a street, z in [7.75, 8.0), and a segment descending past
+  // its edge that the body barely clears. Swept whole it passes; cut into the pieces
+  // the route sampler makes of it, one piece is refused, as the activation
+  // and the tracking tube sweep it. Accepted whole, r681 and r685 stood for
+  // minutes while the activation refused the same path on every update.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{-30.0, -30.0, 0.0, 0.25, 160, 160, 80});
+  for (double x = -18.375; x < -17.0; x += 0.25) {
+    for (double y = 5.125; y < 9.0; y += 0.25) {
+      const std::optional<GridIndex3D> cell =
+          occupancy->worldToCell(Point3{x, y, 7.875});
+      ASSERT_TRUE(cell.has_value());
+      ASSERT_TRUE(occupancy->setState(*cell, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.physical_footprint = SweptFootprintConfig{.radius_m = 0.82,
+                                                   .lower_extent_m = 0.23,
+                                                   .upper_extent_m = 0.35,
+                                                   .body_radius_m = 0.55,
+                                                   .body_lower_extent_m = 0.23,
+                                                   .body_upper_extent_m = 0.35,
+                                                   .perimeter_samples = 12U,
+                                                   .radial_rings = 2U,
+                                                   .axial_samples = 3U,
+                                                   .sweep_step_m = 0.25};
+  config.route_sampling_step_m = 0.5;
+  detail::PlannerLattice3D lattice{config};
+  const PersistentPlannerWorld3D plate = world(occupancy, 1U);
+  lattice.configureGridGeometry(*plate.bounds());
+  lattice.installWorld(plate);
+  const Point3 departure{-14.5, 8.623, 7.478};
+  const Point3 first{-15.663, 8.623, 7.478};
+  const Point3 second{-16.489, 9.213, 7.325};
+  ASSERT_TRUE(lattice.rawSegmentValid(first, second)) << "the whole segment clears";
+  EXPECT_FALSE(lattice.routePiecesValid(first, second));
+  EXPECT_EQ(std::optional<std::size_t>{2U},
+            lattice.firstInvalidSegment({departure, first, second}));
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      AChangeBesideARefinedEdgesWaypointForgetsTheEdge) {
   // The change scheduling tests the geometry the vehicle flies. A cell that

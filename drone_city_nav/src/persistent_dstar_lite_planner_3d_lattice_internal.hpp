@@ -450,6 +450,9 @@ public:
   // path), or nullopt when the path is traversable.
   [[nodiscard]] std::optional<std::size_t>
   firstInvalidSegment(const std::vector<Point3>& path) const;
+  // Whether the pieces the route sampler cuts a segment into all clear the
+  // physical body, each swept as the route validators sweep it.
+  [[nodiscard]] bool routePiecesValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   adjacentNodes(PersistentPlannerNode3D node) const;
 

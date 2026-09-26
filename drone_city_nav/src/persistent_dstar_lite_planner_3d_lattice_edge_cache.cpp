@@ -46,12 +46,40 @@ PlannerLattice3D::firstInvalidSegment(const std::vector<Point3>& path) const {
   for (std::size_t index = 1U; index < path.size(); ++index) {
     const bool segment_valid =
         index == 1U ? departureSegmentValid(path[index - 1U], path[index])
-                    : rawSegmentValid(path[index - 1U], path[index]);
+                    : routePiecesValid(path[index - 1U], path[index]);
     if (!segment_valid) {
       return index;
     }
   }
   return std::nullopt;
+}
+
+bool PlannerLattice3D::routePiecesValid(const Point3& first,
+                                        const Point3& second) const {
+  // Cut exactly as sampleRoute3D cuts it. A conservative sweep is not the
+  // same answer cut differently: at a surface the body barely clears, the
+  // whole segment passes where one of its pieces is refused. r681 and r685
+  // stood for minutes without a route while the activation refused, on every
+  // update, a path this planner had accepted whole and delivered again.
+  const double length_m = distance3D(first, second);
+  const double step_m = config_->route_sampling_step_m;
+  if (!(length_m > 1.0e-9) || !(step_m > 0.0) || !std::isfinite(step_m)) {
+    return rawSegmentValid(first, second);
+  }
+  const auto pieces =
+      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length_m / step_m)));
+  Point3 previous = first;
+  for (std::size_t piece = 1U; piece <= pieces; ++piece) {
+    const double ratio = static_cast<double>(piece) / static_cast<double>(pieces);
+    const Point3 next{std::lerp(first.x, second.x, ratio),
+                      std::lerp(first.y, second.y, ratio),
+                      std::lerp(first.z, second.z, ratio)};
+    if (!rawSegmentValid(previous, next)) {
+      return false;
+    }
+    previous = next;
+  }
+  return true;
 }
 
 std::size_t PlannerLattice3D::nodeSpan() const noexcept {

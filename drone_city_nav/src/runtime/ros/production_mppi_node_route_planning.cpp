@@ -1,10 +1,8 @@
-#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <algorithm>
 #include <cinttypes>
-#include <cstddef>
 #include <format>
 #include <memory>
 #include <optional>
@@ -474,59 +472,6 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
       materialized.fingerprint);
-  if (validation.status == StaticRouteCandidateStatus::kRawCollision &&
-      materialized.route != nullptr &&
-      validation.failure_segment_index + 1U < materialized.route->size() &&
-      planner_update.improved_incumbent.has_value() &&
-      materialized.fingerprint != route_refusal_diagnostic_fingerprint_) {
-    // A candidate the planner's own sweep accepted and the activation's raw
-    // validation refused: r669 and r681 stood minutes on one such candidate,
-    // refused beyond the departure at the same voxel on every update. The
-    // planner's path swept against the latest raw world with the physical
-    // envelope tells whether the two validated different evidence or
-    // different geometry. Once per candidate.
-    route_refusal_diagnostic_fingerprint_ = materialized.fingerprint;
-    const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
-        world_pipeline_->latestRawWorld();
-    const std::vector<Point3>& path =
-        planner_update.improved_incumbent->spatial_route.points;
-    std::ptrdiff_t planner_refused_segment{-1};
-    if (raw_world != nullptr && raw_world->valid()) {
-      const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
-          .observed_occupancy = &raw_world->occupancy(),
-          .footprint = config_.world.physical_footprint,
-          .flight_envelope = config_.world.flight_envelope,
-      }};
-      // The first segment leaves the vehicle on departure evidence; the
-      // refusals in question lie beyond it.
-      for (std::size_t index = 2U; index < path.size(); ++index) {
-        if (!oracle
-                 .validateSegment(path[index - 1U], FootprintBodyAxis{}, path[index],
-                                  FootprintBodyAxis{})
-                 .clear()) {
-          planner_refused_segment = static_cast<std::ptrdiff_t>(index);
-          break;
-        }
-      }
-    }
-    std::string points;
-    for (const Point3& point : path) {
-      points += std::format("{}({:.3f},{:.3f},{:.3f})", points.empty() ? "" : " ",
-                            point.x, point.y, point.z);
-    }
-    const Point3& refused_begin =
-        (*materialized.route)[validation.failure_segment_index].position;
-    const Point3& refused_end =
-        (*materialized.route)[validation.failure_segment_index + 1U].position;
-    RCLCPP_INFO(get_logger(),
-                "ROUTE_REFUSAL_GEOMETRY fingerprint=%" PRIu64 " raw_revision=%" PRIu64
-                " refused_segment=(%.3f,%.3f,%.3f)->(%.3f,%.3f,%.3f) "
-                "planner_refused_segment=%td planner_points=%s",
-                materialized.fingerprint,
-                raw_world != nullptr ? raw_world->version().revision : 0U,
-                refused_begin.x, refused_begin.y, refused_begin.z, refused_end.x,
-                refused_end.y, refused_end.z, planner_refused_segment, points.c_str());
-  }
   if (admission.certified_pending && activation.trajectory != nullptr &&
       activation.trajectory->route != nullptr &&
       activation.trajectory->route->size() >= 2U) {
