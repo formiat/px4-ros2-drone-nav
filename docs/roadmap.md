@@ -1545,7 +1545,8 @@ Known leftovers, measured and not gated (those still open are in
 80 percent of ticks over the 20 ms deadline and no single bottleneck left;
 the planner spends its whole 150 ms budget, so the p95 check measures the
 configuration; a holding vehicle drifts 0.37 m at p95 while the rest
-clearance rule keeps 0.27 m; the ordinary no-route holds sit at 3 to 13
+clearance rule keeps 0.27 m (measured on 2026-09-25 as the takeoff spool-up;
+the hover's own figures are in the register); the ordinary no-route holds sit at 3 to 13
 percent against the 3 percent check and route availability at 92 to 96
 against 97; the 2D obstacle memory node is still selectable by the launch
 files, fourteen sources sit near the 1000-line cap and 226 lie flat in
