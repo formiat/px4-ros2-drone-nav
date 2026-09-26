@@ -45,6 +45,15 @@ This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
 
+Two entries of the debt register land here, attached on 2026-09-26. The 2D
+lidar path (R1: the node, the sensor model, the `none` profile, the 2D-named
+base model and airframe, the scenarios, the checks and the pages) goes with
+the first 3D static map: the static-map profile moves to the 3D node, a
+static-map request refuses to start while there is no map, and nothing 2D
+is left to fly. And the cave and the finals locations, imported and never
+flown (N2), are flown by the survey acquisition itself, which covers every
+reachable part of an environment before it persists the map.
+
 ## 15. Realistic Cooperative Communication
 
 **Type:** dependent realism stage.
@@ -348,7 +357,9 @@ falls short, and it is a lidar's remedy: a stereo pair with 6.4 m of
 confident depth sees a peer too late for a separation of several times that.
 Item 16 was done first, so this stage is rewritten for the visual-inertial
 estimator before it starts: its drift, 0.1 to 0.4 percent of the path with no
-bound, is what two vehicles' frames will differ by.
+bound, is what two vehicles' frames will differ by. The register's unbounded
+drift (L1) is measured here as that difference, after item 19 has measured
+it on a doubled path; the rework of the estimator is neither item's.
 
 Visualization stays as it is: one spectator owns the follow transform and the
 simulator's camera and moves to the next living vehicle when its own is lost;
@@ -593,7 +604,10 @@ lidar: four metres and 45 degrees per sensor are enough to hold a position
 without touching a surface, to leave one, and to land, and they are not enough
 to fly on. They enter the braking contract as sensors with their own range and
 field, exactly as the two vertical ones already do, and that is the whole
-integration. No new rule, no latch, no mode.
+integration. No new rule, no latch, no mode. The register's lateral
+deviations of the horizon into unknown space (C2) are measured here: with
+the ring, a deviation beside the vehicle enters space a sensor has looked at
+to 4 m, and what the ring leaves unmeasured is decided on that number.
 
 ### Stage 5: The Light Fails, And What The Vehicle Does
 
@@ -840,6 +854,17 @@ unknown means slower, never faster. What it costs is speed and route
 stability, and both are measured. Because the memory changes, both acceptance
 series are re-flown, as for item 17 stage 0. Carried in
 [`technical_debt.md`](technical_debt.md) until it lands.
+
+**The planner's budget is scheduled first.** Attached on 2026-09-26: the
+register's P5, the planner's stages unscheduled with the livelock of r596
+closed by the probe deadline alone, is this stage's first step, because a
+memory that decays and re-confirms multiplies the occupancy churn that
+triggered r596, and a planner that can spend its whole update on one stage
+under churn would turn every plume into a hold. A deadline on every stage,
+with route stall recovery as the lever to measure against, lands and is
+flown before the decay does; the falls of the braking laws that are the
+planner's (S4: a route replaced every 0.4 to 0.5 s on the camera profile, the
+no-route gaps of 0.1 to 0.2 s, 14 to 26 a flight) are measured with it.
 
 **A third kind of evidence.** The memory scores hits and misses and has no
 representation of a sensor that looked and failed: the visible pair
@@ -1317,6 +1342,16 @@ topological trigger's case and needs the decay clause, so it is item 18's
 to fly; the long outage of the light, held out where the vehicle can see, is
 the budget trigger's case and needs nothing from item 18.
 
+**What the return measures besides itself.** The flight out and back is
+twice the path of any acceptance flight, and the arrival at the start is
+judged by the capture radius on the odometry's accumulated error: this is
+where the register's unbounded drift (L1) first meets a requirement, and
+the item measures it as such (the true position at the start against the
+2.0 m radius, per profile) before any rework of the estimator is designed.
+The return is also the first flight of the mission in the other direction
+and, with the goal outside the map, the first with another goal (N3); other
+starts and goals stay a series of their own.
+
 ### Measurement And Completion
 
 Measure, per flight: the moment of the proof and which trigger gave it; the
@@ -1392,7 +1427,9 @@ and the planner's 150 ms budget, which become shorter in simulated seconds by
 the factor, so a slowed flight still flatters the stack by that much and its
 speed figures are never compared with a real-time series. The stage lands
 first because without it a slowed run neither lightens the host nor tells
-the truth.
+the truth. The register's tick past its 20 ms deadline (P2) is re-measured
+here, on the node clock, and the deadline question is decided on those
+percentiles; the rework of the tick, if one is wanted, is not this item's.
 
 ### Stage 1: The Factor As A Parameter Of The Run
 
@@ -1403,7 +1440,11 @@ records the factor asked for and the resource record keeps reporting the
 one achieved. The quiet-host gate is unaffected: it reads processes, not the
 factor. A cooperative flight of four lidar vehicles at 0.5 then costs the
 host what two cost at 1.0, which the workstation holds (item 15), at twice
-the wall time: twelve minutes for a six-minute flight.
+the wall time: twelve minutes for a six-minute flight. The register's
+heaviest configuration (S3), the stereo pair beside the lidar at a factor of
+0.83 with the loop on the wall clock, is flown here at 0.5 with the loop
+slowed with the world, which is the first time its figures mean anything;
+they are compared with each other, never with a real-time series.
 
 ### Stage 2: The Picture Written Without A Screen
 
