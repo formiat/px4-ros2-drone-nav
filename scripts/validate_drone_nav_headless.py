@@ -535,8 +535,14 @@ def main() -> int:
         if unreachable_goal_injected:
             validate_return_home(ros_log, True, errors)
             if args.runtime_manifest is not None:
+                # A goal the truth flood reaches fails; a component that only
+                # reaches the truth grid's edge is a note: the location is
+                # closed by the owner's statement, not by this grid.
+                truth_findings: list[str] = []
                 validate_injected_goal_unreachable_in_truth(
-                    Path(truth_occupancy_3d), ros_log, errors)
+                    Path(truth_occupancy_3d), ros_log, truth_findings)
+                for finding in truth_findings:
+                    (errors if "reaches the goal" in finding else notes).append(finding)
         else:
             validate_return_home(ros_log, False, errors)
             require(

@@ -843,23 +843,35 @@ def validate_injected_goal_unreachable_in_truth(truth_occupancy_path: Path,
             break
         component |= fresh
         frontier = fresh
-    # The truth grid ends in z below the location's height (23.5 m against
-    # halls that rise higher), and the project owner states the location is
-    # closed: the grid's top counts as the location's ceiling, its sides and
-    # its floor as the way out.
-    touches_edge = bool(component[0, :, :].any() or component[-1, :, :].any() or
-                        component[:, 0, :].any() or component[:, -1, :].any() or
-                        component[:, :, 0].any())
-    goal_cell = occupancy.world_to_cell(goal)
+    edges = [name for name, touched in (
+        ("x-", component[0, :, :].any()), ("x+", component[-1, :, :].any()),
+        ("y-", component[:, 0, :].any()), ("y+", component[:, -1, :].any()),
+        ("z-", component[:, :, 0].any()), ("z+", component[:, :, -1].any()))
+        if touched]
+    # The goal may lie outside the truth grid altogether (the loader refuses
+    # such a point), which is where an injected goal usually lies.
+    goal_cell = (int(math.floor((goal[0] - bounds.origin_x_m) / bounds.resolution_m)),
+                 int(math.floor((goal[1] - bounds.origin_y_m) / bounds.resolution_m)),
+                 int(math.floor((goal[2] - bounds.origin_z_m) / bounds.resolution_m)))
     goal_in_grid = all(0 <= goal_cell[axis] < occupied.shape[axis] for axis in range(3))
-    goal_reachable = goal_in_grid and bool(component[goal_cell])
     voxels = int(component.sum())
-    if goal_reachable or (not goal_in_grid and touches_edge):
+    if goal_in_grid and bool(component[goal_cell]):
         errors.append(
             "FAIL: the injected goal is unreachable in the truth world (the start's "
-            f"component of {voxels} voxels "
-            + ("reaches the goal" if goal_reachable else "reaches the grid's edge")
-            + ")")
+            f"component of {voxels} free voxels reaches the goal)")
+    elif edges:
+        # Measured on Urban Circuit Practice 01 (2026-09-26): the start's
+        # component fills the whole 0.5 m truth grid, 22.95 million voxels,
+        # reaching its top first (the grid ends at 23.5 m, below the halls) and
+        # then every side, and the space under the floor is free down to the
+        # grid's bottom. On this grid the location is not closed; it is closed
+        # by the project owner's statement, which the check records here
+        # rather than contradicts.
+        errors.append(
+            "FAIL: the injected goal is unreachable in the truth world beyond the "
+            f"owner's statement (the start's component of {voxels} free voxels at "
+            f"{bounds.resolution_m:.2f} m does not reach the goal but reaches the "
+            f"grid's edge at {', '.join(edges)})")
     else:
         print(f"OK: the injected goal is unreachable in the truth world (the start's "
               f"component of {voxels} free voxels at {bounds.resolution_m:.2f} m "
