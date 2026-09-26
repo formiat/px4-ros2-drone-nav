@@ -231,6 +231,8 @@ the same check:
 | lidar r638 to r642 | a34690ba | 2.684, 2.512, 2.636, 2.820, 2.414 (mean 2.613) | 2.684, 2.512, 2.657, 2.820, 2.414 (mean 2.617) |
 | cameras r644 to r648 | 173155d6 | 1.629, 1.614, 1.471, 1.559, 1.641 (mean 1.583) | 1.799, 1.865, 1.769, 1.732, 1.788 (mean 1.791) |
 | lidar r650 to r654 | 173155d6 | 2.544, 2.880, 2.497, 2.628, 2.759 (mean 2.662) | 2.546, 2.880, 2.513, 2.628, 2.759 (mean 2.665) |
+| cameras r657 to r661 | a56bfc91 | 1.560, 1.646, 1.431, 1.407, 1.629 (mean 1.535) | 1.696, 1.826, 1.697, 1.658, 1.914 (mean 1.758) |
+| lidar r662 to r666 | a56bfc91 | 2.456, 2.827, 2.732, 2.759, 2.700 (mean 2.695) | 2.458, 2.829, 2.732, 2.759, 2.708 (mean 2.697) |
 
 Whatever the clock, a flight under foreign host load is not counted:
 `scripts/quiet_host_gate.sh`, run by the simulation wrapper before every

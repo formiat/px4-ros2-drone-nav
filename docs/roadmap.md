@@ -45,14 +45,13 @@ This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
 
-Two entries of the debt register land here, attached on 2026-09-26. The 2D
-lidar path (R1: the node, the sensor model, the `none` profile, the 2D-named
-base model and airframe, the scenarios, the checks and the pages) goes with
-the first 3D static map: the static-map profile moves to the 3D node, a
-static-map request refuses to start while there is no map, and nothing 2D
-is left to fly. And the cave and the finals locations, imported and never
-flown (N2), are flown by the survey acquisition itself, which covers every
-reachable part of an environment before it persists the map.
+One entry of the debt register lands here, attached on 2026-09-26: the cave
+and the finals locations, imported and never flown (N2), are flown by the
+survey acquisition itself, which covers every reachable part of an
+environment before it persists the map. The 2D lidar path (R1) was to go
+with the first 3D static map and went before it, on 2026-09-26 (59f55e1f):
+a static-map request now refuses to start while the environment has no 3D
+static occupancy, which is what this item delivers.
 
 ## 15. Realistic Cooperative Communication
 
