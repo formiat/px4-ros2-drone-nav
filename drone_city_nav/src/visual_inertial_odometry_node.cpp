@@ -62,14 +62,26 @@ constexpr std::int64_t kMapAgeNs{20'000'000'000};
 // A registration every this long; the drift the map corrects accrues over
 // minutes.
 constexpr std::int64_t kMapRegistrationPeriodNs{500'000'000};
-// What makes a registration a measurement: most of the scan matched old
+// What makes a registration a correction: most of the scan matched old
 // cells, the fit is tight, and an axis carries information per matched
 // point above the floor (the lidar-inertial estimator's gates).
 constexpr double kMapMinimumMatchedFraction{0.3};
 constexpr std::size_t kMapMinimumMatchedPoints{150U};
 constexpr double kMapMaximumResidualRmsM{0.25};
 constexpr double kMapMinimumInformationPerPoint{0.01};
-constexpr double kMapMinimumPositionVarianceM2{0.01};
+// The correction is an offset from the filter's frame to the map's, kept
+// outside the filter: the filter's position is certain to a few centimetres
+// while its drift is metres (r691: clone sigma 0.05 m against innovations of
+// 0.4 to 1.0 m), and a Kalman step against it passed only innovations under
+// half a metre. A registration moves the target offset by this share of what
+// it measured along its observed axes, by no more than the step, and a
+// registration farther than the reach from its prior slid into another fit.
+constexpr double kMapCorrectionGain{0.5};
+constexpr double kMapCorrectionStepM{0.25};
+constexpr double kMapCorrectionReachM{1.5};
+// The offset the autopilot sees follows the target at this rate: its fusion
+// of the external position takes motion, and a jump it may refuse.
+constexpr double kMapOffsetRateMps{0.2};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along
 // the body's x axis, in the body forward-right-down frame.
@@ -278,7 +290,8 @@ private:
         stamp_ns - last_autopilot_stamp_ns_ < kAutopilotOdometryPeriodNs) {
       return;
     }
-    const VisualInertialEstimate estimate = odometry_->predicted(stamp_ns);
+    VisualInertialEstimate estimate = odometry_->predicted(stamp_ns);
+    estimate.position_ned_m += appliedOffset(stamp_ns);
     const std::optional<std::int64_t> px4_local_ns =
         time_mapper_.rosToPx4LocalTimeNs(estimate.stamp_ns);
     if (!estimate.healthy || estimate.stamp_ns != stamp_ns ||
@@ -372,8 +385,7 @@ private:
     }
     const std::vector<StereoFeatureObservation> observations =
         tracker_->track(grey(*pair.left), grey(*pair.right), turn);
-    const VisualInertialEstimate estimate =
-        odometry_->addFrame(pair.stamp_ns, observations);
+    VisualInertialEstimate estimate = odometry_->addFrame(pair.stamp_ns, observations);
     previous_frame_stamp_ns_ = pair.stamp_ns;
     gyro_bias_ = estimate.gyro_bias_radps;
     const double frame_ms = std::chrono::duration<double, std::milli>(
@@ -383,6 +395,8 @@ private:
     if (!estimate.healthy) {
       ++frames_without_estimate_;
     }
+    // The pose in the map's frame, as the autopilot receives it.
+    estimate.position_ned_m += appliedOffset(pair.stamp_ns);
     publishPose(estimate, pair.left->header.stamp);
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
@@ -440,8 +454,9 @@ private:
       return;
     }
     const Eigen::Matrix3d rotation = pose->body_to_ned.toRotationMatrix();
+    const Eigen::Vector3d position = pose->position_ned_m + targetOffset();
     for (Eigen::Vector3d& point : points_body) {
-      point = rotation * point + pose->position_ned_m;
+      point = rotation * point + position;
     }
     map_.insert(points_body, 0U, stamp_ns);
   }
@@ -493,15 +508,21 @@ private:
     return thinned;
   }
 
-  // The frame's depth registered against what was mapped long enough ago
-  // from the frame's pose; the registered position, along the axes the fit
-  // observes, is a position measurement of the frame's clone.
+  [[nodiscard]] Eigen::Vector3d targetOffset() {
+    const std::scoped_lock lock{odometry_mutex_};
+    return map_target_offset_ned_;
+  }
+
+  // The frame's depth registered against what was mapped long enough ago,
+  // from the frame's pose in the map's frame; what the registration moved
+  // along the axes it observes moves the target offset.
   void registerAgainstMap(const std::int64_t stamp_ns,
                           const std::vector<Eigen::Vector3d>& points_body,
                           const VisualInertialClonePose& pose) {
     const auto started = std::chrono::steady_clock::now();
+    const Eigen::Vector3d prior = pose.position_ned_m + targetOffset();
     const PointPlaneRegistration3D registration = registerPointsToPlanes(
-        map_, points_body, pose.position_ned_m, pose.body_to_ned,
+        map_, points_body, prior, pose.body_to_ned,
         PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
                                        .maximum_iterations = 10U,
                                        .convergence_translation_m = 1.0e-3,
@@ -512,37 +533,40 @@ private:
         registration.matched_fraction * static_cast<double>(points_body.size());
     ++map_registrations_;
     const char* outcome = "weak";
-    VisualInertialMeasurementResult applied;
+    const Eigen::Vector3d innovation = registration.position - prior;
+    Eigen::Vector3d correction = Eigen::Vector3d::Zero();
+    int observed_axes = 0;
     if (registration.converged &&
         registration.matched_fraction >= kMapMinimumMatchedFraction &&
         matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
         registration.residual_rms_m <= kMapMaximumResidualRmsM) {
-      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
-          registration.information.bottomRightCorner<3, 3>()};
-      const double residual_variance =
-          std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
-      Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
-      for (int axis = 0; axis < 3; ++axis) {
-        const double information = solver.eigenvalues()(axis);
-        const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
-        const double variance =
-            information / matched_points < kMapMinimumInformationPerPoint
-                ? kVisualInertialUnobservedVarianceM2
-                : std::max(residual_variance / information,
-                           kMapMinimumPositionVarianceM2);
-        covariance += variance * direction * direction.transpose();
+      outcome = "far";
+      if (innovation.norm() <= kMapCorrectionReachM) {
+        const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{
+            registration.information.bottomRightCorner<3, 3>()};
+        for (int axis = 0; axis < 3; ++axis) {
+          if (solver.eigenvalues()(axis) / matched_points <
+              kMapMinimumInformationPerPoint) {
+            continue;
+          }
+          const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+          correction += kMapCorrectionGain * direction.dot(innovation) * direction;
+          ++observed_axes;
+        }
+        outcome = observed_axes > 0 ? "applied" : "degenerate";
       }
-      {
-        const std::scoped_lock lock{odometry_mutex_};
-        applied = odometry_->addPositionMeasurement(
-            VisualInertialPositionMeasurement{.stamp_ns = stamp_ns,
-                                              .position_ned_m = registration.position,
-                                              .covariance_m2 = covariance});
-      }
-      outcome = visualInertialMeasurementStatusName(applied.status);
-      if (applied.status == VisualInertialMeasurementStatus::kApplied) {
-        ++map_measurements_applied_;
-      }
+    }
+    if (correction.norm() > kMapCorrectionStepM) {
+      correction *= kMapCorrectionStepM / correction.norm();
+    }
+    Eigen::Vector3d target;
+    {
+      const std::scoped_lock lock{odometry_mutex_};
+      map_target_offset_ned_ += correction;
+      target = map_target_offset_ned_;
+    }
+    if (observed_axes > 0) {
+      ++map_corrections_;
     }
     const double registration_ms = std::chrono::duration<double, std::milli>(
                                        std::chrono::steady_clock::now() - started)
@@ -550,15 +574,32 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VIO_MAP_REGISTRATION outcome=%s matched=%.2f matched_points=%.0f "
-        "residual_m=%.3f information_per_point=%.4f rows=%zu innovation_m=%.3f "
-        "prior_sigma_m=%.3f mahalanobis=%.2f registration_ms=%.1f scan_points=%zu "
-        "map_points=%zu registrations=%" PRIu64 " applied=%" PRIu64
-        " frames_without_clone=%" PRIu64,
+        "residual_m=%.3f information_per_point=%.4f observed_axes=%d "
+        "innovation_m=%.3f correction_m=%.3f target_offset=(%.2f,%.2f,%.2f) "
+        "registration_ms=%.1f scan_points=%zu map_points=%zu registrations=%" PRIu64
+        " corrections=%" PRIu64 " frames_without_clone=%" PRIu64,
         outcome, registration.matched_fraction, matched_points,
-        registration.residual_rms_m, registration.information_per_point, applied.rows,
-        applied.innovation_ned_m.norm(), applied.prior_sigma_m, applied.mahalanobis,
+        registration.residual_rms_m, registration.information_per_point, observed_axes,
+        innovation.norm(), correction.norm(), target.x(), target.y(), target.z(),
         registration_ms, points_body.size(), map_.pointCount(), map_registrations_,
-        map_measurements_applied_, map_frames_without_clone_);
+        map_corrections_, map_frames_without_clone_);
+  }
+
+  // The offset the estimate is published with, carried toward the target at
+  // the offset rate over the interval since the last publication.
+  [[nodiscard]] Eigen::Vector3d appliedOffset(const std::int64_t stamp_ns) {
+    if (map_offset_stamp_ns_ > 0 && stamp_ns > map_offset_stamp_ns_) {
+      const double reach = kMapOffsetRateMps * 1.0e-9 *
+                           static_cast<double>(stamp_ns - map_offset_stamp_ns_);
+      const Eigen::Vector3d remaining =
+          map_target_offset_ned_ - map_applied_offset_ned_;
+      map_applied_offset_ned_ +=
+          remaining.norm() <= reach
+              ? remaining
+              : Eigen::Vector3d{remaining * (reach / remaining.norm())};
+    }
+    map_offset_stamp_ns_ = std::max(map_offset_stamp_ns_, stamp_ns);
+    return map_applied_offset_ned_;
   }
 
   [[nodiscard]] double mapYaw(const VisualInertialEstimate& estimate) const noexcept {
@@ -598,7 +639,11 @@ private:
   Eigen::Vector3d left_camera_body_{Eigen::Vector3d::Zero()};
   std::int64_t last_map_registration_ns_{0};
   std::uint64_t map_registrations_{0U};
-  std::uint64_t map_measurements_applied_{0U};
+  std::uint64_t map_corrections_{0U};
+  // From the filter's frame to the map's, under the odometry mutex.
+  Eigen::Vector3d map_target_offset_ned_{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d map_applied_offset_ned_{Eigen::Vector3d::Zero()};
+  std::int64_t map_offset_stamp_ns_{0};
   std::uint64_t map_frames_without_clone_{0U};
   std::unique_ptr<StereoFeatureTracker> tracker_;
   std::unique_ptr<AutopilotStateSource> autopilot_;

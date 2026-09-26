@@ -111,49 +111,12 @@ struct VisualInertialOdometryConfig {
   double minimum_gyro_bias_sigma_radps{3.0e-5};
   double initial_accelerometer_bias_sigma_mps2{0.1};
   double gravity_mps2{9.80665};
-  // A position measured against a map is gated at this quantile of
-  // chi-square: an innovation beyond it is a registration that slid into
-  // another fit, not a measurement.
-  double position_gate_normal_quantile{3.0};
 };
 
 // A cloned pose: the body at a frame's stamp as the filter now holds it.
 struct VisualInertialClonePose {
   Eigen::Vector3d position_ned_m{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond body_to_ned{Eigen::Quaterniond::Identity()};
-};
-
-// Where the body was at a frame's stamp, measured against something other
-// than the images: its covariance in NED. An axis whose variance reaches
-// kVisualInertialUnobservedVarianceM2 carries no measurement.
-struct VisualInertialPositionMeasurement {
-  std::int64_t stamp_ns{0};
-  Eigen::Vector3d position_ned_m{Eigen::Vector3d::Zero()};
-  Eigen::Matrix3d covariance_m2{Eigen::Matrix3d::Identity()};
-};
-
-inline constexpr double kVisualInertialUnobservedVarianceM2{1.0e6};
-
-enum class VisualInertialMeasurementStatus : std::uint8_t {
-  kApplied,
-  kNoClone,
-  kNoInformation,
-  kGated,
-  kRejected,
-};
-
-[[nodiscard]] const char*
-visualInertialMeasurementStatusName(VisualInertialMeasurementStatus status) noexcept;
-
-struct VisualInertialMeasurementResult {
-  VisualInertialMeasurementStatus status{VisualInertialMeasurementStatus::kRejected};
-  // The measured position less the clone's before the update.
-  Eigen::Vector3d innovation_ned_m{Eigen::Vector3d::Zero()};
-  // The innovation's squared Mahalanobis length and the rows it had.
-  double mahalanobis{0.0};
-  std::size_t rows{0U};
-  // The clone's position standard deviation along the innovation, before.
-  double prior_sigma_m{0.0};
 };
 
 struct VisualInertialEstimate {
@@ -223,11 +186,6 @@ public:
   // The cloned pose of the frame at `stamp_ns`, while the clone is kept.
   [[nodiscard]] std::optional<VisualInertialClonePose>
   clonePose(std::int64_t stamp_ns) const;
-
-  // One position measurement of the clone of the frame at its stamp, in one
-  // Kalman step: the clone's correlations carry it to the current state.
-  VisualInertialMeasurementResult
-  addPositionMeasurement(const VisualInertialPositionMeasurement& measurement);
 
 private:
   struct Impl;
