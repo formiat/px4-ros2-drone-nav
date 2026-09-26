@@ -138,6 +138,15 @@ stopWorldOwnerMatchesProof(const StopExecution3D& execution) noexcept {
              execution.static_world->contentFingerprint();
 }
 
+// The clearance a rest pose keeps over the hull. Measured on the acceptance
+// flights of 2026-09-25 (ten camera, ten lidar): the autopilot's error against
+// the rest setpoint it is given is 0.15 m at p95 and 0.32 m at most on the
+// camera profile (0.20 and 0.27 m on the lidar profile), and within a rest
+// episode the estimate slides against the truth by 0.14 m at p95 (0.17 m):
+// 0.35 m covers the two at p95 together and the largest error seen. The
+// envelope's own margin over the hull (0.27 m) covered the p95 alone.
+constexpr double kRestMarginM{0.35};
+
 // The margin the clearance envelope carries over the hull: the allowance every
 // executed trajectory has for its own tracking error.
 [[nodiscard]] double envelopeMarginM(const SweptFootprintConfig& footprint) noexcept {
@@ -326,14 +335,15 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
 
   // Where the vehicle comes to rest it stays, and a vehicle at rest drifts
   // within the position error its controller holds it to. The rest pose
-  // therefore keeps the whole margin the envelope carries over the hull, even
-  // when the braking path itself had to give some of it up. A vehicle already
-  // inside that band is exempt: it is where it is, and refusing it a stop
-  // would leave it on the horizon the evidence has just invalidated. One
-  // recorded flight came to rest a tenth of a metre from a wall on a
-  // hull-certified stop, drifted a fifth of a metre while holding, and met it.
-  const double rest_margin_required_m =
-      envelopeMarginM(certification.validation_policy->sweptFootprint());
+  // therefore keeps the measured rest clearance over the hull, and never less
+  // than the margin the envelope carries, even when the braking path itself
+  // had to give some of it up. A vehicle already inside that band is exempt:
+  // it is where it is, and refusing it a stop would leave it on the horizon
+  // the evidence has just invalidated. One recorded flight came to rest a
+  // tenth of a metre from a wall on a hull-certified stop, drifted a fifth of
+  // a metre while holding, and met it.
+  const double rest_margin_required_m = std::max(
+      kRestMarginM, envelopeMarginM(certification.validation_policy->sweptFootprint()));
   if (rest_margin_required_m > 0.0) {
     const Point3 rest_position{horizon.states.back().x, horizon.states.back().y,
                                horizon.states.back().z};

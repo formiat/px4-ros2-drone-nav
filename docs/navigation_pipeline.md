@@ -503,8 +503,14 @@ body satisfies them.
 
 Where the vehicle comes to rest it stays, and a vehicle at rest drifts within
 the position error its controller holds it to. The rest pose therefore keeps
-the whole margin the envelope carries over the hull even when the braking path
-had to give some of it up (`rest_clearance_rejected`); a rung refused for it is
+0.35 m over the hull, and never less than the margin the envelope carries, even
+when the braking path had to give some of it up (`rest_clearance_rejected`);
+the 0.35 m is the autopilot's error against its rest setpoint at p95 (0.15 m
+on the camera profile, 0.20 m on the lidar profile) together with the
+estimate's slide within a rest episode at p95 (0.14 and 0.17 m), measured on
+the acceptance flights of 2026-09-25, and it covers the largest rest error seen
+(0.32 m); the envelope's own margin, 0.27 m, covered the p95 alone. A rung
+refused for it is
 one a narrower body may still clear, so the ladder carries on. A vehicle
 already inside that band is exempt: it is where it is, and refusing it a stop
 would leave it on the horizon the evidence has just invalidated. One recorded
