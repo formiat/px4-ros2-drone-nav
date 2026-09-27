@@ -649,6 +649,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.feasibility_invalid_from = invalid_segment.from;
     telemetry.feasibility_invalid_to = invalid_segment.to;
     telemetry.feasibility_invalid_priced = invalid_segment.priced;
+    telemetry.feasibility_invalid_forgotten = invalid_segment.forgotten;
+    telemetry.feasibility_invalid_open_space = invalid_segment.repricing.open_space;
+    telemetry.feasibility_invalid_clearance = invalid_segment.repricing.clearance;
+    telemetry.feasibility_invalid_sweep = invalid_segment.repricing.sweep;
     telemetry.feasibility_connector_sweeps = feasibility_search_.connectorSweepCount();
     telemetry.feasibility_anchor = lattice_.pointFor(
         feasibility_search_.initialized() ? feasibility_search_.anchor() : start_);

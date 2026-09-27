@@ -97,6 +97,10 @@ public:
     Point3 from{};
     Point3 to{};
     bool priced{false};
+    // Whether the rejection found the edge priced, and what would price it
+    // clear again; see PlannerLattice3D::edgeRepricing.
+    bool forgotten{false};
+    PlannerLattice3D::EdgeRepricing3D repricing{};
   };
 
   [[nodiscard]] const InvalidSegment3D& lastInvalidSegment() const noexcept;

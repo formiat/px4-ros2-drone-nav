@@ -429,6 +429,17 @@ public:
   // it for the persistent session: labels priced through the edge are stale
   // and the session repairs them. Returns whether anything was cached.
   bool rejectEdgeBySweep(const PersistentPlannerEdge3D& edge);
+
+  // Which pricing would clear a sweep-rejected level-zero edge again on the
+  // resident world: its open surroundings, its endpoint clearances, the
+  // route-piece sweep. A diagnostic of rejections that do not stay rejected.
+  struct EdgeRepricing3D {
+    bool open_space{false};
+    bool clearance{false};
+    bool sweep{false};
+  };
+
+  [[nodiscard]] EdgeRepricing3D edgeRepricing(const PersistentPlannerEdge3D& edge);
   [[nodiscard]] std::vector<PersistentPlannerEdge3D> takeSweepRejectedEdges();
   [[nodiscard]] bool pointInsideFlightEnvelope(const Point3& point) const noexcept;
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;

@@ -391,6 +391,12 @@ struct PlannerTelemetry3D {
   Point3 feasibility_invalid_from{};
   Point3 feasibility_invalid_to{};
   bool feasibility_invalid_priced{false};
+  // Whether the rejection found it priced, and which pricing would clear it
+  // again right after: open surroundings, endpoint clearances, the sweep.
+  bool feasibility_invalid_forgotten{false};
+  bool feasibility_invalid_open_space{false};
+  bool feasibility_invalid_clearance{false};
+  bool feasibility_invalid_sweep{false};
   // Raw sweeps the feasibility search spent on straight goal connectors; the
   // connectors it priced from endpoint clearances alone are not counted.
   std::size_t feasibility_connector_sweeps{0U};

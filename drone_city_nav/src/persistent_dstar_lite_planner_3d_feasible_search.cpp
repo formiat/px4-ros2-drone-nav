@@ -544,7 +544,8 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
       };
       if (priced.has_value()) {
         const PersistentPlannerEdge3D edge = canonicalEdge(priced->from, priced->to);
-        static_cast<void>(lattice_->rejectEdgeBySweep(edge));
+        last_invalid_segment_.forgotten = lattice_->rejectEdgeBySweep(edge);
+        last_invalid_segment_.repricing = lattice_->edgeRepricing(edge);
         rejected_edges_.insert(edge);
         advanceValidationEpoch();
         invalidateLabel(lattice_->linearIndex(priced->to));

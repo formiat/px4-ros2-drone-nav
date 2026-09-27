@@ -113,7 +113,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "feasibility_connector_sweeps=%zu "
         "feasibility_invalid_segment=%zu "
         "feasibility_invalid=(%.3f,%.3f,%.3f)->(%.3f,%.3f,%.3f) "
-        "feasibility_invalid_priced=%s "
+        "feasibility_invalid_priced=%s feasibility_invalid_forgotten=%s "
+        "feasibility_invalid_reprice=open:%d,clearance:%d,sweep:%d "
         "feasibility_anchor=(%.1f,%.1f,%.1f) records=%zu open=%zu "
         "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
         "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
@@ -169,6 +170,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.feasibility_invalid_to.y,
         planner_telemetry.feasibility_invalid_to.z,
         planner_telemetry.feasibility_invalid_priced ? "true" : "false",
+        planner_telemetry.feasibility_invalid_forgotten ? "true" : "false",
+        planner_telemetry.feasibility_invalid_open_space ? 1 : 0,
+        planner_telemetry.feasibility_invalid_clearance ? 1 : 0,
+        planner_telemetry.feasibility_invalid_sweep ? 1 : 0,
         planner_telemetry.feasibility_anchor.x, planner_telemetry.feasibility_anchor.y,
         planner_telemetry.feasibility_anchor.z, planner_telemetry.records,
         planner_telemetry.open_entries, planner_telemetry.execution_time_search_records,

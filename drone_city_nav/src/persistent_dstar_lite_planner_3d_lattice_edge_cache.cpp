@@ -105,6 +105,19 @@ bool PlannerLattice3D::forgetEdgeCost(const PersistentPlannerEdge3D& edge) {
   return adaptive_edge_cost_cache_.erase(edge) != 0U;
 }
 
+PlannerLattice3D::EdgeRepricing3D
+PlannerLattice3D::edgeRepricing(const PersistentPlannerEdge3D& edge) {
+  if (!nodeInside(edge.first) || !nodeInside(edge.second) ||
+      level(edge.first, edge.second) != 0U) {
+    return {};
+  }
+  return EdgeRepricing3D{
+      .open_space = surroundingsUnoccupied(edge.first),
+      .clearance = endpointClearanceClears(edge.first, edge.second),
+      .sweep = routePiecesValid(pointFor(edge.first), pointFor(edge.second)),
+  };
+}
+
 bool PlannerLattice3D::forgetEdgeCostForChange(const PersistentPlannerEdge3D& edge,
                                                const bool occupied_cell_added,
                                                const bool occupied_cell_removed) {
