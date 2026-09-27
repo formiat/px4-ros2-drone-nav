@@ -129,3 +129,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | F10 | — | new | Owner | Roadmap item 22. | this commit |
 | 2026-09-27 | F11 | three options by price | five options by range, price and power | Owner | The discussion of low-power illumination. | this commit |
 | 2026-09-27 | K9 | constant range 6.4 m / 14 m and evidence age 600 ms | measured from the frame | Agent | Roadmap item 17 stage 0. | this commit |
+| 2026-09-27 | (none) | — | the shaft (53,-7) left as the price of I1, class (c) | Agent | Measured: a dead end for the 0.82 m envelope, occluded from outside; no fix within I1, I3 and the hover drift. The owner asked for a fix; reported. | journal |
