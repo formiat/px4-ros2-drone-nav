@@ -241,10 +241,58 @@ Vec3 mppiSpeedPolicyFacedDirection(const MppiSpeedPolicyInput& input) {
              : input.route[nearestGuideIndex(input.state, input.route)].tangent;
 }
 
-MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
+namespace {
+
+// Roadmap item 17 stage 0: the contract's two central inputs are read off the
+// sensor's latest frame instead of charged as constants. A pair that went
+// blind was flown at the speed 6.4 m admits, and the 600 ms of evidence age
+// were charged whatever the age was. A frame whose beams observe as much as a
+// lit, textured scene gives stands behind the configured range; one whose
+// beams observe nothing is blind; the range falls linearly between. Judged
+// for the frame as a whole and not per ray: a bare room returns few surfaces
+// and every ray a free one. Measured on 2026-09-27: the stereo pair observes
+// 0.69 to 0.95 of the pixels it samples in the lit location (0.69 on the
+// launch pad, 0.83 at p05 in flight, r742 to r746), the lidar 0.59 to 0.98 of
+// its beams (0.59 on the pad, r737 to r741).
+constexpr double kSensorHealthyObservedFraction{0.5};
+constexpr double kSensorBlindObservedFraction{0.05};
+// A blind forward sensor still leaves the sensors that look up and down: the
+// range stops a millimetre above the margin, where the contract admits almost
+// nothing forward and stays valid for the vertical cone.
+constexpr double kBlindRangeAboveMarginM{1.0e-3};
+
+MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& configured,
+                                             const MppiSpeedPolicyInput& input) {
+  MppiSpeedPolicyConfig config = configured;
+  SensorBrakingContract3D& contract = config.sensor_braking_contract;
+  if (input.sensor_observed_fraction.has_value() &&
+      std::isfinite(*input.sensor_observed_fraction)) {
+    const double share =
+        std::clamp((*input.sensor_observed_fraction - kSensorBlindObservedFraction) /
+                       (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
+                   0.0, 1.0);
+    contract.guaranteed_detection_range_m =
+        std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
+                 share * contract.guaranteed_detection_range_m);
+  }
+  if (input.sensor_evidence_age_s.has_value() &&
+      std::isfinite(*input.sensor_evidence_age_s) &&
+      *input.sensor_evidence_age_s >= 0.0) {
+    contract.maximum_evidence_age_s = *input.sensor_evidence_age_s;
+  }
+  return config;
+}
+
+} // namespace
+
+MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& configured,
                                               const MppiSpeedPolicyInput& input) {
-  validateConfig(config);
+  validateConfig(configured);
+  const MppiSpeedPolicyConfig config = measuredSensorContract(configured, input);
   MppiSpeedPolicyResult result;
+  result.sensor_measured_range_m =
+      config.sensor_braking_contract.guaranteed_detection_range_m;
+  result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;

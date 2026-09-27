@@ -60,6 +60,11 @@ struct MppiSpeedPolicyConfig {
   // owe it as latency, so the reference handed to the controller is the limit
   // the vehicle meets once its response has taken effect.
   double reference_tracking_lag_s{0.0};
+  // How many beams the forward sensor's frame holds when every one of them
+  // observes: a stereo pair's frame carries only the rays of the pixels it
+  // matched, so its whole is the pixel grid it samples; a lidar's frame
+  // carries every beam, and zero leaves the frame's own count as the whole.
+  std::size_t sensor_expected_beam_count{0U};
 };
 
 struct MppiSpeedPolicyInput {
@@ -115,6 +120,11 @@ struct MppiSpeedPolicyInput {
   RouteEndpointSemantics3D route_endpoint_semantics{
       RouteEndpointSemantics3D::kContinuation};
   bool terminal_goal_limit_enabled{true};
+  // The forward sensor's latest frame as a measurement (roadmap item 17
+  // stage 0): the share of its beams that observed anything, and how old the
+  // frame is. Absent, the configured contract stands.
+  std::optional<double> sensor_observed_fraction;
+  std::optional<double> sensor_evidence_age_s;
 };
 
 struct MppiSpeedPolicyResult {
@@ -136,6 +146,10 @@ struct MppiSpeedPolicyResult {
   // The range memory answered with for a motion the forward sensor did not
   // face; infinite where the rule did not apply.
   double unfaced_observed_range_m{std::numeric_limits<double>::infinity()};
+  // The contract as this cycle measured it: the forward range the sensor's
+  // frame stands behind and the evidence age charged.
+  double sensor_measured_range_m{0.0};
+  double sensor_evidence_age_s{0.0};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};
@@ -161,8 +175,9 @@ struct MppiSpeedPolicyResult {
 // there is none. Zero when neither names one.
 [[nodiscard]] Vec3 mppiSpeedPolicyFacedDirection(const MppiSpeedPolicyInput& input);
 
+// The contract is read with the input's measured frame where it has one.
 [[nodiscard]] MppiSpeedPolicyResult
-evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& config,
+evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& configured,
                         const MppiSpeedPolicyInput& input);
 
 [[nodiscard]] const char* mppiSpeedLimiterName(MppiSpeedLimiter limiter) noexcept;

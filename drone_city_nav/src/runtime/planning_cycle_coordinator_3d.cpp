@@ -500,6 +500,23 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
       .route_endpoint_semantics = route_endpoint_semantics,
       .terminal_goal_limit_enabled = request.terminal_hold_enabled,
   };
+  // The forward sensor's latest frame, as the contract now reads it: the share
+  // of its beams that observed anything and the frame's age.
+  if (request.latest_sensor_evidence != nullptr &&
+      request.latest_sensor_evidence->valid()) {
+    const VersionedLatestSensorEvidence3D& frame = *request.latest_sensor_evidence;
+    const std::size_t whole = std::max(frame.sourceBeamCount(),
+                                       config_.speed_policy.sensor_expected_beam_count);
+    if (whole > 0U) {
+      speed_policy_input.sensor_observed_fraction =
+          static_cast<double>(frame.sourceBeamCount() - frame.invalidBeamCount()) /
+          static_cast<double>(whole);
+    }
+    speed_policy_input.sensor_evidence_age_s =
+        request.now_ns > frame.acquisitionStampNs()
+            ? static_cast<double>(request.now_ns - frame.acquisitionStampNs()) * 1.0e-9
+            : 0.0;
+  }
   // A forward sensor that does not see all around leaves memory to answer for
   // a motion the vehicle does not face.
   if (config_.speed_policy.sensor_braking_contract.forward_horizontal_half_angle_rad <

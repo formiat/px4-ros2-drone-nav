@@ -40,6 +40,59 @@ TEST(MppiSpeedPolicyTest, SensorBrakingContractLimitsReferenceSpeed) {
               config.sensor_braking_contract.guaranteed_detection_range_m, 1.0e-10);
 }
 
+TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
+  // Roadmap item 17 stage 0: a frame whose beams observe what a lit scene
+  // gives keeps the configured range, a blind one admits almost nothing
+  // forward while the sensors that look up and down still carry a climb, and
+  // the evidence age charged is the frame's own.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 6.4;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.6;
+  config.sensor_braking_contract.physical_margin_m = 2.0;
+  config.sensor_braking_contract.forward_vertical_half_angle_rad = 0.9;
+  config.sensor_braking_contract.vertical_detection_range_m = 2.8;
+  config.sensor_braking_contract.vertical_cone_half_angle_rad = 0.4;
+  config.sensor_braking_contract.vertical_physical_margin_m = 1.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 2.0F;
+  const double configured =
+      evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
+
+  input.sensor_observed_fraction = 0.9;
+  input.sensor_evidence_age_s = 0.6;
+  const MppiSpeedPolicyResult lit = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(lit.sensor_braking_limit_mps, configured);
+  EXPECT_DOUBLE_EQ(lit.sensor_measured_range_m, 6.4);
+
+  input.sensor_observed_fraction = 0.3;
+  const double dim = evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
+  input.sensor_observed_fraction = 0.0;
+  const MppiSpeedPolicyResult blind = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(dim, configured);
+  EXPECT_GT(dim, blind.sensor_braking_limit_mps);
+  EXPECT_LT(blind.sensor_braking_limit_mps, 0.2);
+  EXPECT_GT(blind.sensor_measured_range_m,
+            config.sensor_braking_contract.physical_margin_m);
+
+  input.state.vx = 0.1F;
+  input.state.vz = 1.0F;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps, 0.5);
+  input.state.vx = 2.0F;
+  input.state.vz = 0.0F;
+
+  input.sensor_observed_fraction = 0.9;
+  input.sensor_evidence_age_s = 0.2;
+  const MppiSpeedPolicyResult fresh = evaluateMppiSpeedPolicy(config, input);
+  input.sensor_evidence_age_s = 1.5;
+  const MppiSpeedPolicyResult stale = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_GT(fresh.sensor_braking_limit_mps, configured);
+  EXPECT_LT(stale.sensor_braking_limit_mps, configured);
+  EXPECT_DOUBLE_EQ(stale.sensor_evidence_age_s, 1.5);
+}
+
 TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   // A pair that sees 60 degrees either side of the heading. Flying where it
   // looks the contract's range answers; flying sideways nothing looks, and

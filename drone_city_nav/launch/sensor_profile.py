@@ -40,6 +40,11 @@ STEREO_TOF_OBSERVABILITY = {
     "unobserved_motion_speed_mps": 1.0,
     "gaze_follows_motion": True,
     "gaze_survey_yaw_rate_radps": 1.5,
+    # The rays the depth node would publish if every pixel it samples matched:
+    # a 1280 x 960 pair sampled every fourth pixel both ways. The share the
+    # frame actually matched is what the braking contract reads as the range
+    # the frame stands behind (roadmap item 17 stage 0).
+    "sensor_expected_beam_count": (1280 // 4) * (960 // 4),
 }
 
 # What makes an obstacle memory a vision memory: the returns of the depth node,

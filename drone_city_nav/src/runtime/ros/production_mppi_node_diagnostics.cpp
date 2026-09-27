@@ -258,6 +258,10 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.unobserved_frontier_range_m)
        << " unfaced_observed_range_m="
        << finiteOrNegative(speed_policy.unfaced_observed_range_m)
+       << " sensor_measured_range_m="
+       << finiteOrNegative(speed_policy.sensor_measured_range_m)
+       << " sensor_evidence_age_s="
+       << finiteOrNegative(speed_policy.sensor_evidence_age_s)
        << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
        << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
        << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
@@ -862,6 +866,10 @@ void ProductionMppiNode::processDiagnostics(
           << finiteOrNegative(speed_policy.route_constraint_limit_mps) << '}'
           << ",\"unfaced_observed_range_m\":"
           << finiteOrNegative(speed_policy.unfaced_observed_range_m)
+          << ",\"sensor_measured_range_m\":"
+          << finiteOrNegative(speed_policy.sensor_measured_range_m)
+          << ",\"sensor_evidence_age_s\":"
+          << finiteOrNegative(speed_policy.sensor_evidence_age_s)
           << ",\"yaw\":" << input.initial_state.yaw << ",\"yaw_rate\":"
           << input.initial_state.yaw_rate
           // The yaw the executed horizon hands the autopilot next, beside

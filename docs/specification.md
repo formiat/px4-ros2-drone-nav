@@ -103,6 +103,7 @@ aside, and this file what everything else is measured against.
 | K5 | Item 19's goal outside the location: (200, 100, 10) m. | Agent, 2026-09-26 | Behind the outer walls of Urban Circuit Practice 01 and inside the memory's grid; the owner decided the injection is by the goal alone. |
 | K7 | The guaranteed forward range of the stereo set is 6.4 m. | Inherited (item 14) | The confident depth measured on the location's surfaces. |
 | K8 | The camera estimator is unhealthy, and falls silent, after an IMU hole longer than its 1 s unaided timeout (for the rest of the flight) and while its velocity is less certain than 1 m/s along any direction. | Agent, 2026-09-27 | r720 and r723 crashed on a diverging estimate published as healthy after holes of 1.9 and 3.6 s; the flying filter holds 0.08 to 0.18 m/s. Silence hands the vehicle to the autopilot's failsafe landing; an initialisation in flight is the register's L6. |
+| K9 | The braking contract reads the forward sensor's latest frame (roadmap item 17 stage 0): its range scales from the configured one at 0.5 of the frame's beams observing anything down to the physical margin at 0.05, and the evidence age charged is the frame's measured age instead of the constant 600 ms. The stereo frame's whole is the 76 800 pixels it samples (1280 x 960 every fourth). | Agent, 2026-09-27 | A blind pair was flown at the speed 6.4 m admits. Lit frames observe 0.69 to 0.95 (stereo, r742 to r746) and 0.59 to 0.98 (lidar, r737 to r741), both lows on the launch pad, so the thresholds never bind in a lit flight. |
 
 ## Change Log
 
@@ -127,3 +128,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | F7, F9 | "the charge covers only the way back"; "too low to reach B and return" | the charge is weighed against the way to B, since no return follows B; the decision is taken while the way home is still covered; "too low to reach B at all" | Owner | The owner's correction: a mission ends at B. | this commit |
 | 2026-09-27 | F10 | — | new | Owner | Roadmap item 22. | this commit |
 | 2026-09-27 | F11 | three options by price | five options by range, price and power | Owner | The discussion of low-power illumination. | this commit |
+| 2026-09-27 | K9 | constant range 6.4 m / 14 m and evidence age 600 ms | measured from the frame | Agent | Roadmap item 17 stage 0. | this commit |

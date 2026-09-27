@@ -634,6 +634,9 @@ void ProductionMppiConfigLoader::declareControl() {
       .vertical_physical_margin_m =
           declare<double>("vertical_sensor_braking_physical_margin_m", 0.0),
   };
+  control.speed_policy.sensor_expected_beam_count =
+      static_cast<std::size_t>(std::max<std::int64_t>(
+          0, declare<std::int64_t>("sensor_expected_beam_count", 0)));
   mppi.gaze_follows_motion = declare<bool>("gaze_follows_motion", false);
   mppi.gaze_survey_yaw_rate_radps =
       static_cast<float>(declare<double>("gaze_survey_yaw_rate_radps", 0.0));
