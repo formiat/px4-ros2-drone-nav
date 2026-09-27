@@ -10,13 +10,13 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <numbers>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgproc.hpp>
@@ -324,17 +324,39 @@ private:
   // dark world, lit by the vehicle's light and raised by the camera's gain,
   // those answers were surfaces in open air, and the vehicle spent 47
   // percent of a flight braking for routes they blocked (r764). The noise is
-  // estimated from the frame itself (Immerkaer's operator), and a match
-  // stands only where the local standard deviation clears it threefold.
+  // estimated from the frame itself (Immerkaer's operator, robustly), and a
+  // match stands only where the local standard deviation clears it
+  // threefold.
   static void rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
     cv::Mat laplacian;
     const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
                             -2.0F, 1.0F, -2.0F, 1.0F);
     cv::filter2D(grey, laplacian, CV_32F, kernel);
-    const double noise = cv::sum(cv::abs(laplacian))[0] *
-                         std::sqrt(0.5 * std::numbers::pi) /
-                         (6.0 * static_cast<double>(std::max(1, grey.cols - 2)) *
-                          static_cast<double>(std::max(1, grey.rows - 2)));
+    // The operator's response is six noise deviations on a flat patch and
+    // far more on an edge; its median over the frame is the flat patches',
+    // and the edges of a textured scene do not move it the way they moved
+    // the mean (r765: the mean read texture as noise and discarded two
+    // thirds of a lit frame's matches).
+    std::array<std::size_t, kLaplacianBins> histogram{};
+    std::size_t samples{0U};
+    for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
+      const float* const values = laplacian.ptr<float>(row);
+      for (int column = 1; column + 1 < laplacian.cols; column += kNoiseSampleStride) {
+        ++histogram[std::min<std::size_t>(
+            kLaplacianBins - 1U, static_cast<std::size_t>(std::abs(values[column])))];
+        ++samples;
+      }
+    }
+    std::size_t below{0U};
+    double median_response{0.0};
+    for (std::size_t bin = 0U; bin < kLaplacianBins; ++bin) {
+      below += histogram[bin];
+      if (2U * below >= samples) {
+        median_response = static_cast<double>(bin) + 0.5;
+        break;
+      }
+    }
+    const double noise = 1.4826 * median_response / 6.0;
     cv::Mat grey_float;
     grey.convertTo(grey_float, CV_32F);
     cv::Mat mean;
@@ -357,6 +379,8 @@ private:
   }
 
   static constexpr int kSignalWindowPx{9};
+  static constexpr std::size_t kLaplacianBins{1024U};
+  static constexpr int kNoiseSampleStride{4};
   static constexpr double kSignalOverNoise{3.0};
   // A noiseless render still quantizes: never trust less than a level.
   static constexpr double kMinimumNoiseLevels{1.0};
