@@ -20,33 +20,6 @@ template<typename T> void keep(std::vector<T>& values, const std::vector<bool>& 
   values.resize(out);
 }
 
-// A surface lit by the vehicle's own light brightens as the vehicle nears
-// it, and the light's falloff moves with the cameras over the scene: the
-// brightness followed from frame to frame is no longer the surface's alone,
-// and the features the filter gated tripled with the light on, 151 of 2494
-// against 75 of 3935 with it off, the drift per 100 m of path doubling
-// (r775 against r774, both in the lit world). The grey level over its
-// local mean keeps the surface's texture and divides out the light, whose
-// field varies slowly over the image. Dividing a dark region raises the
-// camera's noise with its texture, and the noise of a pixel is corners to
-// the detector: the frame is smoothed over a pixel first, which lowers the
-// noise about fourfold, and a region darker than an eighth of the range is
-// raised no further than one that bright.
-[[nodiscard]] cv::Mat reflectance(const cv::Mat& grey) {
-  constexpr int kMeanWindowPx{31};
-  constexpr double kDarkestMeanGrey{32.0};
-  constexpr double kMeanReflectanceGrey{128.0};
-  cv::Mat value;
-  grey.convertTo(value, CV_32F);
-  cv::GaussianBlur(value, value, {5, 5}, 1.0);
-  cv::Mat mean;
-  cv::blur(value, mean, {kMeanWindowPx, kMeanWindowPx});
-  cv::Mat result;
-  cv::divide(value, cv::max(mean, kDarkestMeanGrey), result, kMeanReflectanceGrey,
-             CV_8U);
-  return result;
-}
-
 } // namespace
 
 struct StereoFeatureTracker::Impl {
@@ -93,8 +66,15 @@ std::vector<StereoFeatureObservation> StereoFeatureTracker::Impl::track(
     const cv::Mat& raw_left, const cv::Mat& raw_right,
     const std::optional<Eigen::Matrix3d>& previous_to_current_rotation) {
   report_ = {};
-  const cv::Mat left = reflectance(raw_left);
-  const cv::Mat right = reflectance(raw_right);
+  // The cameras' own noise, 2.5 grey levels (roadmap item 17 stage 1),
+  // doubled the features the filter gated and the drift per 100 m of path
+  // (r761 to r772 against r747 to r751): a corner found or followed in the
+  // noise is the noise's. A Gaussian of one pixel lowers the noise about
+  // fourfold and leaves the corners at the scale of the 21 px window.
+  cv::Mat left;
+  cv::Mat right;
+  cv::GaussianBlur(raw_left, left, {5, 5}, 1.0);
+  cv::GaussianBlur(raw_right, right, {5, 5}, 1.0);
   const cv::Size window{config_.window_px, config_.window_px};
   const cv::TermCriteria criteria{cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30,
                                   0.01};
