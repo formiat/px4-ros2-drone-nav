@@ -36,6 +36,9 @@
         <cast_shadows>false</cast_shadows>
         <diffuse>1 1 1 1</diffuse>
         <specular>0.1 0.1 0.1 1</specular>
+        <!-- At an intensity of one the dark world's frames reached 5 to 38 of
+             255 at their 95th percentile (r763). -->
+        <intensity>8</intensity>
         <direction>1 0 0</direction>
         <attenuation>
           <range>25</range>
