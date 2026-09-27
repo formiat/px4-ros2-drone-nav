@@ -2,6 +2,9 @@
 #include <sensor_msgs/msg/image.hpp>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <gz/msgs/image.pb.h>
 #include <gz/transport/Node.hh>
@@ -44,8 +47,11 @@ private:
         rclcpp::SensorDataQoS{}.keep_last(1));
     const std::string gazebo_topic =
         declare_parameter<std::string>(side + "_gazebo_image_topic", "");
+    const bool left = side == "left";
     const std::function<void(const gz::msgs::Image&)> callback =
-        [this, publisher](const gz::msgs::Image& image) { publish(image, *publisher); };
+        [this, publisher, left](const gz::msgs::Image& image) {
+          publish(image, *publisher, left);
+        };
     if (gazebo_topic.empty() || !gazebo_.Subscribe(gazebo_topic, callback)) {
       throw std::runtime_error{"cannot subscribe to the Gazebo image topic '" +
                                gazebo_topic + "'"};
@@ -54,7 +60,7 @@ private:
   }
 
   void publish(const gz::msgs::Image& image,
-               rclcpp::Publisher<sensor_msgs::msg::Image>& publisher) const {
+               rclcpp::Publisher<sensor_msgs::msg::Image>& publisher, const bool left) {
     const std::size_t pixels = static_cast<std::size_t>(image.width()) *
                                static_cast<std::size_t>(image.height());
     const bool rgb = image.pixel_format_type() == gz::msgs::PixelFormatType::RGB_INT8;
@@ -87,9 +93,67 @@ private:
     } else {
       std::copy_n(source, pixels, message->data.begin());
     }
+    applyAutomaticGain(message->data, left);
     publisher.publish(std::move(message));
   }
 
+  // The camera's automatic gain (roadmap item 17 stage 1). A real camera in
+  // the dark raises its gain until its image fills its range, noise and all;
+  // the simulated one renders at one fixed exposure, and in the dark world
+  // lit by the vehicle's own light it left the pair a few tens of levels to
+  // track on (r762: 20 to 70 features tracked against 150 to 190 lit, the
+  // estimate 3.2 m off after 153 m). The left image sets the gain so that
+  // its 95th percentile of brightness reaches 200 of 255, never below one
+  // and never above eight, following the scene over a few frames; both
+  // images take the same gain, so the matcher compares like with like.
+  void applyAutomaticGain(std::vector<std::uint8_t>& data, const bool left) {
+    if (left) {
+      std::array<std::size_t, 256> histogram{};
+      for (std::size_t pixel = 0U; pixel < data.size(); pixel += kGainSampleStride) {
+        ++histogram[data[pixel]];
+      }
+      const std::size_t samples =
+          (data.size() + kGainSampleStride - 1U) / kGainSampleStride;
+      std::size_t below = 0U;
+      int percentile = 255;
+      for (int level = 0; level < 256; ++level) {
+        below += histogram[static_cast<std::size_t>(level)];
+        if (static_cast<double>(below) >= 0.95 * static_cast<double>(samples)) {
+          percentile = level;
+          break;
+        }
+      }
+      const double wanted =
+          std::clamp(kGainTargetLevel / std::max(1.0, static_cast<double>(percentile)),
+                     1.0, kMaximumGain);
+      const double gain =
+          (1.0 - kGainFollowing) * gain_.load(std::memory_order_relaxed) +
+          kGainFollowing * wanted;
+      gain_.store(gain, std::memory_order_relaxed);
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "GAZEBO_STEREO_IMAGE gain=%.2f brightness_p95=%d", gain,
+                           percentile);
+    }
+    const double gain = gain_.load(std::memory_order_relaxed);
+    if (!(gain > 1.0 + 1.0e-3)) {
+      return;
+    }
+    std::array<std::uint8_t, 256> table{};
+    for (int level = 0; level < 256; ++level) {
+      table[static_cast<std::size_t>(level)] = static_cast<std::uint8_t>(
+          std::min(255.0, std::round(static_cast<double>(level) * gain)));
+    }
+    for (std::uint8_t& value : data) {
+      value = table[value];
+    }
+  }
+
+  static constexpr std::size_t kGainSampleStride{16U};
+  static constexpr double kGainTargetLevel{200.0};
+  static constexpr double kMaximumGain{8.0};
+  static constexpr double kGainFollowing{0.3};
+
+  std::atomic<double> gain_{1.0};
   std::string frame_id_;
   gz::transport::Node gazebo_;
 };
