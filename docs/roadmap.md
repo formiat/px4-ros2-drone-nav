@@ -687,8 +687,8 @@ The vehicle's answer is a ladder whose first rung is free:
    reason, and the choice is reopened only with the measurement of how far a
    retreat on the IMU actually stays inside the corridor it came down.
 4. **Return home or land.** A vehicle that retreated to where it can see
-   has a position source, and when the flight's window less the return is
-   spent, item 19's budget trigger gives the goal up and flies it home: the
+   has a position source, and when the onboard light's remaining charge
+   covers only the way back, it gives the goal up and flies home (below): the
    ladder does not wait out a stated time to land in a place it can see. A
    vehicle with no position source, in total darkness, **descends and
    lands** if the light has not returned within a stated time: a controlled
@@ -698,6 +698,16 @@ The vehicle's answer is a ladder whose first rung is free:
    was built under the old one. This is the unbounded-drift entry the debt
    register carries as a deep rework; this item does not solve it, it states
    where it bites.
+
+**The return home on the light's charge.** Decided by the project owner on
+2026-09-27: the mission monitor carries, from item 19's implementation, a
+time-bound return that gives the goal up for the start once the time left of
+the run's window covers only the estimated way back (`mission_window_s`, the
+run's timeout today; the estimate is the path flown over the mean speed, a
+margin of 2.0 and a 20 s reserve). It gave every return of item 19's
+acceptance. This stage reworks it into the charge of the onboard light of
+stage 3: the window becomes the light's remaining charge, and the vehicle
+flies home while the light it needs to see the way still lasts.
 
 This is a failsafe against a crash and not a way to keep flying. Its honest
 scope is stop, hold, retreat, then home or land.
@@ -1177,8 +1187,8 @@ the mission, not of this item.
 Two rules close the loop that the ladder alone leaves open. **After a
 retreat the vehicle holds where it can see for a stated time** — the plume
 is transient and expected to move — and if the range ahead has not returned
-by then, item 19's budget trigger sends it home while it still has a
-position source, and it lands there, in sight, only when the start too is
+by then, it gives the goal up and flies home while it still has a position
+source (item 17 stage 5 bounds that time by the light's charge), and it lands there, in sight, only when the start too is
 proven unreachable; that is a rule of time on the vehicle's own state, not a
 prohibition of space, and it is the same time the light of item 17 stage 5
 is given to return. And the
@@ -1763,8 +1773,7 @@ what is set aside, with the class of every entry, is
 ### 19. A Goal Proven Unreachable: Return Home (Completed)
 
 Closed on 2026-09-27 on bf92e952, not yet in a release. When its goal is
-proven unreachable, or proven too late, the vehicle gives it up and flies
-home: the mission monitor replaces the goal with the start through the
+proven unreachable, the vehicle gives it up and flies home: the mission monitor replaces the goal with the start through the
 objective channel by which any goal enters the navigation in flight, and the
 arrival at the start is a goal's arrival like any other (the 2.0 m capture
 radius and the hold, no landing). The navigation did not change by a line
@@ -1780,23 +1789,13 @@ Built, each decision the smallest change found:
   through every voxel that is not occupied, unknown included, the grid's edge
   counting as unknown. It runs every 10 s on the monitor's own thread within a
   voxel budget that leaves it undecided, and it never reads the planner (r596
-  stood 106 s without a route in an open world). The **topological** trigger
-  fires on a component that holds no goal and touches no unknown; the
-  **budget** trigger when the wall time since the monitor started, the
-  return's estimate and a 20 s reserve exceed the flight's window. The log
-  line `GOAL_UNREACHABLE trigger=topological|budget` carries the proof's
-  verdict, the estimates and the moment. With no decay in the memory a
-  closure holds for the rest of the flight; the decay and re-probe clause is
-  item 18 stage 0's.
-- **The three inputs.** The flight's window `mission_window_s` is the run's
-  `SMOKE_DURATION_S`, handed to the monitor and written into the manifest.
-  The return's estimate is the path flown so far over the mean speed so far,
-  stretched by the real-time factor the two clocks have shown and by a margin
-  of 2.0: the way back is not the flown path retraced but the planner's route
-  through the observed space, and over twelve returns it took 0.72 to 1.40
-  times the flight out, one exploring return more than 1.65. The position
-  source is the autopilot's position, valid and under a second old; without
-  it nothing is substituted (`GOAL_UNREACHABLE_HELD`).
+  stood 106 s without a route in an open world). It proves the goal
+  unreachable on a component that holds no goal and touches no unknown, and
+  the log line `GOAL_UNREACHABLE` carries its verdict and the moment. With no
+  decay in the memory a closure holds for the rest of the flight; the decay
+  and re-probe clause is item 18 stage 0's.
+- **The position source** is the autopilot's position, valid and under a
+  second old; without it nothing is substituted (`GOAL_UNREACHABLE_HELD`).
 - **The substitution** publishes a `NavigationObjective` at the start with the
   next mission epoch; the planning tick rebases its waypoint sequence to the
   objective's goal, so the start is captured and acknowledged as any goal is,
@@ -1824,9 +1823,6 @@ Found by the flights and repaired on the way:
   labels dropped, ten minutes without a route home 0.4 m from one). The test
   of a changed cell against an edge also missed a tenth of the cells an
   upright body passes on a climbing edge. Both repaired (bf92e952).
-- The budget trigger fired inside ordinary flights under the harness's 600 s
-  window and a margin of 1.5: the margin is 2.0 (62f4f511) and the ordinary
-  acceptance flights fly an 1800 s window.
 - An autopilot position reset beyond 0.33 m closed the navigation for good;
   r699 stood ten minutes six metres from its start after a 1.02 m reset. A
   reset up to 3 m is flown on (d71a5c6f, item 17 stage 6).
@@ -1839,12 +1835,15 @@ Found by the flights and repaired on the way:
   long-lived map (6fa53f6d to 3f965181, [`localization.md`](localization.md)):
   0.20 to 0.68 m at the end of the same path. A first pass drifts as before.
 
-Acceptance on bf92e952, each flight inspected before the next. Every return
-was the budget trigger's: at every trigger the vehicle's component touched the
-grid's edge, as the item foresaw for a location of this size, since unknown
-lies above the flight band and in every corner not yet looked at.
+Acceptance on bf92e952, each flight inspected before the next. The proof
+never closed the vehicle's component in flight: at every check it touched the
+grid's edge, since unknown lies above the flight band and in every corner not
+yet looked at, so the topological proof is verified by its unit tests alone.
+The goal was given up in every flight by the time-bound return the mission
+monitor still carries from the implementation, which item 17 stage 5 reworks
+into the charge of the onboard light.
 
-| Goal outside the location | Flights | Trigger, s of simulation (flown, m) | Return, s | True position from the start, m | Estimator at the end, m |
+| Goal outside the location | Flights | Given up at, s of simulation (flown, m) | Return, s | True position from the start, m | Estimator at the end, m |
 |---|---|---|---|---|---|
 | Stereo set, the defaults | r721, r722, r724, r725, r726 | 249 / 246 / 265 / 270 / 282 (456 / 434 / 508 / 456 / 504) | 417 / 366 / 433 / 325 / 282 | 1.06 / 0.65 / 0.40 / 0.65 / 0.59 | 0.68 / 0.22 / 0.20 / 0.34 / 0.21 |
 | 3D lidar | r727 to r731 | 298 / 299 / 299 / 299 / 298 (687 / 704 / 694 / 666 / 681) | 53 / 37 / 52 / 57 / 43 | 0.52 / 0.26 / 0.64 / 0.42 / 0.66 | 0.26 / 0.17 / 0.30 / 0.15 / 0.25 |

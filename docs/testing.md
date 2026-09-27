@@ -107,8 +107,8 @@ from the logs, and the autopilot logged no critical simulator error.
 `GOAL_UNREACHABLE` of the mission monitor fails the flight: the vehicle
 returned rather than reached its goal. In a flight whose manifest records the
 unreachability as injected (`MISSION_GOAL_UNREACHABLE=true`) the return is the
-outcome asked for, and the check requires the substitution with a named
-trigger, the result `goal_unreachable_returned` and the acknowledgement at the
+outcome asked for, and the check requires the logged substitution, the
+result `goal_unreachable_returned` and the acknowledgement at the
 start with the true position inside the capture radius. It does not take the
 manifest's word: it floods the truth grid (`TRUTH_OCCUPANCY_3D_PATH`) from the
 start, and a start's component that reaches the goal fails the flight, while

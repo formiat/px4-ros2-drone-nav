@@ -332,12 +332,9 @@ static point cloud. It does not change Occupancy3D or ESDF3D resolution.
 after exit constrained-route lifecycle diagnostics report approach/departure.
 It is observational and does not alter planning or speed policy.
 `mission_monitor_node` owns mission success and crash metrics, and the return
-home of roadmap item 19: `mission_window_s` is the flight's window (the run's
-`SMOKE_DURATION_S`, also written into the manifest; 0 disables the budget
-trigger), and `unreachable_goal_proof_voxel_budget` bounds the flood of the
-memory that proves a goal unreachable, beyond which the proof stays undecided.
-The return's estimate (the path flown over the mean speed, a margin of 2.0, a
-20 s reserve) is fixed in the code with the flights that set it.
+home of roadmap item 19: `unreachable_goal_proof_voxel_budget` bounds the
+flood of the memory that proves a goal unreachable, beyond which the proof
+stays undecided.
 
 ## Environment Overrides
 
