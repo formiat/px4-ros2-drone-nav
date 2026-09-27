@@ -48,16 +48,71 @@ TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenRestingInsideTheCaptureRadius) 
   EXPECT_FALSE(moving.latched);
   EXPECT_NEAR(moving.speed_mps, 1.0, 1.0e-6);
 
-  // Resting one metre from the goal is a capture: the hold pins this rest
-  // position, the vehicle never has to creep onto the exact coordinate.
+  // Resting one metre from the goal the vehicle may still be approaching:
+  // no capture yet.
   state.vx = 0.1F;
   const MissionGoalCaptureResult resting = latch.update(MissionGoalCaptureObservation{
       .mission_goal = Point3{10.0, 10.0, 18.0},
       .state = state,
       .terminal_route_available = true,
+      .stamp_ns = 1'000'000'000,
   });
-  EXPECT_TRUE(resting.newly_latched);
+  EXPECT_FALSE(resting.latched);
   EXPECT_NEAR(resting.distance_m, 1.0, 1.0e-6);
+
+  // Resting there for three seconds without getting closer is a capture:
+  // the hold pins this rest position, the vehicle never has to creep onto
+  // the exact coordinate.
+  const MissionGoalCaptureResult settled = latch.update(MissionGoalCaptureObservation{
+      .mission_goal = Point3{10.0, 10.0, 18.0},
+      .state = state,
+      .terminal_route_available = true,
+      .stamp_ns = 4'000'000'000,
+  });
+  EXPECT_TRUE(settled.newly_latched);
+}
+
+TEST(MissionGoalCaptureLatchTest, LatchesAtOnceWhereTheApproachEnds) {
+  MissionGoalCaptureLatch latch;
+  mppi::State state;
+  state.x = 9.5F;
+  state.y = 10.0F;
+  state.z = 18.0F;
+  state.vx = 0.1F;
+  EXPECT_TRUE(latch
+                  .update(MissionGoalCaptureObservation{
+                      .mission_goal = Point3{10.0, 10.0, 18.0},
+                      .state = state,
+                      .terminal_route_available = true,
+                      .stamp_ns = 1'000'000'000,
+                  })
+                  .newly_latched);
+}
+
+TEST(MissionGoalCaptureLatchTest, ACrawlTowardTheGoalIsNoCapture) {
+  // The clearance laws slow the vehicle below the rest tolerance inside the
+  // radius; while it still closes on the goal the approach goes on (r772).
+  MissionGoalCaptureLatch latch;
+  mppi::State state;
+  state.y = 10.0F;
+  state.z = 18.0F;
+  state.vx = 0.2F;
+  const auto at = [&](const float x, const std::int64_t stamp_ns) {
+    state.x = x;
+    return latch
+        .update(MissionGoalCaptureObservation{
+            .mission_goal = Point3{10.0, 10.0, 18.0},
+            .state = state,
+            .terminal_route_available = true,
+            .stamp_ns = stamp_ns,
+        })
+        .latched;
+  };
+  EXPECT_FALSE(at(8.1F, 0));
+  EXPECT_FALSE(at(8.4F, 2'000'000'000));
+  EXPECT_FALSE(at(8.7F, 4'000'000'000));
+  EXPECT_FALSE(at(8.7F, 6'000'000'000));
+  EXPECT_TRUE(at(8.7F, 7'000'000'000));
 }
 
 TEST(MissionGoalCaptureLatchTest, ReleasesAfterLeavingTheCaptureRadius) {
@@ -100,7 +155,7 @@ TEST(MissionGoalCaptureLatchTest, ReleasesAfterLeavingTheCaptureRadius) {
   EXPECT_FALSE(latch.latchedFor(Point3{10.0, 10.0, 18.0}));
 
   // Back inside but moving: not yet.
-  state.x = 11.0F;
+  state.x = 10.5F;
   state.vx = 1.0F;
   EXPECT_FALSE(latch
                    .update(MissionGoalCaptureObservation{

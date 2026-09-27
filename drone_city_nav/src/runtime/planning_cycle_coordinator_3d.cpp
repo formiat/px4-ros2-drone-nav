@@ -419,6 +419,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 .mission_goal = request.mission_goal,
                 .state = request.navigation.state,
                 .terminal_route_available = route_reaches_mission_goal,
+                .stamp_ns = request.now_ns,
             })
           : MissionGoalCaptureResult{};
   output.route.local_stop_is_terminal =
