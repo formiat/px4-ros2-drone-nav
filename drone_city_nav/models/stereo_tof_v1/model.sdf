@@ -36,9 +36,11 @@
         <cast_shadows>false</cast_shadows>
         <diffuse>1 1 1 1</diffuse>
         <specular>0.1 0.1 0.1 1</specular>
-        <!-- At an intensity of one the dark world's frames reached 5 to 38 of
-             255 at their 95th percentile (r763). -->
-        <intensity>8</intensity>
+        <!-- Over the pair's whole field, an intensity of 8 saturated the
+             frames at the lowest gain and flew 1.58 m/s (r770); 2 flew 1.88
+             m/s at the full measured range (r771); 0.5 flew 1.38 m/s with
+             the range down to 2.6 m in places (r772). -->
+        <intensity>2</intensity>
         <direction>1 0 0</direction>
         <attenuation>
           <range>25</range>
