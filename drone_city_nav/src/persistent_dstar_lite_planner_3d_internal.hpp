@@ -610,11 +610,6 @@ private:
   // body, exactly as an escape chain does.
   [[nodiscard]] std::optional<EscapeSearch3D::Result3D>
   retreatConnection(const Point3& start) const;
-  // What the session's change scheduling last cost, decayed. The feasibility
-  // search reserves it out of the update whenever the scheduling is still
-  // pending behind it, so running the search first never pushes the update
-  // past its own budget.
-  std::chrono::steady_clock::duration schedule_cost_estimate_{};
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;

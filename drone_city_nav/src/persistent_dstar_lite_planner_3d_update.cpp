@@ -513,23 +513,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  // The session's bookkeeping for this update's occupied changes. It runs
-  // before the repair while a route is held, and behind the feasibility search
-  // while none is: a vehicle without a route needs the search that finds one
-  // more than it needs the session's labels to be current one tick sooner.
-  const auto schedule_world_changes = [&] {
-    if (!schedule_affected_vertices) {
-      return;
-    }
-    schedule_affected_vertices = false;
-    const auto schedule_started = std::chrono::steady_clock::now();
+  // The session's bookkeeping for this update's occupied changes runs before
+  // either search. It forgets the cached lattice edge costs the changes can
+  // move, and the feasibility search validates its label chains on those
+  // costs. Run behind that search while no route was held, it left the search
+  // validating chains through edges the update's own evidence had closed:
+  // each was extracted, refused by the sweep, and took the labels behind it
+  // along, update after update, and r718 stood ten minutes without a route
+  // home. It costs a few milliseconds the search reserved for it anyway.
+  if (schedule_affected_vertices) {
     dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
                                             telemetry.affected_lattice_states);
-    // A decayed maximum: the reserve follows a heavier world at once and
-    // releases the update again as the scans quieten.
-    schedule_cost_estimate_ =
-        std::max(std::chrono::steady_clock::now() - schedule_started,
-                 (schedule_cost_estimate_ * 3) / 4);
     const auto& schedule = dstar_session_.scheduleStatistics();
     telemetry.schedule_ms = schedule.total_ms;
     telemetry.schedule_ranking_ms = schedule.ranking_ms;
@@ -542,7 +536,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       dstar_session_.markCostToGoalInadmissible();
     }
     dstar_session_.advanceRepairGeneration();
-  };
+  }
 
   // Repair runs first. The persistent session's labels are only as good as
   // its repair queue is short: with repairs pending, the session reports its
@@ -577,9 +571,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       spatialRouteCandidateReachesGoal3D(coordinator_.incumbent()->source);
   const bool feasibility_will_run = config_.feasibility_first_enabled &&
                                     !holds_goal_route && !anchor_in_closed_component;
-  if (!feasibility_will_run) {
-    schedule_world_changes();
-  }
   const auto repair_started = std::chrono::steady_clock::now();
   const auto repair_share =
       feasibility_will_run
@@ -605,16 +596,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     // The search's share is a share of what is left when it starts, never a
     // point on the clock: a fixed point starved it whenever the change
     // scheduling ran long, and a vehicle without a route waited on D* alone.
-    // The scheduling still owes this update its own time when it runs behind
-    // the search, so the search reserves what it last cost.
-    const auto feasibility_limit =
-        schedule_affected_vertices
-            ? std::max(feasibility_started, deadline - schedule_cost_estimate_)
-            : deadline;
     const auto feasibility_deadline =
         feasibility_started +
         feasibilitySearchBudget3D(
-            feasibility_limit - feasibility_started,
+            deadline - feasibility_started,
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                 std::chrono::duration<double, std::milli>{
                     config_.maximum_feasibility_compute_time_ms}),
@@ -693,7 +678,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  schedule_world_changes();
   const auto spatial_search_started = std::chrono::steady_clock::now();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update

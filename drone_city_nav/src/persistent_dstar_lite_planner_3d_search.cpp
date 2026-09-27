@@ -225,21 +225,37 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
   const auto cell_touches_segment = [&](const Point3& center, const Point3& first,
                                         const Point3& second) noexcept {
+    // The body is upright: along the segment it covers the cell where the
+    // cell lies within the vertical margin and within the horizontal margin
+    // at the same station. The stations within the vertical margin form one
+    // interval; the horizontal distance is convex along it, so its minimum
+    // there is the unconstrained one clamped to the interval. The station
+    // nearest in 3D decides neither: on a climbing edge it missed a cell the
+    // body passes a tenth of the time, and the edge stayed priced clear
+    // through evidence the sweep refused (r718 stood without a route home).
     const Vec3 direction{second.x - first.x, second.y - first.y, second.z - first.z};
-    const double length_squared = direction.x * direction.x +
-                                  direction.y * direction.y + direction.z * direction.z;
     const Vec3 offset{center.x - first.x, center.y - first.y, center.z - first.z};
-    const double ratio =
-        length_squared > 0.0
-            ? std::clamp((offset.x * direction.x + offset.y * direction.y +
-                          offset.z * direction.z) /
-                             length_squared,
-                         0.0, 1.0)
-            : 0.0;
-    const double dz = offset.z - ratio * direction.z;
-    if (std::abs(dz) > vertical_margin) {
+    double lower = 0.0;
+    double upper = 1.0;
+    if (direction.z != 0.0) {
+      const double entry = (offset.z - vertical_margin) / direction.z;
+      const double exit = (offset.z + vertical_margin) / direction.z;
+      lower = std::max(lower, std::min(entry, exit));
+      upper = std::min(upper, std::max(entry, exit));
+    } else if (std::abs(offset.z) > vertical_margin) {
       return false;
     }
+    if (lower > upper) {
+      return false;
+    }
+    const double horizontal_squared =
+        direction.x * direction.x + direction.y * direction.y;
+    const double ratio =
+        horizontal_squared > 0.0
+            ? std::clamp((offset.x * direction.x + offset.y * direction.y) /
+                             horizontal_squared,
+                         lower, upper)
+            : lower;
     const double dx = offset.x - ratio * direction.x;
     const double dy = offset.y - ratio * direction.y;
     return dx * dx + dy * dy <= horizontal_margin * horizontal_margin;

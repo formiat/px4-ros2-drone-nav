@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -949,6 +950,67 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleWithoutARouteGetsTheShortenedUpda
   const PlannerUpdate3D without_route = planner.plan(lost);
   EXPECT_DOUBLE_EQ(without_route.telemetry.compute_budget_ms,
                    config.maximum_no_route_compute_time_ms);
+}
+
+// A cell beside a climbing edge touches the upright body where the body is
+// within its height of the cell, not where the cell is nearest the edge in
+// 3D. The edge the cell touches is forgotten before either search runs on
+// the new world, so the search never extracts a path through it: r718 stood
+// without a route home while the feasibility search kept extracting edges the
+// update's own changes had closed, and the acceptance refused them one by one.
+TEST(PersistentDStarLitePlanner3DTest, ACellBesideAClimbingEdgeForgetsTheEdge) {
+  auto open = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 24, 12, 20});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.physical_footprint.radius_m = 0.82;
+  config.physical_footprint.lower_extent_m = 0.23;
+  config.physical_footprint.upper_extent_m = 0.35;
+  config.physical_footprint.perimeter_samples = 12U;
+  config.physical_footprint.radial_rings = 2U;
+  config.physical_footprint.axial_samples = 3U;
+  config.physical_footprint.sweep_step_m = 0.25;
+  config.feasibility_first_enabled = true;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.0, 1.0, 1.5};
+  const Point3 goal{3.0, 1.0, 2.5};
+  PlannerUpdate3D update;
+  for (int attempt = 0; attempt < 20 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(open, 1U)));
+  }
+  ASSERT_TRUE(update.publishable());
+  ASSERT_EQ(candidate(update).points.size(), 2U) << "the climb is one edge";
+
+  // Above and behind the body halfway up the climb: the station nearest the
+  // cell in 3D is where the body has already climbed past it.
+  auto touched = std::make_shared<ObservedOccupancyGrid3D>(*open);
+  const std::array<GridIndex3D, 2> cells{GridIndex3D{4, 3, 9}, GridIndex3D{4, 4, 9}};
+  std::vector<OccupancyChunkIndex3D> dirty;
+  for (const GridIndex3D cell : cells) {
+    ASSERT_TRUE(touched->setState(cell, ObservedVoxelState::kOccupied));
+    dirty.push_back(ObservedOccupancyGrid3D::chunkIndex(cell));
+  }
+  dirty.erase(std::ranges::unique(dirty,
+                                  [](const OccupancyChunkIndex3D& first,
+                                     const OccupancyChunkIndex3D& second) {
+                                    return first.x == second.x && first.y == second.y &&
+                                           first.z == second.z;
+                                  })
+                  .begin(),
+              dirty.end());
+  bool published{false};
+  for (int attempt = 0; attempt < 20; ++attempt) {
+    const PlannerUpdate3D after =
+        planner.plan(request(start, goal, world(touched, 2U, dirty)));
+    EXPECT_EQ(after.telemetry.feasibility_last_invalid_segment, 0U)
+        << "a path through the touched edge was extracted";
+    if (after.improved_incumbent.has_value()) {
+      published = true;
+      expectRawValid(candidate(after).points, *touched,
+                     planner.config().physical_footprint);
+    }
+  }
+  EXPECT_TRUE(published);
 }
 
 } // namespace
