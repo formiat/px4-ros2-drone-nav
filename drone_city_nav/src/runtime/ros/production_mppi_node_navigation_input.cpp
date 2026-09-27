@@ -15,9 +15,17 @@ namespace drone_city_nav {
 namespace {
 
 // The largest shift of the autopilot's estimate a reset may carry and still
-// be the same frame: the 0.33 m the sensor-braking margin budgets for the
-// position estimate against the true pose.
-constexpr double kFrameResetToleranceM{0.33};
+// be flown on. A reset revokes the execution either way, so the vehicle stops
+// and the search starts again from where the estimate now puts it; the world
+// the stack mapped before the reset is off by the shift, as it is off by the
+// drift the estimate accrues. Up to the drift the estimators show over a
+// doubled path (0.4 to 4.1 m, roadmap item 19) that is the vehicle's own
+// estimate corrected, not another frame. Closing the navigation for the
+// flight on every larger shift held r699 ten minutes six metres from its
+// goal: the camera estimate ran a metre off over a featureless floor, came
+// back onto the truth in one step, and the autopilot's reset of 1.02 m
+// followed. A larger shift, or a timestamp epoch reset, still closes it.
+constexpr double kFrameResetToleranceM{3.0};
 // The longest receive interval the previous sample's velocity is carried
 // over to measure that shift; the autopilot publishes every 16 ms.
 constexpr double kFrameResetMaximumIntervalS{0.2};
@@ -155,9 +163,8 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
         !navigation_frame_reset_unresolved_) {
       // How far the reset moved the estimate the stack flies in: the new
       // position against the previous one carried at its velocity over the
-      // receive interval. A shift within the estimate error the
-      // sensor-braking margin already budgets is not a new frame: the
-      // autopilot aligning its estimator to the lidar-inertial odometry
+      // receive interval. A shift within the tolerance above is not a new
+      // frame: the autopilot aligning its estimator to the lidar-inertial odometry
       // resets its position by centimetres, and on that profile the reset
       // came after the first authoritative state and closed the navigation
       // for the flight (r372). The autopilot's own reset delta is not that
