@@ -16,6 +16,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgproc.hpp>
@@ -257,6 +258,7 @@ private:
         }
       }
     }
+    rejectMatchesWithinNoise(left_grey, disparity);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
@@ -316,6 +318,48 @@ private:
                          "match_ms=%.1f",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms);
   }
+
+  // A pixel whose neighbourhood varies no more than the image's own noise
+  // carries no signal to match, and the matcher answers it anyway: in the
+  // dark world, lit by the vehicle's light and raised by the camera's gain,
+  // those answers were surfaces in open air, and the vehicle spent 47
+  // percent of a flight braking for routes they blocked (r764). The noise is
+  // estimated from the frame itself (Immerkaer's operator), and a match
+  // stands only where the local standard deviation clears it threefold.
+  static void rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
+    cv::Mat laplacian;
+    const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
+                            -2.0F, 1.0F, -2.0F, 1.0F);
+    cv::filter2D(grey, laplacian, CV_32F, kernel);
+    const double noise = cv::sum(cv::abs(laplacian))[0] *
+                         std::sqrt(0.5 * std::numbers::pi) /
+                         (6.0 * static_cast<double>(std::max(1, grey.cols - 2)) *
+                          static_cast<double>(std::max(1, grey.rows - 2)));
+    cv::Mat grey_float;
+    grey.convertTo(grey_float, CV_32F);
+    cv::Mat mean;
+    cv::Mat mean_square;
+    const cv::Size window{kSignalWindowPx, kSignalWindowPx};
+    cv::boxFilter(grey_float, mean, CV_32F, window);
+    cv::boxFilter(grey_float.mul(grey_float), mean_square, CV_32F, window);
+    const float minimum_variance = static_cast<float>(
+        std::pow(kSignalOverNoise * std::max(noise, kMinimumNoiseLevels), 2.0));
+    for (int row = 0; row < disparity.rows; ++row) {
+      const float* const means = mean.ptr<float>(row);
+      const float* const squares = mean_square.ptr<float>(row);
+      std::int16_t* const values = disparity.ptr<std::int16_t>(row);
+      for (int column = 0; column < disparity.cols; ++column) {
+        if (squares[column] - means[column] * means[column] < minimum_variance) {
+          values[column] = std::int16_t{-16};
+        }
+      }
+    }
+  }
+
+  static constexpr int kSignalWindowPx{9};
+  static constexpr double kSignalOverNoise{3.0};
+  // A noiseless render still quantizes: never trust less than a level.
+  static constexpr double kMinimumNoiseLevels{1.0};
 
   // Half a period of the sensors' common 7.5 Hz.
   static constexpr double kTofStampToleranceS{0.067};
