@@ -67,7 +67,7 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
   EXPECT_DOUBLE_EQ(lit.sensor_braking_limit_mps, configured);
   EXPECT_DOUBLE_EQ(lit.sensor_measured_range_m, 6.4);
 
-  input.sensor_observed_fraction = 0.3;
+  input.sensor_observed_fraction = 0.15;
   const double dim = evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
   input.sensor_observed_fraction = 0.0;
   const MppiSpeedPolicyResult blind = evaluateMppiSpeedPolicy(config, input);

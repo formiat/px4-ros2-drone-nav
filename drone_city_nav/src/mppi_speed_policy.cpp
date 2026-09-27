@@ -250,12 +250,15 @@ namespace {
 // lit, textured scene gives stands behind the configured range; one whose
 // beams observe nothing is blind; the range falls linearly between. Judged
 // for the frame as a whole and not per ray: a bare room returns few surfaces
-// and every ray a free one. Measured on 2026-09-27: the stereo pair observes
-// 0.69 to 0.95 of the pixels it samples in the lit location (0.69 on the
-// launch pad, 0.83 at p05 in flight, r742 to r746), the lidar 0.59 to 0.98 of
-// its beams (0.59 on the pad, r737 to r741).
-constexpr double kSensorHealthyObservedFraction{0.5};
-constexpr double kSensorBlindObservedFraction{0.05};
+// and every ray a free one. Measured on 2026-09-27, once a match within the
+// image's noise stopped counting as one: the stereo pair observes 0.30 to
+// 0.48 of the pixels it samples in the lit location (p01 to p50, r767) and
+// 0.11 to 0.21 in the dark one by its carried light (p10 to max, r768),
+// which this reads as about 3.6 m of range, what a carried light was
+// expected to give; the lidar observes 0.59 to 0.98 of its beams (r737 to
+// r741).
+constexpr double kSensorHealthyObservedFraction{0.3};
+constexpr double kSensorBlindObservedFraction{0.02};
 // A blind forward sensor still leaves the sensors that look up and down: the
 // range stops a millimetre above the margin, where the contract admits almost
 // nothing forward and stays valid for the vertical cone.
