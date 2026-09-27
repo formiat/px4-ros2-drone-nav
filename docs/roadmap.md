@@ -749,10 +749,15 @@ that item's acceptance, was never meant as a limit of the vehicle and is
 removed when this stage is built. In its place the carried light runs on a
 battery whose charge the vehicle knows, as any airframe knows its batteries:
 that is the light's state of charge, not its failures, which stay unknown to
-the vehicle by the rule above. When the charge left covers only the way back
-— the path home estimated from the memory and the flight so far, with a
-margin measured on the returns — the vehicle gives the goal up for the start
-through item 19's substitution. The light flickers the whole time whatever
+the vehicle by the rule above. A mission ends at point B: no return is flown
+after it, so in an ordinary flight the charge has to last the way to B and
+nothing more. The vehicle weighs, as it flies, the charge left against the
+way still to go to B and against the way back home — both estimated from the
+memory and the flight so far, with a margin measured on the flights. When the
+charge will not reach B, it gives B up for the start through item 19's
+substitution, and it has to see that early enough: the decision is taken
+while the charge still covers the way home, since a vehicle that gives up too
+late is lost either way. The light flickers the whole time whatever
 its charge: the regimes below do not depend on the battery. The return on
 the battery exists only where the vehicle flies on its light: it switches
 itself on with the carried light of the camera profile and off on the lidar
@@ -767,10 +772,11 @@ is modelled, and nothing is to be read into either: the flicker is an
 injected pattern and the charge a straight line.
 
 **A scenario with a low battery at launch.** Decided by the project owner on
-2026-09-27: the vehicle starts with so little charge that it cannot reach
-point B and return in any case, decides by the battery to give B up and fly
-home, and arrives there. It is a named scenario of its own, and it is flown
-as part of this item's acceptance.
+2026-09-27: the vehicle starts with too little charge to reach point B at
+all, sees that it will not reach B, gives B up for home while the charge
+still covers the way back, and arrives there. In the ordinary flights the
+charge at launch covers the way to B. It is a named scenario of its own, and
+it is flown as part of this item's acceptance.
 
 **Two regimes of the failing light.** Decided by the project owner on
 2026-09-27, applied once this stage lands:
