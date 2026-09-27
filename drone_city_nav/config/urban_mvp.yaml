@@ -127,10 +127,12 @@ obstacle_memory_3d_node:
     free_score: -1
     # Roadmap item 17 stage 8: an occupied voxel returns to unknown once it
     # has gone unconfirmed for this long per confirmation it collected -- a
-    # wall seen for seconds on the way past lasts minutes, a matcher's outlier
-    # seen twice lasts seconds, and whatever the vehicle comes back to it sees
-    # again.
-    decay_seconds_per_confirmation: 2.0
+    # trail seen three times lasts a minute and a half, a wall seen twenty
+    # times ten minutes, and whatever the vehicle comes back to it sees again.
+    # Shorter costs a static location its route stability: at 2 s and 10 s
+    # the camera flights r757 and r758 held route availability at 96.2
+    # percent against 97.1 to 98.5 without decay.
+    decay_seconds_per_confirmation: 30.0
     # The rate the memory's snapshots and deltas reach the controller at.
     # Measured on the urban flights r346 to r351 with the delivery of every
     # hop instrumented: DDS delivers a snapshot in 0.15 ms at p50 and 0.3 ms
