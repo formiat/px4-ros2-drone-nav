@@ -216,6 +216,8 @@ public:
         declare_parameter<std::int64_t>("occupied_score", 3), 1, 100000));
     memory_config.free_score = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("free_score", -1), -100000, -1));
+    memory_config.decay_seconds_per_confirmation =
+        std::max(0.0, declare_parameter<double>("decay_seconds_per_confirmation", 0.0));
     const LidarMappingYawConfig yaw_config = declareLidarMappingYawConfig(*this);
     use_px4_heading_for_scan_ = yaw_config.use_px4_heading;
     initial_heading_rad_ = yaw_config.initial_heading_rad;

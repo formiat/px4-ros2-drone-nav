@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdint>
 
 namespace drone_city_nav {
 namespace {
@@ -100,6 +101,49 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_TRUE(memory.grid().isKnownFree({1, 8, 2}));
   EXPECT_EQ(memory.grid().state({12, 12, 2}), ObservedVoxelState::kUnknown);
   EXPECT_GT(memory.revision(), 0U);
+}
+
+TEST(ObstacleMemory3D, AnOccupancyNotConfirmedDecaysByHowOftenItWasSeen) {
+  // Roadmap item 17 stage 8: a voxel seen occupied once and never again
+  // returns to unknown a second later; one seen five times outlasts it by
+  // five seconds; a decayed voxel seen again is occupied again.
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                      .minimum_range_m = 0.1,
+                                      .hit_weight = 4,
+                                      .miss_weight = 1,
+                                      .occupied_score = 3,
+                                      .free_score = -1,
+                                      .decay_seconds_per_confirmation = 1.0}};
+  const std::array once{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  const std::array often{LidarBeam3D{
+      .direction_map = {0.0, 1.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  constexpr GridIndex3D kSeenOnce{9, 1, 2};
+  constexpr GridIndex3D kSeenOften{1, 9, 2};
+  const Point3 origin{1.5, 1.5, 2.5};
+  std::int64_t stamp_ns = 1'000'000'000;
+  static_cast<void>(memory.integrateScan(
+      {.origin_map = origin, .beams = once, .acquisition_stamp_ns = stamp_ns}));
+  for (int scan = 0; scan < 5; ++scan) {
+    stamp_ns += 100'000'000;
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = origin, .beams = often, .acquisition_stamp_ns = stamp_ns}));
+  }
+  ASSERT_TRUE(memory.grid().isOccupied(kSeenOnce));
+  stamp_ns += 1'000'000'000;
+  const ObstacleMemory3DStats later = memory.integrateScan(
+      {.origin_map = origin, .beams = often, .acquisition_stamp_ns = stamp_ns});
+  EXPECT_EQ(later.decayed_voxels, 1U);
+  EXPECT_EQ(memory.grid().state(kSeenOnce), ObservedVoxelState::kUnknown);
+  EXPECT_TRUE(memory.grid().isOccupied(kSeenOften));
+  EXPECT_EQ(memory.decayedVoxelTotal(), 1U);
+  EXPECT_FALSE(memory.takeChanges().dirty_chunks.empty());
+
+  stamp_ns += 100'000'000;
+  static_cast<void>(memory.integrateScan(
+      {.origin_map = origin, .beams = once, .acquisition_stamp_ns = stamp_ns}));
+  EXPECT_TRUE(memory.grid().isOccupied(kSeenOnce));
 }
 
 TEST(ObstacleMemory3D, DoesNotAmplifyOneScanAcrossAnAcquisitionGap) {

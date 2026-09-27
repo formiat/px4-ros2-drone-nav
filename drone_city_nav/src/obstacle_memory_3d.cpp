@@ -246,8 +246,18 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     stats.surface_beams += beam.surface_only ? 1U : 0U;
     integrateRay(scan.origin_map, beam, scan_evidence, stats);
   }
+  if (decay_epoch_ns_ <= 0 && scan.acquisition_stamp_ns > 0) {
+    decay_epoch_ns_ = scan.acquisition_stamp_ns;
+  }
+  const std::int64_t now_ms =
+      scan.acquisition_stamp_ns > 0 && decay_epoch_ns_ > 0
+          ? (scan.acquisition_stamp_ns - decay_epoch_ns_) / 1'000'000
+          : 0;
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
-    applyChunkEvidence(chunk_index, chunk_evidence, stats);
+    applyChunkEvidence(chunk_index, chunk_evidence, now_ms, stats);
+  }
+  if (config_.decay_seconds_per_confirmation > 0.0 && scan.acquisition_stamp_ns > 0) {
+    decayUnconfirmed(now_ms, stats);
   }
   // Every integrated scan is a revision, whether or not a voxel changed state:
   // the revision is published with the scan's stamp, and the consumer holds a
@@ -379,6 +389,7 @@ void ObstacleMemory3D::reset() {
   evidence_.clear();
   dirty_chunks_.clear();
   last_evidence_stamp_ns_ = 0;
+  decay_epoch_ns_ = 0;
   ++revision_;
   full_reset_pending_ = true;
 }
@@ -416,7 +427,10 @@ ObstacleMemory3DChanges ObstacleMemory3D::takeChanges() {
 
 void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_index,
                                           const ScanEvidenceChunk& chunk_evidence,
+                                          const std::int64_t now_ms,
                                           ObstacleMemory3DStats& stats) {
+  const double decay_ms_per_confirmation =
+      1000.0 * config_.decay_seconds_per_confirmation;
   const double hit_delta = static_cast<double>(config_.hit_weight);
   const double miss_delta = -static_cast<double>(config_.miss_weight);
   const auto minimum_score = static_cast<double>(config_.minimum_score);
@@ -447,6 +461,20 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
           std::clamp(scores->scores[bit_index] + (occupied ? hit_delta : miss_delta),
                      minimum_score, maximum_score);
       scores->scores[bit_index] = after_score;
+      if (occupied) {
+        std::uint16_t& confirmations = scores->confirmations[bit_index];
+        confirmations =
+            static_cast<std::uint16_t>(std::min<int>(confirmations + 1, 65535));
+        scores->confirmed_at_ms[bit_index] =
+            static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                now_ms, 0, std::numeric_limits<std::int32_t>::max()));
+        if (decay_ms_per_confirmation > 0.0) {
+          scores->next_decay_ms = std::min(
+              scores->next_decay_ms,
+              now_ms + static_cast<std::int64_t>(decay_ms_per_confirmation *
+                                                 static_cast<double>(confirmations)));
+        }
+      }
       const ObservedVoxelState before =
           grid_chunk != nullptr
               ? ObservedOccupancyGrid3D::chunkState(*grid_chunk, bit_index)
@@ -463,6 +491,9 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       } else if (after_score <= config_.free_score) {
         after = ObservedVoxelState::kFree;
       }
+      if (after == ObservedVoxelState::kFree) {
+        scores->confirmations[bit_index] = 0U;
+      }
       if (before == after) {
         continue;
       }
@@ -476,6 +507,52 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
   if (chunk_dirty) {
     dirty_chunks_[chunk_index] = true;
   }
+}
+
+void ObstacleMemory3D::decayUnconfirmed(const std::int64_t now_ms,
+                                        ObstacleMemory3DStats& stats) {
+  const double decay_ms_per_confirmation =
+      1000.0 * config_.decay_seconds_per_confirmation;
+  for (auto& [chunk_index, chunk] : evidence_) {
+    if (chunk.next_decay_ms > now_ms) {
+      continue;
+    }
+    std::int64_t next_decay_ms = std::numeric_limits<std::int64_t>::max();
+    bool chunk_dirty{false};
+    for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
+         ++bit_index) {
+      const std::uint16_t confirmations = chunk.confirmations[bit_index];
+      if (confirmations == 0U) {
+        continue;
+      }
+      const std::int64_t decay_at_ms =
+          static_cast<std::int64_t>(chunk.confirmed_at_ms[bit_index]) +
+          static_cast<std::int64_t>(decay_ms_per_confirmation *
+                                    static_cast<double>(confirmations));
+      if (decay_at_ms > now_ms) {
+        next_decay_ms = std::min(next_decay_ms, decay_at_ms);
+        continue;
+      }
+      chunk.confirmations[bit_index] = 0U;
+      chunk.scores[bit_index] = 0.0;
+      const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
+      if (grid_.contains(cell) && grid_.state(cell) == ObservedVoxelState::kOccupied) {
+        static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+        chunk_dirty = true;
+        ++stats.decayed_voxels;
+        ++stats.state_transitions;
+      }
+    }
+    chunk.next_decay_ms = next_decay_ms;
+    if (chunk_dirty) {
+      dirty_chunks_[chunk_index] = true;
+    }
+  }
+  decayed_voxel_total_ += stats.decayed_voxels;
+}
+
+std::size_t ObstacleMemory3D::decayedVoxelTotal() const noexcept {
+  return decayed_voxel_total_;
 }
 
 void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& beam,

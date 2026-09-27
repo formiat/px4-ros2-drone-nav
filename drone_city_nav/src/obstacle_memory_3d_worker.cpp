@@ -97,7 +97,8 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       "LIDAR3D_MEMORY accepted=true stamp_ns=%" PRId64
       " source=%zu processed=%zu hits=%zu misses=%zu surface=%zu invalid=%zu "
       "self_filtered=%zu persistent_self_filtered=%zu dynamic_filtered=%zu "
-      "dynamic_forgotten=%zu transitions=%zu revision=%" PRIu64
+      "dynamic_forgotten=%zu transitions=%zu decayed=%zu decayed_total=%zu "
+      "revision=%" PRIu64
       " queue_age_ms=%.3f integration_ms=%.3f transport_enqueue_ms=%.3f "
       "evidence_interval_ms=%.3f stale_acquisition=%s scan_dropped_total=%" PRIu64
       " transport_coalesced=%s debug=%s",
@@ -105,9 +106,10 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       stats.hit_beams, stats.miss_beams, stats.surface_beams,
       stats.invalid_beams + scan.projection_invalid, scan.self_filtered,
       scan.persistent_self_filtered, scan.cooperative_filtered,
-      forgotten_cooperative_voxels, stats.state_transitions, memory_.revision(),
-      queue_age_ms, integration_ms, transport_enqueue_ms,
-      1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
+      forgotten_cooperative_voxels, stats.state_transitions, stats.decayed_voxels,
+      memory_.decayedVoxelTotal(), memory_.revision(), queue_age_ms, integration_ms,
+      transport_enqueue_ms, 1000.0 * stats.evidence_interval_s,
+      stats.stale_acquisition ? "true" : "false",
       dropped_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");
 }

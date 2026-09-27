@@ -3,9 +3,11 @@
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 
+#include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +46,12 @@ struct ObstacleMemory3DConfig {
   // Every integrated scan contributes exactly one physical observation.
   double nominal_evidence_interval_s{0.1};
   double maximum_evidence_interval_s{0.5};
+  // Roadmap item 17 stage 8: an occupied voxel not confirmed for this long
+  // per confirmation it has collected returns to unknown, which is free. A
+  // wall seen a thousand times outlives any flight; a trail seen three times
+  // is gone in seconds, and a surface the vehicle comes back to is seen and
+  // confirmed again. Zero keeps every occupancy for the flight.
+  double decay_seconds_per_confirmation{0.0};
 };
 
 struct ObstacleMemory3DStats {
@@ -56,6 +64,8 @@ struct ObstacleMemory3DStats {
   std::size_t free_voxel_updates{0U};
   std::size_t occupied_voxel_updates{0U};
   std::size_t state_transitions{0U};
+  // Occupied voxels this scan returned to unknown for want of confirmation.
+  std::size_t decayed_voxels{0U};
   std::size_t outside_endpoints{0U};
   double evidence_interval_s{0.0};
   bool stale_acquisition{false};
@@ -81,6 +91,7 @@ public:
   [[nodiscard]] const ObservedOccupancyGrid3D& grid() const noexcept;
   [[nodiscard]] std::uint64_t revision() const noexcept;
   [[nodiscard]] ObstacleMemory3DChanges takeChanges();
+  [[nodiscard]] std::size_t decayedVoxelTotal() const noexcept;
 
 private:
   struct ScanEvidenceChunk {
@@ -101,13 +112,22 @@ private:
 
   struct EvidenceChunk {
     std::array<double, OccupancyGrid3D::kVoxelsPerChunk> scores{};
+    // How often each voxel was seen occupied, and when last, in milliseconds
+    // since the memory's first stamped scan.
+    std::array<std::uint16_t, OccupancyGrid3D::kVoxelsPerChunk> confirmations{};
+    std::array<std::int32_t, OccupancyGrid3D::kVoxelsPerChunk> confirmed_at_ms{};
+    // The earliest moment, on the same clock, an occupied voxel of the chunk
+    // may decay.
+    std::int64_t next_decay_ms{std::numeric_limits<std::int64_t>::max()};
   };
 
   // Applies one scan's evidence of a chunk to the scores and voxel states,
   // resolving the score chunk and the grid chunk once per chunk.
   void applyChunkEvidence(OccupancyChunkIndex3D chunk_index,
-                          const ScanEvidenceChunk& chunk_evidence,
+                          const ScanEvidenceChunk& chunk_evidence, std::int64_t now_ms,
                           ObstacleMemory3DStats& stats);
+  // Returns the occupied voxels no longer confirmed to unknown.
+  void decayUnconfirmed(std::int64_t now_ms, ObstacleMemory3DStats& stats);
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
   void recordScanEvidence(GridIndex3D index, bool occupied, ScanEvidence& scan_evidence,
@@ -125,6 +145,9 @@ private:
       dirty_chunks_;
   std::uint64_t revision_{0U};
   std::int64_t last_evidence_stamp_ns_{0};
+  // The clock of the confirmations: the first stamped scan's time.
+  std::int64_t decay_epoch_ns_{0};
+  std::size_t decayed_voxel_total_{0U};
   bool full_reset_pending_{true};
 };
 
