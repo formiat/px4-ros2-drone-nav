@@ -77,8 +77,12 @@ constexpr double kMapMinimumInformationPerPoint{0.01};
 // half a metre. A registration moves the target offset by this share of what
 // it measured along its observed axes, by no more than the step, and a
 // registration farther than the reach from its prior slid into another fit.
-constexpr double kMapCorrectionGain{0.5};
-constexpr double kMapCorrectionStepM{0.25};
+// The share is small against the registration's own scatter: at a half and a
+// quarter metre per step, r709's target moved 0.2 to 0.35 m and its heading
+// half a degree between registrations a second apart, where the drift it
+// corrects accrues millimetres and hundredths of a degree per second.
+constexpr double kMapCorrectionGain{0.2};
+constexpr double kMapCorrectionStepM{0.1};
 constexpr double kMapCorrectionReachM{1.5};
 // The offset the autopilot sees follows the target at this rate: its fusion
 // of the external position takes motion, and a jump it may refuse.
@@ -89,8 +93,8 @@ constexpr double kMapOffsetRateMps{0.2};
 // registration whose depth fixes the heading, with the translation left
 // free, moves the target heading by this share of what it measured, by no
 // more than the step, and the published heading follows at the rate.
-constexpr double kMapYawGain{0.5};
-constexpr double kMapYawStepRad{0.0087};
+constexpr double kMapYawGain{0.2};
+constexpr double kMapYawStepRad{0.0035};
 constexpr double kMapYawReachRad{0.087};
 constexpr double kMapMinimumYawInformationPerPoint{0.5};
 constexpr double kMapYawRateRadps{0.0175};
