@@ -86,6 +86,38 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-urban-point-to-point-headless", headless_wrapper)
         self.assertIn("sim-urban-point-to-point-gui", gui_wrapper)
 
+    def test_every_named_scenario_is_one_command_over_the_mission(self) -> None:
+        # Each named scenario sets what makes it that scenario and runs the
+        # point-to-point mission's own target, so the flights stay one mission
+        # and differ only in what the name says.
+        makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
+        scenarios = {
+            "point-to-point-lidar": "$(LIDAR_SCENARIO)",
+            "point-to-point-gnss": "LOCALIZATION_PROFILE=gnss",
+            "return-home": "$(RETURN_HOME_SCENARIO)",
+            "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
+        }
+        for name, settings in scenarios.items():
+            for mode in ("headless", "gui"):
+                target = f"sim-urban-{name}-{mode}"
+                with self.subTest(target=target):
+                    wrapper = REPOSITORY / f"scripts/sim_urban_{name.replace('-', '_')}_{mode}.sh"
+                    self.assertIn(f"make {target}\n", wrapper.read_text(encoding="utf-8"))
+                    self.assertIn(
+                        f"{settings} $(MAKE) --no-print-directory "
+                        f"sim-urban-point-to-point-{mode}\n",
+                        makefile,
+                    )
+        # The return home is roadmap item 19's injected flight: the goal behind
+        # the outer walls, recorded as injected, and the truth grid the check
+        # floods; its headless runs need the grid.
+        self.assertIn("RETURN_HOME_GOAL_XYZ_M := 200,100,10", makefile)
+        self.assertIn("MISSION_GOAL_UNREACHABLE=true", makefile)
+        self.assertIn("TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D)", makefile)
+        self.assertIn(
+            "sim-urban-return-home-headless: urban-truth-occupancy-check", makefile
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

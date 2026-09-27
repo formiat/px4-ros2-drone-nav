@@ -38,9 +38,7 @@ format:
 
 .PHONY: sim-environment-demo
 sim-environment-demo:
-	@test -n "$${ENVIRONMENT_DEMO_ID:-}" || \
-		(printf '%s\n' 'Set ENVIRONMENT_DEMO_ID, for example urban_circuit_practice_01.' >&2; exit 2)
-	./scripts/run_environment_demo.sh "$${ENVIRONMENT_DEMO_ID}"
+	./scripts/run_environment_demo.sh "$${ENVIRONMENT_DEMO_ID:-urban_circuit_practice_01}"
 
 .PHONY: sim-cooperative-traffic-urban-headless
 sim-cooperative-traffic-urban-headless: build
@@ -113,3 +111,55 @@ sim-urban-point-to-point-gui: build
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
+
+# Named scenarios over the point-to-point mission: each sets what makes it
+# that scenario and runs the mission's target, so that every flight the
+# repository offers is one command (docs/scenarios.md).
+URBAN_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/urban_practice_01_r050.occupancy3d
+RETURN_HOME_GOAL_XYZ_M := 200,100,10
+LIDAR_SCENARIO := CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar
+# Roadmap item 19: the goal behind the location's outer walls, recorded in the
+# manifest as injected, and the truth grid the check floods to confirm it. The
+# 900 s window is the time-bound return's while the mission monitor carries
+# it (docs/specification.md, K4).
+RETURN_HOME_SCENARIO := MISSION_GOALS_XYZ_M=$(RETURN_HOME_GOAL_XYZ_M) \
+	MISSION_GOAL_UNREACHABLE=true \
+	TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D) \
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
+
+.PHONY: urban-truth-occupancy-check
+urban-truth-occupancy-check:
+	@test -f $(URBAN_TRUTH_OCCUPANCY_3D) || \
+		(printf '%s\n' 'Missing $(URBAN_TRUTH_OCCUPANCY_3D): voxelize the location as docs/environment_candidates.md describes.' >&2; exit 2)
+
+.PHONY: sim-urban-point-to-point-lidar-headless
+sim-urban-point-to-point-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-point-to-point-lidar-gui
+sim-urban-point-to-point-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-point-to-point-gnss-headless
+sim-urban-point-to-point-gnss-headless:
+	LOCALIZATION_PROFILE=gnss $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-point-to-point-gnss-gui
+sim-urban-point-to-point-gnss-gui:
+	LOCALIZATION_PROFILE=gnss $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-return-home-headless
+sim-urban-return-home-headless: urban-truth-occupancy-check
+	$(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-return-home-gui
+sim-urban-return-home-gui:
+	$(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-return-home-lidar-headless
+sim-urban-return-home-lidar-headless: urban-truth-occupancy-check
+	$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-return-home-lidar-gui
+sim-urban-return-home-lidar-gui:
+	$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui

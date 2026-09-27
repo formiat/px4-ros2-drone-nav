@@ -170,7 +170,15 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/sim_cooperative_traffic_urban_headless.sh
 ./scripts/sim_urban_point_to_point_gui.sh
 ./scripts/sim_urban_point_to_point_headless.sh
-ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 ./scripts/sim_environment_demo.sh
+./scripts/sim_urban_point_to_point_lidar_gui.sh
+./scripts/sim_urban_point_to_point_lidar_headless.sh
+./scripts/sim_urban_point_to_point_gnss_gui.sh
+./scripts/sim_urban_point_to_point_gnss_headless.sh
+./scripts/sim_urban_return_home_gui.sh
+./scripts/sim_urban_return_home_headless.sh
+./scripts/sim_urban_return_home_lidar_gui.sh
+./scripts/sim_urban_return_home_lidar_headless.sh
+./scripts/sim_environment_demo.sh
 ./scripts/stop_sim.sh
 ```
 
@@ -268,10 +276,11 @@ explicitly when a static-map run is required.
 
 ## Environment Spectator Demos
 
-Launch a downloaded environment without PX4, ROS, RViz, lidar, or a mission:
+Launch a downloaded environment without PX4, ROS, RViz, lidar, or a mission
+(the urban world; another with `ENVIRONMENT_DEMO_ID=<id>`):
 
 ```bash
-ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 ./scripts/sim_environment_demo.sh
+./scripts/sim_environment_demo.sh
 ```
 
 Gazebo's free camera is the spectator: use its normal mouse and keyboard camera
@@ -315,24 +324,24 @@ the lidar absent from the vehicle model
 remains available on request:
 
 ```bash
-CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh
+./scripts/sim_urban_point_to_point_lidar_headless.sh
 ```
 
-The sensor set and the position source are independent switches, and the four
-combinations of the two are:
+The sensor set and the position source are independent switches. The
+combinations flown have names of their own; the switches underneath still
+make any other:
 
 ```bash
-# Cameras, no GNSS - the repository default, nothing to set
+# Cameras, no GNSS - the repository default
 ./scripts/sim_urban_point_to_point_gui.sh
 
 # 3D lidar, no GNSS
-CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar \
-  ./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_lidar_gui.sh
 
 # Cameras, with GNSS
-LOCALIZATION_PROFILE=gnss ./scripts/sim_urban_point_to_point_gui.sh
+./scripts/sim_urban_point_to_point_gnss_gui.sh
 
-# 3D lidar, with GNSS
+# 3D lidar, with GNSS: no name of its own, the switches underneath
 CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar LOCALIZATION_PROFILE=gnss \
   ./scripts/sim_urban_point_to_point_gui.sh
 ```

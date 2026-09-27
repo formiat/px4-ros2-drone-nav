@@ -86,7 +86,7 @@ The 3D lidar profile, which defaults to `LOCALIZATION_PROFILE=lidar_inertial`,
 is a request, as is `LOCALIZATION_PROFILE=gnss` on either sensor set:
 
 ```bash
-CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_headless.sh
+./scripts/sim_urban_point_to_point_lidar_headless.sh
 ```
 
 A headless stereo flight of the mission takes 245 to 459 s of wall time on the
