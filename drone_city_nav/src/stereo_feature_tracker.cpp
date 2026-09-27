@@ -63,9 +63,18 @@ std::vector<StereoFeatureObservation> StereoFeatureTracker::track(
 }
 
 std::vector<StereoFeatureObservation> StereoFeatureTracker::Impl::track(
-    const cv::Mat& left, const cv::Mat& right,
+    const cv::Mat& raw_left, const cv::Mat& raw_right,
     const std::optional<Eigen::Matrix3d>& previous_to_current_rotation) {
   report_ = {};
+  // The cameras' own noise, 2.5 grey levels (roadmap item 17 stage 1),
+  // doubled the features the filter gated and the drift per 100 m of path
+  // (r761 to r772 against r747 to r751): a corner found or followed in the
+  // noise is the noise's. A Gaussian of one pixel lowers the noise about
+  // fourfold and leaves the corners at the scale of the 21 px window.
+  cv::Mat left;
+  cv::Mat right;
+  cv::GaussianBlur(raw_left, left, {5, 5}, 1.0);
+  cv::GaussianBlur(raw_right, right, {5, 5}, 1.0);
   const cv::Size window{config_.window_px, config_.window_px};
   const cv::TermCriteria criteria{cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30,
                                   0.01};
