@@ -100,8 +100,20 @@ struct VisualInertialOdometryConfig {
   double unobserved_turn_rate_radps{2.6};
   double unobserved_acceleration_mps2{4.0};
   // The estimate is healthy while features corrected it within this long;
-  // past it the IMU alone carries the state.
+  // past it the IMU alone carries the state. A hole in the IMU stream longer
+  // than this is not bridged at all: the state after it is what the vehicle
+  // could have done unobserved, nothing in flight initialises the filter
+  // again, and the estimate stays unhealthy for the rest of the flight. On
+  // r720 and r723 a host frozen for seconds left holes of 1.9 and 3.6 s; the
+  // filter came out at 17 m/s, refused every feature, published two frames
+  // as healthy, and the autopilot, fusing them, reset by 26.6 and 6.0 m and
+  // flew the vehicles into walls. Silence instead ends the autopilot's
+  // external-vision fusion and leaves it its own failsafe.
   double maximum_unaided_s{1.0};
+  // Nor is the estimate healthy while its velocity is this uncertain along
+  // any direction: the flying filter holds 0.08 to 0.18 m/s there (the
+  // acceptance series of 2026-09-27), and 31 m/s came out of r720's hole.
+  double maximum_velocity_sigma_mps{1.0};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};

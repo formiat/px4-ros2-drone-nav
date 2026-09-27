@@ -102,6 +102,9 @@ struct VisualInertialOdometry::Impl {
   Eigen::Vector3d gravity;
 
   bool initialized{false};
+  // Set by a hole in the IMU stream longer than the unaided timeout; see
+  // `maximum_unaided_s`.
+  bool lost{false};
   std::int64_t stamp_ns{0};
   std::int64_t last_update_stamp_ns{0};
   VisualInertialEstimate last_estimate;
@@ -239,6 +242,9 @@ std::int64_t VisualInertialOdometry::Impl::propagateTo(const std::int64_t target
       imu_lag_ns = target_ns - std::max(stamp_ns, from.stamp_ns);
     }
     const double dt = static_cast<double>(end_ns - stamp_ns) * 1.0e-9;
+    if (dt > config.maximum_unaided_s) {
+      lost = true;
+    }
     if (dt > 0.0) {
       propagateStep(0.5 * (from.gyro_radps + to.gyro_radps),
                     0.5 * (from.accelerometer_mps2 + to.accelerometer_mps2), dt,
@@ -561,6 +567,7 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   state.first_velocity = state.velocity;
   state.stamp_ns = stamp_ns;
   state.last_update_stamp_ns = 0;
+  state.lost = false;
   state.clones.clear();
   state.tracks.clear();
 
@@ -723,6 +730,9 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
                              state.covariance.block<3, 3>(kVelocity, kVelocity)}
                              .eigenvalues()
                              .maxCoeff()));
+  estimate.healthy =
+      estimate.healthy && !state.lost &&
+      estimate.weakest_velocity_sigma_mps <= state.config.maximum_velocity_sigma_mps;
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
   state.last_estimate = estimate;

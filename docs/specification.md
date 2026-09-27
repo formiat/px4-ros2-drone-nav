@@ -98,6 +98,7 @@ aside, and this file what everything else is measured against.
 | K4 | The time-bound return of the mission monitor, until item 17 stage 5 removes it (I8, F7): the run's window less the path flown over the mean speed, times 2.0, stretched by the real-time factor, and a 20 s reserve. | Agent, 2026-09-26 | Over twelve returns the way back took 0.72 to 1.65 times the flight out; at 1.5 r687 ended 24 m short. Commit 62f4f511. |
 | K5 | Item 19's goal outside the location: (200, 100, 10) m. | Agent, 2026-09-26 | Behind the outer walls of Urban Circuit Practice 01 and inside the memory's grid; the owner decided the injection is by the goal alone. |
 | K7 | The guaranteed forward range of the stereo set is 6.4 m. | Inherited (item 14) | The confident depth measured on the location's surfaces. |
+| K8 | The camera estimator is unhealthy, and falls silent, after an IMU hole longer than its 1 s unaided timeout (for the rest of the flight) and while its velocity is less certain than 1 m/s along any direction. | Agent, 2026-09-27 | r720 and r723 crashed on a diverging estimate published as healthy after holes of 1.9 and 3.6 s; the flying filter holds 0.08 to 0.18 m/s. Silence hands the vehicle to the autopilot's failsafe landing; an initialisation in flight is the register's L6. |
 
 ## Change Log
 
@@ -117,3 +118,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | I7, I8, F1, F3, F7 | I7: nothing of the light reaches the vehicle; F3: the time-bound return reworked into the judgment | I7: its battery charge is known; I8: no time limit; F1: speeds under the flicker adopted; F3: the judgment alone; F7: the return on the light's battery, camera profile only | Owner | The owner's decisions on item 17. | this commit |
 | 2026-09-27 | K2, K3, K6 | entries | removed | Owner | Small tuning parameters do not belong here; they stay in the code with their comments. | this commit |
 | 2026-09-27 | the rules | Owner entries changed by agents only with a permission per decision | agents may change Owner entries, recorded and reported | Owner | The owner's permission. | this commit |
+| 2026-09-27 | K8 | — | new | Agent | The first repair of the register's L6, asked for by the owner. | this commit |

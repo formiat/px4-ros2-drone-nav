@@ -274,8 +274,14 @@ direction, the frame's cost, the IMU's lag and largest gap, and the frames
 without a healthy estimate. A hole of seconds in the IMU stream is not
 bridged: under a host frozen by another task's disk writes the filter came out
 of holes of 1.9 and 3.6 s at 17 m/s, refused every feature afterwards and
-published two diverging frames as healthy before it declared itself unhealthy
-(r720, r723; the register). The mission check reports these and the estimate
+published two diverging frames as healthy, and the autopilot, fusing them,
+flew both vehicles into walls (r720, r723). Since 2026-09-27 a hole longer
+than the unaided timeout leaves the estimate unhealthy for the rest of the
+flight, and so does a velocity less certain than 1 m/s along any direction
+while it lasts (`maximum_velocity_sigma_mps`; the flying filter holds 0.08
+to 0.18): the estimator falls silent, the autopilot ends its external-vision
+fusion and its own failsafe lands the vehicle. The filter is not initialised
+again in flight; that is the register's remaining entry. The mission check reports these and the estimate
 against the true pose as notes; what the estimate answers for is the
 programme's first requirement, checked by the truth: at every goal
 acknowledgement the true position is inside the 2.0 m capture radius

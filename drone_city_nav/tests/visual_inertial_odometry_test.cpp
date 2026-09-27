@@ -146,9 +146,21 @@ struct Flight {
   std::size_t used{0U};
 };
 
+// A hole in the IMU stream and the frames, as a stalled host leaves one:
+// nothing between its two ends reaches the filter.
+struct Hole {
+  double from_s{0.0};
+  double to_s{0.0};
+
+  [[nodiscard]] bool contains(const std::int64_t stamp_ns) const noexcept {
+    const double t = static_cast<double>(stamp_ns) * 1.0e-9;
+    return t > from_s && t < to_s;
+  }
+};
+
 Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
            const Eigen::Vector3d& gyro_bias, const bool with_features,
-           const bool with_outlier) {
+           const bool with_outlier, const Hole hole = {}) {
   std::mt19937 generator{7U};
   const std::vector<Eigen::Vector3d> points = landmarks(generator);
   VisualInertialOdometry odometry{config};
@@ -159,7 +171,12 @@ Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
   for (std::int64_t frame = 1; frame <= frames; ++frame) {
     const std::int64_t stamp = frame * kFramePeriodNs;
     for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
-      odometry.addImu(Motion::imu(imu_stamp, gyro_bias));
+      if (!hole.contains(imu_stamp)) {
+        odometry.addImu(Motion::imu(imu_stamp, gyro_bias));
+      }
+    }
+    if (hole.contains(stamp)) {
+      continue;
     }
     const double t = static_cast<double>(stamp) * 1.0e-9;
     std::vector<StereoFeatureObservation> observations;
@@ -193,6 +210,32 @@ TEST(VisualInertialOdometry, TheImuAloneCarriesTheMotionAndItsUncertaintyGrows) 
   EXPECT_EQ(flight.last.used_features, 0U);
   EXPECT_FALSE(flight.last.healthy);
   EXPECT_GT(flight.last.position_variance_m2.x(), 1.0e-4);
+}
+
+TEST(VisualInertialOdometry, AHoleTheFilterCannotBridgeLeavesItUnhealthy) {
+  // r720, r723: a hole of seconds, and the estimate that came out of it was
+  // published as healthy. A hole within the unaided timeout is bridged; one
+  // beyond it leaves the estimate unhealthy for the rest of the flight,
+  // however well the features resume.
+  const VisualInertialOdometryConfig config = testConfig();
+  const Flight bridged =
+      fly(config, 12.0, Eigen::Vector3d::Zero(), true, false, Hole{5.0, 5.5});
+  const Flight lost = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false,
+                          Hole{5.0, 5.0 + config.maximum_unaided_s + 0.5});
+  EXPECT_TRUE(bridged.last.healthy);
+  EXPECT_GT(lost.last.used_features + lost.used, 0U);
+  EXPECT_FALSE(lost.last.healthy);
+}
+
+TEST(VisualInertialOdometry, AnUncertainVelocityIsNotHealthy) {
+  // The flying filter holds its least certain velocity within 0.2 m/s; a
+  // bound below what features give it makes even a sighted flight unhealthy.
+  VisualInertialOdometryConfig config = testConfig();
+  const Flight sighted = fly(config, 10.0, Eigen::Vector3d::Zero(), true, false);
+  ASSERT_TRUE(sighted.last.healthy);
+  config.maximum_velocity_sigma_mps = 0.5 * sighted.last.weakest_velocity_sigma_mps;
+  const Flight bounded = fly(config, 10.0, Eigen::Vector3d::Zero(), true, false);
+  EXPECT_FALSE(bounded.last.healthy);
 }
 
 TEST(VisualInertialOdometry, TheWindowKeepsItsDeclaredNumberOfClones) {
