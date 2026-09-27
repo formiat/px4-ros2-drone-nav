@@ -400,8 +400,8 @@ comparable.
 **Type:** dependent realism stage, with one repair that does not wait for it.
 
 **Hard prerequisites:** item 14 for the sensor set; stage 0 below has none.
-The prohibition of darkness (below) is item 18 stage 0's observed
-unobservability; if that stage has not landed first, this item builds it.
+The prohibition of darkness (below) is built here, in stage 8, right after
+stage 0; item 18 applies it to smoke.
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission.
@@ -441,7 +441,7 @@ emitter, a splashed lens. This item makes the illumination something that can
 fail and makes the vehicle answer for it.
 
 The navigation invariants hold throughout, in the form the project owner
-restated on 2026-09-23 (item 18 stage 0 carries the full text): space the
+restated on 2026-09-23 (stage 8 carries the full text): space the
 sensor has not looked at is free at no penalty, the only prohibitions are
 measurements — a surface, or space observed unobservable — and nothing keyed
 on the vehicle's own history is a rule. Vertical motion stays free. One rule
@@ -461,8 +461,8 @@ small and never zero.
 the two must never be confused. The vehicle cannot see into either, for
 opposite reasons:
 
-- **Unknown**: "I have not come close enough; my sensors do not reach there
-  yet." Free at no penalty, and explored boldly when the route leads there,
+- **Unknown**, in the sense of unexplored: "I have not come close enough; my
+  sensors do not reach there yet." Free at no penalty, and explored boldly when the route leads there,
   as the invariants have always said.
 - **Darkness**: "I am close enough that my sensors should see there, and they
   still see nothing; something is wrong." The sensor looked, within the range
@@ -470,7 +470,7 @@ opposite reasons:
   knowledge, and to the vehicle it is an obstacle like a physical one: it
   does not fly into it.
 
-The test is the one item 18 stage 0 states for observed unobservability: in a
+The test is stage 8's observed unobservability: in a
 direction the sensor faces, within the range it guarantees when healthy, a
 measured range below the physical margin. This item teaches the vehicle to
 apply it to its own light: dark space is written into the memory as closed,
@@ -478,8 +478,7 @@ the planner routes around it as around a wall, it decays when not
 re-observed and lifts when the light shows it, and the exit guarantee holds —
 the vehicle's own position and its observed path are never closed, so a
 vehicle that finds itself in the dark retreats along the way it came. This
-item is not complete without the distinction, whichever of items 17 and 18
-builds the mechanism first.
+item is not complete without the distinction, which stage 8 builds.
 
 ### Stage 0: Both Inputs Of The Contract Become Measurements
 
@@ -716,9 +715,10 @@ The vehicle's answer is a ladder whose first rung is free:
    reason, and the choice is reopened only with the measurement of how far a
    retreat on the IMU actually stays inside the corridor it came down.
 4. **Return home or land.** A vehicle that retreated to where it can see
-   has a position source, and when it judges its light unreliable it gives
-   the goal up and flies home (below): the ladder does not wait out a stated
-   time to land in a place it can see. A
+   has a position source, and when it judges its light unreliable, or its
+   light's battery holds only the way back, it gives the goal up and flies
+   home (below): the ladder does not wait out a stated time to land in a
+   place it can see. A
    vehicle with no position source, in total darkness, **descends and
    lands** if the light has not returned within a stated time: a controlled
    landing beats an uncontrolled drift, and a landed vehicle with a dead
@@ -738,12 +738,26 @@ for the start through item 19's substitution while the vehicle can still see
 its way back, instead of waiting for the outage that loses it or crashes it.
 The judgment's thresholds are measured on the two regimes below, never
 assumed: the moderate flicker must never reach them, the severe failure
-must. The mission monitor carries from item 19's implementation a
-time-bound return that gave every return of that item's acceptance (the
-run's window, `mission_window_s`, less the estimated way back: the path
-flown over the mean speed, a margin of 2.0 and a 20 s reserve); this stage
-reworks it into this judgment of the light, as the owner decided the same
-day.
+must.
+
+**The light's battery, and no time limit.** Decided by the project owner on
+2026-09-27. The vehicle has no time budget: the time-bound return the mission
+monitor carries from item 19's implementation (the run's window,
+`mission_window_s`, less the estimated way back: the path flown over the
+mean speed, a margin of 2.0 and a 20 s reserve), which gave every return of
+that item's acceptance, was never meant as a limit of the vehicle and is
+removed when this stage is built. In its place the carried light runs on a
+battery whose charge the vehicle knows, as any airframe knows its batteries:
+that is the light's state of charge, not its failures, which stay unknown to
+the vehicle by the rule above. When the charge left covers only the way back
+— the path home estimated from the memory and the flight so far, with a
+margin measured on the returns — the vehicle gives the goal up for the start
+through item 19's substitution. The light flickers the whole time whatever
+its charge: the regimes below do not depend on the battery. The return on
+the battery exists only where the vehicle flies on its light: it switches
+itself on with the carried light of the camera profile and off on the lidar
+profile, which carries no light and has no such limit — a property of the
+sensor set, not a parameter anyone sets for a run.
 
 **Two regimes of the failing light.** Decided by the project owner on
 2026-09-27, applied once this stage lands:
@@ -753,8 +767,9 @@ day.
   reach the "unreliable" judgment, runs in every acceptance flight, so that
   every series shows the vehicle flying normally with a moderately
   flickering light. The mean flight speed of the project's second
-  requirement is measured under it from then on, and the speed baselines are
-  re-measured when it lands.
+  requirement is measured under it from then on. That it may fall below the
+  figures of today is expected (the project owner, 2026-09-27): the speeds
+  several flights under the flicker show are adopted as the current ones.
 - **A severe failure is a scenario of its own.** Long and deep outages,
   worsening until the vehicle judges its light unreliable and flies home: the
   scenario exists to exercise that decision, and its outcome is the return,
@@ -820,9 +835,127 @@ Decided by the project owner on 2026-09-27, it is used twice:
   read for more than it proves: item 19's topological proof closes only a
   component bounded entirely by measurements and has never closed one in
   this location (the unknown above the flight band and the grid's edge stay
-  on its boundary; item 18's blocking scenario settles how it can), and
+  on its boundary; stage 8 settles how it can), and
   until it can, the return in this scenario comes from the "unreliable"
   judgment of the light the vehicle meets at the zone's edge.
+
+### Stage 8: Darkness In The Memory: Observed Unobservability
+
+Built right after stage 0, whose measured range it reads; its number is its
+place in this text, not in the order of work. Moved here from item 18 on
+2026-09-27 at the project owner's request: darkness is this item's, and the
+vehicle has to tell it from unknown space here, not in the smoke item. Item
+18 applies what this stage builds to smoke and to the lidar.
+
+The memory has to forget as well as remember, or a dark place closed once is
+closed for the rest of the flight. The direction to measure first: a
+confirmation count per voxel, with decay toward unknown at a rate inversely
+proportional to it. A wall confirmed a thousand times does not
+decay within any flight; a trail confirmed three times decays in seconds; and
+neither needs a detector of moving objects or a new concept in the planner.
+The alternatives are measured beside it and none is assumed: a plain time
+decay, and an explicit transient classification of voxel clusters that appear
+and vanish.
+
+The interplay with the invariants is stated so it is not rediscovered later.
+Decay ends in `unknown`, and unknown is free. Under the braking contract that
+is safe: a faced motion re-observes the surface as it approaches, and an
+unfaced motion is admitted only what memory has observed along it, so more
+unknown means slower, never faster. What it costs is speed and route
+stability, and both are measured. Because the memory changes, both acceptance
+series are re-flown, as for stage 0. Carried in
+[`technical_debt.md`](technical_debt.md) until it lands.
+
+**The planner's budget is scheduled first.** Attached on 2026-09-26: the
+register's P5, the planner's stages unscheduled with the livelock of r596
+closed by the probe deadline alone, is this stage's first step, because a
+memory that decays and re-confirms multiplies the occupancy churn that
+triggered r596, and a planner that can spend its whole update on one stage
+under churn would turn every plume into a hold. A deadline on every stage,
+with route stall recovery as the lever to measure against, lands and is
+flown before the decay does; the falls of the braking laws that are the
+planner's (S4: a route replaced every 0.4 to 0.5 s on the camera profile, the
+no-route gaps of 0.1 to 0.2 s, 14 to 26 a flight) are measured with it.
+
+**A third kind of evidence.** The memory scores hits and misses and has no
+representation of a sensor that looked and failed: the visible pair
+integrates hits only, so a dark frame is silence, neither a hit nor a miss,
+and a lidar in smoke returns near scattered hits that become a phantom wall.
+Sensing failure is either invisible to the map or written into it as the
+wrong thing. This stage gives it its own evidence, **fail** — the sensor
+looked there and could not see — with its own confirmation count, its own
+decay by the rule above, and its own meaning to the planner. That meaning is
+the restatement of the invariant the project owner made on 2026-09-23, which
+replaces "no penalty on free space" and "no prohibited zones" as written
+until then:
+
+**A prohibition is a measurement** (the invariant as the project owner
+restated it on 2026-09-23). Space is closed to entry in exactly two cases: it
+was observed occupied — a surface — or it was observed unobservable: the
+sensor looked there and the measured range in it lies below the physical
+margin, which is smoke, darkness or a blinded sensor. Both are measurements,
+both decay when they are not confirmed, both lift when the space is observed
+again. Space the sensor has not looked at is free at no penalty. No
+prohibition comes from configuration, from knowledge of the location or from
+the vehicle's own history, and the vehicle's own position and the path it has
+observed are never closed to it.
+
+The two halves that keep the restatement from swallowing the old rule:
+
+- **Unobservable is not unknown.** Unknown (unexplored) is space the sensor
+  has not looked at, and it stays free: the braking contract is what protects the
+  vehicle there, and a navigation without a map does not exist without it.
+  Unobservable is a positive measurement of failure — the sensor was pointed
+  there and the measured range of stage 0 came back below the
+  physical margin, the level at which the contract admits no motion at all.
+  Thin smoke that shortens the range to three metres is observable and
+  slower, not unobservable; the contract handles it and the planner is not
+  told.
+- **The ban is on entry, and the exit is guaranteed.** Entry into observed
+  unobservable space is closed hard, as a surface is, not priced: a blind
+  region is not flown into "a little". But the hard rules of this project
+  were once what trapped it, and a vehicle inside a plume when it forms, or
+  in a building whose light goes out, must not find its own cell forbidden.
+  The vehicle's own position and the path it has observed are never closed,
+  so in a building gone dark the one legal motion is back along its own
+  track — which is the ladder of stage 5 written as a rule of the
+  planner.
+
+What counts as a sensor's failure is defined per sensor, because "no signal
+came back" means different things to different sensors:
+
+- **The stereo pair.** A frame whose signal has collapsed — mean brightness
+  and contrast, properties of the image that need no knowledge of the
+  geometry — and the frustum beyond the range that frame's depth stands
+  behind. This is literally darkness. A textureless wall under full light is
+  not this: it has all the signal and no matches, and it is item 17 stage 2's
+  confidently wrong depth, which brightness separates from darkness.
+
+Under this restatement the rule this item rejected stays rejected, and the
+reason is sharper: it was keyed on where the vehicle *had been* when the
+light went out, which is history; a measured unobservability is keyed on
+what the sensor *sees now*, and it lifts the moment the sensor sees again.
+
+**Item 19's decay clause.** Item 19's topological proof floods
+the memory from the vehicle and calls the goal unreachable only for a
+component that holds no goal and has no unknown on its boundary. With no
+decay a closure holds for the rest of the flight and the proof, once taken,
+stands. Once closures decay, a proof taken in one instant is worth only that
+instant, and a plume that drifts away a minute later must not find the
+vehicle already home: the proof then requires no route through free and
+unknown space for longer than the decay of the closures that bound the
+component, with at least one re-probe of each, and the time between the
+first "no route" and the proof is measured with it.
+
+**The proof has to be able to close.** Item 19's topological proof closes
+only a component bounded entirely by measurements, and no flight of item 19
+closed one in this location: the vehicle's component always touched unknown
+— above the flight band, in corners not looked at, at the grid's edge. A dark
+zone across the way to B (stage 7) and a plume across it (item 18) ask the
+proof to answer, so this stage settles how it can before either scenario is
+flown: at least the flood bounded by the flight envelope the planner itself
+flies in, so that the space above the band is not an opening; whether that
+suffices in this location is measured, not assumed.
 
 ### What The Additions May Cost
 
@@ -863,8 +996,8 @@ already give it most of the safety answer for nothing: the measured range
 collapses, the vehicle stops, and the ladder applies. What they do not give
 is the phantom occupancy it leaves behind and the sensor that sees through
 it, and the simulator's tool for it (`ParticleEmitter`, built for the SubT
-smoke machines) is a stage of item 18, which depends on stage 0 here and on
-nothing else in this item.
+smoke machines) is a stage of item 18, which depends on stages 0 and 8 here
+and on nothing else in this item.
 
 ### Measurement And Completion
 
@@ -875,8 +1008,8 @@ contract's forward range and the speed it admits; the time spent on each rung
 of the ladder above; the estimate's error against truth through an outage and
 after it; the minimum distance to true occupancy; and physical collisions.
 
-This item is complete when stage 0 has landed and both acceptance series have
-been re-flown on it; when the confident range is published as a curve against
+This item is complete when stages 0 and 8 have landed and both acceptance
+series have been re-flown on them; when the confident range is published as a curve against
 surface texture and the contract is shown to track it; when five long flights
 on the dark world, with the carried light and the outages running, reach the
 goal in truth with no collision; when five short flights under the most
@@ -892,7 +1025,8 @@ in truth with no collision.
 **Type:** dependent realism stage, with one repair that does not wait for it.
 
 **Hard prerequisites:** item 17 stage 0 for stages 1 to 4 (smoke is detected
-through the measured range); stage 0 below has none.
+through the measured range); item 17 stage 8 for stage 0 below, whose fail
+evidence, decay and restated invariant it applies to smoke and the lidar.
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission, on both sensor profiles.
@@ -949,108 +1083,26 @@ replaces it:
   during a flight, so that the difficulty of the location does not change
   with time. Its shape does, as a smoke grenade's or a local source's plume
   churns, because that is what smoke looks like and what the sensors have to
-  cope with. Stage 0's decay still applies to the memory: a smoky place that
+  cope with. Item 17 stage 8's decay still applies to the memory: a smoky place that
   is not re-observed decays to unknown and a re-approach restores it, which
   with constant smoke is a re-probe that always confirms.
 
-The blocking scenario asks more of item 19's topological proof than it has
-shown: the proof closes only a component bounded entirely by measurements,
-and in this location the vehicle's component always touched unknown — above
-the flight band, in corners not looked at, at the grid's edge — so no flight
-of item 19 closed it. Before the scenario is flown this item settles how the
-proof becomes answerable here: at least the flood bounded by the flight
-envelope the planner itself flies in, so that the space above the band is
-not an opening; whether that suffices in this location is measured, not
-assumed.
+The blocking scenario needs item 19's proof to close in this location, which
+item 17 stage 8 settles before it is flown.
 
 The navigation invariants hold in the form restated for this item, below.
 Vertical motion stays free, and nothing keyed on the vehicle's history is a
 rule.
 
-### Stage 0: Transient Occupancy And Observed Unobservability
+### Stage 0: Smoke And The Lidar In The Memory
 
-Independent of smoke, and the repair that does not wait. The direction to
-measure first: a confirmation count per voxel, with decay toward unknown at a
-rate inversely proportional to it. A wall confirmed a thousand times does not
-decay within any flight; a trail confirmed three times decays in seconds; and
-neither needs a detector of moving objects or a new concept in the planner.
-The alternatives are measured beside it and none is assumed: a plain time
-decay, and an explicit transient classification of voxel clusters that appear
-and vanish.
+Item 17 stage 8 builds the memory's third kind of evidence, **fail**, its
+decay by confirmation count and the invariant restated around it, for
+darkness. This stage applies them to what this item adds: smoke on every
+sensor, and the patterns in which the lidar fails. A person crossing the
+frame is transient occupancy, and item 17 stage 8's decay clears the trail
+it leaves.
 
-The interplay with the invariants is stated so it is not rediscovered later.
-Decay ends in `unknown`, and unknown is free. Under the braking contract that
-is safe: a faced motion re-observes the surface as it approaches, and an
-unfaced motion is admitted only what memory has observed along it, so more
-unknown means slower, never faster. What it costs is speed and route
-stability, and both are measured. Because the memory changes, both acceptance
-series are re-flown, as for item 17 stage 0. Carried in
-[`technical_debt.md`](technical_debt.md) until it lands.
-
-**The planner's budget is scheduled first.** Attached on 2026-09-26: the
-register's P5, the planner's stages unscheduled with the livelock of r596
-closed by the probe deadline alone, is this stage's first step, because a
-memory that decays and re-confirms multiplies the occupancy churn that
-triggered r596, and a planner that can spend its whole update on one stage
-under churn would turn every plume into a hold. A deadline on every stage,
-with route stall recovery as the lever to measure against, lands and is
-flown before the decay does; the falls of the braking laws that are the
-planner's (S4: a route replaced every 0.4 to 0.5 s on the camera profile, the
-no-route gaps of 0.1 to 0.2 s, 14 to 26 a flight) are measured with it.
-
-**A third kind of evidence.** The memory scores hits and misses and has no
-representation of a sensor that looked and failed: the visible pair
-integrates hits only, so a dark frame is silence, neither a hit nor a miss,
-and a lidar in smoke returns near scattered hits that become a phantom wall.
-Sensing failure is either invisible to the map or written into it as the
-wrong thing. This stage gives it its own evidence, **fail** — the sensor
-looked there and could not see — with its own confirmation count, its own
-decay by the rule above, and its own meaning to the planner. That meaning is
-the restatement of the invariant the project owner made on 2026-09-23, which
-replaces "no penalty on free space" and "no prohibited zones" as written
-until then:
-
-**A prohibition is a measurement** (the invariant as the project owner
-restated it on 2026-09-23). Space is closed to entry in exactly two cases: it
-was observed occupied — a surface — or it was observed unobservable: the
-sensor looked there and the measured range in it lies below the physical
-margin, which is smoke, darkness or a blinded sensor. Both are measurements,
-both decay when they are not confirmed, both lift when the space is observed
-again. Space the sensor has not looked at is free at no penalty. No
-prohibition comes from configuration, from knowledge of the location or from
-the vehicle's own history, and the vehicle's own position and the path it has
-observed are never closed to it.
-
-The two halves that keep the restatement from swallowing the old rule:
-
-- **Unobservable is not unknown.** Unknown is space the sensor has not
-  looked at, and it stays free: the braking contract is what protects the
-  vehicle there, and a navigation without a map does not exist without it.
-  Unobservable is a positive measurement of failure — the sensor was pointed
-  there and the measured range of item 17 stage 0 came back below the
-  physical margin, the level at which the contract admits no motion at all.
-  Thin smoke that shortens the range to three metres is observable and
-  slower, not unobservable; the contract handles it and the planner is not
-  told.
-- **The ban is on entry, and the exit is guaranteed.** Entry into observed
-  unobservable space is closed hard, as a surface is, not priced: a blind
-  region is not flown into "a little". But the hard rules of this project
-  were once what trapped it, and a vehicle inside a plume when it forms, or
-  in a building whose light goes out, must not find its own cell forbidden.
-  The vehicle's own position and the path it has observed are never closed,
-  so in a building gone dark the one legal motion is back along its own
-  track — which is the ladder of item 17 stage 5 written as a rule of the
-  planner.
-
-What counts as a sensor's failure is defined per sensor, because "no signal
-came back" means different things to different sensors:
-
-- **The stereo pair.** A frame whose signal has collapsed — mean brightness
-  and contrast, properties of the image that need no knowledge of the
-  geometry — and the frustum beyond the range that frame's depth stands
-  behind. This is literally darkness. A textureless wall under full light is
-  not this: it has all the signal and no matches, and it is item 17 stage 2's
-  confidently wrong depth, which brightness separates from darkness.
 - **The lidar.** A single ray with no return is ambiguous: nothing within
   range, or something that absorbed or deflected the beam — black smoke, a
   matte black surface, glass at an angle, water, a grazing wall. One ray
@@ -1071,22 +1123,6 @@ into it — and under the restated rule it is unobservable and closed. But
 `gpu_lidar` returns geometry whatever the material, so the case never occurs
 in this simulator; the repair is recorded as designed and not verified until
 a dropout by material is modelled.
-
-Under this restatement the rule item 17 rejected stays rejected, and the
-reason is sharper: it was keyed on where the vehicle *had been* when the
-light went out, which is history; a measured unobservability is keyed on
-what the sensor *sees now*, and it lifts the moment the sensor sees again.
-
-**Item 19's decay clause lands here.** Item 19's topological proof floods
-the memory from the vehicle and calls the goal unreachable only for a
-component that holds no goal and has no unknown on its boundary. With no
-decay a closure holds for the rest of the flight and the proof, once taken,
-stands. Once closures decay, a proof taken in one instant is worth only that
-instant, and a plume that drifts away a minute later must not find the
-vehicle already home: the proof then requires no route through free and
-unknown space for longer than the decay of the closures that bound the
-component, with at least one re-probe of each, and the time between the
-first "no route" and the proof is measured with it.
 
 ### Stage 1: Smoke In The Simulator
 
@@ -1290,7 +1326,7 @@ the plume and the vehicle flies what that range admits, as it does in the
 dark on any other sensor; a detector alone makes the stop an informed one,
 with a retreat or a landing chosen on what is actually behind the plume.
 
-With stage 0's evidence the plume is a measured prohibition, and routing
+With the fail evidence (item 17 stage 8, stage 0 here) the plume is a measured prohibition, and routing
 around it is legitimate — not as a cost on free space, which stays
 forbidden, but as the planner's ordinary answer to a closed region. The
 sequence is then: the vehicle approaches, the range collapses at the plume's
@@ -1303,11 +1339,12 @@ Two rules close the loop that the ladder alone leaves open. **After a
 retreat the vehicle holds where it can see for a stated time** — the plume
 is transient and expected to move — and if the range ahead has not returned
 by then, it gives the goal up and flies home while it still has a position
-source (item 17 stage 5 bounds that time by the light's charge), and it lands there, in sight, only when the start too is
+source (when the way is proven closed, or on the camera profile when the
+light's battery holds only the way back, item 17 stage 5), and it lands there, in sight, only when the start too is
 proven unreachable; that is a rule of time on the vehicle's own state, not a
 prohibition of space, and it is the same time the light of item 17 stage 5
 is given to return. And the
-closed region **decays** by stage 0's rule when it is not re-observed, so a
+closed region **decays** by item 17 stage 8's rule when it is not re-observed, so a
 plume that has drifted out of view does not close its corridor for the rest
 of the flight: the region returns to unknown, the vehicle approaches again,
 and the sensor either sees through, which lifts the closure by measurement,
@@ -1476,8 +1513,8 @@ within one second over the flight.
 
 **Type:** perception and safety, general; not tied to a sensor.
 
-**Hard prerequisites:** item 18 stage 0, for the memory's decay and the
-confidence of an occupancy; the rest of item 18 is not needed.
+**Hard prerequisites:** item 17 stage 8, for the memory's decay and the
+confidence of an occupancy; items 17 and 18 are not otherwise needed.
 
 **Validation environment:** Urban Circuit Practice 01 with actuated doors, a
 materialization variant of the location as item 17's dark world and item
@@ -1502,7 +1539,7 @@ sometimes, slowly. What the vehicle must do with it:
   observation, never from rewriting the memory from scratch.
 
 **Why this is not items 17 and 18.** Darkness and smoke are unobservability:
-the sensor looks and cannot see, and item 18 stage 0 writes that as a
+the sensor looks and cannot see, and item 17 stage 8 writes that as a
 prohibition that decays. A door is the opposite, fully observable and solid,
 and what it adds is motion. What the stack already does, stated precisely:
 a door that opens is cleared as soon as free rays pass through where it
@@ -1511,7 +1548,7 @@ item 18 describes), and a door that closes is written by its hits, so the
 last observed state of a door the sensor looks at again is already kept
 without any rewriting. What is missing is the rest: nothing tells a body in
 motion from a wall — a door swinging in view leaves its sweep in the memory
-until later rays clear it, and item 18 stage 0's decay and confidence only
+until later rays clear it, and item 17 stage 8's decay and confidence only
 shorten that — and nothing in the collision validation or in the braking
 contract knows that an obstacle can come towards the vehicle: both assume a
 static world, so a body closing on the vehicle is met with the stopping
@@ -1992,7 +2029,7 @@ Built, each decision the smallest change found:
   unreachable on a component that holds no goal and touches no unknown, and
   the log line `GOAL_UNREACHABLE` carries its verdict and the moment. With no
   decay in the memory a closure holds for the rest of the flight; the decay
-  and re-probe clause is item 18 stage 0's.
+  and re-probe clause is item 17 stage 8's.
 - **The position source** is the autopilot's position, valid and under a
   second old; without it nothing is substituted (`GOAL_UNREACHABLE_HELD`).
 - **The substitution** publishes a `NavigationObjective` at the start with the
@@ -2039,8 +2076,9 @@ never closed the vehicle's component in flight: at every check it touched the
 grid's edge, since unknown lies above the flight band and in every corner not
 yet looked at, so the topological proof is verified by its unit tests alone.
 The goal was given up in every flight by the time-bound return the mission
-monitor still carries from the implementation, which item 17 stage 5 reworks
-into the charge of the onboard light.
+monitor still carries from the implementation; the vehicle was never meant
+to have a time limit, and item 17 stage 5 removes it for a return on the
+light's battery, on the camera profile only.
 
 | Goal outside the location | Flights | Given up at, s of simulation (flown, m) | Return, s | True position from the start, m | Estimator at the end, m |
 |---|---|---|---|---|---|

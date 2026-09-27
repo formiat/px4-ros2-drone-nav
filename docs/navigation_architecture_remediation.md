@@ -17,7 +17,7 @@ covered by executable tests, and the acceptance gate in
   constraints. The project owner restated the invariant on 2026-09-23 with a
   second measured prohibition, space observed unobservable — the sensor
   looked there and the measured range in it lies below the physical margin
-  (smoke, darkness, a blinded sensor) — which roadmap item 18 stage 0
+  (smoke, darkness, a blinded sensor) — which roadmap item 17 stage 8
   delivers; until it lands only the first exists. Both are measurements, both
   decay when not confirmed, both lift when the space is observed again. No
   prohibition comes from configuration, from knowledge of the location or

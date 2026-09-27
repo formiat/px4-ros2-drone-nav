@@ -18,8 +18,10 @@ or Inherited entry when a measurement or the code demands it. Every change is
 recorded in the change log at the end — the entry, the old and the new value,
 the justification, the commit — and reported to the owner in the same working
 session; a change without a line in the log is not made. An Owner entry is
-changed by the owner, or by an agent the owner has explicitly allowed to for
-that decision, and the log names the permission. A value that exists both here
+changed by the owner, or by an agent: the owner allowed agents on 2026-09-27
+to change Owner entries too, recorded and reported the same way, and the log
+line says so. Only objective, important figures belong here; small tuning
+parameters stay in the code with their comments. A value that exists both here
 and in code or configuration is the code's value; this file says why it is
 that value, and a change to one is a change to the other.
 
@@ -43,13 +45,14 @@ aside, and this file what everything else is measured against.
 
 | ID | Statement | Source, since | Justification, reference |
 |---|---|---|---|
-| I1 | Space the sensor has not looked at (unknown) is traversable at no penalty: no cost, no inflation, no gate. The protection in unknown space is the braking contract, not the map. | Owner | Otherwise the vehicle is confined to its sensor's radius. |
+| I1 | Space the sensor has not looked at — unknown, in the sense of unexplored: "not seen because never looked at" — is traversable at no penalty: no cost, no inflation, no gate. The protection in unknown space is the braking contract, not the map. | Owner | Otherwise the vehicle is confined to its sensor's radius. |
 | I2 | Space is prohibited only by measurement: observed occupied, or observed unobservable (the sensor looked and its measured range stayed below the physical margin: smoke, darkness, glare). Both decay when not confirmed and lift on re-observation. No prohibition comes from configuration, from knowledge of the location or from the vehicle's history; no cost on free observable space. | Owner, 2026-09-23 | Replaces the earlier ban on prohibited zones. |
 | I3 | No latch, hold or release gate keyed on the vehicle's history; every hard prohibition keeps the exit guarantee: the vehicle's own position and its observed path are never closed. Braking to rest on a validated finite trajectory is allowed. | Owner, 2026-09-04 | An indefinite stall at a wall is a failure of R2. |
 | I4 | Vertical motion is free in the planner's time model. | Owner, 2026-09-01 | The vehicle must take openings and shafts below it. |
 | I5 | Production code does not adapt to a location: no named world, spawn or opening altitude, opening coordinates or passage identity. Scenario coordinates are regression inputs only. | Owner | Generality of the navigation. |
 | I6 | Safety and the quality of the flight come before speed; a collision is a defect; safety is not bought by a broad reduction of speed. | Owner | Paradigm of the project. |
-| I7 | The vehicle does not know how its light fails: nothing of the emitter, its driver or an injector reaches the navigation; it concludes about the illumination from its frames only. | Owner, 2026-09-24 | Roadmap item 17 stage 5. |
+| I7 | The vehicle does not know how its light fails: nothing of the emitter's failures, its driver or an injector reaches the navigation; it concludes about the illumination from its frames only. It does know the light's battery charge, as any airframe knows its batteries. | Owner, 2026-09-24; the battery 2026-09-27 | Roadmap item 17 stage 5. |
+| I8 | The vehicle has no time limit: no budget of flight time decides its mission. | Owner, 2026-09-27 | The time-bound return in the mission monitor (K4) was never meant as one and goes with item 17 stage 5. |
 
 ## The Vehicle, The Missions And Their Defaults
 
@@ -79,11 +82,12 @@ aside, and this file what everything else is measured against.
 
 | ID | Statement | Source, since | Justification, reference |
 |---|---|---|---|
-| F1 | Once roadmap item 17 lands, a moderate flicker of the carried light runs in every acceptance flight, its dark stretches never long enough to reach the "unreliable" judgment, and the mean speed of R3 is measured under it. | Owner, 2026-09-27 | The series show that the vehicle flies normally with it. |
+| F1 | Once roadmap item 17 lands, a moderate flicker of the carried light runs in every acceptance flight, its dark stretches never long enough to reach the "unreliable" judgment, and the mean speed of R3 is measured under it; the speeds several flights under it show are adopted as the current requirement. | Owner, 2026-09-27 | The series show that the vehicle flies normally with it; a lower speed is expected. |
 | F2 | A severe failure of the light, worsening until the vehicle judges it unreliable and flies home, is a scenario of its own. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
 | F5 | Once roadmap item 17 lands, at least one zone that fails the light as the vehicle approaches it (the "magnetic anomaly") is in every flight, placed anywhere it does not block the way to B, and the vehicle does not enter its darkness; a separate scenario lays the zone across the way to B and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 17 stage 7. |
-| F6 | Darkness is not unknown. Unknown ("not seen because still far") is free at no penalty and explored; darkness ("not seen although close enough to see") is observed unobservable and a prohibition equal to a physical obstacle. Roadmap item 17 teaches the vehicle the distinction and is not complete without it. | Owner, 2026-09-27 | Invariants I1 and I2; roadmap item 17. |
-| F3 | A light judged unreliable from the frames sends the vehicle home through item 19's substitution; the time-bound return the mission monitor carries today is reworked into that judgment. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
+| F6 | Darkness is not unknown. Unknown, that is unexplored ("not seen because still far"), is free at no penalty and explored; darkness ("not seen although close enough to see") is observed unobservable and a prohibition equal to a physical obstacle. Roadmap item 17 teaches the vehicle the distinction and is not complete without it. | Owner, 2026-09-27 | Invariants I1 and I2; roadmap item 17. |
+| F3 | A light judged unreliable from the frames sends the vehicle home through item 19's substitution. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
+| F7 | The carried light runs on a battery whose charge the vehicle knows; when the charge left covers only the way back, the vehicle gives the goal up for the start. The light flickers whatever its charge. The return on the battery switches itself on with the carried light (camera profile) and off on the lidar profile. It replaces the time-bound return (K4). | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
 | F4 | Once roadmap item 18 lands, its smoke sensors are always on board; every location has smoky places that never block the way from A to B; smoke is constant in place and volume and changes only its shape; a separate scenario blocks the way with smoke and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 18. |
 
 ## Numbers The Stack Relies On
@@ -91,11 +95,8 @@ aside, and this file what everything else is measured against.
 | ID | Value | Source, since | Justification, reference |
 |---|---|---|---|
 | K1 | An autopilot position reset up to 3.0 m is flown on (the execution revoked, the search restarted); a larger one closes the navigation. | Agent under the owner's delegation, 2026-09-27 | 0.4 to 4.1 m of drift over item 19's doubled path; r699 stood ten minutes after a 1.02 m reset. Commit d71a5c6f. |
-| K2 | The planner accepts and prices a segment in the route sampler's 0.5 m pieces, as the activation validates it. | Agent, 2026-09-26 | The conservative swept validation depends on the cut; r669, r681, r685 livelocked. Commits 146c6393, c24cace4, 289583e2. |
-| K3 | The camera estimator's map correction: a registration every 0.5 s against cells older than 20 s; counted when 0.3 of the depth and at least 150 points match, the residual is under 0.25 m and an axis carries 0.01 of information per point; the target offset moves by 0.2 of the measurement, by at most 0.1 m and 0.2 degrees, within 1.5 m and 5 degrees; the applied offset follows at 0.2 m/s and 1 degree per second. | Agent, 2026-09-26 and 2026-09-27 | The filter is overconfident (clone deviation 0.05 m against 0.4 to 1.0 m innovations, r691); at a gain of 0.5 the target jittered 0.2 to 0.35 m between registrations (r709). [`localization.md`](localization.md). |
-| K4 | The time-bound return of the mission monitor, until item 17 reworks it: the run's window less the path flown over the mean speed, times 2.0, stretched by the real-time factor, and a 20 s reserve. | Agent, 2026-09-26 | Over twelve returns the way back took 0.72 to 1.65 times the flight out; at 1.5 r687 ended 24 m short. Commit 62f4f511. |
+| K4 | The time-bound return of the mission monitor, until item 17 stage 5 removes it (I8, F7): the run's window less the path flown over the mean speed, times 2.0, stretched by the real-time factor, and a 20 s reserve. | Agent, 2026-09-26 | Over twelve returns the way back took 0.72 to 1.65 times the flight out; at 1.5 r687 ended 24 m short. Commit 62f4f511. |
 | K5 | Item 19's goal outside the location: (200, 100, 10) m. | Agent, 2026-09-26 | Behind the outer walls of Urban Circuit Practice 01 and inside the memory's grid; the owner decided the injection is by the goal alone. |
-| K6 | Item 19's proof runs every 10 s within a budget of 20 million voxels. | Agent, 2026-09-26 | A bounded cost on the monitor's thread. |
 | K7 | The guaranteed forward range of the stereo set is 6.4 m. | Inherited (item 14) | The confident depth measured on the location's surfaces. |
 
 ## Change Log
@@ -113,3 +114,6 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | A6 | — | new | Agent | Container-wide freezes under another task's disk writes crashed r720 and r723. | this file |
 | 2026-09-27 | F1 to F4 | — | new | Owner | Decisions for items 17 and 18. | this file |
 | 2026-09-27 | F2, F5, F6 | F2: the severe failure and the zone across B | F2: the severe failure; F5: a zone in every flight and a scenario across B; F6: darkness is not unknown | Owner | Addition to item 17. | this commit |
+| 2026-09-27 | I7, I8, F1, F3, F7 | I7: nothing of the light reaches the vehicle; F3: the time-bound return reworked into the judgment | I7: its battery charge is known; I8: no time limit; F1: speeds under the flicker adopted; F3: the judgment alone; F7: the return on the light's battery, camera profile only | Owner | The owner's decisions on item 17. | this commit |
+| 2026-09-27 | K2, K3, K6 | entries | removed | Owner | Small tuning parameters do not belong here; they stay in the code with their comments. | this commit |
+| 2026-09-27 | the rules | Owner entries changed by agents only with a permission per decision | agents may change Owner entries, recorded and reported | Owner | The owner's permission. | this commit |
