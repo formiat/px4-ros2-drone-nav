@@ -78,7 +78,11 @@ PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor
           }
         }
       } else {
-        connector_valid = rawSegmentValid(anchor, point);
+        // The goal's connector, swept as the path's last segment is accepted:
+        // swept whole it admitted goal anchors whose connector the acceptance
+        // then refused, and r707 searched the rest of its window 0.4 m from
+        // the goal, the extracted path refused at its last segment each time.
+        connector_valid = routePiecesValid(anchor, point);
       }
       if (connector_valid) {
         anchors.push_back(candidate);
