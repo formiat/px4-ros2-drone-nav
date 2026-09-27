@@ -259,6 +259,8 @@ private:
       }
     }
     rejectMatchesWithinNoise(left_grey, disparity);
+    const std::string brightness_by_metre =
+        matchedBrightnessByMetre(left_grey, disparity);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
@@ -315,8 +317,45 @@ private:
                                 .count();
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
-                         "match_ms=%.1f",
-                         pairs_, hits, returns.size() - hits, tof_rays, match_ms);
+                         "match_ms=%.1f brightness_by_metre=%s",
+                         pairs_, hits, returns.size() - hits, tof_rays, match_ms,
+                         brightness_by_metre.c_str());
+  }
+
+  // Roadmap item 17 stage 3: the mean grey level of the matched pixels in
+  // each metre of depth, from 0 to 8 m (-1 where none matched), which is
+  // what the carried light gives a surface at each distance in the dark
+  // world; the image source logs the gain it applied.
+  [[nodiscard]] std::string matchedBrightnessByMetre(const cv::Mat& grey,
+                                                     const cv::Mat& disparity) const {
+    constexpr std::size_t kMetres{8U};
+    std::array<double, kMetres> sum{};
+    std::array<std::size_t, kMetres> count{};
+    const auto stride = static_cast<int>(returns_config_.pixel_stride);
+    for (int row = 0; row < disparity.rows; row += stride) {
+      for (int column = 0; column < disparity.cols; column += stride) {
+        const std::int16_t disparity_16 = disparity.at<std::int16_t>(row, column);
+        if (disparity_16 <= 0) {
+          continue;
+        }
+        const double depth_m =
+            16.0 * geometry_.focal_px * geometry_.baseline_m / disparity_16;
+        const auto metre = static_cast<std::size_t>(depth_m);
+        if (metre < kMetres) {
+          sum[metre] += grey.at<std::uint8_t>(row, column);
+          ++count[metre];
+        }
+      }
+    }
+    std::string text;
+    for (std::size_t metre = 0U; metre < kMetres; ++metre) {
+      text += (metre == 0U ? "" : "/") +
+              std::to_string(
+                  count[metre] == 0U
+                      ? -1L
+                      : std::lround(sum[metre] / static_cast<double>(count[metre])));
+    }
+    return text;
   }
 
   // A pixel whose neighbourhood varies no more than the image's own noise
