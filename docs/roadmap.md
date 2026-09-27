@@ -355,10 +355,12 @@ Relative observation of peers is the second step, taken only if the first
 falls short, and it is a lidar's remedy: a stereo pair with 6.4 m of
 confident depth sees a peer too late for a separation of several times that.
 Item 16 was done first, so this stage is rewritten for the visual-inertial
-estimator before it starts: its drift, 0.1 to 0.4 percent of the path with no
-bound, is what two vehicles' frames will differ by. The register's unbounded
-drift (L1) is measured here as that difference, after item 19 has measured
-it on a doubled path; the rework of the estimator is neither item's.
+estimator before it starts: its drift, 0.1 to 0.4 percent of the path on a
+first pass, is what two vehicles' frames will differ by. Item 19 measured it
+on a doubled path and bounded it where a vehicle returns to ground it has
+seen, by registering its depth against a map of its own; two vehicles are
+two such maps, never registered against each other, and their difference is
+what this stage measures.
 
 Visualization stays as it is: one spectator owns the follow transform and the
 simulator's camera and moves to the next living vehicle when its own is lost;
@@ -711,12 +713,18 @@ as it is today.
 
 ### Stage 6: A Position Reset Of The Autopilot
 
-Item 13's rule closes the navigation for the rest of the flight when the
-autopilot resets its position by more than 0.33 m, and with an odometry as the
+Item 13's rule closed the navigation for the rest of the flight when the
+autopilot reset its position by more than 0.33 m, and with an odometry as the
 only position such a reset is possible (r561: a 0.4 m correction, the
 odometry rejected, 1.8 s on the IMU alone, a reset of 1.19 m, mission
-incomplete). The project owner decided on 2026-09-25 how the stack answers
-it: the autopilot reports every reset with its size (`delta_xy` and `delta_z`
+incomplete). Since 2026-09-27 (d71a5c6f, item 19's r699: the camera estimate
+ran a metre off over a featureless floor, came back in one step, and a reset
+of 1.02 m held the vehicle ten minutes six metres from its goal) a reset up
+to 3 m is flown on: the execution is revoked, the vehicle stops, and the
+search starts again from the new estimate, the memory off by the shift as it
+is off by the drift; a larger shift or a timestamp epoch reset still closes
+the navigation. The project owner decided on 2026-09-25 how the stack answers
+a reset in full: the autopilot reports every reset with its size (`delta_xy` and `delta_z`
 of `vehicle_local_position`, counted by `xy_reset_counter` and
 `z_reset_counter`), so the map anchor between the navigation frame and the
 autopilot's local frame shifts by that delta, the vehicle holds for the tick
@@ -943,6 +951,17 @@ Under this restatement the rule item 17 rejected stays rejected, and the
 reason is sharper: it was keyed on where the vehicle *had been* when the
 light went out, which is history; a measured unobservability is keyed on
 what the sensor *sees now*, and it lifts the moment the sensor sees again.
+
+**Item 19's decay clause lands here.** Item 19's topological proof floods
+the memory from the vehicle and calls the goal unreachable only for a
+component that holds no goal and has no unknown on its boundary. With no
+decay a closure holds for the rest of the flight and the proof, once taken,
+stands. Once closures decay, a proof taken in one instant is worth only that
+instant, and a plume that drifts away a minute later must not find the
+vehicle already home: the proof then requires no route through free and
+unknown space for longer than the decay of the closures that bound the
+component, with at least one re-probe of each, and the time between the
+first "no route" and the proof is measured with it.
 
 ### Stage 1: Smoke In The Simulator
 
@@ -1211,190 +1230,6 @@ and land without a collision, with no phantom occupancy older than the stated
 decay surviving the flight. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
-
-## 19. A Goal Proven Unreachable: Return Home
-
-**Type:** mission policy, general; not tied to any sensor or scenario.
-
-**Hard prerequisites:** none for the substitution of the goal, the budget
-trigger and the topological proof against prohibitions that do not decay,
-which is what the memory holds today; item 18 stage 0 for the decay and
-re-probe clause of the topological proof, because once closures decay a
-proof has to outlive the decay. Reordered by the project owner on
-2026-09-26: this item is built before items 17 and 18, and the clause lands
-with item 18 stage 0.
-
-**Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission, with the unreachability injected.
-
-Decided by the project owner on 2026-09-23, out of the smoke discussion and
-deliberately separated from it. Item 17's ladder and item 18's closure both
-contain a **local** retreat: metres back along the flown path, to where the
-sensor can see, as a motion of safety that asks no proof of anything. This
-item is the other retreat, the **mission-level** one: the goal is given up
-and the vehicle returns to where it started. The two are not the same rung
-and must not be confused. The local retreat stays where it is, triggered by a
-sensing failure; the return home is triggered by one thing only, a proof that
-the goal cannot be reached, and it is the same rule whatever made the goal
-unreachable — a plume across the only corridor, a collapsed passage, a door
-that was open on the map and is not.
-
-**The mechanism is a substitution of the goal, and nothing else.** The
-mission monitor, which owns the goal sequence and judges the arrival,
-replaces the goal with the start, through the same channel by which any
-objective enters the navigation while it flies: a change of goal on the
-move, as a mission with a further waypoint changes it. The navigation does
-not change by a line: the same planner, the same memory, the same braking
-contract, now aimed at a different point. There is no return mode in the
-planner, no hold and no latch — a return is a new mission, not a suspended
-one — and the invariants of items 12 and 18 hold throughout it. The arrival
-at the start is a goal's arrival like any other: the same capture radius,
-the same hold at the goal, and nothing more; decided by the project owner on
-2026-09-26, no landing is added for it, that is the ladder's of item 17 and
-not this item's. The log records the outcome as its own: `goal_unreachable`,
-with the proof that established it and the moment the goal was substituted,
-distinct from `mission_incomplete`, which stays what it is.
-
-**Who proves, and with what.** The proof reads the obstacle memory and the
-memory lives in the navigation, so the proof is an evaluation component
-beside the mission monitor, reading the memory the navigation already
-publishes, never a rule inside the planner or the memory: the navigation
-publishes what it knows, the monitor decides what the mission does with it.
-Three inputs the monitor has to be given, each named here so that none is
-invented at implementation: the flight's window, today a parameter of the
-run's scripts that the vehicle does not know, becomes a parameter of the
-mission written into the manifest and handed to the monitor; the return's
-duration is estimated as the length of the path flown so far divided by the
-flight's mean speed so far, a figure the monitor can compute from what it
-records and that errs on the long side, since the way back is known and
-observed; and "a position source" means the estimator declared healthy by
-the navigation's own health report, the same signal whose loss withdraws the
-execution, and nothing finer.
-
-**What "proven" means, because with unknown free it is not obvious.** The
-planner routes through space it has not looked at, so a route exists almost
-always; unreachability is provable only when the reachable component of the
-world is **bounded entirely by measured prohibitions** — occupied surfaces
-and observed unobservable regions — with no unknown on its boundary. Two
-triggers, each named in the log for what it is:
-
-1. **Topological.** No route exists through free and unknown space, and
-   none has existed for longer than the decay of the closures that bound the
-   component, with at least one re-probe of each: item 18's closed regions
-   decay when not re-observed, so a proof taken in one instant is worth only
-   that instant, and a plume that drifts away a minute later must not find
-   the vehicle already home. This is "proven impossible". Until item 18
-   stage 0 the memory forgets nothing and the only measured prohibition is
-   an occupied surface, so a closure holds for the rest of the flight and
-   the proof, once taken, stands; the decay and the re-probes are added
-   then, and a prohibition carries its validity from the first version,
-   unbounded today, so that the clause is an extension and not a rework.
-2. **Budget.** A route is still being sought through unexplored space and
-   the flight's window, less the time the return itself will take along the
-   observed path (the estimate above), is spent. This is not "proven
-   impossible", it is "proven too late", and the log says which.
-
-**The proof is a check of the map, never a reading of the planner.** The
-planner fails to find a route for reasons that have nothing to do with the
-world: on r596 (2026-09-25) it found none for 106 s in a fully open world,
-a livelock of its own budget, and a trigger keyed on "no route for so many
-seconds" would have proven that world closed and sent the vehicle home. The
-topological proof is therefore a flood of the memory from the vehicle's
-position through free and unknown space, asking two things of the component
-it fills: whether the goal lies inside it, and whether any unknown voxel lies
-on its boundary. A component that holds no goal and has no unknown on its
-boundary is closed by measurement, whatever the planner says; a component
-with unknown on its boundary is open, whatever the planner says, and the
-budget trigger is the only one that can end the flight from there. The
-memory's grid is finite and its edge is not a measurement: under the
-invariant that only a measurement prohibits, a component that reaches the
-edge of the grid has unknown on its boundary and is open, and the flood
-treats the edge so. The topological proof can therefore be taken only for a
-component enclosed entirely inside the grid by measured surfaces, which the
-interior of a closed location is once every opening of it has been looked
-at; the space above the flight band and every unobserved corner count as
-unknown until they are observed, and no shortcut around that is admitted.
-
-**The unreachability is injected by the goal alone; the location does not
-change.** Decided by the project owner on 2026-09-26: the check of the
-algorithm places the goal, the point B of the ordinary point-to-point
-mission, deliberately beyond the vehicle's reach — outside the location,
-behind its outer walls — so that no route to it can exist, the vehicle
-cannot reach it, and the return home has to run. Nothing but the goal's
-coordinates changes: the same location, which the owner states is closed to
-the outside, the same start, the same mission, and the goal written into the
-manifest as the injected unreachability, which is what lets the check count
-the return as the outcome asked for. No variant of the location, no closed
-corridor, no added surface belongs to this item: the closures that decay
-are item 18's, flown there with its plume and the re-probe clause. The
-check does not take the manifest's word for the unreachability: it floods
-the truth collision world of the location from the start and confirms that
-the goal lies outside the start's component, so that a location open to the
-outside cannot turn the flight silently into an ordinary one. What the
-flight then measures is the proof itself. The vehicle's reachable component
-is the location's interior, and the topological trigger fires only once
-every opening of that interior has been looked at and closed by measurement
-— until then unknown lies on the boundary and the component is open,
-whatever the planner finds — so on a location of this size the budget
-trigger may come first, and the flight records which one it was; both are
-accepted outcomes, and a return on neither, or a return in a flight whose
-goal was reachable, is a failure.
-
-**Three guards, without which the policy is a loophole.**
-
-- **In an ordinary acceptance flight a return home is a failure.** The
-  second requirement of the project is that the vehicle always reaches its
-  goal, in truth. A return that counted as success would let the vehicle
-  "prove" a hard corridor unreachable and go home instead of flying it. A
-  return counts as a graceful outcome only in a flight whose unreachability
-  was **injected** by the scenario and is recorded in its manifest; in every
-  other flight it fails the mission as `mission_incomplete` does, and the
-  check says the vehicle returned rather than reached.
-- **A return needs a position source**, exactly as item 17's local retreat
-  does: the return path is flown on the estimator, and in total darkness
-  there is no estimator to fly it on. Without one the ladder's landing is
-  what remains, and the outcome is recorded as a landing, not a return.
-- **The return path is not privileged.** It is whatever the planner finds
-  toward the start, which is usually the flown path, held in memory as
-  observed and free; if that path has closed behind the vehicle, the return
-  is subject to the same proof, and a start proven unreachable too is a
-  landing in place, logged as such.
-
-**Where it ends the ladders of items 17 and 18.** Both ladders retreat to
-where the sensor can see and then hold for a stated time before landing. A
-vehicle holding where it can see has a position source, so the budget
-trigger applies to it as to any other: when the window less the return is
-spent, the goal is given up and the vehicle flies home rather than waiting
-out the time and landing in a place it can see. The landing stays for the
-vehicle that has no position source, in total darkness, and for a start
-proven unreachable too. The plume across the only corridor is the
-topological trigger's case and needs the decay clause, so it is item 18's
-to fly; the long outage of the light, held out where the vehicle can see, is
-the budget trigger's case and needs nothing from item 18.
-
-**What the return measures besides itself.** The flight out and back is
-twice the path of any acceptance flight, and the arrival at the start is
-judged by the capture radius on the odometry's accumulated error: this is
-where the register's unbounded drift (L1) first meets a requirement, and
-the item measures it as such (the true position at the start against the
-2.0 m radius, per profile) before any rework of the estimator is designed.
-The return is also the first flight of the mission in the other direction
-and, with the goal outside the location, the first with another goal (N3);
-other starts and goals stay a series of their own.
-
-### Measurement And Completion
-
-Measure, per flight: the moment of the proof and which trigger gave it; the
-time between the first "no route" and the proof (the re-probes it took); the
-path and duration of the return against the flown path; the true position at
-the start on arrival, judged by the same capture radius as a goal; and that
-no ordinary acceptance flight of any series produced a return.
-
-Complete when, on the camera profile and the lidar profile alike, five
-flights with the goal placed outside the location return to the start in
-truth without a collision, each logging its proof and its trigger, and when
-the acceptance series of items 9, 16, 17 and 18 show no return in any
-flight.
 
 ## 20. Slowed Simulation And Unattended Recording
 
@@ -1925,3 +1760,110 @@ not flight-verified on cameras or without GNSS (item 15). The register of
 what is set aside, with the class of every entry, is
 [`technical_debt.md`](technical_debt.md).
 
+### 19. A Goal Proven Unreachable: Return Home (Completed)
+
+Closed on 2026-09-27 on bf92e952, not yet in a release. When its goal is
+proven unreachable, or proven too late, the vehicle gives it up and flies
+home: the mission monitor replaces the goal with the start through the
+objective channel by which any goal enters the navigation in flight, and the
+arrival at the start is a goal's arrival like any other (the 2.0 m capture
+radius and the hold, no landing). The navigation did not change by a line
+for it. The contracts are in `goal_reachability_proof_3d.hpp` and
+`mission_monitor_node.cpp`, the check's lines in [`testing.md`](testing.md),
+the flight in [`scenarios.md`](scenarios.md).
+
+Built, each decision the smallest change found:
+
+- **The proof** (`proveGoalUnreachable3D`, the core library, unit-tested) is
+  a flood of the memory the navigation publishes, which the monitor decodes
+  from the same snapshot and delta words the planner reads, from the vehicle
+  through every voxel that is not occupied, unknown included, the grid's edge
+  counting as unknown. It runs every 10 s on the monitor's own thread within a
+  voxel budget that leaves it undecided, and it never reads the planner (r596
+  stood 106 s without a route in an open world). The **topological** trigger
+  fires on a component that holds no goal and touches no unknown; the
+  **budget** trigger when the wall time since the monitor started, the
+  return's estimate and a 20 s reserve exceed the flight's window. The log
+  line `GOAL_UNREACHABLE trigger=topological|budget` carries the proof's
+  verdict, the estimates and the moment. With no decay in the memory a
+  closure holds for the rest of the flight; the decay and re-probe clause is
+  item 18 stage 0's.
+- **The three inputs.** The flight's window `mission_window_s` is the run's
+  `SMOKE_DURATION_S`, handed to the monitor and written into the manifest.
+  The return's estimate is the path flown so far over the mean speed so far,
+  stretched by the real-time factor the two clocks have shown and by a margin
+  of 2.0: the way back is not the flown path retraced but the planner's route
+  through the observed space, and over twelve returns it took 0.72 to 1.40
+  times the flight out, one exploring return more than 1.65. The position
+  source is the autopilot's position, valid and under a second old; without
+  it nothing is substituted (`GOAL_UNREACHABLE_HELD`).
+- **The substitution** publishes a `NavigationObjective` at the start with the
+  next mission epoch; the planning tick rebases its waypoint sequence to the
+  objective's goal, so the start is captured and acknowledged as any goal is,
+  and the mission ends `goal_unreachable_returned`.
+- **The injection** is the goal alone: (200, 100, 10) m, behind the outer
+  walls of Urban Circuit Practice 01, recorded in the manifest
+  (`MISSION_GOAL_UNREACHABLE`, `TRUTH_OCCUPANCY_3D_PATH`). The check floods the
+  location's 0.5 m truth grid from the start and fails a flight whose start
+  reaches the goal; a return counts only in an injected flight, and in every
+  other flight a `GOAL_UNREACHABLE` fails it.
+
+Found by the flights and repaired on the way:
+
+- The planner accepted paths whose segments cleared whole while the
+  activation refused them cut into the route sampler's 0.5 m pieces, and the
+  return stood in a livelock (r669, r681, r685; 101 of 112 000 synthetic
+  segments beside a plate flip between the two answers). The planner prices
+  and accepts a segment in those pieces, the goal's connector included, and
+  the geometry optimizer falls back to the canonical route when a shortcut
+  fails in pieces (146c6393, c24cace4, 289583e2).
+- While no route was held, an update's occupied changes reached the lattice's
+  edge cache only after the feasibility search: the search validated its
+  chains through edges the update had closed, extracted them, had them refused
+  and dropped the labels behind them, update after update (r718: 1.09 million
+  labels dropped, ten minutes without a route home 0.4 m from one). The test
+  of a changed cell against an edge also missed a tenth of the cells an
+  upright body passes on a climbing edge. Both repaired (bf92e952).
+- The budget trigger fired inside ordinary flights under the harness's 600 s
+  window and a margin of 1.5: the margin is 2.0 (62f4f511) and the ordinary
+  acceptance flights fly an 1800 s window.
+- An autopilot position reset beyond 0.33 m closed the navigation for good;
+  r699 stood ten minutes six metres from its start after a 1.02 m reset. A
+  reset up to 3 m is flown on (d71a5c6f, item 17 stage 6).
+- P4 (130e484a) left r675 480 s without a horizon at contact: reverted
+  (e81ae737), in the register.
+- **The register's L1.** The doubled path measured the odometry's drift for
+  the first time: 0.40 to 4.10 m at the end of 854 to 1467 m (eighteen camera
+  flights), and r689 flew into the launch platform with the estimate 4.07 m
+  off. Repaired inside this item by relocalization against the estimator's own
+  long-lived map (6fa53f6d to 3f965181, [`localization.md`](localization.md)):
+  0.20 to 0.68 m at the end of the same path. A first pass drifts as before.
+
+Acceptance on bf92e952, each flight inspected before the next. Every return
+was the budget trigger's: at every trigger the vehicle's component touched the
+grid's edge, as the item foresaw for a location of this size, since unknown
+lies above the flight band and in every corner not yet looked at.
+
+| Goal outside the location | Flights | Trigger, s of simulation (flown, m) | Return, s | True position from the start, m | Estimator at the end, m |
+|---|---|---|---|---|---|
+| Stereo set, the defaults | r721, r722, r724, r725, r726 | 249 / 246 / 265 / 270 / 282 (456 / 434 / 508 / 456 / 504) | 417 / 366 / 433 / 325 / 282 | 1.06 / 0.65 / 0.40 / 0.65 / 0.59 | 0.68 / 0.22 / 0.20 / 0.34 / 0.21 |
+| 3D lidar | r727 to r731 | 298 / 299 / 299 / 299 / 298 (687 / 704 / 694 / 666 / 681) | 53 / 37 / 52 / 57 / 43 | 0.52 / 0.26 / 0.64 / 0.42 / 0.66 | 0.26 / 0.17 / 0.30 / 0.15 / 0.25 |
+
+| Ordinary series | Flights | Mean flight speed, m/s | True position from the goal, m |
+|---|---|---|---|
+| Stereo set, the defaults | r732 to r736 | 1.88 / 1.80 / 1.76 / 1.94 / 1.84, mean 1.84 (1.79 on 173155d6) | 1.14 / 1.63 / 1.42 / 0.70 / 0.64 |
+| 3D lidar | r737 to r741 | 2.67 / 2.70 / 2.56 / 2.51 / 2.44, mean 2.58 (2.67 on 173155d6) | 0.89 / 0.19 / 0.58 / 0.24 / 0.74 |
+
+No crash, no contact and no failing line in the twenty; no return in any
+ordinary flight. The estimator and the host held their budget: on the camera
+set 4.93 / 5.78 onboard cores at p50 / p95 against 4.82 / 5.67, 969 against
+938 MiB, a frame 53 against 54 ms and the tick 21.3 / 28.5 against 21.8 /
+29.7 ms; on the lidar 3.71 / 4.65 cores against 3.55 / 4.36 (the estimator
+0.50 / 0.85 against 0.44 / 0.77) and the tick 23.5 / 31.7 against 24.1 /
+34.5 ms. Two camera flights of the injected series, r720 and r723, were
+voided and flown again: another task's disk writes froze the host for 3.7
+and 7.3 s, the estimator took IMU holes of 1.9 and 3.6 s, diverged, and both
+vehicles crashed after the autopilot reset by 26.6 and 6.0 m. That the
+estimator does not survive such a hole is in the register. The return was
+also the mission's first flight in the other direction and with another goal
+(the register's N3); other starts and goals stay a series of their own.

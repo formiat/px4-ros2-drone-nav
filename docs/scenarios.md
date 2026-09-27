@@ -28,6 +28,7 @@ flight the stack would fly alone.
 |---|---|---|
 | **Urban point-to-point, GUI** — the default, and the demo video | `./scripts/sim_urban_point_to_point_gui.sh` | Gazebo and RViz side by side. One drone takes off from a pad in the DARPA SubT urban world and flies to a goal 400 to 630 m away through rooms, corridors, doorways and two shafts, with no map, no GNSS, no magnetometer and no lidar: a forward stereo pair and two small time-of-flight sensors. In RViz the pink cloud is the obstacle memory it builds as it goes, the cyan fan the current stereo depth, orange the route it is committed to, the magenta sphere the goal. About five to six minutes of flight at 1.5 to 1.8 m/s. |
 | **Urban point-to-point, headless** — the acceptance flight | `./scripts/sim_urban_point_to_point_headless.sh` | No windows. The same flight, ending in the mission check: no crash, the goal reached with the drone's **true** position inside 2.0 m of it, the mean speed, and every diagnostic ([`testing.md`](testing.md)). Everything lands in `log/runs/<run-id>/`, the manifest binding the commit, the configuration and the world by hash. |
+| **Return home from a goal outside the location** — roadmap item 19's flight | `MISSION_GOALS_XYZ_M="200,100,10" MISSION_GOAL_UNREACHABLE=true TRUTH_OCCUPANCY_3D_PATH=external/environment-candidates/work/urban_practice_01_r050.occupancy3d SMOKE_DURATION_S=900 ./scripts/sim_urban_point_to_point_headless.sh` | The acceptance flight with the goal placed behind the location's outer walls. The mission monitor floods the obstacle memory from the drone every 10 s and weighs the flight's window against the time the return will take; when the goal is proven unreachable or proven too late (`GOAL_UNREACHABLE trigger=topological` or `budget` in the log) it replaces the goal with the start, and the drone flies home and holds there as at any goal: about 1 km out and back. The check counts the return as the outcome asked for because the manifest records the injection, and it confirms from the location's truth grid (the voxelized collision world, [`environment_candidates.md`](environment_candidates.md)) that no way leads from the start to that goal. Prefix the lidar's variables for the same flight on the lidar. |
 | **The same flight on the 3D lidar** | `CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar ./scripts/sim_urban_point_to_point_gui.sh` | The lidar on the airframe, a full spherical scan in RViz, memory filling in every direction to about 35 m, and the flight at 2.4 to 2.7 m/s: the drone flies as fast as it can stop inside the range its sensor is guaranteed to have resolved, and the lidar resolves further than the cameras. Localization is a lidar-inertial estimator, still no GNSS. |
 | **Either flight with GNSS** | add `LOCALIZATION_PROFILE=gnss` | Nothing visible changes. GNSS only changes what the autopilot fuses as its position; it is the comparison baseline, and the records show it in the manifest and in the truth-at-goal figure. |
 | **Cooperative traffic, GUI** | `./scripts/sim_cooperative_traffic_urban_gui.sh` | Four drones in the urban world exchanging flight intents and choosing complementary maneuvers to keep 5 m apart; a spectator camera follows one and moves on if it is lost. Flies the `gnss` profile. **Not flight-verified since the interception missions were removed** (roadmap item 15 waits for it), and this workstation holds two lidar vehicles at real time, not four: expect the simulation to run below real time. |
@@ -69,7 +70,7 @@ Gazebo and RViz open after the result so the world can be inspected.
 ## What Is Planned And Not Yet Runnable
 
 So that nobody searches for a script that does not exist. The roadmap
-([`roadmap.md`](roadmap.md)) carries, undelivered as of 2026-09-24:
+([`roadmap.md`](roadmap.md)) carries, undelivered as of 2026-09-27:
 
 - **item 15** — cooperative traffic over a channel that behaves like radio,
   and a shared frame without GNSS; until then the cooperative scenario above
@@ -80,7 +81,6 @@ So that nobody searches for a script that does not exist. The roadmap
 - **item 18** — smoke, transient obstacles such as a person crossing the
   frame, and a thermal channel; today a moving body stays in the map until
   the sensor looks there again;
-- **item 19** — the return home from a goal proven unreachable;
 - **item 20** — the simulation slowed on purpose so that four vehicles fit
   the workstation, and a recording of the flight written without a screen.
 

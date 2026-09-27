@@ -209,9 +209,10 @@ the row between the rectified cameras. New corners fill a grid, up to 200.
 images (`gazebo_stereo_depth_node` or `stereo_depth_node`, switch
 `--visual-inertial-odometry`), so two 1.2 MB frames 7.5 times a second reach
 it without a copy. A frame waits for the autopilot's IMU up to its own stamp,
-in order. The estimator and the camera perception read the same frames and
-nothing of each other: an estimator that took its pose from a map built from
-that pose would hide its own drift.
+in order. The estimator and the camera perception read the same frames; of
+the perception's products the estimator reads the depth cloud alone, for a
+map of its own (below), and never the obstacle memory: an estimator that took
+its pose from a map built from that pose would hide its own drift.
 
 What the recorded flights set (`log/tools/vio`: a recorder of every frame,
 both IMU streams and the true pose on one clock; a replay of the tracker and
@@ -259,14 +260,19 @@ in the world grows without bound, and the autopilot has no other position.
 0.3 m is what a frame's update moves the pose by (up to 0.22 m between
 consecutive frames); with 0.1 m the autopilot's gate threw the odometry away
 after a 0.4 m correction, flew 1.8 s on its IMU alone and reset its position
-by 1.19 m, which closes the navigation for good (r561).
+by 1.19 m, which closed the navigation for good then (r561; a reset up to
+3 m is flown on since roadmap item 19).
 
 Health: the estimate is healthy while features corrected it within a second
 and the IMU reaches the frame. The node prints once a second the tracked,
 offered, used, gated and untriangulated features, the residual in observation
 deviations, the standard deviation of the velocity along its least certain
 direction, the frame's cost, the IMU's lag and largest gap, and the frames
-without a healthy estimate. The mission check reports these and the estimate
+without a healthy estimate. A hole of seconds in the IMU stream is not
+bridged: under a host frozen by another task's disk writes the filter came out
+of holes of 1.9 and 3.6 s at 17 m/s, refused every feature afterwards and
+published two diverging frames as healthy before it declared itself unhealthy
+(r720, r723; the register). The mission check reports these and the estimate
 against the true pose as notes; what the estimate answers for is the
 programme's first requirement, checked by the truth: at every goal
 acknowledgement the true position is inside the 2.0 m capture radius
@@ -275,3 +281,48 @@ acknowledgement the true position is inside the 2.0 m capture radius
 Cost: 0.53 core beside the depth matcher (the stereo process 1.69 to 2.22
 cores), a frame 44 to 60 ms at the median and 72 to 82 ms at most, inside the
 0.5 to 1.5 cores stage 0 reserved.
+
+### Relocalization Against Its Own Map
+
+Roadmap item 19 flew the mission out and back and measured the drift of a
+doubled path: 0.40 to 4.10 m at the end of 854 to 1467 m on eighteen camera
+flights, and r689 flew into the launch platform with the estimate 4.07 m off.
+Where the vehicle returns to ground it has seen, the drift is now bounded by
+registering the depth against a map the estimator keeps.
+
+The map is the lidar-inertial estimator's: cells of points with a plane fitted
+through each and a point-to-plane registration against them, moved into one
+component with two consumers (`PointPlaneMap3D`,
+`include/drone_city_nav/point_plane_map_3d.hpp`; the lidar replays are
+byte-identical after the move). The camera estimator thins the depth cloud to
+surfaces within 6 m in 0.4 m cells, at most 3000 points, and lays it into the
+map by its corrected pose; every 0.5 s it registers the current depth against
+the cells laid more than 20 s before, never against what it has just laid,
+which carries the drift of the pose it was laid from. A registration counts
+when most of the depth matched old cells (0.3 and at least 150 points), the
+fit is tight (0.25 m) and an axis carries information per point above the
+lidar estimator's floor.
+
+The correction is an offset from the filter's frame to the map's, kept
+outside the filter: the filter's position is certain to a few centimetres
+while its drift is metres (clone deviation 0.05 m against innovations of 0.4
+to 1.0 m on r691), and a Kalman step against it passed only innovations under
+half a metre. A registration moves the target offset by a fifth of what it
+measured along the axes it observes, by at most 0.1 m, within 1.5 m of its
+prior; where the depth fixes the heading with the translation left free, the
+target heading moves by a fifth too, by at most 0.2 degrees, within 5
+degrees. The offset the autopilot and the navigation receive follows the
+target at 0.2 m/s and 1 degree per second, turned about the vehicle: the
+autopilot's fusion of the external position takes motion and may refuse a
+jump. At a half of the measurement per registration the target moved 0.2 to
+0.35 m and half a degree between registrations a second apart (r709), where
+the drift it corrects accrues millimetres per second.
+
+Measured on the acceptance of 2026-09-27 (bf92e952, r721 to r726): the error
+at the end of 1014 to 1141 m is 0.20 to 0.68 m, the true position at the start
+0.40 to 1.06 m, and the heading's drift is taken back to about zero; the frame
+costs 53 ms at the median (54 before), the stereo process 0.1 to 0.2 more
+cores and 90 MB of map. A first pass through new ground drifts as before, 0.1
+to 0.4 percent of the path: nothing old lies there to register against. The
+lidar estimator is unchanged: its own submap bounds it, 0.15 to 0.30 m at the
+end of the doubled path (r727 to r731).

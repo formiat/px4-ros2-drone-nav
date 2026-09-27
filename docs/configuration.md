@@ -331,7 +331,13 @@ static point cloud. It does not change Occupancy3D or ESDF3D resolution.
 `route_constraint_diagnostics_distance_m` controls how far before entry and
 after exit constrained-route lifecycle diagnostics report approach/departure.
 It is observational and does not alter planning or speed policy.
-`mission_monitor_node` owns mission success and crash metrics.
+`mission_monitor_node` owns mission success and crash metrics, and the return
+home of roadmap item 19: `mission_window_s` is the flight's window (the run's
+`SMOKE_DURATION_S`, also written into the manifest; 0 disables the budget
+trigger), and `unreachable_goal_proof_voxel_budget` bounds the flood of the
+memory that proves a goal unreachable, beyond which the proof stays undecided.
+The return's estimate (the path flown over the mean speed, a margin of 2.0, a
+20 s reserve) is fixed in the code with the flights that set it.
 
 ## Environment Overrides
 
@@ -347,6 +353,11 @@ guarantees to see and the vision memory's overrides, and both launches overlay
 them on the YAML, whose `production_mppi_node` and `obstacle_memory_3d_node`
 sections stay the lidar's). The final-revalidation evidence parameters are
 `latest_sensor_*` (formerly `latest_lidar_*`).
+`MISSION_GOALS_XYZ_M` replaces the point-to-point goal sequence;
+`MISSION_GOAL_UNREACHABLE=true` records in the manifest that the goal was
+placed out of reach on purpose, so that the check counts a return home as the
+outcome asked for, and `TRUTH_OCCUPANCY_3D_PATH` names the truth grid the check
+floods to confirm it ([scenarios.md](scenarios.md)).
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.

@@ -48,10 +48,10 @@ The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
 covers cooperative air traffic, generalized static 3D passages, no-static 3D
 lidar perception, lidar-inertial localization, realistic cooperative
 communication, camera-based 3D perception without lidar or static maps,
-flight without GNSS and without lidar, flight in degraded visual
-conditions, flight through transient and scattering obstacles, the
-return home from a goal proven unreachable, and a simulation slowed on
-purpose with its flight recorded without a screen. What is known to be wrong or unfinished and has been set aside
+flight without GNSS and without lidar, the return home from a goal proven
+unreachable, flight in degraded visual conditions, flight through transient
+and scattering obstacles, and a simulation slowed on purpose with its flight
+recorded without a screen. What is known to be wrong or unfinished and has been set aside
 is in [`docs/technical_debt.md`](docs/technical_debt.md).
 
 ## Releases
@@ -115,8 +115,11 @@ that are easy to lose weeks to, each with the flight it was measured on:
 - **One sensor, two consumers, no dependency between them.** The stereo pair
   both perceives and localizes, but the estimator never reads the obstacle
   memory: a pose taken from a map built from that pose hides its own drift.
-  A contract test holds the estimator's library to Eigen and the standard
-  library alone. What that buys is a drift we can measure instead of
+  It keeps a map of its own, of the depth laid by its corrected pose, and
+  registers only against what it laid more than 20 s before: a return to
+  ground it has seen corrects the drift, a first pass cannot (roadmap item
+  19). A contract test holds the estimator's library to Eigen and the
+  standard library alone. What that buys is a drift we can measure instead of
   one that looks self-consistent; what it does not buy is independent
   failure. One pair blinds both consumers at once, and their timeouts are
   not the same length (roadmap item 17 stage 0).

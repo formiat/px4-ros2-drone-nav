@@ -103,6 +103,19 @@ applied horizon, arming, take-off), the runtime manifest binds the commit, the
 configuration, the world and the scenario, the localization profile is proved
 from the logs, and the autopilot logged no critical simulator error.
 
+**A return home (roadmap item 19).** In an ordinary flight a
+`GOAL_UNREACHABLE` of the mission monitor fails the flight: the vehicle
+returned rather than reached its goal. In a flight whose manifest records the
+unreachability as injected (`MISSION_GOAL_UNREACHABLE=true`) the return is the
+outcome asked for, and the check requires the substitution with a named
+trigger, the result `goal_unreachable_returned` and the acknowledgement at the
+start with the true position inside the capture radius. It does not take the
+manifest's word: it floods the truth grid (`TRUTH_OCCUPANCY_3D_PATH`) from the
+start, and a start's component that reaches the goal fails the flight, while
+one that only reaches the grid's edge is a note (the location is closed by the
+owner's statement, not by that grid). An injected flight's mean speed is a
+note.
+
 Every other measurement described below is a **note**: route availability and
 no-route holds, execution-ownership gaps, the planner's p95, the tick's wall
 time, the controller-dynamics measurements, the sensor evidence age, the
