@@ -759,6 +759,19 @@ itself on with the carried light of the camera profile and off on the lidar
 profile, which carries no light and has no such limit — a property of the
 sensor set, not a parameter anyone sets for a run.
 
+**The battery drains at one constant rate.** Decided by the project owner on
+2026-09-27, for the simplicity of the simulation: the charge falls uniformly
+and linearly with time, independent of everything, the flicker of the lamp
+included. Neither a realistic failure of the lamp nor a realistic discharge
+is modelled, and nothing is to be read into either: the flicker is an
+injected pattern and the charge a straight line.
+
+**A scenario with a low battery at launch.** Decided by the project owner on
+2026-09-27: the vehicle starts with so little charge that it cannot reach
+point B and return in any case, decides by the battery to give B up and fly
+home, and arrives there. It is a named scenario of its own, and it is flown
+as part of this item's acceptance.
+
 **Two regimes of the failing light.** Decided by the project owner on
 2026-09-27, applied once this stage lands:
 
@@ -1017,8 +1030,8 @@ aggressive outage the parameters allow end with the vehicle intact, whether
 landed or flying; when both acceptance series fly the moderate flicker and a
 stage 7 zone off the way to B with no "unreliable" judgment and no entry into
 the zone's darkness in any flight; and when five flights of the severe
-failure and five with stage 7's zone across the way to B return to the start
-in truth with no collision.
+failure, five with stage 7's zone across the way to B and five with a low
+battery at launch return to the start in truth with no collision.
 
 ## 18. Flight Through Transient And Scattering Obstacles
 

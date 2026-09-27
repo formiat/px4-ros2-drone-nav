@@ -88,6 +88,8 @@ aside, and this file what everything else is measured against.
 | F6 | Darkness is not unknown. Unknown, that is unexplored ("not seen because still far"), is free at no penalty and explored; darkness ("not seen although close enough to see") is observed unobservable and a prohibition equal to a physical obstacle. Roadmap item 17 teaches the vehicle the distinction and is not complete without it. | Owner, 2026-09-27 | Invariants I1 and I2; roadmap item 17. |
 | F3 | A light judged unreliable from the frames sends the vehicle home through item 19's substitution. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
 | F7 | The carried light runs on a battery whose charge the vehicle knows; when the charge left covers only the way back, the vehicle gives the goal up for the start. The light flickers whatever its charge. The return on the battery switches itself on with the carried light (camera profile) and off on the lidar profile. It replaces the time-bound return (K4). | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
+| F8 | The light's battery drains uniformly and linearly with time, independent of everything, the flicker included: neither a realistic lamp failure nor a realistic discharge is simulated. | Owner, 2026-09-27 | Simplicity of the simulation; roadmap item 17 stage 5. |
+| F9 | A named scenario starts with a battery too low to reach B and return; the vehicle gives B up by the battery and returns home. It is flown in item 17's acceptance: five flights return to the start in truth without a collision. | Owner, 2026-09-27 | Roadmap item 17 stage 5 and completion. |
 | F4 | Once roadmap item 18 lands, its smoke sensors are always on board; every location has smoky places that never block the way from A to B; smoke is constant in place and volume and changes only its shape; a separate scenario blocks the way with smoke and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 18. |
 
 ## Numbers The Stack Relies On
@@ -119,3 +121,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | K2, K3, K6 | entries | removed | Owner | Small tuning parameters do not belong here; they stay in the code with their comments. | this commit |
 | 2026-09-27 | the rules | Owner entries changed by agents only with a permission per decision | agents may change Owner entries, recorded and reported | Owner | The owner's permission. | this commit |
 | 2026-09-27 | K8 | — | new | Agent | The first repair of the register's L6, asked for by the owner. | this commit |
+| 2026-09-27 | F8, F9 | — | new | Owner | The battery's linear drain and the low-battery scenario. | this commit |
