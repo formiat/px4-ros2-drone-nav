@@ -96,6 +96,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "point-to-point-gnss": "LOCALIZATION_PROFILE=gnss",
             "return-home": "$(RETURN_HOME_SCENARIO)",
             "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
+            "point-to-point-dark": "WORLD_ILLUMINATION=dark",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):

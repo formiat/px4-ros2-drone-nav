@@ -136,6 +136,7 @@ def write_runtime_environment(
     collision_world_sdf: Path,
     sensor_world_sdf: Path,
     gui_world_sdf: Path,
+    dark_world_sdf: Path,
     source_root: Path,
     runtime_map_mode: str,
     occupancy: Path | None,
@@ -154,6 +155,7 @@ def write_runtime_environment(
         ),
         "SIM_SENSOR_WORLD_SDF_PATH": repository_path(repository, sensor_world_sdf),
         "SIM_GUI_WORLD_SDF_PATH": repository_path(repository, gui_world_sdf),
+        "SIM_DARK_WORLD_SDF_PATH": repository_path(repository, dark_world_sdf),
         "SIM_WORLD_RESOURCE_PATH": repository_path(repository, source_root / "fuel"),
         "STATIC_OCCUPANCY_3D_PATH": optional_repository_path(occupancy),
         "STATIC_ESDF_3D_CACHE_PATH": optional_repository_path(esdf),
@@ -366,6 +368,28 @@ def configure_gui_lighting(tree: ET.ElementTree) -> int:
     ET.SubElement(light, "specular").text = "0.2 0.2 0.2 1"
     ET.SubElement(light, "direction").text = "-0.35 0.25 -0.9"
     return 1
+
+
+def configure_dark_lighting(tree: ET.ElementTree) -> int:
+    """Roadmap item 17 stage 1: the location with no light of its own. The
+    ambient term is zero and every light of the world goes, so whatever a
+    camera sees it sees by the light the vehicle carries."""
+    world = tree.getroot().find("world")
+    if world is None:
+        raise EnvironmentPreparationError("materialized SDF has no world")
+    scene = world.find("scene")
+    if scene is None:
+        scene = ET.Element("scene")
+        world.insert(0, scene)
+    ambient = scene.find("ambient")
+    if ambient is None:
+        ambient = ET.SubElement(scene, "ambient")
+    ambient.text = "0 0 0 1"
+    removed = 0
+    for light in world.findall("light"):
+        world.remove(light)
+        removed += 1
+    return removed
 
 
 def remote_visual_resource_uris(source_root: Path) -> set[str]:
@@ -636,6 +660,9 @@ def main() -> None:
     gui_fingerprint = write_materialized_world(gui_tree, gui_world_sdf)
     visual_uri_count = validate_visual_resource_uris(gui_world_sdf)
     write_report(gui_report, gui_world_sdf, gui_fingerprint, gui_report_path)
+    dark_world_sdf = runtime_root / "world_gui_dark.sdf"
+    configure_dark_lighting(gui_tree)
+    write_materialized_world(gui_tree, dark_world_sdf)
 
     world = ET.parse(collision_world_sdf).getroot().find("world")
     if world is None or not world.attrib.get("name"):
@@ -649,6 +676,7 @@ def main() -> None:
         collision_world_sdf,
         sensor_world_sdf,
         gui_world_sdf,
+        dark_world_sdf,
         source_root,
         args.runtime_map_mode,
         occupancy,

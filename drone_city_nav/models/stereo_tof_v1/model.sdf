@@ -25,6 +25,30 @@
           <izz>0.000000001</izz>
         </inertia>
       </inertial>
+      <!-- Roadmap item 17 stage 3: the light the vehicle carries, a flood over
+           the pair's field and not a beam (stereo matches the whole overlap).
+           Illuminance falls with the square of the distance: the attenuation
+           keeps a near constant term and a quadratic one, so the pair sees
+           by it well inside four metres and ever less beyond. It is lit in
+           every world; in the dark one it is the only light. -->
+      <light name="carried_light" type="spot">
+        <pose>0.02 0 0 0 0 0</pose>
+        <cast_shadows>false</cast_shadows>
+        <diffuse>1 1 1 1</diffuse>
+        <specular>0.1 0.1 0.1 1</specular>
+        <direction>1 0 0</direction>
+        <attenuation>
+          <range>25</range>
+          <constant>0.25</constant>
+          <linear>0</linear>
+          <quadratic>0.06</quadratic>
+        </attenuation>
+        <spot>
+          <inner_angle>0.9</inner_angle>
+          <outer_angle>1.3</outer_angle>
+          <falloff>1.0</falloff>
+        </spot>
+      </light>
       <sensor name="stereo_left" type="camera">
         <gz_frame_id>stereo_tof_link</gz_frame_id>
         <pose>0 0.10 0 0 0 0</pose>
@@ -43,6 +67,15 @@
                collision proxies the lidar reads: the pair sees the world's
                real surfaces only. -->
           <visibility_mask>218103807</visibility_mask>
+          <!-- Roadmap item 17 stage 1: read noise that does not fall with
+               the light, so that the matcher degrades with the signal the
+               way a real imager does in the dark (about 2.5 of 255 levels,
+               a small CMOS sensor's read noise). -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
         </camera>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -66,6 +99,15 @@
                collision proxies the lidar reads: the pair sees the world's
                real surfaces only. -->
           <visibility_mask>218103807</visibility_mask>
+          <!-- Roadmap item 17 stage 1: read noise that does not fall with
+               the light, so that the matcher degrades with the signal the
+               way a real imager does in the dark (about 2.5 of 255 levels,
+               a small CMOS sensor's read noise). -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
         </camera>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>

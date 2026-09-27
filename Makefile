@@ -86,7 +86,7 @@ sim-urban-point-to-point-headless: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || { [ "$${WORLD_ILLUMINATION:-lit}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH"; })" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
@@ -104,7 +104,7 @@ sim-urban-point-to-point-gui: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
+		SIM_WORLD_SDF_PATH="$$([ "$${WORLD_ILLUMINATION:-lit}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
@@ -163,3 +163,13 @@ sim-urban-return-home-lidar-headless: urban-truth-occupancy-check
 .PHONY: sim-urban-return-home-lidar-gui
 sim-urban-return-home-lidar-gui:
 	$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+# Roadmap item 17: the location with no light of its own, the vehicle's
+# carried light the only one.
+.PHONY: sim-urban-point-to-point-dark-headless
+sim-urban-point-to-point-dark-headless:
+	WORLD_ILLUMINATION=dark $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-point-to-point-dark-gui
+sim-urban-point-to-point-dark-gui:
+	WORLD_ILLUMINATION=dark $(MAKE) --no-print-directory sim-urban-point-to-point-gui

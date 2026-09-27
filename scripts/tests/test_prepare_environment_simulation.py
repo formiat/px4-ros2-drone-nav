@@ -64,6 +64,7 @@ class RuntimeMapModeTest(unittest.TestCase):
                 root / "collision.sdf",
                 root / "sensor.sdf",
                 root / "gui.sdf",
+                root / "gui_dark.sdf",
                 root / "source",
                 "no-static",
                 None,
@@ -77,6 +78,7 @@ class RuntimeMapModeTest(unittest.TestCase):
         self.assertIn("export SIM_COLLISION_WORLD_SDF_PATH=", environment)
         self.assertIn("export SIM_SENSOR_WORLD_SDF_PATH=", environment)
         self.assertIn("export SIM_GUI_WORLD_SDF_PATH=", environment)
+        self.assertIn("export SIM_DARK_WORLD_SDF_PATH=", environment)
         self.assertIn("export STATIC_OCCUPANCY_3D_PATH=''\n", environment)
         self.assertIn("export STATIC_ESDF_3D_CACHE_PATH=''\n", environment)
         self.assertIn("export STATIC_FREE_SPACE_TOPOLOGY_3D_PATH=''\n", environment)
