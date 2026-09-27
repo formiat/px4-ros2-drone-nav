@@ -400,6 +400,8 @@ comparable.
 **Type:** dependent realism stage, with one repair that does not wait for it.
 
 **Hard prerequisites:** item 14 for the sensor set; stage 0 below has none.
+The prohibition of darkness (below) is item 18 stage 0's observed
+unobservability; if that stage has not landed first, this item builds it.
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission.
@@ -448,12 +450,36 @@ closer to an obstacle than where the vehicle stood when the light went out"
 is keyed on history, not on a measurement, and in the dark it is worse than
 anywhere else, because a vehicle drifting onto a surface would be forbidden
 to leave it. Darkness itself, observed by a sensor that looked and saw
-nothing, is a measured prohibition under the restated invariant, and that is
-item 18's business. The behaviour that rule
+nothing, is a measured prohibition under the restated invariant, and telling
+it from unknown space is this item's to teach (below). The behaviour that rule
 asked for comes out of stage 4 with no new rule at all: a ring of
 time-of-flight sensors is another sensor with its own range and field inside
 the same braking contract, which makes the speed towards a surface 1.2 m away
 small and never zero.
+
+**Darkness is not unknown.** Stated by the project owner on 2026-09-27, and
+the two must never be confused. The vehicle cannot see into either, for
+opposite reasons:
+
+- **Unknown**: "I have not come close enough; my sensors do not reach there
+  yet." Free at no penalty, and explored boldly when the route leads there,
+  as the invariants have always said.
+- **Darkness**: "I am close enough that my sensors should see there, and they
+  still see nothing; something is wrong." The sensor looked, within the range
+  it guarantees when healthy, and measured nothing. That is not ignorance but
+  knowledge, and to the vehicle it is an obstacle like a physical one: it
+  does not fly into it.
+
+The test is the one item 18 stage 0 states for observed unobservability: in a
+direction the sensor faces, within the range it guarantees when healthy, a
+measured range below the physical margin. This item teaches the vehicle to
+apply it to its own light: dark space is written into the memory as closed,
+the planner routes around it as around a wall, it decays when not
+re-observed and lifts when the light shows it, and the exit guarantee holds —
+the vehicle's own position and its observed path are never closed, so a
+vehicle that finds itself in the dark retreats along the way it came. This
+item is not complete without the distinction, whichever of items 17 and 18
+builds the mechanism first.
 
 ### Stage 0: Both Inputs Of The Contract Become Measurements
 
@@ -780,19 +806,23 @@ stage 5's: its position, radius and law are written into the manifest, and
 nothing of it reaches the vehicle, which sees only its frames darken as it
 approaches.
 
-It serves two purposes. The first is the flight itself: the vehicle meets a
-failure that depends on where it is rather than on when, and must answer it
-with the ladder — stop, retreat to where it can see, route elsewhere — or
-with the "unreliable" judgment. The second is item 19: laid across every
-approach to point B, the zone makes the goal unreachable by a cause the
-vehicle measures, and the flight exercises the return home in flight on
-something other than an injected coordinate. Stated plainly so that the
-flight is not read for more than it proves: darkness is not a prohibition
-of space until item 18 stage 0 writes observed unobservability into the
-memory, so such a return comes from the "unreliable" judgment, not from
-item 19's topological proof, which closes only a component bounded entirely
-by measurements and has never closed one in this location (the unknown above
-the flight band and the grid's edge stay on its boundary).
+Decided by the project owner on 2026-09-27, it is used twice:
+
+- **At least one zone is in every flight** once the stage lands, placed
+  anywhere it does not block the way to B. Every flight then shows the
+  vehicle's normal answer to darkness: from close enough to know it should
+  see, it sees nothing, writes the zone as closed and routes around it as
+  around a wall — while it goes on flying boldly into unknown space.
+- **A separate scenario lays the zone across the way to B**, to exercise
+  item 19: the goal becomes unreachable by a cause the vehicle measures, and
+  the vehicle flies home. With darkness a prohibition (above), the zone
+  closes the way as a wall would. Stated plainly so that the flight is not
+  read for more than it proves: item 19's topological proof closes only a
+  component bounded entirely by measurements and has never closed one in
+  this location (the unknown above the flight band and the grid's edge stay
+  on its boundary; item 18's blocking scenario settles how it can), and
+  until it can, the return in this scenario comes from the "unreliable"
+  judgment of the light the vehicle meets at the zone's edge.
 
 ### What The Additions May Cost
 
@@ -851,10 +881,11 @@ surface texture and the contract is shown to track it; when five long flights
 on the dark world, with the carried light and the outages running, reach the
 goal in truth with no collision; when five short flights under the most
 aggressive outage the parameters allow end with the vehicle intact, whether
-landed or flying; when both acceptance series fly the moderate flicker with
-no "unreliable" judgment in any flight; and when five flights of the severe
-failure and five with stage 7's zone across point B return to the start in
-truth with no collision.
+landed or flying; when both acceptance series fly the moderate flicker and a
+stage 7 zone off the way to B with no "unreliable" judgment and no entry into
+the zone's darkness in any flight; and when five flights of the severe
+failure and five with stage 7's zone across the way to B return to the start
+in truth with no collision.
 
 ## 18. Flight Through Transient And Scattering Obstacles
 

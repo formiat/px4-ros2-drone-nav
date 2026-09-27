@@ -80,7 +80,9 @@ aside, and this file what everything else is measured against.
 | ID | Statement | Source, since | Justification, reference |
 |---|---|---|---|
 | F1 | Once roadmap item 17 lands, a moderate flicker of the carried light runs in every acceptance flight, its dark stretches never long enough to reach the "unreliable" judgment, and the mean speed of R3 is measured under it. | Owner, 2026-09-27 | The series show that the vehicle flies normally with it. |
-| F2 | A severe failure of the light, worsening until the vehicle judges it unreliable and flies home, is a scenario of its own; so is a zone that fails the light as the vehicle approaches it (the "magnetic anomaly"), laid across the approaches to point B. | Owner, 2026-09-27 | Roadmap item 17 stages 5 and 7. |
+| F2 | A severe failure of the light, worsening until the vehicle judges it unreliable and flies home, is a scenario of its own. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
+| F5 | Once roadmap item 17 lands, at least one zone that fails the light as the vehicle approaches it (the "magnetic anomaly") is in every flight, placed anywhere it does not block the way to B, and the vehicle does not enter its darkness; a separate scenario lays the zone across the way to B and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 17 stage 7. |
+| F6 | Darkness is not unknown. Unknown ("not seen because still far") is free at no penalty and explored; darkness ("not seen although close enough to see") is observed unobservable and a prohibition equal to a physical obstacle. Roadmap item 17 teaches the vehicle the distinction and is not complete without it. | Owner, 2026-09-27 | Invariants I1 and I2; roadmap item 17. |
 | F3 | A light judged unreliable from the frames sends the vehicle home through item 19's substitution; the time-bound return the mission monitor carries today is reworked into that judgment. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
 | F4 | Once roadmap item 18 lands, its smoke sensors are always on board; every location has smoky places that never block the way from A to B; smoke is constant in place and volume and changes only its shape; a separate scenario blocks the way with smoke and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 18. |
 
@@ -110,3 +112,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | K3 | gain 0.5, steps 0.25 m and 0.5 degrees | gain 0.2, steps 0.1 m and 0.2 degrees | Agent | The target jittered by 0.2 to 0.35 m between registrations (r709). | 3f965181 |
 | 2026-09-27 | A6 | — | new | Agent | Container-wide freezes under another task's disk writes crashed r720 and r723. | this file |
 | 2026-09-27 | F1 to F4 | — | new | Owner | Decisions for items 17 and 18. | this file |
+| 2026-09-27 | F2, F5, F6 | F2: the severe failure and the zone across B | F2: the severe failure; F5: a zone in every flight and a scenario across B; F6: darkness is not unknown | Owner | Addition to item 17. | this commit |
