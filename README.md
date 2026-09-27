@@ -70,7 +70,8 @@ communication, camera-based 3D perception without lidar or static maps,
 flight without GNSS and without lidar, the return home from a goal proven
 unreachable, flight in degraded visual conditions, flight through transient
 and scattering obstacles, a simulation slowed on purpose with its flight
-recorded without a screen, and moving obstacles such as doors. What is known to be wrong or unfinished and has been set aside
+recorded without a screen, moving obstacles such as doors, and passive
+navigation in total darkness on thermal cameras. What is known to be wrong or unfinished and has been set aside
 is in [`docs/technical_debt.md`](docs/technical_debt.md). The requirements a
 flight is judged by, the navigation invariants, the acceptance conditions and
 the numbers the work relies on, each with who set it and why, are in

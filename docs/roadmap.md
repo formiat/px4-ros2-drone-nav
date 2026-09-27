@@ -1611,6 +1611,78 @@ without a collision, a door moving in view leaves no occupancy older than
 the stated decay, and the out-and-back door flight takes the open door on the
 way back in every one of five.
 
+## 22. Passive Navigation Without Illumination: Thermal-Inertial
+
+**Type:** sensing and localization, general.
+
+**Hard prerequisites:** item 18 stage 3 for the thermal channel, and item 17
+stage 8 for darkness as observed unobservability.
+
+**Validation environment:** Urban Circuit Practice 01 in total darkness, item
+17's dark world with the carried light absent, and a thermal materialization
+of the location (below).
+
+Decided by the project owner on 2026-09-27. Item 17 flies the dark on a
+carried light, and without it the camera vehicle cannot place itself: its
+estimator sees nothing, falls silent within a second, and what remains is a
+few metres of retreat on the IMU. A light of another colour — infrared,
+ultraviolet, a projector of active stereo — is the same thing as the lamp: it
+emits in order to see. This item teaches the vehicle to fly in total darkness
+with **no illumination of its own at all**.
+
+**What may emit.** Nothing that lights the scene. The time-of-flight sensors
+stay, as the project owner's stated exception of 2026-09-27: they emit short,
+low-power, eye-safe infrared pulses to measure a few metres, and they are the
+vehicle's bumper in the dark. No lamp, no infrared or ultraviolet illuminator,
+no pattern projector.
+
+**What sees without emitting.** A visible camera in total darkness receives
+no photons, and no algorithm recovers a scene from nothing; that is physics,
+not difficulty. The passive sensor that works there is the long-wave infrared
+(thermal) camera: surfaces emit their own heat radiation, which it images in
+total darkness and through smoke. Item 18 stage 3 brings that channel to the
+vehicle; this item makes it the one the vehicle localizes and perceives on.
+What it costs, to be measured and not assumed: indoor surfaces often sit
+within a few degrees of each other, so the images are of low contrast and the
+features few, the thermal counterpart of a textureless wall; the resolution
+is low (160 x 120 to 640 x 512); and the cameras calibrate on a shutter that
+drops frames for a fraction of a second. In the simulator a thermal camera
+sees only the temperatures objects are given, so the location needs a thermal
+materialization, and how realistic its temperatures are is part of what the
+item has to state.
+
+Stages, as seen on 2026-09-27:
+
+- **Stage 0. The thermal world.** Temperatures assigned to the location's
+  surfaces in a realistic indoor range, with the low contrast that implies;
+  the thermal camera's view measured against truth: features per frame,
+  contrast, the stretches with nothing to track.
+- **Stage 1. Thermal-inertial odometry (TIO).** The stereo MSCKF of item 16
+  on thermal frames: a tracker on radiometrically normalized images, the
+  shutter's dropped frames handled as the stream's holes are, replayed
+  offline on recordings before any flight.
+- **Stage 2. A range for the braking contract.** Thermal stereo depth, with
+  the time-of-flight ring as the near bumper: the confident range in total
+  darkness is measured and the contract flies what it admits.
+- **Stage 3. Relocalization against its own map**, as the visual estimator
+  does since item 19 (SLAM in the broad sense), on the thermal depth.
+- **Stage 4. Flights in total darkness** with nothing lit: the point-to-point
+  mission on the thermal set and the time-of-flight ring.
+
+The navigation invariants hold throughout, and darkness keeps item 17's
+meaning: for the visible cameras total darkness is observed unobservable, and
+what this item adds is a sensor for which it is not.
+
+### Measurement And Completion
+
+Measure, per flight: the thermal features per frame and the stretches without
+them; the estimate's error against truth and its drift over the path; the
+confident range and the speed it admits; the minimum distance to true
+occupancy; and collisions. Complete when five flights of the point-to-point
+mission in total darkness, with no illumination and the time-of-flight
+sensors the only emitters, reach the goal in truth without a collision; the
+mean speed they fly is recorded as this sensor set's figure.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
