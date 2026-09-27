@@ -11,7 +11,9 @@ wrong is fixed with its measured cause, and debt may hold only what is
 and every entry says which. An entry leaves this file when it is repaired or
 when the owner decides it is not wanted; the roadmap item that found it keeps
 the history. Figures are from the flights named; none of them fails a flight
-unless the entry says so ([testing.md](testing.md)).
+unless the entry says so ([testing.md](testing.md)). The requirements and
+invariants the entries are measured against are in
+[specification.md](specification.md).
 
 ## Decisions Of 2026-09-25
 

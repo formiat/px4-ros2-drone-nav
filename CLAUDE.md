@@ -25,3 +25,10 @@ Before committing after file changes:
 3. Commit the completed file changes.
 
 Keep code comments and repository documentation in English.
+
+The project's requirements, navigation invariants, acceptance conditions and
+the numbers the work relies on are in [docs/specification.md](docs/specification.md),
+each marked as set by the owner or by an agent. Read it before planning work
+on navigation, acceptance or a roadmap item; a change to any of its entries
+is recorded in its change log in the same commit, with the justification,
+and reported to the owner.

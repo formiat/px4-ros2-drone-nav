@@ -67,6 +67,8 @@ struct ObstacleMemory3DChanges {
   bool full_reset{false};
 };
 
+// The obstacle memory: a probabilistic 3D voxel occupancy grid (occupancy
+// mapping in the manner of OctoMap), scored by hits and free-ray misses.
 class ObstacleMemory3D {
 public:
   ObstacleMemory3D(const GridBounds3D& bounds, ObstacleMemory3DConfig config = {});

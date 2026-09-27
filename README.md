@@ -4,6 +4,25 @@ This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
 The main package is `drone_city_nav`, an ament CMake package built with
 `colcon`.
 
+An autonomous UAV, a PX4 quadrotor in offboard mode, navigates GNSS-denied
+indoor and underground spaces with no prior map. It localizes by stereo
+visual-inertial odometry (VIO, a stereo MSCKF) or, on the lidar profile, by
+lidar-inertial odometry (LIO), each correcting its drift by relocalization
+against a map of its own — SLAM in the broad sense, with no pose graph or
+global optimization. It maps obstacles into a 3D voxel occupancy grid built
+in flight, plans with a persistent D* Lite 3D path planner, and avoids
+collisions with a GPU MPPI local planner (model predictive path integral, a
+sampling-based MPC) under a braking contract tied to the measured sensor
+range. Simulated in Gazebo Harmonic with PX4 SITL on the DARPA SubT Urban
+Circuit location.
+
+**Keywords:** UAV, drone, quadrotor, multirotor, PX4, ROS 2, Gazebo, SITL,
+autonomous navigation, GNSS-denied, GPS-denied, indoor navigation,
+visual-inertial odometry (VIO), MSCKF, stereo depth, lidar-inertial odometry
+(LIO), SLAM, relocalization, EKF, occupancy mapping, ESDF, path planning,
+D* Lite, MPPI, model predictive control, obstacle avoidance, collision
+avoidance, return to home, DARPA SubT.
+
 ## Demo Video
 
 [![Autonomous navigation of an urban location with no map, no GNSS and no lidar](https://img.youtube.com/vi/OUuAj2WNKzs/maxresdefault.jpg)](https://www.youtube.com/watch?v=OUuAj2WNKzs)
@@ -50,9 +69,12 @@ lidar perception, lidar-inertial localization, realistic cooperative
 communication, camera-based 3D perception without lidar or static maps,
 flight without GNSS and without lidar, the return home from a goal proven
 unreachable, flight in degraded visual conditions, flight through transient
-and scattering obstacles, and a simulation slowed on purpose with its flight
-recorded without a screen. What is known to be wrong or unfinished and has been set aside
-is in [`docs/technical_debt.md`](docs/technical_debt.md).
+and scattering obstacles, a simulation slowed on purpose with its flight
+recorded without a screen, and moving obstacles such as doors. What is known to be wrong or unfinished and has been set aside
+is in [`docs/technical_debt.md`](docs/technical_debt.md). The requirements a
+flight is judged by, the navigation invariants, the acceptance conditions and
+the numbers the work relies on, each with who set it and why, are in
+[`docs/specification.md`](docs/specification.md).
 
 ## Releases
 

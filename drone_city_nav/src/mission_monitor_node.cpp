@@ -600,8 +600,9 @@ private:
     return kReturnEstimateMargin * returnEstimateS() / real_time_factor;
   }
 
-  // The goal is given up for the start, through the channel any objective
-  // enters the navigation by; the mission's waypoint list becomes the start
+  // The return to home (RTH; PX4's own is RTL, which flies no map): the goal
+  // is given up for the start, through the channel any objective enters the
+  // navigation by; the mission's waypoint list becomes the start
   // alone, so the arrival there is judged as any goal's. A return needs a
   // position source: without a fresh position nothing is substituted.
   [[nodiscard]] bool substituteGoalWithStart(const char* trigger,

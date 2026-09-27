@@ -10,12 +10,13 @@
 #include <vector>
 
 // A map of depth points in cells, each cell with the plane through it and its
-// neighbours, and the point-to-plane registration of a scan against it: what
-// the lidar-inertial estimator registers every scan against, and what the
-// visual-inertial estimator registers its depth against where it has been
-// before. Every point carries the id of whatever inserted it, so an owner can
-// take its own points back out, and every cell the moment its first point
-// arrived, so a query can be limited to what was mapped long enough ago.
+// neighbours, and the point-to-plane registration (ICP) of a scan against it:
+// the map half of the estimators' SLAM. The lidar-inertial estimator (LIO)
+// registers every scan against it, and the visual-inertial estimator (VIO)
+// registers its depth against it where it has been before. Every point carries the id
+// of whatever inserted it, so an owner can take its own points back out, and every cell
+// the moment its first point arrived, so a query can be limited to what was mapped long
+// enough ago.
 
 namespace drone_city_nav {
 

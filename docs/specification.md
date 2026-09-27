@@ -1,0 +1,112 @@
+# Specification: Requirements, Invariants And Decisions
+
+The project's technical specification in one place: the requirements a flight
+is judged by, the invariants the navigation keeps, the conditions of the runs
+that accept a change, and the numbers the work relies on. Every entry says who
+set it:
+
+- **Owner** — stated or decided by the project owner;
+- **Agent** — decided by an agent (a person or an AI assistant working on the
+  repository) without the owner's validation, with the objective justification
+  written beside it;
+- **Inherited** — present in the code or the documents before this file
+  existed (2026-09-27), its source not recorded; the owner classifies it when
+  it is next touched.
+
+**The rules of the file.** An agent may add an entry and may change an Agent
+or Inherited entry when a measurement or the code demands it. Every change is
+recorded in the change log at the end — the entry, the old and the new value,
+the justification, the commit — and reported to the owner in the same working
+session; a change without a line in the log is not made. An Owner entry is
+changed by the owner, or by an agent the owner has explicitly allowed to for
+that decision, and the log names the permission. A value that exists both here
+and in code or configuration is the code's value; this file says why it is
+that value, and a change to one is a change to the other.
+
+Read this file before planning work on navigation, acceptance or a roadmap
+item, and update it in the same commit as the change it records. The
+roadmap ([`roadmap.md`](roadmap.md)) holds what is planned, the register
+([`technical_debt.md`](technical_debt.md)) what is known to be wrong and set
+aside, and this file what everything else is measured against.
+
+## Requirements
+
+| ID | Statement | Source, since | Justification, reference |
+|---|---|---|---|
+| R1 | The vehicle never crashes: no crash event and no contact with a static obstacle. | Owner, 2026-09-19 | The first of the project's two requirements ([`testing.md`](testing.md)). |
+| R2 | The vehicle always reaches its goal, judged in truth: at every goal acknowledgement its true position is inside the 2.0 m capture radius of the goal. | Owner, 2026-09-19 | The mission monitor judges by the estimate, which drifts; the truth is read by the check and never in the control loop. |
+| R3 | The mean flight speed exceeds 1.2 m/s on the stereo set and 2.4 m/s on the 3D lidar, both without GNSS, measured on the simulation clock between mission readiness and the result. | Owner, 2026-09-19; simulation clock 2026-09-25 | The second requirement; the only speed target. |
+| R4 | Nothing else fails a flight: every other measurement of the check is a note. | Owner, 2026-09-19 | [`testing.md`](testing.md). |
+| R5 | What a series shows to be wrong is repaired with its measured cause; debt holds only what is (a) very hard, (b) in need of a deep rework, or (c) in need of the owner's decision, and says which. | Owner, 2026-09-19 | [`technical_debt.md`](technical_debt.md). |
+
+## Navigation Invariants
+
+| ID | Statement | Source, since | Justification, reference |
+|---|---|---|---|
+| I1 | Space the sensor has not looked at (unknown) is traversable at no penalty: no cost, no inflation, no gate. The protection in unknown space is the braking contract, not the map. | Owner | Otherwise the vehicle is confined to its sensor's radius. |
+| I2 | Space is prohibited only by measurement: observed occupied, or observed unobservable (the sensor looked and its measured range stayed below the physical margin: smoke, darkness, glare). Both decay when not confirmed and lift on re-observation. No prohibition comes from configuration, from knowledge of the location or from the vehicle's history; no cost on free observable space. | Owner, 2026-09-23 | Replaces the earlier ban on prohibited zones. |
+| I3 | No latch, hold or release gate keyed on the vehicle's history; every hard prohibition keeps the exit guarantee: the vehicle's own position and its observed path are never closed. Braking to rest on a validated finite trajectory is allowed. | Owner, 2026-09-04 | An indefinite stall at a wall is a failure of R2. |
+| I4 | Vertical motion is free in the planner's time model. | Owner, 2026-09-01 | The vehicle must take openings and shafts below it. |
+| I5 | Production code does not adapt to a location: no named world, spawn or opening altitude, opening coordinates or passage identity. Scenario coordinates are regression inputs only. | Owner | Generality of the navigation. |
+| I6 | Safety and the quality of the flight come before speed; a collision is a defect; safety is not bought by a broad reduction of speed. | Owner | Paradigm of the project. |
+| I7 | The vehicle does not know how its light fails: nothing of the emitter, its driver or an injector reaches the navigation; it concludes about the illumination from its frames only. | Owner, 2026-09-24 | Roadmap item 17 stage 5. |
+
+## The Vehicle, The Missions And Their Defaults
+
+| ID | Statement | Source, since | Justification, reference |
+|---|---|---|---|
+| V1 | The default sensor set is the stereo pair with the time-of-flight sensors, no lidar; the 3D lidar on request. | Owner, 2026-09-19 | Item 14. |
+| V2 | The default localization is `visual_inertial` (VIO), without GNSS or magnetometer; the lidar profile uses `lidar_inertial` (LIO); `gnss` only on request, and the multi-vehicle launches stay on it until item 15. | Owner, 2026-09-20 | Item 16. |
+| V3 | The speed profile: cruise 6.5 m/s, absolute limit 10 m/s, horizontal acceleration 4 m/s², the same with and without a static map. | Owner; cruise raised from 5 on 2026-09-03 by the owner's permission | The braking ceiling admits no more at 30 m of guaranteed lidar range. |
+| V4 | Two missions remain, urban point-to-point and cooperative traffic, on Urban Circuit Practice 01. | Owner, 2026-09-17 | The interception missions, the radar and the grid city were removed. |
+| V5 | The autopilot fuses the external odometry with a fixed noise of 0.3 m and 0.05 rad, not the estimator's variances. | Inherited (item 16) | r561: at 0.1 m a 0.4 m correction was gated out and the flight lost. |
+| V6 | The capture radius of a goal is 2.0 m (`mission_goal_capture_radius_m`). | Inherited | The radius R2 is judged by. |
+
+## Acceptance And Runs
+
+| ID | Statement | Source, since | Justification, reference |
+|---|---|---|---|
+| A1 | A change is accepted by five flights on the stereo set, then five on the 3D lidar, both without GNSS, on one commit, each inspected before the next; a commit between flights restarts the series; a failure is repaired with its measured cause and the series flown again. | Owner, 2026-09-19 | |
+| A2 | No cooperative flights until roadmap item 15 closes; after it, five single and five cooperative flights. | Owner, 2026-09-18 | |
+| A3 | Flights strictly one at a time, `./scripts/stop_sim.sh` before and after each. | Owner, 2026-09-07 | Parallel or orphaned simulators distort the results. |
+| A4 | No flight under foreign load on the host; foreign processes are left alone; a flight under load is voided and flown again. | Owner, 2026-09-25 | |
+| A5 | Build, test and simulation in the container only; `make format`, `make build`, `make test-scripts` and `make quality` green before every commit. | Owner | [`CONTRIBUTING.md`](../CONTRIBUTING.md). |
+| A6 | A flight whose failure coincides with a freeze of the whole container (a gap of 2 s or more in the resource sampler's one-second record) is voided as flown under foreign load, and flown again. | Agent, 2026-09-27 | Another task's disk writes froze every process for 3.7 and 7.3 s while the simulation ran on; the camera estimator took IMU holes of 1.9 and 3.6 s and both flights crashed (r720, r723). The quiet-host gate of the flight script reads CPU load only and did not see it. |
+| A7 | A flight whose real-time factor lies noticeably below its profile's norm is not counted: 0.82 to 1.00 on the stereo set, 1.00 on the lidar. | Agent, 2026-09-25 | The norms of the series on 173155d6. |
+| A8 | Roadmap item 19's flights with the goal outside the location fly a 900 s window; the ordinary acceptance flights fly an 1800 s window while the time-bound return of the mission monitor exists. | Agent, 2026-09-26 | With a 600 s window that return fired inside ordinary flights at about 250 s of wall time, and ordinary flights took up to 424 s; 900 s gives the doubled path of 1000 to 1500 m. |
+
+## Decided For Items Not Yet Built
+
+| ID | Statement | Source, since | Justification, reference |
+|---|---|---|---|
+| F1 | Once roadmap item 17 lands, a moderate flicker of the carried light runs in every acceptance flight, its dark stretches never long enough to reach the "unreliable" judgment, and the mean speed of R3 is measured under it. | Owner, 2026-09-27 | The series show that the vehicle flies normally with it. |
+| F2 | A severe failure of the light, worsening until the vehicle judges it unreliable and flies home, is a scenario of its own; so is a zone that fails the light as the vehicle approaches it (the "magnetic anomaly"), laid across the approaches to point B. | Owner, 2026-09-27 | Roadmap item 17 stages 5 and 7. |
+| F3 | A light judged unreliable from the frames sends the vehicle home through item 19's substitution; the time-bound return the mission monitor carries today is reworked into that judgment. | Owner, 2026-09-27 | Roadmap item 17 stage 5. |
+| F4 | Once roadmap item 18 lands, its smoke sensors are always on board; every location has smoky places that never block the way from A to B; smoke is constant in place and volume and changes only its shape; a separate scenario blocks the way with smoke and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 18. |
+
+## Numbers The Stack Relies On
+
+| ID | Value | Source, since | Justification, reference |
+|---|---|---|---|
+| K1 | An autopilot position reset up to 3.0 m is flown on (the execution revoked, the search restarted); a larger one closes the navigation. | Agent under the owner's delegation, 2026-09-27 | 0.4 to 4.1 m of drift over item 19's doubled path; r699 stood ten minutes after a 1.02 m reset. Commit d71a5c6f. |
+| K2 | The planner accepts and prices a segment in the route sampler's 0.5 m pieces, as the activation validates it. | Agent, 2026-09-26 | The conservative swept validation depends on the cut; r669, r681, r685 livelocked. Commits 146c6393, c24cace4, 289583e2. |
+| K3 | The camera estimator's map correction: a registration every 0.5 s against cells older than 20 s; counted when 0.3 of the depth and at least 150 points match, the residual is under 0.25 m and an axis carries 0.01 of information per point; the target offset moves by 0.2 of the measurement, by at most 0.1 m and 0.2 degrees, within 1.5 m and 5 degrees; the applied offset follows at 0.2 m/s and 1 degree per second. | Agent, 2026-09-26 and 2026-09-27 | The filter is overconfident (clone deviation 0.05 m against 0.4 to 1.0 m innovations, r691); at a gain of 0.5 the target jittered 0.2 to 0.35 m between registrations (r709). [`localization.md`](localization.md). |
+| K4 | The time-bound return of the mission monitor, until item 17 reworks it: the run's window less the path flown over the mean speed, times 2.0, stretched by the real-time factor, and a 20 s reserve. | Agent, 2026-09-26 | Over twelve returns the way back took 0.72 to 1.65 times the flight out; at 1.5 r687 ended 24 m short. Commit 62f4f511. |
+| K5 | Item 19's goal outside the location: (200, 100, 10) m. | Agent, 2026-09-26 | Behind the outer walls of Urban Circuit Practice 01 and inside the memory's grid; the owner decided the injection is by the goal alone. |
+| K6 | Item 19's proof runs every 10 s within a budget of 20 million voxels. | Agent, 2026-09-26 | A bounded cost on the monitor's thread. |
+| K7 | The guaranteed forward range of the stereo set is 6.4 m. | Inherited (item 14) | The confident depth measured on the location's surfaces. |
+
+## Change Log
+
+Every change of an entry, newest last: the entry, from, to, by whom, why, and
+the commit. The first lines record the changes of the week this file was
+opened, so that the numbers above carry their history from the start.
+
+| Date | Entry | From | To | By | Justification | Commit |
+|---|---|---|---|---|---|---|
+| 2026-09-26 | K4 | margin 1.5 | 2.0 | Agent | Returns took up to 1.65 times the flight out; r687 ended 24 m short. | 62f4f511 |
+| 2026-09-26 | A8 | 600 s | 900 s for injected flights, 1800 s for ordinary ones | Agent | The time-bound return fired inside ordinary flights; the doubled path needs 900 s. | journal |
+| 2026-09-27 | K1 | 0.33 m | 3.0 m | Agent under the owner's delegation | r699: a 1.02 m reset held the vehicle ten minutes; drift over a doubled path 0.4 to 4.1 m. | d71a5c6f |
+| 2026-09-27 | K3 | gain 0.5, steps 0.25 m and 0.5 degrees | gain 0.2, steps 0.1 m and 0.2 degrees | Agent | The target jittered by 0.2 to 0.35 m between registrations (r709). | 3f965181 |
+| 2026-09-27 | A6 | — | new | Agent | Container-wide freezes under another task's disk writes crashed r720 and r723. | this file |
+| 2026-09-27 | F1 to F4 | — | new | Owner | Decisions for items 17 and 18. | this file |

@@ -2,8 +2,11 @@
 
 Where the vehicle's position and heading come from, per localization
 profile, and how the two estimators that replace GNSS and the magnetometer,
-lidar-inertial and visual-inertial, work, are initialised, report their
-health and are measured.
+lidar-inertial odometry (LIO) and visual-inertial odometry (VIO, a stereo
+MSCKF), work, are initialised, report their health and are measured. Both
+correct their drift against a map of their own, which makes the pair a SLAM
+system in the broad sense: localization and mapping at once, with map-based
+relocalization and no pose graph or global optimization.
 The autopilot's EKF2 remains the owner of the estimate in every profile:
 obstacle memory, the controller and the offboard node read
 `/fmu/out/vehicle_local_position_v1` and `/fmu/out/vehicle_attitude`, and
@@ -282,7 +285,7 @@ Cost: 0.53 core beside the depth matcher (the stereo process 1.69 to 2.22
 cores), a frame 44 to 60 ms at the median and 72 to 82 ms at most, inside the
 0.5 to 1.5 cores stage 0 reserved.
 
-### Relocalization Against Its Own Map
+### Relocalization Against Its Own Map (Visual-Inertial SLAM)
 
 Roadmap item 19 flew the mission out and back and measured the drift of a
 doubled path: 0.40 to 4.10 m at the end of 854 to 1467 m on eighteen camera

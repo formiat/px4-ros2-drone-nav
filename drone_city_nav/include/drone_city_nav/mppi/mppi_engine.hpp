@@ -237,6 +237,9 @@ struct EsdfUploadResult {
   std::uint64_t revision{0U};
 };
 
+// The local planner: model predictive path integral control (MPPI), a
+// sampling-based model predictive controller on the GPU, rolling out control
+// sequences against the ESDF for obstacle avoidance.
 class MppiCudaEngine {
 public:
   explicit MppiCudaEngine(BenchmarkConfig config);

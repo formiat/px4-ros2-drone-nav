@@ -438,6 +438,9 @@ namespace detail {
 class PersistentDStarLitePlanner3DImpl;
 }
 
+// The strategic 3D path planner: an incremental D* Lite search on a sparse
+// lattice, repaired across world revisions instead of replanned, with a
+// feasibility-first search for a first route through unknown space.
 class PersistentDStarLitePlanner3D final {
 public:
   explicit PersistentDStarLitePlanner3D(PersistentPlannerConfig3D config = {});

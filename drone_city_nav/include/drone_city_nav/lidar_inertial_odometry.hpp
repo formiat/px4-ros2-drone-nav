@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 
-// Lidar-inertial odometry: where the vehicle is, from its own IMU and its
+// Lidar-inertial odometry (LIO): where the vehicle is, from its own IMU and its
 // own lidar, with no satellite, compass or simulator truth in the loop. The
 // frame is the autopilot's local NED frame with the origin at the declared
 // initial pose; the body is FRD, the lidar's points arrive in the body frame.

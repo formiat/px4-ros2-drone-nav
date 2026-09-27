@@ -88,6 +88,10 @@ Every flight's runtime manifest records the package version and
 
 ## Scope Rules
 
+- The requirements, invariants, acceptance conditions and key numbers are in
+  [`docs/specification.md`](docs/specification.md); a change to one of them is
+  logged there with its justification in the same commit.
+
 - Keep production C++ in `drone_city_nav/include` and `drone_city_nav/src`.
 - Keep tests in `drone_city_nav/tests`.
 - Keep generated files, build outputs, logs, bags, and simulator runtime data

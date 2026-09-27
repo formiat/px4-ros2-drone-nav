@@ -1,7 +1,8 @@
 # Obstacle Mapping
 
-Obstacle mapping owns the revisioned 3D-lidar memory used by no-static
-production planning. Static Occupancy3D is a separate source loaded directly by
+Obstacle mapping owns the revisioned 3D obstacle memory — a voxel occupancy
+grid in the manner of OctoMap, fed by the 3D lidar or the stereo depth — used
+by no-static production planning. Static Occupancy3D is a separate source loaded directly by
 the production planner. The main rule is that raw sources stay raw:
 distance-based risk tiers do not inflate hard occupancy.
 

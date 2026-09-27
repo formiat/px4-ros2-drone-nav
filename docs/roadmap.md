@@ -12,6 +12,9 @@ execution order. The dependency annotations below use three meanings:
 - **independent recurring workstream**: work may run in parallel with any
   milestone and should be repeated as the architecture evolves.
 
+The requirements, invariants and acceptance conditions every item is built
+and accepted against are in [`specification.md`](specification.md).
+
 Numbers are stable identifiers. A completed item keeps its number, is
 summarized in the Completed section at the end of this file, and is never
 renumbered or reused; a new item takes the next free number.
@@ -687,9 +690,9 @@ The vehicle's answer is a ladder whose first rung is free:
    reason, and the choice is reopened only with the measurement of how far a
    retreat on the IMU actually stays inside the corridor it came down.
 4. **Return home or land.** A vehicle that retreated to where it can see
-   has a position source, and when the onboard light's remaining charge
-   covers only the way back, it gives the goal up and flies home (below): the
-   ladder does not wait out a stated time to land in a place it can see. A
+   has a position source, and when it judges its light unreliable it gives
+   the goal up and flies home (below): the ladder does not wait out a stated
+   time to land in a place it can see. A
    vehicle with no position source, in total darkness, **descends and
    lands** if the light has not returned within a stated time: a controlled
    landing beats an uncontrolled drift, and a landed vehicle with a dead
@@ -699,24 +702,46 @@ The vehicle's answer is a ladder whose first rung is free:
    register carries as a deep rework; this item does not solve it, it states
    where it bites.
 
-**The return home on the light's charge.** Decided by the project owner on
-2026-09-27: the mission monitor carries, from item 19's implementation, a
-time-bound return that gives the goal up for the start once the time left of
-the run's window covers only the estimated way back (`mission_window_s`, the
-run's timeout today; the estimate is the path flown over the mean speed, a
-margin of 2.0 and a 20 s reserve). It gave every return of item 19's
-acceptance. This stage reworks it into the charge of the onboard light of
-stage 3: the window becomes the light's remaining charge, and the vehicle
-flies home while the light it needs to see the way still lasts.
+**A light judged unreliable sends the vehicle home.** Decided by the project
+owner on 2026-09-27: the vehicle does not gamble on a failing light. It
+judges whether its light works acceptably, from its frames alone as the rule
+above demands (nothing of the emitter reaches it): how much of a recent
+window its measured range stood at the lit figure, how long its outages
+lasted, and whether they grow. A light judged unreliable gives the goal up
+for the start through item 19's substitution while the vehicle can still see
+its way back, instead of waiting for the outage that loses it or crashes it.
+The judgment's thresholds are measured on the two regimes below, never
+assumed: the moderate flicker must never reach them, the severe failure
+must. The mission monitor carries from item 19's implementation a
+time-bound return that gave every return of that item's acceptance (the
+run's window, `mission_window_s`, less the estimated way back: the path
+flown over the mean speed, a margin of 2.0 and a 20 s reserve); this stage
+reworks it into this judgment of the light, as the owner decided the same
+day.
+
+**Two regimes of the failing light.** Decided by the project owner on
+2026-09-27, applied once this stage lands:
+
+- **A moderate flicker is the norm of every flight.** Short and frequent
+  dimming of the carried light, its dark stretches short enough never to
+  reach the "unreliable" judgment, runs in every acceptance flight, so that
+  every series shows the vehicle flying normally with a moderately
+  flickering light. The mean flight speed of the project's second
+  requirement is measured under it from then on, and the speed baselines are
+  re-measured when it lands.
+- **A severe failure is a scenario of its own.** Long and deep outages,
+  worsening until the vehicle judges its light unreliable and flies home: the
+  scenario exists to exercise that decision, and its outcome is the return,
+  not the goal.
 
 This is a failsafe against a crash and not a way to keep flying. Its honest
 scope is stop, hold, retreat, then home or land.
 
-Two kinds of flight, and neither is a speed measurement: the mean flight speed
-of the project's second requirement is measured with the illumination healthy,
-as it is today.
+Two kinds of flight besides the moderate flicker every acceptance flight
+carries, and neither is a speed measurement:
 
 - A **long** flight with the outages running, which must still reach its goal
+  in truth, or, when they reach the "unreliable" judgment, return to the start
   in truth.
 - A **short** flight of about five minutes whose only question is whether the
   vehicle survives.
@@ -744,6 +769,30 @@ and fails the second by construction. The stage is proved with an injected
 reset of the external-vision pose fed to the autopilot, the same machinery
 stage 5 uses to fail the light, on the camera profile, and it is accepted
 with both series.
+
+### Stage 7: A Zone That Fails The Light
+
+Proposed by the project owner on 2026-09-27 as a "magnetic anomaly": a place
+in the location where the carried light fails worse the closer the vehicle
+comes, its outages deepening and lengthening until, inside a radius, it goes
+out altogether. The zone is the injector's, an evaluation component like
+stage 5's: its position, radius and law are written into the manifest, and
+nothing of it reaches the vehicle, which sees only its frames darken as it
+approaches.
+
+It serves two purposes. The first is the flight itself: the vehicle meets a
+failure that depends on where it is rather than on when, and must answer it
+with the ladder — stop, retreat to where it can see, route elsewhere — or
+with the "unreliable" judgment. The second is item 19: laid across every
+approach to point B, the zone makes the goal unreachable by a cause the
+vehicle measures, and the flight exercises the return home in flight on
+something other than an injected coordinate. Stated plainly so that the
+flight is not read for more than it proves: darkness is not a prohibition
+of space until item 18 stage 0 writes observed unobservability into the
+memory, so such a return comes from the "unreliable" judgment, not from
+item 19's topological proof, which closes only a component bounded entirely
+by measurements and has never closed one in this location (the unknown above
+the flight band and the grid's edge stay on its boundary).
 
 ### What The Additions May Cost
 
@@ -800,9 +849,12 @@ This item is complete when stage 0 has landed and both acceptance series have
 been re-flown on it; when the confident range is published as a curve against
 surface texture and the contract is shown to track it; when five long flights
 on the dark world, with the carried light and the outages running, reach the
-goal in truth with no collision; and when five short flights under the most
+goal in truth with no collision; when five short flights under the most
 aggressive outage the parameters allow end with the vehicle intact, whether
-landed or flying.
+landed or flying; when both acceptance series fly the moderate flicker with
+no "unreliable" judgment in any flight; and when five flights of the severe
+failure and five with stage 7's zone across point B return to the start in
+truth with no collision.
 
 ## 18. Flight Through Transient And Scattering Obstacles
 
@@ -847,6 +899,38 @@ into the same plume. **The thermal channel is an addition to the vehicle**,
 not a part of the smoke scenario: it belongs to the sensor set that the
 scenario tests, and a flight may carry it on either profile or on neither.
 The acceptance matrix is the product of the three, not a list of modes.
+
+**What the flights look like once the item lands.** Decided by the project
+owner on 2026-09-27, and where it differs from the paragraph above it
+replaces it:
+
+- **The smoke sensors are always on board**, on both profiles: whatever
+  stages 2 and 3 settle on — the thermal channel, the particle counter — is
+  part of the vehicle, not an option of a flight.
+- **Smoke is always in the location**: a number of smoky places in every
+  flight, so that every acceptance flight exercises the smoke handling, and
+  none of them blocks the way from A to B; the ordinary mission stays
+  reachable.
+- **A separate scenario blocks the way**: smoke closes the passage to B, no
+  route exists, and the vehicle flies home. It exercises the smoke handling
+  and item 19's return together, by a cause the vehicle measures.
+- **Smoke is constant**: where it is and how much of it there is never change
+  during a flight, so that the difficulty of the location does not change
+  with time. Its shape does, as a smoke grenade's or a local source's plume
+  churns, because that is what smoke looks like and what the sensors have to
+  cope with. Stage 0's decay still applies to the memory: a smoky place that
+  is not re-observed decays to unknown and a re-approach restores it, which
+  with constant smoke is a re-probe that always confirms.
+
+The blocking scenario asks more of item 19's topological proof than it has
+shown: the proof closes only a component bounded entirely by measurements,
+and in this location the vehicle's component always touched unknown — above
+the flight band, in corners not looked at, at the grid's edge — so no flight
+of item 19 closed it. Before the scenario is flown this item settles how the
+proof becomes answerable here: at least the flood bounded by the flight
+envelope the planner itself flies in, so that the space above the band is
+not an opening; whether that suffices in this location is measured, not
+assumed.
 
 The navigation invariants hold in the form restated for this item, below.
 Vertical motion stays free, and nothing keyed on the vehicle's history is a
@@ -1234,10 +1318,11 @@ occupancy; and physical collisions.
 
 This item is complete when stage 0 has landed and both acceptance series
 have been re-flown on it, with the route stability and the speed it costs
-stated; and when, **on the camera profile and on the lidar profile alike**,
-five flights through the plumed location reach the goal in truth or retreat
+stated; when, **on the camera profile and on the lidar profile alike**,
+five flights through the smoky location reach the goal in truth or retreat
 and land without a collision, with no phantom occupancy older than the stated
-decay surviving the flight. Accepting on one profile would prove the
+decay surviving the flight; and when, on both profiles, five flights of the
+blocking scenario return to the start in truth without a collision. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
 
@@ -1355,6 +1440,89 @@ complete when a headless run writes a playable recording of its whole flight
 without a display server, with the GPU cost stated. Stage 3, if built, is
 complete when a background capture of RViz is re-timed to the flight's clock
 within one second over the flight.
+
+## 21. Moving Obstacles: Doors And Bodies That Move Slowly
+
+**Type:** perception and safety, general; not tied to a sensor.
+
+**Hard prerequisites:** item 18 stage 0, for the memory's decay and the
+confidence of an occupancy; the rest of item 18 is not needed.
+
+**Validation environment:** Urban Circuit Practice 01 with actuated doors, a
+materialization variant of the location as item 17's dark world and item
+18's smoke are. The location carries no door today: its "door" names are
+room tiles, and its world has no joint.
+
+Proposed by the project owner on 2026-09-27. A door is the case to design
+for: a solid, observable body that is still most of the time and moves
+sometimes, slowly. What the vehicle must do with it:
+
+- **A body that moves while the vehicle sees it is not written into the
+  obstacle memory as a wall, and the vehicle does not collide with it.** Both
+  at once: keeping it out of the memory must not mean flying into it.
+- **Slow motion counts as motion.** A door closing over several seconds is a
+  moving body, not a sequence of walls.
+- **A body that stood still while the vehicle passed is an ordinary static
+  obstacle.** A door closed and motionless on the way out is a wall in the
+  memory, as any wall is.
+- **The memory keeps the latest state it observed.** On the way back the door
+  is open: the vehicle sees the opening and flies through it, and the memory
+  holds the opening, not the wall it recorded before. That comes from
+  observation, never from rewriting the memory from scratch.
+
+**Why this is not items 17 and 18.** Darkness and smoke are unobservability:
+the sensor looks and cannot see, and item 18 stage 0 writes that as a
+prohibition that decays. A door is the opposite, fully observable and solid,
+and what it adds is motion. What the stack already does, stated precisely:
+a door that opens is cleared as soon as free rays pass through where it
+stood (`miss_weight` and the Schmitt trigger of the memory, the mechanism
+item 18 describes), and a door that closes is written by its hits, so the
+last observed state of a door the sensor looks at again is already kept
+without any rewriting. What is missing is the rest: nothing tells a body in
+motion from a wall — a door swinging in view leaves its sweep in the memory
+until later rays clear it, and item 18 stage 0's decay and confidence only
+shorten that — and nothing in the collision validation or in the braking
+contract knows that an obstacle can come towards the vehicle: both assume a
+static world, so a body closing on the vehicle is met with the stopping
+distance of a wall.
+
+Stages, as seen on 2026-09-27:
+
+- **Stage 0.** The door variant of the location and the measurement of what
+  the stack does today: a door closed on the way out and open on the way
+  back, a door moving while the vehicle approaches, a slow one; the smear it
+  leaves in the memory and how long it lives, the replacements of the route,
+  the minimum distance to the moving body, and collisions.
+- **Stage 1. Motion in the evidence.** A voxel that turns occupied and free
+  again within seconds while the sensor keeps looking at it is moving, and
+  so is a cluster of occupied voxels that shifts between scans. Moving
+  evidence goes to a short-lived layer of its own and not into the
+  persistent memory; a body that stops for long enough becomes an ordinary
+  occupancy. The layer is measurement, decays, and closes nothing it does
+  not observe.
+- **Stage 2. Avoidance.** The moving layer enters the collision validation
+  and the braking contract with the space the body can sweep over the
+  horizon, bounded by the speed measured for it, so that a closing body is
+  met at the distance its closing speed demands. The exit guarantee holds: a
+  body that moves onto the vehicle's own position does not freeze it.
+- **Stage 3. The door flown out and back.** Closed on the way out, open on
+  the way back: the route through it is found from what the vehicle saw last,
+  with no reset of the memory.
+
+The navigation invariants hold throughout: unknown space stays free at no
+penalty, the only prohibitions are measurements, and nothing keyed on the
+vehicle's history or on a configured zone is a rule.
+
+### Measurement And Completion
+
+Measure, per flight: the moving evidence detected against the truth of the
+doors' motion; the occupancy the memory kept from a moving body and how long;
+the route replacements it caused; the minimum distance to a moving body; the
+stopping margin against its closing speed; and collisions. Complete when, on
+both profiles, five flights through the door variant reach the goal in truth
+without a collision, a door moving in view leaves no occupancy older than
+the stated decay, and the out-and-back door flight takes the open door on the
+way back in every one of five.
 
 ## Completed
 

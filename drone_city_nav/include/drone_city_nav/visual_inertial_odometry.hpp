@@ -8,9 +8,10 @@
 #include <optional>
 #include <vector>
 
-// Visual-inertial odometry: where the vehicle is, from its own IMU and its
-// own stereo pair, with no satellite, compass, lidar or simulator truth in
-// the loop. A stereo multi-state constraint Kalman filter: the state is the
+// Visual-inertial odometry (VIO): where the vehicle is, from its own IMU and
+// its own stereo pair, with no satellite, compass, lidar or simulator truth in
+// the loop (GNSS-denied). A stereo multi-state constraint Kalman filter
+// (MSCKF): the state is the
 // body pose, velocity and the two IMU biases with a sliding set of cloned
 // body poses, one per frame; no point is ever a state. The IMU propagates the
 // state and its covariance between frames. A feature is used once, when its

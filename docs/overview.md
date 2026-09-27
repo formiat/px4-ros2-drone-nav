@@ -5,6 +5,12 @@ production navigation stack uses revisioned raw Occupancy3D, one persistent
 full-3D strategic planner, and GPU MPPI with explicit route ownership, safety
 evidence, and execution-horizon contracts.
 
+In the field's terms: autonomous navigation of a UAV (a PX4 quadrotor) in
+GNSS-denied spaces with no prior map — visual-inertial odometry (VIO, a stereo
+MSCKF) or lidar-inertial odometry (LIO) with map-based relocalization (SLAM in
+the broad sense), 3D occupancy mapping, D* Lite path planning and MPPI, a
+sampling-based model predictive controller, for obstacle avoidance.
+
 The project is a simulation-oriented research system. It is not certified for
 real-aircraft operation.
 
