@@ -612,11 +612,32 @@ admitted speed with it. What it buys is that the guarantee becomes a property
 of the vehicle instead of a property of the location, which is what the braking
 contract has always claimed it was.
 
-Three options are compared before one is built: a white LED flood; an infrared
-flood with the pair's filters removed, which is the same photons and invisible;
-and active stereo of the RealSense class, which projects its own texture and
-needs no ambient light at all. The last is the strongest and the most
-expensive, which is what the cost section below has to settle.
+Five options are compared before one is built, on the confident range each
+gives, its price and its average electrical power — energy is a criterion
+beside the price, because a continuous flood over the pair's field costs tens
+of watts where a cheap 3D lidar draws about seven. Extended on 2026-09-27 at
+the project owner's request; the options, their orders of magnitude and the
+reasons are in [`illumination_options.md`](illumination_options.md):
+
+1. a white LED flood, continuous, the reference;
+2. a **strobed near-infrared flood**, flashing only while the global shutter
+   is open (2 to 3 percent of the time at 15 frames a second, so 30 to 50
+   times less average power for the same peak), seen by the pair with its
+   infrared cut filters removed and a narrow band-pass filter against
+   ambient light;
+3. **active stereo** of the RealSense class, a dot projector of about a watt
+   that paints its own texture and so answers too few photons and too
+   little texture at once — whether gz-sim can render the pattern for the
+   sensor cameras is checked first;
+4. a **time-of-flight camera** (flash ToF, about 224 x 172), dense depth in
+   total darkness for a fraction of a watt to about two, over 4 to 6 m;
+5. a laser line, sparse depth for very little energy, as a supplement.
+
+Over all of them, light only where and when it is needed: the cone of the
+motion rather than the whole field, and the power set by the range the
+flight needs, which the braking contract already ties to its speed. The
+leading candidate is option 2 with option 3 where the scene is blank, and
+option 4 the alternative source of near range; the measurement decides.
 
 ### Stage 4: A Time-Of-Flight Ring As A Bumper
 
@@ -980,6 +1001,8 @@ suffices in this location is measured, not assumed.
 
 A condition the project owner set on 2026-09-20: these additions must not
 approach the price of one ordinary 3D lidar, or the exercise is pointless.
+Since 2026-09-27 their average electrical power is weighed the same way
+(stage 3).
 Order of magnitude, single units, 2026, to be replaced by sourced figures
 before stage 3 is built:
 

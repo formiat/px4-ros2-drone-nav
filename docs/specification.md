@@ -91,6 +91,7 @@ aside, and this file what everything else is measured against.
 | F8 | The light's battery drains uniformly and linearly with time, independent of everything, the flicker included: neither a realistic lamp failure nor a realistic discharge is simulated. | Owner, 2026-09-27 | Simplicity of the simulation; roadmap item 17 stage 5. |
 | F9 | A named scenario starts with a battery too low to reach B at all; the vehicle sees it will not reach B, gives B up while the charge still covers the way home, and returns. It is flown in item 17's acceptance: five flights return to the start in truth without a collision. | Owner, 2026-09-27 | Roadmap item 17 stage 5 and completion. |
 | F10 | Roadmap item 22: flight in total darkness with no illumination of the vehicle's own (no lamp, no infrared or ultraviolet illuminator, no projector), on passive thermal cameras; the time-of-flight sensors are the one allowed emitter. | Owner, 2026-09-27 | A light of another colour is the same as the lamp. |
+| F11 | Roadmap item 17 stage 3 compares five ways of lighting the scene (continuous flood, strobed near-infrared flood, active stereo, time-of-flight camera, laser line) on confident range, price and average electrical power; energy is a criterion beside price. | Owner, 2026-09-27 | A continuous flood costs tens of watts against about seven for a cheap 3D lidar; [`illumination_options.md`](illumination_options.md). |
 | F4 | Once roadmap item 18 lands, its smoke sensors are always on board; every location has smoky places that never block the way from A to B; smoke is constant in place and volume and changes only its shape; a separate scenario blocks the way with smoke and the vehicle flies home. | Owner, 2026-09-27 | Roadmap item 18. |
 
 ## Numbers The Stack Relies On
@@ -125,3 +126,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-09-27 | F8, F9 | — | new | Owner | The battery's linear drain and the low-battery scenario. | this commit |
 | 2026-09-27 | F7, F9 | "the charge covers only the way back"; "too low to reach B and return" | the charge is weighed against the way to B, since no return follows B; the decision is taken while the way home is still covered; "too low to reach B at all" | Owner | The owner's correction: a mission ends at B. | this commit |
 | 2026-09-27 | F10 | — | new | Owner | Roadmap item 22. | this commit |
+| 2026-09-27 | F11 | three options by price | five options by range, price and power | Owner | The discussion of low-power illumination. | this commit |
