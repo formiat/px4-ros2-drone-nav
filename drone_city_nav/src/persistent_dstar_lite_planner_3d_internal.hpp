@@ -88,7 +88,18 @@ public:
   // Labels whose chain broke and that were re-parented through an intact
   // neighbour instead of being dropped.
   [[nodiscard]] std::size_t adoptedLabelCount() const noexcept;
-  [[nodiscard]] std::size_t lastInvalidSegment() const noexcept;
+
+  // The last candidate segment the raw sweep refused: its index, its ends,
+  // and whether it was a lattice edge the search could withhold, or the
+  // search restarted instead.
+  struct InvalidSegment3D {
+    std::size_t index{0U};
+    Point3 from{};
+    Point3 to{};
+    bool priced{false};
+  };
+
+  [[nodiscard]] const InvalidSegment3D& lastInvalidSegment() const noexcept;
 
   // Expands the frontier until a path is found, the budget is spent, or the
   // deadline passes. Seeds itself from the endpoints on first use and on every
@@ -192,7 +203,7 @@ private:
   std::size_t restart_count_{0U};
   std::size_t invalidated_label_count_{0U};
   std::size_t adopted_label_count_{0U};
-  std::size_t last_invalid_segment_{0U};
+  InvalidSegment3D last_invalid_segment_{};
   // Raw sweeps spent on straight goal connectors; the counterpart of the
   // connectors priced from clearances alone.
   std::size_t connector_sweep_count_{0U};

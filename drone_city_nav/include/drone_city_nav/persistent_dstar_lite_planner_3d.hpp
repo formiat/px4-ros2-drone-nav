@@ -386,6 +386,11 @@ struct PlannerTelemetry3D {
   std::size_t feasibility_invalidated_labels{0U};
   std::size_t feasibility_adopted_labels{0U};
   std::size_t feasibility_last_invalid_segment{0U};
+  // Its ends, and whether it was a lattice edge the search withheld; an
+  // unpriced one restarts the search.
+  Point3 feasibility_invalid_from{};
+  Point3 feasibility_invalid_to{};
+  bool feasibility_invalid_priced{false};
   // Raw sweeps the feasibility search spent on straight goal connectors; the
   // connectors it priced from endpoint clearances alone are not counted.
   std::size_t feasibility_connector_sweeps{0U};

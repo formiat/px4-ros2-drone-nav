@@ -518,7 +518,6 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
       if (!invalid_segment.has_value()) {
         return candidate;
       }
-      last_invalid_segment_ = *invalid_segment;
       // Segment s joins candidate[s-1] and candidate[s]. When the lattice
       // priced that segment — a straight edge, or a leg of a refined edge
       // through its waypoint — and the sweep rejects it on the resident world,
@@ -533,6 +532,16 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
           candidate.has_value()
               ? lattice_->pricedEdgeForSegment(*candidate, *invalid_segment)
               : std::nullopt;
+      last_invalid_segment_ = InvalidSegment3D{
+          .index = *invalid_segment,
+          .from = candidate.has_value() && *invalid_segment > 0U
+                      ? (*candidate)[*invalid_segment - 1U]
+                      : Point3{},
+          .to = candidate.has_value() && *invalid_segment > 0U
+                    ? (*candidate)[*invalid_segment]
+                    : Point3{},
+          .priced = priced.has_value(),
+      };
       if (priced.has_value()) {
         const PersistentPlannerEdge3D edge = canonicalEdge(priced->from, priced->to);
         static_cast<void>(lattice_->rejectEdgeBySweep(edge));
@@ -714,7 +723,8 @@ std::size_t FeasiblePathSearch3D::adoptedLabelCount() const noexcept {
   return adopted_label_count_;
 }
 
-std::size_t FeasiblePathSearch3D::lastInvalidSegment() const noexcept {
+const FeasiblePathSearch3D::InvalidSegment3D&
+FeasiblePathSearch3D::lastInvalidSegment() const noexcept {
   return last_invalid_segment_;
 }
 
