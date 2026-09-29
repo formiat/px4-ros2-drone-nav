@@ -18,6 +18,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import capture_raw_snapshot_3d as capture  # noqa: E402
+import headless_runtime_evidence as evidence  # noqa: E402
 import runtime_manifest  # noqa: E402
 import validate_drone_nav_headless as validator  # noqa: E402
 
@@ -533,6 +534,53 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertIn('"${runtime_artifact_dir}/resources.csv"', evidence_runtime)
         self.assertIn('"${runtime_artifact_dir}/resources_host.json"', evidence_runtime)
         self.assertIn('DRONE_GAZEBO_DEV_IMAGE="${image_name}"', container)
+
+
+class InjectedGoalTruthFloodTest(unittest.TestCase):
+    """The truth flood of an injected unreachable goal, bounded by the space
+    the planner flies in (roadmap item 17 stage 8)."""
+
+    @staticmethod
+    def walled_room():
+        import numpy as np  # noqa: PLC0415
+
+        bounds = SimpleNamespace(origin_x_m=0.0, origin_y_m=0.0, origin_z_m=0.0,
+                                 resolution_m=1.0)
+        occupied = np.zeros((20, 20, 20), dtype=bool)
+        # Walls from the floor to 10 m around a room from 4 to 14 m.
+        occupied[4, 4:15, :11] = occupied[14, 4:15, :11] = True
+        occupied[4:15, 4, :11] = occupied[4:15, 14, :11] = True
+        return occupied, bounds
+
+    def test_walls_under_the_band_s_ceiling_close_the_room(self) -> None:
+        occupied, bounds = self.walled_room()
+        finding = evidence.truth_flood_finding(
+            occupied, bounds, (9.5, 9.5, 5.5), (40.0, 9.5, 5.0),
+            ((-100.0, 100.0), (-100.0, 100.0), (1.0, 9.0)))
+        self.assertTrue(finding.startswith("OK"), finding)
+
+    def test_a_band_above_the_walls_leaves_the_grid_where_the_space_goes_on(
+            self) -> None:
+        occupied, bounds = self.walled_room()
+        finding = evidence.truth_flood_finding(
+            occupied, bounds, (9.5, 9.5, 5.5), (40.0, 9.5, 5.0),
+            ((-100.0, 100.0), (-100.0, 100.0), (1.0, 15.0)))
+        self.assertTrue(finding.startswith("FAIL"), finding)
+        self.assertIn("x+", finding)
+
+    def test_the_planner_s_grid_edge_is_a_wall(self) -> None:
+        occupied, bounds = self.walled_room()
+        finding = evidence.truth_flood_finding(
+            occupied, bounds, (9.5, 9.5, 5.5), (40.0, 9.5, 5.0),
+            ((5.0, 13.0), (5.0, 13.0), (1.0, 15.0)))
+        self.assertTrue(finding.startswith("OK"), finding)
+
+    def test_a_goal_the_flood_reaches_fails(self) -> None:
+        occupied, bounds = self.walled_room()
+        finding = evidence.truth_flood_finding(
+            occupied, bounds, (9.5, 9.5, 5.5), (12.5, 12.5, 30.0),
+            ((-100.0, 100.0), (-100.0, 100.0), (1.0, 9.0)))
+        self.assertIn("reaches the goal", finding)
 
 
 if __name__ == "__main__":

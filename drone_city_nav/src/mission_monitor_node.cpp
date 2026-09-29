@@ -1,6 +1,7 @@
 #include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/carried_light_judgment.hpp"
+#include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/goal_reachability_proof_3d.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
@@ -272,6 +273,16 @@ public:
       throw std::invalid_argument{"the proof budget must be valid"};
     }
     proof_voxel_budget_ = static_cast<std::size_t>(proof_budget);
+    // The band of heights the planner flies in bounds the proof's flood.
+    flight_envelope_ = FlightEnvelopeConfig{
+        .minimum_target_z_m = declare_parameter<double>("minimum_target_z_m", 1.0),
+        .maximum_target_z_m = declare_parameter<double>("maximum_target_z_m", 32.0),
+    };
+    if (evaluateFlightEnvelopeAltitude(flight_envelope_.minimum_target_z_m,
+                                       flight_envelope_) ==
+        FlightEnvelopeStatus::kInvalidConfiguration) {
+      throw std::invalid_argument{"the flight envelope must be valid"};
+    }
     navigation_progress_sub_ = create_subscription<msg::NavigationProgress>(
         declare_parameter<std::string>("navigation_progress_topic",
                                        "/drone_city_nav/mppi/navigation_progress"),
@@ -548,36 +559,61 @@ private:
     }
   }
 
+  // After a return the proof runs to the start: a start proven unreachable as
+  // well is logged, and the vehicle holds where it is, because the planner
+  // has no route; a proof that opens again (the memory's closures decay) is
+  // logged too, and the planner flies on by itself.
   void judgeReturnHome() {
-    if (result_reported_ || goal_substituted_ || !navigation_mission_ready_ ||
+    if (result_reported_ || !navigation_mission_ready_ ||
         active_waypoint_index_ >= waypoints_.size()) {
       return;
     }
     const std::int64_t now_ns = now().nanoseconds();
     if (proof_future_.valid() &&
         proof_future_.wait_for(std::chrono::seconds{0}) == std::future_status::ready) {
-      latest_proof_ = proof_future_.get();
-      RCLCPP_INFO(get_logger(),
-                  "GOAL_REACHABILITY_PROOF verdict=%s component_voxels=%zu "
-                  "goal_inside=%s touches_grid_edge=%s budget_exhausted=%s",
-                  goalReachabilityProofVerdict(latest_proof_),
-                  latest_proof_.component_voxels,
-                  latest_proof_.goal_inside ? "true" : "false",
-                  latest_proof_.touches_grid_edge ? "true" : "false",
-                  latest_proof_.budget_exhausted ? "true" : "false");
-      if (latest_proof_.provenUnreachable() &&
-          substituteGoalWithStart("topological", now_ns)) {
-        return;
+      const GoalReachabilityProof3D proof = proof_future_.get();
+      const Point3 goal = waypoints_[active_waypoint_index_];
+      // A proof started for the goal the return gave up says nothing of the
+      // start.
+      if (proof_goal_.x == goal.x && proof_goal_.y == goal.y &&
+          proof_goal_.z == goal.z) {
+        latest_proof_ = proof;
+        RCLCPP_INFO(get_logger(),
+                    "GOAL_REACHABILITY_PROOF verdict=%s component_voxels=%zu "
+                    "goal_inside=%s budget_exhausted=%s returning=%s",
+                    goalReachabilityProofVerdict(latest_proof_),
+                    latest_proof_.component_voxels,
+                    latest_proof_.goal_inside ? "true" : "false",
+                    latest_proof_.budget_exhausted ? "true" : "false",
+                    goal_substituted_ ? "true" : "false");
+        if (!goal_substituted_ && latest_proof_.provenUnreachable() &&
+            substituteGoalWithStart("topological", now_ns)) {
+          return;
+        }
+        if (goal_substituted_ &&
+            latest_proof_.provenUnreachable() != start_unreachable_) {
+          start_unreachable_ = latest_proof_.provenUnreachable();
+          RCLCPP_WARN(
+              get_logger(),
+              "%s position=(%.3f,%.3f,%.3f) start=(%.3f,%.3f,%.3f) "
+              "component_voxels=%zu",
+              start_unreachable_ ? "START_UNREACHABLE_HELD" : "START_REACHABLE_AGAIN",
+              latest_map_position_.x, latest_map_position_.y, latest_map_position_.z,
+              goal.x, goal.y, goal.z, latest_proof_.component_voxels);
+        }
       }
     }
     if (!proof_future_.valid() && memory_ != nullptr && latest_position_valid_) {
       const std::shared_ptr<const ObservedOccupancyGrid3D> grid = memory_;
       const Point3 vehicle = latest_map_position_;
       const Point3 goal = waypoints_[active_waypoint_index_];
+      const FlightEnvelopeConfig envelope = flight_envelope_;
       const std::size_t budget = proof_voxel_budget_;
-      proof_future_ = std::async(std::launch::async, [grid, vehicle, goal, budget] {
-        return proveGoalUnreachable3D(*grid, vehicle, goal, budget);
-      });
+      proof_goal_ = goal;
+      proof_future_ =
+          std::async(std::launch::async, [grid, vehicle, goal, envelope, budget] {
+            return proveGoalUnreachable3D(*grid, vehicle, goal, envelope, budget);
+          });
     }
   }
 
@@ -772,6 +808,9 @@ private:
   std::uint64_t navigation_health_sequence_{0U};
   std::uint64_t navigation_mission_epoch_{0U};
   std::size_t proof_voxel_budget_{20'000'000U};
+  FlightEnvelopeConfig flight_envelope_{};
+  Point3 proof_goal_{};
+  bool start_unreachable_{false};
   Point3 latest_map_position_{};
   std::int64_t latest_position_stamp_ns_{0};
   std::int64_t mission_start_ns_{0};

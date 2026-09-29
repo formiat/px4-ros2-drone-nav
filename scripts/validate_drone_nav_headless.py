@@ -21,6 +21,7 @@ from headless_topology_validation import (
 from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E402
 from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from headless_runtime_evidence import (
+    planner_flight_space_m,
     validate_goal_reached_in_truth,
     validate_injected_goal_unreachable_in_truth,
     validate_localization_profile,
@@ -554,14 +555,10 @@ def main() -> int:
                 else RETURN_TRIGGERS)
         if unreachable_goal_injected:
             if args.runtime_manifest is not None:
-                # A goal the truth flood reaches fails; a component that only
-                # reaches the truth grid's edge is a note: the location is
-                # closed by the owner's statement, not by this grid.
-                truth_findings: list[str] = []
                 validate_injected_goal_unreachable_in_truth(
-                    Path(truth_occupancy_3d), ros_log, truth_findings)
-                for finding in truth_findings:
-                    (errors if "reaches the goal" in finding else notes).append(finding)
+                    Path(truth_occupancy_3d), ros_log, errors,
+                    planner_flight_space_m(json.loads(
+                        args.runtime_manifest.read_text(encoding="utf-8"))))
         elif not return_home_expected:
             validate_return_home(ros_log, False, errors)
             require(

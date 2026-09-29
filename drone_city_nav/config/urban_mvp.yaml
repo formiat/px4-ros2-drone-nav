@@ -956,6 +956,11 @@ mission_monitor_node:
     min_movement_distance_m: 5.0
     mission_waypoint_target_match_tolerance_m: 0.001
     mission_goal_capture_radius_m: 2.0
+    # The planner's flight envelope (production_mppi_node): the band of
+    # heights that bounds the proof's flood; a scenario overrides it for every
+    # node that reads it.
+    minimum_target_z_m: 2.0
+    maximum_target_z_m: 32.0
     shutdown_on_result: false
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0

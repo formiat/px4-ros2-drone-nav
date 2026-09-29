@@ -788,14 +788,106 @@ GOAL_UNREACHABLE_PATTERN = re.compile(
     r"substituted_goal=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)")
 
 
-def validate_injected_goal_unreachable_in_truth(truth_occupancy_path: Path,
-                                                ros_log: str,
-                                                errors: list[str]) -> None:
+def planner_flight_space_m(manifest: dict) -> tuple[tuple[float, float], ...]:
+    """The space the planner flies in, from what the flight ran: the memory
+    grid's box of the configuration and the scenario's flight envelope."""
+    import sys  # noqa: PLC0415
+
+    import yaml  # noqa: PLC0415
+
+    sys.path.insert(0, str(REPOSITORY / "drone_city_nav/launch"))
+    from point_to_point_scenario import load_point_to_point_scenario  # noqa: PLC0415
+
+    configuration = yaml.safe_load(resolve_manifest_path(
+        manifest["configuration"]["path"]).read_text(encoding="utf-8"))
+    memory = configuration["obstacle_memory_3d_node"]["ros__parameters"]
+    scenario = load_point_to_point_scenario(
+        resolve_manifest_path(manifest["mission"]["scenario"]["path"]))
+    return ((float(memory["grid_origin_x"]),
+             float(memory["grid_origin_x"]) + float(memory["grid_width_m"])),
+            (float(memory["grid_origin_y"]),
+             float(memory["grid_origin_y"]) + float(memory["grid_height_m"])),
+            (float(scenario["minimum_target_z_m"]), float(scenario["maximum_target_z_m"])))
+
+
+def truth_flood_finding(occupied, bounds, start: tuple[float, float, float],
+                        goal: tuple[float, float, float],
+                        flight_space_m: tuple[tuple[float, float], ...]) -> str:
+    """Floods the truth grid from the start within the space the planner
+    flies in (roadmap item 17 stage 8): its memory grid's box and its flight
+    envelope's band of heights, the goal clamped into the band as the planner
+    clamps it. Cells outside that space are walls; beyond the truth grid,
+    where the space goes on, nothing was voxelized and the world is open. The
+    finding starts with FAIL unless the flood closes short of the goal."""
+    import numpy as np  # noqa: PLC0415
+
+    origin = (bounds.origin_x_m, bounds.origin_y_m, bounds.origin_z_m)
+    shape = occupied.shape
+    resolution = bounds.resolution_m
+    inside = []
+    for axis, (low_m, high_m) in enumerate(flight_space_m):
+        lower = origin[axis] + resolution * np.arange(shape[axis])
+        # A cell the space touches is in it: the check errs towards open.
+        inside.append((lower + resolution > low_m) & (lower <= high_m))
+    walls = occupied | ~(inside[0][:, None, None] & inside[1][None, :, None] &
+                         inside[2][None, None, :])
+    start_cell = tuple(int(math.floor((start[axis] - origin[axis]) / resolution))
+                       for axis in range(3))
+    if not all(0 <= start_cell[axis] < shape[axis] for axis in range(3)) or \
+            walls[start_cell]:
+        return "FAIL: the start of the injected flight lies in the free truth space it flies in"
+    component = np.zeros_like(walls)
+    component[start_cell] = True
+    frontier = component.copy()
+    while True:
+        grown = np.zeros_like(frontier)
+        grown[1:, :, :] |= frontier[:-1, :, :]
+        grown[:-1, :, :] |= frontier[1:, :, :]
+        grown[:, 1:, :] |= frontier[:, :-1, :]
+        grown[:, :-1, :] |= frontier[:, 1:, :]
+        grown[:, :, 1:] |= frontier[:, :, :-1]
+        grown[:, :, :-1] |= frontier[:, :, 1:]
+        fresh = grown & ~walls & ~component
+        if not fresh.any():
+            break
+        component |= fresh
+        frontier = fresh
+    voxels = int(component.sum())
+    # The faces of the truth grid the flight space goes on beyond.
+    open_faces = []
+    for axis, name in enumerate("xyz"):
+        low_m, high_m = flight_space_m[axis]
+        grid_low = origin[axis]
+        grid_high = origin[axis] + resolution * shape[axis]
+        if low_m < grid_low and component.take(0, axis=axis).any():
+            open_faces.append(f"{name}-")
+        if high_m > grid_high and component.take(shape[axis] - 1, axis=axis).any():
+            open_faces.append(f"{name}+")
+    low_z, high_z = flight_space_m[2]
+    goal_cell = tuple(int(math.floor((value - origin[axis]) / resolution))
+                      for axis, value in enumerate(
+                          (goal[0], goal[1], min(max(goal[2], low_z), high_z))))
+    goal_in_grid = all(0 <= goal_cell[axis] < shape[axis] for axis in range(3))
+    if goal_in_grid and bool(component[goal_cell]):
+        return ("FAIL: the injected goal is unreachable in the truth world (the start's "
+                f"component of {voxels} free voxels reaches the goal)")
+    if open_faces:
+        return ("FAIL: the injected goal is unreachable in the truth world (the start's "
+                f"component of {voxels} free voxels at {resolution:.2f} m leaves the "
+                f"truth grid at {', '.join(open_faces)}, where the space flown in is "
+                "open)")
+    return (f"OK: the injected goal is unreachable in the truth world (the start's "
+            f"component of {voxels} free voxels at {resolution:.2f} m closes within "
+            "the space flown in)")
+
+
+def validate_injected_goal_unreachable_in_truth(
+        truth_occupancy_path: Path, ros_log: str, errors: list[str],
+        flight_space_m: tuple[tuple[float, float], ...]) -> None:
     """The check does not take the manifest's word for the injected
     unreachability (roadmap item 19): it floods the truth collision world of
-    the location from the start, through every free voxel, and confirms that
-    the goal lies outside the start's component. A goal outside the truth grid
-    is unreachable only while the component stays off the grid's edge."""
+    the location from the start and confirms that the goal lies outside the
+    start's component in the space the planner flies in."""
     substitution = GOAL_UNREACHABLE_PATTERN.search(ros_log)
     if substitution is None:
         errors.append("FAIL: the injected unreachability names the goal it gave up")
@@ -822,60 +914,11 @@ def validate_injected_goal_unreachable_in_truth(truth_occupancy_path: Path,
         y1 = min(y0 + CHUNK_SIZE, bounds.height)
         z1 = min(z0 + CHUNK_SIZE, bounds.depth)
         occupied[x0:x1, y0:y1, z0:z1] |= block[:x1 - x0, :y1 - y0, :z1 - z0].astype(bool)
-    start_cell = occupancy.world_to_cell(start)
-    if occupancy.occupied(start_cell):
-        errors.append("FAIL: the start of the injected flight lies in free truth space")
-        return
-    component = np.zeros_like(occupied)
-    component[start_cell] = True
-    frontier = component.copy()
-    touches_edge = False
-    while True:
-        grown = np.zeros_like(frontier)
-        grown[1:, :, :] |= frontier[:-1, :, :]
-        grown[:-1, :, :] |= frontier[1:, :, :]
-        grown[:, 1:, :] |= frontier[:, :-1, :]
-        grown[:, :-1, :] |= frontier[:, 1:, :]
-        grown[:, :, 1:] |= frontier[:, :, :-1]
-        grown[:, :, :-1] |= frontier[:, :, 1:]
-        fresh = grown & ~occupied & ~component
-        if not fresh.any():
-            break
-        component |= fresh
-        frontier = fresh
-    edges = [name for name, touched in (
-        ("x-", component[0, :, :].any()), ("x+", component[-1, :, :].any()),
-        ("y-", component[:, 0, :].any()), ("y+", component[:, -1, :].any()),
-        ("z-", component[:, :, 0].any()), ("z+", component[:, :, -1].any()))
-        if touched]
-    # The goal may lie outside the truth grid altogether (the loader refuses
-    # such a point), which is where an injected goal usually lies.
-    goal_cell = (int(math.floor((goal[0] - bounds.origin_x_m) / bounds.resolution_m)),
-                 int(math.floor((goal[1] - bounds.origin_y_m) / bounds.resolution_m)),
-                 int(math.floor((goal[2] - bounds.origin_z_m) / bounds.resolution_m)))
-    goal_in_grid = all(0 <= goal_cell[axis] < occupied.shape[axis] for axis in range(3))
-    voxels = int(component.sum())
-    if goal_in_grid and bool(component[goal_cell]):
-        errors.append(
-            "FAIL: the injected goal is unreachable in the truth world (the start's "
-            f"component of {voxels} free voxels reaches the goal)")
-    elif edges:
-        # Measured on Urban Circuit Practice 01 (2026-09-26): the start's
-        # component fills the whole 0.5 m truth grid, 22.95 million voxels,
-        # reaching its top first (the grid ends at 23.5 m, below the halls) and
-        # then every side, and the space under the floor is free down to the
-        # grid's bottom. On this grid the location is not closed; it is closed
-        # by the project owner's statement, which the check records here
-        # rather than contradicts.
-        errors.append(
-            "FAIL: the injected goal is unreachable in the truth world beyond the "
-            f"owner's statement (the start's component of {voxels} free voxels at "
-            f"{bounds.resolution_m:.2f} m does not reach the goal but reaches the "
-            f"grid's edge at {', '.join(edges)})")
+    finding = truth_flood_finding(occupied, bounds, start, goal, flight_space_m)
+    if finding.startswith("FAIL"):
+        errors.append(finding)
     else:
-        print(f"OK: the injected goal is unreachable in the truth world (the start's "
-              f"component of {voxels} free voxels at {bounds.resolution_m:.2f} m "
-              f"neither reaches the goal nor the grid's edge)")
+        print(finding)
 
 
 def validate_lidar_inertial_health(ros_log: str, start_s: float, end_s: float,

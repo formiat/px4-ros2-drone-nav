@@ -1,7 +1,9 @@
 #include "drone_city_nav/goal_reachability_proof_3d.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bitset>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -50,15 +52,25 @@ private:
 GoalReachabilityProof3D proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid,
                                                const Point3& vehicle,
                                                const Point3& goal,
+                                               const FlightEnvelopeConfig& envelope,
                                                const std::size_t voxel_budget) {
   GoalReachabilityProof3D proof;
+  const GridBounds3D& bounds = grid.bounds();
+  // The layers the envelope's band touches, its floor and ceiling included.
+  const auto layer = [&bounds](const double z_m) {
+    return static_cast<int>(std::floor((z_m - bounds.origin_z) / bounds.resolution_m));
+  };
+  const int lowest_z = std::max(layer(envelope.minimum_target_z_m), 0);
+  const int highest_z =
+      std::min(layer(envelope.maximum_target_z_m), bounds.depth_cells - 1);
   const std::optional<GridIndex3D> start = grid.worldToCell(vehicle);
-  if (!start.has_value()) {
+  if (!start.has_value() || start->z < lowest_z || start->z > highest_z) {
     return proof;
   }
   proof.vehicle_inside_grid = true;
-  const std::optional<GridIndex3D> goal_cell = grid.worldToCell(goal);
-  const GridBounds3D& bounds = grid.bounds();
+  // The planner flies to the goal's height clamped into the envelope.
+  const std::optional<GridIndex3D> goal_cell = grid.worldToCell(
+      Point3{goal.x, goal.y, clampToFlightEnvelope(goal.z, envelope).value_or(goal.z)});
   const auto same = [](const GridIndex3D first, const GridIndex3D second) noexcept {
     return first.x == second.x && first.y == second.y && first.z == second.z;
   };
@@ -79,13 +91,10 @@ GoalReachabilityProof3D proveGoalUnreachable3D(const ObservedOccupancyGrid3D& gr
       for (const std::array<int, 3>& step : kNeighbours) {
         const GridIndex3D neighbour{cell.x + step[0], cell.y + step[1],
                                     cell.z + step[2]};
-        if (neighbour.x < 0 || neighbour.y < 0 || neighbour.z < 0 ||
+        if (neighbour.x < 0 || neighbour.y < 0 || neighbour.z < lowest_z ||
             neighbour.x >= bounds.width_cells || neighbour.y >= bounds.height_cells ||
-            neighbour.z >= bounds.depth_cells) {
-          proof.touches_grid_edge = true;
-          return proof;
-        }
-        if (grid.isOccupied(neighbour) || !visited.markVisited(neighbour)) {
+            neighbour.z > highest_z || grid.isOccupied(neighbour) ||
+            !visited.markVisited(neighbour)) {
           continue;
         }
         ++proof.component_voxels;
@@ -112,9 +121,6 @@ goalReachabilityProofVerdict(const GoalReachabilityProof3D& proof) noexcept {
   }
   if (proof.goal_inside) {
     return "goal_reachable";
-  }
-  if (proof.touches_grid_edge) {
-    return "open_at_grid_edge";
   }
   if (proof.budget_exhausted) {
     return "budget_exhausted";
