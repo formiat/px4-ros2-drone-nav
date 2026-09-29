@@ -6,9 +6,8 @@
 namespace drone_city_nav {
 namespace {
 
-// The measured range stops a millimetre above the margin when a frame
-// observes nothing (specification K9).
-constexpr double kBlindRangeToleranceM{0.01};
+// The braking contract's blind floor (specification K9).
+constexpr double kBlindObservedFraction{0.02};
 constexpr double kGoalTimeMargin{9.0};
 constexpr double kMinimumMeanSpeedMps{0.5};
 constexpr double kGoalReserveS{20.0};
@@ -16,14 +15,13 @@ constexpr double kGoalReserveS{20.0};
 } // namespace
 
 void LightReliabilityJudgment::observe(const double stamp_s,
-                                       const double measured_range_m,
-                                       const double physical_margin_m) {
-  if (!std::isfinite(stamp_s) || !std::isfinite(measured_range_m) ||
-      !std::isfinite(physical_margin_m) ||
+                                       const double observed_fraction) {
+  if (!std::isfinite(stamp_s) || !std::isfinite(observed_fraction) ||
+      observed_fraction < 0.0 ||
       (!samples_.empty() && stamp_s < samples_.back().stamp_s)) {
     return;
   }
-  const bool outage = measured_range_m <= physical_margin_m + kBlindRangeToleranceM;
+  const bool outage = observed_fraction <= kBlindObservedFraction;
   if (outage && outage_started_s_ < 0.0) {
     outage_started_s_ = stamp_s;
   } else if (!outage) {

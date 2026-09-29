@@ -456,6 +456,7 @@ void ProductionMppiNode::planningTick() {
           .execution_input = execution_input,
           .latest_raw_world = latest_raw_world_3d,
           .latest_sensor_evidence = latest_sensor_evidence,
+          .latest_light_headroom = latestLightHeadroom(now_ns),
           .cooperative_command = cooperative_command,
           .mission_goal = mission_goal,
           .tick_started = snapshot_started,

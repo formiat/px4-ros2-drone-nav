@@ -8,6 +8,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include <algorithm>
 #include <array>
@@ -111,6 +112,13 @@ public:
     near_matcher_ = matcher(near_disparities);
     const int disparities = 2 * near_disparities;
     frame_id_ = declare_parameter<std::string>("frame_id", "stereo_left");
+    // The light the frame has left (roadmap item 17 stage 7): the camera's
+    // gain lifts the frame's 95th percentile of brightness to 200 of 255,
+    // and once the gain is at its limit that percentile falls with the light.
+    light_headroom_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("light_headroom_topic",
+                                       "/stereo_depth/light_headroom"),
+        rclcpp::SensorDataQoS{});
     returns_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("returns_topic", "/stereo_depth/points"),
         rclcpp::SensorDataQoS{}.keep_last(1));
@@ -282,8 +290,12 @@ private:
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
+    const double headroom = lightHeadroom(left_grey);
+    std_msgs::msg::Float64 headroom_message;
+    headroom_message.data = headroom;
+    light_headroom_pub_->publish(headroom_message);
     const std::vector<Point3> unobservable = unobservableFrustum(
-        rclcpp::Time{left->header.stamp}.seconds(),
+        rclcpp::Time{left->header.stamp}.seconds(), headroom,
         static_cast<double>(returns.size()) /
             static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                                 (image_height_ / returns_config_.pixel_stride)),
@@ -355,18 +367,47 @@ private:
                          brightness_by_metre.c_str());
   }
 
-  // Roadmap item 17 stage 8: darkness is not unknown. A frame whose signal
-  // has collapsed, the pair matching under a tenth of its pixels (where the
-  // braking contract's measured range falls below its 2 m margin) in a frame
-  // whose noise says the gain is up (a dim frame: a bright wall without
-  // texture has its noise low and is absent depth, F13), for longer than the
-  // moderate flicker's dark lasts, means the pair looked and could not see:
+  // The frame's 95th percentile of brightness over the 200 the camera's gain
+  // aims it at: one while the gain can make up the light, less once it
+  // cannot. The pair's depth does not show a fading light: its matches held
+  // until the light was under a hundredth of itself, and the vehicle flew at
+  // 2.4 m/s into a zone that had put it out (r800).
+  [[nodiscard]] static double lightHeadroom(const cv::Mat& grey) {
+    constexpr double kGainTargetGrey{200.0};
+    std::array<std::size_t, 256U> histogram{};
+    std::size_t samples{0U};
+    for (int row = 0; row < grey.rows; row += kNoiseSampleStride) {
+      const std::uint8_t* const values = grey.ptr<std::uint8_t>(row);
+      for (int column = 0; column < grey.cols; column += kNoiseSampleStride) {
+        ++histogram[values[column]];
+        ++samples;
+      }
+    }
+    std::size_t below{0U};
+    for (std::size_t level = 0U; level < histogram.size(); ++level) {
+      below += histogram[level];
+      if (20U * below >= 19U * samples) {
+        return std::min(1.0, static_cast<double>(level) / kGainTargetGrey);
+      }
+    }
+    return 1.0;
+  }
+
+  // Roadmap item 17 stage 8: darkness is not unknown. A frame whose light has
+  // run out, its headroom under the 0.31 at which the braking contract's
+  // measured range falls below its 2 m margin, or whose signal has collapsed,
+  // the pair matching under a tenth of its pixels in a frame whose noise says
+  // the gain is up (a bright wall without texture has its noise low and is
+  // absent depth, F13), for longer than the moderate flicker's dark lasts,
+  // means the pair looked and could not see:
   // the frustum from 1.5 m to the confident depth is observed unobservable,
   // a prohibition as a surface is, confirmed once a second while it lasts.
   // The vehicle's own cell and the way it came are never in it.
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
+                                                        const double headroom,
                                                         const double matched_share,
                                                         const double noise) {
+    constexpr double kDimHeadroom{0.31};
     constexpr double kCollapsedShare{0.1};
     constexpr double kCollapsedNoiseGrey{6.0};
     constexpr double kDarknessS{2.5};
@@ -375,7 +416,8 @@ private:
     constexpr double kStepM{0.25};
     constexpr int kRayPitchPx{80};
     std::vector<Point3> points;
-    if (!(matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey)) {
+    if (!(headroom < kDimHeadroom ||
+          (matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey))) {
       collapse_started_s_ = -1.0;
       return points;
     }
@@ -533,6 +575,7 @@ private:
   sensor_msgs::msg::Image::ConstSharedPtr right_;
   std::size_t pairs_{0U};
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr returns_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr light_headroom_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::CallbackGroup::SharedPtr tof_callbacks_;

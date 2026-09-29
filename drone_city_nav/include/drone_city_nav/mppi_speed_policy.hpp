@@ -125,6 +125,10 @@ struct MppiSpeedPolicyInput {
   // frame is. Absent, the configured contract stands.
   std::optional<double> sensor_observed_fraction;
   std::optional<double> sensor_evidence_age_s;
+  // The light the forward camera's latest frame has left, one while its gain
+  // makes it up (roadmap item 17 stage 7); absent for a sensor that brings
+  // its own.
+  std::optional<double> sensor_light_headroom;
 };
 
 struct MppiSpeedPolicyResult {
@@ -150,6 +154,9 @@ struct MppiSpeedPolicyResult {
   // frame stands behind and the evidence age charged.
   double sensor_measured_range_m{0.0};
   double sensor_evidence_age_s{0.0};
+  // The forward sensor's latest frame's observed fraction, as read; negative
+  // when none was.
+  double sensor_observed_fraction{-1.0};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

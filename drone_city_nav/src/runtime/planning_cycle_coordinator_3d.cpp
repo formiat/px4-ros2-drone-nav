@@ -513,6 +513,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           static_cast<double>(frame.sourceBeamCount() - frame.invalidBeamCount()) /
           static_cast<double>(whole);
     }
+    speed_policy_input.sensor_light_headroom = request.latest_light_headroom;
     speed_policy_input.sensor_evidence_age_s =
         request.now_ns > frame.acquisitionStampNs()
             ? static_cast<double>(request.now_ns - frame.acquisitionStampNs()) * 1.0e-9

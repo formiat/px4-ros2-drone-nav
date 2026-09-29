@@ -592,6 +592,16 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_subscription_options);
   }
+  // The forward camera's light headroom (roadmap item 17 stage 7); a lidar
+  // publishes none.
+  light_headroom_sub_ = create_subscription<std_msgs::msg::Float64>(
+      config_.world.topics.light_headroom, rclcpp::SensorDataQoS{},
+      [this](const std_msgs::msg::Float64::SharedPtr message) {
+        light_headroom_.store(message->data, std::memory_order_relaxed);
+        light_headroom_stamp_ns_.store(get_clock()->now().nanoseconds(),
+                                       std::memory_order_relaxed);
+      },
+      sensor_evidence_subscription_options);
   latest_sensor_obstacle_scan_sub_ = create_subscription<msg::LatestSensorObstacleScan>(
       config_.world.topics.latest_sensor_obstacle_scan, rclcpp::SensorDataQoS{},
       [this](const msg::LatestSensorObstacleScan::SharedPtr message,

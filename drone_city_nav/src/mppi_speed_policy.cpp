@@ -270,10 +270,16 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
   SensorBrakingContract3D& contract = config.sensor_braking_contract;
   if (input.sensor_observed_fraction.has_value() &&
       std::isfinite(*input.sensor_observed_fraction)) {
-    const double share =
+    // A frame whose light is running out observes as much as the light it
+    // has left: its matches hold until the light is nearly gone (r800).
+    const double share = std::min(
         std::clamp((*input.sensor_observed_fraction - kSensorBlindObservedFraction) /
                        (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
-                   0.0, 1.0);
+                   0.0, 1.0),
+        input.sensor_light_headroom.has_value() &&
+                std::isfinite(*input.sensor_light_headroom)
+            ? std::clamp(*input.sensor_light_headroom, 0.0, 1.0)
+            : 1.0);
     contract.guaranteed_detection_range_m =
         std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
                  share * contract.guaranteed_detection_range_m);
@@ -296,6 +302,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.sensor_measured_range_m =
       config.sensor_braking_contract.guaranteed_detection_range_m;
   result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;
+  result.sensor_observed_fraction = input.sensor_observed_fraction.value_or(-1.0);
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;

@@ -61,6 +61,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -500,6 +501,23 @@ private:
   rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;
   rclcpp::Subscription<msg::LatestSensorObstacleScan>::SharedPtr
       latest_sensor_obstacle_scan_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_headroom_sub_;
+  std::atomic<double> light_headroom_{1.0};
+  std::atomic<std::int64_t> light_headroom_stamp_ns_{0};
+
+  // The latest headroom while it is fresh: a frame's, a few periods of the
+  // pair's 7.5 Hz old at most.
+  [[nodiscard]] std::optional<double>
+  latestLightHeadroom(const std::int64_t now_ns) const {
+    constexpr std::int64_t kFreshNs{600'000'000};
+    const std::int64_t stamp_ns =
+        light_headroom_stamp_ns_.load(std::memory_order_relaxed);
+    if (stamp_ns <= 0 || now_ns - stamp_ns > kFreshNs) {
+      return std::nullopt;
+    }
+    return light_headroom_.load(std::memory_order_relaxed);
+  }
+
   rclcpp::Subscription<msg::ObstacleMemoryStatus>::SharedPtr memory_status_sub_;
   rclcpp::Subscription<msg::MppiControlFeedback>::SharedPtr applied_control_sub_;
   rclcpp::Subscription<msg::NavigationObjective>::SharedPtr navigation_objective_sub_;
