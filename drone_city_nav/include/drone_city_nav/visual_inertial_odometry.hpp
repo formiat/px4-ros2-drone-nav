@@ -121,7 +121,8 @@ struct VisualInertialOdometryConfig {
   // through a dark stretch rather than lands blind. Replayed on a recorded
   // dark flight with its frames blanked (r779), the IMU alone drifted 0.2 to
   // 0.6 m horizontally in 5 to 10 s and 2 m in 20 s, and 2 to 8 m vertically
-  // in 5 to 10 s: the mode carries the horizontal alone.
+  // in 5 to 10 s: the mode carries the horizontal, and the height the
+  // features last gave.
   double maximum_dead_reckoning_s{10.0};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};

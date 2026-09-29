@@ -331,10 +331,15 @@ private:
       return;
     }
     // Dead reckoning (the ladder's second rung, roadmap item 17 stage 5) is
-    // declared: its height, which the IMU alone drifts metres in seconds, is
-    // not sent, and the autopilot holds its height on the barometer.
-    if (estimate.dead_reckoning) {
-      estimate.position_ned_m.z() = std::numeric_limits<double>::quiet_NaN();
+    // declared, and its height, which the IMU alone drifts metres in seconds,
+    // is not the IMU's: the last height the features gave is held, as the
+    // stopped vehicle holds it. A height left out drops the whole position
+    // from the autopilot's fusion, which takes it only when every axis is
+    // finite, and it declared its position lost 5 s in (r791).
+    if (estimate.healthy) {
+      last_healthy_height_ned_m_ = estimate.position_ned_m.z();
+    } else if (estimate.dead_reckoning) {
+      estimate.position_ned_m.z() = last_healthy_height_ned_m_;
       if (!dead_reckoning_declared_) {
         RCLCPP_WARN(get_logger(),
                     "VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started=true "
@@ -751,6 +756,7 @@ private:
   bool publish_to_autopilot_{false};
   std::int64_t last_autopilot_stamp_ns_{0};
   bool dead_reckoning_declared_{false};
+  double last_healthy_height_ned_m_{0.0};
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;
