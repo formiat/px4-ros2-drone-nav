@@ -50,7 +50,7 @@ prepare_runtime_evidence() {
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
     WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
-    LIGHT_BATTERY_S RETURN_HOME_EXPECTED; do
+    LIGHT_BATTERY_S RETURN_HOME_EXPECTED ANOMALY_ZONES; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
@@ -76,6 +76,7 @@ start_runtime_evidence_capture() {
     python3 "${repo_root}/scripts/carried_light.py" \
       --world "${world_name}" --profile "${LIGHT_FAULTS:-none}" \
       --seed "${LIGHT_FAULT_SEED:-0}" --battery-s "${LIGHT_BATTERY_S:-3600}" \
+      --zones "${ANOMALY_ZONES:-}" --model "${default_gazebo_follow_target}" \
       --output "${runtime_artifact_dir}/carried_light.csv" \
       > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
   fi

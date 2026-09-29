@@ -14,7 +14,12 @@ directory. Two things move the light:
 - its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
   evaluation component nobody tells the vehicle about. Their schedule never
   leaves this process, and no production node reads it (the contract test
-  holds it there); the vehicle learns of a failure only from its frames.
+  holds it there); the vehicle learns of a failure only from its frames;
+- the zones that fail it (ANOMALY_ZONES, roadmap item 17 stage 7, the
+  "magnetic anomaly"): as the vehicle, by its true position, comes within a
+  zone's falloff of its radius the light fades, and inside the radius it is
+  out. The zones are the scenario's and reach the vehicle no more than the
+  failures do.
 
 Two regimes, decided by the project owner on 2026-09-27:
 
@@ -127,12 +132,36 @@ def share_at(outages: list[Outage], t_s: float) -> float:
     return min((outage.share(t_s) for outage in outages), default=1.0)
 
 
+def zones_from(text: str) -> list[tuple[float, float, float, float, float]]:
+    """ANOMALY_ZONES: "x,y,z,radius,falloff" in the world frame, several
+    separated by ";"."""
+    zones = []
+    for part in filter(None, (item.strip() for item in text.split(";"))):
+        x, y, z, radius, falloff = (float(value) for value in part.split(","))
+        if radius < 0.0 or falloff <= 0.0:
+            raise ValueError(f"anomaly zone '{part}' needs a radius and a falloff")
+        zones.append((x, y, z, radius, falloff))
+    return zones
+
+
+def zone_share(zones, position) -> float:
+    """The share of the light the zones leave at `position`."""
+    share = 1.0
+    for x, y, z, radius, falloff in zones:
+        distance = ((position[0] - x) ** 2 + (position[1] - y) ** 2 +
+                    (position[2] - z) ** 2) ** 0.5
+        share = min(share, max(0.0, min(1.0, (distance - radius) / falloff)))
+    return share
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
     parser.add_argument("--profile", default="none",
                         choices=("none", "moderate", "severe"))
     parser.add_argument("--battery-s", type=float, default=3600.0)
+    parser.add_argument("--zones", default="")
+    parser.add_argument("--model", default="x500_lidar_3d_0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--horizon-s", type=float, default=3600.0)
     parser.add_argument("--output", required=True, type=Path)
@@ -141,6 +170,7 @@ def main() -> int:
     from gz.msgs10.boolean_pb2 import Boolean
     from gz.msgs10.clock_pb2 import Clock
     from gz.msgs10.light_pb2 import Light
+    from gz.msgs10.pose_v_pb2 import Pose_V
     from gz.transport13 import Node
 
     import rclpy
@@ -148,6 +178,7 @@ def main() -> int:
 
     outages = ([] if args.profile == "none"
                else schedule(args.profile, args.seed, args.horizon_s))
+    zones = zones_from(args.zones)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with (args.output.with_suffix(".schedule.csv")).open("w", newline="") as stream:
         writer = csv.writer(stream)
@@ -169,6 +200,17 @@ def main() -> int:
             clock["s"] = message.sim.sec + 1.0e-9 * message.sim.nsec
 
     node.subscribe(Clock, f"/world/{args.world}/clock", on_clock)
+    position = {"xyz": None}
+
+    def on_poses(message: Pose_V) -> None:
+        for pose in message.pose:
+            if pose.name == args.model:
+                with lock:
+                    position["xyz"] = (pose.position.x, pose.position.y, pose.position.z)
+                break
+
+    if zones:
+        node.subscribe(Pose_V, f"/world/{args.world}/pose/info", on_poses)
     service = f"/world/{args.world}/light_config"
 
     def request(intensity: float) -> bool:
@@ -203,7 +245,12 @@ def main() -> int:
                 if t_s - published_s >= 1.0:
                     charge_pub.publish(Float64(data=charge_s))
                     published_s = t_s
-                share = round(share_at(outages, t_s) if charge_s > 0.0 else 0.0, 3)
+                with lock:
+                    xyz = position["xyz"]
+                share = share_at(outages, t_s) if charge_s > 0.0 else 0.0
+                if zones and xyz is not None:
+                    share = min(share, zone_share(zones, xyz))
+                share = round(share, 3)
                 if share != applied:
                     accepted = request(NOMINAL_INTENSITY * share)
                     writer.writerow([f"{t_s:.3f}", f"{share:.3f}", int(accepted)])
