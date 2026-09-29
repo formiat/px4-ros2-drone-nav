@@ -114,7 +114,7 @@ def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""
         depth_parameters[f"{side}_image_topic"] = (
             f"{vehicle_prefix}/stereo/{side}/image"
         )
-    for side in ("up", "down"):
+    for side in ("up", "down", "front", "back", "left", "right"):
         gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
         ros_topic = f"{vehicle_prefix}/tof/{side}/points"
         bridge_arguments.append(

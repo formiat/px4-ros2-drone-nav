@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -41,7 +42,7 @@ TEST(TofZoneReturns, TheRaysLeaveTheSensorAndADownwardSensorLooksDown) {
   TofZoneReturnsConfig config;
   config.zones_per_side = 1U;
   config.sub_rays = 1U;
-  config.looks_up = false;
+  config.pitch_rad = 0.5 * std::numbers::pi;
   config.position_m = Point3{-0.32, -0.10, -0.12};
   const std::vector<Point3> zones{Point3{1.5, 0.0, 0.0}};
 
@@ -53,6 +54,26 @@ TEST(TofZoneReturns, TheRaysLeaveTheSensorAndADownwardSensorLooksDown) {
   EXPECT_NEAR(returns[0].point.y, -0.10, 1.0e-9);
   EXPECT_NEAR(returns[0].point.z, -0.12 - 1.5, 1.0e-9);
   EXPECT_TRUE(tofZoneReturns(std::vector<Point3>(3U), config).empty());
+}
+
+TEST(TofZoneReturns, ASensorOfTheRingLooksAlongItsYawOnTheHorizontal) {
+  // Roadmap item 17 stage 4: a sensor pitched level and turned to the left
+  // sees a surface 1.2 m to the left of where it sits.
+  TofZoneReturnsConfig config;
+  config.zones_per_side = 1U;
+  config.sub_rays = 1U;
+  config.pitch_rad = 0.0;
+  config.yaw_rad = 0.5 * std::numbers::pi;
+  config.position_m = Point3{-0.32, 0.22, 0.0};
+  const std::vector<Point3> zones{Point3{1.2, 0.0, 0.0}};
+
+  const std::vector<StereoDepthReturn> returns = tofZoneReturns(zones, config);
+
+  ASSERT_EQ(returns.size(), 1U);
+  EXPECT_TRUE(returns[0].hit);
+  EXPECT_NEAR(returns[0].point.x, -0.32, 1.0e-9);
+  EXPECT_NEAR(returns[0].point.y, 0.22 + 1.2, 1.0e-9);
+  EXPECT_NEAR(returns[0].point.z, 0.0, 1.0e-9);
 }
 
 } // namespace

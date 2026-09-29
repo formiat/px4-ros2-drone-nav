@@ -1356,15 +1356,25 @@ stereo_depth_node:
     # = 6.4 m is not evidence.
     disparity_error_px: 0.45
     allowed_depth_error_m: 0.25
-    # The two time-of-flight sensors of models/stereo_tof_v1 (VL53L8 class):
-    # 8 x 8 zones over 45 degrees, 2.8 m (the published range in 5 000 lux).
-    # A zone is a cone: its evidence is spread over 3 x 3 rays, 1.9 degrees
-    # apart, 0.09 m at 2.8 m, inside one 0.25 m voxel.
+    # The six time-of-flight sensors of models/stereo_tof_v1 (VL53L8 class):
+    # up, down and the ring of roadmap item 17 stage 4 (front, back, left,
+    # right); 8 x 8 zones over 45 degrees, 2.8 m (the published range in
+    # 5 000 lux; 4 m in the dark is not credited). A zone is a cone: its
+    # evidence is spread over 3 x 3 rays, 1.9 degrees apart, 0.09 m at 2.8 m,
+    # inside one 0.25 m voxel.
     tof_up_topic: /tof/up/points
     tof_down_topic: /tof/down/points
+    tof_front_topic: /tof/front/points
+    tof_back_topic: /tof/back/points
+    tof_left_topic: /tof/left/points
+    tof_right_topic: /tof/right/points
     tof_zones_per_side: 8
     tof_field_of_view_rad: 0.7853981633974483
     tof_maximum_range_m: 2.8
     tof_sub_rays_per_zone: 3
     tof_up_position_left_camera_flu_m: [-0.42, -0.10, 0.10]
     tof_down_position_left_camera_flu_m: [-0.32, -0.10, -0.12]
+    tof_front_position_left_camera_flu_m: [0.02, -0.10, -0.06]
+    tof_back_position_left_camera_flu_m: [-0.64, -0.10, 0.0]
+    tof_left_position_left_camera_flu_m: [-0.32, 0.22, 0.0]
+    tof_right_position_left_camera_flu_m: [-0.32, -0.42, 0.0]

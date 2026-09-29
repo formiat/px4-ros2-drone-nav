@@ -22,9 +22,13 @@ struct TofZoneReturnsConfig {
   double maximum_range_m{2.8};
   double minimum_range_m{0.05};
   std::size_t sub_rays{3U};
-  // The sensor's boresight and position in the frame the returns are
-  // published in. The boresight is that frame's +z (looking up) or -z.
-  bool looks_up{true};
+  // The sensor's orientation and position in the frame the returns are
+  // published in, as a pose states them: its forward-left-up frame pitched
+  // about the frame's y axis, then turned about its z axis. A pitch of -pi/2
+  // looks up, +pi/2 down; a pitch of zero looks along the yaw on the
+  // horizontal (roadmap item 17 stage 4's ring).
+  double pitch_rad{-1.5707963267948966};
+  double yaw_rad{0.0};
   Point3 position_m{};
 };
 

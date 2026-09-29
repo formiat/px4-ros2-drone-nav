@@ -84,6 +84,10 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
                 "evaluation_depth_left": "depth_camera",
                 "tof_up": "gpu_lidar",
                 "tof_down": "gpu_lidar",
+                "tof_front": "gpu_lidar",
+                "tof_back": "gpu_lidar",
+                "tof_left": "gpu_lidar",
+                "tof_right": "gpu_lidar",
             },
             sensors,
         )

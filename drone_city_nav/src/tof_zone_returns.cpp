@@ -7,7 +7,8 @@ namespace drone_city_nav {
 bool tofZoneReturnsConfigIsValid(const TofZoneReturnsConfig& config) noexcept {
   return config.zones_per_side > 0U && config.sub_rays > 0U &&
          std::isfinite(config.field_of_view_rad) && config.field_of_view_rad > 0.0 &&
-         config.field_of_view_rad < 3.0 && std::isfinite(config.minimum_range_m) &&
+         config.field_of_view_rad < 3.0 && std::isfinite(config.pitch_rad) &&
+         std::isfinite(config.yaw_rad) && std::isfinite(config.minimum_range_m) &&
          config.minimum_range_m >= 0.0 && std::isfinite(config.maximum_range_m) &&
          config.maximum_range_m > config.minimum_range_m &&
          std::isfinite(config.position_m.x) && std::isfinite(config.position_m.y) &&
@@ -54,13 +55,19 @@ tofZoneReturns(const std::span<const Point3> zone_points_sensor_flu,
           const double along = std::cos(vertical_rad) * std::cos(horizontal_rad);
           const double left = std::cos(vertical_rad) * std::sin(horizontal_rad);
           const double up = std::sin(vertical_rad);
-          // Looking up the boresight is the publishing frame's +z and the
-          // sensor's up is its -x; looking down, -z and +x.
-          const double sign = config.looks_up ? 1.0 : -1.0;
+          // Pitched about y, then turned about z.
+          const double pitched_x =
+              std::cos(config.pitch_rad) * along + std::sin(config.pitch_rad) * up;
+          const double pitched_z =
+              -std::sin(config.pitch_rad) * along + std::cos(config.pitch_rad) * up;
+          const double frame_x =
+              std::cos(config.yaw_rad) * pitched_x - std::sin(config.yaw_rad) * left;
+          const double frame_y =
+              std::sin(config.yaw_rad) * pitched_x + std::cos(config.yaw_rad) * left;
           returns.push_back(StereoDepthReturn{
-              .point = Point3{config.position_m.x - sign * up * range_m,
-                              config.position_m.y + left * range_m,
-                              config.position_m.z + sign * along * range_m},
+              .point = Point3{config.position_m.x + frame_x * range_m,
+                              config.position_m.y + frame_y * range_m,
+                              config.position_m.z + pitched_z * range_m},
               .hit = hit});
         }
       }

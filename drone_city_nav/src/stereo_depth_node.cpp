@@ -17,6 +17,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgproc.hpp>
@@ -27,6 +28,28 @@
 #include <vector>
 
 namespace drone_city_nav {
+namespace {
+
+// Where each time-of-flight sensor looks and sits, in the left camera's
+// forward-left-up frame (the model's pose less the camera's 0.10 m).
+struct TofMount {
+  const char* side;
+  double pitch_rad;
+  double yaw_rad;
+  Point3 position_m;
+};
+
+constexpr std::size_t kTofSensorCount{6U};
+constexpr std::array<TofMount, kTofSensorCount> kTofMounts = {{
+    {"up", -0.5 * std::numbers::pi, 0.0, {-0.42, -0.10, 0.10}},
+    {"down", 0.5 * std::numbers::pi, 0.0, {-0.32, -0.10, -0.12}},
+    {"front", 0.0, 0.0, {0.02, -0.10, -0.06}},
+    {"back", 0.0, std::numbers::pi, {-0.64, -0.10, 0.0}},
+    {"left", 0.0, 0.5 * std::numbers::pi, {-0.32, 0.22, 0.0}},
+    {"right", 0.0, -0.5 * std::numbers::pi, {-0.32, -0.42, 0.0}},
+}};
+
+} // namespace
 
 // Depth from a rectified stereo pair by semi-global matching, published as the
 // returns of a sensor that answers only where it measured: one ray per
@@ -104,8 +127,9 @@ public:
           right_ = image;
           matchIfPaired();
         });
-    // The two time-of-flight sensors cover straight up and straight down,
-    // where the pair cannot look. Their zones join the pair's returns as rays
+    // The time-of-flight sensors cover straight up and straight down, where
+    // the pair cannot look, and the ring on the horizontal (roadmap item 17
+    // stage 4) a bumper all round. Their zones join the pair's returns as rays
     // in the same frame and cloud, so one obstacle memory integrates the whole
     // sensor set from one stamped observation; the simulated sensors run at
     // the pair's rate and fire on the same simulation step.
@@ -117,27 +141,6 @@ public:
     tof.maximum_range_m = declare_parameter<double>("tof_maximum_range_m", 2.8);
     tof.sub_rays =
         static_cast<std::size_t>(declare_parameter<int>("tof_sub_rays_per_zone", 3));
-    const auto tof_position = [this](const std::string& name,
-                                     const std::vector<double>& fallback) {
-      const std::vector<double> value =
-          declare_parameter<std::vector<double>>(name, fallback);
-      if (value.size() != 3U) {
-        throw std::invalid_argument{"invalid time-of-flight sensor position"};
-      }
-      return Point3{value[0], value[1], value[2]};
-    };
-    tof_up_config_ = tof;
-    tof_up_config_.looks_up = true;
-    tof_up_config_.position_m =
-        tof_position("tof_up_position_left_camera_flu_m", {-0.42, -0.10, 0.10});
-    tof_down_config_ = tof;
-    tof_down_config_.looks_up = false;
-    tof_down_config_.position_m =
-        tof_position("tof_down_position_left_camera_flu_m", {-0.32, -0.10, -0.12});
-    if (!tofZoneReturnsConfigIsValid(tof_up_config_) ||
-        !tofZoneReturnsConfigIsValid(tof_down_config_)) {
-      throw std::invalid_argument{"invalid time-of-flight configuration"};
-    }
     // A pair holds its callback for the 120 ms the matching takes. The scans
     // are taken on a thread of their own, or the one scan that survives the
     // wait is never the pair's.
@@ -146,18 +149,32 @@ public:
     rclcpp::SubscriptionOptions tof_options;
     tof_options.callback_group = tof_callbacks_;
     const auto tof_qos = rclcpp::SensorDataQoS{}.keep_last(kTofScansKept);
-    tof_up_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        declare_parameter<std::string>("tof_up_topic", "/tof/up/points"), tof_qos,
-        [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) {
-          remember(tof_up_, cloud);
-        },
-        tof_options);
-    tof_down_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        declare_parameter<std::string>("tof_down_topic", "/tof/down/points"), tof_qos,
-        [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) {
-          remember(tof_down_, cloud);
-        },
-        tof_options);
+    for (std::size_t slot = 0U; slot < kTofSensorCount; ++slot) {
+      const TofMount& mount = kTofMounts[slot];
+      const std::string side{mount.side};
+      const std::vector<double> position = declare_parameter<std::vector<double>>(
+          "tof_" + side + "_position_left_camera_flu_m",
+          {mount.position_m.x, mount.position_m.y, mount.position_m.z});
+      if (position.size() != 3U) {
+        throw std::invalid_argument{"invalid time-of-flight sensor position"};
+      }
+      TofSensor& sensor = tof_sensors_[slot];
+      sensor.config = tof;
+      sensor.config.pitch_rad = mount.pitch_rad;
+      sensor.config.yaw_rad = mount.yaw_rad;
+      sensor.config.position_m = Point3{position[0], position[1], position[2]};
+      if (!tofZoneReturnsConfigIsValid(sensor.config)) {
+        throw std::invalid_argument{"invalid time-of-flight configuration"};
+      }
+      sensor.subscription = create_subscription<sensor_msgs::msg::PointCloud2>(
+          declare_parameter<std::string>("tof_" + side + "_topic",
+                                         "/tof/" + side + "/points"),
+          tof_qos,
+          [this, &sensor](const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) {
+            remember(sensor.scans, cloud);
+          },
+          tof_options);
+    }
     RCLCPP_INFO(
         get_logger(),
         "STEREO_DEPTH ready focal_px=%.1f baseline_m=%.2f confident_depth_m=%.2f "
@@ -266,13 +283,12 @@ private:
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
     std::size_t tof_rays{0U};
-    for (const auto& [scans, config] : {std::pair{&tof_up_, &tof_up_config_},
-                                        std::pair{&tof_down_, &tof_down_config_}}) {
+    for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
       // observation. A pair takes longer to match than a scan to arrive, so
       // the newest scan is rarely the pair's.
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan =
-          nearest(*scans, rclcpp::Time{left->header.stamp});
+          nearest(sensor.scans, rclcpp::Time{left->header.stamp});
       if (scan == nullptr) {
         continue;
       }
@@ -280,7 +296,7 @@ private:
       if (!zones.has_value()) {
         continue;
       }
-      const std::vector<StereoDepthReturn> rays = tofZoneReturns(*zones, *config);
+      const std::vector<StereoDepthReturn> rays = tofZoneReturns(*zones, sensor.config);
       tof_rays += rays.size();
       returns.insert(returns.end(), rays.begin(), rays.end());
     }
@@ -429,6 +445,12 @@ private:
   // A second of scans: a pair is matched well inside it.
   static constexpr std::size_t kTofScansKept{8U};
 
+  struct TofSensor {
+    TofZoneReturnsConfig config;
+    TofScans scans;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription;
+  };
+
   std::size_t image_width_{0U};
   std::size_t image_height_{0U};
   StereoPairGeometry geometry_{};
@@ -443,14 +465,9 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr returns_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
-  TofZoneReturnsConfig tof_up_config_{};
-  TofZoneReturnsConfig tof_down_config_{};
   rclcpp::CallbackGroup::SharedPtr tof_callbacks_;
   std::mutex tof_mutex_;
-  TofScans tof_up_;
-  TofScans tof_down_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr tof_up_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr tof_down_sub_;
+  std::array<TofSensor, kTofSensorCount> tof_sensors_{};
 };
 
 std::shared_ptr<rclcpp::Node> makeStereoDepthNode(const rclcpp::NodeOptions& options) {
