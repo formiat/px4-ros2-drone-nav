@@ -275,13 +275,19 @@ private:
         }
       }
     }
-    rejectMatchesWithinNoise(left_grey, disparity);
+    const double noise = rejectMatchesWithinNoise(left_grey, disparity);
     const std::string brightness_by_metre =
         matchedBrightnessByMetre(left_grey, disparity);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
+    const std::vector<Point3> unobservable = unobservableFrustum(
+        rclcpp::Time{left->header.stamp}.seconds(),
+        static_cast<double>(returns.size()) /
+            static_cast<double>((image_width_ / returns_config_.pixel_stride) *
+                                (image_height_ / returns_config_.pixel_stride)),
+        noise);
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -304,12 +310,13 @@ private:
     cloud.header.stamp = left->header.stamp;
     cloud.header.frame_id = frame_id_;
     sensor_msgs::PointCloud2Modifier modifier{cloud};
-    // `intensity` is 1 for a surface and 0 for a ray that is only free.
+    // `intensity` is 1 for a surface, 0 for a ray that is only free and 2 for
+    // a point the pair looked at and could not see (roadmap item 17 stage 8).
     modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y",
                                   1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
                                   sensor_msgs::msg::PointField::FLOAT32, "intensity", 1,
                                   sensor_msgs::msg::PointField::FLOAT32);
-    modifier.resize(returns.size());
+    modifier.resize(returns.size() + unobservable.size());
     sensor_msgs::PointCloud2Iterator<float> x{cloud, "x"};
     sensor_msgs::PointCloud2Iterator<float> y{cloud, "y"};
     sensor_msgs::PointCloud2Iterator<float> z{cloud, "z"};
@@ -326,6 +333,16 @@ private:
       ++z;
       ++flag;
     }
+    for (const Point3& point : unobservable) {
+      *x = static_cast<float>(point.x);
+      *y = static_cast<float>(point.y);
+      *z = static_cast<float>(point.z);
+      *flag = 2.0F;
+      ++x;
+      ++y;
+      ++z;
+      ++flag;
+    }
     returns_pub_->publish(cloud);
     ++pairs_;
     const double match_ms = std::chrono::duration<double, std::milli>(
@@ -336,6 +353,56 @@ private:
                          "match_ms=%.1f brightness_by_metre=%s",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightness_by_metre.c_str());
+  }
+
+  // Roadmap item 17 stage 8: darkness is not unknown. A frame whose signal
+  // has collapsed, the pair matching under a tenth of its pixels (where the
+  // braking contract's measured range falls below its 2 m margin) in a frame
+  // whose noise says the gain is up (a dim frame: a bright wall without
+  // texture has its noise low and is absent depth, F13), for longer than the
+  // moderate flicker's dark lasts, means the pair looked and could not see:
+  // the frustum from 1.5 m to the confident depth is observed unobservable,
+  // a prohibition as a surface is, confirmed once a second while it lasts.
+  // The vehicle's own cell and the way it came are never in it.
+  [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
+                                                        const double matched_share,
+                                                        const double noise) {
+    constexpr double kCollapsedShare{0.1};
+    constexpr double kCollapsedNoiseGrey{6.0};
+    constexpr double kDarknessS{2.5};
+    constexpr double kConfirmationPeriodS{1.0};
+    constexpr double kNearestM{1.5};
+    constexpr double kStepM{0.25};
+    constexpr int kRayPitchPx{80};
+    std::vector<Point3> points;
+    if (!(matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey)) {
+      collapse_started_s_ = -1.0;
+      return points;
+    }
+    if (collapse_started_s_ < 0.0 || stamp_s < collapse_started_s_) {
+      collapse_started_s_ = stamp_s;
+    }
+    if (stamp_s - collapse_started_s_ < kDarknessS ||
+        stamp_s - unobservable_confirmed_s_ < kConfirmationPeriodS) {
+      return points;
+    }
+    unobservable_confirmed_s_ = stamp_s;
+    const double far_m = stereoConfidentDepthM(geometry_, returns_config_);
+    for (int row = kRayPitchPx / 2; row < static_cast<int>(image_height_);
+         row += kRayPitchPx) {
+      for (int column = kRayPitchPx / 2; column < static_cast<int>(image_width_);
+           column += kRayPitchPx) {
+        // The left camera's forward-left-up frame, as every return.
+        const double left = -(column - geometry_.principal_x_px) / geometry_.focal_px;
+        const double up = -(row - geometry_.principal_y_px) / geometry_.focal_px;
+        const double norm = std::sqrt(1.0 + left * left + up * up);
+        for (double range_m = kNearestM; range_m <= far_m; range_m += kStepM) {
+          const double along = range_m / norm;
+          points.push_back(Point3{along, along * left, along * up});
+        }
+      }
+    }
+    return points;
   }
 
   // Roadmap item 17 stage 3: the mean grey level of the matched pixels in
@@ -382,7 +449,7 @@ private:
   // estimated from the frame itself (Immerkaer's operator, robustly), and a
   // match stands only where the local standard deviation clears it
   // threefold.
-  static void rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
+  static double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
     cv::Mat laplacian;
     const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
                             -2.0F, 1.0F, -2.0F, 1.0F);
@@ -431,8 +498,11 @@ private:
         }
       }
     }
+    return noise;
   }
 
+  double collapse_started_s_{-1.0};
+  double unobservable_confirmed_s_{-1.0};
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};
   static constexpr int kNoiseSampleStride{4};

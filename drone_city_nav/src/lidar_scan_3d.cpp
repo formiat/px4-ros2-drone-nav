@@ -115,6 +115,18 @@ decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
     const bool valid = std::isfinite(range_m) && range_m >= minimum_range_m &&
                        range_m <= maximum_range_m;
     const bool hit = valid && (hit_flags.empty() || hit_flags[index] >= 0.5F);
+    if (valid && !hit_flags.empty() && hit_flags[index] >= 1.5F) {
+      // Looked at and not seen (flag 2): occupied evidence without free
+      // space, and no observation of the frame's.
+      result.unobservable.push_back(LidarBeamSample3D{
+          .direction_lidar_flu =
+              Vec3{point.x / range_m, point.y / range_m, point.z / range_m},
+          .range_m = range_m,
+          .hit = true,
+          .valid = true,
+          .interpolated = true});
+      continue;
+    }
     result.beams.push_back(LidarBeamSample3D{
         .direction_lidar_flu =
             valid ? Vec3{point.x / range_m, point.y / range_m, point.z / range_m}

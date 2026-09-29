@@ -331,6 +331,8 @@ void ProductionMppiNode::publishNavigationProgress(
   message.sensor_measured_range_m = speed_policy.sensor_measured_range_m;
   message.sensor_guaranteed_range_m =
       config_.control.speed_policy.sensor_braking_contract.guaranteed_detection_range_m;
+  message.sensor_physical_margin_m =
+      config_.control.speed_policy.sensor_braking_contract.physical_margin_m;
   message.route_remaining_m = route_remaining_m;
   navigation_progress_pub_->publish(message);
 }

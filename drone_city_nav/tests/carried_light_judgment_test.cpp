@@ -14,7 +14,7 @@ TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
   for (int tick = 0; tick < 6000; ++tick) {
     const double stamp_s = 0.1 * tick;
     const bool dark = std::fmod(stamp_s, 20.0) < 3.0;
-    judgment.observe(stamp_s, dark ? 2.0 : 6.4, 6.4);
+    judgment.observe(stamp_s, dark ? 2.001 : 6.4, 2.0);
   }
   EXPECT_FALSE(judgment.unreliable());
   EXPECT_NEAR(judgment.outageShare(), 0.15, 0.01);
@@ -23,14 +23,24 @@ TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
 TEST(LightReliabilityJudgment, ALongOutageIsUnreliableAndStaysSo) {
   LightReliabilityJudgment judgment;
   for (int tick = 0; tick <= 35; ++tick) {
-    judgment.observe(0.1 * tick, 2.0, 6.4);
+    judgment.observe(0.1 * tick, 2.001, 2.0);
   }
   EXPECT_FALSE(judgment.unreliable());
-  judgment.observe(4.1, 2.0, 6.4);
+  judgment.observe(4.1, 2.001, 2.0);
   EXPECT_TRUE(judgment.unreliable());
-  judgment.observe(10.2, 6.4, 6.4);
+  judgment.observe(4.2, 6.4, 2.0);
   EXPECT_TRUE(judgment.unreliable());
   EXPECT_EQ(judgment.currentOutageS(), 0.0);
+}
+
+TEST(LightReliabilityJudgment, ADimFrameIsNoOutage) {
+  // The edge of a zone that fails the light: the vehicle stopped where it
+  // sees dimly, its measured range 3 m against a 2 m margin, for a minute.
+  LightReliabilityJudgment judgment;
+  for (int tick = 0; tick < 600; ++tick) {
+    judgment.observe(0.1 * tick, 3.0, 2.0);
+  }
+  EXPECT_FALSE(judgment.unreliable());
 }
 
 TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
@@ -40,7 +50,7 @@ TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
   bool reached{false};
   for (int tick = 0; tick < 1200 && !reached; ++tick) {
     const double stamp_s = 0.1 * tick;
-    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.5 ? 2.0 : 6.4, 6.4);
+    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.5 ? 2.001 : 6.4, 2.0);
     reached = judgment.unreliable();
   }
   EXPECT_TRUE(reached);

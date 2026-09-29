@@ -10,8 +10,13 @@ namespace drone_city_nav {
 // against the range the sensor set guarantees when it sees, and it is told
 // the charge of the light's battery, as any airframe knows its batteries.
 //
-// A light is judged unreliable once one outage (the measured range below the
-// guaranteed one) has lasted `kLongestOutageS`, or once outages have taken
+// An outage is a frame that observes nothing: the measured range at its
+// floor, the physical margin. A range merely short of the guaranteed one is
+// a dim frame, which a place makes as well as a failing light: the vehicle
+// stopped at the edge of a zone that fails the light (roadmap item 17 stage
+// 7) sees dimly and marks what it cannot see (stage 8), and its light is not
+// at fault. A light is judged unreliable once one outage has lasted
+// `kLongestOutageS`, or once outages have taken
 // `kOutageShare` of the last `kWindowS`. Both are measured on the two regimes
 // of the owner's decision: the moderate flicker every flight carries dipped
 // the range for at most 1.8 s and 1.5 percent of the time (r785), no more
@@ -27,7 +32,7 @@ public:
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};
 
-  void observe(double stamp_s, double measured_range_m, double guaranteed_range_m);
+  void observe(double stamp_s, double measured_range_m, double physical_margin_m);
 
   [[nodiscard]] bool unreliable() const noexcept {
     return unreliable_;

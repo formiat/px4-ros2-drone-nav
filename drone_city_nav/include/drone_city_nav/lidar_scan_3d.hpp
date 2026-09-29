@@ -33,6 +33,9 @@ struct OrganizedLidarScan3DConfig {
 
 struct OrganizedLidarScan3DResult {
   std::vector<LidarBeamSample3D> beams;
+  // Points a sensor looked at and could not see (roadmap item 17 stage 8):
+  // occupied evidence without free space, apart from the beams.
+  std::vector<LidarBeamSample3D> unobservable;
   std::size_t hit_beams{0U};
   std::size_t miss_beams{0U};
   std::size_t invalid_beams{0U};
@@ -51,8 +54,9 @@ decodeOrganizedLidarScan3D(std::span<const Point3> returns_lidar_flu,
 // inside the range is a ray of its own, a hit where its flag says so and free
 // space up to the return otherwise, and a return that is not finite is no
 // observation at all, where an organized lidar scan reads it as a miss to the
-// maximum range. Without flags every return is a hit. The result matches its
-// input one to one.
+// maximum range. Without flags every return is a hit, and a flag of 2 is a
+// point the sensor could not see, returned apart as unobservable. The beams
+// match the rest of the input one to one.
 [[nodiscard]] OrganizedLidarScan3DResult
 decodeHitOnlyReturns3D(std::span<const Point3> returns_sensor_flu,
                        std::span<const float> hit_flags, double minimum_range_m,

@@ -691,9 +691,12 @@ private:
     // memory as occupied evidence without free-space evidence. The latest
     // obstacle scan stays the measured returns alone: its contract bounds the
     // hit count by the beam count.
+    // A sensor that answers only where it measured interpolates nothing; what
+    // it could not see enters the memory the same way (roadmap item 17 stage
+    // 8).
     const std::vector<LidarBeamSample3D> surface_samples =
         hit_only_returns_
-            ? std::vector<LidarBeamSample3D>{}
+            ? decoded.unobservable
             : interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
                                                   surface_interpolation_config_);
     std::vector<LidarBeam3D> memory_beams;

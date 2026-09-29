@@ -2,11 +2,12 @@
 # (roadmap item 17 stage 5): whether the vehicle sees, and how far B is along
 # its route. Published a few times a second.
 std_msgs/Header header
-# The braking contract's measured forward range (specification K9) and the
-# range the sensor set guarantees when it sees; the first falls below the
-# second when the frames stop observing.
+# The braking contract's measured forward range (specification K9), the
+# range the sensor set guarantees when it sees, and the physical margin the
+# measured range falls to when a frame observes nothing.
 float64 sensor_measured_range_m
 float64 sensor_guaranteed_range_m
+float64 sensor_physical_margin_m
 # The committed route's length left to the mission goal; NaN while no
 # committed route reaches it.
 float64 route_remaining_m

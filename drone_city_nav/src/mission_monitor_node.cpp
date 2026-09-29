@@ -609,7 +609,7 @@ private:
     const std::int64_t now_ns = now().nanoseconds();
     light_judgment_.observe(static_cast<double>(now_ns) * 1.0e-9,
                             progress.sensor_measured_range_m,
-                            progress.sensor_guaranteed_range_m);
+                            progress.sensor_physical_margin_m);
     if (std::isfinite(progress.route_remaining_m)) {
       route_remaining_m_ = progress.route_remaining_m;
     }

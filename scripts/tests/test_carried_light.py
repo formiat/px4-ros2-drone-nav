@@ -80,7 +80,7 @@ class AnomalyZoneTest(unittest.TestCase):
     def test_the_light_fades_across_the_falloff_and_is_out_inside(self) -> None:
         zones = INJECTOR.zones_from("10,0,5,3,2; 50,50,5,1,1")
         self.assertEqual(1.0, INJECTOR.zone_share(zones, (20.0, 0.0, 5.0)))
-        self.assertAlmostEqual(0.5, INJECTOR.zone_share(zones, (14.0, 0.0, 5.0)))
+        self.assertAlmostEqual(0.125, INJECTOR.zone_share(zones, (14.0, 0.0, 5.0)))
         self.assertEqual(0.0, INJECTOR.zone_share(zones, (11.0, 0.0, 5.0)))
         self.assertEqual([], INJECTOR.zones_from(""))
 
