@@ -809,7 +809,6 @@ def generate_launch_description():
                 default_value="true",
                 description="Run lidar obstacle memory; required without a static map.",
             ),
-            ),
             DeclareLaunchArgument(
                 "enable_rviz",
                 default_value="false",
