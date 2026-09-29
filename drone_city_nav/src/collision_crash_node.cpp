@@ -139,9 +139,11 @@ private:
       }
       // Roadmap item 17 stage 5: a vehicle with no position source lands, and
       // a landing is not a crash. A contact made level and at a landing's
-      // speed is one: the autopilot's blind landing met the floor at 0.73
-      // m/s (r790), and a contact at speed or tilted is a collision.
-      if (attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
+      // speed is one, made by the body: the autopilot's blind landing met
+      // the floor at 0.73 m/s (r790), and a contact at speed, tilted or by a
+      // rotor (r792, a rotor on a wall at 0.23 m/s) is a collision.
+      if (contact.collision1.name.find("base_link") != std::string::npos &&
+          attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
           std::abs(attitude_.pitch_rad) < kLandingTiltRad &&
           speed_mps_ < kLandingSpeedMps &&
           horizontal_speed_mps_ < kLandingHorizontalSpeedMps) {

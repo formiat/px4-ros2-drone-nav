@@ -107,6 +107,9 @@ struct VisualInertialOdometry::Impl {
   bool lost{false};
   std::int64_t stamp_ns{0};
   std::int64_t last_update_stamp_ns{0};
+  // The height the features last gave: what a vehicle holding still in the
+  // dark holds (roadmap item 17 stage 5).
+  double held_height_ned_m{0.0};
   VisualInertialEstimate last_estimate;
   Eigen::Matrix3d body_to_ned{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
@@ -145,6 +148,7 @@ struct VisualInertialOdometry::Impl {
   void update(const Eigen::MatrixXd& jacobian, const Eigen::VectorXd& residual);
   void marginalizeOldestClone();
   void judgeDeadReckoning(VisualInertialEstimate& estimate) const;
+  void holdHeight();
 };
 
 void VisualInertialOdometry::Impl::propagateStep(const Eigen::Vector3d& gyro,
@@ -524,6 +528,23 @@ void VisualInertialOdometry::Impl::update(const Eigen::MatrixXd& stacked_jacobia
   }
 }
 
+// Past the unaided timeout the vehicle is stopped by its braking contract and
+// holds the height the features last gave, and the filter is told so. The
+// IMU alone drifted the height 2 to 8 m in 5 to 10 s (the recorded dark flight
+// r779 replayed with its frames blanked), and the estimate that came out of a
+// dark stretch jumped by metres when the features returned: the autopilot
+// reset its position by 5.2 m and the vehicle met a wall (r792), whose true
+// height moved 0.75 m in the 6 s of that hold.
+void VisualInertialOdometry::Impl::holdHeight() {
+  constexpr double kHeldHeightSigmaM{0.5};
+  const double weight = config.observation_noise / kHeldHeightSigmaM;
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(1, covariance.rows());
+  jacobian(0, kPosition + 2) = weight;
+  Eigen::VectorXd residual{1};
+  residual(0) = weight * (held_height_ned_m - position.z());
+  update(jacobian, residual);
+}
+
 void VisualInertialOdometry::Impl::marginalizeOldestClone() {
   const std::uint64_t id = clones.front().id;
   clones.pop_front();
@@ -715,6 +736,11 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
         state.config.observation_noise;
     state.update(jacobian, residual);
     state.last_update_stamp_ns = stamp_ns;
+    state.held_height_ned_m = state.position.z();
+  } else if (state.last_update_stamp_ns > 0 && !state.lost &&
+             static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 >
+                 state.config.maximum_unaided_s) {
+    state.holdHeight();
   }
   estimate.healthy =
       state.last_update_stamp_ns > 0 &&
