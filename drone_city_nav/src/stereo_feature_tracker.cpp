@@ -20,6 +20,36 @@ template<typename T> void keep(std::vector<T>& values, const std::vector<bool>& 
   values.resize(out);
 }
 
+// A surface lit by the vehicle's own light brightens as the vehicle nears
+// it, the light's falloff moves with the cameras over the scene and the gain
+// scales the whole frame: the brightness followed from frame to frame is no
+// longer the surface's alone. With the light on the filter gated twice the
+// features and drifted twice as far per 100 m of path (r775 against r774).
+// The tracker follows the frame's texture instead: the grey level smoothed
+// over a pixel, less its mean over some 32 pixels, which carries the light's
+// field and the gain's offset away. On two recorded flights it ended 0.22 m
+// from the truth in the dark world against 2.96 m, and 0.34 m in the lit
+// one against 1.38 m (r779, r780, replayed offline). The mean is taken on a
+// frame an eighth the size, which costs 2.5 ms a frame where the full-size
+// Gaussian cost 45.
+[[nodiscard]] cv::Mat texture(const cv::Mat& grey) {
+  constexpr double kMeanShrink{0.125};
+  constexpr double kMeanSigmaPx{32.0};
+  constexpr double kTextureGain{2.0};
+  constexpr double kTextureOffsetGrey{128.0};
+  cv::Mat smoothed;
+  cv::GaussianBlur(grey, smoothed, {5, 5}, 1.0);
+  cv::Mat small;
+  cv::resize(grey, small, {}, kMeanShrink, kMeanShrink, cv::INTER_AREA);
+  cv::GaussianBlur(small, small, {0, 0}, kMeanSigmaPx * kMeanShrink);
+  cv::Mat mean;
+  cv::resize(small, mean, grey.size(), 0.0, 0.0, cv::INTER_LINEAR);
+  cv::Mat result;
+  cv::addWeighted(smoothed, kTextureGain, mean, -kTextureGain, kTextureOffsetGrey,
+                  result, CV_8U);
+  return result;
+}
+
 } // namespace
 
 struct StereoFeatureTracker::Impl {
@@ -66,15 +96,8 @@ std::vector<StereoFeatureObservation> StereoFeatureTracker::Impl::track(
     const cv::Mat& raw_left, const cv::Mat& raw_right,
     const std::optional<Eigen::Matrix3d>& previous_to_current_rotation) {
   report_ = {};
-  // The cameras' own noise, 2.5 grey levels (roadmap item 17 stage 1),
-  // doubled the features the filter gated and the drift per 100 m of path
-  // (r761 to r772 against r747 to r751): a corner found or followed in the
-  // noise is the noise's. A Gaussian of one pixel lowers the noise about
-  // fourfold and leaves the corners at the scale of the 21 px window.
-  cv::Mat left;
-  cv::Mat right;
-  cv::GaussianBlur(raw_left, left, {5, 5}, 1.0);
-  cv::GaussianBlur(raw_right, right, {5, 5}, 1.0);
+  const cv::Mat left = texture(raw_left);
+  const cv::Mat right = texture(raw_right);
   const cv::Size window{config_.window_px, config_.window_px};
   const cv::TermCriteria criteria{cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30,
                                   0.01};
