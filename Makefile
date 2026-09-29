@@ -131,6 +131,12 @@ LIGHT_FAILURE_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_FAULTS=severe \
 	RETURN_HOME_EXPECTED=true
 LOW_BATTERY_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_BATTERY_S=240 \
 	RETURN_HOME_EXPECTED=true
+# Roadmap item 17 stage 7: a zone that fails the light, over B itself, the one
+# place a zone closes the way in this location (every zone elsewhere on the
+# route leaves a way around); B in its dark is unreachable and the vehicle
+# ends at the start.
+ZONE_ACROSS_B_SCENARIO := WORLD_ILLUMINATION=dark \
+	ANOMALY_ZONES=63.009,23.857,12.593,1.5,8 RETURN_HOME_EXPECTED=true
 
 .PHONY: urban-truth-occupancy-check
 urban-truth-occupancy-check:
@@ -194,3 +200,11 @@ sim-urban-low-battery-headless:
 .PHONY: sim-urban-low-battery-gui
 sim-urban-low-battery-gui:
 	$(LOW_BATTERY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-zone-across-b-headless
+sim-urban-zone-across-b-headless:
+	$(ZONE_ACROSS_B_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-zone-across-b-gui
+sim-urban-zone-across-b-gui:
+	$(ZONE_ACROSS_B_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui

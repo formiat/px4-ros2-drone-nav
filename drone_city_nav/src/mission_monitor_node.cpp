@@ -273,6 +273,13 @@ public:
       throw std::invalid_argument{"the proof budget must be valid"};
     }
     proof_voxel_budget_ = static_cast<std::size_t>(proof_budget);
+    // A proof holds only once it has stood this long (roadmap item 19's decay
+    // clause): a closure seen once decays in one confirmation's time
+    // (specification K10), so a proof must outlast it.
+    proof_hold_s_ = declare_parameter<double>("unreachable_goal_proof_hold_s", 30.0);
+    if (!std::isfinite(proof_hold_s_) || proof_hold_s_ < 0.0) {
+      throw std::invalid_argument{"the proof's hold must be valid"};
+    }
     // The band of heights the planner flies in bounds the proof's flood.
     flight_envelope_ = FlightEnvelopeConfig{
         .minimum_target_z_m = declare_parameter<double>("minimum_target_z_m", 1.0),
@@ -578,21 +585,31 @@ private:
       if (proof_goal_.x == goal.x && proof_goal_.y == goal.y &&
           proof_goal_.z == goal.z) {
         latest_proof_ = proof;
+        if (!latest_proof_.provenUnreachable()) {
+          proven_since_ns_ = 0;
+        } else if (proven_since_ns_ == 0) {
+          proven_since_ns_ = now_ns;
+        }
+        const bool proof_held =
+            proven_since_ns_ > 0 &&
+            static_cast<double>(now_ns - proven_since_ns_) * 1.0e-9 >= proof_hold_s_;
         RCLCPP_INFO(get_logger(),
                     "GOAL_REACHABILITY_PROOF verdict=%s component_voxels=%zu "
-                    "goal_inside=%s budget_exhausted=%s returning=%s",
+                    "goal_inside=%s budget_exhausted=%s goal_region_voxels=%zu "
+                    "held=%s returning=%s",
                     goalReachabilityProofVerdict(latest_proof_),
                     latest_proof_.component_voxels,
                     latest_proof_.goal_inside ? "true" : "false",
                     latest_proof_.budget_exhausted ? "true" : "false",
+                    latest_proof_.goal_region_voxels, proof_held ? "true" : "false",
                     goal_substituted_ ? "true" : "false");
-        if (!goal_substituted_ && latest_proof_.provenUnreachable() &&
+        if (!goal_substituted_ && proof_held &&
             substituteGoalWithStart("topological", now_ns)) {
+          proven_since_ns_ = 0;
           return;
         }
-        if (goal_substituted_ &&
-            latest_proof_.provenUnreachable() != start_unreachable_) {
-          start_unreachable_ = latest_proof_.provenUnreachable();
+        if (goal_substituted_ && proof_held != start_unreachable_) {
+          start_unreachable_ = proof_held;
           RCLCPP_WARN(
               get_logger(),
               "%s position=(%.3f,%.3f,%.3f) start=(%.3f,%.3f,%.3f) "
@@ -608,12 +625,14 @@ private:
       const Point3 vehicle = latest_map_position_;
       const Point3 goal = waypoints_[active_waypoint_index_];
       const FlightEnvelopeConfig envelope = flight_envelope_;
+      const double capture_radius_m = goal_capture_radius_m_;
       const std::size_t budget = proof_voxel_budget_;
       proof_goal_ = goal;
-      proof_future_ =
-          std::async(std::launch::async, [grid, vehicle, goal, envelope, budget] {
-            return proveGoalUnreachable3D(*grid, vehicle, goal, envelope, budget);
-          });
+      proof_future_ = std::async(std::launch::async, [grid, vehicle, goal, envelope,
+                                                      capture_radius_m, budget] {
+        return proveGoalUnreachable3D(*grid, vehicle, goal, envelope, capture_radius_m,
+                                      budget);
+      });
     }
   }
 
@@ -809,6 +828,8 @@ private:
   std::uint64_t navigation_mission_epoch_{0U};
   std::size_t proof_voxel_budget_{20'000'000U};
   FlightEnvelopeConfig flight_envelope_{};
+  double proof_hold_s_{30.0};
+  std::int64_t proven_since_ns_{0};
   Point3 proof_goal_{};
   bool start_unreachable_{false};
   Point3 latest_map_position_{};

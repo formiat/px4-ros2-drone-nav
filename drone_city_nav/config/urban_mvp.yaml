@@ -964,6 +964,9 @@ mission_monitor_node:
     # Specification K16: the proof's flood stops undecided past this many
     # voxels; 20 million took 4.5 s of a core every 10 s (r804).
     unreachable_goal_proof_voxel_budget: 2000000
+    # Roadmap item 19's decay clause: a proof substitutes the goal only once
+    # it has stood for one confirmation's decay (specification K10, K16).
+    unreachable_goal_proof_hold_s: 30.0
     shutdown_on_result: false
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0

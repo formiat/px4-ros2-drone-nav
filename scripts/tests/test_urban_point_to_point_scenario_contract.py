@@ -99,6 +99,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "point-to-point-dark": "WORLD_ILLUMINATION=dark",
             "light-failure": "$(LIGHT_FAILURE_SCENARIO)",
             "low-battery": "$(LOW_BATTERY_SCENARIO)",
+            "zone-across-b": "$(ZONE_ACROSS_B_SCENARIO)",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):
@@ -111,9 +112,9 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                         f"sim-urban-point-to-point-{mode}\n",
                         makefile,
                     )
-        # The return home is roadmap item 19's injected flight: the goal behind
-        # the outer walls, recorded as injected, and the truth grid the check
-        # floods; its headless runs need the grid.
+        # The return home is roadmap item 19's injected flight: the goal
+        # outside the location, recorded as injected, and the truth grid the
+        # check floods; its headless runs need the grid.
         self.assertIn("RETURN_HOME_GOAL_XYZ_M := 200,100,10", makefile)
         self.assertIn("MISSION_GOAL_UNREACHABLE=true", makefile)
         self.assertIn("TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D)", makefile)
