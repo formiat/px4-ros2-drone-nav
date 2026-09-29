@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import shutil
 import shlex
 import subprocess
@@ -392,6 +393,35 @@ def configure_dark_lighting(tree: ET.ElementTree) -> int:
     return removed
 
 
+def add_blank_panels(tree: ET.ElementTree, panels: str) -> int:
+    """Roadmap item 17 stage 2: panels a stereo matcher cannot match, uniform
+    and matte, as the scenario lays them. `panels` is "x,y,z,yaw,width,height"
+    in the world frame, several separated by ";"; each panel is 0.05 m thick,
+    its face across the yaw, and a physical body."""
+    world = tree.getroot().find("world")
+    if world is None:
+        raise EnvironmentPreparationError("materialized SDF has no world")
+    count = 0
+    for text in filter(None, (part.strip() for part in panels.split(";"))):
+        try:
+            x, y, z, yaw, width, height = (float(value) for value in text.split(","))
+        except ValueError as error:
+            raise EnvironmentPreparationError(f"blank panel '{text}' is not six numbers") from error
+        model = ET.SubElement(world, "model", {"name": f"scenario_blank_panel_{count}"})
+        ET.SubElement(model, "static").text = "true"
+        ET.SubElement(model, "pose").text = f"{x:.9g} {y:.9g} {z:.9g} 0 0 {yaw:.9g}"
+        link = ET.SubElement(model, "link", {"name": "panel"})
+        for kind in ("collision", "visual"):
+            element = ET.SubElement(link, kind, {"name": kind})
+            box = ET.SubElement(ET.SubElement(element, "geometry"), "box")
+            ET.SubElement(box, "size").text = f"0.05 {width:.9g} {height:.9g}"
+        material = ET.SubElement(link.find("visual"), "material")
+        ET.SubElement(material, "ambient").text = "0.5 0.5 0.5 1"
+        ET.SubElement(material, "diffuse").text = "0.5 0.5 0.5 1"
+        count += 1
+    return count
+
+
 def remote_visual_resource_uris(source_root: Path) -> set[str]:
     result: set[str] = set()
     resource_tags = {
@@ -662,6 +692,7 @@ def main() -> None:
     write_report(gui_report, gui_world_sdf, gui_fingerprint, gui_report_path)
     dark_world_sdf = runtime_root / "world_gui_dark.sdf"
     configure_dark_lighting(gui_tree)
+    add_blank_panels(gui_tree, os.environ.get("BLANK_PANELS", ""))
     write_materialized_world(gui_tree, dark_world_sdf)
 
     world = ET.parse(collision_world_sdf).getroot().find("world")

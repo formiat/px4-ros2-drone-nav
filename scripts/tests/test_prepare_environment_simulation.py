@@ -117,5 +117,24 @@ class LaunchPlatformMaterializationTest(unittest.TestCase):
                 self.assertIsNone(visual.find("visibility_flags"))
 
 
+class BlankPanelMaterializationTest(unittest.TestCase):
+    def test_each_panel_is_a_uniform_physical_body(self) -> None:
+        tree = ET.ElementTree(ET.fromstring("<sdf><world name='test'/></sdf>"))
+
+        count = PREPARER.add_blank_panels(tree, "8,21.1,9.9,0,2,2; 1,2,3,1.57,4,1")
+
+        self.assertEqual(2, count)
+        models = tree.getroot().findall("world/model")
+        self.assertEqual("8 21.1 9.9 0 0 0", models[0].findtext("pose"))
+        self.assertEqual("0.05 2 2", models[0].findtext("link/collision/geometry/box/size"))
+        self.assertIsNone(models[0].find("link/visual/material/pbr"))
+
+    def test_no_panels_adds_nothing(self) -> None:
+        tree = ET.ElementTree(ET.fromstring("<sdf><world name='test'/></sdf>"))
+
+        self.assertEqual(0, PREPARER.add_blank_panels(tree, ""))
+        self.assertIsNone(tree.getroot().find("world/model"))
+
+
 if __name__ == "__main__":
     unittest.main()
