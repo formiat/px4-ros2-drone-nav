@@ -19,6 +19,12 @@ the correction is recorded beside it.
   resolution over 64 disparities and near field at half resolution over 128,
   110 ms on two CPU threads. Disparity error 0.11 to 0.17 px at the median,
   0.29 to 0.49 px at p90; depth it stands behind out to 6.4 m.
+  Re-measured for roadmap item 17 in the dark world by the carried light,
+  with the cameras' noise, the gain and the noise mask (r782): 0.11 to 0.15
+  px at the median and 0.26 to 0.37 px at p90 from 2 to 8 m, the matched
+  share of the pixels 0.62 at 2 to 4 m, 0.44 at 4 to 6 m and 0.39 at 6 to 8
+  m (unmasked, the matcher answered on 98 percent of the pixels out to 40 m,
+  in the dark as well); 6.4 m holds.
 - **Returns** ([`obstacle_mapping.md`](obstacle_mapping.md)): every ray is a
   hit, a free ray or nothing; a time-of-flight zone is a cone of 3 x 3 rays.
   The launch's one `obstacle_memory_3d_node` integrates them as it integrated
