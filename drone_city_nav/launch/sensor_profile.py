@@ -114,6 +114,13 @@ def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""
         depth_parameters[f"{side}_image_topic"] = (
             f"{vehicle_prefix}/stereo/{side}/image"
         )
+    # The vehicle's barometer, relayed by the same process for the camera
+    # estimator's hold through a dark stretch (roadmap item 17 stage 5).
+    depth_parameters["gazebo_air_pressure_topic"] = (
+        f"/world/{world_name}/model/{model_name}/link/base_link/sensor/"
+        "air_pressure_sensor/air_pressure"
+    )
+    depth_parameters["air_pressure_topic"] = f"{vehicle_prefix}/barometer/air_pressure"
     for side in ("up", "down", "front", "back", "left", "right"):
         gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
         ros_topic = f"{vehicle_prefix}/tof/{side}/points"

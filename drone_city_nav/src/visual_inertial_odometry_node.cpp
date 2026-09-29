@@ -16,6 +16,7 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -228,6 +229,25 @@ public:
                 },
         },
         in_group, in_group);
+    // The barometer, smoothed over half a second of its 50 Hz: the height
+    // the filter holds through a dark stretch (roadmap item 17 stage 5).
+    barometer_sub_ = create_subscription<sensor_msgs::msg::FluidPressure>(
+        declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
+        rclcpp::SensorDataQoS{},
+        [this](const sensor_msgs::msg::FluidPressure::ConstSharedPtr pressure) {
+          if (!std::isfinite(pressure->fluid_pressure)) {
+            return;
+          }
+          const std::scoped_lock lock{odometry_mutex_};
+          smoothed_pressure_pa_ =
+              std::isfinite(smoothed_pressure_pa_)
+                  ? smoothed_pressure_pa_ +
+                        kPressureSmoothing *
+                            (pressure->fluid_pressure - smoothed_pressure_pa_)
+                  : pressure->fluid_pressure;
+          odometry_->addBarometricHeight(-smoothed_pressure_pa_ / kPressurePerMetrePa);
+        },
+        in_group);
     const auto image_qos = rclcpp::SensorDataQoS{}.keep_last(3);
     left_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("left_image_topic", "/stereo/left/image"),
@@ -749,6 +769,11 @@ private:
   bool publish_to_autopilot_{false};
   std::int64_t last_autopilot_stamp_ns_{0};
   bool dead_reckoning_declared_{false};
+  // Air at 1.225 kg/m^3 under 9.807 m/s^2: 12.0 Pa a metre near the ground.
+  static constexpr double kPressurePerMetrePa{12.013};
+  static constexpr double kPressureSmoothing{0.04};
+  double smoothed_pressure_pa_{std::numeric_limits<double>::quiet_NaN()};
+  rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;

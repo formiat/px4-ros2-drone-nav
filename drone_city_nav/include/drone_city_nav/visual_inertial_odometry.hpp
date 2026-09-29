@@ -195,6 +195,9 @@ public:
   [[nodiscard]] bool initialized() const noexcept;
 
   void addImu(const VisualInertialImuSample& sample);
+  // The barometer's height, in metres up from any origin: through a dark
+  // stretch the filter holds its height to the change the barometer saw.
+  void addBarometricHeight(double height_m);
 
   // One frame of the pair at `stamp_ns`, on the IMU's clock. The IMU samples
   // up to the stamp must have been added: the frame's pose is cloned where

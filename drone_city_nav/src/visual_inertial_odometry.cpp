@@ -107,9 +107,12 @@ struct VisualInertialOdometry::Impl {
   bool lost{false};
   std::int64_t stamp_ns{0};
   std::int64_t last_update_stamp_ns{0};
-  // The height the features last gave: what a vehicle holding still in the
-  // dark holds (roadmap item 17 stage 5).
+  // The height the features last gave and the barometer's then, and the
+  // barometer's now: through a dark stretch the height follows the change
+  // the barometer saw (roadmap item 17 stage 5).
   double held_height_ned_m{0.0};
+  std::optional<double> held_barometric_height_m;
+  std::optional<double> barometric_height_m;
   VisualInertialEstimate last_estimate;
   Eigen::Matrix3d body_to_ned{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
@@ -528,20 +531,25 @@ void VisualInertialOdometry::Impl::update(const Eigen::MatrixXd& stacked_jacobia
   }
 }
 
-// Past the unaided timeout the vehicle is stopped by its braking contract and
-// holds the height the features last gave, and the filter is told so. The
-// IMU alone drifted the height 2 to 8 m in 5 to 10 s (the recorded dark flight
-// r779 replayed with its frames blanked), and the estimate that came out of a
-// dark stretch jumped by metres when the features returned: the autopilot
-// reset its position by 5.2 m and the vehicle met a wall (r792), whose true
-// height moved 0.75 m in the 6 s of that hold.
+// Past the unaided timeout the filter's height is the one the features last
+// gave, moved by what the barometer saw since. The IMU alone drifted the
+// height 2 to 8 m in 5 to 10 s (the recorded dark flight r779 replayed with
+// its frames blanked), and the estimate that came out of a dark stretch
+// jumped by metres when the features returned (r792); a height merely held
+// still was not the vehicle's, which sank 1.4 m in 5 s of a hold, and the
+// filter, told it stood still, bent its attitude and drifted 1.7 m sideways
+// (r793). The barometer's 3 Pa of noise is 0.25 m, less once smoothed.
 void VisualInertialOdometry::Impl::holdHeight() {
-  constexpr double kHeldHeightSigmaM{0.5};
+  constexpr double kHeldHeightSigmaM{0.3};
   const double weight = config.observation_noise / kHeldHeightSigmaM;
   Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(1, covariance.rows());
   jacobian(0, kPosition + 2) = weight;
   Eigen::VectorXd residual{1};
-  residual(0) = weight * (held_height_ned_m - position.z());
+  const double climbed_m =
+      held_barometric_height_m.has_value() && barometric_height_m.has_value()
+          ? *barometric_height_m - *held_barometric_height_m
+          : 0.0;
+  residual(0) = weight * (held_height_ned_m - climbed_m - position.z());
   update(jacobian, residual);
 }
 
@@ -645,6 +653,12 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   state.initialized = true;
 }
 
+void VisualInertialOdometry::addBarometricHeight(const double height_m) {
+  if (std::isfinite(height_m)) {
+    impl_->barometric_height_m = height_m;
+  }
+}
+
 void VisualInertialOdometry::addImu(const VisualInertialImuSample& sample) {
   Impl& state = *impl_;
   if (!state.initialized) {
@@ -737,6 +751,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
     state.update(jacobian, residual);
     state.last_update_stamp_ns = stamp_ns;
     state.held_height_ned_m = state.position.z();
+    state.held_barometric_height_m = state.barometric_height_m;
   } else if (state.last_update_stamp_ns > 0 && !state.lost &&
              static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 >
                  state.config.maximum_unaided_s) {

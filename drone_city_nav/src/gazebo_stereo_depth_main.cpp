@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <gz/msgs/fluid_pressure.pb.h>
 #include <gz/msgs/image.pb.h>
 #include <gz/transport/Node.hh>
 #include <memory>
@@ -37,6 +39,7 @@ public:
         frame_id_{declare_parameter<std::string>("frame_id", "stereo_left")} {
     subscribe("left");
     subscribe("right");
+    relayBarometer();
   }
 
 private:
@@ -57,6 +60,36 @@ private:
                                gazebo_topic + "'"};
     }
     RCLCPP_INFO(get_logger(), "Gazebo stereo image source: %s", gazebo_topic.c_str());
+  }
+
+  // The vehicle's barometer, relayed as its driver would publish it: the
+  // camera estimator holds its height on it through a dark stretch (roadmap
+  // item 17 stage 5).
+  void relayBarometer() {
+    const std::string gazebo_topic =
+        declare_parameter<std::string>("gazebo_air_pressure_topic", "");
+    if (gazebo_topic.empty()) {
+      return;
+    }
+    barometer_pub_ = create_publisher<sensor_msgs::msg::FluidPressure>(
+        declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
+        rclcpp::SensorDataQoS{});
+    const std::function<void(const gz::msgs::FluidPressure&)> callback =
+        [this](const gz::msgs::FluidPressure& pressure) {
+          sensor_msgs::msg::FluidPressure message;
+          message.header.stamp.sec =
+              static_cast<std::int32_t>(pressure.header().stamp().sec());
+          message.header.stamp.nanosec =
+              static_cast<std::uint32_t>(pressure.header().stamp().nsec());
+          message.header.frame_id = frame_id_;
+          message.fluid_pressure = pressure.pressure();
+          message.variance = pressure.variance();
+          barometer_pub_->publish(message);
+        };
+    if (!gazebo_.Subscribe(gazebo_topic, callback)) {
+      throw std::runtime_error{"cannot subscribe to the Gazebo air pressure topic '" +
+                               gazebo_topic + "'"};
+    }
   }
 
   void publish(const gz::msgs::Image& image,
@@ -154,6 +187,7 @@ private:
   static constexpr double kGainFollowing{0.3};
 
   std::atomic<double> gain_{1.0};
+  rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_pub_;
   std::string frame_id_;
   gz::transport::Node gazebo_;
 };
