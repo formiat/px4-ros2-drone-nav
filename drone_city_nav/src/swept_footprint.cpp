@@ -451,11 +451,8 @@ struct ContactExemption3D {
         })) {
       return true;
     }
-    return seed != nullptr &&
-           std::ranges::all_of(positions, [&](const Point3& position) {
-             return proprioceptiveSeedExemptsBox(*seed, position, box_minimum,
-                                                 box_maximum);
-           });
+    return seed != nullptr && proprioceptiveSeedExemptsBoxAtAll(
+                                  *seed, positions, box_minimum, box_maximum);
   }
 
   [[nodiscard]] bool exemptsPoint(const Point3& obstacle_point) const noexcept {
@@ -847,10 +844,10 @@ void forEachContactPose(const ProprioceptiveFreeSpaceSeed3D& seed, Visit&& visit
   }
 }
 
-bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
-                                  const Point3& candidate_position,
-                                  const Point3& box_minimum,
-                                  const Point3& box_maximum) noexcept {
+bool proprioceptiveSeedExemptsBoxAtAll(
+    const ProprioceptiveFreeSpaceSeed3D& seed,
+    const std::span<const Point3> candidate_positions, const Point3& box_minimum,
+    const Point3& box_maximum) noexcept {
   const double tolerance_m = seedContactToleranceM(seed);
   const SweptFootprintConfig contact_envelope =
       contactWidenedFootprint(seed.footprint, tolerance_m);
@@ -858,25 +855,28 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
   const SweptFootprintConfig body = physicalBody(seed.footprint);
   // Contact: the envelope overlaps the box at some pose the vehicle stands
   // for. Where the body itself overlaps it there, the vehicle is already that
-  // deep, and the candidate may not go deeper than the deepest such pose.
-  bool contact{false};
-  double reference_depth_m = 0.0;
-  forEachContactPose(seed, [&](const Point3& pose) {
-    if (!boxIntersectsFiniteCylinder(
-            pose, axis, box_minimum, box_maximum, contact_envelope.lower_extent_m,
-            contact_envelope.upper_extent_m,
-            contact_envelope.radius_m * contact_envelope.radius_m)) {
-      return;
-    }
-    contact = true;
-    reference_depth_m = std::max(
-        reference_depth_m, bodyDepthInBoxM(pose, axis, box_minimum, box_maximum, body));
-  });
-  if (!contact) {
-    return false;
+  // deep, and the candidates may not go deeper than the deepest such pose. The
+  // body shrunk by the candidates' depth reaching the box at a pose is that
+  // pose being as deep, so the walk ends at the first one and bisects none:
+  // beside a wall a bisection per pose per voxel per body position made one
+  // path validation cost 30 to 55 ms and a horizon's assembly 430 ms (r805).
+  double deepest_m = 0.0;
+  for (const Point3& position : candidate_positions) {
+    deepest_m = std::max(
+        deepest_m, bodyDepthInBoxM(position, axis, box_minimum, box_maximum, body));
   }
-  return bodyDepthInBoxM(candidate_position, axis, box_minimum, box_maximum, body) <=
-         reference_depth_m + kContactDepthToleranceM;
+  const double required_m = deepest_m - kContactDepthToleranceM;
+  const SweptFootprintConfig& reached = required_m > 0.0 ? body : contact_envelope;
+  const double shrink_m = std::max(0.0, required_m);
+  const double radius_m = reached.radius_m - shrink_m;
+  bool exempt{false};
+  forEachContactPose(seed, [&](const Point3& pose) {
+    exempt = exempt || boxIntersectsFiniteCylinder(pose, axis, box_minimum, box_maximum,
+                                                   reached.lower_extent_m - shrink_m,
+                                                   reached.upper_extent_m - shrink_m,
+                                                   radius_m * radius_m);
+  });
+  return !candidate_positions.empty() && exempt;
 }
 
 bool proprioceptiveSeedExemptsPointAtAll(

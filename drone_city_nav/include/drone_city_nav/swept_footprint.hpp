@@ -68,9 +68,12 @@ validateRawSweptFootprint(const OccupancyGrid2D& occupancy, const Point3& first,
                                      const Point3& box_maximum,
                                      const SweptFootprintConfig& body) noexcept;
 
-[[nodiscard]] bool proprioceptiveSeedExemptsBox(
-    const ProprioceptiveFreeSpaceSeed3D& seed, const Point3& candidate_position,
-    const Point3& box_minimum, const Point3& box_maximum) noexcept;
+// Whether the seed exempts an occupied box for every listed body position.
+[[nodiscard]] bool
+proprioceptiveSeedExemptsBoxAtAll(const ProprioceptiveFreeSpaceSeed3D& seed,
+                                  std::span<const Point3> candidate_positions,
+                                  const Point3& box_minimum,
+                                  const Point3& box_maximum) noexcept;
 
 [[nodiscard]] bool
 proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
