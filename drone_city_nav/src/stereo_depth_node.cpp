@@ -424,12 +424,20 @@ private:
     constexpr double kNearestM{1.5};
     constexpr double kStepM{0.25};
     constexpr int kRayPitchPx{30};
+    // The frame's 95th percentile moves in steps of 8 grey levels, 0.04 of
+    // headroom, and a frame a step above the line every second or so reset a
+    // darkness that had lasted a minute (r812): the dark ends after half a
+    // second without a dark frame.
+    constexpr double kDarknessGapS{0.5};
     std::vector<Point3> points;
     if (!(headroom < kDimHeadroom ||
           (matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey))) {
-      collapse_started_s_ = -1.0;
+      if (stamp_s - last_dark_s_ > kDarknessGapS || stamp_s < last_dark_s_) {
+        collapse_started_s_ = -1.0;
+      }
       return points;
     }
+    last_dark_s_ = stamp_s;
     if (collapse_started_s_ < 0.0 || stamp_s < collapse_started_s_) {
       collapse_started_s_ = stamp_s;
     }
@@ -553,6 +561,7 @@ private:
   }
 
   double collapse_started_s_{-1.0};
+  double last_dark_s_{-1.0};
   double unobservable_confirmed_s_{-1.0};
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};
