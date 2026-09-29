@@ -30,6 +30,7 @@ flight the stack would fly alone.
 | **Urban point-to-point, headless** — the acceptance flight | `./scripts/sim_urban_point_to_point_headless.sh` | No windows. The same flight, ending in the mission check: no crash, the goal reached with the drone's **true** position inside 2.0 m of it, the mean speed, and every diagnostic ([`testing.md`](testing.md)). Everything lands in `log/runs/<run-id>/`, the manifest binding the commit, the configuration and the world by hash. |
 | **Return home from a goal outside the location** — roadmap item 19's flight | `./scripts/sim_urban_return_home_headless.sh`, `./scripts/sim_urban_return_home_gui.sh`; on the lidar `./scripts/sim_urban_return_home_lidar_headless.sh`, `./scripts/sim_urban_return_home_lidar_gui.sh` | The acceptance flight with the goal placed behind the location's outer walls. The mission monitor floods the obstacle memory from the drone every 10 s; when the goal is given up (`GOAL_UNREACHABLE` in the log) it replaces the goal with the start, and the drone flies home and holds there as at any goal: about 1 km out and back. The check counts the return as the outcome asked for because the manifest records the injection, and it confirms from the location's truth grid (the voxelized collision world, [`environment_candidates.md`](environment_candidates.md)) that no way leads from the start to that goal. The truth grid is a local artifact the headless command checks for first. |
 | **The same flight on the 3D lidar** | `./scripts/sim_urban_point_to_point_lidar_gui.sh`, `./scripts/sim_urban_point_to_point_lidar_headless.sh` | The lidar on the airframe, a full spherical scan in RViz, memory filling in every direction to about 35 m, and the flight at 2.4 to 2.7 m/s: the drone flies as fast as it can stop inside the range its sensor is guaranteed to have resolved, and the lidar resolves further than the cameras. Localization is a lidar-inertial estimator, still no GNSS. |
+| **The camera flight in the dark** — roadmap item 17 | `./scripts/sim_urban_point_to_point_dark_gui.sh`, `./scripts/sim_urban_point_to_point_dark_headless.sh` | The same world with no light of its own: the only light is the one the drone carries, a flood over the stereo pair's field, and the cameras carry noise and an automatic gain. In Gazebo the world is black except where the drone looks; the flight runs at about 1.5 to 1.9 m/s ([`illumination_options.md`](illumination_options.md)). |
 | **The camera flight with GNSS** | `./scripts/sim_urban_point_to_point_gnss_gui.sh`, `./scripts/sim_urban_point_to_point_gnss_headless.sh` | Nothing visible changes. GNSS only changes what the autopilot fuses as its position; it is the comparison baseline, and the records show it in the manifest and in the truth-at-goal figure. |
 | **Cooperative traffic, GUI** | `./scripts/sim_cooperative_traffic_urban_gui.sh` | Four drones in the urban world exchanging flight intents and choosing complementary maneuvers to keep 5 m apart; a spectator camera follows one and moves on if it is lost. Flies the `gnss` profile. **Not flight-verified since the interception missions were removed** (roadmap item 15 waits for it), and this workstation holds two lidar vehicles at real time, not four: expect the simulation to run below real time. |
 | **Cooperative traffic, headless** | `./scripts/sim_cooperative_traffic_urban_headless.sh` | The same with the cooperative referee's separation gates instead of windows. |
@@ -40,7 +41,9 @@ Every scenario is a named script, and inside `./scripts/dev_shell.sh` a
 it that scenario and runs the point-to-point mission's own target, so the
 flights differ in nothing but what their names say. The switches underneath
 (`CAMERA_PROFILE`, `NAVIGATION_SENSOR_PROFILE`, `LOCALIZATION_PROFILE`,
-`MISSION_GOALS_XYZ_M`, `SMOKE_DURATION_S`) still work on any of them, for a
+`MISSION_GOALS_XYZ_M`, `SMOKE_DURATION_S`, `WORLD_ILLUMINATION=dark`, and in
+the dark world `BLANK_PANELS="x,y,z,yaw,width,height;..."`, uniform matte
+panels for roadmap item 17 stage 2) still work on any of them, for a
 combination no name covers; the estimator is not named when GNSS is off,
 because each sensor set has its own ([`localization.md`](localization.md)).
 
@@ -77,9 +80,9 @@ So that nobody searches for a script that does not exist. The roadmap
 - **item 15** — cooperative traffic over a channel that behaves like radio,
   and a shared frame without GNSS; until then the cooperative scenario above
   is a test bench for the separation algorithm, not a model of the air;
-- **item 17** — flight in the dark and over surfaces without texture, with a
-  carried light that can fail; today the world has no light source at all
-  and every camera flight is lit by a uniform fill;
+- **item 17** — a carried light that fails and a zone that fails it, and
+  the vehicle's answers; the dark world, the carried light and the camera
+  noise are flown (above);
 - **item 18** — smoke, transient obstacles such as a person crossing the
   frame, and a thermal channel; today a moving body stays in the map until
   the sensor looks there again;

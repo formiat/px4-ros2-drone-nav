@@ -25,6 +25,25 @@ the correction is recorded beside it.
   share of the pixels 0.62 at 2 to 4 m, 0.44 at 4 to 6 m and 0.39 at 6 to 8
   m (unmasked, the matcher answered on 98 percent of the pixels out to 40 m,
   in the dark as well); 6.4 m holds.
+- **Surfaces without texture** (roadmap item 17 stage 2; `log/tools/texture`:
+  a dark corridor of 1 m tiles around the vehicle's own sensor model, the
+  carried light, the noise, the gain and the noise mask, against the
+  evaluation depth). The share of a surface's pixels matched at 2 to 4, 4 to
+  6 and 6 to 8 m: the location's own wall texture (grey standard deviation
+  9.5 levels; the location's textures run 8.5 to 11.6) 0.62, 0.57, 0.57; a
+  multi-scale grain of 12 levels 0.68, 0.64, 0.59; the same grain at 4 levels
+  0.08, 0.13, 0.15; a uniform matte surface 0.04, 0.07, 0.12, its tile edges.
+  What is matched is right on every surface (at least 0.73 of it within
+  0.25 m, 0.94 and more on the textured ones): a surface the matcher cannot
+  match gives no depth, not a wrong one, because the noise mask refuses the
+  matches it would invent. A uniform panel 2 x 2 m laid across the route in
+  the dark world (r783) entered memory whole over the approach, 82 to 100
+  occupied voxels across its face, and the vehicle flew over it 3.8 m clear:
+  a frame matches little of it, the memory's two hits a voxel accumulate over
+  the frames, and the light's own falloff gives the matcher some structure.
+  A frame filled with such a surface observes little and the contract's
+  measured range falls with it; nothing reads a matched nothing at short
+  range as a prohibition (specification F13).
 - **Returns** ([`obstacle_mapping.md`](obstacle_mapping.md)): every ray is a
   hit, a free ray or nothing; a time-of-flight zone is a cone of 3 x 3 rays.
   The launch's one `obstacle_memory_3d_node` integrates them as it integrated
