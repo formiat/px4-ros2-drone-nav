@@ -13,7 +13,13 @@ the correction is recorded beside it.
 - **Sensors** (`models/stereo_tof_v1`, [`gazebo_simulation.md`](gazebo_simulation.md)):
   a forward pair of 1280 x 960 cameras, 120 degrees, 0.20 m baseline, 7.5 Hz,
   and two 8 x 8 time-of-flight sensors, 45 by 45 degrees, 2.8 m, looking up
-  and down. `NAVIGATION_SENSOR_PROFILE=stereo_tof` removes the lidar from the
+  and down; roadmap item 17 stage 4 added four more on the horizontal, front,
+  back, left and right, a bumper all round whose zones enter the obstacle
+  memory as the vertical ones' do. With them the flown path observed before
+  it was entered is 99.9 percent, 0.6 m of 475 m unseen, the ring observing
+  14.9 percent (r784; 99.8 percent and 1.0 m before, r781): the horizon's
+  lateral deviations into unknown space the register carried (C2) are
+  closed by that number. `NAVIGATION_SENSOR_PROFILE=stereo_tof` removes the lidar from the
   vehicle model.
 - **Depth** (`stereo_depth_node`): semi-global matching, far field at full
   resolution over 64 disparities and near field at half resolution over 128,
