@@ -93,6 +93,40 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
   EXPECT_DOUBLE_EQ(stale.sensor_evidence_age_s, 1.5);
 }
 
+TEST(MppiSpeedPolicyTest, ADimFrameLimitsOnlyWhatTheMemoryHasNotObservedFree) {
+  // Roadmap item 17 stage 7: at a zone's dim edge every frame is dark, but the
+  // way the vehicle came is observed free in memory and admits its speed; the
+  // unobserved way on admits nothing and the target holds where it stands.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 6.4;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.6;
+  config.sensor_braking_contract.physical_margin_m = 2.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 0.5F;
+  input.sensor_observed_fraction = 0.9;
+  input.sensor_light_headroom = 1.0;
+  const MppiSpeedPolicyResult lit = evaluateMppiSpeedPolicy(config, input);
+
+  input.sensor_light_headroom = 0.1;
+  const MppiSpeedPolicyResult dark = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(dark.sensor_braking_limit_mps, 0.1);
+
+  input.unfaced_observed_range_m = 20.0;
+  const MppiSpeedPolicyResult back = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(back.sensor_measured_range_m, 6.4);
+  EXPECT_DOUBLE_EQ(back.sensor_braking_limit_mps, lit.sensor_braking_limit_mps);
+
+  input.unfaced_observed_range_m = 0.0;
+  input.state.vx = 0.0F;
+  const MppiSpeedPolicyResult on = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(on.active_limiter, MppiSpeedLimiter::kSensorBraking);
+  EXPECT_DOUBLE_EQ(on.target_lookahead_m, 0.0);
+  EXPECT_GE(lit.target_lookahead_m, config.minimum_target_lookahead_m);
+}
+
 TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   // A pair that sees 60 degrees either side of the heading. Flying where it
   // looks the contract's range answers; flying sideways nothing looks, and

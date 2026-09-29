@@ -280,9 +280,15 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
                 std::isfinite(*input.sensor_light_headroom)
             ? std::clamp(*input.sensor_light_headroom, 0.0, 1.0)
             : 1.0);
+    // Space the memory holds observed free along the motion needs no frame
+    // to see it again: a frame dimmed by a zone that fails the light limits
+    // the rest, so the vehicle at the zone's dim edge can still go back the
+    // way it came (r803 stood blind for 90 s in every direction).
     contract.guaranteed_detection_range_m =
-        std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
-                 share * contract.guaranteed_detection_range_m);
+        std::max({contract.physical_margin_m + kBlindRangeAboveMarginM,
+                  share * contract.guaranteed_detection_range_m,
+                  std::min(contract.guaranteed_detection_range_m,
+                           input.unfaced_observed_range_m.value_or(0.0))});
   }
   if (input.sensor_evidence_age_s.has_value() &&
       std::isfinite(*input.sensor_evidence_age_s) &&
@@ -581,9 +587,23 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       result.reference_speed_rise_limited = true;
     }
   }
+  // A forward sensor blind along the motion, with nothing observed along it
+  // in memory, holds the vehicle where it stands: a target the minimum
+  // lookahead ahead drew it on at a tenth of a metre a second into the dark
+  // of a zone it could not see, every law admitting nothing (r807, 2 m in
+  // 13 s).
+  const SensorBrakingAssessment3D& along = result.sensor_braking_assessment;
+  const bool blind_along_motion =
+      result.active_limiter == MppiSpeedLimiter::kSensorBraking &&
+      along.guaranteed_detection_range_m > 0.0 &&
+      along.guaranteed_detection_range_m <=
+          along.physical_margin_m + kBlindRangeAboveMarginM;
   result.target_lookahead_m =
-      std::clamp(result.reference_speed_mps * config.horizon_duration_s,
-                 config.minimum_target_lookahead_m, config.maximum_target_lookahead_m);
+      blind_along_motion
+          ? 0.0
+          : std::clamp(result.reference_speed_mps * config.horizon_duration_s,
+                       config.minimum_target_lookahead_m,
+                       config.maximum_target_lookahead_m);
   return result;
 }
 
