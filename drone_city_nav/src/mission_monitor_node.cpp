@@ -217,6 +217,12 @@ public:
                 [this](const AutopilotLocalState& message) { onLocalState(message); },
             .status =
                 [this](const AutopilotStatus& status) {
+                  // A vehicle that disarms before its mission's end has
+                  // landed: the autopilot's landing when no position is left
+                  // (roadmap item 17 stage 5) ends the mission there.
+                  if (armed_seen_ && !status.armed && !result_reported_) {
+                    report(false, "vehicle_landed");
+                  }
                   armed_seen_ = armed_seen_ || status.armed;
                 },
         });

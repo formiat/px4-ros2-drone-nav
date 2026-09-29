@@ -21,7 +21,8 @@ Two regimes, decided by the project owner on 2026-09-27:
 - moderate, the norm of every flight: short and frequent dimming, its dark
   stretches never long enough to reach the "unreliable" judgment;
 - severe, a scenario of its own: outages growing longer and more frequent
-  until the vehicle judges its light unreliable and flies home.
+  until the vehicle judges its light unreliable, and staying that bad while
+  it flies home.
 
 Every outage ramps down and back up over seconds, never a switch; the
 shortest ramp the parameters allow is one the flights fly. Outages arrive
@@ -94,12 +95,14 @@ def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
             dark_s = rng.uniform(1.0, 3.0)
             floor = rng.uniform(0.0, 0.5)
         elif profile == "severe":
-            # Worsening: the gaps shrink toward a second and the outages grow
-            # toward a minute, each to the dark, slowly enough that the
-            # vehicle judging the light at 6 s of outage still has light to
-            # fly home in (at 1.4 a step r789 had 20 s).
-            t_s += 60.0 if count == 0 else max(1.0, 30.0 * 0.85**count)
-            dark_s = min(60.0, 2.0 * 1.25**count)
+            # Worsening to a plateau: the gaps shrink to 8 s and the outages
+            # grow to 8 s, each to the dark, past the 6 s at which the
+            # vehicle judges its light and inside the hold it survives an
+            # outage on (dead reckoning, then the autopilot's own seconds):
+            # a failure that grows without bound lands the vehicle wherever
+            # it is (r789, r790), and the scenario asks for the return.
+            t_s += 60.0 if count == 0 else max(8.0, 30.0 * 0.85**count)
+            dark_s = min(8.0, 2.0 * 1.25**count)
             floor = 0.0
         else:
             raise ValueError(f"unknown light fault profile '{profile}'")

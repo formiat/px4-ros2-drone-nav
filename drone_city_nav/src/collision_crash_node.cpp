@@ -116,6 +116,7 @@ private:
         std::isfinite(state.velocity.z)) {
       speed_mps_ =
           std::hypot(std::hypot(state.velocity.x, state.velocity.y), state.velocity.z);
+      horizontal_speed_mps_ = std::hypot(state.velocity.x, state.velocity.y);
     }
   }
 
@@ -134,6 +135,25 @@ private:
     for (const auto& contact : contacts.contacts) {
       if (!drone_collision_filter_.empty() &&
           contact.collision1.name.find(drone_collision_filter_) == std::string::npos) {
+        continue;
+      }
+      // Roadmap item 17 stage 5: a vehicle with no position source lands, and
+      // a landing is not a crash. A contact made level and at a landing's
+      // speed is one: the autopilot's blind landing met the floor at 0.73
+      // m/s (r790), and a contact at speed or tilted is a collision.
+      if (attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
+          std::abs(attitude_.pitch_rad) < kLandingTiltRad &&
+          speed_mps_ < kLandingSpeedMps &&
+          horizontal_speed_mps_ < kLandingHorizontalSpeedMps) {
+        if (!landed_) {
+          landed_ = true;
+          RCLCPP_WARN(get_logger(),
+                      "VEHICLE_LANDED drone_collision='%s' obstacle_collision='%s' "
+                      "speed=%.2f horizontal_speed=%.2f attitude_rp=(%.3f, %.3f)",
+                      contact.collision1.name.c_str(), contact.collision2.name.c_str(),
+                      speed_mps_, horizontal_speed_mps_, attitude_.roll_rad,
+                      attitude_.pitch_rad);
+        }
         continue;
       }
       msg::VehicleDestroyed event;
@@ -182,6 +202,11 @@ private:
   double airborne_altitude_m_{1.0};
   double altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  static constexpr double kLandingTiltRad{0.26};
+  static constexpr double kLandingSpeedMps{1.0};
+  static constexpr double kLandingHorizontalSpeedMps{0.5};
+  bool landed_{false};
   AttitudeEuler attitude_{};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
