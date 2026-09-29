@@ -208,6 +208,19 @@ from the positions the gyroscope predicts (a turn of ten degrees between
 frames moves a corner sixty pixels), an epipolar RANSAC between frames, and
 the row between the rectified cameras. New corners fill a grid, up to 200.
 
+It follows the frame's texture, not its grey level: the frame smoothed over
+a pixel less its mean over some 32 pixels (taken on a frame an eighth the
+size). The vehicle's own light (roadmap item 17) moves with the cameras, so
+a surface brightens as the vehicle nears it, the light's falloff sweeps the
+scene and the gain scales the frame; following the grey level, the filter
+gated twice the features and drifted twice as far per 100 m with the light
+on (r775 against r774), and dark flights ended 2.1 to 2.3 m from their goal
+in truth. Replayed on two recorded flights (`log/tools/replay/record_vio.sh`
+records the pair after the gain as the estimator receives it), the texture
+ended the estimate 0.22 m from the truth in the dark world against 2.96 m,
+and 0.34 m in the lit one against 1.38 m; the first dark flight on it
+drifted at most 0.53 m per 100 m (r781).
+
 `visual_inertial_odometry_node` lives in the process that owns the pair's
 images (`gazebo_stereo_depth_node` or `stereo_depth_node`, switch
 `--visual-inertial-odometry`), so two 1.2 MB frames 7.5 times a second reach

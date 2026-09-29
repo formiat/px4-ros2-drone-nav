@@ -73,3 +73,75 @@ near range. The choice is made by measurement: stage 3 compares the options
 on the confident range each gives, their price and their average electrical
 power, and the vehicle carries the one that wins on all three or the owner's
 choice between them.
+
+## Measured In Simulation (2026-09-28)
+
+Stage 3 was flown in the dark variant of the location (no ambient light),
+the stereo pair's images carrying Gaussian noise of 0.01 of the range
+(2.5 grey levels) and an automatic gain of 1 to 8. The vehicle carries one
+spot light at the pair.
+
+- **The light has to cover the pair's whole field.** A spot's angles in
+  Gazebo are full cone angles; a cone of 1.3 rad lit 37 degrees either side
+  of the axis while the braking contract answers for motion up to 60
+  degrees off it by what the pair sees (r769). The light's inner cone now
+  spans the pair's 120 degree width and its outer cone the 130 degree
+  diagonal.
+- **Range against the light's strength.** At the Gazebo intensity 8 the
+  frames saturated at the lowest gain (r770, 1.58 m/s); at 2 the contract
+  measured its full 6.4 m range on every frame and the flight ran 1.88 m/s
+  (r771); at 0.5 the range fell to 2.6 m in places and the speed to 1.38
+  m/s (r772). The vehicle carries intensity 2. There the matched surfaces
+  at 6 m read 28 of 255 before the gain (median over the flight), eleven
+  times the image noise, and at 0.5 about 8 to 11, three to four times it,
+  which the matcher's noise mask begins to refuse.
+- **The light moves with the cameras,** which broke the feature tracker of
+  the visual-inertial odometry: surfaces brighten as the vehicle nears them
+  and the light's falloff sweeps the scene. The tracker now follows the
+  frame's texture (the grey level less its local mean); see
+  [`localization.md`](localization.md).
+- **Active stereo can be rendered.** Gazebo Harmonic draws an SDF
+  `<projector>`'s pattern into the sensor cameras' images in total darkness
+  (log/tools/projector: 15.6 % of a wall's pixels lit by a dot pattern,
+  none without it). The pattern is a decal, though: its brightness does not
+  fall with distance, so the range of a projector would be the far clip it
+  is given, a datasheet figure rather than a measurement. It is kept for
+  stage 2 (surfaces without texture), where it is one of the remedies to
+  compare.
+
+### Energy
+
+The simulation's light carries no photometric unit; its energy follows
+from the signal it gives. A matched surface at the contract's 6.4 m needs
+eleven times the noise, which for a real sensor limited by its own shot
+noise (and three electrons of read noise) is about 130 electrons in a pixel.
+With a 3 um pixel, an f/2.0 lens transmitting 0.9, surfaces reflecting 0.3
+on average, the pair's 3.0 sr field and 7.5 frames a second:
+
+| Light | Quantum efficiency | Light per frame at the scene | Average electrical power |
+|---|---|---|---|
+| Continuous white flood, 10 ms exposure | 0.65 at 550 nm | 0.058 J | about 15 W (73 W at a 2 ms exposure) |
+| Continuous 850 nm flood, 10 ms exposure | 0.30 | 0.082 J | about 20 W (100 W at 2 ms) |
+| Strobed 850 nm flood, synchronized with a global shutter | 0.30 | 0.082 J | about 1.5 W, whatever the exposure |
+| Strobed white flood | 0.65 | 0.058 J | about 1.1 W |
+
+LEDs are taken at a wall-plug efficiency of 0.4. A strobe spends the light
+only while the shutter is open, so its average power is the light one
+frame needs times the frame rate; a continuous light spends it for the
+whole frame period, the exposure's fraction of which it wastes. The
+cheap solid-state 3D lidar draws 6.5 W.
+
+### Choice
+
+The vehicle carries a **strobed near-infrared flood synchronized with the
+pair's global shutter** (options 1 and 2): about 1.5 W on average, some
+tens of dollars in LEDs, a driver and band-pass filters, and the contract's
+full 6.4 m range as flown. Near infrared rather than white keeps the light
+invisible to people and, behind a band-pass filter, clear of the ambient
+light. In the simulation it is the spot light at intensity 2 over the
+pair's field: a strobe lights the exposure exactly as a continuous light
+does, and only the energy differs. The time-of-flight camera (option 4) was
+not needed for the range; its place is item 22 (thermal flight), which
+allows it. Active stereo (option 3) goes to stage 2. The laser line
+(option 5) stays a supplement at most. Recorded in
+[`specification.md`](specification.md) as F12.
