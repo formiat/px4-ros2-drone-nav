@@ -114,6 +114,15 @@ struct VisualInertialOdometryConfig {
   // any direction: the flying filter holds 0.08 to 0.18 m/s there (the
   // acceptance series of 2026-09-27), and 31 m/s came out of r720's hole.
   double maximum_velocity_sigma_mps{1.0};
+  // Roadmap item 17 stage 5, the ladder's second rung: past its unaided
+  // timeout an estimate that is otherwise sound (not lost, its IMU whole,
+  // its velocity within the bound) is still dead reckoning for this long, in
+  // a declared mode the autopilot receives it in, so that the vehicle holds
+  // through a dark stretch rather than lands blind. Replayed on a recorded
+  // dark flight with its frames blanked (r779), the IMU alone drifted 0.2 to
+  // 0.6 m horizontally in 5 to 10 s and 2 m in 20 s, and 2 to 8 m vertically
+  // in 5 to 10 s: the mode carries the horizontal alone.
+  double maximum_dead_reckoning_s{10.0};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};
@@ -145,6 +154,10 @@ struct VisualInertialEstimate {
   Eigen::Vector3d orientation_variance_rad2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity_variance_m2ps2{Eigen::Vector3d::Zero()};
   bool healthy{false};
+  // Past the unaided timeout and inside the dead reckoning that follows it.
+  bool dead_reckoning{false};
+  // How long since features last corrected the estimate.
+  double unaided_s{0.0};
   // How far behind the frame the last IMU sample was when the frame was
   // taken in; the propagation held the last sample over that interval.
   std::int64_t imu_lag_ns{0};

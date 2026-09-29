@@ -11,16 +11,18 @@ namespace drone_city_nav {
 // the charge of the light's battery, as any airframe knows its batteries.
 //
 // A light is judged unreliable once one outage (the measured range below the
-// guaranteed one) has lasted `longest_outage_s`, or once outages have taken
-// `outage_share` of the last `window_s`. Both are measured on the two regimes
+// guaranteed one) has lasted `kLongestOutageS`, or once outages have taken
+// `kOutageShare` of the last `kWindowS`. Both are measured on the two regimes
 // of the owner's decision: the moderate flicker every flight carries dipped
 // the range for at most 1.8 s and 1.5 percent of the time (r785), no more
 // than a flight without it (2.6 s and 3 percent, r781), and the severe
-// failure must reach them. The judgment stands once reached: it sends the
-// vehicle home.
+// failure must reach them. The outage is judged while the vehicle still holds
+// on dead reckoning (11 s after the frames go dark): at 10 s the severe
+// failure of r789 outlived the hold and the autopilot landed blind. The
+// judgment stands once reached: it sends the vehicle home.
 class LightReliabilityJudgment final {
 public:
-  static constexpr double kLongestOutageS{10.0};
+  static constexpr double kLongestOutageS{6.0};
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};
 

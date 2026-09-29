@@ -95,9 +95,11 @@ def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
             floor = rng.uniform(0.0, 0.5)
         elif profile == "severe":
             # Worsening: the gaps shrink toward a second and the outages grow
-            # toward a minute, each to the dark.
-            t_s += 60.0 if count == 0 else max(1.0, 30.0 * 0.8**count)
-            dark_s = min(60.0, 2.0 * 1.4**count)
+            # toward a minute, each to the dark, slowly enough that the
+            # vehicle judging the light at 6 s of outage still has light to
+            # fly home in (at 1.4 a step r789 had 20 s).
+            t_s += 60.0 if count == 0 else max(1.0, 30.0 * 0.85**count)
+            dark_s = min(60.0, 2.0 * 1.25**count)
             floor = 0.0
         else:
             raise ValueError(f"unknown light fault profile '{profile}'")

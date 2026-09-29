@@ -144,6 +144,7 @@ struct VisualInertialOdometry::Impl {
               const Eigen::Vector3d& point, bool& gated) const;
   void update(const Eigen::MatrixXd& jacobian, const Eigen::VectorXd& residual);
   void marginalizeOldestClone();
+  void judgeDeadReckoning(VisualInertialEstimate& estimate) const;
 };
 
 void VisualInertialOdometry::Impl::propagateStep(const Eigen::Vector3d& gyro,
@@ -307,6 +308,22 @@ const Clone* VisualInertialOdometry::Impl::findClone(const std::uint64_t id,
     }
   }
   return nullptr;
+}
+
+// Past the unaided timeout, an estimate otherwise sound is dead reckoning
+// for `maximum_dead_reckoning_s` more (the ladder's second rung).
+void VisualInertialOdometry::Impl::judgeDeadReckoning(
+    VisualInertialEstimate& estimate) const {
+  estimate.unaided_s =
+      last_update_stamp_ns > 0
+          ? static_cast<double>(estimate.stamp_ns - last_update_stamp_ns) * 1.0e-9
+          : std::numeric_limits<double>::infinity();
+  estimate.dead_reckoning =
+      !estimate.healthy && !lost && last_update_stamp_ns > 0 &&
+      static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
+          config.maximum_imu_period_s &&
+      estimate.weakest_velocity_sigma_mps <= config.maximum_velocity_sigma_mps &&
+      estimate.unaided_s <= config.maximum_unaided_s + config.maximum_dead_reckoning_s;
 }
 
 // The point every observation's ray passes nearest to, refined on the
@@ -733,6 +750,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   estimate.healthy =
       estimate.healthy && !state.lost &&
       estimate.weakest_velocity_sigma_mps <= state.config.maximum_velocity_sigma_mps;
+  state.judgeDeadReckoning(estimate);
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
   state.last_estimate = estimate;
@@ -788,6 +806,7 @@ VisualInertialOdometry::predicted(const std::int64_t stamp_ns) const {
           state.config.maximum_unaided_s &&
       static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
           state.config.maximum_imu_period_s;
+  state.judgeDeadReckoning(estimate);
   return estimate;
 }
 

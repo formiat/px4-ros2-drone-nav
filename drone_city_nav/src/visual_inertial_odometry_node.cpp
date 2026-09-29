@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <numbers>
@@ -325,10 +326,26 @@ private:
     applyMapFrame(estimate, stamp_ns);
     const std::optional<std::int64_t> px4_local_ns =
         time_mapper_.rosToPx4LocalTimeNs(estimate.stamp_ns);
-    if (!estimate.healthy || estimate.stamp_ns != stamp_ns ||
-        !px4_local_ns.has_value()) {
+    if ((!estimate.healthy && !estimate.dead_reckoning) ||
+        estimate.stamp_ns != stamp_ns || !px4_local_ns.has_value()) {
       return;
     }
+    // Dead reckoning (the ladder's second rung, roadmap item 17 stage 5) is
+    // declared: its height, which the IMU alone drifts metres in seconds, is
+    // not sent, and the autopilot holds its height on the barometer.
+    if (estimate.dead_reckoning) {
+      estimate.position_ned_m.z() = std::numeric_limits<double>::quiet_NaN();
+      if (!dead_reckoning_declared_) {
+        RCLCPP_WARN(get_logger(),
+                    "VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started=true "
+                    "unaided_s=%.2f",
+                    estimate.unaided_s);
+      }
+    } else if (dead_reckoning_declared_) {
+      RCLCPP_WARN(get_logger(),
+                  "VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started=false");
+    }
+    dead_reckoning_declared_ = estimate.dead_reckoning;
     const std::int64_t synchronised_ns =
         *px4_local_ns - time_mapper_.diagnostics().latest_estimated_offset_ns;
     if (synchronised_ns <= 0) {
@@ -733,6 +750,7 @@ private:
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   bool publish_to_autopilot_{false};
   std::int64_t last_autopilot_stamp_ns_{0};
+  bool dead_reckoning_declared_{false};
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;

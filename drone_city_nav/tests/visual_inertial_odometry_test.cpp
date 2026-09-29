@@ -160,7 +160,7 @@ struct Hole {
 
 Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
            const Eigen::Vector3d& gyro_bias, const bool with_features,
-           const bool with_outlier, const Hole hole = {}) {
+           const bool with_outlier, const Hole hole = {}, const Hole dark = {}) {
   std::mt19937 generator{7U};
   const std::vector<Eigen::Vector3d> points = landmarks(generator);
   VisualInertialOdometry odometry{config};
@@ -180,7 +180,7 @@ Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
     }
     const double t = static_cast<double>(stamp) * 1.0e-9;
     std::vector<StereoFeatureObservation> observations;
-    if (with_features) {
+    if (with_features && !dark.contains(stamp)) {
       observations = observe(config, t, points, config.observation_noise, generator);
     }
     if (with_outlier && !observations.empty()) {
@@ -225,6 +225,27 @@ TEST(VisualInertialOdometry, AHoleTheFilterCannotBridgeLeavesItUnhealthy) {
   EXPECT_TRUE(bridged.last.healthy);
   EXPECT_GT(lost.last.used_features + lost.used, 0U);
   EXPECT_FALSE(lost.last.healthy);
+}
+
+TEST(VisualInertialOdometry, ADarkStretchIsDeadReckoningForAStatedTime) {
+  // Roadmap item 17 stage 5: frames that arrive with nothing in them. Past
+  // the unaided timeout the estimate is not healthy, but it is declared dead
+  // reckoning while its velocity stays within the bound (about 7 s here), and
+  // never past the stated time.
+  const VisualInertialOdometryConfig config = testConfig();
+  const Flight short_dark =
+      fly(config, 8.0, Eigen::Vector3d::Zero(), true, false, {}, Hole{5.0, 9.0});
+  EXPECT_FALSE(short_dark.last.healthy);
+  EXPECT_TRUE(short_dark.last.dead_reckoning);
+  EXPECT_NEAR(short_dark.last.unaided_s, 3.0, 0.2);
+  const Flight long_dark = fly(
+      config, 5.0 + config.maximum_unaided_s + config.maximum_dead_reckoning_s + 1.0,
+      Eigen::Vector3d::Zero(), true, false, {}, Hole{5.0, 60.0});
+  EXPECT_FALSE(long_dark.last.healthy);
+  EXPECT_FALSE(long_dark.last.dead_reckoning);
+  const Flight sighted = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false);
+  EXPECT_TRUE(sighted.last.healthy);
+  EXPECT_FALSE(sighted.last.dead_reckoning);
 }
 
 TEST(VisualInertialOdometry, AnUncertainVelocityIsNotHealthy) {
