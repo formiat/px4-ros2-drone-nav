@@ -520,17 +520,39 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
             : 0.0;
   }
   // A forward sensor that does not see all around leaves memory to answer for
-  // a motion the vehicle does not face.
+  // a motion the vehicle does not face, and for the way back along the path
+  // it has flown.
+  const Point3 position{request.navigation.state.x, request.navigation.state.y,
+                        request.navigation.state.z};
+  constexpr double kFlownPathSpacingM{0.5};
+  constexpr std::size_t kFlownPathPoses{120U};
+  if (flown_path_.empty() || squaredDistance(flown_path_.back(), position) >=
+                                 kFlownPathSpacingM * kFlownPathSpacingM) {
+    flown_path_.push_back(position);
+    if (flown_path_.size() > kFlownPathPoses) {
+      flown_path_.pop_front();
+    }
+  }
   if (config_.speed_policy.sensor_braking_contract.forward_horizontal_half_angle_rad <
           std::numbers::pi &&
       request.latest_raw_world != nullptr && request.latest_raw_world->valid()) {
+    const Vec3 faced = mppiSpeedPolicyFacedDirection(speed_policy_input);
     speed_policy_input.unfaced_observed_range_m = measureObservedRangeAlong3D(
-        request.latest_raw_world->occupancy(),
-        Point3{request.navigation.state.x, request.navigation.state.y,
-               request.navigation.state.z},
-        mppiSpeedPolicyFacedDirection(speed_policy_input),
+        request.latest_raw_world->occupancy(), position, faced,
         config_.physical_footprint.body_radius_m,
         config_.speed_policy.sensor_braking_contract.guaranteed_detection_range_m);
+    // Back along the path: a pose flown 1.5 to 4 m away within 30 degrees of
+    // the motion.
+    const double faced_norm = std::hypot(std::hypot(faced.x, faced.y), faced.z);
+    speed_policy_input.motion_along_flown_path =
+        faced_norm > 1.0e-9 &&
+        std::ranges::any_of(flown_path_, [&](const Point3& pose) {
+          const Vec3 to{pose.x - position.x, pose.y - position.y, pose.z - position.z};
+          const double distance = std::hypot(std::hypot(to.x, to.y), to.z);
+          return distance >= 1.5 && distance <= 4.0 &&
+                 (to.x * faced.x + to.y * faced.y + to.z * faced.z) >=
+                     std::cos(std::numbers::pi / 6.0) * distance * faced_norm;
+        });
   }
   output.controller.speed_policy =
       evaluateMppiSpeedPolicy(config_.speed_policy, speed_policy_input);

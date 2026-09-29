@@ -402,7 +402,11 @@ private:
   // means the pair looked and could not see:
   // the frustum from 1.5 m to the confident depth is observed unobservable,
   // a prohibition as a surface is, confirmed once a second while it lasts.
-  // The vehicle's own cell and the way it came are never in it.
+  // The vehicle's own cell and the way it came are never in it (the memory
+  // keeps it off the flown path). Its rays are 30 px apart, 4.7 degrees at the
+  // centre of the 120-degree field: under 0.45 m at 5.5 m, closer than the
+  // three free voxels the body needs, so the dark around a goal it looked at
+  // closes the goal's region for item 19's proof (specification K16).
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const double headroom,
                                                         const double matched_share,
@@ -414,7 +418,7 @@ private:
     constexpr double kConfirmationPeriodS{1.0};
     constexpr double kNearestM{1.5};
     constexpr double kStepM{0.25};
-    constexpr int kRayPitchPx{80};
+    constexpr int kRayPitchPx{30};
     std::vector<Point3> points;
     if (!(headroom < kDimHeadroom ||
           (matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey))) {

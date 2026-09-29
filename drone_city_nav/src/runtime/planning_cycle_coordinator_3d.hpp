@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -183,6 +184,9 @@ private:
   std::int64_t previous_reference_stamp_ns_{0};
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
+  // The vehicle's positions along the last 60 m flown, every half metre: the
+  // way back the speed policy leaves open (specification K15, I3).
+  std::deque<Point3> flown_path_;
 };
 
 } // namespace drone_city_nav

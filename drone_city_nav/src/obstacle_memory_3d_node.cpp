@@ -39,6 +39,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <limits>
 #include <memory>
@@ -711,6 +712,7 @@ private:
     std::size_t self_filtered{0U};
     std::size_t persistent_self_filtered{0U};
     std::size_t projection_invalid{0U};
+    std::size_t unobservable_on_path{0U};
     const auto process_sample = [&](const LidarBeamSample3D& sample) {
       const LidarRayProjection3D ray =
           projectLidarRay3D(pose, projection_config_, sample.direction_lidar_flu);
@@ -730,6 +732,17 @@ private:
         const Point3 endpoint{ray.origin_map_m.x + beam.range_m * beam.direction_map.x,
                               ray.origin_map_m.y + beam.range_m * beam.direction_map.y,
                               ray.origin_map_m.z + beam.range_m * beam.direction_map.z};
+        // The way the vehicle came is never observed unobservable
+        // (specification K14, I3's exit guarantee): a pair that turns back
+        // at a zone's dim edge looks into the same dark and would close it.
+        if (hit_only_returns_ && sample.interpolated &&
+            std::ranges::any_of(flown_path_, [&endpoint](const Point3& pose) {
+              return squaredDistance(pose, endpoint) <=
+                     kFlownPathClearanceM * kFlownPathClearanceM;
+            })) {
+          ++unobservable_on_path;
+          return;
+        }
         const Point3 endpoint_body = lidarMapPointToBody(body_frame, endpoint);
         std::optional<Point3> occupancy_voxel_center_body;
         const std::optional<GridIndex3D> occupancy_cell =
@@ -775,6 +788,13 @@ private:
     if (!origin_valid) {
       return PendingPointCloudDisposition::kConsumed;
     }
+    if (flown_path_.empty() || squaredDistance(flown_path_.back(), ray_origin) >=
+                                   kFlownPathSpacingM * kFlownPathSpacingM) {
+      flown_path_.push_back(ray_origin);
+      if (flown_path_.size() > kFlownPathPoses) {
+        flown_path_.pop_front();
+      }
+    }
 
     std_msgs::msg::Header source_header = pending.cloud.header;
     LatestSensorObstacleScanBuildResult latest;
@@ -809,6 +829,7 @@ private:
           .projection_invalid = projection_invalid,
           .self_filtered = self_filtered,
           .persistent_self_filtered = persistent_self_filtered,
+          .unobservable_on_path = unobservable_on_path,
           .cooperative_filtered = cooperative_filtered,
           .altitude_valid = pose.altitude_valid,
           .publish_debug = publish_current_cloud,
@@ -839,6 +860,13 @@ private:
   ObservedOccupancyGrid3D grid_geometry_;
   OrganizedLidarScan3DConfig scan_config_{};
   bool hit_only_returns_{false};
+  // The sensor's positions along the last 60 m flown, every half metre, and
+  // how close to them unobservable evidence may not come: the body's 0.55 m
+  // radius and half a voxel.
+  static constexpr double kFlownPathSpacingM{0.5};
+  static constexpr std::size_t kFlownPathPoses{120U};
+  static constexpr double kFlownPathClearanceM{0.7};
+  std::deque<Point3> flown_path_;
   LidarSurfaceInterpolation3DConfig surface_interpolation_config_{};
   LidarProjectionConfig projection_config_{};
   LidarSelfFilterConfig self_filter_config_{};

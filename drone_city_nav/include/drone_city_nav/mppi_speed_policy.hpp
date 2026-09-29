@@ -96,6 +96,10 @@ struct MppiSpeedPolicyInput {
   // see all around, for a motion the vehicle does not face: what was seen
   // before is then the only witness, and an absent value is nothing seen.
   std::optional<double> unfaced_observed_range_m;
+  // Whether that motion heads back along the path the vehicle has flown: the
+  // memory's range then answers for a frame too dim to see (specification
+  // K15), because the way the vehicle came is never closed (I3).
+  bool motion_along_flown_path{false};
   // Where the route ahead comes close to known occupied evidence, in the same
   // form as the executed horizon. The horizon reaches only as far as the
   // vehicle can stop, so at low speed it cannot see the tight spot the route

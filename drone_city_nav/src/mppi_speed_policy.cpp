@@ -280,15 +280,19 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
                 std::isfinite(*input.sensor_light_headroom)
             ? std::clamp(*input.sensor_light_headroom, 0.0, 1.0)
             : 1.0);
-    // Space the memory holds observed free along the motion needs no frame
-    // to see it again: a frame dimmed by a zone that fails the light limits
-    // the rest, so the vehicle at the zone's dim edge can still go back the
-    // way it came (r803 stood blind for 90 s in every direction).
+    // The way the vehicle came is never closed (I3): back along it the
+    // memory's observed range answers for a frame dimmed by a zone that fails
+    // the light, which leaves the vehicle at the zone's dim edge blind in
+    // every direction (r803 stood 90 s). Anywhere else the frame limits: read
+    // for every motion, the memory flew r808 at 2 m/s into the dark over B,
+    // which it had seen free while the light still reached it.
     contract.guaranteed_detection_range_m =
         std::max({contract.physical_margin_m + kBlindRangeAboveMarginM,
                   share * contract.guaranteed_detection_range_m,
-                  std::min(contract.guaranteed_detection_range_m,
-                           input.unfaced_observed_range_m.value_or(0.0))});
+                  input.motion_along_flown_path
+                      ? std::min(contract.guaranteed_detection_range_m,
+                                 input.unfaced_observed_range_m.value_or(0.0))
+                      : 0.0});
   }
   if (input.sensor_evidence_age_s.has_value() &&
       std::isfinite(*input.sensor_evidence_age_s) &&

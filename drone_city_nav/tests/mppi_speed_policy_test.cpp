@@ -93,10 +93,11 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
   EXPECT_DOUBLE_EQ(stale.sensor_evidence_age_s, 1.5);
 }
 
-TEST(MppiSpeedPolicyTest, ADimFrameLimitsOnlyWhatTheMemoryHasNotObservedFree) {
-  // Roadmap item 17 stage 7: at a zone's dim edge every frame is dark, but the
-  // way the vehicle came is observed free in memory and admits its speed; the
-  // unobserved way on admits nothing and the target holds where it stands.
+TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
+  // Roadmap item 17 stage 7: at a zone's dim edge every frame is dark. The way
+  // the vehicle came admits the speed the memory's range gives; space seen
+  // free before, off that way, admits nothing; the unobserved way on admits
+  // nothing and the target holds where the vehicle stands.
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;
   config.absolute_speed_limit_mps = 20.0;
@@ -115,9 +116,13 @@ TEST(MppiSpeedPolicyTest, ADimFrameLimitsOnlyWhatTheMemoryHasNotObservedFree) {
   EXPECT_LT(dark.sensor_braking_limit_mps, 0.1);
 
   input.unfaced_observed_range_m = 20.0;
+  const MppiSpeedPolicyResult on_seen = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(on_seen.sensor_braking_limit_mps, dark.sensor_braking_limit_mps);
+  input.motion_along_flown_path = true;
   const MppiSpeedPolicyResult back = evaluateMppiSpeedPolicy(config, input);
   EXPECT_DOUBLE_EQ(back.sensor_measured_range_m, 6.4);
   EXPECT_DOUBLE_EQ(back.sensor_braking_limit_mps, lit.sensor_braking_limit_mps);
+  input.motion_along_flown_path = false;
 
   input.unfaced_observed_range_m = 0.0;
   input.state.vx = 0.0F;
