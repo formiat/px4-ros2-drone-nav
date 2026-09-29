@@ -48,7 +48,8 @@ prepare_runtime_evidence() {
     ENABLE_STATIC_MAP LIDAR_PROFILE LOCALIZATION_PROFILE HEADLESS SMOKE_DURATION_S \
     CAMERA_PROFILE NAVIGATION_SENSOR_PROFILE \
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
-    OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M; do
+    OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
+    WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
@@ -67,6 +68,16 @@ start_runtime_evidence_capture() {
     "${runtime_artifact_dir}/resources_host.json" \
     --world "${world_name}" \
     > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
+  # Roadmap item 17 stage 5: the carried light's failures, an evaluation
+  # component the vehicle is never told about; its schedule and every change
+  # it made land beside the manifest.
+  if [[ -n "${LIGHT_FAULTS:-}" ]]; then
+    python3 "${repo_root}/scripts/light_fault_injector.py" \
+      --world "${world_name}" --profile "${LIGHT_FAULTS}" \
+      --seed "${LIGHT_FAULT_SEED:-0}" \
+      --output "${runtime_artifact_dir}/light_faults.csv" \
+      > "${runtime_artifact_dir}/light_faults.log" 2>&1 &
+  fi
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" ||
     [[ -z "${raw_snapshot_bounds_m}" ]]; then

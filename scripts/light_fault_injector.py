@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Roadmap item 17 stage 5: the carried light fails, and nobody tells the vehicle.
+
+An evaluation component. It dims and restores the vehicle model's spot light
+through Gazebo's `light_config` service on a seeded schedule of the
+simulation clock and writes every change to the run's directory. It speaks
+to Gazebo alone: nothing of it is published on ROS, and no production node
+reads its schedule, its seed or the light's state (the contract test holds
+it there). The vehicle learns of a failure only from its frames.
+
+Two regimes, decided by the project owner on 2026-09-27:
+
+- moderate, the norm of every flight: short and frequent dimming, its dark
+  stretches never long enough to reach the "unreliable" judgment;
+- severe, a scenario of its own: outages growing longer and more frequent
+  until the vehicle judges its light unreliable and flies home.
+
+Every outage ramps down and back up over seconds, never a switch; the
+shortest ramp the parameters allow is one the flights fly. Outages arrive
+every 1 s to 1 min and last 1 s to 1 min (the owner's range, 2026-09-20).
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import random
+import sys
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+# The spot light of models/stereo_tof_v1 as the model states it; the service
+# replaces the whole light, so every property is sent with the intensity.
+LIGHT_NAME = "carried_light"
+NOMINAL_INTENSITY = 2.0
+LIGHT_RANGE_M = 25.0
+ATTENUATION_CONSTANT = 0.25
+ATTENUATION_LINEAR = 0.0
+ATTENUATION_QUADRATIC = 0.06
+SPOT_INNER_ANGLE_RAD = 2.1
+SPOT_OUTER_ANGLE_RAD = 2.4
+SPOT_FALLOFF = 1.0
+SPECULAR = 0.1
+
+SHORTEST_RAMP_S = 0.2
+UPDATE_PERIOD_S = 0.1
+
+
+@dataclass(frozen=True)
+class Outage:
+    start_s: float
+    ramp_down_s: float
+    dark_s: float
+    ramp_up_s: float
+    floor: float  # the share of the nominal intensity left at the bottom
+
+    @property
+    def end_s(self) -> float:
+        return self.start_s + self.ramp_down_s + self.dark_s + self.ramp_up_s
+
+    def share(self, t_s: float) -> float:
+        """The share of the nominal intensity at simulation time `t_s`."""
+        into = t_s - self.start_s
+        if into <= 0.0 or t_s >= self.end_s:
+            return 1.0
+        if into < self.ramp_down_s:
+            return 1.0 - (1.0 - self.floor) * into / self.ramp_down_s
+        into -= self.ramp_down_s
+        if into < self.dark_s:
+            return self.floor
+        into -= self.dark_s
+        return self.floor + (1.0 - self.floor) * into / self.ramp_up_s
+
+
+def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
+    """The outages of a flight up to `horizon_s` of simulation time."""
+    rng = random.Random(f"{profile}:{seed}")
+    outages: list[Outage] = []
+    t_s = 0.0
+    count = 0
+    while True:
+        if profile == "moderate":
+            t_s += rng.uniform(5.0, 30.0)
+            dark_s = rng.uniform(1.0, 3.0)
+            floor = rng.uniform(0.0, 0.5)
+        elif profile == "severe":
+            # Worsening: the gaps shrink toward a second and the outages grow
+            # toward a minute, each to the dark.
+            t_s += 60.0 if count == 0 else max(1.0, 30.0 * 0.8**count)
+            dark_s = min(60.0, 2.0 * 1.4**count)
+            floor = 0.0
+        else:
+            raise ValueError(f"unknown light fault profile '{profile}'")
+        outage = Outage(
+            start_s=t_s,
+            ramp_down_s=rng.uniform(SHORTEST_RAMP_S, 2.0),
+            dark_s=dark_s,
+            ramp_up_s=rng.uniform(SHORTEST_RAMP_S, 2.0),
+            floor=floor,
+        )
+        if outage.start_s >= horizon_s:
+            return outages
+        outages.append(outage)
+        t_s = outage.end_s
+        count += 1
+
+
+def share_at(outages: list[Outage], t_s: float) -> float:
+    return min((outage.share(t_s) for outage in outages), default=1.0)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--world", required=True)
+    parser.add_argument("--profile", required=True, choices=("moderate", "severe"))
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--horizon-s", type=float, default=3600.0)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+
+    from gz.msgs10.boolean_pb2 import Boolean
+    from gz.msgs10.clock_pb2 import Clock
+    from gz.msgs10.light_pb2 import Light
+    from gz.transport13 import Node
+
+    outages = schedule(args.profile, args.seed, args.horizon_s)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with (args.output.with_suffix(".schedule.csv")).open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["start_s", "ramp_down_s", "dark_s", "ramp_up_s", "floor"])
+        for outage in outages:
+            writer.writerow([f"{outage.start_s:.3f}", f"{outage.ramp_down_s:.3f}",
+                             f"{outage.dark_s:.3f}", f"{outage.ramp_up_s:.3f}",
+                             f"{outage.floor:.3f}"])
+
+    node = Node()
+    clock = {"s": None}
+    lock = threading.Lock()
+
+    def on_clock(message: Clock) -> None:
+        with lock:
+            clock["s"] = message.sim.sec + 1.0e-9 * message.sim.nsec
+
+    node.subscribe(Clock, f"/world/{args.world}/clock", on_clock)
+    service = f"/world/{args.world}/light_config"
+
+    def request(intensity: float) -> bool:
+        light = Light()
+        light.name = LIGHT_NAME
+        light.type = Light.SPOT
+        light.intensity = intensity
+        light.diffuse.r = light.diffuse.g = light.diffuse.b = light.diffuse.a = 1.0
+        light.specular.r = light.specular.g = light.specular.b = SPECULAR
+        light.specular.a = 1.0
+        light.range = LIGHT_RANGE_M
+        light.attenuation_constant = ATTENUATION_CONSTANT
+        light.attenuation_linear = ATTENUATION_LINEAR
+        light.attenuation_quadratic = ATTENUATION_QUADRATIC
+        light.spot_inner_angle = SPOT_INNER_ANGLE_RAD
+        light.spot_outer_angle = SPOT_OUTER_ANGLE_RAD
+        light.spot_falloff = SPOT_FALLOFF
+        light.direction.x = 1.0
+        ok, reply = node.request(service, light, Light, Boolean, 1000)
+        return bool(ok and reply.data)
+
+    with args.output.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["sim_s", "share", "accepted"])
+        applied = None
+        while True:
+            with lock:
+                t_s = clock["s"]
+            if t_s is not None:
+                share = round(share_at(outages, t_s), 3)
+                if share != applied:
+                    accepted = request(NOMINAL_INTENSITY * share)
+                    writer.writerow([f"{t_s:.3f}", f"{share:.3f}", int(accepted)])
+                    stream.flush()
+                    if accepted:
+                        applied = share
+            time.sleep(UPDATE_PERIOD_S)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
