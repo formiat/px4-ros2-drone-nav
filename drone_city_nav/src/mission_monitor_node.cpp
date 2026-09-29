@@ -590,6 +590,7 @@ private:
 
   static constexpr double kReturnEstimateMargin{2.0};
   static constexpr double kReturnReserveS{20.0};
+  static constexpr double kBatteryJudgedAfterM{20.0};
 
   // Roadmap item 17 stage 5: the light judged from what the navigation sees,
   // and the battery weighed against the way to B.
@@ -610,7 +611,11 @@ private:
       static_cast<void>(substituteGoalWithStart("unreliable_light", now_ns));
       return;
     }
-    if (std::isfinite(light_charge_s_)) {
+    // The battery is weighed once the vehicle has flown far enough for its
+    // mean speed to say something: at the start the speed is the floor's,
+    // and nine times the way to B over it asked 1172 s of light for a flight
+    // that takes about 300 (r787).
+    if (std::isfinite(light_charge_s_) && flown_path_m_ >= kBatteryJudgedAfterM) {
       // Before a route reaches B, the straight line to it.
       const double remaining_m =
           std::isfinite(route_remaining_m_)
