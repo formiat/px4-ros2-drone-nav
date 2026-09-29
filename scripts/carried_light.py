@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
-"""Roadmap item 17 stage 5: the carried light fails, and nobody tells the vehicle.
+"""Roadmap item 17 stage 5: the carried light, its battery and its failures.
 
-An evaluation component. It dims and restores the vehicle model's spot light
-through Gazebo's `light_config` service on a seeded schedule of the
-simulation clock and writes every change to the run's directory. It speaks
-to Gazebo alone: nothing of it is published on ROS, and no production node
-reads its schedule, its seed or the light's state (the contract test holds
-it there). The vehicle learns of a failure only from its frames.
+The simulation of the light the camera vehicle carries, beside the flight.
+It sets the vehicle model's spot light through Gazebo's `light_config`
+service on the simulation clock and writes every change to the run's
+directory. Two things move the light:
+
+- its battery, whose charge the vehicle knows, as any airframe knows its
+  batteries: it drains at one constant rate from the charge at launch
+  (LIGHT_BATTERY_S, seconds of light) whatever the light does, the one
+  thing of the light published on ROS (/carried_light/charge_s), and at
+  zero the light goes out (specification F7, F8);
+- its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
+  evaluation component nobody tells the vehicle about. Their schedule never
+  leaves this process, and no production node reads it (the contract test
+  holds it there); the vehicle learns of a failure only from its frames.
 
 Two regimes, decided by the project owner on 2026-09-27:
 
@@ -114,7 +122,9 @@ def share_at(outages: list[Outage], t_s: float) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
-    parser.add_argument("--profile", required=True, choices=("moderate", "severe"))
+    parser.add_argument("--profile", default="none",
+                        choices=("none", "moderate", "severe"))
+    parser.add_argument("--battery-s", type=float, default=3600.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--horizon-s", type=float, default=3600.0)
     parser.add_argument("--output", required=True, type=Path)
@@ -125,7 +135,11 @@ def main() -> int:
     from gz.msgs10.light_pb2 import Light
     from gz.transport13 import Node
 
-    outages = schedule(args.profile, args.seed, args.horizon_s)
+    import rclpy
+    from std_msgs.msg import Float64
+
+    outages = ([] if args.profile == "none"
+               else schedule(args.profile, args.seed, args.horizon_s))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with (args.output.with_suffix(".schedule.csv")).open("w", newline="") as stream:
         writer = csv.writer(stream)
@@ -135,6 +149,9 @@ def main() -> int:
                              f"{outage.dark_s:.3f}", f"{outage.ramp_up_s:.3f}",
                              f"{outage.floor:.3f}"])
 
+    rclpy.init()
+    ros_node = rclpy.create_node("carried_light")
+    charge_pub = ros_node.create_publisher(Float64, "/carried_light/charge_s", 1)
     node = Node()
     clock = {"s": None}
     lock = threading.Lock()
@@ -169,11 +186,16 @@ def main() -> int:
         writer = csv.writer(stream)
         writer.writerow(["sim_s", "share", "accepted"])
         applied = None
+        published_s = -1.0
         while True:
             with lock:
                 t_s = clock["s"]
             if t_s is not None:
-                share = round(share_at(outages, t_s), 3)
+                charge_s = max(0.0, args.battery_s - t_s)
+                if t_s - published_s >= 1.0:
+                    charge_pub.publish(Float64(data=charge_s))
+                    published_s = t_s
+                share = round(share_at(outages, t_s) if charge_s > 0.0 else 0.0, 3)
                 if share != applied:
                     accepted = request(NOMINAL_INTENSITY * share)
                     writer.writerow([f"{t_s:.3f}", f"{share:.3f}", int(accepted)])

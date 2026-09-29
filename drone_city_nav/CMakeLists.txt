@@ -79,6 +79,7 @@ rosidl_generate_interfaces(
   "msg/MppiTrajectoryHorizon.msg"
   "msg/MppiControlFeedback.msg"
   "msg/NavigationHealth.msg"
+  "msg/NavigationProgress.msg"
   "msg/MissionWaypointAcknowledgement.msg"
   "msg/NavigationObjective.msg"
   "msg/SpectatorTarget.msg"
@@ -373,6 +374,7 @@ add_drone_city_nav_layer(
   src/execution_supervisor_3d_retention.cpp
   src/execution_supervisor_3d_stop.cpp
   src/mission_goal_capture.cpp
+  src/carried_light_judgment.cpp
   src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_capture_gate.cpp
   src/goal_reachability_proof_3d.cpp
@@ -569,6 +571,7 @@ set(DRONE_CITY_NAV_EXECUTION_HEADERS
     include/drone_city_nav/execution_stop_3d.hpp
     include/drone_city_nav/execution_supervisor_3d.hpp
     include/drone_city_nav/mission_goal_capture.hpp
+    include/drone_city_nav/carried_light_judgment.hpp
     include/drone_city_nav/mission_waypoint_acknowledgement_admission.hpp
     include/drone_city_nav/mission_waypoint_capture_gate.hpp
     include/drone_city_nav/goal_reachability_proof_3d.hpp
@@ -935,7 +938,8 @@ target_link_libraries(mission_monitor_node drone_city_nav_core
 ament_target_dependencies(
   mission_monitor_node
   ament_index_cpp
-  rclcpp)
+  rclcpp
+  std_msgs)
 enable_project_warnings(mission_monitor_node)
 
 add_executable(cooperative_traffic_referee_node
@@ -1507,6 +1511,11 @@ if(BUILD_TESTING)
   target_compile_features(mission_goal_capture_test PRIVATE cxx_std_20)
   target_link_libraries(mission_goal_capture_test drone_city_nav_core)
   enable_project_warnings(mission_goal_capture_test)
+
+  ament_add_gtest(carried_light_judgment_test tests/carried_light_judgment_test.cpp)
+  target_compile_features(carried_light_judgment_test PRIVATE cxx_std_20)
+  target_link_libraries(carried_light_judgment_test drone_city_nav_core)
+  enable_project_warnings(carried_light_judgment_test)
 
   ament_add_gtest(goal_reachability_proof_3d_test
                   tests/goal_reachability_proof_3d_test.cpp)

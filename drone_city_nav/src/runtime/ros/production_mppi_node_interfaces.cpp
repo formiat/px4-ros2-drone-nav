@@ -636,6 +636,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   navigation_health_pub_ = create_publisher<msg::NavigationHealth>(
       config_.diagnostics.topics.navigation_health,
       rclcpp::QoS{1}.reliable().transient_local());
+  navigation_progress_pub_ = create_publisher<msg::NavigationProgress>(
+      config_.diagnostics.topics.navigation_progress, rclcpp::QoS{1}.reliable());
   execution_horizon_pub_ = create_publisher<msg::MppiTrajectoryHorizon>(
       config_.execution.topics.execution_horizon, rclcpp::QoS{2}.reliable());
   mission_waypoint_acknowledgement_pub_ =

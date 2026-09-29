@@ -49,7 +49,8 @@ prepare_runtime_evidence() {
     CAMERA_PROFILE NAVIGATION_SENSOR_PROFILE \
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
-    WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED; do
+    WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
+    LIGHT_BATTERY_S RETURN_HOME_EXPECTED; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
@@ -68,15 +69,15 @@ start_runtime_evidence_capture() {
     "${runtime_artifact_dir}/resources_host.json" \
     --world "${world_name}" \
     > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
-  # Roadmap item 17 stage 5: the carried light's failures, an evaluation
-  # component the vehicle is never told about; its schedule and every change
-  # it made land beside the manifest.
-  if [[ -n "${LIGHT_FAULTS:-}" ]]; then
-    python3 "${repo_root}/scripts/light_fault_injector.py" \
-      --world "${world_name}" --profile "${LIGHT_FAULTS}" \
-      --seed "${LIGHT_FAULT_SEED:-0}" \
-      --output "${runtime_artifact_dir}/light_faults.csv" \
-      > "${runtime_artifact_dir}/light_faults.log" 2>&1 &
+  # Roadmap item 17 stage 5: the light the camera vehicle carries, its
+  # battery (the charge is published) and its injected failures (never
+  # announced); the schedule and every change land beside the manifest.
+  if [[ "${CAMERA_PROFILE:-}" == "stereo_tof" ]] && ! bool_is_true "${multi_vehicle_mission}"; then
+    python3 "${repo_root}/scripts/carried_light.py" \
+      --world "${world_name}" --profile "${LIGHT_FAULTS:-none}" \
+      --seed "${LIGHT_FAULT_SEED:-0}" --battery-s "${LIGHT_BATTERY_S:-3600}" \
+      --output "${runtime_artifact_dir}/carried_light.csv" \
+      > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
   fi
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" ||

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Roadmap item 17 stage 5: the light fault injector stays an evaluation
-component. The vehicle is never told when or how its light fails."""
+"""Roadmap item 17 stage 5: the carried light's failures stay an evaluation
+component. The vehicle is told its battery's charge and never when or how its
+light fails."""
 
 from __future__ import annotations
 
@@ -11,8 +12,8 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-INJECTOR_PATH = REPOSITORY / "scripts" / "light_fault_injector.py"
-SPEC = importlib.util.spec_from_file_location("light_fault_injector", INJECTOR_PATH)
+INJECTOR_PATH = REPOSITORY / "scripts" / "carried_light.py"
+SPEC = importlib.util.spec_from_file_location("carried_light", INJECTOR_PATH)
 assert SPEC is not None and SPEC.loader is not None
 INJECTOR = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = INJECTOR  # its dataclass looks its module up
@@ -20,10 +21,10 @@ SPEC.loader.exec_module(INJECTOR)
 
 
 class LightFaultInjectorContractTest(unittest.TestCase):
-    def test_nothing_of_the_injector_reaches_ros(self) -> None:
+    def test_the_charge_is_all_it_publishes_on_ros(self) -> None:
         source = INJECTOR_PATH.read_text()
-        self.assertNotIn("rclpy", source)
-        self.assertNotIn("create_publisher", source)
+        self.assertEqual(1, source.count("create_publisher"))
+        self.assertIn('create_publisher(Float64, "/carried_light/charge_s", 1)', source)
 
     def test_no_production_source_reads_the_injection(self) -> None:
         production = REPOSITORY / "drone_city_nav"

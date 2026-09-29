@@ -68,6 +68,7 @@ struct ProductionMppiDiagnosticsTopics {
   std::string world_readiness{"/drone_city_nav/mppi/world_ready"};
   std::string planner_health{"/drone_city_nav/mppi/planner_alive"};
   std::string navigation_health{"/drone_city_nav/mppi/navigation_health"};
+  std::string navigation_progress{"/drone_city_nav/mppi/navigation_progress"};
 };
 
 struct ProductionMppiConfig final {

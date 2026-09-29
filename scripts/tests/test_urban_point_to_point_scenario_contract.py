@@ -97,6 +97,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "return-home": "$(RETURN_HOME_SCENARIO)",
             "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
             "point-to-point-dark": "WORLD_ILLUMINATION=dark",
+            "light-failure": "$(LIGHT_FAILURE_SCENARIO)",
+            "low-battery": "$(LOW_BATTERY_SCENARIO)",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):

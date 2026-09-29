@@ -447,7 +447,7 @@ class BuildingCollisionValidationTest(unittest.TestCase):
 
 class ReturnHomeValidationTest(unittest.TestCase):
     RETURNED = (
-        "GOAL_UNREACHABLE trigger=budget goal=(200.000,100.000,5.000) "
+        "GOAL_UNREACHABLE trigger=battery goal=(200.000,100.000,5.000) "
         "substituted_goal=(0.750,21.250,12.500) mission_epoch=2 elapsed_s=480.0 "
         "return_estimate_s=110.0 window_s=600.0 flown_path_m=310.0\n"
         "MISSION_WAYPOINT_REACHED completed_index=0 waypoint_count=1 planner=1 "
@@ -460,6 +460,15 @@ class ReturnHomeValidationTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             VALIDATOR.validate_return_home(self.RETURNED, True, errors)
         self.assertEqual(errors, [])
+
+    def test_a_lidar_return_from_outside_the_location_is_the_proofs(self) -> None:
+        errors: list[str] = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            VALIDATOR.validate_return_home(self.RETURNED, True, errors, ("topological",))
+        self.assertEqual(
+            errors,
+            ["FAIL: the goal is given up by one of topological (got 'battery')"],
+        )
 
     def test_an_injected_flight_needs_the_proof_and_the_arrival(self) -> None:
         errors: list[str] = []
@@ -479,7 +488,7 @@ class ReturnHomeValidationTest(unittest.TestCase):
         self.assertEqual(
             errors,
             ["FAIL: the vehicle reached its goal rather than returned home "
-             "(trigger=budget)"],
+             "(trigger=battery)"],
         )
 
     def test_an_ordinary_flight_without_a_return_passes_the_guard(self) -> None:

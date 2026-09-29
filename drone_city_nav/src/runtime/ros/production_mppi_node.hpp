@@ -28,6 +28,7 @@
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/navigation_progress.hpp"
 #include "drone_city_nav/msg/obstacle_memory_status.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta3_d.hpp"
@@ -150,6 +151,8 @@ private:
       const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
       bool world_current, std::int64_t now_ns);
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
+  void publishNavigationProgress(const MppiSpeedPolicyResult& speed_policy,
+                                 double route_remaining_m, std::int64_t now_ns);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjectiveState>
   navigationObjectiveState() const;
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
@@ -508,6 +511,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr world_readiness_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr planner_health_pub_;
   rclcpp::Publisher<msg::NavigationHealth>::SharedPtr navigation_health_pub_;
+  rclcpp::Publisher<msg::NavigationProgress>::SharedPtr navigation_progress_pub_;
+  std::int64_t last_navigation_progress_ns_{0};
   rclcpp::Publisher<msg::MppiTrajectoryHorizon>::SharedPtr execution_horizon_pub_;
   rclcpp::Publisher<msg::MissionWaypointAcknowledgement>::SharedPtr
       mission_waypoint_acknowledgement_pub_;

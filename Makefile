@@ -119,13 +119,18 @@ URBAN_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/urban_practice_
 RETURN_HOME_GOAL_XYZ_M := 200,100,10
 LIDAR_SCENARIO := CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar
 # Roadmap item 19: the goal behind the location's outer walls, recorded in the
-# manifest as injected, and the truth grid the check floods to confirm it. The
-# 900 s window is the time-bound return's while the mission monitor carries
-# it (docs/specification.md, K4).
+# manifest as injected, and the truth grid the check floods to confirm it.
 RETURN_HOME_SCENARIO := MISSION_GOALS_XYZ_M=$(RETURN_HOME_GOAL_XYZ_M) \
 	MISSION_GOAL_UNREACHABLE=true \
 	TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D) \
-	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}"
+# Roadmap item 17 stage 5: the carried light failing until the vehicle judges
+# it unreliable, and a battery too low at launch to reach B; each ends at the
+# start.
+LIGHT_FAILURE_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_FAULTS=severe \
+	RETURN_HOME_EXPECTED=true
+LOW_BATTERY_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_BATTERY_S=240 \
+	RETURN_HOME_EXPECTED=true
 
 .PHONY: urban-truth-occupancy-check
 urban-truth-occupancy-check:
@@ -173,3 +178,19 @@ sim-urban-point-to-point-dark-headless:
 .PHONY: sim-urban-point-to-point-dark-gui
 sim-urban-point-to-point-dark-gui:
 	WORLD_ILLUMINATION=dark $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-light-failure-headless
+sim-urban-light-failure-headless:
+	$(LIGHT_FAILURE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-light-failure-gui
+sim-urban-light-failure-gui:
+	$(LIGHT_FAILURE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-low-battery-headless
+sim-urban-low-battery-headless:
+	$(LOW_BATTERY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-low-battery-gui
+sim-urban-low-battery-gui:
+	$(LOW_BATTERY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui

@@ -941,7 +941,6 @@ else
     rviz_config:="${rviz_config_file}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
     shutdown_on_mission_result:="${point_to_point_shutdown_on_mission_result}"
-    mission_window_s:="${smoke_duration_s}"
   )
   if [[ -n "${point_to_point_scenario_path}" ]]; then
     ros_launch_args+=(

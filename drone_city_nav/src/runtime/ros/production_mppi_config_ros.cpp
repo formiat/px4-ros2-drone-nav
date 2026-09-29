@@ -115,6 +115,8 @@ private:
         "planner_health_topic", "/drone_city_nav/mppi/planner_alive");
     diagnostics.topics.navigation_health = declare<std::string>(
         "navigation_health_topic", "/drone_city_nav/mppi/navigation_health");
+    diagnostics.topics.navigation_progress = declare<std::string>(
+        "navigation_progress_topic", "/drone_city_nav/mppi/navigation_progress");
   }
 
   void declareWorld() {

@@ -1,11 +1,13 @@
 #include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/autopilot_state_source.hpp"
+#include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/goal_reachability_proof_3d.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/navigation_objective.hpp"
+#include "drone_city_nav/msg/navigation_progress.hpp"
 #include "drone_city_nav/msg/raw_obstacle_delta3_d.hpp"
 #include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
@@ -14,6 +16,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -251,18 +254,37 @@ public:
         [this](const msg::NavigationHealth::SharedPtr message) {
           onNavigationHealth(*message);
         });
-    // Roadmap item 19: the goal proven unreachable is given up for the start.
-    // The flight's window is the run's, handed to the monitor as a mission
-    // parameter (0 disables the budget trigger); the proof floods the memory
-    // the navigation publishes, on its own thread, within a voxel budget.
-    mission_window_s_ = declare_parameter<double>("mission_window_s", 0.0);
+    // Roadmap item 19: the goal proven unreachable is given up for the start;
+    // the proof floods the memory the navigation publishes, on its own
+    // thread, within a voxel budget. Roadmap item 17 stage 5 gives it up as
+    // well for a carried light judged unreliable and for a light's battery
+    // that will not reach it; the vehicle has no time limit (specification
+    // I8).
     const std::int64_t proof_budget = declare_parameter<std::int64_t>(
         "unreachable_goal_proof_voxel_budget", 20'000'000);
-    if (!std::isfinite(mission_window_s_) || mission_window_s_ < 0.0 ||
-        proof_budget <= 0) {
-      throw std::invalid_argument{"mission window and proof budget must be valid"};
+    if (proof_budget <= 0) {
+      throw std::invalid_argument{"the proof budget must be valid"};
     }
     proof_voxel_budget_ = static_cast<std::size_t>(proof_budget);
+    navigation_progress_sub_ = create_subscription<msg::NavigationProgress>(
+        declare_parameter<std::string>("navigation_progress_topic",
+                                       "/drone_city_nav/mppi/navigation_progress"),
+        rclcpp::QoS{1}.reliable(),
+        [this](const msg::NavigationProgress::SharedPtr message) {
+          onNavigationProgress(*message);
+        });
+    // The charge of the carried light's battery, in seconds of light left:
+    // published only where the vehicle flies on its light, so the return on
+    // the battery switches itself on with the camera set and off without it.
+    light_charge_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("carried_light_charge_topic",
+                                       "/carried_light/charge_s"),
+        rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          if (std::isfinite(message->data)) {
+            light_charge_s_ = message->data;
+          }
+        });
     objective_pub_ = create_publisher<msg::NavigationObjective>(
         declare_parameter<std::string>("navigation_objective_topic",
                                        "/drone_city_nav/navigation_objective"),
@@ -542,12 +564,6 @@ private:
         return;
       }
     }
-    if (mission_window_s_ > 0.0 && mission_start_ns_ > 0 &&
-        wallElapsedS() + returnEstimateWallS(now_ns) + kWindowReserveS >=
-            mission_window_s_ &&
-        substituteGoalWithStart("budget", now_ns)) {
-      return;
-    }
     if (!proof_future_.valid() && memory_ != nullptr && latest_position_valid_) {
       const std::shared_ptr<const ObservedOccupancyGrid3D> grid = memory_;
       const Point3 vehicle = latest_map_position_;
@@ -560,44 +576,50 @@ private:
   }
 
   // The way back is known and observed: the path flown so far at the
-  // flight's mean speed so far errs on the long side.
-  [[nodiscard]] double returnEstimateS() const noexcept {
+  // flight's mean speed, floored at the start's 0.5 m/s, errs on the long
+  // side; the planner routes anew through the observed space, and over
+  // twelve returns of item 19 the way back took 0.72 to 1.65 times the flight
+  // out, so it is doubled, with a 20 s reserve. Logged beside the battery's
+  // charge when a goal is given up.
+  [[nodiscard]] double homeEstimateS() const noexcept {
     const double mean = meanSpeed();
-    return flown_path_m_ / std::max(std::isfinite(mean) ? mean : 0.0, 0.5);
+    return kReturnEstimateMargin * flown_path_m_ /
+               std::max(std::isfinite(mean) ? mean : 0.0, 0.5) +
+           kReturnReserveS;
   }
 
-  // The window is the run's, on the wall clock (the script's timeout), while
-  // the monitor's clock is the simulation's, which runs slower than the wall
-  // on the camera profile. Until roadmap item 20 puts the run on one clock,
-  // the budget is judged on the wall: the time since this node started, and
-  // the return's estimate stretched by the factor the two clocks have shown
-  // so far. r667 substituted at 307 s of simulation time with a 306 s
-  // estimate and the window ended 10 m short of the start.
-  static constexpr double kWindowReserveS{20.0};
-  // The way back is not the flown path: the planner routes anew through the
-  // observed space and explores where that space does not connect at the
-  // return's altitude. r668 substituted with a 246 s estimate, flew 546 m of
-  // return in 285 s and stood 40 m short of the start when the window ended;
-  // r667's return ran 261 s against a 306 s estimate and stopped 10 m short.
-  // Over twelve returns the return took 0.72 to 1.40 times the flight out,
-  // and r687's, exploring north, back over the shaft and west again, more
-  // than 1.65 times; it ended 24 m short at a margin of 1.5.
   static constexpr double kReturnEstimateMargin{2.0};
+  static constexpr double kReturnReserveS{20.0};
 
-  [[nodiscard]] double wallElapsedS() const noexcept {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                         wall_started_)
-        .count();
-  }
-
-  [[nodiscard]] double returnEstimateWallS(const std::int64_t now_ns) const noexcept {
-    const double sim_elapsed_s =
-        mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
-                              : 0.0;
-    const double wall_elapsed_s = std::max(wallElapsedS(), 1.0);
-    const double real_time_factor =
-        std::clamp(sim_elapsed_s / wall_elapsed_s, 0.3, 1.0);
-    return kReturnEstimateMargin * returnEstimateS() / real_time_factor;
+  // Roadmap item 17 stage 5: the light judged from what the navigation sees,
+  // and the battery weighed against the way to B.
+  void onNavigationProgress(const msg::NavigationProgress& progress) {
+    if (result_reported_ || goal_substituted_ || !navigation_mission_ready_ ||
+        progress.header.frame_id != frame_id_ ||
+        active_waypoint_index_ >= waypoints_.size()) {
+      return;
+    }
+    const std::int64_t now_ns = now().nanoseconds();
+    light_judgment_.observe(static_cast<double>(now_ns) * 1.0e-9,
+                            progress.sensor_measured_range_m,
+                            progress.sensor_guaranteed_range_m);
+    if (std::isfinite(progress.route_remaining_m)) {
+      route_remaining_m_ = progress.route_remaining_m;
+    }
+    if (light_judgment_.unreliable()) {
+      static_cast<void>(substituteGoalWithStart("unreliable_light", now_ns));
+      return;
+    }
+    if (std::isfinite(light_charge_s_)) {
+      // Before a route reaches B, the straight line to it.
+      const double remaining_m =
+          std::isfinite(route_remaining_m_)
+              ? route_remaining_m_
+              : distance3D(latest_map_position_, waypoints_[active_waypoint_index_]);
+      if (light_charge_s_ < carriedLightGoalEstimateS(remaining_m, meanSpeed())) {
+        static_cast<void>(substituteGoalWithStart("battery", now_ns));
+      }
+    }
   }
 
   // The return to home (RTH; PX4's own is RTL, which flies no map): the goal
@@ -638,17 +660,24 @@ private:
     const double elapsed_s =
         mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
                               : 0.0;
-    RCLCPP_WARN(get_logger(),
-                "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
-                "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
-                " elapsed_s=%.1f wall_elapsed_s=%.1f return_estimate_s=%.1f "
-                "return_estimate_wall_s=%.1f window_s=%.1f flown_path_m=%.1f "
-                "proof=%s component_voxels=%zu",
-                trigger, original_goal.x, original_goal.y, original_goal.z, start.x,
-                start.y, start.z, objective.mission_epoch, elapsed_s, wallElapsedS(),
-                returnEstimateS(), returnEstimateWallS(now_ns), mission_window_s_,
-                flown_path_m_, goalReachabilityProofVerdict(latest_proof_),
-                latest_proof_.component_voxels);
+    RCLCPP_WARN(
+        get_logger(),
+        "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
+        "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
+        " elapsed_s=%.1f flown_path_m=%.1f home_estimate_s=%.1f "
+        "light_charge_s=%.1f goal_estimate_s=%.1f route_remaining_m=%.1f "
+        "light_outage_s=%.1f light_outage_share=%.3f proof=%s "
+        "component_voxels=%zu",
+        trigger, original_goal.x, original_goal.y, original_goal.z, start.x, start.y,
+        start.z, objective.mission_epoch, elapsed_s, flown_path_m_, homeEstimateS(),
+        light_charge_s_,
+        carriedLightGoalEstimateS(std::isfinite(route_remaining_m_)
+                                      ? route_remaining_m_
+                                      : distance3D(latest_map_position_, original_goal),
+                                  meanSpeed()),
+        route_remaining_m_, light_judgment_.currentOutageS(),
+        light_judgment_.outageShare(), goalReachabilityProofVerdict(latest_proof_),
+        latest_proof_.component_voxels);
     return true;
   }
 
@@ -732,12 +761,15 @@ private:
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
   std::uint64_t navigation_mission_epoch_{0U};
-  double mission_window_s_{0.0};
   std::size_t proof_voxel_budget_{20'000'000U};
   Point3 latest_map_position_{};
   std::int64_t latest_position_stamp_ns_{0};
   std::int64_t mission_start_ns_{0};
-  std::chrono::steady_clock::time_point wall_started_{std::chrono::steady_clock::now()};
+  LightReliabilityJudgment light_judgment_;
+  double light_charge_s_{std::numeric_limits<double>::quiet_NaN()};
+  double route_remaining_m_{std::numeric_limits<double>::quiet_NaN()};
+  rclcpp::Subscription<msg::NavigationProgress>::SharedPtr navigation_progress_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_charge_sub_;
   double mission_ready_altitude_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double flown_path_m_{0.0};
   bool goal_substituted_{false};

@@ -265,9 +265,14 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
         )
 
 
-def validate_return_home(ros_log: str, injected: bool, errors: list[str]) -> None:
-    """Roadmap item 19. A return home counts as the outcome asked for only in
-    a flight whose unreachability the manifest records as injected; in every
+RETURN_TRIGGERS = ("topological", "battery", "unreliable_light")
+
+
+def validate_return_home(ros_log: str, injected: bool, errors: list[str],
+                         allowed_triggers: tuple[str, ...] = RETURN_TRIGGERS) -> None:
+    """Roadmap items 19 and 17. A return home counts as the outcome asked for
+    only in a flight whose manifest asks for it (a goal made unreachable, a
+    failing light, a low battery), by one of the triggers allowed; in every
     other flight the vehicle returned rather than reached, which fails the
     mission as an incomplete one does."""
     returned = re.search(r"GOAL_UNREACHABLE trigger=(\w+)", ros_log)
@@ -281,10 +286,11 @@ def validate_return_home(ros_log: str, injected: bool, errors: list[str]) -> Non
                       "given up (no GOAL_UNREACHABLE)")
         return
     trigger = returned.group(1)
-    if trigger not in ("topological", "budget"):
-        errors.append(f"FAIL: the proof names its trigger (got '{trigger}')")
+    if trigger not in allowed_triggers:
+        errors.append(f"FAIL: the goal is given up by one of {', '.join(allowed_triggers)} "
+                      f"(got '{trigger}')")
     else:
-        print(f"OK: the goal was proven unreachable by the {trigger} trigger")
+        print(f"OK: the goal was given up by the {trigger} trigger")
     require(
         "the vehicle returned to the start and the monitor reported it",
         ros_log,
@@ -441,14 +447,21 @@ def main() -> int:
             expected_static_map=expected_static,
         )
     unreachable_goal_injected = False
+    return_home_expected = False
+    lidar_navigation = False
     truth_occupancy_3d = ""
     if args.runtime_manifest is not None:
-        manifest_mission = json.loads(
-            args.runtime_manifest.read_text(encoding="utf-8")
-        ).get("mission", {})
+        manifest = json.loads(args.runtime_manifest.read_text(encoding="utf-8"))
+        manifest_mission = manifest.get("mission", {})
         unreachable_goal_injected = bool(
             manifest_mission.get("unreachable_goal_injected", False))
         truth_occupancy_3d = str(manifest_mission.get("truth_occupancy_3d", ""))
+        overrides = manifest.get("effective_overrides", {})
+        # Roadmap item 17: a scenario whose light fails or whose battery is
+        # low at launch asks for the return as the goal-outside flight does.
+        return_home_expected = unreachable_goal_injected or (
+            overrides.get("RETURN_HOME_EXPECTED", "false").lower() == "true")
+        lidar_navigation = overrides.get("NAVIGATION_SENSOR_PROFILE", "") == "lidar"
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, notes)
         manifest_overrides = json.loads(
@@ -457,7 +470,7 @@ def main() -> int:
         # An injected flight flies out and back to a proof, not to a speed:
         # the mean speed is no requirement of it.
         validate_mean_flight_speed(
-            ros_log, notes if unreachable_goal_injected else errors,
+            ros_log, notes if return_home_expected else errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
         )
@@ -532,8 +545,14 @@ def main() -> int:
 
     mission_failed = re.search(r"MISSION_RESULT success=false", ros_log) is not None
     if args.mission_check and not args.allow_mission_failure:
+        if return_home_expected:
+            # The lidar carries no light: its return from a goal outside the
+            # location is the proof's (roadmap item 19).
+            validate_return_home(
+                ros_log, True, errors,
+                ("topological",) if unreachable_goal_injected and lidar_navigation
+                else RETURN_TRIGGERS)
         if unreachable_goal_injected:
-            validate_return_home(ros_log, True, errors)
             if args.runtime_manifest is not None:
                 # A goal the truth flood reaches fails; a component that only
                 # reaches the truth grid's edge is a note: the location is
@@ -543,7 +562,7 @@ def main() -> int:
                     Path(truth_occupancy_3d), ros_log, truth_findings)
                 for finding in truth_findings:
                     (errors if "reaches the goal" in finding else notes).append(finding)
-        else:
+        elif not return_home_expected:
             validate_return_home(ros_log, False, errors)
             require(
                 "mission monitor verifies complete flight",
@@ -551,7 +570,7 @@ def main() -> int:
                 r"MISSION_RESULT success=true",
                 errors,
             )
-        if unreachable_goal_injected:
+        if return_home_expected:
             pass
         elif args.mission_type == "cooperative_traffic":
             validate_cooperative_traffic(

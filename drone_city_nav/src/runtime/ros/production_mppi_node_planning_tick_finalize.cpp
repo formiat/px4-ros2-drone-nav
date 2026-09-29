@@ -136,6 +136,13 @@ void ProductionMppiNode::finalizePlanningTick(
   const CertifiedRouteSuffix3D* const committed_route =
       committed_execution_snapshot != nullptr ? committed_execution_snapshot->route()
                                               : nullptr;
+  publishNavigationProgress(
+      speed_policy,
+      committed_route != nullptr &&
+              committed_route->identity.proposal.reaches_mission_goal
+          ? committed_route->remainingM()
+          : std::numeric_limits<double>::quiet_NaN(),
+      finalization.now_ns);
   const bool committed_execution_owner =
       committed_execution_snapshot != nullptr &&
       (committed_execution_snapshot->finiteExecution() != nullptr ||
@@ -305,6 +312,27 @@ void ProductionMppiNode::finalizePlanningTick(
       .route_required_risk_tier = route_required_risk_tier,
       .executed_horizon_clearance = finalization.executed_horizon_clearance,
   }));
+}
+
+// What the mission monitor weighs (roadmap item 17 stage 5): whether the
+// vehicle sees and how far B lies along its route, five times a second.
+void ProductionMppiNode::publishNavigationProgress(
+    const MppiSpeedPolicyResult& speed_policy, const double route_remaining_m,
+    const std::int64_t now_ns) {
+  constexpr std::int64_t kNavigationProgressPeriodNs{200'000'000};
+  if (navigation_progress_pub_ == nullptr ||
+      now_ns - last_navigation_progress_ns_ < kNavigationProgressPeriodNs) {
+    return;
+  }
+  last_navigation_progress_ns_ = now_ns;
+  msg::NavigationProgress message;
+  message.header.stamp = get_clock()->now();
+  message.header.frame_id = config_.world.frame_id;
+  message.sensor_measured_range_m = speed_policy.sensor_measured_range_m;
+  message.sensor_guaranteed_range_m =
+      config_.control.speed_policy.sensor_braking_contract.guaranteed_detection_range_m;
+  message.route_remaining_m = route_remaining_m;
+  navigation_progress_pub_->publish(message);
 }
 
 } // namespace drone_city_nav
