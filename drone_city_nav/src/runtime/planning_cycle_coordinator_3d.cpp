@@ -603,6 +603,15 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                           output.controller.speed_policy.target_lookahead_m,
                           output.controller.target_source, target_station_m);
   }
+  // A route's projection moves on with the vehicle, so a target on it drew a
+  // blind vehicle on at a third of a metre a second (r809); the hold is the
+  // vehicle's own position.
+  if (output.controller.speed_policy.blind_along_motion) {
+    target.x = request.navigation.state.x;
+    target.y = request.navigation.state.y;
+    target.z = request.navigation.state.z;
+    output.controller.target_source = "blind_hold";
+  }
   if (route_control.active) {
     target.z = static_cast<float>(route_control.reference_z_m);
     if (route_control.hold_xy) {

@@ -128,7 +128,9 @@ TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
   input.state.vx = 0.0F;
   const MppiSpeedPolicyResult on = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(on.active_limiter, MppiSpeedLimiter::kSensorBraking);
+  EXPECT_TRUE(on.blind_along_motion);
   EXPECT_DOUBLE_EQ(on.target_lookahead_m, 0.0);
+  EXPECT_FALSE(lit.blind_along_motion);
   EXPECT_GE(lit.target_lookahead_m, config.minimum_target_lookahead_m);
 }
 

@@ -411,7 +411,10 @@ private:
                                                         const double headroom,
                                                         const double matched_share,
                                                         const double noise) {
-    constexpr double kDimHeadroom{0.31};
+    // The contract's range reaches its 2 m margin at a headroom of 0.31 and
+    // the vehicle comes to rest short of it, where the frame stays above: dark
+    // is a range within a quarter metre of the margin (r809).
+    constexpr double kDimHeadroom{0.35};
     constexpr double kCollapsedShare{0.1};
     constexpr double kCollapsedNoiseGrey{6.0};
     constexpr double kDarknessS{2.5};

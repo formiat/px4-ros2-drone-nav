@@ -134,9 +134,10 @@ LOW_BATTERY_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_BATTERY_S=240 \
 # Roadmap item 17 stage 7: a zone that fails the light, over B itself, the one
 # place a zone closes the way in this location (every zone elsewhere on the
 # route leaves a way around); B in its dark is unreachable and the vehicle
-# ends at the start.
+# ends at the start. Its fade spans 16 m: the camera's gain hides the first
+# seven eighths of it, and what is left must outlast the vehicle's braking.
 ZONE_ACROSS_B_SCENARIO := WORLD_ILLUMINATION=dark \
-	ANOMALY_ZONES=63.009,23.857,12.593,1.5,8 RETURN_HOME_EXPECTED=true
+	ANOMALY_ZONES=63.009,23.857,12.593,1.5,16 RETURN_HOME_EXPECTED=true
 
 .PHONY: urban-truth-occupancy-check
 urban-truth-occupancy-check:

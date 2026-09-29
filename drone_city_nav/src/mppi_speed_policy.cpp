@@ -597,13 +597,13 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   // of a zone it could not see, every law admitting nothing (r807, 2 m in
   // 13 s).
   const SensorBrakingAssessment3D& along = result.sensor_braking_assessment;
-  const bool blind_along_motion =
+  result.blind_along_motion =
       result.active_limiter == MppiSpeedLimiter::kSensorBraking &&
       along.guaranteed_detection_range_m > 0.0 &&
       along.guaranteed_detection_range_m <=
           along.physical_margin_m + kBlindRangeAboveMarginM;
   result.target_lookahead_m =
-      blind_along_motion
+      result.blind_along_motion
           ? 0.0
           : std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                        config.minimum_target_lookahead_m,

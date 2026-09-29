@@ -167,6 +167,9 @@ struct MppiSpeedPolicyResult {
   bool reference_speed_rise_limited{false};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
+  // The forward sensor is blind along the motion and nothing is observed
+  // along it: the vehicle holds where it stands.
+  bool blind_along_motion{false};
   SensorBrakingAssessment3D sensor_braking_assessment{};
   MppiSpeedLimiter active_limiter{MppiSpeedLimiter::kGoal};
   RouteEndpointSemantics3D route_endpoint_semantics{
