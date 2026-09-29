@@ -111,10 +111,10 @@ outcome asked for, and the check requires the logged substitution, the
 result `goal_unreachable_returned` and the acknowledgement at the
 start with the true position inside the capture radius. It does not take the
 manifest's word: it floods the truth grid (`TRUTH_OCCUPANCY_3D_PATH`) from the
-start, and a start's component that reaches the goal fails the flight, while
-one that only reaches the grid's edge is a note (the location is closed by the
-owner's statement, not by that grid). An injected flight's mean speed is a
-note.
+start within the space the planner flies in (the memory grid's box of the
+configuration and the scenario's flight envelope, specification K16), and a
+start's component that reaches the goal, or leaves the truth grid where that
+space goes on, fails the flight. An injected flight's mean speed is a note.
 
 Every other measurement described below is a **note**: route availability and
 no-route holds, execution-ownership gaps, the planner's p95, the tick's wall

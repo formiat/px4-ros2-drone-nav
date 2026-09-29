@@ -961,6 +961,9 @@ mission_monitor_node:
     # node that reads it.
     minimum_target_z_m: 2.0
     maximum_target_z_m: 32.0
+    # Specification K16: the proof's flood stops undecided past this many
+    # voxels; 20 million took 4.5 s of a core every 10 s (r804).
+    unreachable_goal_proof_voxel_budget: 2000000
     shutdown_on_result: false
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0

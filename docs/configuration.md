@@ -334,7 +334,8 @@ It is observational and does not alter planning or speed policy.
 `mission_monitor_node` owns mission success and crash metrics, and the return
 home of roadmap item 19: `unreachable_goal_proof_voxel_budget` bounds the
 flood of the memory that proves a goal unreachable, beyond which the proof
-stays undecided.
+stays undecided, and `minimum_target_z_m` and `maximum_target_z_m`, the
+planner's envelope, bound it in height (specification K16).
 
 ## Environment Overrides
 
