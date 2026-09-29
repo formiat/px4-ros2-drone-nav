@@ -17,12 +17,13 @@ namespace drone_city_nav {
 // the range for at most 1.8 s and 1.5 percent of the time (r785), no more
 // than a flight without it (2.6 s and 3 percent, r781), and the severe
 // failure must reach them. The outage is judged while the vehicle still holds
-// on dead reckoning (11 s after the frames go dark): at 10 s the severe
-// failure of r789 outlived the hold and the autopilot landed blind. The
-// judgment stands once reached: it sends the vehicle home.
+// on dead reckoning, before the drift of a longer one grows toward the 2 m
+// margin (r795): at 10 s the severe failure of r789 outlived the hold and the
+// autopilot landed blind. The judgment stands once reached: it sends the
+// vehicle home.
 class LightReliabilityJudgment final {
 public:
-  static constexpr double kLongestOutageS{6.0};
+  static constexpr double kLongestOutageS{5.0};
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};
 
