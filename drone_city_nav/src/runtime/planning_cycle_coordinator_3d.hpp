@@ -187,6 +187,9 @@ private:
   // The vehicle's positions along the last 60 m flown, every half metre: the
   // way back the speed policy leaves open (specification K15, I3).
   std::deque<Point3> flown_path_;
+  // Where the vehicle stood when its forward sensor went blind along the
+  // motion: the blind hold's target while it stays blind.
+  std::optional<Point3> blind_hold_position_;
 };
 
 } // namespace drone_city_nav

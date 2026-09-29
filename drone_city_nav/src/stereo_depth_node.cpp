@@ -294,12 +294,12 @@ private:
     std_msgs::msg::Float64 headroom_message;
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
-    const std::vector<Point3> unobservable = unobservableFrustum(
-        rclcpp::Time{left->header.stamp}.seconds(), headroom,
+    const double matched_share =
         static_cast<double>(returns.size()) /
-            static_cast<double>((image_width_ / returns_config_.pixel_stride) *
-                                (image_height_ / returns_config_.pixel_stride)),
-        noise);
+        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
+                            (image_height_ / returns_config_.pixel_stride));
+    const std::vector<Point3> unobservable = unobservableFrustum(
+        rclcpp::Time{left->header.stamp}.seconds(), headroom, matched_share, noise);
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -362,9 +362,11 @@ private:
                                 .count();
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
-                         "match_ms=%.1f brightness_by_metre=%s",
+                         "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
+                         "matched_share=%.3f noise=%.1f unobservable=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightness_by_metre.c_str());
+                         brightness_by_metre.c_str(), headroom, matched_share, noise,
+                         unobservable.size());
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
