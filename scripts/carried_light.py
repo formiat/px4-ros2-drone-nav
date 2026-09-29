@@ -146,15 +146,17 @@ def zones_from(text: str) -> list[tuple[float, float, float, float, float]]:
 
 def zone_share(zones, position) -> float:
     """The share of the light the zones leave at `position`: out inside the
-    radius, back across the falloff as the cube of the way across. The camera's
-    gain makes up a light dimmed eightfold, so a linear fade showed nothing
-    until the last tenth of the falloff, and the vehicle flew into the dark
-    (r799); the cube reaches an eighth halfway across."""
+    radius, and across the falloff halved six times over, evenly, toward it.
+    The camera's gain makes up a light dimmed eightfold, so a linear fade or
+    a cube left the frames unchanged until the last few decimetres, and the
+    vehicle flew into the dark at 2.3 m/s (r799, r800, r802); halved evenly,
+    the gain runs out halfway across and the frames darken over the rest."""
     share = 1.0
     for x, y, z, radius, falloff in zones:
         distance = ((position[0] - x) ** 2 + (position[1] - y) ** 2 +
                     (position[2] - z) ** 2) ** 0.5
-        share = min(share, max(0.0, min(1.0, (distance - radius) / falloff)) ** 3)
+        across = max(0.0, min(1.0, (distance - radius) / falloff))
+        share = min(share, 0.0 if distance <= radius else 2.0 ** (-6.0 * (1.0 - across)))
     return share
 
 

@@ -81,6 +81,8 @@ class AnomalyZoneTest(unittest.TestCase):
         zones = INJECTOR.zones_from("10,0,5,3,2; 50,50,5,1,1")
         self.assertEqual(1.0, INJECTOR.zone_share(zones, (20.0, 0.0, 5.0)))
         self.assertAlmostEqual(0.125, INJECTOR.zone_share(zones, (14.0, 0.0, 5.0)))
+        self.assertAlmostEqual(1.0 / 64.0, INJECTOR.zone_share(zones, (13.0001, 0.0, 5.0)),
+                               places=3)
         self.assertEqual(0.0, INJECTOR.zone_share(zones, (11.0, 0.0, 5.0)))
         self.assertEqual([], INJECTOR.zones_from(""))
 
