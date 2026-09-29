@@ -106,6 +106,7 @@ def stereo_vision_nodes(
     gazebo_model_name,
     shadow,
     visual_inertial_overrides,
+    image_topic_suffix,
 ):
     """The vision path of roadmap item 14: the pair's images and the
     time-of-flight scans bridged to ROS and depth recovered from them. In
@@ -115,7 +116,7 @@ def stereo_vision_nodes(
     With visual-inertial overrides the process that owns the pair's images
     also hosts the visual-inertial estimator of roadmap item 16."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
-        gazebo_world_name, gazebo_model_name
+        gazebo_world_name, gazebo_model_name, image_topic_suffix=image_topic_suffix
     )
     with open(params_path, encoding="utf-8") as params_stream:
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
@@ -228,6 +229,7 @@ def generate_launch_description():
     mission_goal_sequence_xyz_m = LaunchConfiguration("mission_goal_sequence_xyz_m")
     shutdown_on_mission_result = LaunchConfiguration("shutdown_on_mission_result")
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
+    stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -549,6 +551,7 @@ def generate_launch_description():
                     gazebo_model_name,
                     shadow=navigation_sensors == "lidar",
                     visual_inertial_overrides=visual_inertial_overrides,
+                    image_topic_suffix=stereo_image_topic_suffix.perform(context),
                 )
             )
         nodes.append(
@@ -774,6 +777,15 @@ def generate_launch_description():
                     "pair and two time-of-flight sensors, roadmap item 14; the "
                     "lidar is absent from the vehicle) or lidar (the whole "
                     "sphere)."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "stereo_image_topic_suffix",
+                default_value="",
+                description=(
+                    "Suffix of the Gazebo image topics the camera driver reads: set when "
+                    "an evaluation relay republishes the pair's images (roadmap item 17 "
+                    "stage 5)."
                 ),
             ),
             DeclareLaunchArgument(

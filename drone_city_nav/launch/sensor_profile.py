@@ -94,13 +94,19 @@ def validate_sensor_profiles(camera_profile: str, navigation_sensor_profile: str
     return cameras, navigation
 
 
-def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""):
+def stereo_tof_topics(
+    world_name: str,
+    model_name: str,
+    vehicle_prefix: str = "",
+    image_topic_suffix: str = "",
+):
     """How one vehicle's camera set reaches its depth node: (bridge arguments,
     bridge remaps, parameters of the `gazebo_stereo_depth_node` process). Only
     the two time-of-flight clouds cross the ROS-Gazebo bridge; the pair's
     images are taken from Gazebo inside the depth node's process, because the
     bridge of two 1280 x 960 streams stalled the simulator. The returns topic
-    is the vision memory's input."""
+    is the vision memory's input. A suffix names the topics an evaluation relay
+    republishes the images on, the camera driver's input then."""
     sensor_prefix = (
         f"/world/{world_name}/model/{model_name}/link/stereo_tof_link/sensor"
     )
@@ -109,7 +115,7 @@ def stereo_tof_topics(world_name: str, model_name: str, vehicle_prefix: str = ""
     depth_parameters = {"returns_topic": f"{vehicle_prefix}/stereo_depth/points"}
     for side in ("left", "right"):
         depth_parameters[f"{side}_gazebo_image_topic"] = (
-            f"{sensor_prefix}/stereo_{side}/image"
+            f"{sensor_prefix}/stereo_{side}/image{image_topic_suffix}"
         )
         depth_parameters[f"{side}_image_topic"] = (
             f"{vehicle_prefix}/stereo/{side}/image"

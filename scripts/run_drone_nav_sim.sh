@@ -952,6 +952,11 @@ else
       mission_goal_sequence_xyz_m:="${mission_goal_sequence_xyz_m}"
     )
   fi
+  # Roadmap item 17 stage 5: the camera stream's failures are injected by a
+  # relay the camera driver then reads from (runtime_evidence_runtime.sh).
+  if [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]]; then
+    ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
+  fi
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")

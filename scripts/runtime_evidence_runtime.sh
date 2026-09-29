@@ -50,7 +50,8 @@ prepare_runtime_evidence() {
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
     WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
-    LIGHT_BATTERY_S RETURN_HOME_EXPECTED ANOMALY_ZONES; do
+    LIGHT_BATTERY_S RETURN_HOME_EXPECTED ANOMALY_ZONES STREAM_FAULTS \
+    STREAM_FAULT_SEED; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
@@ -79,6 +80,15 @@ start_runtime_evidence_capture() {
       --zones "${ANOMALY_ZONES:-}" --model "${default_gazebo_follow_target}" \
       --output "${runtime_artifact_dir}/carried_light.csv" \
       > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
+    # The camera stream's failures, the same kind of component: the camera
+    # driver reads the pair from its relay (run_drone_nav_sim.sh).
+    if [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]]; then
+      python3 "${repo_root}/scripts/camera_stream_faults.py" \
+        --world "${world_name}" --model "${default_gazebo_follow_target}" \
+        --profile "${STREAM_FAULTS}" --seed "${STREAM_FAULT_SEED:-0}" \
+        --output "${runtime_artifact_dir}/camera_stream.csv" \
+        > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
+    fi
   fi
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" ||
