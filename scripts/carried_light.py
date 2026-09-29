@@ -92,19 +92,20 @@ def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
     while True:
         if profile == "moderate":
             t_s += rng.uniform(5.0, 30.0)
-            dark_s = rng.uniform(1.0, 3.0)
+            dark_s = rng.uniform(1.0, 2.0)
             floor = rng.uniform(0.0, 0.5)
         elif profile == "severe":
             # Worsening to a plateau: the gaps shrink to 8 s and the outages
-            # grow to 6 s, each to the dark, past the 5 s at which the
-            # vehicle judges its light and inside what its hold survives:
-            # the estimator's dead reckoning drifted 0.1 to 0.3 m through
-            # outages of up to 6 s and 1.5 to 2.1 m through 8 s ones (r795),
-            # where the braking contract's margin is 2 m; a failure that
-            # grows without bound lands the vehicle wherever it is (r789,
-            # r790), and the scenario asks for the return.
+            # grow to 4.5 s of dark, each to the dark, past the 4 s of
+            # outage at which the vehicle judges its light and inside what
+            # its hold survives in a doorway: the estimator's dead reckoning
+            # drifted 0.1 to 0.3 m through outages of up to 5 s and up to
+            # 1.05 m through 6 s ones (r795, r796), where a door leaves half a
+            # metre; a failure that grows without bound lands the vehicle
+            # wherever it is (r789, r790), and the scenario asks for the
+            # return.
             t_s += 60.0 if count == 0 else max(8.0, 30.0 * 0.85**count)
-            dark_s = min(6.0, 2.0 * 1.25**count)
+            dark_s = min(4.5, 2.0 * 1.25**count)
             floor = 0.0
         else:
             raise ValueError(f"unknown light fault profile '{profile}'")
