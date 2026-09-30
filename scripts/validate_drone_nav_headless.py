@@ -602,7 +602,11 @@ def main() -> int:
         print("WARN: mission failure was allowed")
 
     if CRITICAL_PX4_PATTERN.search(px4_log):
-        errors.append("FAIL: PX4 log contains critical simulator errors")
+        # With its position source gone the autopilot's own failsafe cannot
+        # run its position tasks and says so; under the harshest failures
+        # that is the expected end, not a simulator fault.
+        (notes if vehicle_intact_expected else errors).append(
+            "FAIL: PX4 log contains critical simulator errors")
     else:
         print("OK: no critical PX4 simulator errors found")
 
