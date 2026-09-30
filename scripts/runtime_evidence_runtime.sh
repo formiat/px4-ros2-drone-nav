@@ -77,7 +77,7 @@ start_runtime_evidence_capture() {
     python3 "${repo_root}/scripts/carried_light.py" \
       --world "${world_name}" --profile "${LIGHT_FAULTS:-none}" \
       --seed "${LIGHT_FAULT_SEED:-0}" --battery-s "${LIGHT_BATTERY_S:-3600}" \
-      --zones "${ANOMALY_ZONES:-}" --model "${default_gazebo_follow_target}" \
+      --zones="${ANOMALY_ZONES:-}" --model "${default_gazebo_follow_target}" \
       --output "${runtime_artifact_dir}/carried_light.csv" \
       > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
     # The camera stream's failures, the same kind of component: the camera

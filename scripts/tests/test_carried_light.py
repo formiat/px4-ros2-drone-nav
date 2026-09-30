@@ -35,6 +35,12 @@ class LightFaultInjectorContractTest(unittest.TestCase):
             for word in ("light_fault", "LIGHT_FAULT", "light_config"):
                 self.assertNotIn(word, text, f"{path} reads the injection")
 
+    def test_the_runtime_passes_a_zone_west_of_the_origin_whole(self) -> None:
+        # The ordinary zone lies at (-28, -28, 9): as a separate word its
+        # leading minus read as an option and the light never started (r818).
+        runtime = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
+        self.assertIn('--zones="${ANOMALY_ZONES:-}"', runtime)
+
     def test_the_light_it_sends_is_the_models(self) -> None:
         model = ET.parse(REPOSITORY / "drone_city_nav/models/stereo_tof_v1/model.sdf")
         light = model.getroot().find(".//light[@name='carried_light']")
