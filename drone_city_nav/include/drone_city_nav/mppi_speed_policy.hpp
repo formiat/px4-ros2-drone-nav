@@ -67,6 +67,12 @@ struct MppiSpeedPolicyConfig {
   std::size_t sensor_expected_beam_count{0U};
 };
 
+// The share of its beams a frame observes (roadmap item 17 stage 0) that
+// stands behind the contract's configured range, and the share at which the
+// forward sensor is blind; the range falls linearly between.
+inline constexpr double kSensorHealthyObservedFraction{0.3};
+inline constexpr double kSensorBlindObservedFraction{0.02};
+
 struct MppiSpeedPolicyInput {
   mppi::State state{};
   Point3 mission_goal{};

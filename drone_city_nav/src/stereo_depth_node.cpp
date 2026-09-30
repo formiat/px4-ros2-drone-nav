@@ -1,5 +1,6 @@
 #include "stereo_depth_node.hpp"
 
+#include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
@@ -294,15 +295,6 @@ private:
     std_msgs::msg::Float64 headroom_message;
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
-    const double matched_share =
-        static_cast<double>(returns.size()) /
-        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
-                            (image_height_ / returns_config_.pixel_stride));
-    const std::vector<Point3> unobservable = unobservableFrustum(
-        rclcpp::Time{left->header.stamp}.seconds(), headroom, matched_share, noise);
-    // A running count: the line is printed once a second and the frustum is
-    // emitted once a second, and the two kept missing each other (r813).
-    unobservable_total_ += unobservable.size();
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -321,6 +313,17 @@ private:
       tof_rays += rays.size();
       returns.insert(returns.end(), rays.begin(), rays.end());
     }
+    // The share of the frame observed as the braking contract reads it: every
+    // return, the time-of-flight rays included, over the pair's samples.
+    const double observed_share =
+        static_cast<double>(returns.size()) /
+        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
+                            (image_height_ / returns_config_.pixel_stride));
+    const std::vector<Point3> unobservable = unobservableFrustum(
+        rclcpp::Time{left->header.stamp}.seconds(), headroom, observed_share);
+    // A running count: the line is printed once a second and the frustum is
+    // emitted once a second, and the two kept missing each other (r813).
+    unobservable_total_ += unobservable.size();
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = left->header.stamp;
     cloud.header.frame_id = frame_id_;
@@ -366,9 +369,9 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "matched_share=%.3f noise=%.1f unobservable_total=%zu",
+                         "observed_share=%.3f noise=%.1f unobservable_total=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightness_by_metre.c_str(), headroom, matched_share, noise,
+                         brightness_by_metre.c_str(), headroom, observed_share, noise,
                          unobservable_total_);
   }
 
@@ -398,13 +401,9 @@ private:
     return 1.0;
   }
 
-  // Roadmap item 17 stage 8: darkness is not unknown. A frame whose light has
-  // run out, its headroom under the 0.31 at which the braking contract's
-  // measured range falls below its 2 m margin, or whose signal has collapsed,
-  // the pair matching under a tenth of its pixels in a frame whose noise says
-  // the gain is up (a bright wall without texture has its noise low and is
-  // absent depth, F13), for longer than the moderate flicker's dark lasts,
-  // means the pair looked and could not see:
+  // Roadmap item 17 stage 8: darkness is not unknown. A frame the braking
+  // contract reads as blind, for longer than the moderate flicker's dark
+  // lasts, means the pair looked and could not see:
   // the frustum from 1.5 m to the confident depth is observed unobservable,
   // a prohibition as a surface is, confirmed once a second while it lasts.
   // The vehicle's own cell and the way it came are never in it (the memory
@@ -414,14 +413,16 @@ private:
   // closes the goal's region for item 19's proof (specification K16).
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const double headroom,
-                                                        const double matched_share,
-                                                        const double noise) {
-    // The contract's range reaches its 2 m margin at a headroom of 0.31 and
-    // the vehicle comes to rest short of it, where the frame stays above: dark
-    // is a range within a quarter metre of the margin (r809).
-    constexpr double kDimHeadroom{0.35};
-    constexpr double kCollapsedShare{0.1};
-    constexpr double kCollapsedNoiseGrey{6.0};
+                                                        const double observed_share) {
+    // Dark is what the braking contract reads as blind (specification I2:
+    // the sensor looked and its range stayed below the margin): the smaller
+    // of the frame's light headroom and its observed share, scaled between
+    // the contract's blind and healthy fractions, under 0.35, where the
+    // range comes within a quarter metre of the 2 m margin and the vehicle
+    // rests. Read by the light alone, r815 held blind at a zone's edge with
+    // the headroom at 0.64 and the frame matching 3 percent, and marked
+    // nothing.
+    constexpr double kDimShare{0.35};
     constexpr double kDarknessS{2.5};
     constexpr double kConfirmationPeriodS{1.0};
     constexpr double kNearestM{1.5};
@@ -432,9 +433,13 @@ private:
     // darkness that had lasted a minute (r812): the dark ends after half a
     // second without a dark frame.
     constexpr double kDarknessGapS{0.5};
+    const double share = std::min(
+        headroom,
+        std::clamp((observed_share - kSensorBlindObservedFraction) /
+                       (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
+                   0.0, 1.0));
     std::vector<Point3> points;
-    if (!(headroom < kDimHeadroom ||
-          (matched_share < kCollapsedShare && noise >= kCollapsedNoiseGrey))) {
+    if (!(share < kDimShare)) {
       if (stamp_s - last_dark_s_ > kDarknessGapS || stamp_s < last_dark_s_) {
         collapse_started_s_ = -1.0;
       }

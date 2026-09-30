@@ -257,8 +257,6 @@ namespace {
 // which this reads as about 3.6 m of range, what a carried light was
 // expected to give; the lidar observes 0.59 to 0.98 of its beams (r737 to
 // r741).
-constexpr double kSensorHealthyObservedFraction{0.3};
-constexpr double kSensorBlindObservedFraction{0.02};
 // A blind forward sensor still leaves the sensors that look up and down: the
 // range stops a millimetre above the margin, where the contract admits almost
 // nothing forward and stays valid for the vertical cone.
