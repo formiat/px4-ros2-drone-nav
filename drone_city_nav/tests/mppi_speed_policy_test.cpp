@@ -1,3 +1,4 @@
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 
 #include <gtest/gtest.h>
@@ -571,6 +572,37 @@ TEST(MppiSpeedPolicyTest, TheBodyClearanceBoundsTheProgressFloor) {
   // Unmeasured, the body's clearance bounds nothing.
   input.executed_horizon_clearance = executedClearance(0.0, 0.0);
   EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 3.0, 1.0e-6);
+}
+
+TEST(MppiSpeedPolicyTest, AContactIsLeftAtTheFloorAndApproachedAtItsTube) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.clearance_minimum_progress_speed_mps = 3.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+
+  // The body keeps 2 m where it stands and 0.03 m half a metre on: it arrives
+  // there at what its tube admits, not at the contact floor.
+  ExecutedHorizonClearance3D approach = executedClearance(0.0, 0.0);
+  approach.constrained_samples.front().body_clearance_m = 2.0;
+  approach.constrained_samples.push_back(ConstrainedHorizonSample3D{
+      .distance_m = 0.5, .clearance_m = 0.0, .body_clearance_m = 0.03});
+  input.executed_horizon_clearance = approach;
+  const double tube_mps = static_cast<double>(mppi::tubeAdmissibleSpeedMps(
+      0.03F, static_cast<float>(config.clearance_response_time_s)));
+  const double approached_mps =
+      evaluateMppiSpeedPolicy(config, input).clearance_limit_mps;
+  EXPECT_NEAR(approached_mps,
+              stoppingLimitedSpeed(0.5, tube_mps, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-6);
+  EXPECT_LT(approached_mps, stoppingLimitedSpeed(0.5, 1.0, config.stopping_capability,
+                                                 config.sensor_braking_contract, 0.0));
+
+  // In contact where it stands, the same clearance on is left at the floor.
+  approach.constrained_samples.front().body_clearance_m = 0.0;
+  approach.constrained_samples.back().body_clearance_m = 0.0;
+  input.executed_horizon_clearance = approach;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
 }
 
 TEST(MppiSpeedPolicyTest, ATightPointBehindAMildOneStillBindsTheReference) {
