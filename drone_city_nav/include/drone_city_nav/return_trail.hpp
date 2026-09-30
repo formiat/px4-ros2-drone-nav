@@ -15,9 +15,9 @@ namespace drone_city_nav {
 // for free and meets it wall by wall: r907 spent 500 of its 512 s of light on
 // the far side of the location before it turned onto the way it knew, and
 // r904 700 s. The trail is the vehicle's positions on the way out, a point
-// every 5 m; on the way home the objective is the point 20 m back along the
+// every 5 m; on the way home the objective is the point 25 m back along the
 // trail from the point nearest the vehicle, never later than the one before,
-// passed on once the vehicle is within 6 m of it, and the start at the end.
+// passed on once the vehicle is within 8 m of it, and the start at the end.
 // The planner shortcuts between two points as its memory allows; the trail
 // forbids nothing.
 class ReturnTrail final {
@@ -58,8 +58,8 @@ public:
 
 private:
   static constexpr double kSpacingM{5.0};
-  static constexpr double kAheadM{20.0};
-  static constexpr double kReachedM{6.0};
+  static constexpr double kAheadM{25.0};
+  static constexpr double kReachedM{8.0};
 
   [[nodiscard]] static double distance(const Point3& first,
                                        const Point3& second) noexcept {

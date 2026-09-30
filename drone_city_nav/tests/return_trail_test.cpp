@@ -23,16 +23,18 @@ TEST(ReturnTrail, KeepsAPointEveryFiveMetres) {
   EXPECT_DOUBLE_EQ(trail.points()[4].x, 20.0);
 }
 
-TEST(ReturnTrail, TheObjectiveLiesTwentyMetresBackAndPassesOnWhenReached) {
+TEST(ReturnTrail, TheObjectiveLiesTwentyFiveMetresBackAndPassesOnWhenReached) {
   ReturnTrail trail = straightTrail(100.0);
-  // At the far end: the point 20 m back along the trail.
-  EXPECT_EQ(trail.next(Point3{100.0, 0.0, 10.0}), 16U);
-  // Flown 15 m back: 20 m back from where the vehicle now is.
-  EXPECT_EQ(trail.next(Point3{85.0, 0.0, 10.0}), 13U);
+  // At the far end: the point 25 m back along the trail.
+  EXPECT_EQ(trail.next(Point3{100.0, 0.0, 10.0}), 15U);
+  // Flown 15 m back: 25 m back from where the vehicle now is.
+  EXPECT_EQ(trail.next(Point3{85.0, 0.0, 10.0}), 12U);
   // Never later than before, whatever the vehicle does.
-  EXPECT_EQ(trail.next(Point3{95.0, 0.0, 10.0}), 13U);
+  EXPECT_EQ(trail.next(Point3{95.0, 0.0, 10.0}), 12U);
+  // Within 8 m of the point: the next one on.
+  EXPECT_EQ(trail.next(Point3{66.0, 0.0, 10.0}), 8U);
   // Near the start the start itself.
-  EXPECT_EQ(trail.next(Point3{15.0, 0.0, 10.0}), 0U);
+  EXPECT_EQ(trail.next(Point3{20.0, 0.0, 10.0}), 0U);
   EXPECT_EQ(trail.next(Point3{3.0, 0.0, 10.0}), 0U);
 }
 
@@ -51,9 +53,9 @@ TEST(ReturnTrail, ATrailCrossedAgainIsTakenFromTheEarlierPass) {
   for (double y = 39.0; y >= 2.0; y -= 1.0) {
     trail.record(Point3{30.0, y, 10.0});
   }
-  // Standing over the way out at x = 30: the objective is 20 m back along the
+  // Standing over the way out at x = 30: the objective is 25 m back along the
   // first pass, not the whole loop.
-  EXPECT_EQ(trail.next(Point3{30.0, 1.0, 10.0}), 2U);
+  EXPECT_EQ(trail.next(Point3{30.0, 1.0, 10.0}), 1U);
 }
 
 TEST(ReturnTrail, NoTrailNamesTheStart) {

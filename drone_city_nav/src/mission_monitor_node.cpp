@@ -722,8 +722,7 @@ private:
     completed_waypoint_count_ = 0U;
     minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
     goal_substituted_ = true;
-    return_epoch_ = navigation_mission_epoch_ + 1U;
-    return_sample_ = 0U;
+    return_epoch_ = navigation_mission_epoch_;
     return_target_ = std::numeric_limits<std::size_t>::max();
     publishReturnObjective();
     const double elapsed_s =
@@ -751,8 +750,8 @@ private:
   }
 
   // The way home is the way the vehicle came (specification K20): the
-  // objective is the trail point 20 m back from the one nearest the vehicle,
-  // the start at the end, in the epoch the substitution opened.
+  // objective is the trail point 25 m back from the one nearest the vehicle,
+  // the start at the end.
   void publishReturnObjective() {
     const std::size_t target = return_trail_.next(latest_map_position_);
     if (target == return_target_) {
@@ -761,10 +760,13 @@ private:
     return_target_ = target;
     const Point3 position =
         target == 0U ? waypoints_.front() : return_trail_.points()[target];
+    // Each point is a goal of its own, in a new mission epoch: the planner
+    // keeps its route to a goal moved within the epoch as an equivalent one
+    // (r908 stood 540 s at the first point with the objective 20 m on).
     msg::NavigationObjective objective;
     objective.stamp = now();
-    objective.mission_epoch = return_epoch_;
-    objective.sample_sequence = ++return_sample_;
+    objective.mission_epoch = ++return_epoch_;
+    objective.sample_sequence = 1U;
     objective.position.x = position.x;
     objective.position.y = position.y;
     objective.position.z = position.z;
@@ -875,7 +877,6 @@ private:
   bool goal_substituted_{false};
   ReturnTrail return_trail_;
   std::uint64_t return_epoch_{0U};
-  std::uint64_t return_sample_{0U};
   std::size_t return_target_{std::numeric_limits<std::size_t>::max()};
   GoalReachabilityProof3D latest_proof_{};
   std::future<GoalReachabilityProof3D> proof_future_;
