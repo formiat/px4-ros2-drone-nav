@@ -125,14 +125,17 @@ sim-urban-point-to-point-gui: build
 # that scenario and runs the mission's target, so that every flight the
 # repository offers is one command (docs/scenarios.md).
 URBAN_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/urban_practice_01_r050.occupancy3d
-RETURN_HOME_GOAL_XYZ_M := 200,100,10
+RETURN_HOME_GOAL_XYZ_M := 30,60,10
 LIDAR_SCENARIO := CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar
-# Roadmap item 19: the goal behind the location's outer walls, recorded in the
-# manifest as injected, and the truth grid the check floods to confirm it.
+# Roadmap item 19: the goal behind the location's north wall, 49 m from the
+# start, recorded in the manifest as injected, and the truth grid the check
+# floods to confirm it. On the stereo set the return is the light's
+# battery's: 720 s of light give B up some five minutes in (the owner's rule
+# of 2026-09-30, specification A8), not after an hour of exploration.
 RETURN_HOME_SCENARIO := MISSION_GOALS_XYZ_M=$(RETURN_HOME_GOAL_XYZ_M) \
-	MISSION_GOAL_UNREACHABLE=true \
+	MISSION_GOAL_UNREACHABLE=true LIGHT_BATTERY_S=720 \
 	TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D) \
-	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-4500}"
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 # Roadmap item 17 stage 5: the carried light failing until the vehicle judges
 # it unreliable, and a battery too low at launch to reach B; each ends at the
 # start.

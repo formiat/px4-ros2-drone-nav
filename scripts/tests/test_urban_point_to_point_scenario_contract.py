@@ -122,7 +122,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the
         # check floods; its headless runs need the grid.
-        self.assertIn("RETURN_HOME_GOAL_XYZ_M := 200,100,10", makefile)
+        self.assertIn("RETURN_HOME_GOAL_XYZ_M := 30,60,10", makefile)
+        self.assertIn("LIGHT_BATTERY_S=720", makefile)
         self.assertIn("MISSION_GOAL_UNREACHABLE=true", makefile)
         self.assertIn("TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D)", makefile)
         self.assertIn(
