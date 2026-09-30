@@ -300,6 +300,9 @@ private:
                             (image_height_ / returns_config_.pixel_stride));
     const std::vector<Point3> unobservable = unobservableFrustum(
         rclcpp::Time{left->header.stamp}.seconds(), headroom, matched_share, noise);
+    // A running count: the line is printed once a second and the frustum is
+    // emitted once a second, and the two kept missing each other (r813).
+    unobservable_total_ += unobservable.size();
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -363,10 +366,10 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "matched_share=%.3f noise=%.1f unobservable=%zu",
+                         "matched_share=%.3f noise=%.1f unobservable_total=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightness_by_metre.c_str(), headroom, matched_share, noise,
-                         unobservable.size());
+                         unobservable_total_);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -562,6 +565,7 @@ private:
 
   double collapse_started_s_{-1.0};
   double last_dark_s_{-1.0};
+  std::size_t unobservable_total_{0U};
   double unobservable_confirmed_s_{-1.0};
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};

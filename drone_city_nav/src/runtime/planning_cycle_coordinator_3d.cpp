@@ -771,10 +771,15 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           .world_age_ms = request.observation_age_ms,
           .required_risk_tier = output.controller.route_required_risk_tier,
       });
+  // A hold in place follows no route: with the route and its route-directed
+  // candidate in the rollouts a blind vehicle held on its route at 0.1 to
+  // 0.2 m/s past its hold point into the dark over B (r813).
+  const bool hold_in_place =
+      route_control.hold_xy || output.controller.speed_policy.blind_along_motion;
   const mppi::DeterministicCandidateKind deterministic_candidate =
       planningDeterministicCandidate(output.controller.planning_state,
                                      output.route.usable, output.route.projection.valid,
-                                     route_control.hold_xy);
+                                     hold_in_place);
   output.controller.request =
       MppiControllerRequest3D{
           .input =
@@ -800,7 +805,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                                   ProductionMppiPlanningState::kPlanned &&
                               output.route.usable &&
                               output.route.controller_route != nullptr &&
-                              output.route.projection.valid && !route_control.hold_xy
+                              output.route.projection.valid && !hold_in_place
                           ? std::optional<mppi::RouteReference>{mppi::RouteReference{
                                 .points = output.route.controller_route,
                                 .generation = output.route.generation,
