@@ -132,9 +132,20 @@ private:
       return;
     }
 
+    const double contact_s = rclcpp::Time{contacts.header.stamp}.seconds();
     for (const auto& contact : contacts.contacts) {
       if (!drone_collision_filter_.empty() &&
           contact.collision1.name.find(drone_collision_filter_) == std::string::npos) {
+        continue;
+      }
+      // A landed body stays in contact: r819 rested on the platform it had
+      // landed on for 46 s, and when its position source ran out the
+      // autopilot's velocity drifted past the landing's and the resting
+      // contact read as a collision. Contact kept without a gap is the
+      // landing going on.
+      const bool body = contact.collision1.name.find("base_link") != std::string::npos;
+      if (landed_ && body && contact_s - landed_contact_s_ <= kLandingContactGapS) {
+        landed_contact_s_ = contact_s;
         continue;
       }
       // Roadmap item 17 stage 5: a vehicle with no position source lands, and
@@ -142,11 +153,11 @@ private:
       // speed is one, made by the body: the autopilot's blind landing met
       // the floor at 0.73 m/s (r790), and a contact at speed, tilted or by a
       // rotor (r792, a rotor on a wall at 0.23 m/s) is a collision.
-      if (contact.collision1.name.find("base_link") != std::string::npos &&
-          attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
+      if (body && attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
           std::abs(attitude_.pitch_rad) < kLandingTiltRad &&
           speed_mps_ < kLandingSpeedMps &&
           horizontal_speed_mps_ < kLandingHorizontalSpeedMps) {
+        landed_contact_s_ = contact_s;
         if (!landed_) {
           landed_ = true;
           RCLCPP_WARN(get_logger(),
@@ -209,6 +220,8 @@ private:
   static constexpr double kLandingSpeedMps{1.0};
   static constexpr double kLandingHorizontalSpeedMps{0.5};
   bool landed_{false};
+  static constexpr double kLandingContactGapS{0.5};
+  double landed_contact_s_{-1.0};
   AttitudeEuler attitude_{};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
