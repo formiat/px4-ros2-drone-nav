@@ -1,5 +1,6 @@
 #include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/autopilot_state_source.hpp"
+#include "drone_city_nav/dead_reckoning_landing.hpp"
 #include "drone_city_nav/execution_horizon_admission.hpp"
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
@@ -21,6 +22,7 @@
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
+#include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -268,6 +270,13 @@ public:
         [this](const std_msgs::msg::Bool::SharedPtr start) {
           mission_started_ = start->data;
         });
+    // The position source's poses to the autopilot: quality 0 is dead reckoning.
+    visual_odometry_sub_ = create_subscription<px4_msgs::msg::VehicleOdometry>(
+        declare_parameter<std::string>("px4_visual_odometry_topic",
+                                       "/fmu/in/vehicle_visual_odometry"),
+        px4_qos, [this](const px4_msgs::msg::VehicleOdometry::SharedPtr odometry) {
+          dead_reckoning_landing_.observe(now().nanoseconds(), odometry->quality == 0);
+        });
     offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
         declare_parameter<std::string>("offboard_control_mode_topic",
                                        "/fmu/in/offboard_control_mode"),
@@ -343,8 +352,7 @@ private:
     heading_valid_ = state.heading_valid && std::isfinite(state.yaw_rad);
     position_valid_ = true;
     publishNavigationState();
-    publishRvizDroneFollowTransform();
-    publishRvizDroneMarker();
+    publishRvizDrone();
   }
 
   void publishNavigationState() {
@@ -353,11 +361,9 @@ private:
     }
     msg::VehicleNavigationState state;
     state.stamp = now();
-    const Point2 map_position =
-        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
-    state.position.x = map_position.x;
-    state.position.y = map_position.y;
-    state.position.z = mapAltitudeM();
+    state.position =
+        markerPoint(px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_}),
+                    mapAltitudeM());
     state.velocity.x = velocity_x_;
     state.velocity.y = velocity_y_;
     state.velocity.z = velocity_up_mps_;
@@ -387,46 +393,25 @@ private:
                 ready ? "true" : "false");
   }
 
-  void publishRvizDroneFollowTransform() {
-    if (!rviz_drone_follow_tf_broadcaster_ || !position_valid_) {
+  void publishRvizDrone() {
+    if (!position_valid_) {
       return;
     }
-    geometry_msgs::msg::TransformStamped transform;
-    transform.header.stamp = now();
-    transform.header.frame_id = rviz_drone_follow_parent_frame_;
-    transform.child_frame_id = rviz_drone_follow_frame_;
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = rviz_drone_follow_parent_frame_;
     const Point3 position = rvizDronePosition();
-    transform.transform.translation.x = position.x;
-    transform.transform.translation.y = position.y;
-    transform.transform.translation.z = position.z;
-    transform.transform.rotation.w = 1.0;
-    rviz_drone_follow_tf_broadcaster_->sendTransform(transform);
-  }
-
-  void publishRvizDroneMarker() {
-    if (!rviz_drone_marker_pub_ || !position_valid_) {
-      return;
+    if (rviz_drone_follow_tf_broadcaster_) {
+      rviz_drone_follow_tf_broadcaster_->sendTransform(
+          droneFollowTransform(header, rviz_drone_follow_frame_, position));
     }
-    visualization_msgs::msg::Marker marker;
-    marker.header.stamp = now();
-    marker.header.frame_id = rviz_drone_follow_parent_frame_;
-    marker.ns = "drone";
-    marker.id = rviz_drone_marker_id_;
-    marker.type = visualization_msgs::msg::Marker::SPHERE;
-    marker.action = visualization_msgs::msg::Marker::ADD;
-    const Point3 position = rvizDronePosition();
-    marker.pose.position.x = position.x;
-    marker.pose.position.y = position.y;
-    marker.pose.position.z = position.z;
-    marker.pose.orientation.w = 1.0;
-    marker.scale.x = 1.0;
-    marker.scale.y = 1.0;
-    marker.scale.z = 0.45;
-    marker.color.r = static_cast<float>(rviz_drone_marker_color_r_);
-    marker.color.g = static_cast<float>(rviz_drone_marker_color_g_);
-    marker.color.b = static_cast<float>(rviz_drone_marker_color_b_);
-    marker.color.a = 1.0F;
-    rviz_drone_marker_pub_->publish(marker);
+    if (rviz_drone_marker_pub_) {
+      rviz_drone_marker_pub_->publish(
+          droneMarker(header, rviz_drone_marker_id_, position,
+                      rgba(static_cast<float>(rviz_drone_marker_color_r_),
+                           static_cast<float>(rviz_drone_marker_color_g_),
+                           static_cast<float>(rviz_drone_marker_color_b_), 1.0F)));
+    }
   }
 
   [[nodiscard]] Point3 rvizDronePosition() const noexcept {
@@ -692,6 +677,15 @@ private:
       return;
     }
     const rclcpp::Time current = now();
+    // Apart from the commands below, which take the flight back at once.
+    if (dead_reckoning_landing_.due(current.nanoseconds())) {
+      if (dead_reckoning_landing_.command(current.nanoseconds(),
+                                          vehicle_status_.external_control)) {
+        publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND, 0.0F);
+        RCLCPP_WARN(get_logger(), "DEAD_RECKONING_LANDING commanded=true");
+      }
+      return;
+    }
     if ((current - last_command_time_).seconds() < command_resend_period_s_) {
       return;
     }
@@ -996,6 +990,7 @@ private:
   std::uint64_t offboard_producer_instance_id_{0U};
   ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  DeadReckoningLanding dead_reckoning_landing_;
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   bool gazebo_aligned_rviz_axes_swapped_{true};
   std::string rviz_drone_follow_frame_{"drone_follow"};
@@ -1020,6 +1015,7 @@ private:
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr planner_health_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr visual_odometry_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr command_pub_;

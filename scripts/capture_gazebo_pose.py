@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import signal
 import threading
 import time
 
@@ -49,12 +50,13 @@ def main() -> int:
         return 1
     print(f"subscribed {topic} model={args.model}", flush=True)
     saved = 0
-    while True:
-        time.sleep(args.save_period_s)
+
+    def save() -> None:
+        nonlocal saved
         with lock:
             snapshot = list(rows)
         if len(snapshot) == saved:
-            continue
+            return
         temporary = args.output + ".tmp"
         with open(temporary, "w", newline="", encoding="utf-8") as stream:
             writer = csv.writer(stream)
@@ -63,6 +65,18 @@ def main() -> int:
         saved = len(snapshot)
         print(f"poses {saved} last {snapshot[-1][:4]}", flush=True)
 
+    # The flight is stopped the moment its mission ends: without a last save
+    # the record lost up to a save period before the final acknowledgement
+    # (r865: 1.1 s, a returned vehicle judged without its truth).
+    def stop(_signal: int, _frame: object) -> None:
+        save()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    while True:
+        time.sleep(args.save_period_s)
+        save()
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())

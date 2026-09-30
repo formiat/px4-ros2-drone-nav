@@ -2,8 +2,12 @@
 
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
+
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <cstdint>
+#include <string>
 
 namespace drone_city_nav {
 namespace {
@@ -11,6 +15,33 @@ namespace {
 [[nodiscard]] double interpolate(const double first, const double second,
                                  const double ratio) {
   return first + (second - first) * ratio;
+}
+
+// The vehicle as RViz follows and draws it.
+[[nodiscard]] geometry_msgs::msg::TransformStamped
+droneFollowTransform(const std_msgs::msg::Header& header,
+                     const std::string& child_frame, const Point3& position) {
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header = header;
+  transform.child_frame_id = child_frame;
+  transform.transform.translation.x = position.x;
+  transform.transform.translation.y = position.y;
+  transform.transform.translation.z = position.z;
+  transform.transform.rotation.w = 1.0;
+  return transform;
+}
+
+[[nodiscard]] visualization_msgs::msg::Marker
+droneMarker(const std_msgs::msg::Header& header, const int marker_id,
+            const Point3& position, const std_msgs::msg::ColorRGBA& color) {
+  visualization_msgs::msg::Marker marker =
+      makeMarker(header, "drone", marker_id, visualization_msgs::msg::Marker::SPHERE);
+  marker.pose.position = markerPoint(position);
+  marker.scale.x = 1.0;
+  marker.scale.y = 1.0;
+  marker.scale.z = 0.45;
+  marker.color = color;
+  return marker;
 }
 
 [[nodiscard]] const char* executionModeName(const std::uint8_t mode) noexcept {

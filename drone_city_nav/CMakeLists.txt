@@ -610,6 +610,7 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/multi_vehicle_spectator_node.hpp
     include/drone_city_nav/latest_sensor_obstacle_scan_ros.hpp
     include/drone_city_nav/lidar_debug_pointclouds.hpp
+    include/drone_city_nav/dead_reckoning_landing.hpp
     include/drone_city_nav/local_hold_pin.hpp
     include/drone_city_nav/mppi_debug_markers.hpp
     include/drone_city_nav/autopilot_state_source.hpp
@@ -2155,6 +2156,12 @@ if(BUILD_TESTING)
   target_compile_features(grid_overlay_test_current PRIVATE cxx_std_20)
   target_link_libraries(grid_overlay_test_current drone_city_nav_core)
   enable_project_warnings(grid_overlay_test_current)
+
+  ament_add_gtest(dead_reckoning_landing_test_current
+                  tests/dead_reckoning_landing_test.cpp)
+  target_compile_features(dead_reckoning_landing_test_current PRIVATE cxx_std_20)
+  target_link_libraries(dead_reckoning_landing_test_current drone_city_nav_core)
+  enable_project_warnings(dead_reckoning_landing_test_current)
 
   ament_add_gtest(local_hold_pin_test_current tests/local_hold_pin_test.cpp)
   target_compile_features(local_hold_pin_test_current PRIVATE cxx_std_20)
