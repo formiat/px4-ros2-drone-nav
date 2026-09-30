@@ -201,5 +201,15 @@ TEST(GoalReachabilityProof3D, AVehicleOutsideTheBandProvesNothing) {
   EXPECT_FALSE(proof.provenUnreachable());
 }
 
+TEST(GoalReachabilityProof3D, NoReturnWithoutAPositionSource) {
+  // The branch the monitor logs as GOAL_UNREACHABLE_HELD: a position that is
+  // invalid, never received or over a second old substitutes nothing.
+  constexpr std::int64_t kNow{50'000'000'000};
+  EXPECT_TRUE(returnHomePositionSourceFresh(true, kNow - 500'000'000, kNow));
+  EXPECT_FALSE(returnHomePositionSourceFresh(false, kNow - 500'000'000, kNow));
+  EXPECT_FALSE(returnHomePositionSourceFresh(true, 0, kNow));
+  EXPECT_FALSE(returnHomePositionSourceFresh(true, kNow - 1'500'000'000, kNow));
+}
+
 } // namespace
 } // namespace drone_city_nav

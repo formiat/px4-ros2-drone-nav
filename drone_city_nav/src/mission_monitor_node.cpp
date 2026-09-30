@@ -698,8 +698,8 @@ private:
   // position source: without a fresh position nothing is substituted.
   [[nodiscard]] bool substituteGoalWithStart(const char* trigger,
                                              const std::int64_t now_ns) {
-    if (!latest_position_valid_ || latest_position_stamp_ns_ <= 0 ||
-        static_cast<double>(now_ns - latest_position_stamp_ns_) * 1.0e-9 > 1.0) {
+    if (!returnHomePositionSourceFresh(latest_position_valid_,
+                                       latest_position_stamp_ns_, now_ns)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
                            "GOAL_UNREACHABLE_HELD trigger=%s reason=no_position_source",
                            trigger);

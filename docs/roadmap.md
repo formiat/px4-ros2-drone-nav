@@ -851,6 +851,16 @@ reset of the external-vision pose fed to the autopilot, the same machinery
 stage 5 uses to fail the light, on the camera profile, and it is accepted
 with both series.
 
+Result (2026-09-30): the re-anchor is not built. Every reset over 3 m the
+flights met (r720 26.6 m, r723 6.0 m, r792 5.2 m, r819 7.9 m, r820 35.6 m)
+was the autopilot fusing a camera estimate that came back wrong after it had
+been lost; carrying the map into that frame would have flown on in the wrong
+one, and the autopilot's reported delta is not the shift (r375). The lost
+estimator now stays silent for the flight (specification K8, K13), the
+autopilot lands, and no flight after the latch reset by more than 3 m (r821
+to r824). A reset up to 3 m is flown on (K1; r809, 1.63 m). The remainder is
+in the register, class (b).
+
 ### Stage 7: A Zone That Fails The Light
 
 Proposed by the project owner on 2026-09-27 as a "magnetic anomaly": a place

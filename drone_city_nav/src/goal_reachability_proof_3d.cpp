@@ -211,4 +211,12 @@ goalReachabilityProofVerdict(const GoalReachabilityProof3D& proof) noexcept {
   return "proven_unreachable";
 }
 
+bool returnHomePositionSourceFresh(const bool position_valid,
+                                   const std::int64_t position_stamp_ns,
+                                   const std::int64_t now_ns) noexcept {
+  constexpr double kPositionAgeS{1.0};
+  return position_valid && position_stamp_ns > 0 &&
+         static_cast<double>(now_ns - position_stamp_ns) * 1.0e-9 <= kPositionAgeS;
+}
+
 } // namespace drone_city_nav

@@ -56,4 +56,11 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
 [[nodiscard]] const char*
 goalReachabilityProofVerdict(const GoalReachabilityProof3D& proof) noexcept;
 
+// Roadmap item 19: a goal is given up for the start only with a position
+// source, the autopilot's position valid and under a second old; without one
+// nothing is substituted (GOAL_UNREACHABLE_HELD).
+[[nodiscard]] bool returnHomePositionSourceFresh(bool position_valid,
+                                                 std::int64_t position_stamp_ns,
+                                                 std::int64_t now_ns) noexcept;
+
 } // namespace drone_city_nav
