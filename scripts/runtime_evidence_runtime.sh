@@ -51,7 +51,7 @@ prepare_runtime_evidence() {
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
     WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED ANOMALY_ZONES STREAM_FAULTS \
-    STREAM_FAULT_SEED; do
+    STREAM_FAULT_SEED RETURN_HOME_ALLOWED VEHICLE_INTACT_EXPECTED; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"

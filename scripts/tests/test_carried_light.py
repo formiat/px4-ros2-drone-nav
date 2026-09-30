@@ -56,15 +56,24 @@ class LightFaultInjectorContractTest(unittest.TestCase):
             first = INJECTOR.schedule(profile, 7, 1800.0)
             self.assertEqual(first, INJECTOR.schedule(profile, 7, 1800.0))
             self.assertNotEqual(first, INJECTOR.schedule(profile, 8, 1800.0))
-            previous_end = 0.0
-            for outage in first:
-                self.assertGreaterEqual(outage.start_s - previous_end, 1.0)
-                self.assertLessEqual(outage.start_s - previous_end, 60.0)
-                self.assertGreaterEqual(outage.dark_s, 1.0)
-                self.assertLessEqual(outage.dark_s, 60.0)
-                self.assertGreaterEqual(min(outage.ramp_down_s, outage.ramp_up_s),
-                                        INJECTOR.SHORTEST_RAMP_S)
-                previous_end = outage.end_s
+            self._inside_the_owners_range(first)
+        # The harshest the range allows: a minute to the dark a second apart.
+        lost = INJECTOR.schedule("lost", 7, 1800.0)
+        self._inside_the_owners_range(lost)
+        self.assertEqual(45.0, lost[0].start_s)
+        self.assertTrue(all(outage.dark_s == 60.0 and outage.floor == 0.0
+                            for outage in lost))
+
+    def _inside_the_owners_range(self, outages) -> None:
+        previous_end = 0.0
+        for outage in outages:
+            self.assertGreaterEqual(outage.start_s - previous_end, 1.0)
+            self.assertLessEqual(outage.start_s - previous_end, 60.0)
+            self.assertGreaterEqual(outage.dark_s, 1.0)
+            self.assertLessEqual(outage.dark_s, 60.0)
+            self.assertGreaterEqual(min(outage.ramp_down_s, outage.ramp_up_s),
+                                    INJECTOR.SHORTEST_RAMP_S)
+            previous_end = outage.end_s
 
     def test_an_outage_ramps_down_and_back(self) -> None:
         outage = INJECTOR.Outage(start_s=10.0, ramp_down_s=1.0, dark_s=2.0,

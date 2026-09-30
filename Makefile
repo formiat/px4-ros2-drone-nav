@@ -80,14 +80,22 @@ sim-cooperative-traffic-urban-gui: build
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
+# The ordinary flight after roadmap item 17 (specification A10): the location
+# with no light of its own, the moderate flicker of the carried light, and a
+# zone that fails the light away from every way to B; a named scenario sets
+# any of them otherwise, an empty ANOMALY_ZONES included.
+ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}" \
+	ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,8}"
+
 .PHONY: sim-urban-point-to-point-headless
 sim-urban-point-to-point-headless: build
 	python3 scripts/prepare_environment_simulation.py \
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || { [ "$${WORLD_ILLUMINATION:-lit}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH"; })" \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || { [ "$${WORLD_ILLUMINATION:-dark}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH"; })" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
+		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
 		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
@@ -104,8 +112,9 @@ sim-urban-point-to-point-gui: build
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
-		SIM_WORLD_SDF_PATH="$$([ "$${WORLD_ILLUMINATION:-lit}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
+		SIM_WORLD_SDF_PATH="$$([ "$${WORLD_ILLUMINATION:-dark}" = dark ] && printf '%s' "$$SIM_DARK_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
+		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
@@ -138,6 +147,15 @@ LOW_BATTERY_SCENARIO := WORLD_ILLUMINATION=dark LIGHT_BATTERY_S=240 \
 # seven eighths of it, and what is left must outlast the vehicle's braking.
 ZONE_ACROSS_B_SCENARIO := WORLD_ILLUMINATION=dark \
 	ANOMALY_ZONES=63.009,23.857,12.593,1.5,16 RETURN_HOME_EXPECTED=true
+# Roadmap item 17 stage 5: a long flight, B and back, under the moderate
+# flicker and the camera stream's failures, which ends at the start whether
+# it reaches B or gives it up for an unreliable light; and a short one under
+# the harshest failures the owner's range allows, the light all but gone
+# from the forty-fifth second, which asks only that the vehicle stay whole.
+LONG_FAILURES_SCENARIO := STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
+	MISSION_GOALS_XYZ_M="63.009,23.857,12.593;0.749,21.247,9.6"
+LIGHT_LOST_SCENARIO := LIGHT_FAULTS=lost STREAM_FAULTS=moderate \
+	VEHICLE_INTACT_EXPECTED=true MISSION_GOALS_XYZ_M=8.6,41.4,9.1
 
 .PHONY: urban-truth-occupancy-check
 urban-truth-occupancy-check:
@@ -176,15 +194,17 @@ sim-urban-return-home-lidar-headless: urban-truth-occupancy-check
 sim-urban-return-home-lidar-gui:
 	$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
 
-# Roadmap item 17: the location with no light of its own, the vehicle's
-# carried light the only one.
-.PHONY: sim-urban-point-to-point-dark-headless
-sim-urban-point-to-point-dark-headless:
-	WORLD_ILLUMINATION=dark $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+# Roadmap item 17: the comparison flight in the lit location, its light
+# steady and no zone.
+LIT_SCENARIO := WORLD_ILLUMINATION=lit LIGHT_FAULTS=none ANOMALY_ZONES=
 
-.PHONY: sim-urban-point-to-point-dark-gui
-sim-urban-point-to-point-dark-gui:
-	WORLD_ILLUMINATION=dark $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+.PHONY: sim-urban-point-to-point-lit-headless
+sim-urban-point-to-point-lit-headless:
+	$(LIT_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-point-to-point-lit-gui
+sim-urban-point-to-point-lit-gui:
+	$(LIT_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
 
 .PHONY: sim-urban-light-failure-headless
 sim-urban-light-failure-headless:
@@ -209,3 +229,19 @@ sim-urban-zone-across-b-headless:
 .PHONY: sim-urban-zone-across-b-gui
 sim-urban-zone-across-b-gui:
 	$(ZONE_ACROSS_B_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-long-failures-headless
+sim-urban-long-failures-headless:
+	$(LONG_FAILURES_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-long-failures-gui
+sim-urban-long-failures-gui:
+	$(LONG_FAILURES_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-light-lost-headless
+sim-urban-light-lost-headless:
+	$(LIGHT_LOST_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-light-lost-gui
+sim-urban-light-lost-gui:
+	$(LIGHT_LOST_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui

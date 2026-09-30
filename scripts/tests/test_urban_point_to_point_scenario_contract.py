@@ -96,10 +96,12 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "point-to-point-gnss": "LOCALIZATION_PROFILE=gnss",
             "return-home": "$(RETURN_HOME_SCENARIO)",
             "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
-            "point-to-point-dark": "WORLD_ILLUMINATION=dark",
+            "point-to-point-lit": "$(LIT_SCENARIO)",
             "light-failure": "$(LIGHT_FAILURE_SCENARIO)",
             "low-battery": "$(LOW_BATTERY_SCENARIO)",
             "zone-across-b": "$(ZONE_ACROSS_B_SCENARIO)",
+            "long-failures": "$(LONG_FAILURES_SCENARIO)",
+            "light-lost": "$(LIGHT_LOST_SCENARIO)",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):
@@ -112,6 +114,11 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                         f"sim-urban-point-to-point-{mode}\n",
                         makefile,
                     )
+        # The ordinary flight of roadmap item 17 (specification A10) is the
+        # dark location, the moderate flicker and a zone off every way to B.
+        self.assertIn('$${WORLD_ILLUMINATION:-dark}', makefile)
+        self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
+        self.assertIn('ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,8}"', makefile)
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the
         # check floods; its headless runs need the grid.

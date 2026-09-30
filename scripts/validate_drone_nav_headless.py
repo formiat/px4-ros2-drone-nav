@@ -269,6 +269,9 @@ def validate_building_collisions(ros_log: str, errors: list[str]) -> None:
 RETURN_TRIGGERS = ("topological", "battery", "unreliable_light")
 
 
+GOAL_GIVEN_UP_PATTERN = re.compile(r"GOAL_UNREACHABLE trigger=")
+
+
 def validate_return_home(ros_log: str, injected: bool, errors: list[str],
                          allowed_triggers: tuple[str, ...] = RETURN_TRIGGERS) -> None:
     """Roadmap items 19 and 17. A return home counts as the outcome asked for
@@ -449,6 +452,7 @@ def main() -> int:
         )
     unreachable_goal_injected = False
     return_home_expected = False
+    vehicle_intact_expected = False
     lidar_navigation = False
     truth_occupancy_3d = ""
     if args.runtime_manifest is not None:
@@ -460,8 +464,17 @@ def main() -> int:
         overrides = manifest.get("effective_overrides", {})
         # Roadmap item 17: a scenario whose light fails or whose battery is
         # low at launch asks for the return as the goal-outside flight does.
+        # A long flight under failures may end at B or, its light judged
+        # unreliable, at the start (RETURN_HOME_ALLOWED); a short one under the
+        # harshest asks only that the vehicle stay whole, landed or flying
+        # (VEHICLE_INTACT_EXPECTED).
+        return_home_allowed = (
+            overrides.get("RETURN_HOME_ALLOWED", "false").lower() == "true")
+        vehicle_intact_expected = (
+            overrides.get("VEHICLE_INTACT_EXPECTED", "false").lower() == "true")
         return_home_expected = unreachable_goal_injected or (
-            overrides.get("RETURN_HOME_EXPECTED", "false").lower() == "true")
+            overrides.get("RETURN_HOME_EXPECTED", "false").lower() == "true") or (
+            return_home_allowed and GOAL_GIVEN_UP_PATTERN.search(ros_log) is not None)
         lidar_navigation = overrides.get("NAVIGATION_SENSOR_PROFILE", "") == "lidar"
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, notes)
@@ -471,7 +484,7 @@ def main() -> int:
         # An injected flight flies out and back to a proof, not to a speed:
         # the mean speed is no requirement of it.
         validate_mean_flight_speed(
-            ros_log, notes if return_home_expected else errors,
+            ros_log, notes if return_home_expected or vehicle_intact_expected else errors,
             manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
         )
@@ -483,8 +496,10 @@ def main() -> int:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
         validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors,
                                       notes)
+        # A vehicle that landed whole reached no goal to be judged at.
         validate_goal_reached_in_truth(args.runtime_manifest.parent / "gz_pose.csv",
-                                       ros_log, errors)
+                                       ros_log,
+                                       notes if vehicle_intact_expected else errors)
     require(
         "production offboard is ready",
         ros_log,
@@ -545,7 +560,11 @@ def main() -> int:
         print("OK: no crash was reported")
 
     mission_failed = re.search(r"MISSION_RESULT success=false", ros_log) is not None
-    if args.mission_check and not args.allow_mission_failure:
+    if args.mission_check and vehicle_intact_expected:
+        outcome = re.search(r"MISSION_RESULT success=\w+ reason='(\w+)'", ros_log)
+        print("OK: the vehicle is whole; the flight ended "
+              f"{outcome.group(1) if outcome else 'flying'}")
+    elif args.mission_check and not args.allow_mission_failure:
         if return_home_expected:
             # The lidar carries no light: its return from a goal outside the
             # location is the proof's (roadmap item 19).

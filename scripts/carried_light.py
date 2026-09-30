@@ -112,13 +112,22 @@ def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
             t_s += 20.0 if count == 0 else max(8.0, 15.0 * 0.8**count)
             dark_s = min(4.5, 2.0 * 1.4**count)
             floor = 0.0
+        elif profile == "lost":
+            # The harshest the owner's range allows, a scenario of its own:
+            # from the forty-fifth second, in flight, outages of a minute to
+            # the dark a second apart, on the shortest ramps: the light is
+            # all but gone, and the vehicle has only to stay whole.
+            t_s += 45.0 if count == 0 else 1.0
+            dark_s = 60.0
+            floor = 0.0
         else:
             raise ValueError(f"unknown light fault profile '{profile}'")
+        shortest = profile == "lost"
         outage = Outage(
             start_s=t_s,
-            ramp_down_s=rng.uniform(SHORTEST_RAMP_S, 2.0),
+            ramp_down_s=SHORTEST_RAMP_S if shortest else rng.uniform(SHORTEST_RAMP_S, 2.0),
             dark_s=dark_s,
-            ramp_up_s=rng.uniform(SHORTEST_RAMP_S, 2.0),
+            ramp_up_s=SHORTEST_RAMP_S if shortest else rng.uniform(SHORTEST_RAMP_S, 2.0),
             floor=floor,
         )
         if outage.start_s >= horizon_s:
@@ -164,7 +173,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
     parser.add_argument("--profile", default="none",
-                        choices=("none", "moderate", "severe"))
+                        choices=("none", "moderate", "severe", "lost"))
     parser.add_argument("--battery-s", type=float, default=3600.0)
     parser.add_argument("--zones", default="")
     parser.add_argument("--model", default="x500_lidar_3d_0")
