@@ -39,20 +39,4 @@ TEST(DeadReckoningLanding, ASilentSourceIsStillDeadReckoning) {
   EXPECT_TRUE(landing.due(500 * kSecondNs));
 }
 
-TEST(DeadReckoningLanding, TheLandingIsCommandedWhileTheAutopilotFliesOffboard) {
-  DeadReckoningLanding landing;
-  landing.observe(20 * kSecondNs, true);
-  EXPECT_FALSE(landing.command(22 * kSecondNs, true));
-  EXPECT_FALSE(landing.command(23 * kSecondNs, false));
-  EXPECT_TRUE(landing.command(23 * kSecondNs, true));
-  // Repeated every two seconds until the autopilot has taken it.
-  EXPECT_FALSE(landing.command(24 * kSecondNs, true));
-  EXPECT_TRUE(landing.command(25 * kSecondNs, true));
-  EXPECT_FALSE(landing.command(30 * kSecondNs, false));
-  // The next outage is commanded on its own.
-  landing.observe(31 * kSecondNs, false);
-  landing.observe(32 * kSecondNs, true);
-  EXPECT_TRUE(landing.command(35 * kSecondNs, true));
-}
-
 } // namespace drone_city_nav

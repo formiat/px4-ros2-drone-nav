@@ -659,6 +659,8 @@ private:
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
+    } else if (dead_reckoning_landing_.due(now().nanoseconds())) {
+      publishDeadReckoningLandingSetpoint();
     } else if (stationary_position_hold) {
       exact_horizon_feedback_published = publishStationaryPositionHoldSetpoint();
     } else if (planned_path_completed) {
@@ -677,15 +679,6 @@ private:
       return;
     }
     const rclcpp::Time current = now();
-    // Apart from the commands below, which take the flight back at once.
-    if (dead_reckoning_landing_.due(current.nanoseconds())) {
-      if (dead_reckoning_landing_.command(current.nanoseconds(),
-                                          vehicle_status_.external_control)) {
-        publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND, 0.0F);
-        RCLCPP_WARN(get_logger(), "DEAD_RECKONING_LANDING commanded=true");
-      }
-      return;
-    }
     if ((current - last_command_time_).seconds() < command_resend_period_s_) {
       return;
     }
@@ -703,6 +696,18 @@ private:
                      1.0F);
       last_command_time_ = current;
     }
+  }
+
+  // Level, at the autopilot's landing speed, holding no position: a position
+  // held on a dead-reckoned estimate tipped the landed vehicle over (r881).
+  void publishDeadReckoningLandingSetpoint() {
+    constexpr double kLandingSpeedMps{0.7};
+    constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
+    setpoint_pub_->publish(
+        buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan}, -kLandingSpeedMps,
+                                    Point2{0.0, 0.0}, nan, nan, 0.0));
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "DEAD_RECKONING_LANDING descending=true");
   }
 
   void publishTakeoffSetpoint() {
