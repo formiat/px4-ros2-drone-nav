@@ -14,6 +14,7 @@
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
+#include "drone_city_nav/return_trail.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -393,6 +394,11 @@ private:
     latest_map_position_ = position;
     latest_position_stamp_ns_ = now().nanoseconds();
     latest_position_ = Point2{message.position.x, message.position.y};
+    if (!goal_substituted_) {
+      return_trail_.record(position);
+    } else {
+      publishReturnObjective();
+    }
     // The contract carries the map altitude; the monitor keeps the altitude
     // above the autopilot's origin it has always reported.
     latest_altitude_m_ = message.position.z - px4_map_transform_.map_origin.z;
@@ -710,22 +716,16 @@ private:
                        std::isfinite(mission_ready_altitude_z_m_)
                            ? mission_ready_altitude_z_m_
                            : waypoints_.front().z};
-    msg::NavigationObjective objective;
-    objective.stamp = now();
-    objective.mission_epoch = navigation_mission_epoch_ + 1U;
-    objective.sample_sequence = 1U;
-    objective.position.x = start.x;
-    objective.position.y = start.y;
-    objective.position.z = start.z;
-    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
-    objective_pub_->publish(objective);
     waypoints_ = {start};
     goal_ = start_;
     active_waypoint_index_ = 0U;
     completed_waypoint_count_ = 0U;
     minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
     goal_substituted_ = true;
+    return_epoch_ = navigation_mission_epoch_ + 1U;
+    return_sample_ = 0U;
+    return_target_ = std::numeric_limits<std::size_t>::max();
+    publishReturnObjective();
     const double elapsed_s =
         mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
                               : 0.0;
@@ -738,7 +738,7 @@ private:
         "light_outage_s=%.1f light_outage_share=%.3f proof=%s "
         "component_voxels=%zu",
         trigger, original_goal.x, original_goal.y, original_goal.z, start.x, start.y,
-        start.z, objective.mission_epoch, elapsed_s, flown_path_m_, homeEstimateS(),
+        start.z, return_epoch_, elapsed_s, flown_path_m_, homeEstimateS(),
         light_charge_s_,
         carriedLightGoalEstimateS(std::isfinite(route_remaining_m_)
                                       ? route_remaining_m_
@@ -748,6 +748,32 @@ private:
         light_judgment_.outageShare(), goalReachabilityProofVerdict(latest_proof_),
         latest_proof_.component_voxels);
     return true;
+  }
+
+  // The way home is the way the vehicle came (specification K20): the
+  // objective is the trail point 20 m back from the one nearest the vehicle,
+  // the start at the end, in the epoch the substitution opened.
+  void publishReturnObjective() {
+    const std::size_t target = return_trail_.next(latest_map_position_);
+    if (target == return_target_) {
+      return;
+    }
+    return_target_ = target;
+    const Point3 position =
+        target == 0U ? waypoints_.front() : return_trail_.points()[target];
+    msg::NavigationObjective objective;
+    objective.stamp = now();
+    objective.mission_epoch = return_epoch_;
+    objective.sample_sequence = ++return_sample_;
+    objective.position.x = position.x;
+    objective.position.y = position.y;
+    objective.position.z = position.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
+    objective_pub_->publish(objective);
+    RCLCPP_INFO(get_logger(),
+                "RETURN_TRAIL objective=(%.3f,%.3f,%.3f) index=%zu of %zu", position.x,
+                position.y, position.z, target, return_trail_.points().size());
   }
 
   [[nodiscard]] double meanSpeed() const noexcept {
@@ -847,6 +873,10 @@ private:
   double mission_ready_altitude_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double flown_path_m_{0.0};
   bool goal_substituted_{false};
+  ReturnTrail return_trail_;
+  std::uint64_t return_epoch_{0U};
+  std::uint64_t return_sample_{0U};
+  std::size_t return_target_{std::numeric_limits<std::size_t>::max()};
   GoalReachabilityProof3D latest_proof_{};
   std::future<GoalReachabilityProof3D> proof_future_;
   std::shared_ptr<const ObservedOccupancyGrid3D> memory_;
