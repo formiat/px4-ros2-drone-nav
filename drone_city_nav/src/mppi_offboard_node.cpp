@@ -774,13 +774,9 @@ private:
       return false;
     }
     const msg::MppiTrajectoryHorizon& horizon = horizon_.value();
-    const std::int64_t elapsed_without_lookahead_ns =
-        now().nanoseconds() - executionHorizonTimeNanoseconds(horizon.valid_from);
-    const std::int64_t elapsed_ns =
-        control_lookahead_ns_ >
-                std::numeric_limits<std::int64_t>::max() - elapsed_without_lookahead_ns
-            ? std::numeric_limits<std::int64_t>::max()
-            : elapsed_without_lookahead_ns + control_lookahead_ns_;
+    const std::int64_t elapsed_ns = executionHorizonTimeAheadNs(
+        now().nanoseconds() - executionHorizonTimeNanoseconds(horizon.valid_from),
+        control_lookahead_ns_);
     const std::optional<ExecutionHorizonBracket> bracket = executionHorizonBracketAt(
         horizon.points.size(), horizon.control_interval_ns, elapsed_ns);
     if (!bracket || !bracket->valid()) {
@@ -805,17 +801,21 @@ private:
     const Point2 acceleration = px4_map_transform_.mapVectorToLocal(map_acceleration);
     const double vertical_acceleration =
         interpolate(first.acceleration.z, second.acceleration.z, ratio);
-    // The gaze law closes the heading each tick from the measured yaw; a yaw
-    // sampled ahead let the autopilot's yaw gain swing it past (r781 to r823).
-    const double yaw = std::numeric_limits<double>::quiet_NaN();
+    // No yaw: the gaze law closes the heading each tick, and the autopilot takes
+    // the rate planned its yaw rate loop's lag (0.26 s) ahead (r781 to r825).
+    const ExecutionHorizonBracket rate =
+        executionHorizonBracketAt(horizon.points.size(), horizon.control_interval_ns,
+                                  executionHorizonTimeAheadNs(elapsed_ns, 260'000'000))
+            .value_or(*bracket);
     const double map_yaw_rate =
-        interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
+        interpolate(horizon.points[rate.lower_index].yaw_rate_radps,
+                    horizon.points[rate.upper_index].yaw_rate_radps, rate.ratio());
     const double map_yaw_acceleration = interpolate(
         first.yaw_acceleration_radps2, second.yaw_acceleration_radps2, ratio);
-    const double yaw_rate = px4_map_transform_.mapYawRateToPx4(map_yaw_rate);
     setpoint_pub_->publish(buildMppiPathTrajectorySetpoint(
         nowMicros(), local_position, altitude, velocity, vertical_velocity,
-        acceleration, vertical_acceleration, yaw, yaw_rate));
+        acceleration, vertical_acceleration, std::numeric_limits<double>::quiet_NaN(),
+        px4_map_transform_.mapYawRateToPx4(map_yaw_rate)));
     publishAppliedControlFeedback(map_acceleration, vertical_acceleration, map_yaw_rate,
                                   map_yaw_acceleration, true,
                                   msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);

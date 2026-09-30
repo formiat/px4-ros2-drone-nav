@@ -86,4 +86,11 @@ executionHorizonBracketAt(const std::size_t point_count, const std::int64_t inte
   };
 }
 
+std::int64_t executionHorizonTimeAheadNs(const std::int64_t at_ns,
+                                         const std::int64_t lead_ns) noexcept {
+  return at_ns > std::numeric_limits<std::int64_t>::max() - lead_ns
+             ? std::numeric_limits<std::int64_t>::max()
+             : at_ns + lead_ns;
+}
+
 } // namespace drone_city_nav

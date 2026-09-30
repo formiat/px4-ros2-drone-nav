@@ -29,4 +29,9 @@ executionHorizonTerminalOffsetNs(std::size_t point_count,
 executionHorizonBracketAt(std::size_t point_count, std::int64_t interval_ns,
                           std::int64_t elapsed_ns) noexcept;
 
+// A time `lead_ns` (not negative) past `at_ns`, saturating at the largest
+// representable one.
+[[nodiscard]] std::int64_t executionHorizonTimeAheadNs(std::int64_t at_ns,
+                                                       std::int64_t lead_ns) noexcept;
+
 } // namespace drone_city_nav

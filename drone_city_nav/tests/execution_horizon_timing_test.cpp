@@ -131,5 +131,13 @@ TEST(ExecutionHorizonTimingTest, TerminalAndLaterUseFinalIntervalAtRatioOne) {
   }
 }
 
+TEST(ExecutionHorizonTimingTest, ATimeAheadSaturates) {
+  EXPECT_EQ(executionHorizonTimeAheadNs(100, 50), 150);
+  EXPECT_EQ(executionHorizonTimeAheadNs(-100, 50), -50);
+  constexpr std::int64_t kLast{std::numeric_limits<std::int64_t>::max()};
+  EXPECT_EQ(executionHorizonTimeAheadNs(kLast - 10, 50), kLast);
+  EXPECT_EQ(executionHorizonTimeAheadNs(10, kLast), kLast);
+}
+
 } // namespace
 } // namespace drone_city_nav
