@@ -310,7 +310,6 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.sensor_measured_range_m =
       config.sensor_braking_contract.guaranteed_detection_range_m;
   result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;
-  result.sensor_observed_fraction = input.sensor_observed_fraction.value_or(-1.0);
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;

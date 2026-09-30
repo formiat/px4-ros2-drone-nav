@@ -14,7 +14,7 @@ TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
   for (int tick = 0; tick < 6000; ++tick) {
     const double stamp_s = 0.1 * tick;
     const bool dark = std::fmod(stamp_s, 20.0) < 3.0;
-    judgment.observe(stamp_s, dark ? 0.01 : 0.4);
+    judgment.observe(stamp_s, dark ? 0.0 : 1.0);
   }
   EXPECT_FALSE(judgment.unreliable());
   EXPECT_NEAR(judgment.outageShare(), 0.15, 0.01);
@@ -23,24 +23,29 @@ TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
 TEST(LightReliabilityJudgment, ALongOutageIsUnreliableAndStaysSo) {
   LightReliabilityJudgment judgment;
   for (int tick = 0; tick <= 35; ++tick) {
-    judgment.observe(0.1 * tick, 0.01);
+    judgment.observe(0.1 * tick, 0.0);
   }
   EXPECT_FALSE(judgment.unreliable());
-  judgment.observe(4.1, 0.01);
+  judgment.observe(4.1, 0.0);
   EXPECT_TRUE(judgment.unreliable());
-  judgment.observe(4.2, 0.4);
+  judgment.observe(4.2, 1.0);
   EXPECT_TRUE(judgment.unreliable());
   EXPECT_EQ(judgment.currentOutageS(), 0.0);
 }
 
-TEST(LightReliabilityJudgment, ADimFrameIsNoOutage) {
-  // The edge of a zone that fails the light: the vehicle stopped where it
-  // sees dimly and still matches a tenth of its pixels, for a minute.
-  LightReliabilityJudgment judgment;
+TEST(LightReliabilityJudgment, ADimFrameIsNoOutageABlindOneIs) {
+  // A frame the contract still grants half its range sees; the edge of a
+  // zone that fails the light, where it grants a tenth, is blind.
+  LightReliabilityJudgment dim;
   for (int tick = 0; tick < 600; ++tick) {
-    judgment.observe(0.1 * tick, 0.1);
+    dim.observe(0.1 * tick, 0.5);
   }
-  EXPECT_FALSE(judgment.unreliable());
+  EXPECT_FALSE(dim.unreliable());
+  LightReliabilityJudgment blind;
+  for (int tick = 0; tick <= 41; ++tick) {
+    blind.observe(0.1 * tick, 0.1);
+  }
+  EXPECT_TRUE(blind.unreliable());
 }
 
 TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
@@ -50,7 +55,7 @@ TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
   bool reached{false};
   for (int tick = 0; tick < 1200 && !reached; ++tick) {
     const double stamp_s = 0.1 * tick;
-    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.5 ? 0.01 : 0.4);
+    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.5 ? 0.0 : 1.0);
     reached = judgment.unreliable();
   }
   EXPECT_TRUE(reached);

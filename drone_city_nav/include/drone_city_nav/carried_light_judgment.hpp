@@ -10,12 +10,14 @@ namespace drone_city_nav {
 // against the range the sensor set guarantees when it sees, and it is told
 // the charge of the light's battery, as any airframe knows its batteries.
 //
-// An outage is a frame that observes nothing, the share of its beams it
-// observed at the braking contract's blind floor (specification K9). A dim
-// frame is not one, which a place makes as well as a failing light: the
-// vehicle stopped at the edge of a zone that fails the light (roadmap item
-// 17 stage 7) still matches what it sees, marks what it cannot (stage 8),
-// and its light is not at fault. A light is judged unreliable once one outage has
+// An outage is a frame the braking contract reads as blind: the share of
+// its configured range it grants, from the frame's observed share and light
+// headroom, under 0.35, the line of the unobservable evidence (specification
+// K12, K14). The vehicle cannot tell a place that fails its light from a
+// light that fails (I7): stopped blind at the edge of a zone over B it marked
+// what it could not see and held there for good (r815, r816), so a light
+// that leaves it blind is unreliable wherever it is, and it flies home back
+// the way it came. A light is judged unreliable once one outage has
 // lasted `kLongestOutageS`, or once outages have taken `kOutageShare` of the last
 // `kWindowS`. Both are measured on the two regimes of the owner's decision: the
 // moderate flicker every flight carries dipped the range for at most 1.8 s and 1.5
@@ -31,7 +33,7 @@ public:
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};
 
-  void observe(double stamp_s, double observed_fraction);
+  void observe(double stamp_s, double sensor_share);
 
   [[nodiscard]] bool unreliable() const noexcept {
     return unreliable_;

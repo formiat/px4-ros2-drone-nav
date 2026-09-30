@@ -662,8 +662,12 @@ private:
       return;
     }
     const std::int64_t now_ns = now().nanoseconds();
+    // The share of its configured range the braking contract grants.
     light_judgment_.observe(static_cast<double>(now_ns) * 1.0e-9,
-                            progress.sensor_observed_fraction);
+                            progress.sensor_guaranteed_range_m > 0.0
+                                ? progress.sensor_measured_range_m /
+                                      progress.sensor_guaranteed_range_m
+                                : -1.0);
     if (std::isfinite(progress.route_remaining_m)) {
       route_remaining_m_ = progress.route_remaining_m;
     }

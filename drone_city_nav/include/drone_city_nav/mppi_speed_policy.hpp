@@ -164,9 +164,6 @@ struct MppiSpeedPolicyResult {
   // frame stands behind and the evidence age charged.
   double sensor_measured_range_m{0.0};
   double sensor_evidence_age_s{0.0};
-  // The forward sensor's latest frame's observed fraction, as read; negative
-  // when none was.
-  double sensor_observed_fraction{-1.0};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

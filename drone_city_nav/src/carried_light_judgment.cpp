@@ -6,8 +6,10 @@
 namespace drone_city_nav {
 namespace {
 
-// The braking contract's blind floor (specification K9).
-constexpr double kBlindObservedFraction{0.02};
+// The share of its range the braking contract grants under which it reads
+// the forward sensor as blind, the line of the unobservable evidence too
+// (specification K12, K14): the range within a quarter metre of the margin.
+constexpr double kBlindSensorShare{0.35};
 constexpr double kGoalTimeMargin{9.0};
 constexpr double kMinimumMeanSpeedMps{0.5};
 constexpr double kGoalReserveS{20.0};
@@ -15,13 +17,12 @@ constexpr double kGoalReserveS{20.0};
 } // namespace
 
 void LightReliabilityJudgment::observe(const double stamp_s,
-                                       const double observed_fraction) {
-  if (!std::isfinite(stamp_s) || !std::isfinite(observed_fraction) ||
-      observed_fraction < 0.0 ||
+                                       const double sensor_share) {
+  if (!std::isfinite(stamp_s) || !std::isfinite(sensor_share) || sensor_share < 0.0 ||
       (!samples_.empty() && stamp_s < samples_.back().stamp_s)) {
     return;
   }
-  const bool outage = observed_fraction <= kBlindObservedFraction;
+  const bool outage = sensor_share < kBlindSensorShare;
   if (outage && outage_started_s_ < 0.0) {
     outage_started_s_ = stamp_s;
   } else if (!outage) {
