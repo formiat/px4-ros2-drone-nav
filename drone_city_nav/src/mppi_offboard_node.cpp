@@ -805,8 +805,9 @@ private:
     const Point2 acceleration = px4_map_transform_.mapVectorToLocal(map_acceleration);
     const double vertical_acceleration =
         interpolate(first.acceleration.z, second.acceleration.z, ratio);
-    const double yaw = px4_map_transform_.mapYawToPx4Heading(
-        interpolateYawShortestPath(first.yaw_rad, second.yaw_rad, ratio));
+    // The gaze law closes the heading each tick from the measured yaw; a yaw
+    // sampled ahead let the autopilot's yaw gain swing it past (r781 to r823).
+    const double yaw = std::numeric_limits<double>::quiet_NaN();
     const double map_yaw_rate =
         interpolate(first.yaw_rate_radps, second.yaw_rate_radps, ratio);
     const double map_yaw_acceleration = interpolate(

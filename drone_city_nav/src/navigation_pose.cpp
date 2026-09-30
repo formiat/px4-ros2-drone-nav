@@ -81,19 +81,6 @@ double normalizeYaw(const double yaw_rad) noexcept {
   return normalized;
 }
 
-double interpolateYawShortestPath(const double first_yaw_rad,
-                                  const double second_yaw_rad,
-                                  const double ratio) noexcept {
-  if (!std::isfinite(first_yaw_rad) || !std::isfinite(second_yaw_rad) ||
-      !std::isfinite(ratio)) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-
-  const double difference =
-      std::remainder(second_yaw_rad - first_yaw_rad, 2.0 * std::numbers::pi);
-  return normalizeYaw(first_yaw_rad + std::clamp(ratio, 0.0, 1.0) * difference);
-}
-
 const char* mappingYawSourceName(const MappingYawSource source) noexcept {
   switch (source) {
     case MappingYawSource::kUnavailable:
