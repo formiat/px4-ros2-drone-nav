@@ -118,7 +118,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # dark location, the moderate flicker and a zone off every way to B.
         self.assertIn('$${WORLD_ILLUMINATION:-dark}', makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
-        self.assertIn('ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,8}"', makefile)
+        self.assertIn('ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,16}"', makefile)
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the
         # check floods; its headless runs need the grid.

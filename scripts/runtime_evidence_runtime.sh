@@ -112,6 +112,7 @@ start_runtime_evidence_capture() {
       "${runtime_artifact_dir}/gz_pose.csv" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
       > "${runtime_artifact_dir}/gz_pose.log" 2>&1 &
+    gz_pose_capture_pid=$!
     # The lidar-inertial estimate, when the localization profile runs it;
     # the mission check holds it against the true pose.
     python3 "${repo_root}/scripts/capture_lidar_inertial_estimate.py" \

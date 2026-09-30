@@ -136,6 +136,13 @@ print_log_tail() {
 }
 
 check_headless_run() {
+  # The true pose is saved every two seconds and once more when its capture
+  # is stopped; the check reads it up to the flight's last acknowledgement, so
+  # the capture ends first (r865, r900: a pose 1.1 and 1.2 s short of it).
+  if [[ -n "${gz_pose_capture_pid:-}" ]]; then
+    kill "${gz_pose_capture_pid}" 2>/dev/null || true
+    wait "${gz_pose_capture_pid}" 2>/dev/null || true
+  fi
   local validation_args=(
     --ros-log "${ros_log_file}"
     --px4-log "${px4_log_file}"

@@ -85,7 +85,7 @@ sim-cooperative-traffic-urban-gui: build
 # zone that fails the light away from every way to B; a named scenario sets
 # any of them otherwise, an empty ANOMALY_ZONES included.
 ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}" \
-	ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,8}"
+	ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,16}"
 
 .PHONY: sim-urban-point-to-point-headless
 sim-urban-point-to-point-headless: build
@@ -132,7 +132,7 @@ LIDAR_SCENARIO := CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar
 RETURN_HOME_SCENARIO := MISSION_GOALS_XYZ_M=$(RETURN_HOME_GOAL_XYZ_M) \
 	MISSION_GOAL_UNREACHABLE=true \
 	TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D) \
-	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}"
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-4500}"
 # Roadmap item 17 stage 5: the carried light failing until the vehicle judges
 # it unreliable, and a battery too low at launch to reach B; each ends at the
 # start.
