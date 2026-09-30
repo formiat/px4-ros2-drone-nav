@@ -554,7 +554,8 @@ def main() -> int:
                 args.observed_3d_route_volume_bounds_m,
                 notes,
             )
-    if re.search(r"CRASH_EVENT|cause=physical_collision", ros_log):
+    crashed = re.search(r"CRASH_EVENT|cause=physical_collision", ros_log) is not None
+    if crashed:
         errors.append("FAIL: crash was reported")
     else:
         print("OK: no crash was reported")
@@ -562,8 +563,9 @@ def main() -> int:
     mission_failed = re.search(r"MISSION_RESULT success=false", ros_log) is not None
     if args.mission_check and vehicle_intact_expected:
         outcome = re.search(r"MISSION_RESULT success=\w+ reason='(\w+)'", ros_log)
-        print("OK: the vehicle is whole; the flight ended "
-              f"{outcome.group(1) if outcome else 'flying'}")
+        if not crashed:
+            print("OK: the vehicle is whole; the flight ended "
+                  f"{outcome.group(1) if outcome else 'flying'}")
     elif args.mission_check and not args.allow_mission_failure:
         if return_home_expected:
             # The lidar carries no light: its return from a goal outside the

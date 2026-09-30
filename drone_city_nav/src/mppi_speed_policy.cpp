@@ -277,9 +277,11 @@ namespace {
 constexpr double kBlindRangeAboveMarginM{1.0e-3};
 
 MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& configured,
-                                             const MppiSpeedPolicyInput& input) {
+                                             const MppiSpeedPolicyInput& input,
+                                             double& frame_range_m) {
   MppiSpeedPolicyConfig config = configured;
   SensorBrakingContract3D& contract = config.sensor_braking_contract;
+  frame_range_m = contract.guaranteed_detection_range_m;
   if (input.sensor_observed_fraction.has_value() &&
       std::isfinite(*input.sensor_observed_fraction)) {
     // A frame whose light is running out observes as much as the light it
@@ -298,13 +300,13 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
     // every direction (r803 stood 90 s). Anywhere else the frame limits: read
     // for every motion, the memory flew r808 at 2 m/s into the dark over B,
     // which it had seen free while the light still reached it.
-    contract.guaranteed_detection_range_m =
-        std::max({contract.physical_margin_m + kBlindRangeAboveMarginM,
-                  share * contract.guaranteed_detection_range_m,
-                  input.motion_along_flown_path
-                      ? std::min(contract.guaranteed_detection_range_m,
-                                 input.unfaced_observed_range_m.value_or(0.0))
-                      : 0.0});
+    frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
+                             share * contract.guaranteed_detection_range_m);
+    contract.guaranteed_detection_range_m = std::max(
+        {frame_range_m, input.motion_along_flown_path
+                            ? std::min(contract.guaranteed_detection_range_m,
+                                       input.unfaced_observed_range_m.value_or(0.0))
+                            : 0.0});
   }
   if (input.sensor_evidence_age_s.has_value() &&
       std::isfinite(*input.sensor_evidence_age_s) &&
@@ -319,8 +321,9 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
 MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& configured,
                                               const MppiSpeedPolicyInput& input) {
   validateConfig(configured);
-  const MppiSpeedPolicyConfig config = measuredSensorContract(configured, input);
   MppiSpeedPolicyResult result;
+  const MppiSpeedPolicyConfig config =
+      measuredSensorContract(configured, input, result.sensor_frame_range_m);
   result.sensor_measured_range_m =
       config.sensor_braking_contract.guaranteed_detection_range_m;
   result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;

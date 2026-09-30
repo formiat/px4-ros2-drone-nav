@@ -164,6 +164,9 @@ struct MppiSpeedPolicyResult {
   // frame stands behind and the evidence age charged.
   double sensor_measured_range_m{0.0};
   double sensor_evidence_age_s{0.0};
+  // The range the frame alone stands behind, before the memory answers back
+  // along the flown path: what the carried light is judged by (K12).
+  double sensor_frame_range_m{0.0};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

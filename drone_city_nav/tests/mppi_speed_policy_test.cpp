@@ -123,6 +123,11 @@ TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
   const MppiSpeedPolicyResult back = evaluateMppiSpeedPolicy(config, input);
   EXPECT_DOUBLE_EQ(back.sensor_measured_range_m, 6.4);
   EXPECT_DOUBLE_EQ(back.sensor_braking_limit_mps, lit.sensor_braking_limit_mps);
+  // The light is judged by the frame alone: the memory's range back along the
+  // flown path leaves it dark (r860 judged its light 160 s late on the mix).
+  EXPECT_DOUBLE_EQ(back.sensor_frame_range_m, dark.sensor_frame_range_m);
+  EXPECT_LT(back.sensor_frame_range_m / 6.4, 0.35);
+  EXPECT_DOUBLE_EQ(lit.sensor_frame_range_m, 6.4);
   input.motion_along_flown_path = false;
 
   input.unfaced_observed_range_m = 0.0;
