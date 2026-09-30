@@ -81,7 +81,9 @@ normalizing the project.
 project has two requirements, and the mission check fails on nothing else:
 
 - the vehicle does not crash and completes its mission: no crash event, no
-  contact with a static obstacle, the mission monitor's successful result and
+  contact with any surface (every contact is a crash, analysed and repaired;
+  the one exception is a landing on the ground or a floor, specification
+  A9, owner's rule of 2026-09-29), the mission monitor's successful result and
   every waypoint (for the cooperative mission, the referee's separation and
   every vehicle at its goal), and the goal reached in truth: at every goal
   acknowledgement the TRUE position of the vehicle (`gz_pose.csv`) is inside

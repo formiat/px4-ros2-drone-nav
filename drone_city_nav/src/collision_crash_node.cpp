@@ -5,6 +5,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -153,7 +154,19 @@ private:
       // speed is one, made by the body: the autopilot's blind landing met
       // the floor at 0.73 m/s (r790), and a contact at speed, tilted or by a
       // rotor (r792, a rotor on a wall at 0.23 m/s) is a collision.
-      if (body && attitude_valid_ && std::abs(attitude_.roll_rad) < kLandingTiltRad &&
+      // Only the ground or a floor carries a landing (the owner's rule of
+      // 2026-09-29: every other contact with a surface is a crash): every
+      // normal of the contact within 25 degrees of the vertical.
+      const bool on_floor =
+          !contact.normals.empty() &&
+          std::ranges::all_of(contact.normals, [](const auto& normal) {
+            return std::abs(normal.z) >=
+                   kFloorNormalVerticalShare *
+                       std::sqrt(normal.x * normal.x + normal.y * normal.y +
+                                 normal.z * normal.z);
+          });
+      if (body && on_floor && attitude_valid_ &&
+          std::abs(attitude_.roll_rad) < kLandingTiltRad &&
           std::abs(attitude_.pitch_rad) < kLandingTiltRad &&
           speed_mps_ < kLandingSpeedMps &&
           horizontal_speed_mps_ < kLandingHorizontalSpeedMps) {
@@ -221,6 +234,7 @@ private:
   static constexpr double kLandingHorizontalSpeedMps{0.5};
   bool landed_{false};
   static constexpr double kLandingContactGapS{0.5};
+  static constexpr double kFloorNormalVerticalShare{0.9};
   double landed_contact_s_{-1.0};
   AttitudeEuler attitude_{};
   bool altitude_valid_{false};
