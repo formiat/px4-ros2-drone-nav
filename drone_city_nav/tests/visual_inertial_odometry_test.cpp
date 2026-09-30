@@ -243,6 +243,14 @@ TEST(VisualInertialOdometry, ADarkStretchIsDeadReckoningForAStatedTime) {
       Eigen::Vector3d::Zero(), true, false, {}, Hole{5.0, 60.0});
   EXPECT_FALSE(long_dark.last.healthy);
   EXPECT_FALSE(long_dark.last.dead_reckoning);
+  // Spent, it is lost for the flight: frames that return do not bring it
+  // back healthy (r820 came back 35 m off).
+  const Flight dark_then_seen = fly(
+      config, 5.0 + config.maximum_unaided_s + config.maximum_dead_reckoning_s + 6.0,
+      Eigen::Vector3d::Zero(), true, false, {},
+      Hole{5.0,
+           5.0 + config.maximum_unaided_s + config.maximum_dead_reckoning_s + 1.0});
+  EXPECT_FALSE(dark_then_seen.last.healthy);
   const Flight sighted = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false);
   EXPECT_TRUE(sighted.last.healthy);
   EXPECT_FALSE(sighted.last.dead_reckoning);

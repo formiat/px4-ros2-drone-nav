@@ -792,6 +792,16 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
       estimate.healthy && !state.lost &&
       estimate.weakest_velocity_sigma_mps <= state.config.maximum_velocity_sigma_mps;
   state.judgeDeadReckoning(estimate);
+  // Dead reckoning spent is as lost as an IMU hole: the state is what the IMU
+  // alone made of it. r820 lay landed in the dark with its unpublished state
+  // drifting 35 m, came back healthy on seven features when the light
+  // returned for a second, and the autopilot reset onto it and flew the
+  // vehicle into the platform it lay on (specification K13).
+  if (state.last_update_stamp_ns > 0 && !estimate.healthy && !estimate.dead_reckoning &&
+      estimate.unaided_s >
+          state.config.maximum_unaided_s + state.config.maximum_dead_reckoning_s) {
+    state.lost = true;
+  }
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
   state.last_estimate = estimate;
