@@ -141,6 +141,17 @@ def share_at(outages: list[Outage], t_s: float) -> float:
     return min((outage.share(t_s) for outage in outages), default=1.0)
 
 
+AIRBORNE_RISE_M = 1.0
+
+
+def scheduled_share(outages, sim_s: float, airborne_s: float | None) -> float:
+    """The light the schedule leaves: its clock starts when the vehicle is
+    airborne, a metre over where it stood. An outage on the pad met the
+    estimator in its first seconds, the autopilot reset its position by 3.4 m
+    and the flight never left (r924)."""
+    return 1.0 if airborne_s is None else share_at(outages, sim_s - airborne_s)
+
+
 def zones_from(text: str) -> list[tuple[float, float, float, float, float]]:
     """ANOMALY_ZONES: "x,y,z,radius,falloff" in the world frame, several
     separated by ";"."""
@@ -224,8 +235,7 @@ def main() -> int:
                     position["xyz"] = (pose.position.x, pose.position.y, pose.position.z)
                 break
 
-    if zones:
-        node.subscribe(Pose_V, f"/world/{args.world}/pose/info", on_poses)
+    node.subscribe(Pose_V, f"/world/{args.world}/pose/info", on_poses)
     service = f"/world/{args.world}/light_config"
 
     def request(intensity: float) -> bool:
@@ -252,6 +262,8 @@ def main() -> int:
         writer.writerow(["sim_s", "share", "accepted"])
         applied = None
         published_s = -1.0
+        ground_z = None
+        airborne_s = None
         while True:
             with lock:
                 t_s = clock["s"]
@@ -262,7 +274,12 @@ def main() -> int:
                     published_s = t_s
                 with lock:
                     xyz = position["xyz"]
-                share = share_at(outages, t_s) if charge_s > 0.0 else 0.0
+                if xyz is not None and airborne_s is None:
+                    ground_z = xyz[2] if ground_z is None else ground_z
+                    if xyz[2] - ground_z >= AIRBORNE_RISE_M:
+                        airborne_s = t_s
+                        print(f"airborne at sim {t_s:.3f} s", flush=True)
+                share = scheduled_share(outages, t_s, airborne_s) if charge_s > 0.0 else 0.0
                 if zones and xyz is not None:
                     share = min(share, zone_share(zones, xyz))
                 share = round(share, 3)

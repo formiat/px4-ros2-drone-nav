@@ -81,6 +81,15 @@ class LightFaultInjectorContractTest(unittest.TestCase):
                                     INJECTOR.SHORTEST_RAMP_S)
             previous_end = outage.end_s
 
+    def test_the_failures_wait_for_the_vehicle_to_fly(self) -> None:
+        outages = [INJECTOR.Outage(start_s=10.0, ramp_down_s=1.0, dark_s=2.0,
+                                   ramp_up_s=1.0, floor=0.0)]
+        # On the pad the light is whole, whatever the simulation's clock.
+        self.assertEqual(1.0, INJECTOR.scheduled_share(outages, 12.0, None))
+        # Airborne at 30 s: the schedule's twelfth second is the 42nd.
+        self.assertEqual(1.0, INJECTOR.scheduled_share(outages, 35.0, 30.0))
+        self.assertEqual(0.0, INJECTOR.scheduled_share(outages, 42.0, 30.0))
+
     def test_an_outage_ramps_down_and_back(self) -> None:
         outage = INJECTOR.Outage(start_s=10.0, ramp_down_s=1.0, dark_s=2.0,
                                  ramp_up_s=1.0, floor=0.0)
