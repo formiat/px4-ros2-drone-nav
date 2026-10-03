@@ -184,7 +184,7 @@ Roadmap item 16. `VisualInertialOdometry`
 layer) is a stereo multi-state constraint Kalman filter. It reads Eigen and
 nothing else: `tests/test_navigation_dependency_contract.py` holds every
 system include of its header and source to the standard library and Eigen, so
-the filter is replayed offline (`log/tools/vio`) and carries no image library
+the filter is replayed offline (`tools/vio`, the records in `log/tools/vio`) and carries no image library
 and no middleware. The images are followed outside it, by
 `StereoFeatureTracker` (`src/stereo_feature_tracker.cpp`, OpenCV behind its
 implementation), and reach the filter as normalized coordinates under stable
@@ -230,7 +230,7 @@ the perception's products the estimator reads the depth cloud alone, for a
 map of its own (below), and never the obstacle memory: an estimator that took
 its pose from a map built from that pose would hide its own drift.
 
-What the recorded flights set (`log/tools/vio`: a recorder of every frame,
+What the recorded flights set (`tools/vio`, records in `log/tools/vio`: a recorder of every frame,
 both IMU streams and the true pose on one clock; a replay of the tracker and
 the filter; reports by manoeuvre):
 

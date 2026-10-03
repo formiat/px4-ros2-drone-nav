@@ -69,7 +69,7 @@ Code releases are annotated tags `vMAJOR.MINOR.PATCH` on `main`; environment
 assets keep their own `environment-assets-*` tags. To cut a release:
 
 1. Fly the validation series on the release commit with nothing changed
-   between flights (`log/tools/series.sh` runs the urban point-to-point
+   between flights (`tools/series2.sh` runs the urban point-to-point
    flights one at a time and records `gz_pose.csv` and `tracking.npz`); record
    the table in `CHANGELOG.md` with the commit, the flights, the mean speed,
    the crashes, the route availability and the planner p95.
