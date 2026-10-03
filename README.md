@@ -106,11 +106,13 @@ simulated GNSS, the magnetometer and the simulation heading source
 [docs/localization.md](docs/localization.md)). On the 3D lidar profile
 (`CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar`) a lidar-inertial
 estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
-multi-vehicle missions fly until the vehicles share a frame (roadmap item 15). Both camera assumptions are untested: every flight so far was lit by a uniform
-ambient fill, because the imported world carries no light source at all and the
-cameras carry no noise model, and the 6.4 m of confident depth was measured on
-one location's photogrammetric surfaces rather than on the blank walls a matcher
-cannot match (roadmap item 17).
+multi-vehicle missions fly until the vehicles share a frame (roadmap item 15). The ordinary flight is dark since roadmap item 17: the location has no light
+of its own, the cameras carry noise, and the vehicle flies by a light it
+carries, which flickers in every flight; when that light fails, or its battery
+will not last to the goal, the vehicle comes home, and with the light gone it
+descends and stays whole ([docs/scenarios.md](docs/scenarios.md)). A blank
+surface the matcher cannot match returns no depth, measured and without a
+remedy.
 
 ## Integration Notes
 
@@ -144,8 +146,9 @@ that are easy to lose weeks to, each with the flight it was measured on:
   19). A contract test holds the estimator's library to Eigen and the
   standard library alone. What that buys is a drift we can measure instead of
   one that looks self-consistent; what it does not buy is independent
-  failure. One pair blinds both consumers at once, and their timeouts are
-  not the same length (roadmap item 17 stage 0).
+  failure. One pair blinds both consumers at once; since roadmap item 17
+  the braking contract reads the frame it brakes on, and the estimator
+  declares its dead reckoning.
 - **Arrival has to be judged by the truth.** The mission monitor asks the
   vehicle where it thinks it is, so with an odometry it can arrive in its own
   coordinates while standing elsewhere. Every flight fails unless the true
