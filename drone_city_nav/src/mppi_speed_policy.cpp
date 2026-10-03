@@ -295,9 +295,9 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
             ? std::clamp(*input.sensor_light_headroom, 0.0, 1.0)
             : 1.0);
     // The way the vehicle came is never closed (I3): back along it the
-    // memory's observed range answers for a frame dimmed by a zone that fails
-    // the light, which leaves the vehicle at the zone's dim edge blind in
-    // every direction (r803 stood 90 s). Anywhere else the frame limits: read
+    // memory's observed range answers for a frame whose light has faded,
+    // which leaves the vehicle at the edge of the dark blind in every
+    // direction (r803 stood 90 s). Anywhere else the frame limits: read
     // for every motion, the memory flew r808 at 2 m/s into the dark over B,
     // which it had seen free while the light still reached it.
     frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
@@ -608,8 +608,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   // A forward sensor blind along the motion, with nothing observed along it
   // in memory, holds the vehicle where it stands: a target the minimum
   // lookahead ahead drew it on at a tenth of a metre a second into the dark
-  // of a zone it could not see, every law admitting nothing (r807, 2 m in
-  // 13 s).
+  // it could not see, every law admitting nothing (r807, 2 m in 13 s).
   const SensorBrakingAssessment3D& along = result.sensor_braking_assessment;
   result.blind_along_motion =
       result.active_limiter == MppiSpeedLimiter::kSensorBraking &&

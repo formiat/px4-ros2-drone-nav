@@ -34,8 +34,8 @@ TEST(LightReliabilityJudgment, ALongOutageIsUnreliableAndStaysSo) {
 }
 
 TEST(LightReliabilityJudgment, ADimFrameIsNoOutageABlindOneIs) {
-  // A frame the contract still grants half its range sees; the edge of a
-  // zone that fails the light, where it grants a tenth, is blind.
+  // A frame the contract still grants half its range sees; one it grants a
+  // tenth, a light all but gone, is blind.
   LightReliabilityJudgment dim;
   for (int tick = 0; tick < 600; ++tick) {
     dim.observe(0.1 * tick, 0.5);

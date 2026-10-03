@@ -76,10 +76,10 @@ the correction is recorded beside it.
   the carried light the full range (r770 to r781). The share alone gives no
   warning of a fading light, because the camera's gain and the matcher hold
   the depth until the light is under a hundredth of itself (r800 flew at
-  2.4 m/s into a zone that had put its light out), so the contract reads the
+  2.4 m/s into a dark that had put its light out), so the contract reads the
   smaller of that share and the frame's **light headroom**: the 95th
   percentile of the frame's brightness over the 200 the gain aims it at.
-- **Darkness is observed, not unknown** (stages 7 and 8, specification F6,
+- **Darkness is observed, not unknown** (stage 8, specification F6,
   K12 and K14). A frame the contract reads as blind (a share under 0.35,
   where the range is within a quarter metre of the margin) for 2.5 s marks
   what it looks at unobservable: the frustum from 1.5 m to the confident
@@ -95,9 +95,8 @@ the correction is recorded beside it.
   Read by the mission monitor, the same blind share is an outage of the
   carried light, on the frame's range alone (the memory raises the
   contract's back along the flown path): one of 3.5 s, or 60 percent of the
-  last two minutes, judges the light unreliable and sends the vehicle home, because a vehicle at a
-  zone's dim edge cannot tell a place that fails its light from a light
-  that fails. What the flights found on the way is in the roadmap's entry:
+  last two minutes, judges the light unreliable and sends the vehicle home, because a vehicle gone blind
+  cannot tell a place that fails its light from a light that fails. What the flights found on the way is in the roadmap's entry:
   a creep at zero reference into the dark (r807), the memory's range flown
   into it (r808), a soft stop ending inside it (r809), a hold that drifted
   with its route (r811, r813), darkness read by the light alone (r815).

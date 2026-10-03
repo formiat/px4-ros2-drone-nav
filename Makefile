@@ -81,11 +81,9 @@ sim-cooperative-traffic-urban-gui: build
 		./scripts/run_drone_nav_sim.sh
 
 # The ordinary flight after roadmap item 17 (specification A10): the location
-# with no light of its own, the moderate flicker of the carried light, and a
-# zone that fails the light away from every way to B; a named scenario sets
-# any of them otherwise, an empty ANOMALY_ZONES included.
-ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}" \
-	ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,16}"
+# with no light of its own and the moderate flicker of the carried light; a
+# named scenario sets the failures otherwise.
+ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"
 
 .PHONY: sim-urban-point-to-point-headless
 sim-urban-point-to-point-headless: build
@@ -143,12 +141,6 @@ LIGHT_FAILURE_SCENARIO := LIGHT_FAULTS=severe \
 	RETURN_HOME_EXPECTED=true
 LOW_BATTERY_SCENARIO := LIGHT_BATTERY_S=240 \
 	RETURN_HOME_EXPECTED=true
-# Roadmap item 17 stage 7: a zone that fails the light, over B itself, the one
-# place a zone closes the way in this location (every zone elsewhere on the
-# route leaves a way around); B in its dark is unreachable and the vehicle
-# ends at the start. Its fade spans 16 m: the camera's gain hides the first
-# seven eighths of it, and what is left must outlast the vehicle's braking.
-ZONE_ACROSS_B_SCENARIO := ANOMALY_ZONES=63.009,23.857,12.593,1.5,16 RETURN_HOME_EXPECTED=true
 # Roadmap item 17 stage 5: a long flight, B and back, under the moderate
 # flicker and the camera stream's failures, which ends at the start whether
 # it reaches B or gives it up for an unreliable light; and a short one under
@@ -211,14 +203,6 @@ sim-urban-low-battery-headless:
 .PHONY: sim-urban-low-battery-gui
 sim-urban-low-battery-gui:
 	$(LOW_BATTERY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
-
-.PHONY: sim-urban-zone-across-b-headless
-sim-urban-zone-across-b-headless:
-	$(ZONE_ACROSS_B_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
-
-.PHONY: sim-urban-zone-across-b-gui
-sim-urban-zone-across-b-gui:
-	$(ZONE_ACROSS_B_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
 
 .PHONY: sim-urban-long-failures-headless
 sim-urban-long-failures-headless:

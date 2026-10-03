@@ -14,12 +14,7 @@ directory. Two things move the light:
 - its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
   evaluation component nobody tells the vehicle about. Their schedule never
   leaves this process, and no production node reads it (the contract test
-  holds it there); the vehicle learns of a failure only from its frames;
-- the zones that fail it (ANOMALY_ZONES, roadmap item 17 stage 7, the
-  "magnetic anomaly"): as the vehicle, by its true position, comes within a
-  zone's falloff of its radius the light fades, and inside the radius it is
-  out. The zones are the scenario's and reach the vehicle no more than the
-  failures do.
+  holds it there); the vehicle learns of a failure only from its frames.
 
 Two regimes, decided by the project owner on 2026-09-27:
 
@@ -152,41 +147,12 @@ def scheduled_share(outages, sim_s: float, airborne_s: float | None) -> float:
     return 1.0 if airborne_s is None else share_at(outages, sim_s - airborne_s)
 
 
-def zones_from(text: str) -> list[tuple[float, float, float, float, float]]:
-    """ANOMALY_ZONES: "x,y,z,radius,falloff" in the world frame, several
-    separated by ";"."""
-    zones = []
-    for part in filter(None, (item.strip() for item in text.split(";"))):
-        x, y, z, radius, falloff = (float(value) for value in part.split(","))
-        if radius < 0.0 or falloff <= 0.0:
-            raise ValueError(f"anomaly zone '{part}' needs a radius and a falloff")
-        zones.append((x, y, z, radius, falloff))
-    return zones
-
-
-def zone_share(zones, position) -> float:
-    """The share of the light the zones leave at `position`: out inside the
-    radius, and across the falloff halved six times over, evenly, toward it.
-    The camera's gain makes up a light dimmed eightfold, so a linear fade or
-    a cube left the frames unchanged until the last few decimetres, and the
-    vehicle flew into the dark at 2.3 m/s (r799, r800, r802); halved evenly,
-    the gain runs out halfway across and the frames darken over the rest."""
-    share = 1.0
-    for x, y, z, radius, falloff in zones:
-        distance = ((position[0] - x) ** 2 + (position[1] - y) ** 2 +
-                    (position[2] - z) ** 2) ** 0.5
-        across = max(0.0, min(1.0, (distance - radius) / falloff))
-        share = min(share, 0.0 if distance <= radius else 2.0 ** (-6.0 * (1.0 - across)))
-    return share
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
     parser.add_argument("--profile", default="none",
                         choices=("none", "moderate", "severe", "lost"))
     parser.add_argument("--battery-s", type=float, default=3600.0)
-    parser.add_argument("--zones", default="")
     parser.add_argument("--model", default="x500_lidar_3d_0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--horizon-s", type=float, default=3600.0)
@@ -204,7 +170,6 @@ def main() -> int:
 
     outages = ([] if args.profile == "none"
                else schedule(args.profile, args.seed, args.horizon_s))
-    zones = zones_from(args.zones)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with (args.output.with_suffix(".schedule.csv")).open("w", newline="") as stream:
         writer = csv.writer(stream)
@@ -280,8 +245,6 @@ def main() -> int:
                         airborne_s = t_s
                         print(f"airborne at sim {t_s:.3f} s", flush=True)
                 share = scheduled_share(outages, t_s, airborne_s) if charge_s > 0.0 else 0.0
-                if zones and xyz is not None:
-                    share = min(share, zone_share(zones, xyz))
                 share = round(share, 3)
                 if share != applied:
                     accepted = request(NOMINAL_INTENSITY * share)

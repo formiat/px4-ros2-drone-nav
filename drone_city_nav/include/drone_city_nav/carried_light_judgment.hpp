@@ -14,7 +14,7 @@ namespace drone_city_nav {
 // its configured range it grants, from the frame's observed share and light
 // headroom, under 0.35, the line of the unobservable evidence (specification
 // K12, K14). The vehicle cannot tell a place that fails its light from a
-// light that fails (I7): stopped blind at the edge of a zone over B it marked
+// light that fails (I7): stopped blind at the edge of a dark over B it marked
 // what it could not see and held there for good (r815, r816), so a light
 // that leaves it blind is unreliable wherever it is, and it flies home back
 // the way it came. A light is judged unreliable once one outage has

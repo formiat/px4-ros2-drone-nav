@@ -487,10 +487,9 @@ replaces it:
 - **A separate scenario blocks the way**: smoke closes the passage to B, no
   route exists, and the vehicle flies home. It exercises the smoke handling
   and item 19's return together, by a cause the vehicle measures.
-- **Smoke is drawn in RViz**, as the zones that fail the light are since
-  item 17 (`/evaluation/anomaly_zones`): every smoky place of a flight is a
-  marker in the picture, published by an evaluation component the vehicle
-  never reads, so that a person watching sees what the location holds.
+- **Smoke is drawn in RViz**: every smoky place of a flight is a marker in
+  the picture, published by an evaluation component the vehicle never
+  reads, so that a person watching sees what the location holds.
   Decided by the project owner on 2026-10-03.
 - **Smoke is constant**: where it is and how much of it there is never change
   during a flight, so that the difficulty of the location does not change
@@ -1128,8 +1127,7 @@ What the flights look like once the item lands:
   throughout would only move every figure at once.
 - **One smoky room is always on the way**: in every ordinary flight the
   route to B passes through a room of moderate smoke, as every ordinary
-  flight carries the zone that fails the light (item 17) and item 18's
-  plumes off the way. Both sensor sets fly it.
+  flight carries item 18's plumes off the way. Both sensor sets fly it.
 - **The smoke is drawn in RViz**, as every evaluation object is.
 
 Three hard places, each measured before anything is built:
@@ -1175,9 +1173,11 @@ Item 19's topological proof that a goal is unreachable has never fired in a
 flight: it is held by twelve unit tests alone (specification F15). Every
 return flown was the light's battery or the light's judgment. The proof is
 not about a sensor, so any sensor set may fly it; the owner's direction is
-the stereo set, **the way closed by darkness** (a zone that fails the light
-laid across the only passage, so that what closes the way is something the
-vehicle measures), and **the memory's decay switched off**
+the stereo set, **the way closed by darkness** (so that what closes the way
+is something the vehicle measures; the zones that failed the vehicle's own
+light were removed on 2026-10-03, so what makes the darkness is settled
+here: a region of the location the light does not carry through, or
+item 18's smoke), and **the memory's decay switched off**
 (`decay_seconds_per_confirmation: 0`), so that what the vehicle has seen
 stays seen. The part of the location left reachable is small enough to be
 explored in minutes, not an hour.
@@ -1185,7 +1185,7 @@ explored in minutes, not an hour.
 What has to be settled on the way, by measurement:
 
 - **Darkness is marked with holes.** The frustum a blind frame marks is laid
-  rays apart, and the goal's region leaked round it in the zone over B
+  rays apart, and the goal's region leaked round it when B lay in the dark
   (r816). The marking has to be dense enough to close a passage.
 - **The light's judgment comes first.** A vehicle blind for 3.5 s judges its
   light unreliable and turns home (K12) before any proof stands. The
@@ -1620,8 +1620,7 @@ what is set aside, with the class of every entry, is
 Closed on 2026-10-03 on 6e7ea775, not yet in a release. The camera vehicle
 flies the urban point-to-point mission in a location with no light but the
 one it carries, under a light that flickers in every flight, and comes home
-when that light fails, when its battery will not last to the goal, or when a
-place fails it; with its light gone for good it descends and stays whole. The
+when that light fails or when its battery will not last to the goal; with its light gone for good it descends and stays whole. The
 ordinary flight of the repository is that dark flight. The estimator in the
 dark is in [`localization.md`](localization.md), the perception in
 [`camera_perception.md`](camera_perception.md), the scenarios in
@@ -1682,15 +1681,21 @@ Built, by stage, each decision the smallest change found:
   reset over 3 m flown was the autopilot fusing a camera estimate that came
   back wrong after it had been lost, which K8 and K13 now keep silent; a
   reset up to 3 m is flown on (K1).
-- **Stage 7, a zone that fails the light** (2b5d1658, 600d5f67): a sphere in
-  the injector, the light halved six times across its falloff, nothing of it
-  known to the vehicle. One stands off the way to B in every ordinary flight
-  (A10); laid over B it is a scenario of its own, because this location
-  leaves a way around a zone anywhere else (F16).
+- **Stage 7, a zone that fails the light (removed on 2026-10-03)**
+  (2b5d1658, 600d5f67): a sphere in the injector, the "magnetic anomaly",
+  in which the vehicle's own light was halved six times across a falloff
+  and out in the core, nothing of it known to the vehicle. One stood off
+  the way to B in every ordinary flight, and one laid over B was a scenario
+  of its own. It was accepted with the item (the tables below) and then
+  removed by the project owner with its scenario, its switch and its RViz
+  markers: a vehicle whose own light fails goes blind in every direction
+  and cannot tell the place from a failed light, so a zone only ever sent
+  it home, which the severe failure's scenario already checks. What the
+  zones taught stays: the contract reads the frame's light, darkness is
+  marked in the memory, a blind vehicle holds and judges its light.
 - **The ordinary flight is dark** (bab016ee, A10): no ambient light, the
-  carried light under the moderate flicker, one zone off the way. Since
-  2026-10-03 the lit location is not selectable at all (the owner's rule),
-  and RViz draws the zones.
+  carried light under the moderate flicker. Since 2026-10-03 the lit
+  location is not selectable at all (the owner's rule).
 
 Found by the flights and repaired on the way:
 
@@ -1735,7 +1740,8 @@ Found by the flights and repaired on the way:
   contact is a crash but a landing on the ground or a floor (A9).
 
 Acceptance on 6e7ea775, forty flights, each inspected before the next, the
-speed on simulation time, positions in truth:
+speed on simulation time, positions in truth (the zones that failed the
+light were part of these flights and were removed afterwards):
 
 | Ordinary series | Flights | Mean flight speed, m/s | True position from the goal, m |
 |---|---|---|---|

@@ -734,7 +734,7 @@ private:
                               ray.origin_map_m.z + beam.range_m * beam.direction_map.z};
         // The way the vehicle came is never observed unobservable
         // (specification K14, I3's exit guarantee): a pair that turns back
-        // at a zone's dim edge looks into the same dark and would close it.
+        // at the dim edge of a dark looks into the same dark and would close it.
         if (hit_only_returns_ && sample.interpolated &&
             std::ranges::any_of(flown_path_, [&endpoint](const Point3& pose) {
               return squaredDistance(pose, endpoint) <=

@@ -98,7 +98,6 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
             "light-failure": "$(LIGHT_FAILURE_SCENARIO)",
             "low-battery": "$(LOW_BATTERY_SCENARIO)",
-            "zone-across-b": "$(ZONE_ACROSS_B_SCENARIO)",
             "long-failures": "$(LONG_FAILURES_SCENARIO)",
             "light-lost": "$(LIGHT_LOST_SCENARIO)",
         }
@@ -114,13 +113,14 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                         makefile,
                     )
         # The ordinary flight of roadmap item 17 (specification A10) is the
-        # dark location, the moderate flicker and a zone off every way to B.
+        # dark location and the moderate flicker; the zones that failed the
+        # light were removed on 2026-10-03.
         # The location's own light never comes back (the owner's rule of
         # 2026-10-03): no target selects the lit world.
         self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", makefile)
         self.assertNotIn("WORLD_ILLUMINATION", makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
-        self.assertIn('ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,16}"', makefile)
+        self.assertNotIn("ANOMALY_ZONES", makefile)
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the
         # check floods; its headless runs need the grid.

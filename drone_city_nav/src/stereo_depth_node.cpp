@@ -379,7 +379,7 @@ private:
   // aims it at: one while the gain can make up the light, less once it
   // cannot. The pair's depth does not show a fading light: its matches held
   // until the light was under a hundredth of itself, and the vehicle flew at
-  // 2.4 m/s into a zone that had put it out (r800).
+  // 2.4 m/s into a dark that had put it out (r800).
   [[nodiscard]] static double lightHeadroom(const cv::Mat& grey) {
     constexpr double kGainTargetGrey{200.0};
     std::array<std::size_t, 256U> histogram{};
@@ -419,7 +419,7 @@ private:
     // of the frame's light headroom and its observed share, scaled between
     // the contract's blind and healthy fractions, under 0.35, where the
     // range comes within a quarter metre of the 2 m margin and the vehicle
-    // rests. Read by the light alone, r815 held blind at a zone's edge with
+    // rests. Read by the light alone, r815 held blind at the dark's edge with
     // the headroom at 0.64 and the frame matching 3 percent, and marked
     // nothing.
     constexpr double kDimShare{0.35};

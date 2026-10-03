@@ -32,14 +32,8 @@ class LightFaultInjectorContractTest(unittest.TestCase):
             if path.suffix not in {".cpp", ".hpp", ".py", ".yaml", ".msg"}:
                 continue
             text = path.read_text(errors="ignore")
-            for word in ("light_fault", "LIGHT_FAULT", "light_config", "anomaly_zones"):
+            for word in ("light_fault", "LIGHT_FAULT", "light_config"):
                 self.assertNotIn(word, text, f"{path} reads the injection")
-
-    def test_the_runtime_passes_a_zone_west_of_the_origin_whole(self) -> None:
-        # The ordinary zone lies at (-28, -28, 9): as a separate word its
-        # leading minus read as an option and the light never started (r818).
-        runtime = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
-        self.assertIn('--zones="${ANOMALY_ZONES:-}"', runtime)
 
     def test_the_light_it_sends_is_the_models(self) -> None:
         model = ET.parse(REPOSITORY / "drone_city_nav/models/stereo_tof_v1/model.sdf")
@@ -98,29 +92,6 @@ class LightFaultInjectorContractTest(unittest.TestCase):
         self.assertEqual(0.0, outage.share(12.0))
         self.assertAlmostEqual(0.5, outage.share(13.5))
         self.assertEqual(1.0, outage.share(14.0))
-
-
-class AnomalyZoneTest(unittest.TestCase):
-    def test_the_light_fades_across_the_falloff_and_is_out_inside(self) -> None:
-        zones = INJECTOR.zones_from("10,0,5,3,2; 50,50,5,1,1")
-        self.assertEqual(1.0, INJECTOR.zone_share(zones, (20.0, 0.0, 5.0)))
-        self.assertAlmostEqual(0.125, INJECTOR.zone_share(zones, (14.0, 0.0, 5.0)))
-        self.assertAlmostEqual(1.0 / 64.0, INJECTOR.zone_share(zones, (13.0001, 0.0, 5.0)),
-                               places=3)
-        self.assertEqual(0.0, INJECTOR.zone_share(zones, (11.0, 0.0, 5.0)))
-        self.assertEqual([], INJECTOR.zones_from(""))
-
-    def test_rviz_draws_each_zone_and_the_rviz_configs_show_it(self) -> None:
-        sys.path.insert(0, str(REPOSITORY / "scripts"))
-        import anomaly_zone_markers
-
-        drawn = anomaly_zone_markers.spheres(INJECTOR.zones_from("10,0,5,3,2"))
-        self.assertEqual([6.0, 10.0], [sphere[3] for sphere in drawn])
-        runtime = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
-        self.assertIn('--zones="${ANOMALY_ZONES}"', runtime)
-        for name in ("city_nav_debug.rviz", "city_nav_debug_top_down.rviz"):
-            config = (REPOSITORY / "drone_city_nav" / "rviz" / name).read_text()
-            self.assertIn(anomaly_zone_markers.TOPIC, config)
 
 
 if __name__ == "__main__":

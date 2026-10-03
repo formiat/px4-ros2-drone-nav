@@ -95,7 +95,7 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
 }
 
 TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
-  // Roadmap item 17 stage 7: at a zone's dim edge every frame is dark. The way
+  // Where the light has faded every frame is dark. The way
   // the vehicle came admits the speed the memory's range gives; space seen
   // free before, off that way, admits nothing; the unobserved way on admits
   // nothing and the target holds where the vehicle stands.

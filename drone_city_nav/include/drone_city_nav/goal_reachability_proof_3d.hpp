@@ -26,8 +26,8 @@ namespace drone_city_nav {
 //
 // A second flood starts at the goal (roadmap item 17 stage 8): through the
 // voxels the body fits in, none of whose 26 neighbours is occupied, from every
-// such voxel within the capture radius of the goal. A goal in the dark of a
-// zone that fails the carried light is surrounded by the unobservable
+// such voxel within the capture radius of the goal. A goal in a dark the
+// carried light does not reach is surrounded by the unobservable
 // evidence of the frames that looked at it (specification K14), a sieve of
 // points a ray apart that a single voxel passes and the body does not; the
 // goal is unreachable when this flood closes without coming within a metre of

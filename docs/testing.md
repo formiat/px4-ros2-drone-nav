@@ -164,11 +164,11 @@ the recovery after a physical block, 0.3 to 1.2 s without a route each time.
 
 **The flights of roadmap item 17.** The ordinary flight is dark: the
 location without its ambient light, the carried light under the moderate
-flicker and one zone that fails it off the way to B (specification A10); a
+flicker (specification A10); a
 `GOAL_UNREACHABLE` fails it as before, whatever its trigger. The named
 scenarios say in the manifest what else may end them:
 
-- `RETURN_HOME_EXPECTED=true` (the severe failure, the zone over B, the low
+- `RETURN_HOME_EXPECTED=true` (the severe failure, the low
   battery): the return is the outcome asked for, by one of the triggers
   `unreliable_light`, `battery` or `topological`, with the acknowledgement at
   the start and the true position inside the capture radius there;
@@ -188,7 +188,7 @@ crash: a landing, the body on a surface whose normals are within 25 degrees
 of the vertical, level, under 1 m/s and under 0.5 m/s across it, and the
 contact kept without a half-second gap afterwards (specification A9). Every
 other contact destroys the vehicle, a rotor on a wall at 0.1 m/s included.
-The light's failures, its battery, the zones and the camera stream's
+The light's failures, its battery and the camera stream's
 failures are evaluation components (`scripts/carried_light.py`,
 `scripts/camera_stream_faults.py`): each writes its schedule and what it
 did beside the manifest, a contract test holds that no production source

@@ -70,7 +70,7 @@ TEST(GoalReachabilityProof3D, AnOpeningTheBodyFitsLeavesTheProofOpen) {
 
 TEST(GoalReachabilityProof3D, ASieveAroundTheGoalClosesItsRegion) {
   // The goal in a room walled by every other voxel, as the unobservable
-  // evidence of a dark zone's frames leaves it: the vehicle's flood reaches
+  // evidence of dark frames leaves it: the vehicle's flood reaches
   // the goal through the holes, the body does not pass them.
   ObservedOccupancyGrid3D grid{kBounds};
   for (int x = 26; x <= 34; ++x) {

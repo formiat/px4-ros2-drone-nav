@@ -378,14 +378,12 @@ The flights of roadmap item 17 add their own, all recorded in the manifest:
 `BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte panels), `LIGHT_FAULTS=none|moderate|severe|lost` with
 `LIGHT_FAULT_SEED` (the carried light's injected failures; moderate is the
 default), `LIGHT_BATTERY_S` (seconds of light at launch, 3600; 720 in the return-home scenario, 240 in the low-battery one),
-`ANOMALY_ZONES="x,y,z,core,falloff;..."` (zones that fail the light; one
-off the way to B is the default; `scripts/anomaly_zone_markers.py` draws
-them in RViz on `/evaluation/anomaly_zones`), `STREAM_FAULTS=none|moderate` with
+`STREAM_FAULTS=none|moderate` with
 `STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
 then reads), and the three that tell the mission check what a named
 scenario asks for, `RETURN_HOME_EXPECTED`, `RETURN_HOME_ALLOWED` and
 `VEHICLE_INTACT_EXPECTED` ([testing.md](testing.md)). None of them reaches
-a production node: the light, its failures and the zones live in the
+a production node: the light and its failures live in the
 simulator, and the vehicle reads its frames and its battery's charge.
 The location has no light of its own in any flight: the lit world is no
 longer selectable (the owner's rule of 2026-10-03, specification A10).
