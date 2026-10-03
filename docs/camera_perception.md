@@ -85,8 +85,9 @@ the correction is recorded beside it.
   what it looks at unobservable: the frustum from 1.5 m to the confident
   depth, rays 30 px apart, enters the obstacle memory as occupied evidence
   without free space, confirmed once a second while the dark lasts and
-  decaying like any occupancy the vehicle stops confirming (30 s per
-  confirmation). The vehicle's own cell and the way it came (within 0.7 m of
+  cleared when the vehicle sees through it again (item 17 was accepted with
+  the memory's decay by time, 30 s per confirmation, which is switched off
+  since 2026-10-03, specification K10). The vehicle's own cell and the way it came (within 0.7 m of
   its positions over the last 60 m) are never in it, which is the exit
   guarantee. A motion the pair cannot see holds the vehicle where it stood
   when it went blind, following no route, until it sees again; back along

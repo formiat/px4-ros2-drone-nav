@@ -390,8 +390,10 @@ simulator, and the vehicle reads its frames and its battery's charge.
 The location has no light of its own in any flight: the lit world is no
 longer selectable (the owner's rule of 2026-10-03, specification A10).
 The memory's decay is a parameter of `obstacle_memory_3d_node`,
-`decay_seconds_per_confirmation` (30 in `urban_mvp.yaml`; 0 keeps every
-occupied voxel for the flight, specification K10).
+`decay_seconds_per_confirmation`: 0 in `urban_mvp.yaml` since 2026-10-03,
+which keeps every occupied voxel for the flight; the decay by time stays in
+the code switched off and is not to be used again (specification K10,
+roadmap item 21).
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.

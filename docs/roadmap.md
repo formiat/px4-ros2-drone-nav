@@ -926,8 +926,8 @@ within one second over the flight.
 
 **Type:** perception and safety, general; not tied to a sensor.
 
-**Hard prerequisites:** item 17 stage 8, for the memory's decay and the
-confidence of an occupancy; items 17 and 18 are not otherwise needed.
+**Hard prerequisites:** item 17 stage 8, for the confidence of an occupancy
+(its count of confirmations); items 17 and 18 are not otherwise needed.
 
 **Validation environment:** Urban Circuit Practice 01 with actuated doors, a
 materialization variant of the location as item 17's dark world and item
@@ -950,6 +950,29 @@ sometimes, slowly. What the vehicle must do with it:
   is open: the vehicle sees the opening and flies through it, and the memory
   holds the opening, not the wall it recorded before. That comes from
   observation, never from rewriting the memory from scratch.
+
+**The memory keeps what is static and forgets only what is transient.**
+Decided by the project owner on 2026-10-03, and it replaces item 17 stage
+8's decay, which is switched off since that day and not to be used again
+(specification K10). That decay forgot by age: a wall the vehicle stopped
+looking at went the way of a trail, ten minutes after twenty confirmations,
+and item 19's proof never closed over a memory that kept losing its walls.
+Age says nothing about what a thing is. This item gives the memory two
+classes instead:
+
+- **Static** is what the memory holds by default, for the whole flight. Only
+  a free ray through a voxel clears it, as now.
+- **Transient** is what behaves as transient, by measurement: an occupancy
+  that appeared where free space had already been observed, one that
+  collected few confirmations and was gone at the next look, a body that
+  moved between two scans, and the darkness or smoke a blind frame marks
+  (item 17's K14, item 18), which is a statement about the moment and not
+  about the place. Only the transient class fades, and by re-observation
+  first.
+- **Until this lands**, with the decay off, a transient that the vehicle
+  does not look at again stays a wall, and the darkness K14 marks fades only
+  by being seen through. That is the state the acceptance of this item
+  starts from and measures.
 
 **Why this is not items 17 and 18.** Darkness and smoke are unobservability:
 the sensor looks and cannot see, and item 17 stage 8 writes that as a
