@@ -4,9 +4,12 @@
     <include merge="true">
       <uri>x500</uri>
     </include>
+    <!-- Poses here are in the model's frame, whose origin is at the feet: the
+         x500's base_link, the body the autopilot localizes, stands 0.24 m above
+         it (x500_base's own pose). The lidar is mounted 0.26 m above base_link. -->
     <include merge="true">
       <uri>model://lidar_3d_v1</uri>
-      <pose>0.12 0 0.26 0 0 0</pose>
+      <pose>0.12 0 0.50 0 0 0</pose>
     </include>
     <joint name="LidarJoint" type="fixed">
       <parent>base_link</parent>

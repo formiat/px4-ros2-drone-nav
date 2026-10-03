@@ -12,6 +12,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_3d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_3d_v1/model.sdf"
+X500_BASE_SDF = (
+    REPO_ROOT / "external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/model.sdf"
+)
 LIDAR_3D_SDF = LIDAR_SDF
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 
@@ -164,8 +167,22 @@ class DroneModelSdfContractTest(unittest.TestCase):
         include_pose = [float(value) for value in include.findtext("pose", "").split()]
         sensor_pose = [float(value) for value in sensor.findtext("pose", "").split()]
 
-        self.assertEqual([0.12, 0.0, 0.26], include_pose[:3])
+        # The include's pose is in the model's frame, whose origin is at the
+        # feet; the extrinsic is stated against base_link, 0.24 m above it
+        # (x500_base's own pose). Mounted by the model frame's numbers the
+        # sensor sat 0.24 m lower than the extrinsic says and the obstacle
+        # memory stood a voxel above the world (r979).
+        base_link_height_m = 0.24
+        if X500_BASE_SDF.exists():
+            self.assertEqual(
+                base_link_height_m,
+                float(parse_sdf(X500_BASE_SDF).find("model").findtext("pose", "").split()[2]),
+            )
+        self.assertEqual([0.12, 0.0, 0.50], include_pose[:3])
         self.assertEqual([0.0, 0.0, 0.055], sensor_pose[:3])
+        self.assertAlmostEqual(
+            0.315, include_pose[2] + sensor_pose[2] - base_link_height_m
+        )
         # The obstacle memory and the lidar-inertial odometry project the scan
         # with the one mounting.
         config_text = NAV_CONFIG.read_text(encoding="utf-8")

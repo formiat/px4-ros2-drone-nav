@@ -53,6 +53,14 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             joint = model.find("joint[@name='CameraProfileJoint']")
             self.assertEqual("base_link", joint.findtext("parent"))
             self.assertEqual("stereo_tof_link", joint.findtext("child"))
+            # The set's poses are stated against base_link, which stands
+            # 0.24 m above the model's origin.
+            include = next(
+                element
+                for element in model.findall("include")
+                if element.findtext("uri") == "model://stereo_tof_v1"
+            )
+            self.assertEqual("0 0 0.24 0 0 0", include.findtext("pose"))
 
     def test_camera_navigation_leaves_the_lidar_out_of_the_vehicle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

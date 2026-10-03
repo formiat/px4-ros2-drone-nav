@@ -47,10 +47,11 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # transform instead of the legacy axis-exchanging rotation.
         self.assertFalse(scenario["gazebo_axes_swapped"])
         # Point A rests on the staging-area floor of the base-station room, six
-        # metres south of the tent, without any synthetic launch platform.
+        # metres south of the tent, without any synthetic launch platform: the
+        # floor at 7.51 m, the body (base_link) the legs' 0.23 m above it.
         self.assertEqual(
             scenario["map_start_m"],
-            (0.749319792, 21.246976852, 7.8),
+            (0.749319792, 21.246976852, 7.74),
         )
         self.assertEqual(
             scenario["mission_goal_sequence_m"],

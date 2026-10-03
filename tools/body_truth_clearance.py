@@ -1,6 +1,6 @@
 """body_truth_clearance.py RUN...: the true body's clearance to the true location over a flight. The body is the
 stack's own model (cylinder radius 0.55 m, 0.23 m below and 0.35 m above its centre, upright), its centre the Gazebo
-model origin plus 0.30 m (the navigation's height at rest on the pad: 7.80 against 7.50); the location is the 0.25 m
+model origin plus 0.24 m (base_link over the model's origin at its feet); the location is the 0.25 m
 truth voxelization (log/tools/truth25). Reported after the climb off the pad: the least clearance, where and when, and
 the seconds spent under 0.10 and 0.20 m. Evaluation only."""
 import csv, sys
@@ -9,7 +9,7 @@ import numpy as np
 sys.path.insert(0, 'scripts')
 from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D
 OCC = Occupancy3D.load(Path('log/tools/truth25/urban_r025.occupancy3d'))
-B = OCC.bounds; RES = B.resolution_m; R, LO, UP, CENTRE = 0.55, 0.23, 0.35, 0.30
+B = OCC.bounds; RES = B.resolution_m; R, LO, UP, CENTRE = 0.55, 0.23, 0.35, 0.24
 def occupied(i, j, k):
     words = OCC.chunks.get((i // CHUNK_SIZE, j // CHUNK_SIZE, k // CHUNK_SIZE))
     if words is None:

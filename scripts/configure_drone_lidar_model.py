@@ -12,6 +12,12 @@ NAVIGATION_LIDAR_MODEL = "lidar_3d_v1"
 CAMERA_PROFILE_MODELS = {
     "stereo_tof": ("stereo_tof_v1", "stereo_tof_link"),
 }
+# The height of the x500's base_link, the body the autopilot localizes, over
+# the vehicle model's origin (x500_base's own pose): a sensor set whose poses
+# are stated against the body is included this much above the origin. Without
+# it every sensor sat 0.24 m lower than the stack's extrinsics say, and the
+# obstacle memory stood a voxel above the world (r979).
+BASE_LINK_HEIGHT_M = 0.24
 
 
 def configure_model(
@@ -52,6 +58,7 @@ def configure_model(
         camera_model, camera_link = CAMERA_PROFILE_MODELS[camera_profile]
         include = ET.SubElement(model, "include", {"merge": "true"})
         ET.SubElement(include, "uri").text = f"model://{camera_model}"
+        ET.SubElement(include, "pose").text = f"0 0 {BASE_LINK_HEIGHT_M} 0 0 0"
         joint = ET.SubElement(
             model, "joint", {"name": "CameraProfileJoint", "type": "fixed"}
         )
