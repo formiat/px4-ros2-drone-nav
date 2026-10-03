@@ -162,6 +162,40 @@ What the remaining holds cost, and where, is recorded per flight in
 `log/runs/<run-id>/ros_drone_nav.log`; the next step towards 1 percent is
 the recovery after a physical block, 0.3 to 1.2 s without a route each time.
 
+**The flights of roadmap item 17.** The ordinary flight is dark: the
+location without its ambient light, the carried light under the moderate
+flicker and one zone that fails it off the way to B (specification A10); a
+`GOAL_UNREACHABLE` fails it as before, whatever its trigger. The named
+scenarios say in the manifest what else may end them:
+
+- `RETURN_HOME_EXPECTED=true` (the severe failure, the zone over B, the low
+  battery): the return is the outcome asked for, by one of the triggers
+  `unreliable_light`, `battery` or `topological`, with the acknowledgement at
+  the start and the true position inside the capture radius there;
+- `RETURN_HOME_ALLOWED=true` (the long flight to B and back under the
+  flicker and the stream's failures): the flight passes through B or with B
+  given up, and ends at the start in truth either way;
+- `VEHICLE_INTACT_EXPECTED=true` (the light lost): the one question is
+  whether the vehicle is whole, flying or landed, so the goal in truth, the
+  mean speed and the autopilot's failsafe messages are notes; a crash still
+  fails it;
+- a goal injected as unreachable on the lidar must be given up by the proof
+  (`topological`); on the stereo set any trigger counts, and it is the
+  battery's.
+
+The crash judge (`collision_crash_node`) knows one contact that is not a
+crash: a landing, the body on a surface whose normals are within 25 degrees
+of the vertical, level, under 1 m/s and under 0.5 m/s across it, and the
+contact kept without a half-second gap afterwards (specification A9). Every
+other contact destroys the vehicle, a rotor on a wall at 0.1 m/s included.
+The light's failures, its battery, the zones and the camera stream's
+failures are evaluation components (`scripts/carried_light.py`,
+`scripts/camera_stream_faults.py`): each writes its schedule and what it
+did beside the manifest, a contract test holds that no production source
+reads them, and the vehicle is told its battery's charge and nothing else. The
+failures' schedules count from the moment the vehicle is airborne, a metre
+over where it stood (specification F14).
+
 ### Controller dynamics
 
 Every headless flight records the offboard setpoints against the autopilot's

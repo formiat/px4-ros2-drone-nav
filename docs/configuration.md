@@ -137,11 +137,11 @@ the same minimum progress speed.
 `guaranteed_lidar_detection_range_m` and
 `sensor_braking_physical_margin_m` define the physical sensor side of the
 speed contract. The guaranteed range must not exceed either the modeled 3D
-lidar range or the range admitted by obstacle memory. It is a configured
-constant: nothing lowers it when the sensor itself returns nothing, and the
-reduction above applies to an unfaced motion and reads memory rather than the
-sensor. Roadmap item 17 stage 0 makes it a measurement of the sensor's recent
-frames ([`technical_debt.md`](technical_debt.md)). The organized scan spans
+lidar range or the range admitted by obstacle memory. It is the most the
+contract grants: since roadmap item 17 the range and the evidence age are read
+from the sensor's latest frame, the range falling with the share of the frame
+that observes and with its light headroom
+([`camera_perception.md`](camera_perception.md), specification K9, K15). The organized scan spans
 the complete vertical `[-90 deg, +90 deg]` interval so pure climb and descent
 do not enter a polar blind cone, and its row and column spacing is bound to the
 guaranteed range: at that range adjacent rows land no farther apart than the
@@ -321,7 +321,13 @@ Speed policy and liveness:
 - bounded death force-disarm retry period;
 - arm/offboard resend policy;
 - map origin;
+- `px4_visual_odometry_topic`: the external odometry the autopilot is given,
+  read for its declared dead reckoning; after 3 s of it the node descends the
+  vehicle level at 0.5 m/s (specification K19);
 - RViz drone marker and follow TF.
+
+The yaw setpoint is none: the node hands the autopilot the yaw rate the
+horizon plans 0.26 s ahead (specification K17).
 
 ## Other Nodes
 
@@ -336,6 +342,14 @@ home of roadmap item 19: `unreachable_goal_proof_voxel_budget` bounds the
 flood of the memory that proves a goal unreachable, beyond which the proof
 stays undecided, and `minimum_target_z_m` and `maximum_target_z_m`, the
 planner's envelope, bound it in height (specification K16).
+It gives the goal up as well for the carried light's battery and for a light
+judged unreliable from the frames (specification K11, K12; the constants are
+in `carried_light_judgment.hpp`), and on the way home it hands the planner
+the trail it flew, point by point (`return_trail.hpp`, K20).
+`visual_inertial_odometry_node` fuses the rotors' drag (`rotor_drag_1ps`,
+0.106) and refuses a frame under `minimum_frame_features` (20) as aid
+([`localization.md`](localization.md), K21, K13); both are constants of the
+estimator's configuration structure.
 
 ## Environment Overrides
 
@@ -356,6 +370,20 @@ sections stay the lidar's). The final-revalidation evidence parameters are
 placed out of reach on purpose, so that the check counts a return home as the
 outcome asked for, and `TRUTH_OCCUPANCY_3D_PATH` names the truth grid the check
 floods to confirm it ([scenarios.md](scenarios.md)).
+The flights of roadmap item 17 add their own, all recorded in the manifest:
+`WORLD_ILLUMINATION=dark|lit` (dark is the default; lit is the comparison
+scenario), `BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte
+panels in the dark world), `LIGHT_FAULTS=none|moderate|severe|lost` with
+`LIGHT_FAULT_SEED` (the carried light's injected failures; moderate is the
+default), `LIGHT_BATTERY_S` (seconds of light at launch, 3600; 720 in the return-home scenario, 240 in the low-battery one),
+`ANOMALY_ZONES="x,y,z,core,falloff;..."` (zones that fail the light; one
+off the way to B is the default), `STREAM_FAULTS=none|moderate` with
+`STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
+then reads), and the three that tell the mission check what a named
+scenario asks for, `RETURN_HOME_EXPECTED`, `RETURN_HOME_ALLOWED` and
+`VEHICLE_INTACT_EXPECTED` ([testing.md](testing.md)). None of them reaches
+a production node: the light, its failures and the zones live in the
+simulator, and the vehicle reads its frames and its battery's charge.
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.

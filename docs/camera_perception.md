@@ -62,9 +62,44 @@ the correction is recorded beside it.
   while the vehicle rests, in a position hold as well; a motion the vehicle
   does not face is admitted what memory has observed along it, the body's
   radius wide, and nothing where it has observed no more than the margin.
-  The 6.4 m is a configured constant and not a reading of the pair: a frame
-  that returns nothing is flown at the speed a full one admits, which roadmap
-  item 17 stage 0 repairs ([`technical_debt.md`](technical_debt.md)).
+  Since roadmap item 17 the 6.4 m is the most a frame may stand behind, not
+  a constant (below).
+- **The contract reads the frame** (roadmap item 17 stage 0, specification
+  K9 and K15; `mppi_speed_policy.cpp`). The forward range is no longer a
+  constant: a frame that observes 0.3 of the pixels it samples, or more,
+  stands behind the configured 6.4 m, one that observes 0.02 is blind, and
+  the range falls linearly between, down to a millimetre over the 2.0 m
+  margin; the evidence age charged is the frame's measured age (0.16 to
+  0.47 s, 0.22 s at the median, r747) instead of 600 ms. The share a frame
+  observes is every return over the pair's samples, and a match within the
+  image's noise is none: lit frames observe 0.30 to 0.48, and dark ones by
+  the carried light the full range (r770 to r781). The share alone gives no
+  warning of a fading light, because the camera's gain and the matcher hold
+  the depth until the light is under a hundredth of itself (r800 flew at
+  2.4 m/s into a zone that had put its light out), so the contract reads the
+  smaller of that share and the frame's **light headroom**: the 95th
+  percentile of the frame's brightness over the 200 the gain aims it at.
+- **Darkness is observed, not unknown** (stages 7 and 8, specification F6,
+  K12 and K14). A frame the contract reads as blind (a share under 0.35,
+  where the range is within a quarter metre of the margin) for 2.5 s marks
+  what it looks at unobservable: the frustum from 1.5 m to the confident
+  depth, rays 30 px apart, enters the obstacle memory as occupied evidence
+  without free space, confirmed once a second while the dark lasts and
+  decaying like any occupancy the vehicle stops confirming (30 s per
+  confirmation). The vehicle's own cell and the way it came (within 0.7 m of
+  its positions over the last 60 m) are never in it, which is the exit
+  guarantee. A motion the pair cannot see holds the vehicle where it stood
+  when it went blind, following no route, until it sees again; back along
+  the flown path the memory's observed range answers instead of the frame.
+  Read by the mission monitor, the same blind share is an outage of the
+  carried light, on the frame's range alone (the memory raises the
+  contract's back along the flown path): one of 3.5 s, or 60 percent of the
+  last two minutes, judges the light unreliable and sends the vehicle home, because a vehicle at a
+  zone's dim edge cannot tell a place that fails its light from a light
+  that fails. What the flights found on the way is in the roadmap's entry:
+  a creep at zero reference into the dark (r807), the memory's range flown
+  into it (r808), a soft stop ending inside it (r809), a hold that drifted
+  with its route (r811, r813), darkness read by the light alone (r815).
 - **What the flights found.** r498: a goal capture broken by one lost
   feedback sample could not be taken again over the resident hold 0.03 m
   away. r500, the one crash of the stage: the vehicle climbed a shaft facing

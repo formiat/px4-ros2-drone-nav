@@ -395,683 +395,6 @@ flown at whatever real-time factor the host gives, with its separation,
 channel and frame figures counted and its timing figures recorded as not
 comparable.
 
-## 17. Flight In Degraded Visual Conditions
-
-**Type:** dependent realism stage, with one repair that does not wait for it.
-
-**Hard prerequisites:** item 14 for the sensor set; stage 0 below has none.
-The prohibition of darkness (below) is built here, in stage 8, right after
-stage 0; item 18 applies it to smoke.
-
-**Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission.
-
-The camera stack flies on light it never measures, over surfaces whose texture
-it has never varied. Those are two different failures and the item carries
-both: too few photons, where the matcher has signal it cannot trust, and too
-little texture, where it has all the signal it wants and nothing to match.
-Three facts established on 2026-09-20 set the item up:
-
-- **The location has no lamp in it.** The imported
-  `urban_circuit_practice_01.sdf` carries no `<light>` element at all; every
-  photon of every camera flight comes from
-  `<scene><ambient>0.1 0.1 0.1</ambient>`, a uniform fill that nothing shadows
-  and no failure can touch. "Turning the light off" here is one number set to
-  zero.
-- **The pair carries no noise model.** The cameras of
-  `drone_city_nav/models/stereo_tof_v1/model.sdf` have no `<noise>` element, so
-  an image is a noiseless render scaled by the ambient. Dividing every pixel by
-  the same number leaves the local contrast the matcher works on intact, so
-  dimming alone does not degrade depth gradually: it holds, and then collapses
-  when 8-bit quantization removes the texture. A ramp without a noise model
-  tests quantization, not low light.
-
-- **One location's surfaces are the only ones ever rendered.** The confident
-  depth of 6.4 m was measured on Urban Circuit Practice 01, whose materials
-  carry the photographed grain of a real industrial interior. Camera flights
-  render `world_gui.sdf` for that reason: the collision-only `world_sensor.sdf`
-  carries no textures and a camera sees nothing on it
-  ([`gazebo_simulation.md`](gazebo_simulation.md)). The project has flown the
-  two extremes and nothing in between.
-
-So the vehicle's guaranteed 6.4 m is an assumption about the world, and the
-world is incapable of violating it. A real building loses its light, and an
-airframe that carries its own loses that instead: a brownout, a driver, a hot
-emitter, a splashed lens. This item makes the illumination something that can
-fail and makes the vehicle answer for it.
-
-The navigation invariants hold throughout, in the form the project owner
-restated on 2026-09-23 (stage 8 carries the full text): space the
-sensor has not looked at is free at no penalty, the only prohibitions are
-measurements — a surface, or space observed unobservable — and nothing keyed
-on the vehicle's own history is a rule. Vertical motion stays free. One rule
-was proposed and rejected on 2026-09-20 for exactly that reason: "stand no
-closer to an obstacle than where the vehicle stood when the light went out"
-is keyed on history, not on a measurement, and in the dark it is worse than
-anywhere else, because a vehicle drifting onto a surface would be forbidden
-to leave it. Darkness itself, observed by a sensor that looked and saw
-nothing, is a measured prohibition under the restated invariant, and telling
-it from unknown space is this item's to teach (below). The behaviour that rule
-asked for comes out of stage 4 with no new rule at all: a ring of
-time-of-flight sensors is another sensor with its own range and field inside
-the same braking contract, which makes the speed towards a surface 1.2 m away
-small and never zero.
-
-**Darkness is not unknown.** Stated by the project owner on 2026-09-27, and
-the two must never be confused. The vehicle cannot see into either, for
-opposite reasons:
-
-- **Unknown**, in the sense of unexplored: "I have not come close enough; my
-  sensors do not reach there yet." Free at no penalty, and explored boldly when the route leads there,
-  as the invariants have always said.
-- **Darkness**: "I am close enough that my sensors should see there, and they
-  still see nothing; something is wrong." The sensor looked, within the range
-  it guarantees when healthy, and measured nothing. That is not ignorance but
-  knowledge, and to the vehicle it is an obstacle like a physical one: it
-  does not fly into it.
-
-The test is stage 8's observed unobservability: in a
-direction the sensor faces, within the range it guarantees when healthy, a
-measured range below the physical margin. This item teaches the vehicle to
-apply it to its own light: dark space is written into the memory as closed,
-the planner routes around it as around a wall, it decays when not
-re-observed and lifts when the light shows it, and the exit guarantee holds —
-the vehicle's own position and its observed path are never closed, so a
-vehicle that finds itself in the dark retreats along the way it came. This
-item is not complete without the distinction, which stage 8 builds.
-
-### Stage 0: Both Inputs Of The Contract Become Measurements
-
-Independent of light, and a hole in the first requirement today.
-`SensorBrakingContract3D::guaranteed_detection_range_m` is a configured
-constant (6.4 m on the stereo profile, `launch/sensor_profile.py`), and nothing
-lowers it when the pair returns nothing. The only reduction in the code is
-`min(guaranteed_detection_range_m, observed_range_m)` in
-`sensor_braking_contract_3d.cpp`, and it applies to a motion the vehicle does
-not face, where the range comes from what memory has already observed. A faced
-motion is flown at the speed 6.4 m admits whether the last frame carried 74 000
-returns or none. The returns already vary by a factor of five inside one lit
-flight (14 172 to 74 099 points per frame, r579 and r583) and the contract
-never learns of it.
-
-None of this is a property of the cameras. The lidar profile charges its own
-constant, 14 m (`guaranteed_lidar_detection_range_m` in `urban_mvp.yaml`),
-and a lidar in smoke or dust loses its far returns exactly as a pair does in
-the dark; the repair lands on both profiles and is accepted on both.
-
-The same is true of the other input, and it is the cheaper of the two. The
-inequality charges `maximum_evidence_age_s` as a fixed term of the latency
-(`sensor_braking_contract_3d.cpp`), fed by `latest_sensor_obstacle_maximum_age_ms`,
-600 ms in `urban_mvp.yaml`. The speed law never reads how old the newest
-observation actually is. The stack already computes it:
-`latestSensorEvidenceFreshness` in `production_mppi_node_execution.cpp` hands
-the real age and a freshness flag to the validator, which drops a stale scan
-from the points it checks the body against. So the question "will I hit what I
-can see" is answered on measured evidence and the question "how fast may I fly"
-on a constant, and the debt register already records the measured age reaching
-624 to 948 ms against the 600 charged.
-
-The repair, for both: the contract's forward range becomes what the depth of
-the recent frames actually stood behind, and its evidence age becomes the age
-the freshness computation already produces. The admitted speed then follows the
-sensor down when the pair goes blind and follows the clock up when the returns
-stop arriving. The range is judged for the frame as a whole and not per ray,
-because a bare corridor legitimately returns little and a per-ray rule would
-crawl the vehicle through every empty room; the age needs no new computation at
-all, only that the speed law stop charging a constant where a measurement
-exists. What it costs: the contract's two central inputs start moving, so both
-acceptance series are re-flown and the speed figures of items 14 and 16 are
-re-measured against them. Carried in
-[`technical_debt.md`](technical_debt.md) until it lands.
-
-This stage is also what answers a stalled stream rather than a blinded one, and
-the two halves of the stack answer it very differently today. The estimator is
-built for it: an estimate goes unhealthy once `maximum_unaided_s` (1.0 s) has
-passed since the last visual update, the node stops publishing, the autopilot
-ends its external-vision fusion 200 ms later, the pose ages out and the
-controller revokes the execution authority. Under that timeout the node
-deliberately carries the last state forward through the IMU every 40 ms, so
-that one late frame does not restart the fusion (item 16). The perception has
-no such rule: the returns ride the frame pair, so a stalled stream stops them
-all, including the time-of-flight cones folded into the same message
-(`stereo_depth_node.cpp`), and the speed law goes on admitting what 6.4 m and
-600 ms admit. The two timeouts are therefore asymmetric, and between them lies
-a window nobody has flown on purpose: from 0.6 s, where the charged age is
-already exceeded, to 1.0 s, where the pose is pure dead reckoning and still
-declared healthy. At 2.45 m/s that window is 2.4 m of travel against a 2.0 m
-margin, which is why it eats the margin without crossing it.
-
-### Stage 1: A Dark World And A Camera That Has Noise
-
-`<noise type="gaussian">` on both cameras, so that the signal falls with the
-light while the noise does not and the matcher degrades with the ratio, which
-is what a real imager does at low light: read noise is what dominates there.
-The noise is stated with its source, and its cost is stated with it — it
-lowers the confident depth item 14 stage 1 measured, so 6.4 m is re-measured by
-the same procedure and the speed baseline moves. Decided by the project owner
-on 2026-09-25: the noise and the lamp of stage 3 land together in this stage,
-so the baseline moves once and not twice.
-
-The world's `ambient` becomes a parameter of the scenario and a permanently
-dark variant of the urban location (`ambient 0`) becomes one of its worlds. The
-resource materialization already rewrites the SDFs it installs
-(`configure_lidar_visibility.py`, `configure_drone_lidar_model.py`), which is
-where this belongs: no production code learns that a world can be dark.
-
-Transitions are ramps and not switches, as the project owner asked on
-2026-09-20: the illumination moves over seconds, so that the depth spends time
-in the range where it is partly right. That range is the interesting one and a
-hard switch skips it.
-
-### Stage 2: Surfaces The Matcher Cannot Match
-
-Darkness and texture fail differently, and only one of them is about photons. A
-blank painted wall, poured concrete, a large uniform panel: fully lit, all the
-signal an imager wants, and nothing to match between the two images.
-Semi-global matching answers with nothing, or with an interpolated surface that
-is not there. Depth that is absent is survivable once stage 0 lands, because
-the contract sees the range collapse; depth that is confidently wrong is the
-dangerous case and it is the one this stage has to bound.
-
-A materialization variant renders the same geometry on progressively poorer
-surfaces: the location's own materials, then uniform matte at a stated albedo,
-then a weak procedural grain between the two. Nothing reaches production code,
-as in stage 1. Measured on each: depth coverage, depth error against
-evaluation-only truth, the rate of matches the filter has to gate, and the
-range the depth still stands behind. The result is a curve of confident range
-against surface texture, and stage 0's measured range has to track it at run
-time: if a bare wall leaves a metre of confident depth, the contract must say
-one metre and the vehicle must fly what one metre admits.
-
-Decided by the project owner on 2026-09-25: the measurement comes first, one
-flight against a panel the matcher cannot match, and whether a matched
-nothing at short range is read as observed unobservability (item 18's
-sense) is decided on that number.
-
-The remedies are compared in the same place and none is assumed: a wider
-matching window, a different matcher, and the projected pattern of active
-stereo, which makes the vehicle carry its own texture exactly as stage 3 makes
-it carry its own light. That one device answers both failures of this item at
-once, which is the argument for its price in the cost section below.
-
-### Stage 3: Light On The Vehicle
-
-A dark location turns the question into a hardware one: an airframe that flies
-on video underground carries its own light. In the simulator that is a
-`<light type="spot">` inside the vehicle model's link, which gz-sim attaches to
-the link and the sensor cameras see. It has to be a flood over the pair's
-field and not a beam: stereo matches the whole overlap, and a bright circle in
-the middle of the frame buys depth in the middle of the frame. The DARPA SubT
-teams carried panels of high-power LEDs behind diffusers, tens of watts.
-
-The trade this stage measures instead of assuming: a carried light guarantees a
-shorter range than an ambient fill does, because illuminance falls with the
-square of the distance and a 120 degree field has to be flooded rather than
-spotted. The confident depth probably lands at 3 to 4 m instead of 6.4, and the
-admitted speed with it. What it buys is that the guarantee becomes a property
-of the vehicle instead of a property of the location, which is what the braking
-contract has always claimed it was.
-
-Five options are compared before one is built, on the confident range each
-gives, its price and its average electrical power — energy is a criterion
-beside the price, because a continuous flood over the pair's field costs tens
-of watts where a cheap 3D lidar draws about seven. Extended on 2026-09-27 at
-the project owner's request; the options, their orders of magnitude and the
-reasons are in [`illumination_options.md`](illumination_options.md):
-
-1. a white LED flood, continuous, the reference;
-2. a **strobed near-infrared flood**, flashing only while the global shutter
-   is open (2 to 3 percent of the time at 15 frames a second, so 30 to 50
-   times less average power for the same peak), seen by the pair with its
-   infrared cut filters removed and a narrow band-pass filter against
-   ambient light;
-3. **active stereo** of the RealSense class, a dot projector of about a watt
-   that paints its own texture and so answers too few photons and too
-   little texture at once — whether gz-sim can render the pattern for the
-   sensor cameras is checked first;
-4. a **time-of-flight camera** (flash ToF, about 224 x 172), dense depth in
-   total darkness for a fraction of a watt to about two, over 4 to 6 m;
-5. a laser line, sparse depth for very little energy, as a supplement.
-
-Over all of them, light only where and when it is needed: the cone of the
-motion rather than the whole field, and the power set by the range the
-flight needs, which the braking contract already ties to its speed. The
-leading candidate is option 2 with option 3 where the scene is blank, and
-option 4 the alternative source of near range; the measurement decides.
-
-### Stage 4: A Time-Of-Flight Ring As A Bumper
-
-Four more time-of-flight sensors on the horizontal, beside the two of item 14.
-They are the one part of the sensor set that does not care about light: the
-simulated sensor is a `gpu_lidar`, which raycasts, and the real VL53L8 class
-emits its own pulse, reaching 4 m in the dark against the 2.8 m on a bright
-target in 5 000 lux that the model takes
-([`camera_perception.md`](camera_perception.md)). Its range grows when the
-light goes.
-
-The scope is the point of the stage. This is a proximity bumper, not a cheap
-lidar: four metres and 45 degrees per sensor are enough to hold a position
-without touching a surface, to leave one, and to land, and they are not enough
-to fly on. They enter the braking contract as sensors with their own range and
-field, exactly as the two vertical ones already do, and that is the whole
-integration. No new rule, no latch, no mode. The register's lateral
-deviations of the horizon into unknown space (C2) are measured here: with
-the ring, a deviation beside the vehicle enters space a sensor has looked at
-to 4 m, and what the ring leaves unmeasured is decided on that number.
-
-### Stage 5: The Light Fails, And What The Vehicle Does
-
-Deterministic injection of a failure of the source the perception depends on,
-seeded and written into the flight's manifest like every other scenario
-parameter, expressible at the carried light and at the world's illumination
-alike. The project owner's range, 2026-09-20: an outage arriving every 1 s to
-1 min and lasting 1 s to 1 min. The injector is an evaluation component; no
-fault injection enters production code, as in item 15 stage 3.
-
-**The vehicle does not know when or how its light fails.** Stated by the
-project owner on 2026-09-24 as a rule of the stage. A failing light is not a
-mode of operation the vehicle is told about: no signal from the emitter, its
-driver or the injector reaches the navigation, the estimator, the memory or
-the braking contract, and nothing in the stack reads the light's state,
-schedule or seed. The vehicle sees exactly one thing, the light that comes
-back from the surfaces in front of its cameras, and everything it concludes
-about the illumination it concludes from the frames — the brightness and
-contrast of stage 0's failure measurement, the range its depth stands behind,
-the returns that are or are not there. The injector of this stage is an
-evaluation component with a contract test that holds it there: it moves the
-light and writes the manifest, and no production node subscribes to it. A
-stack that handled a flicker because it was told the flicker was coming
-would have proved nothing.
-
-The carried light fails the way stage 1 dims the world: over a ramp of seconds
-in both directions, never as a switch. A real emitter goes that way — a
-battery browning out, a driver overheating, a lens fouling — and the ramp is
-what puts the depth through the range where it is partly right, which the
-short outages of a hard switch would skip entirely. The ramp's length is a
-parameter of the injection beside the interval and the duration, recorded in
-the manifest with them, and the shortest ramp the parameters allow is one the
-flights actually fly, so that the switch-like case is measured rather than
-assumed away.
-
-The stream is injected as a second and separate fault, because it is a
-different failure that reaches different code. A dark frame arrives on time and
-is useless by its content: the matcher returns nothing and the range collapses,
-while the evidence stays as fresh as the clock says. A dropped or delayed frame
-does not arrive at all: the range input has nothing new to say and the age is
-what moves, together with the estimator's unaided timeout, since one pair feeds
-both consumers. Frames are dropped and delayed over the range that brackets
-stage 0's two timeouts, from a single frame to several seconds, and the flight
-records which rung of the ladder below the vehicle reached and when.
-
-The vehicle's answer is a ladder whose first rung is free:
-
-1. **Stop.** Stage 0 does this by itself. The measured range collapses, the
-   contract admits almost no speed, and the vehicle brakes. No new mechanism,
-   only an honest input.
-2. **Hold on what is still active.** The time-of-flight ring, the downward
-   sensor for height, the IMU for attitude. The position drifts, because the
-   filter has no images, and the ring bounds how far it drifts into a surface.
-3. **Retreat along the flown path, as far as a position source allows.**
-   The path just flown is in memory as observed and free, and a vehicle that
-   backs out to where it could see is better placed than one that lands where
-   it cannot. The map is not what limits this rung; the rung above is. Rung 2
-   has just said the filter has no images and the position drifts, and a
-   path cannot be flown without a position, so how far the retreat reaches
-   depends on what is left to localize on. Three cases: in smoke (item 18)
-   the gaze turns the pair toward the motion, so retreating turns it out of
-   the plume to where it came from, and the estimator may recover its
-   tracking there — the retreat is real; when the light returns during the
-   retreat, the same; in total darkness — the carried light gone in a world
-   with none — no heading brings features into view, the estimator has the
-   IMU alone, and dead reckoning is honest for metres, not tens of metres, so
-   the rung is "back off the surface by a few metres" and rung 4 follows.
-   Flying on the time-of-flight ring is excluded, as stage 4 says.
-
-   An open question of this stage, recorded and not decided: whether the
-   estimator should, after its 1.0 s of unaided flight, keep publishing a
-   pose by dead reckoning in a declared mode rather than fall silent, so that
-   a short retreat is a controlled motion instead of a drift. The price is
-   that the autopilot then fuses a pose known to be drifting, and something
-   must own the decision to stop trusting it; item 16 chose silence for that
-   reason, and the choice is reopened only with the measurement of how far a
-   retreat on the IMU actually stays inside the corridor it came down.
-4. **Return home or land.** A vehicle that retreated to where it can see
-   has a position source, and when it judges its light unreliable, or its
-   light's battery holds only the way back, it gives the goal up and flies
-   home (below): the ladder does not wait out a stated time to land in a
-   place it can see. A
-   vehicle with no position source, in total darkness, **descends and
-   lands** if the light has not returned within a stated time: a controlled
-   landing beats an uncontrolled drift, and a landed vehicle with a dead
-   emitter is recoverable where a crashed one is not.
-5. **Relocalize** when the light returns. The estimate has moved and the memory
-   was built under the old one. This is the unbounded-drift entry the debt
-   register carries as a deep rework; this item does not solve it, it states
-   where it bites.
-
-**A light judged unreliable sends the vehicle home.** Decided by the project
-owner on 2026-09-27: the vehicle does not gamble on a failing light. It
-judges whether its light works acceptably, from its frames alone as the rule
-above demands (nothing of the emitter reaches it): how much of a recent
-window its measured range stood at the lit figure, how long its outages
-lasted, and whether they grow. A light judged unreliable gives the goal up
-for the start through item 19's substitution while the vehicle can still see
-its way back, instead of waiting for the outage that loses it or crashes it.
-The judgment's thresholds are measured on the two regimes below, never
-assumed: the moderate flicker must never reach them, the severe failure
-must.
-
-**The light's battery, and no time limit.** Decided by the project owner on
-2026-09-27. The vehicle has no time budget: the time-bound return the mission
-monitor carries from item 19's implementation (the run's window,
-`mission_window_s`, less the estimated way back: the path flown over the
-mean speed, a margin of 2.0 and a 20 s reserve), which gave every return of
-that item's acceptance, was never meant as a limit of the vehicle and is
-removed when this stage is built. In its place the carried light runs on a
-battery whose charge the vehicle knows, as any airframe knows its batteries:
-that is the light's state of charge, not its failures, which stay unknown to
-the vehicle by the rule above. A mission ends at point B: no return is flown
-after it, so in an ordinary flight the charge has to last the way to B and
-nothing more. The vehicle weighs, as it flies, the charge left against the
-way still to go to B and against the way back home — both estimated from the
-memory and the flight so far, with a margin measured on the flights. When the
-charge will not reach B, it gives B up for the start through item 19's
-substitution, and it has to see that early enough: the decision is taken
-while the charge still covers the way home, since a vehicle that gives up too
-late is lost either way. The light flickers the whole time whatever
-its charge: the regimes below do not depend on the battery. The return on
-the battery exists only where the vehicle flies on its light: it switches
-itself on with the carried light of the camera profile and off on the lidar
-profile, which carries no light and has no such limit — a property of the
-sensor set, not a parameter anyone sets for a run.
-
-**The battery drains at one constant rate.** Decided by the project owner on
-2026-09-27, for the simplicity of the simulation: the charge falls uniformly
-and linearly with time, independent of everything, the flicker of the lamp
-included. Neither a realistic failure of the lamp nor a realistic discharge
-is modelled, and nothing is to be read into either: the flicker is an
-injected pattern and the charge a straight line.
-
-**A scenario with a low battery at launch.** Decided by the project owner on
-2026-09-27: the vehicle starts with too little charge to reach point B at
-all, sees that it will not reach B, gives B up for home while the charge
-still covers the way back, and arrives there. In the ordinary flights the
-charge at launch covers the way to B. It is a named scenario of its own, and
-it is flown as part of this item's acceptance.
-
-**Two regimes of the failing light.** Decided by the project owner on
-2026-09-27, applied once this stage lands:
-
-- **A moderate flicker is the norm of every flight.** Short and frequent
-  dimming of the carried light, its dark stretches short enough never to
-  reach the "unreliable" judgment, runs in every acceptance flight, so that
-  every series shows the vehicle flying normally with a moderately
-  flickering light. The mean flight speed of the project's second
-  requirement is measured under it from then on. That it may fall below the
-  figures of today is expected (the project owner, 2026-09-27): the speeds
-  several flights under the flicker show are adopted as the current ones.
-- **A severe failure is a scenario of its own.** Long and deep outages,
-  worsening until the vehicle judges its light unreliable and flies home: the
-  scenario exists to exercise that decision, and its outcome is the return,
-  not the goal.
-
-This is a failsafe against a crash and not a way to keep flying. Its honest
-scope is stop, hold, retreat, then home or land.
-
-Two kinds of flight besides the moderate flicker every acceptance flight
-carries, and neither is a speed measurement:
-
-- A **long** flight with the outages running, which must still reach its goal
-  in truth, or, when they reach the "unreliable" judgment, return to the start
-  in truth.
-- A **short** flight of about five minutes whose only question is whether the
-  vehicle survives.
-
-### Stage 6: A Position Reset Of The Autopilot
-
-Item 13's rule closed the navigation for the rest of the flight when the
-autopilot reset its position by more than 0.33 m, and with an odometry as the
-only position such a reset is possible (r561: a 0.4 m correction, the
-odometry rejected, 1.8 s on the IMU alone, a reset of 1.19 m, mission
-incomplete). Since 2026-09-27 (d71a5c6f, item 19's r699: the camera estimate
-ran a metre off over a featureless floor, came back in one step, and a reset
-of 1.02 m held the vehicle ten minutes six metres from its goal) a reset up
-to 3 m is flown on: the execution is revoked, the vehicle stops, and the
-search starts again from the new estimate, the memory off by the shift as it
-is off by the drift; a larger shift or a timestamp epoch reset still closes
-the navigation. The project owner decided on 2026-09-25 how the stack answers
-a reset in full: the autopilot reports every reset with its size (`delta_xy` and `delta_z`
-of `vehicle_local_position`, counted by `xy_reset_counter` and
-`z_reset_counter`), so the map anchor between the navigation frame and the
-autopilot's local frame shifts by that delta, the vehicle holds for the tick
-or two the shift takes, and the flight goes on with its memory and route
-intact. Landing was rejected as the policy: it keeps the first requirement
-and fails the second by construction. The stage is proved with an injected
-reset of the external-vision pose fed to the autopilot, the same machinery
-stage 5 uses to fail the light, on the camera profile, and it is accepted
-with both series.
-
-Result (2026-09-30): the re-anchor is not built. Every reset over 3 m the
-flights met (r720 26.6 m, r723 6.0 m, r792 5.2 m, r819 7.9 m, r820 35.6 m)
-was the autopilot fusing a camera estimate that came back wrong after it had
-been lost; carrying the map into that frame would have flown on in the wrong
-one, and the autopilot's reported delta is not the shift (r375). The lost
-estimator now stays silent for the flight (specification K8, K13), the
-autopilot lands, and no flight after the latch reset by more than 3 m (r821
-to r824). A reset up to 3 m is flown on (K1; r809, 1.63 m). The remainder is
-in the register, class (b).
-
-### Stage 7: A Zone That Fails The Light
-
-Proposed by the project owner on 2026-09-27 as a "magnetic anomaly": a place
-in the location where the carried light fails worse the closer the vehicle
-comes, its outages deepening and lengthening until, inside a radius, it goes
-out altogether. The zone is the injector's, an evaluation component like
-stage 5's: its position, radius and law are written into the manifest, and
-nothing of it reaches the vehicle, which sees only its frames darken as it
-approaches.
-
-Decided by the project owner on 2026-09-27, it is used twice:
-
-- **At least one zone is in every flight** once the stage lands, placed
-  anywhere it does not block the way to B. Every flight then shows the
-  vehicle's normal answer to darkness: from close enough to know it should
-  see, it sees nothing, writes the zone as closed and routes around it as
-  around a wall — while it goes on flying boldly into unknown space.
-- **A separate scenario lays the zone across the way to B**, to exercise
-  item 19: the goal becomes unreachable by a cause the vehicle measures, and
-  the vehicle flies home. With darkness a prohibition (above), the zone
-  closes the way as a wall would. Stated plainly so that the flight is not
-  read for more than it proves: item 19's topological proof closes only a
-  component bounded entirely by measurements and has never closed one in
-  this location (the unknown above the flight band and the grid's edge stay
-  on its boundary; stage 8 settles how it can), and
-  until it can, the return in this scenario comes from the "unreliable"
-  judgment of the light the vehicle meets at the zone's edge.
-
-### Stage 8: Darkness In The Memory: Observed Unobservability
-
-Built right after stage 0, whose measured range it reads; its number is its
-place in this text, not in the order of work. Moved here from item 18 on
-2026-09-27 at the project owner's request: darkness is this item's, and the
-vehicle has to tell it from unknown space here, not in the smoke item. Item
-18 applies what this stage builds to smoke and to the lidar.
-
-The memory has to forget as well as remember, or a dark place closed once is
-closed for the rest of the flight. The direction to measure first: a
-confirmation count per voxel, with decay toward unknown at a rate inversely
-proportional to it. A wall confirmed a thousand times does not
-decay within any flight; a trail confirmed three times decays in seconds; and
-neither needs a detector of moving objects or a new concept in the planner.
-The alternatives are measured beside it and none is assumed: a plain time
-decay, and an explicit transient classification of voxel clusters that appear
-and vanish.
-
-The interplay with the invariants is stated so it is not rediscovered later.
-Decay ends in `unknown`, and unknown is free. Under the braking contract that
-is safe: a faced motion re-observes the surface as it approaches, and an
-unfaced motion is admitted only what memory has observed along it, so more
-unknown means slower, never faster. What it costs is speed and route
-stability, and both are measured. Because the memory changes, both acceptance
-series are re-flown, as for stage 0. Carried in
-[`technical_debt.md`](technical_debt.md) until it lands.
-
-**The planner's budget is scheduled first.** Attached on 2026-09-26: the
-register's P5, the planner's stages unscheduled with the livelock of r596
-closed by the probe deadline alone, is this stage's first step, because a
-memory that decays and re-confirms multiplies the occupancy churn that
-triggered r596, and a planner that can spend its whole update on one stage
-under churn would turn every plume into a hold. A deadline on every stage,
-with route stall recovery as the lever to measure against, lands and is
-flown before the decay does; the falls of the braking laws that are the
-planner's (S4: a route replaced every 0.4 to 0.5 s on the camera profile, the
-no-route gaps of 0.1 to 0.2 s, 14 to 26 a flight) are measured with it.
-
-**A third kind of evidence.** The memory scores hits and misses and has no
-representation of a sensor that looked and failed: the visible pair
-integrates hits only, so a dark frame is silence, neither a hit nor a miss,
-and a lidar in smoke returns near scattered hits that become a phantom wall.
-Sensing failure is either invisible to the map or written into it as the
-wrong thing. This stage gives it its own evidence, **fail** — the sensor
-looked there and could not see — with its own confirmation count, its own
-decay by the rule above, and its own meaning to the planner. That meaning is
-the restatement of the invariant the project owner made on 2026-09-23, which
-replaces "no penalty on free space" and "no prohibited zones" as written
-until then:
-
-**A prohibition is a measurement** (the invariant as the project owner
-restated it on 2026-09-23). Space is closed to entry in exactly two cases: it
-was observed occupied — a surface — or it was observed unobservable: the
-sensor looked there and the measured range in it lies below the physical
-margin, which is smoke, darkness or a blinded sensor. Both are measurements,
-both decay when they are not confirmed, both lift when the space is observed
-again. Space the sensor has not looked at is free at no penalty. No
-prohibition comes from configuration, from knowledge of the location or from
-the vehicle's own history, and the vehicle's own position and the path it has
-observed are never closed to it.
-
-The two halves that keep the restatement from swallowing the old rule:
-
-- **Unobservable is not unknown.** Unknown (unexplored) is space the sensor
-  has not looked at, and it stays free: the braking contract is what protects the
-  vehicle there, and a navigation without a map does not exist without it.
-  Unobservable is a positive measurement of failure — the sensor was pointed
-  there and the measured range of stage 0 came back below the
-  physical margin, the level at which the contract admits no motion at all.
-  Thin smoke that shortens the range to three metres is observable and
-  slower, not unobservable; the contract handles it and the planner is not
-  told.
-- **The ban is on entry, and the exit is guaranteed.** Entry into observed
-  unobservable space is closed hard, as a surface is, not priced: a blind
-  region is not flown into "a little". But the hard rules of this project
-  were once what trapped it, and a vehicle inside a plume when it forms, or
-  in a building whose light goes out, must not find its own cell forbidden.
-  The vehicle's own position and the path it has observed are never closed,
-  so in a building gone dark the one legal motion is back along its own
-  track — which is the ladder of stage 5 written as a rule of the
-  planner.
-
-What counts as a sensor's failure is defined per sensor, because "no signal
-came back" means different things to different sensors:
-
-- **The stereo pair.** A frame whose signal has collapsed — mean brightness
-  and contrast, properties of the image that need no knowledge of the
-  geometry — and the frustum beyond the range that frame's depth stands
-  behind. This is literally darkness. A textureless wall under full light is
-  not this: it has all the signal and no matches, and it is item 17 stage 2's
-  confidently wrong depth, which brightness separates from darkness.
-
-Under this restatement the rule this item rejected stays rejected, and the
-reason is sharper: it was keyed on where the vehicle *had been* when the
-light went out, which is history; a measured unobservability is keyed on
-what the sensor *sees now*, and it lifts the moment the sensor sees again.
-
-**Item 19's decay clause.** Item 19's topological proof floods
-the memory from the vehicle and calls the goal unreachable only for a
-component that holds no goal and has no unknown on its boundary. With no
-decay a closure holds for the rest of the flight and the proof, once taken,
-stands. Once closures decay, a proof taken in one instant is worth only that
-instant, and a plume that drifts away a minute later must not find the
-vehicle already home: the proof then requires no route through free and
-unknown space for longer than the decay of the closures that bound the
-component, with at least one re-probe of each, and the time between the
-first "no route" and the proof is measured with it.
-
-**The proof has to be able to close.** Item 19's topological proof closes
-only a component bounded entirely by measurements, and no flight of item 19
-closed one in this location: the vehicle's component always touched unknown
-— above the flight band, in corners not looked at, at the grid's edge. A dark
-zone across the way to B (stage 7) and a plume across it (item 18) ask the
-proof to answer, so this stage settles how it can before either scenario is
-flown: at least the flood bounded by the flight envelope the planner itself
-flies in, so that the space above the band is not an opening; whether that
-suffices in this location is measured, not assumed.
-
-### What The Additions May Cost
-
-A condition the project owner set on 2026-09-20: these additions must not
-approach the price of one ordinary 3D lidar, or the exercise is pointless.
-Since 2026-09-27 their average electrical power is weighed the same way
-(stage 3).
-Order of magnitude, single units, 2026, to be replaced by sourced figures
-before stage 3 is built:
-
-| Set | Parts | USD |
-|---|---|---|
-| Today | stereo pair, two time-of-flight sensors | 80 to 170 |
-| Stages 3 and 4, a flood and the ring | pair, six time-of-flight sensors, emitter | 140 to 320 |
-| Active stereo with the ring | RealSense-class module, six time-of-flight sensors | 360 to 550 |
-| A cheap solid-state 3D lidar | Livox Mid-360, Unitree class | 500 to 1000 |
-
-The first path is honestly two to four times cheaper than the lidar. The second
-reaches the cheaper lidars, and there the question "why not a lidar then" is
-fair and this item either answers it or takes the first path.
-
-Two costs the table does not carry, and one of them can invert the answer.
-**Power**: a time-of-flight sensor is a tenth of a watt, but flooding a 120
-degree field to 6 m is tens of watts, while a solid-state lidar draws 8 to 15.
-Carried light can cost more battery than the lidar it replaces, and on a
-multirotor that is flight minutes. **Integration**: six sensors on one bus are
-six addresses, six mounts, six extrinsic calibrations and six failure modes,
-which is free in money and not in the project's time. Both are stated with
-measurements before stage 4 is built.
-
-### Not In This Item: Smoke
-
-Smoke is the third way a pair goes blind and it is deliberately not here. It
-is a scattering medium, not a shortage of photons or texture, and it differs
-from both in two ways that earn it an item of its own: it blinds the active
-sensors as well — the time-of-flight ring and a lidar scatter on the same
-particles — and to a stereo pair it is a surface, so it enters the memory as
-occupancy that free rays cannot clear while it lasts. Stage 0 and stage 5
-already give it most of the safety answer for nothing: the measured range
-collapses, the vehicle stops, and the ladder applies. What they do not give
-is the phantom occupancy it leaves behind and the sensor that sees through
-it, and the simulator's tool for it (`ParticleEmitter`, built for the SubT
-smoke machines) is a stage of item 18, which depends on stages 0 and 8 here
-and on nothing else in this item.
-
-### Measurement And Completion
-
-Measure, per flight: the illumination at the vehicle over time; depth coverage
-and depth error against evaluation-only truth at each illumination level and on
-each surface variant; the
-contract's forward range and the speed it admits; the time spent on each rung
-of the ladder above; the estimate's error against truth through an outage and
-after it; the minimum distance to true occupancy; and physical collisions.
-
-This item is complete when stages 0 and 8 have landed and both acceptance
-series have been re-flown on them; when the confident range is published as a curve against
-surface texture and the contract is shown to track it; when five long flights
-on the dark world, with the carried light and the outages running, reach the
-goal in truth with no collision; when five short flights under the most
-aggressive outage the parameters allow end with the vehicle intact, whether
-landed or flying; when both acceptance series fly the moderate flicker and a
-stage 7 zone off the way to B with no "unreliable" judgment and no entry into
-the zone's darkness in any flight; and when five flights of the severe
-failure, five with stage 7's zone across the way to B and five with a low
-battery at launch return to the start in truth with no collision.
-
 ## 18. Flight Through Transient And Scattering Obstacles
 
 **Type:** dependent realism stage, with one repair that does not wait for it.
@@ -2130,6 +1453,166 @@ not flight-verified on cameras or without GNSS (item 15). The register of
 what is set aside, with the class of every entry, is
 [`technical_debt.md`](technical_debt.md).
 
+### 17. Flight In Degraded Visual Conditions (Completed)
+
+Closed on 2026-10-03 on 6e7ea775, not yet in a release. The camera vehicle
+flies the urban point-to-point mission in a location with no light but the
+one it carries, under a light that flickers in every flight, and comes home
+when that light fails, when its battery will not last to the goal, or when a
+place fails it; with its light gone for good it descends and stays whole. The
+ordinary flight of the repository is that dark flight. The estimator in the
+dark is in [`localization.md`](localization.md), the perception in
+[`camera_perception.md`](camera_perception.md), the scenarios in
+[`scenarios.md`](scenarios.md), the checks in [`testing.md`](testing.md), and
+every number in [`specification.md`](specification.md).
+
+Built, by stage, each decision the smallest change found:
+
+- **Stage 0, the contract reads the frame** (42f5b375, 70b737a1). The
+  forward range and the evidence age of the braking contract are measured
+  from the sensor's latest frame (specification K9). Both series re-flown on
+  it: the stereo set 1.84 to 1.91 m/s (r747 to r751), the lidar 2.59 to 2.85
+  with one flight at 2.26 (r752 to r756).
+- **Stage 8, darkness in the memory.** An occupancy not confirmed decays, 30 s
+  per confirmation it collected (01780e58, 88777c43, K10). A stereo frame the
+  contract reads as blind for 2.5 s marks the frustum it looks into as
+  observed unobservable: occupied evidence without free space, never over
+  the vehicle's own cell or the way it came (8f6535ad to 2d91c391, K14). The
+  planner's budget was measured before it (6306 updates, none over 185 ms)
+  and left as it is.
+- **Stages 1 and 3, a dark world and a light on the vehicle** (b5562e4d to
+  a60388d9). The location without its ambient fill
+  (`WORLD_ILLUMINATION=dark`), the cameras' noise and automatic gain, a match
+  within the image's noise refused as an observation, and a spot light on
+  the airframe over the pair's whole field. Five ways of lighting were
+  compared on range, price and average power
+  ([`illumination_options.md`](illumination_options.md)): the strobed
+  near-infrared flood synchronized with the global shutter gives the full
+  6.4 m at about 1.5 W on average, against 15 to 100 W for a continuous
+  flood and 6.5 W for the lidar, for some tens of dollars (F12). The
+  confident depth re-measured in the dark by that light stays 6.4 m (K7).
+- **Stage 2, surfaces the matcher cannot match** (d663be63). The curve of
+  the matched share against texture is in
+  [`camera_perception.md`](camera_perception.md): a texture-poor surface
+  gives absent depth, not wrong depth, the contract's range falls with what
+  the frame observes, and a uniform panel across the route entered the
+  memory whole and was flown over (r783). No remedy is built (F13).
+- **Stage 4, the time-of-flight ring** (a2a4433e): four more 8 x 8 sensors on
+  the horizontal, in the same contract with no new rule; 99.9 percent of the
+  flown path observed before it was entered (r784).
+- **Stage 5, the light fails.** The injector (`scripts/carried_light.py`,
+  293af128) dims and darkens the carried light by a seeded schedule, never
+  announced; `scripts/camera_stream_faults.py` (37fa7f52) drops and delays
+  the pair's frames through a relay. The vehicle knows its battery's charge
+  and nothing else. The mission monitor weighs the charge against the way to
+  B (K11) and judges the light from the frames (K12); either gives B up for
+  the start through item 19's substitution (0e09f0f6). The time-bound
+  return is gone, and with it every reading of the run's window by the
+  vehicle (I8, A8). The ladder: stop (the contract), hold (K15), declared
+  dead reckoning on the barometer's height (K13, cfae95f9 to 088d89c3),
+  lost for the flight once it is spent (04295345), and a level descent at
+  0.5 m/s after three seconds of it (K19, fabbd802, 35ab7244, 6e7ea775);
+  [`localization.md`](localization.md). On the way home the vehicle flies
+  back along the trail it flew out on, a point every 5 m, each a goal in its
+  own mission epoch (K20, 6d7af22d): the planner's routes through unknown
+  space had led a returning vehicle back into the dark (r894, r907).
+- **Stage 6, a position reset of the autopilot** (3732b0ec): not built. Every
+  reset over 3 m flown was the autopilot fusing a camera estimate that came
+  back wrong after it had been lost, which K8 and K13 now keep silent; a
+  reset up to 3 m is flown on (K1).
+- **Stage 7, a zone that fails the light** (2b5d1658, 600d5f67): a sphere in
+  the injector, the light halved six times across its falloff, nothing of it
+  known to the vehicle. One stands off the way to B in every ordinary flight
+  (A10); laid over B it is a scenario of its own, because this location
+  leaves a way around a zone anywhere else (F16).
+- **The ordinary flight is dark** (bab016ee, A10): no ambient light, the
+  carried light under the moderate flicker, one zone off the way. The lit
+  location is the comparison scenario.
+
+Found by the flights and repaired on the way:
+
+- **The estimator under its own light.** A light that moves with the cameras
+  breaks the brightness constancy the tracker assumed: dark flights ended 2.1
+  to 2.3 m from their goal. The tracker follows the frame's texture
+  (214507c9; replayed on recorded flights 0.22 m against 2.96 m in the dark).
+- **The goal's capture** latched on a vehicle crawling past 1.9 m from its
+  goal; it waits for the approach to end (8de52e31).
+- **The heading swung past its target** 14 to 37 times a camera flight: the
+  offboard handed the autopilot a yaw sampled ahead on a horizon that starts
+  at the measured one. It hands the yaw rate planned one rate-loop lag ahead
+  (a130c02d, b2b24425, K17): no overshoot, 10 percent of the flight not
+  facing its motion against 23 to 46.
+- **A contact approached at the contact floor.** The 1 m/s a vehicle may
+  leave a contact at also let it approach one: a rotor on a door's lintel
+  (r837). A point the body nears is reached at its own tube (241e08bc, K18).
+- **A stale stop beside walls.** The seed's box exemption bisected every
+  contact pose per voxel; ticks of 250 to 700 ms let a stop go stale and the
+  resident horizon met a wall (r804). One depth, no bisection (d7b39dc0).
+- **The light judged late.** Read on the contract's range, which the memory
+  raises back along the flown path, the severe failure was judged 1.5 to 3
+  minutes late (r859, r860); the judgment reads the frame alone (5931dc52).
+- **A hold that moved.** Holding on dead reckoning the vehicle moved 0.2 to
+  0.6 m/s in truth with an estimate that stood still, and met walls a metre
+  or two away (r856, r878, r879, r927, r932). The accelerometer across the
+  rotor axis reads the rotors' drag, the body's velocity times 0.106 1/s
+  (correlation 0.96 on recorded flights), and the filter fuses it every
+  frame (bea5bb79, K21): replayed with the frames blanked, 10 s of dark
+  drift 0.5 to 1.1 m against 1.0 to 5.3 m. A frame under 20 features aids
+  nothing (c8241f00, K13): six points of the imager's noise had read as
+  health to a landed vehicle, which took off blind (r933).
+- **A failure on the pad.** An outage in the estimator's first seconds made
+  the autopilot reset by 3.4 m and the flight never left (r924); the
+  injected schedules count from when the vehicle is airborne (78d36dea,
+  F14).
+- **Landed and then lost.** A landing judged a crash when the autopilot's
+  velocity drifted at rest (r819); an estimator that came back 35 m off
+  (r820); the autopilot's landing mode tipping a landed vehicle over (r881).
+  Each is in the ladder above.
+- **The crash judge** itself: since the owner's rule of 2026-09-29 every
+  contact is a crash but a landing on the ground or a floor (A9).
+
+Acceptance on 6e7ea775, forty flights, each inspected before the next, the
+speed on simulation time, positions in truth:
+
+| Ordinary series | Flights | Mean flight speed, m/s | True position from the goal, m |
+|---|---|---|---|
+| Stereo set, dark, moderate flicker, a zone off the way | r949 to r953 | 1.79 / 1.84 / 1.90 / 1.83 / 1.85, mean 1.84 | 0.99 / 1.08 / 1.32 / 1.32 / 0.86 |
+| 3D lidar | r954 to r958 | 2.55 / 2.56 / 2.68 / 2.63 / 2.26, mean 2.54 | 0.74 / 0.61 / 0.92 / 1.03 / 0.36 |
+
+| Scenario (stereo set) | Flights | What ended the way to B, at s of simulation (flown, m) | Way home, s (m) | True position at the end, m |
+|---|---|---|---|---|
+| A long flight under failures: B, then the start | r959 to r963 | nothing: 853 to 1177 m at 1.73 to 1.83 m/s | — | B 0.83 / 0.94 / 0.78 / 1.11 / 1.24; the start 0.51 / 0.73 / 0.63 / 0.41 / 0.45 |
+| The light lost | r939 to r943 | the level descent, 6.4 to 7.9 s after dead reckoning began | — | whole; touched down at 0.51 to 0.59 m/s, 0.63 to 0.95 m from where dead reckoning began |
+| The severe failure | r944 to r948 | `unreliable_light` at 77 / 78 / 49 / 76 / 64 (111 / 116 / 63 / 104 / 82) | 86 / 71 / 12 / 58 / 27 (116 / 103 / 16 / 89 / 34) | the start 1.50 / 1.00 / 0.44 / 1.06 / 1.58 |
+| A zone over B | r964 to r968 | `unreliable_light` at 225 / 268 / 284 / 213 / 240 (392 / 498 / 519 / 391 / 451), 5.6 to 7.1 m from B | 197 / 221 / 209 / 186 / 264 (356 / 404 / 420 / 371 / 511) | the start 0.69 / 0.62 / 0.63 / 0.69 / 0.82 |
+| A low battery at launch | r969 to r973 | `battery` at 21 to 23, 20 m in | — | the start 0.38 / 0.63 / 0.43 / 0.45 / 0.43 |
+| A goal outside the location, 720 s of light | r974 to r978 | `battery` at 174 / 122 / 190 / 193 / 131 (319 / 204 / 340 / 347 / 233) | 117 / 74 / 123 / 134 / 87 (258 / 160 / 265 / 269 / 174) | the start 0.43 / 0.33 / 0.43 / 0.62 / 0.44 |
+
+No contact in the forty, no return and no light judged unreliable in an
+ordinary flight, the zone off the way never nearer than 19.4 m (its dim
+region ends at 17.5), and every return's trigger and moment in the log. One
+lidar flight missed the speed target, 2.26 against 2.4 m/s (r958): 35.5 s in
+the room of the shaft at (53, -7), the register's entry, the price of free
+unknown space in an occluded dead end. The budgets held against stage 0's
+series (r747 to r756): the tick 20.8 to 21.6 ms at p50 and 27.4 to 29.0 at
+p95 on the cameras against 21.5 to 23.1 and 28.5 to 30.0, 23.2 to 24.3 and
+30.6 to 33.2 on the lidar against 23.7 to 24.2 and 31.2 to 32.5; the onboard
+processes 4.52 to 4.75 cores at p50 and 1001 to 1042 MiB on the cameras
+against 4.62 to 5.04 and 961 to 1026, 3.59 to 4.00 cores and 833 to 943 MiB
+on the lidar against 3.68 to 3.96 and 817 to 859. The light's energy is in
+[`illumination_options.md`](illumination_options.md): about 1.5 W on average
+for the strobed near-infrared flood.
+
+Known to remain. The lidar vehicle's return from a goal outside the location
+is not flown: the proof cannot hold a closure the size of a location and the
+lidar carries no light battery (F15, the owner's decision). Dead reckoning
+still moves the vehicle, 0.6 to 1.0 m in the 6 to 8 s to the ground: a hold
+nearer a wall than that is not covered. An outage in the estimator's first
+seconds on the pad is not survived; the scenarios do not inject one. The
+shaft room costs the lidar's speed its tail. No smoke (item 18), no moving
+obstacle (item 21). The register with the class of every entry is
+[`technical_debt.md`](technical_debt.md).
+
 ### 19. A Goal Proven Unreachable: Return Home (Completed)
 
 Closed on 2026-09-27 on bf92e952, not yet in a release. When its goal is
@@ -2227,3 +1710,49 @@ vehicles crashed after the autopilot reset by 26.6 and 6.0 m. That the
 estimator does not survive such a hole is in the register. The return was
 also the mission's first flight in the other direction and with another goal
 (the register's N3); other starts and goals stay a series of their own.
+
+
+**Addendum of 2026-09-30 (roadmap item 17).** What item 19 left unproven is
+now tested, and the return has changed shape:
+
+- **The time-bound return is gone** (0e09f0f6, I8, A8): nothing of the
+  vehicle reads the run's window. A return has three triggers, each logged
+  with its moment in `GOAL_UNREACHABLE`: the proof (`topological`), the
+  carried light's battery (`battery`, the stereo set only, K11) and the light
+  judged unreliable from the frames (`unreliable_light`, K12).
+- **How the proof closes** (2642b48c, b3160689, 2f951ba3, K16). The flood
+  runs within the space the planner flies in, the memory grid's box and the
+  flight envelope's band of heights, with the goal clamped as the planner
+  clamps it, under a budget of two million voxels; a second flood starts at
+  the goal through the voxels the body fits, and a goal whose flood ends a
+  metre short of the vehicle is unreachable; a proof substitutes the goal
+  once it has stood 30 s, one confirmation's decay. After a return the same
+  proof runs to the start (`START_UNREACHABLE_HELD`, `START_REACHABLE_AGAIN`)
+  and the vehicle holds where it is by the planner's own rule. Twelve unit
+  tests hold the sieve, the body's fit, the band, the clamp, a shut start and
+  the grid's edge; the branch without a position source
+  (`GOAL_UNREACHABLE_HELD`) is `returnHomePositionSourceFresh` and its test.
+  A closure the size of the location is out of the proof's reach, because
+  the memory forgets what the vehicle stops looking at (F15): measured on a
+  full snapshot of r805's memory, the flood leaks out of the location even
+  with the free space eroded by 0.75 m, while in truth the start's component
+  is 31 186 m^3 and closed. The lidar vehicle, which carries no light
+  battery, therefore explores for a goal outside the location without end,
+  and its return by the proof waits for the owner's decision
+  ([`technical_debt.md`](technical_debt.md)). In the zone over B the goal's
+  dark is marked a ray apart and the goal region leaks round the frustum
+  (r816): the return there is the light's judgment, not the proof's.
+- **The way home is the way out** (6d7af22d, K20): the substituted goal is
+  a point of the trail the vehicle flew, 25 m back, moved on as it is
+  neared, each in its own mission epoch, and the start at the end.
+- **Flown and inspected on 6e7ea775** (the tables of item 17): the goal
+  outside the location on the stereo set, given up by the battery after 122
+  to 193 s and 204 to 347 m of exploration and returned in truth 0.33 to
+  0.62 m from the start; the zone over B, five returns by the light's
+  judgment 0.62 to 0.82 m from the start, the dark core never entered; the
+  severe failure, five returns 0.44 to 1.58 m from the start; the low
+  battery at launch, five returns 0.38 to 0.63 m from the start, B given up
+  20 m in. The return scenario's light lasts 720 s, the owner's rule of
+  2026-09-30: a test of the return does not fly for an hour. The mission
+  check floods the truth grid within the flight space for every injected
+  goal.

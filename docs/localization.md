@@ -304,6 +304,84 @@ Cost: 0.53 core beside the depth matcher (the stereo process 1.69 to 2.22
 cores), a frame 44 to 60 ms at the median and 72 to 82 ms at most, inside the
 0.5 to 1.5 cores stage 0 reserved.
 
+### Through A Dark Stretch: Dead Reckoning, The Barometer And The Landing
+
+Roadmap item 17 made the light the pair sees by something that fails, and
+the estimator answers in three steps (specification K13 and K19).
+
+**Declared dead reckoning.** Past its 1.0 s unaided timeout the estimator
+keeps publishing for 10 s more: a pose sound in every other respect, carried
+by the IMU alone and declared as such (`quality` 0 in the odometry the
+autopilot receives, `VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING` in the log).
+Silence after one second left the autopilot five seconds before it landed
+blind (r789). The height is the weak axis: replayed on a recorded dark
+flight with its frames blanked, the IMU alone drifted 0.2 to 0.6 m
+horizontally in 5 to 10 s and 2, 8 and 30 m vertically in 5, 10 and 20 s. A
+height left out of the message dropped the whole position from the
+autopilot's fusion, which takes it only when every axis is finite (r791); a
+height frozen in the message left the filter's own drifting, and it jumped
+by metres when the features returned (r792); a height held still inside the
+filter was not the vehicle's, which sank 1.4 m in 5 s, and the filter, told
+it stood still, bent its attitude and drifted 1.7 m sideways (r793). Through
+a dark stretch the filter's height therefore follows the vehicle's
+barometer: the simulator's air pressure, relayed by the image source and
+smoothed over half a second, moves the height the features last gave, as a
+pseudo-measurement of 0.3 m. The vertical error then stays where it was
+when the light went (0.7 to 0.9 m over the severe flights of r794).
+
+**Lost for the flight.** When the ten seconds are spent the estimator falls
+silent and stays silent, as after an IMU hole it could not bridge: r820 lay
+landed in the dark while its unpublished state drifted 35 m, came back
+healthy on seven features when the light returned for a second, and the
+autopilot reset onto it and flew the vehicle into the platform.
+
+**The landing.** In flight the dead reckoning is worse than its replay: the
+vehicle, holding the position the estimate names, moves with the estimate's
+error, 0.2 to 0.6 m/s in truth from the first seconds (the aided velocity is
+known to 0.05 to 0.13 m/s along its weakest axis, and a tilt error of a
+few tenths of a degree adds 0.03 to 0.07 m/s^2). Holding through the ten
+seconds and then landing blind by the autopilot's failsafe, three of nine
+flights with the light gone met a wall that stood 2.4 to 3.5 m away when the
+light went (r856, r878, r879). So once the estimator has dead reckoned for
+3 s, the fourth second of the dark that judges the carried light
+(specification K12), `mppi_offboard_node` descends the vehicle level,
+holding no horizontal position (`DEAD_RECKONING_LANDING`,
+`dead_reckoning_landing.hpp`), and when the estimator sees again before the
+vehicle is down the ordinary setpoints return. The autopilot's own landing
+mode was flown first and rejected: it holds the dead-reckoned position, its
+land detector never fired on an estimate that went on "descending", and r881
+tipped over on the ground 8.6 s after it touched down. The descent is
+commanded at 0.5 m/s: at 0.7, on a vertical velocity the autopilot also dead
+reckons, the vehicle touched down at 0.61 to 0.86 m/s and once at 1.04, past
+the 1 m/s of a landing (r938). Under the severe failure, whose dark
+stretches end half a second to a second and a half after the descent begins,
+the vehicle loses some height per stretch and flies on.
+
+**The rotors' drag.** The descent alone still met a structure half a metre
+away (r932), so the drift itself was taken on (specification K21). A
+multirotor's accelerometer does not read its acceleration across the rotor
+axis: it reads the rotors' drag, the body's velocity there times a
+coefficient, whatever the attitude's error. On the recorded flights r575 and
+r576 the reading follows the true body velocity at 0.105 to 0.109 1/s forward
+and sideways, correlation 0.96, residual 0.036 m/s^2. The filter fuses the
+mean reading since the last frame, every frame, as that velocity plus the
+accelerometer's bias, deviation 0.05 m/s^2 (`rotor_drag_1ps`,
+`fuseRotorDrag`). Replayed on the recorded flights r779 and r795 with their
+frames blanked, the horizontal drift through 10 s of dark fell from 1.0 to
+5.3 m to 0.5 to 1.1 m, and the lit replays end 0.74 and 0.44 m from the truth
+against 0.52 and 2.18 m. With a velocity that is right, a landed vehicle in
+the dark is consistent with the handful of points the tracker follows in the
+imager's noise: r933 came back healthy on six of them half a second after it
+touched down, took off blind and was destroyed. A frame under 20 features
+aids nothing (`minimum_frame_features`; a lit frame tracks 50 to 200). On the
+acceptance flights with the light gone the vehicle moved 0.63 to 0.95 m from
+where the dead reckoning began to the ground, 6.4 to 7.9 s later, and touched
+down at 0.51 to 0.59 m/s (r939 to r943).
+
+What this does not cover is in [`technical_debt.md`](technical_debt.md): a
+wall within that metre when the light goes, no floor within a few metres
+below, and a dark stretch in the estimator's first seconds on the pad.
+
 ### Relocalization Against Its Own Map (Visual-Inertial SLAM)
 
 Roadmap item 19 flew the mission out and back and measured the drift of a
