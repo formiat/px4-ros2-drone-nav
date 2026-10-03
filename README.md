@@ -770,3 +770,21 @@ Key pages:
 - `docs/troubleshooting.md`
 - `docs/performance.md`
 - `docs/technical_debt.md`
+- `tools/README.md` (the scripts the acceptance flights are launched and
+  read with)
+
+## Author And Contact
+
+Alexander Aglerimov.
+
+- Email: <formiat95@gmail.com>
+- Telegram: <https://t.me/formiat>
+- LinkedIn: <https://www.linkedin.com/in/formiat>
+- CV: <https://formiat.github.io/autoCV/cv.pdf>
+- YouTube: <https://www.youtube.com/@formiat>
+- Reddit: <https://www.reddit.com/user/formiat>
+- GitHub: <https://github.com/formiat>
+
+Questions, reports of what does not work and offers of work are welcome
+through any of them; defects and proposals for the repository itself are
+best as GitHub issues.
