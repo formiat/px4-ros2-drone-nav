@@ -169,6 +169,9 @@ public:
         "gyro_noise_radps_sqrt_hz", config.gyro_noise_radps_sqrt_hz);
     config.accelerometer_noise_mps2_sqrt_hz = declare_parameter<double>(
         "accelerometer_noise_mps2_sqrt_hz", config.accelerometer_noise_mps2_sqrt_hz);
+    // The airframe's: fitted per vehicle (visual_inertial_odometry.hpp).
+    config.rotor_drag_1ps =
+        declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
     odometry_ = std::make_unique<VisualInertialOdometry>(config);
 
     // A frame's stamp against the IMU's clock, measured on the rotation both

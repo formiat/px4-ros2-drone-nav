@@ -787,6 +787,12 @@ visual_inertial_odometry_node:
   ros__parameters:
     # Lockstep simulation: the autopilot stamps on the simulation clock.
     px4_clock_is_ros_clock: true
+    # The rotors' drag the estimator fuses as a velocity (specification K21):
+    # the accelerometer's reading across the rotor axis over the body's
+    # velocity there, 1/s. It is this airframe's (the x500 of the simulation,
+    # fitted on r575 and r576) and MUST be fitted again for another vehicle;
+    # 0 switches the fusion off.
+    rotor_drag_1ps: 0.106
 
 lidar_inertial_odometry_node:
   ros__parameters:
@@ -899,6 +905,13 @@ mppi_offboard_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     applied_control_feedback_frame_id: map
     mppi_control_lookahead_s: 0.05
+    # How far ahead of the setpoint's own sample the yaw rate handed to the
+    # autopilot is read from the horizon (specification K17): the lag of the
+    # autopilot's yaw rate loop. It is this airframe's with this PX4 tuning
+    # (fitted on r825) and MUST be fitted again for another vehicle or other
+    # yaw gains: too short and the heading overshoots its gaze target, too
+    # long and the turn starts early.
+    yaw_rate_lead_s: 0.26
     unavailable_path_braking_acceleration_mps2: 4.0
     unavailable_path_braking_response_s: 0.25
     takeoff_climb_m: 2.0

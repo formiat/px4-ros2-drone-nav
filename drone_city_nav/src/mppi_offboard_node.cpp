@@ -50,13 +50,13 @@ public:
     constexpr std::uint64_t kOffboardFeedbackProducerDomain{0x4f4646424f415244ULL};
     offboard_producer_instance_id_ =
         createProducerInstanceId(kOffboardFeedbackProducerDomain);
-    // Takeoff climbs a fixed height above the spawn point in every scenario.
-    // The climb has to be a real climb: a vehicle that never leaves its rest
-    // never lets the EKF certify a control-grade heading, and the planner has
-    // no body axis to seed its proprioceptive footprint from. When the spawn
-    // support sits below the flight envelope floor (a street at z = 0), the
-    // climb ends at that floor plus the capture tolerance instead, because
-    // the planner rejects a route request whose start is below the floor.
+    // Takeoff is a real climb above the spawn point: at rest the EKF never
+    // certifies a control-grade heading. A spawn below the envelope's floor
+    // climbs to that floor plus the capture tolerance, where routes start.
+    // The yaw rate's lead is the airframe's: the lag of its autopilot's yaw
+    // rate loop (0.26 s for the x500 as tuned here, r825), fitted per vehicle.
+    yaw_rate_lead_ns_ = static_cast<std::int64_t>(
+        1.0e9 * std::max(0.0, declare_parameter<double>("yaw_rate_lead_s", 0.26)));
     takeoff_climb_m_ = declare_parameter<double>("takeoff_climb_m", 2.0);
     if (!std::isfinite(takeoff_climb_m_) || takeoff_climb_m_ <= 0.0) {
       throw std::invalid_argument{"takeoff climb must be a positive height"};
@@ -801,10 +801,11 @@ private:
     const double vertical_acceleration =
         interpolate(first.acceleration.z, second.acceleration.z, ratio);
     // No yaw: the gaze law closes the heading each tick, and the autopilot takes
-    // the rate planned its yaw rate loop's lag (0.26 s) ahead (r781 to r825).
+    // the rate planned its yaw rate loop's lag ahead (r781 to r825).
     const ExecutionHorizonBracket rate =
-        executionHorizonBracketAt(horizon.points.size(), horizon.control_interval_ns,
-                                  executionHorizonTimeAheadNs(elapsed_ns, 260'000'000))
+        executionHorizonBracketAt(
+            horizon.points.size(), horizon.control_interval_ns,
+            executionHorizonTimeAheadNs(elapsed_ns, yaw_rate_lead_ns_))
             .value_or(*bracket);
     const double map_yaw_rate =
         interpolate(horizon.points[rate.lower_index].yaw_rate_radps,
@@ -828,11 +829,9 @@ private:
   }
 
   void publishUnavailablePathHoldSetpoint() {
-    // An expired stationary hold goes on at its own position: the vehicle
-    // rests there by the executor's decision. A pin at wherever the estimate
-    // stands when the lease lapses moves the hold with every excursion; in
-    // the urban flight r244 such a pin re-anchored 0.25 m nearer a wall than
-    // the hold it stood in for, and the executor's next holds kept it there.
+    // An expired stationary hold goes on at its own position. A pin where the
+    // estimate stands when the lease lapses moves the hold with every
+    // excursion: r244 re-anchored 0.25 m nearer a wall and stayed there.
     const bool expired_stationary_hold =
         horizon_.has_value() && horizon_->stationary_position_hold;
     const Point2 hold_local = expired_stationary_hold
@@ -996,6 +995,7 @@ private:
   ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   DeadReckoningLanding dead_reckoning_landing_;
+  std::int64_t yaw_rate_lead_ns_{0};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   bool gazebo_aligned_rviz_axes_swapped_{true};
   std::string rviz_drone_follow_frame_{"drone_follow"};

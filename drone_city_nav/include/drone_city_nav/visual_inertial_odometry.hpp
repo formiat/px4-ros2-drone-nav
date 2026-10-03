@@ -137,7 +137,10 @@ struct VisualInertialOdometryConfig {
   // recorded flights r575 and r576). Fused every frame, it gives a dark
   // stretch a velocity the IMU's integration does not have: holding on dead
   // reckoning the vehicle moved 0.2 to 0.6 m/s in truth and met walls a
-  // metre away (r927, r932). Zero fuses nothing.
+  // metre away (r927, r932). Zero fuses nothing. The coefficient is the
+  // airframe's (its rotors, its mass, its hover thrust): another vehicle
+  // needs its own, fitted as the accelerometer's reading across the rotor
+  // axis against the true body velocity on recorded flights.
   double rotor_drag_1ps{0.106};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};

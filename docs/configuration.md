@@ -327,7 +327,9 @@ Speed policy and liveness:
 - RViz drone marker and follow TF.
 
 The yaw setpoint is none: the node hands the autopilot the yaw rate the
-horizon plans 0.26 s ahead (specification K17).
+horizon plans `yaw_rate_lead_s` ahead (0.26 s, specification K17). The lead
+is the lag of the autopilot's yaw rate loop on this airframe and must be
+fitted again for another vehicle or other yaw gains.
 
 ## Other Nodes
 
@@ -346,10 +348,12 @@ It gives the goal up as well for the carried light's battery and for a light
 judged unreliable from the frames (specification K11, K12; the constants are
 in `carried_light_judgment.hpp`), and on the way home it hands the planner
 the trail it flew, point by point (`return_trail.hpp`, K20).
-`visual_inertial_odometry_node` fuses the rotors' drag (`rotor_drag_1ps`,
-0.106) and refuses a frame under `minimum_frame_features` (20) as aid
-([`localization.md`](localization.md), K21, K13); both are constants of the
-estimator's configuration structure.
+`visual_inertial_odometry_node` fuses the rotors' drag: `rotor_drag_1ps`
+(0.106, a parameter) is this airframe's and must be fitted again for another
+vehicle, as the accelerometer's reading across the rotor axis against the
+true body velocity on recorded flights
+([`localization.md`](localization.md), K21). A frame under 20 features is
+no aid (K13, a constant of the estimator's configuration structure).
 
 ## Environment Overrides
 
