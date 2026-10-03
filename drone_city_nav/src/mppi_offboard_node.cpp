@@ -698,10 +698,10 @@ private:
     }
   }
 
-  // Level, at the autopilot's landing speed, holding no position: a position
-  // held on a dead-reckoned estimate tipped the landed vehicle over (r881).
+  // Level, holding no position: a position held on a dead-reckoned estimate
+  // tipped the landed vehicle over (r881). At 0.7 m/s one touched at 1.04.
   void publishDeadReckoningLandingSetpoint() {
-    constexpr double kLandingSpeedMps{0.7};
+    constexpr double kLandingSpeedMps{0.5};
     constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
     setpoint_pub_->publish(
         buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan}, -kLandingSpeedMps,
