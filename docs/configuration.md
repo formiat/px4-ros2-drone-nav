@@ -371,19 +371,23 @@ placed out of reach on purpose, so that the check counts a return home as the
 outcome asked for, and `TRUTH_OCCUPANCY_3D_PATH` names the truth grid the check
 floods to confirm it ([scenarios.md](scenarios.md)).
 The flights of roadmap item 17 add their own, all recorded in the manifest:
-`WORLD_ILLUMINATION=dark|lit` (dark is the default; lit is the comparison
-scenario), `BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte
-panels in the dark world), `LIGHT_FAULTS=none|moderate|severe|lost` with
+`BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte panels), `LIGHT_FAULTS=none|moderate|severe|lost` with
 `LIGHT_FAULT_SEED` (the carried light's injected failures; moderate is the
 default), `LIGHT_BATTERY_S` (seconds of light at launch, 3600; 720 in the return-home scenario, 240 in the low-battery one),
 `ANOMALY_ZONES="x,y,z,core,falloff;..."` (zones that fail the light; one
-off the way to B is the default), `STREAM_FAULTS=none|moderate` with
+off the way to B is the default; `scripts/anomaly_zone_markers.py` draws
+them in RViz on `/evaluation/anomaly_zones`), `STREAM_FAULTS=none|moderate` with
 `STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
 then reads), and the three that tell the mission check what a named
 scenario asks for, `RETURN_HOME_EXPECTED`, `RETURN_HOME_ALLOWED` and
 `VEHICLE_INTACT_EXPECTED` ([testing.md](testing.md)). None of them reaches
 a production node: the light, its failures and the zones live in the
 simulator, and the vehicle reads its frames and its battery's charge.
+The location has no light of its own in any flight: the lit world is no
+longer selectable (the owner's rule of 2026-10-03, specification A10).
+The memory's decay is a parameter of `obstacle_memory_3d_node`,
+`decay_seconds_per_confirmation` (30 in `urban_mvp.yaml`; 0 keeps every
+occupied voxel for the flight, specification K10).
 Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.

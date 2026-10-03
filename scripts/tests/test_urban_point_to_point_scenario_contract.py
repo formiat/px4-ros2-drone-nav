@@ -75,7 +75,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertIn("sim-urban-point-to-point-headless:", makefile)
         self.assertIn("sim-urban-point-to-point-gui:", makefile)
         self.assertIn("SIM_SENSOR_WORLD_SDF_PATH", makefile)
-        self.assertIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        self.assertIn("SIM_DARK_WORLD_SDF_PATH", makefile)
         self.assertNotIn(
             'SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile
         )
@@ -96,7 +96,6 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "point-to-point-gnss": "LOCALIZATION_PROFILE=gnss",
             "return-home": "$(RETURN_HOME_SCENARIO)",
             "return-home-lidar": "$(LIDAR_SCENARIO) $(RETURN_HOME_SCENARIO)",
-            "point-to-point-lit": "$(LIT_SCENARIO)",
             "light-failure": "$(LIGHT_FAILURE_SCENARIO)",
             "low-battery": "$(LOW_BATTERY_SCENARIO)",
             "zone-across-b": "$(ZONE_ACROSS_B_SCENARIO)",
@@ -116,7 +115,10 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                     )
         # The ordinary flight of roadmap item 17 (specification A10) is the
         # dark location, the moderate flicker and a zone off every way to B.
-        self.assertIn('$${WORLD_ILLUMINATION:-dark}', makefile)
+        # The location's own light never comes back (the owner's rule of
+        # 2026-10-03): no target selects the lit world.
+        self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        self.assertNotIn("WORLD_ILLUMINATION", makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
         self.assertIn('ANOMALY_ZONES="$${ANOMALY_ZONES--28,-28,9,1.5,16}"', makefile)
         # The return home is roadmap item 19's injected flight: the goal

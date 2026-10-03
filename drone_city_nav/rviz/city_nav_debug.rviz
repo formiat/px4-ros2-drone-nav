@@ -84,6 +84,12 @@ Visualization Manager:
         Value: /vehicles/civilian_2/mppi/path
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
+      Name: Light Anomaly Zones
+      Topic:
+        Durability Policy: Transient Local
+        Value: /evaluation/anomaly_zones
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
       Name: Vehicle Directions
       Topic:
         Value: /drone_city_nav/vehicle_directions

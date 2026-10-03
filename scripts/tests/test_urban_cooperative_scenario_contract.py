@@ -170,7 +170,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             '"$$SIM_SENSOR_WORLD_SDF_PATH"',
             makefile,
         )
-        self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH"', makefile)
+        self.assertIn('SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH"', makefile)
         self.assertEqual(
             makefile.count(
                 'COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}"'

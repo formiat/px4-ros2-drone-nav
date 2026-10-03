@@ -49,7 +49,7 @@ prepare_runtime_evidence() {
     CAMERA_PROFILE NAVIGATION_SENSOR_PROFILE \
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
-    WORLD_ILLUMINATION BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
+    BLANK_PANELS LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED ANOMALY_ZONES STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED VEHICLE_INTACT_EXPECTED; do
     if [[ -n "${!override_name:-}" ]]; then
@@ -70,6 +70,12 @@ start_runtime_evidence_capture() {
     "${runtime_artifact_dir}/resources_host.json" \
     --world "${world_name}" \
     > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
+  # The zones that fail the light, drawn in RViz for the person watching.
+  if [[ -n "${ANOMALY_ZONES:-}" ]]; then
+    python3 "${repo_root}/scripts/anomaly_zone_markers.py" \
+      --zones="${ANOMALY_ZONES}" \
+      > "${runtime_artifact_dir}/anomaly_zone_markers.log" 2>&1 &
+  fi
   # Roadmap item 17 stage 5: the light the camera vehicle carries, its
   # battery (the charge is published) and its injected failures (never
   # announced); the schedule and every change land beside the manifest.

@@ -454,6 +454,11 @@ replaces it:
 - **A separate scenario blocks the way**: smoke closes the passage to B, no
   route exists, and the vehicle flies home. It exercises the smoke handling
   and item 19's return together, by a cause the vehicle measures.
+- **Smoke is drawn in RViz**, as the zones that fail the light are since
+  item 17 (`/evaluation/anomaly_zones`): every smoky place of a flight is a
+  marker in the picture, published by an evaluation component the vehicle
+  never reads, so that a person watching sees what the location holds.
+  Decided by the project owner on 2026-10-03.
 - **Smoke is constant**: where it is and how much of it there is never change
   during a flight, so that the difficulty of the location does not change
   with time. Its shape does, as a smoke grenade's or a local source's plume
@@ -1526,8 +1531,9 @@ Built, by stage, each decision the smallest change found:
   (A10); laid over B it is a scenario of its own, because this location
   leaves a way around a zone anywhere else (F16).
 - **The ordinary flight is dark** (bab016ee, A10): no ambient light, the
-  carried light under the moderate flicker, one zone off the way. The lit
-  location is the comparison scenario.
+  carried light under the moderate flicker, one zone off the way. Since
+  2026-10-03 the lit location is not selectable at all (the owner's rule),
+  and RViz draws the zones.
 
 Found by the flights and repaired on the way:
 
