@@ -162,7 +162,8 @@ struct Hole {
 
 Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
            const Eigen::Vector3d& gyro_bias, const bool with_features,
-           const bool with_outlier, const Hole hole = {}, const Hole dark = {}) {
+           const bool with_outlier, const Hole hole = {}, const Hole dark = {},
+           const Hole sparse = {}) {
   std::mt19937 generator{7U};
   const std::vector<Eigen::Vector3d> points = landmarks(generator);
   VisualInertialOdometry odometry{config};
@@ -184,6 +185,9 @@ Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
     std::vector<StereoFeatureObservation> observations;
     if (with_features && !dark.contains(stamp)) {
       observations = observe(config, t, points, config.observation_noise, generator);
+    }
+    if (sparse.contains(stamp) && observations.size() > 6U) {
+      observations.resize(6U);
     }
     if (with_outlier && !observations.empty()) {
       // A point that slides across the image: nothing fixed in the world.
@@ -256,6 +260,16 @@ TEST(VisualInertialOdometry, ADarkStretchIsDeadReckoningForAStatedTime) {
   const Flight sighted = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false);
   EXPECT_TRUE(sighted.last.healthy);
   EXPECT_FALSE(sighted.last.dead_reckoning);
+}
+
+TEST(VisualInertialOdometry, AHandfulOfFeaturesIsNoAid) {
+  // r933: six points of the imager's noise read as health to a landed
+  // vehicle. A frame with a handful of features is a dark one.
+  const VisualInertialOdometryConfig config = testConfig();
+  const Flight sparse =
+      fly(config, 8.0, Eigen::Vector3d::Zero(), true, false, {}, {}, Hole{5.0, 9.0});
+  EXPECT_FALSE(sparse.last.healthy);
+  EXPECT_TRUE(sparse.last.dead_reckoning);
 }
 
 TEST(VisualInertialOdometry, TheRotorsDragBoundsADarkHoversDrift) {

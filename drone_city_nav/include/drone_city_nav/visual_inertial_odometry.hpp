@@ -110,6 +110,13 @@ struct VisualInertialOdometryConfig {
   // flew the vehicles into walls. Silence instead ends the autopilot's
   // external-vision fusion and leaves it its own failsafe.
   double maximum_unaided_s{1.0};
+  // A frame with fewer features than this aids nothing. In the dark the
+  // tracker follows a handful of points of the imager's own noise, which
+  // stand still in the image: to a vehicle at rest they are consistent, pass
+  // the gate and read as health. r933, landed in the dark, came back healthy
+  // on six of them, took off again and was destroyed. A lit frame tracks 50
+  // to 200.
+  std::size_t minimum_frame_features{20U};
   // Nor is the estimate healthy while its velocity is this uncertain along
   // any direction: the flying filter holds 0.08 to 0.18 m/s there (the
   // acceptance series of 2026-09-27), and 31 m/s came out of r720's hole.

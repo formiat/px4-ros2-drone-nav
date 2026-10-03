@@ -721,9 +721,11 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   estimate.imu_lag_ns = state.propagateTo(stamp_ns);
   state.augment(stamp_ns);
   const std::uint64_t clone_id = state.clones.back().id;
-  for (const StereoFeatureObservation& observation : observations) {
-    state.tracks[observation.id].push_back(TrackObservation{
-        .clone_id = clone_id, .left = observation.left, .right = observation.right});
+  if (observations.size() >= state.config.minimum_frame_features) {
+    for (const StereoFeatureObservation& observation : observations) {
+      state.tracks[observation.id].push_back(TrackObservation{
+          .clone_id = clone_id, .left = observation.left, .right = observation.right});
+    }
   }
 
   // A feature is used when its track has ended, or when it has been seen
