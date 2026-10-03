@@ -10,9 +10,9 @@ namespace drone_city_nav {
 // reckoning carries the vehicle off at 0.2 to 0.6 m/s from its first seconds
 // (r856, r878, r879: a wall 2.4 to 3.5 m away met within 10 to 15 s, while the
 // vehicle held and then let the autopilot land it blind). Once the source has
-// dead reckoned for three seconds, the fourth of the dark that judges the
-// carried light (K12), the vehicle descends; a source that sees again before
-// the vehicle is down takes the flight back.
+// dead reckoned for three seconds, four seconds unaided, half a second past
+// the dark that judges the carried light (K12), the vehicle descends; a
+// source that sees again before the vehicle is down takes the flight back.
 class DeadReckoningLanding final {
 public:
   // One pose of the position source, at `stamp_ns`. A source that falls silent

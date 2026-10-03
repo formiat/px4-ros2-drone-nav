@@ -25,11 +25,14 @@ namespace drone_city_nav {
 // r781), and the severe failure must reach them. The outage is judged while the vehicle
 // still holds on dead reckoning, before the drift of a longer one outgrows a doorway
 // (r795, r796): at 10 s the severe failure of r789 outlived the hold and the
-// autopilot landed blind. The judgment stands once reached: it sends the
-// vehicle home.
+// autopilot landed blind. A dark stretch reads half a second shorter than it
+// is, the camera's gain hiding its ramps and the frames arriving late: under
+// a line of 4 s the severe failure's 4.5 s stretches read 3.6 to 4.1 s and
+// were judged one to two minutes late (r890, r925 to r927). The judgment
+// stands once reached: it sends the vehicle home.
 class LightReliabilityJudgment final {
 public:
-  static constexpr double kLongestOutageS{4.0};
+  static constexpr double kLongestOutageS{3.5};
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};
 

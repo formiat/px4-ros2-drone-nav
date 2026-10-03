@@ -9,7 +9,7 @@ namespace {
 
 TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
   // An outage of 3 s every 20 s for ten minutes: 15 percent, no stretch
-  // near 4 s.
+  // of 3.5 s.
   LightReliabilityJudgment judgment;
   for (int tick = 0; tick < 6000; ++tick) {
     const double stamp_s = 0.1 * tick;
@@ -22,13 +22,13 @@ TEST(LightReliabilityJudgment, AModerateFlickerIsNotUnreliable) {
 
 TEST(LightReliabilityJudgment, ALongOutageIsUnreliableAndStaysSo) {
   LightReliabilityJudgment judgment;
-  for (int tick = 0; tick <= 35; ++tick) {
+  for (int tick = 0; tick <= 30; ++tick) {
     judgment.observe(0.1 * tick, 0.0);
   }
   EXPECT_FALSE(judgment.unreliable());
-  judgment.observe(4.1, 0.0);
+  judgment.observe(3.6, 0.0);
   EXPECT_TRUE(judgment.unreliable());
-  judgment.observe(4.2, 1.0);
+  judgment.observe(3.7, 1.0);
   EXPECT_TRUE(judgment.unreliable());
   EXPECT_EQ(judgment.currentOutageS(), 0.0);
 }
@@ -49,13 +49,13 @@ TEST(LightReliabilityJudgment, ADimFrameIsNoOutageABlindOneIs) {
 }
 
 TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
-  // 3.5 s dark in every 5 s: no single stretch reaches 4 s, the share
+  // 3.2 s dark in every 5 s: no single stretch reaches 3.5 s, the share
   // does.
   LightReliabilityJudgment judgment;
   bool reached{false};
   for (int tick = 0; tick < 1200 && !reached; ++tick) {
     const double stamp_s = 0.1 * tick;
-    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.5 ? 0.0 : 1.0);
+    judgment.observe(stamp_s, std::fmod(stamp_s, 5.0) < 3.2 ? 0.0 : 1.0);
     reached = judgment.unreliable();
   }
   EXPECT_TRUE(reached);
