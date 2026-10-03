@@ -373,6 +373,39 @@ vehicle's only. What this stage adds is a diagnostic layer of frame
 disagreement, each peer's reported position against its true one, which is
 evaluation only and never reaches a vehicle.
 
+### Stage 5: A Memory Shared Between Vehicles
+
+Decided by the project owner on 2026-10-03, after the shared frame of stage
+4, which it needs. Stage 4's direction stands for the frame: vehicles share a
+frame first, and occupancy was left out there because it is megabytes on a
+channel this item cuts to tens of bytes and because maps built under
+different drifts corrupt each other. This stage takes both objections on.
+
+- **What is exchanged.** Not the grid: changes of occupancy since the last
+  exchange, in the shared frame, coarsened and compressed to what the
+  channel class carries, with the sender's frame uncertainty beside them.
+  What a link of each class can carry is measured first, and decides the
+  resolution.
+- **What a peer's occupancy may do.** It reaches the strategic planner only:
+  the choice of route, a dead end another vehicle has already found, the
+  proof that a goal is unreachable (item 19), which several vehicles close
+  sooner than one. It never reaches the braking contract, the collision
+  checks or the tube: those stay on what the vehicle's own sensors measured,
+  and the vehicle's own measurement overrides a peer's wherever both exist.
+  The invariant that space is prohibited by measurement alone is restated
+  for this stage: a peer's measurement, inflated by the frame error between
+  the two, is a reason to plan elsewhere, never a reason to stop.
+- **The hard part is the alignment**: 0.2 to 0.7 m of frame error between
+  vehicles against a voxel of 0.25 m and a rest clearance of 0.35 m. A wall
+  laid half a metre off closes a doorway that is open. The stage measures
+  the error between two vehicles' memories of the same surfaces, and either
+  registers one against the other (the point-to-plane registration both
+  estimators already carry) or inflates the peer's occupancy by it.
+- **Size:** L to XL. Complete when two vehicles on the mesh class each plan
+  through space only the other has seen, a dead end found by one is not
+  entered by the other, and no flight shows a peer's occupancy in a braking
+  or collision decision.
+
 ### Measurement And Completion
 
 Measure, per flight and per channel class: message rate and bytes per
@@ -1043,6 +1076,107 @@ occupancy; and collisions. Complete when five flights of the point-to-point
 mission in total darkness, with no illumination and the time-of-flight
 sensors the only emitters, reach the goal in truth without a collision; the
 mean speed they fly is recorded as this sensor set's figure.
+
+## 23. Flight Through Moderate Smoke
+
+**Type:** dependent realism stage. Decided by the project owner on
+2026-10-03.
+
+**Hard prerequisites:** item 18, whose stage 1 puts smoke into the simulator
+and whose stages 2 and 3 detect it; item 17 stage 0, the contract that reads
+the frame.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission, on the stereo set and on the 3D lidar.
+
+Item 18 handles smoke the vehicle cannot see through: a local plume is a
+measured prohibition and the vehicle flies around it or home. This item is
+the other half: smoke the vehicle can see through, not in one place but
+filling whole rooms, which it has to fly **through**. It needs no new rule.
+The braking contract already ties the speed to the range the frame measures
+(specification K9): a range above the margin is a slower flight, a range
+below it is item 18's prohibition, and where one ends and the other begins is
+a measurement, not a setting.
+
+What the flights look like once the item lands:
+
+- **Rooms, not the location.** Several rooms are filled with moderate smoke
+  wall to wall; the rest of the location is clear. A location filled
+  throughout would only move every figure at once.
+- **One smoky room is always on the way**: in every ordinary flight the
+  route to B passes through a room of moderate smoke, as every ordinary
+  flight carries the zone that fails the light (item 17) and item 18's
+  plumes off the way. Both sensor sets fly it.
+- **The smoke is drawn in RViz**, as every evaluation object is.
+
+Three hard places, each measured before anything is built:
+
+- **The vehicle's own light.** The light sits beside the cameras, and smoke
+  scatters it back into them: a veil that lowers the contrast the matcher
+  and the feature tracker live on, worst exactly where the light is
+  strongest. What the confident range and the estimator's tracked features
+  become in smoke lit from the camera's own position is the first
+  measurement; a light set apart from the pair, or polarized, is the remedy
+  to compare.
+- **The lidar's false returns.** Particles return the beam. The memory must
+  not write them as walls, or moderate smoke becomes item 18's prohibition
+  by accident; it must not ignore a wall behind them either. Last-return
+  selection, intensity and the returns' persistence between scans are what
+  there is to tell them apart with.
+- **The simulator.** Everything above depends on how Gazebo shows smoke to
+  a camera and to a lidar, which item 18 stage 1 settles; if its smoke is a
+  visual effect only, this item starts with the sensor models.
+
+**Size:** L to XL.
+
+### Measurement And Completion
+
+Measure, per density of smoke and per sensor set: the contract's measured
+range, the speed it admits, the estimator's tracked features and drift, the
+false occupancy the memory holds inside the room and the walls it misses.
+
+This item is complete when, with one smoky room on the way in every flight,
+five flights on the stereo set and five on the 3D lidar reach B in truth
+with no contact, the mean flight speed is recorded as the requirement under
+smoke, and the memory of the smoky room holds no occupancy the truth does
+not.
+
+## 24. Item 19's Proof, Flown
+
+**Type:** validation debt of item 19. Decided by the project owner on
+2026-10-03.
+
+**Hard prerequisites:** none.
+
+Item 19's topological proof that a goal is unreachable has never fired in a
+flight: it is held by twelve unit tests alone (specification F15). Every
+return flown was the light's battery or the light's judgment. The proof is
+not about a sensor, so any sensor set may fly it; the owner's direction is
+the stereo set, **the way closed by darkness** (a zone that fails the light
+laid across the only passage, so that what closes the way is something the
+vehicle measures), and **the memory's decay switched off**
+(`decay_seconds_per_confirmation: 0`), so that what the vehicle has seen
+stays seen. The part of the location left reachable is small enough to be
+explored in minutes, not an hour.
+
+What has to be settled on the way, by measurement:
+
+- **Darkness is marked with holes.** The frustum a blind frame marks is laid
+  rays apart, and the goal's region leaked round it in the zone over B
+  (r816). The marking has to be dense enough to close a passage.
+- **The light's judgment comes first.** A vehicle blind for 3.5 s judges its
+  light unreliable and turns home (K12) before any proof stands. The
+  scenario has to let the proof speak: the order of the two triggers, or the
+  judgment's reach, is decided here.
+- **What else leaks.** Walls never looked at close by themselves, because
+  the planner flies to every opening it believes in; free voxels behind
+  true walls do not, and are measured on a memory snapshot of the flight.
+
+If darkness cannot be made to close a passage, a physical textured partition
+is the fallback, and says so in the record.
+
+Complete when five flights give the goal up with `trigger=topological`, the
+truth grid confirms no way existed, and the vehicle is home in truth.
 
 ## Completed
 
