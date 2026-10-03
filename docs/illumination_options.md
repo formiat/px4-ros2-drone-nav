@@ -102,7 +102,7 @@ spot light at the pair.
   [`localization.md`](localization.md).
 - **Active stereo can be rendered.** Gazebo Harmonic draws an SDF
   `<projector>`'s pattern into the sensor cameras' images in total darkness
-  (log/tools/projector: 15.6 % of a wall's pixels lit by a dot pattern,
+  (measured on rendered frames, not kept: 15.6 % of a wall's pixels lit by a dot pattern,
   none without it). The pattern is a decal, though: its brightness does not
   fall with distance, so the range of a projector would be the far clip it
   is given, a datasheet figure rather than a measurement. It is kept for

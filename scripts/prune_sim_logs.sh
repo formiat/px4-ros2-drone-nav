@@ -3,13 +3,17 @@
 # them and nowhere else:
 #
 #   log/<entry>                 every entry directly under log/ (a run set, an
-#                               experiment, a colcon build log) except log/tools
+#                               experiment, a colcon build log)
 #   log/runs/<id>               every run directory
+#   log/tools/<entry>           every entry of the flight tools' output (check
+#                               logs, gate logs, flags, scratch)
 #   external/PX4-Autopilot/build/px4_sitl_default/rootfs/<n>/log/<entry>
 #                               PX4 flight logs of every instance
 #
-# An entry goes when nothing inside it was modified within the window. An entry
-# holding a .keep file at its top level is never deleted; log/tools never is.
+# An entry goes when nothing inside it was modified within the window. A
+# directory holding a .keep file at its top level is never deleted: that is how
+# recordings, journals and anything else worth more than a week are kept, in
+# log/tools above all. A loose file cannot be kept; it belongs in such a directory.
 # Symbolic links are left alone. Nothing outside the repository is ever touched.
 #
 #   ./scripts/prune_sim_logs.sh [--dry-run] [--older-than-days N] [--root DIR]
@@ -35,7 +39,7 @@ while [[ "$#" -gt 0 ]]; do
       root="$(cd "${1:-}" && pwd)"
       ;;
     -h | --help)
-      sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -58,7 +62,7 @@ if ! [[ "${days}" =~ ^[0-9]+$ ]] || [[ "${days}" -lt 1 ]]; then
 fi
 
 px4_root="${PX4_AUTOPILOT_DIR:-${root}/external/PX4-Autopilot}"
-parents=("${root}/log" "${root}/log/runs")
+parents=("${root}/log" "${root}/log/runs" "${root}/log/tools")
 for instance_log in "${px4_root}"/build/px4_sitl_default/rootfs/*/log; do
   [[ -d "${instance_log}" ]] && parents+=("${instance_log}")
 done

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # series2.sh [--lidar] rNNN [rNNN...]: acceptance flights one at a time on the current commit.
 # Before every flight the host must be quiet for 60 s: no busy rustc/clippy/cargo (> 5 % CPU), 1-min load < 3,
-# no gz sim of ours. Results go to log/tools/series_<commit>_<profile>.txt (appended, never truncated).
+# no gz sim of ours. Results go to log/tools/journal/series_<commit>_<profile>.txt (appended, never truncated).
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 ./scripts/prune_sim_logs.sh
 profile=cameras; envs=()
 if [ "${1:-}" = "--lidar" ]; then profile=lidar; envs=(CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar); shift; fi
-out="log/tools/series_$(git rev-parse --short HEAD)_${profile}.txt"
+mkdir -p log/tools/journal; touch log/tools/journal/.keep
+out="log/tools/journal/series_$(git rev-parse --short HEAD)_${profile}.txt"
 for id in "$@"; do
   quiet=0
   while [ "$quiet" -lt 60 ]; do

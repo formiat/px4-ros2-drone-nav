@@ -34,12 +34,15 @@ class PruneSimLogsTest(unittest.TestCase):
         write(root / "log/runs/r003/.keep", 20)
         write(root / "log/runs/r004/old.log", 20)
         write(root / "log/runs/r004/fresh.log", 0.1)
-        write(root / "log/tools/tool.py", 40)
+        # The tools' output is pruned as any log; a kept directory is not.
+        write(root / "log/tools/run_r001.log", 40)
+        write(root / "log/tools/journal/goal.md", 40)
+        write(root / "log/tools/journal/.keep", 40)
         write(root / "external/PX4-Autopilot/build/px4_sitl_default/rootfs/0/log/new.ulg", 0.5)
         # Directories carry their own old mtimes.
         for directory in (
             "log/runs/r001", "log/experiment_old", "log/runs/r003", "log/runs/r004",
-            "log/tools", "log/runs", "log",
+            "log/tools", "log/tools/journal", "log/runs", "log",
         ):
             age(root / directory, 30)
         # A symbolic link out of the repository is left alone.
@@ -64,11 +67,11 @@ class PruneSimLogsTest(unittest.TestCase):
             self.layout(root)
 
             preview = self.run_script(root, "--dry-run")
-            self.assertIn("would delete 3 entries", preview)
+            self.assertIn("would delete 4 entries", preview)
             self.assertTrue((root / "log/runs/r001").exists())
 
             result = self.run_script(root)
-            self.assertIn("deleted 3 entries older than 7 days", result)
+            self.assertIn("deleted 4 entries older than 7 days", result)
             self.assertFalse((root / "log/runs/r001").exists())
             self.assertFalse((root / "log/experiment_old").exists())
             px4_log = root / "external/PX4-Autopilot/build/px4_sitl_default/rootfs/0/log"
@@ -77,7 +80,9 @@ class PruneSimLogsTest(unittest.TestCase):
             self.assertTrue((root / "log/runs/r002/ros.log").exists())
             self.assertTrue((root / "log/runs/r003/ros.log").exists())
             self.assertTrue((root / "log/runs/r004/old.log").exists())
-            self.assertTrue((root / "log/tools/tool.py").exists())
+            self.assertFalse((root / "log/tools/run_r001.log").exists())
+            self.assertTrue((root / "log/tools/journal/goal.md").exists())
+            self.assertTrue((root / "log/tools").is_dir())
             self.assertTrue((root / "log/outside_link").is_symlink())
             self.assertTrue((root.parent / "outside/secret.log").exists())
 

@@ -26,6 +26,13 @@ Before committing after file changes:
 
 Keep code comments and repository documentation in English.
 
+Logs are pruned after a week (`scripts/prune_sim_logs.sh`: `log/`,
+`log/runs/`, `log/tools/` and the PX4 logs), before every simulation run.
+Anything worth more than a week — a recording, a journal, a series table, a
+run cited as evidence — goes into a directory that holds a `.keep` file at
+its top, which is never deleted; a loose file cannot be kept
+([tools/README.md](tools/README.md)).
+
 The project's requirements, navigation invariants, acceptance conditions and
 the numbers the work relies on are in [docs/specification.md](docs/specification.md),
 each marked as set by the owner or by an agent. Read it before planning work

@@ -6,7 +6,23 @@ none of them is a criterion (the mission check in
 [`docs/testing.md`](../docs/testing.md) is). Run them from the repository
 root on the host unless a line says "inside the container". What they write
 (run logs, flags, series tables, recordings, replay binaries) goes to
-`log/tools/`, which git ignores and the log pruning never deletes.
+`log/tools/`, which git ignores.
+
+`log/tools/` is pruned like every log (`scripts/prune_sim_logs.sh`, a week):
+an entry directly inside it goes when nothing in it was touched for seven
+days. A directory holding a `.keep` file at its top is never deleted, and
+that is how anything worth more than a week is kept:
+
+| Kept directory | What it holds |
+|---|---|
+| `log/tools/journal/` | the goal journals (`goal_journal_*.md`) and the series tables |
+| `log/tools/diagnostics/` | one-off scripts and data of single investigations |
+| `log/tools/vio/`, `log/tools/replay/` | recorded flights for the offline replay (r575, r576; r779, r795) and the replay binaries |
+| `log/tools/truth25/`, `log/tools/proof_leak/`, `log/tools/texture/`, `log/tools/stereo/` | truth grids and measurement data the documents cite |
+
+A loose file cannot be kept: check logs (`run_rNNN.log`), gate logs and
+flags go after a week. A new recording or result that has to stay goes into
+a kept directory, or into a new directory with its own `.keep`.
 
 Runs are named `rNNN`; a flight's artifacts are in `log/runs/rNNN/` and its
 mission check's output in `log/tools/run_rNNN.log`.
@@ -16,7 +32,7 @@ mission check's output in `log/tools/run_rNNN.log`.
 | Tool | What it does | Use |
 |---|---|---|
 | `gates.sh` | The whole pre-commit gate in the dev container, detached: format, build, unit tests, script tests, quality. Verdict in `log/tools/gate_flag.txt` (`X=0` is green), output in `log/tools/gate_all.log`. | `./tools/gates.sh`, then poll the flag. Do not edit tracked files while it runs. |
-| `series2.sh` | Acceptance flights one at a time on the current commit. Prunes logs older than a week, waits until the host has been quiet for 60 s, stops any simulation before and after, appends the check's key lines to `log/tools/series_<commit>_<profile>.txt`. | `./tools/series2.sh r950 r951` (cameras); `./tools/series2.sh --lidar r954` (`--lidar` first); another scenario with `TARGET=sim-urban-light-lost-headless SMOKE_DURATION_S=400 ./tools/series2.sh r939`. |
+| `series2.sh` | Acceptance flights one at a time on the current commit. Prunes logs older than a week, waits until the host has been quiet for 60 s, stops any simulation before and after, appends the check's key lines to `log/tools/journal/series_<commit>_<profile>.txt`. | `./tools/series2.sh r950 r951` (cameras); `./tools/series2.sh --lidar r954` (`--lidar` first); another scenario with `TARGET=sim-urban-light-lost-headless SMOKE_DURATION_S=400 ./tools/series2.sh r939`. |
 | `mx.sh` | One flight of roadmap item 17's acceptance matrix by line number (1 cameras, 2 lidar, 3 long failures, 4 light lost, 5 severe failure, 6 zone over B, 7 low battery, 8 goal outside). Refuses to start while a flight runs or the run exists; marks its end in `log/tools/mx_flag.txt`. | `./tools/mx.sh 5 r944 &` |
 | `mxw.sh` | Waits up to 9.5 minutes for that flight; prints `DONE` or `RUNNING`. Never stops a flight. | `./tools/mxw.sh r944` |
 
@@ -51,6 +67,6 @@ on recordings before any flight.
 | `vio/drag_bench.sh`, `vio/drag_report.py` | Dark-window replays of two recorded flights with and without the rotor drag fusion (specification K21), and the drift table. | inside the container the bench, then `python3 tools/vio/drag_report.py` |
 | `vio/dark_drift.py` | Position error of dark-window replays against the lit replay. | `python3 tools/vio/dark_drift.py log/tools/replay/r779` |
 
-One-off diagnostics written for a single investigation stay in `log/tools/`
-and are not tracked; the goal journals there (`goal_journal_*.md`) say which
-was used for what.
+One-off diagnostics written for a single investigation stay in
+`log/tools/diagnostics/` and are not tracked; the goal journals in
+`log/tools/journal/` say which was used for what.
