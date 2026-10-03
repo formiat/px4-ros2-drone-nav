@@ -28,6 +28,8 @@ VisualInertialOdometryConfig testConfig() {
                         .position_body_m = {0.3, -0.1, 0.0}};
   config.right_camera = {.camera_to_body = forwardCamera(),
                          .position_body_m = {0.3, 0.1, 0.0}};
+  // The synthetic motion is a point's, not a multirotor's: it has no drag.
+  config.rotor_drag_1ps = 0.0;
   return config;
 }
 
@@ -254,6 +256,34 @@ TEST(VisualInertialOdometry, ADarkStretchIsDeadReckoningForAStatedTime) {
   const Flight sighted = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false);
   EXPECT_TRUE(sighted.last.healthy);
   EXPECT_FALSE(sighted.last.dead_reckoning);
+}
+
+TEST(VisualInertialOdometry, TheRotorsDragBoundsADarkHoversDrift) {
+  // A hover with nothing to see and an accelerometer 0.05 m/s^2 off across
+  // the rotor axis: integrated, the bias is 2.5 m in 10 s; a hovering
+  // multirotor's reading there is its drag, nothing while it stands, so the
+  // drag's fusion reads the offset as the bias it is (r927, r932).
+  const auto hover = [](const double rotor_drag_1ps) {
+    VisualInertialOdometryConfig config = testConfig();
+    config.rotor_drag_1ps = rotor_drag_1ps;
+    VisualInertialOdometry odometry{config};
+    odometry.initialize(0, Eigen::Vector3d::Zero(), 0.0);
+    VisualInertialEstimate estimate;
+    std::int64_t imu_stamp = 0;
+    for (std::int64_t frame = 1; frame <= 100; ++frame) {
+      const std::int64_t stamp = frame * kFramePeriodNs;
+      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+        odometry.addImu(VisualInertialImuSample{
+            .stamp_ns = imu_stamp,
+            .gyro_radps = Eigen::Vector3d::Zero(),
+            .accelerometer_mps2 = {0.05, 0.0, -config.gravity_mps2}});
+      }
+      estimate = odometry.addFrame(stamp, {});
+    }
+    return estimate.position_ned_m.norm();
+  };
+  EXPECT_GT(hover(0.0), 2.0);
+  EXPECT_LT(hover(0.106), 0.5);
 }
 
 TEST(VisualInertialOdometry, AnUncertainVelocityIsNotHealthy) {

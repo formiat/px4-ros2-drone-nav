@@ -113,6 +113,9 @@ struct VisualInertialOdometry::Impl {
   double held_height_ned_m{0.0};
   std::optional<double> held_barometric_height_m;
   std::optional<double> barometric_height_m;
+  // The accelerometer across the rotor axis, integrated since the last frame.
+  Eigen::Vector2d drag_reading_sum_mps{Eigen::Vector2d::Zero()};
+  double drag_reading_s{0.0};
   VisualInertialEstimate last_estimate;
   Eigen::Matrix3d body_to_ned{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
@@ -152,6 +155,7 @@ struct VisualInertialOdometry::Impl {
   void marginalizeOldestClone();
   void judgeDeadReckoning(VisualInertialEstimate& estimate) const;
   void holdHeight();
+  void fuseRotorDrag();
 };
 
 void VisualInertialOdometry::Impl::propagateStep(const Eigen::Vector3d& gyro,
@@ -257,6 +261,9 @@ std::int64_t VisualInertialOdometry::Impl::propagateTo(const std::int64_t target
       propagateStep(0.5 * (from.gyro_radps + to.gyro_radps),
                     0.5 * (from.accelerometer_mps2 + to.accelerometer_mps2), dt,
                     transition, noise);
+      drag_reading_sum_mps +=
+          0.5 * dt * (from.accelerometer_mps2 + to.accelerometer_mps2).head<2>();
+      drag_reading_s += dt;
       if (dt > config.maximum_imu_period_s) {
         // Samples were lost: what the vehicle did over the hole is unknown up
         // to what it can do, not up to the sensor's noise.
@@ -553,6 +560,33 @@ void VisualInertialOdometry::Impl::holdHeight() {
   update(jacobian, residual);
 }
 
+// The mean reading across the rotor axis since the last frame against the
+// drag of the body's velocity there and the accelerometer's bias. The model
+// is the hover's: the rotors' speed moves the coefficient with the thrust,
+// which the noise covers (0.036 m/s^2 of residual over the recorded flights).
+void VisualInertialOdometry::Impl::fuseRotorDrag() {
+  constexpr double kDragReadingSigmaMps2{0.05};
+  if (!(config.rotor_drag_1ps > 0.0) || !(drag_reading_s > 0.0)) {
+    return;
+  }
+  const Eigen::Vector2d reading = drag_reading_sum_mps / drag_reading_s;
+  drag_reading_sum_mps.setZero();
+  drag_reading_s = 0.0;
+  const Eigen::Vector3d body_velocity = body_to_ned.transpose() * velocity;
+  const double weight = config.observation_noise / kDragReadingSigmaMps2;
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(2, covariance.rows());
+  jacobian.block<2, 3>(0, kVelocity) =
+      -weight * config.rotor_drag_1ps * body_to_ned.transpose().topRows<2>();
+  jacobian.block<2, 3>(0, kTheta) =
+      -weight * config.rotor_drag_1ps * skew(body_velocity).topRows<2>();
+  jacobian.block<2, 3>(0, kAccelerometerBias) =
+      weight * Eigen::Matrix3d::Identity().topRows<2>();
+  const Eigen::VectorXd residual =
+      weight * (reading + config.rotor_drag_1ps * body_velocity.head<2>() -
+                accelerometer_bias.head<2>());
+  update(jacobian, residual);
+}
+
 void VisualInertialOdometry::Impl::marginalizeOldestClone() {
   const std::uint64_t id = clones.front().id;
   clones.pop_front();
@@ -757,6 +791,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
                  state.config.maximum_unaided_s) {
     state.holdHeight();
   }
+  state.fuseRotorDrag();
   estimate.healthy =
       state.last_update_stamp_ns > 0 &&
       static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 <=

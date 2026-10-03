@@ -124,6 +124,14 @@ struct VisualInertialOdometryConfig {
   // in 5 to 10 s: through the mode the filter holds the height the features
   // last gave, as the stopped vehicle does.
   double maximum_dead_reckoning_s{10.0};
+  // The rotors' drag: the accelerometer's reading across the rotor axis is
+  // the body's velocity there times this, whatever the attitude's error
+  // (0.105 to 0.109 1/s forward and sideways, correlation 0.96, on the
+  // recorded flights r575 and r576). Fused every frame, it gives a dark
+  // stretch a velocity the IMU's integration does not have: holding on dead
+  // reckoning the vehicle moved 0.2 to 0.6 m/s in truth and met walls a
+  // metre away (r927, r932). Zero fuses nothing.
+  double rotor_drag_1ps{0.106};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};
