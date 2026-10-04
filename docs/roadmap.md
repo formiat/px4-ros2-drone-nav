@@ -576,27 +576,23 @@ A direction judged closed is marked unobservable in the memory, the fail
 evidence of item 17, ray by ray and dense enough to close what it covers
 (the frustum marking of K14 leaks between its rays, r816).
 
-**The test object is a black sphere**: a matte, unlit, two-sided visual with
-no collision, drawn in RViz like every evaluation object. Light that enters
-it does not come back; a vehicle that turns away from it sees as before; a
-vehicle that flies into it meets nothing. It has no shape that churns and no
-veil, so the rule is settled on it before smoke adds both. It is not a
-feature of its own: it is the absorbing end of what a plume does.
+**The test object is a uniform matte panel** (`BLANK_PANELS`, already in the
+repository since item 17 stage 2): lit by the vehicle's own light it is an
+even bright patch with nothing to match, close to what a plume's veil looks
+like, and it has a collision, so a rule that fails is a contact and not a
+harmless pass through air. The rule is settled on it before smoke adds a
+shape that churns.
 
-**The sphere is a scenario of its own and never a part of the ordinary
-flight** (decided by the project owner on 2026-10-03). Once smoke stands in
-the location in every flight, a local plume exercises the same reading of a
-part of the frame on both sensor sets, and a second permanent object that
-only the stereo set feels would repeat it and blur what a flight was
-affected by. The sphere stays a named scenario, run on request, beside the
-route and on it, so that the rule can be checked on the clean object at any
-time.
+Known and not attempted: a surface that returns no light at all, a matte
+black one, looks to the pair like the unlit far end of a corridor until the
+vehicle is close. One stereo pair cannot tell the two apart at range; the
+speed toward a silent patch, bounded by the range to its border, is what
+covers it.
 
-Complete when the vehicle does not enter the sphere, routes around it where
-a way exists, and the memory holds it closed from every side it was seen
-from, on five flights with the sphere beside the route and five with it on
-the route; and when a uniform matte panel across the route is not flown
-into.
+Complete when, on five flights with a panel across the route and five with
+one beside it, the vehicle does not fly into the panel, routes around it
+where a way exists, and the memory holds it closed from every side it was
+seen from.
 
 ### Stage 1: Smoke In The Simulator
 
@@ -875,7 +871,7 @@ occupancy, and how long each survived; route replacements caused by them;
 the rung of the ladder reached and when; the minimum distance to true
 occupancy; and physical collisions.
 
-This item is complete when stage 0b's sphere and panel flights have passed;
+This item is complete when stage 0b's panel flights have passed;
 when stage 0 has landed and both acceptance series
 have been re-flown on it, with the route stability and the speed it costs
 stated; when, **on the camera profile and on the lidar profile alike**,
@@ -1359,8 +1355,8 @@ unreachable, and nothing else about the flight:
 **What closes this item.** Item 18's blocking scenario, "smoke closes the
 passage to B, no route exists, the vehicle flies home", flown and inspected
 with the goal given up by the proof. When that series passes, this item is
-complete: no flight of its own is needed, and nothing is re-flown on the
-stereo set with a black sphere or with any other barrier.
+complete: no flight of its own is needed, and nothing is re-flown with
+another barrier.
 
 What has to hold in those flights, and is checked in them:
 
@@ -1859,7 +1855,7 @@ Built, by stage, each decision the smallest change found:
   back wrong after it had been lost, which K8 and K13 now keep silent; a
   reset up to 3 m is flown on (K1).
 - **Stage 7, a zone that fails the light (removed on 2026-10-03)**
-  (2b5d1658, 600d5f67): a sphere in the injector, the "magnetic anomaly",
+  (2b5d1658, 600d5f67): a region in the injector, the "magnetic anomaly",
   in which the vehicle's own light was halved six times across a falloff
   and out in the core, nothing of it known to the vehicle. One stood off
   the way to B in every ordinary flight, and one laid over B was a scenario

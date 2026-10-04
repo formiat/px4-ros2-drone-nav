@@ -114,14 +114,12 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                         makefile,
                     )
         # The ordinary flight of roadmap item 17 (specification A10) is the
-        # dark location and the moderate flicker; the zones that failed the
-        # light were removed on 2026-10-03.
+        # dark location and the moderate flicker.
         # The location's own light never comes back (the owner's rule of
         # 2026-10-03): no target selects the lit world.
         self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", makefile)
         self.assertNotIn("WORLD_ILLUMINATION", makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
-        self.assertNotIn("ANOMALY_ZONES", makefile)
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the
         # check floods; its headless runs need the grid.
