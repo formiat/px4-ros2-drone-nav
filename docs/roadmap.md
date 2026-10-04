@@ -968,6 +968,16 @@ changed after the item was written:
   through the desktop's screencast and not through X; windows have to be
   placed without a person; and a flight with the GUI open is the GUI
   scenario, not the headless acceptance flight.
+- **Nothing but the picture is in the picture** (the owner, 2026-10-03). A
+  window opened as it is carries what a recording does not want: RViz's
+  displays list, its views and tool panels and its toolbars, Gazebo's entity
+  tree, component inspector and world controls, title bars, the desktop.
+  They cover the flight. A recording shows the two views and nothing else:
+  RViz is started with a configuration for recording whose docks, panels and
+  toolbars are hidden, Gazebo with a GUI configuration that holds the 3D
+  scene alone, and whatever frame remains is cropped out of the capture.
+  The recording configurations are files of the repository, beside the
+  debugging ones, which stay as they are.
 - **The order.** Stages 3 and 2 together, for the recordings; stages 0 and 1
   when item 15 needs four vehicles or the heaviest configuration is to be
   measured. The stage numbers are kept, because other pages name them.
@@ -1085,7 +1095,8 @@ Stages 3 and 2 are complete together when an unattended batch has recorded
 every scenario of item 17 with nobody at the desk, each recording two split
 files, the 3D world on the left and RViz on the right, one with the
 third-person view and one with the top-down view, playable from the
-mission's start to its result, the real-time factor of each recorded flight at 0.95
+mission's start to its result, with no panel, list, toolbar or desktop in
+the frame, the real-time factor of each recorded flight at 0.95
 or above, and the cost of the capture stated; at a factor below 1.0 a
 capture re-timed to the flight's clock within one second over the flight.
 Stage 2 is complete when a headless run writes a playable recording of its
