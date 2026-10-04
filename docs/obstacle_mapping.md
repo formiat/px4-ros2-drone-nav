@@ -231,8 +231,13 @@ T_map_lidar(t) = T_map_body(t) * T_body_lidar
 
 The configured translation is expressed in body FRD. The configured quaternion
 rotates lidar FLU vectors into body FRD. For the shipped X500 model the sensor
-center is `(0.12, 0.0, 0.315)` in SDF FLU, represented as
-`[0.12, 0.0, -0.315]` in body FRD; the aligned FLU-to-FRD quaternion is
+center is `(0.12, 0.0, 0.315)` from base_link in FLU, represented as
+`[0.12, 0.0, -0.315]` in body FRD. Base_link, the body the autopilot
+localizes, stands 0.24 m above the vehicle model's origin (the x500 base
+model's own pose), so in the model's frame the lidar is included at 0.50 m
+and the camera set at 0.24 m; included by the model frame's numbers they sat
+0.24 m lower than these extrinsics and the memory stood a voxel above the
+world (specification K22). The aligned FLU-to-FRD quaternion is
 `[0.0, 1.0, 0.0, 0.0]` in WXYZ order. Both ray direction and the complete XYZ
 lever arm rotate with the interpolated body quaternion before NED is converted
 to the map Z-up convention.

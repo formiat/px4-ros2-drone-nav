@@ -1971,6 +1971,35 @@ on the lidar against 3.68 to 3.96 and 817 to 859. The light's energy is in
 [`illumination_options.md`](illumination_options.md): about 1.5 W on average
 for the strobed near-infrared flood.
 
+After the acceptance, on 2026-10-03 and 2026-10-04, by the owner's decisions
+and one repair, all of it flown again:
+
+- **The sensors' mount** (8f7cedfd, specification K22). What item 19 had
+  recorded as a spurious occupied layer over the staging base was the whole
+  obstacle memory standing a voxel above the world, on both sensor sets: the
+  x500's base_link stands 0.24 m above the model's origin, and the lidar and
+  the camera set had been included by the model frame's numbers, 0.24 m
+  under where the stack's extrinsics place them. Every surface was laid
+  0.24 m too high, which gave clearance to floors and took it from ceilings.
+  Mounted against base_link, the memory is level with the truth grid within
+  about 2 cm (r980, r993).
+- **No forgetting by time** (03e02055, K10): the memory's decay is off and
+  stays off; what is transient is item 21's.
+- **The zones that failed the light are removed** (61e9d3db), and the
+  location's own light never comes back (d7bcef66).
+- **Both ordinary series on all of it**, every flight counted by the host's
+  measured verdict (A7):
+
+| Ordinary series | Flights | Mean flight speed, m/s | True position from the goal, m |
+|---|---|---|---|
+| Stereo set, dark, moderate flicker | r983 to r987 | 1.74 / 1.97 / 1.94 / 1.90 / 1.89, mean 1.89 | 0.80 / 1.25 / 1.25 / 0.90 / 1.00 |
+| 3D lidar | r988 to r992 | 3.12 / 2.57 / 2.68 / 2.71 / 2.48, mean 2.71 | 0.19 / 0.36 / 0.69 / 0.51 / 0.71 |
+
+  No contact and no return. The lidar is over its 2.4 m/s on every flight;
+  the tick stands where it stood, 21.3 to 22.2 ms at p50 on the stereo set
+  and 23.2 to 24.6 on the lidar; route availability 97.5 to 98.4 percent
+  and holds 1.5 to 2.6 percent on the stereo set.
+
 Known to remain. The lidar vehicle's return from a goal outside the location
 is not flown: the proof cannot hold a closure the size of a location and the
 lidar carries no light battery (F15, the owner's decision). Dead reckoning
