@@ -940,7 +940,12 @@ changed after the item was written:
   best one kept, because no two flights are alike. A single camera vehicle
   holds real time headless, so these recordings need neither stage 0 nor
   stage 1.
-- **The order.** Stage 3, then stage 2, for the recordings; stages 0 and 1
+- **The product is the split picture** the owner records by hand today: the
+  3D world on the left, RViz on the right, one file. The world's half is
+  stage 2's camera and RViz's half is stage 3's capture, joined on the
+  flight's clock. The world's half is as dark as the Gazebo window of a
+  hand-made recording is since item 17: the lamp's cone and what it lights.
+- **The order.** Stages 3 and 2 together, for the recordings; stages 0 and 1
   when item 15 needs four vehicles or the heaviest configuration is to be
   measured. The stage numbers are kept, because other pages name them.
 
@@ -1003,8 +1008,9 @@ stage 1 relieves. The recording plays at the flight's true speed and is a
 product of every headless run that asks for it, with nobody at the desk.
 
 In the dark location this picture shows the cone of the vehicle's lamp and
-nothing else, which is true to the flight and says little about it. It is
-the second picture, beside stage 3's, and is built after it. Whether the
+nothing else, which is true to the flight and says little about it alone.
+It is the left half of the split recording, beside stage 3's RViz, and is
+built with it. Whether the
 camera's own gain may brighten it is stated with the recording: a gain is
 the camera's, a light would be the location's and is not allowed.
 
@@ -1030,14 +1036,18 @@ and the simulation run headless as the acceptance flights are, so that the
 recorded flight is an ordinary one. The cost of RViz's rendering beside the
 flight is measured: a recording that pushes the real-time factor under 0.95
 is not a recording of the flight the acceptance flies, and software
-rendering is replaced by the GPU server if it does. A batch launcher flies
-a list of scenarios one after another, several takes each, unattended.
+rendering is replaced by the GPU server if it does. The world camera's
+recording of stage 2 and this capture are joined side by side into one
+file, the world on the left and RViz on the right, aligned on the mission's
+start. A batch launcher flies a list of scenarios one after another,
+several takes each, unattended.
 
 ### Measurement And Completion
 
-Stage 3 is complete when an unattended batch has recorded every scenario of
-item 17 with nobody at the desk, each recording playable from the mission's
-start to its result, the real-time factor of each recorded flight at 0.95
+Stages 3 and 2 are complete together when an unattended batch has recorded
+every scenario of item 17 with nobody at the desk, each recording one split
+file, the 3D world on the left and RViz on the right, playable from the
+mission's start to its result, the real-time factor of each recorded flight at 0.95
 or above, and the cost of the capture stated; at a factor below 1.0 a
 capture re-timed to the flight's clock within one second over the flight.
 Stage 2 is complete when a headless run writes a playable recording of its
