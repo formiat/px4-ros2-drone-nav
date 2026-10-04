@@ -1031,6 +1031,31 @@ is slowed on purpose and the windows' price stops mattering. The world's
 half is as dark as the location is; on the lidar, which carries no light, it
 is black.
 
+**Recorded on 2026-10-04.** Three passes over the seven scenarios of item 17,
+round robin, with nobody at the desk: 27 flights, 54 split files, the index
+beside them (`log/videos/2026-10-04/`, kept from the pruning). Every
+scenario has three takes whose flight passed its check but the long flight
+under failures, which passed once in five. What the batch showed besides the
+pictures:
+
+- **The lidar's estimator was starved by the windows** and two recorded
+  lidar flights crashed (r1053, r1066) although the simulator held real
+  time: registrations ran over the scan period, the pose reached the
+  autopilot up to 1.3 s old, the autopilot stopped fusing it and lost its
+  position. Repaired (specification K23): a scan that waited a period and a
+  half is let go, never two in a row. Under the same load the recorded
+  flight then passed (r1067, 37 scans of 1550 let go), and the headless
+  series on the repair is five of five (r1068 to r1072, 2.52 to 3.14 m/s).
+- **The long flight under failures does not survive the recording**: an
+  eight-minute hold beside phantom occupancy that no longer fades (r1032,
+  the register's entry on the memory's decay), an acknowledgement 2.03 m
+  from its goal (r1037), two crashes with the estimate stepping under the
+  stream's failures and the slowed simulator (r1040, r1054). Headless it
+  passes six of six.
+- **One descent past the edge of the staging base clipped it** (r1044, the
+  simulator at 0.62 of real time); six headless flights of the same scenario
+  pass the same edge clean.
+
 ### Stage 0: The Onboard Loop Keeps Simulation Time
 
 The planning tick and the offboard tick move from wall-clock timers to the
