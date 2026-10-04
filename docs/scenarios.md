@@ -75,6 +75,20 @@ window's to `log/gz_gui_drone_nav.log`, which is where to look if no window
 appears ([`troubleshooting.md`](troubleshooting.md)). The GUI flight keeps
 Gazebo and RViz open after the result so the world can be inspected.
 
+## Recording A Flight With Nobody At The Desk
+
+`./tools/record_flight.sh SCENARIO RUN DIRECTORY` (with `--lidar` first for
+the lidar) flies one scenario as its headless flight with the Gazebo window
+and RViz open, and leaves two split videos in `DIRECTORY`: the 3D world on
+the left, RViz on the right, one with the third-person view and one with the
+top-down view. `./tools/record_batch.sh DIRECTORY PASSES FIRST_RUN` flies
+every scenario above round robin and writes `index.md` beside the videos.
+Nobody moves a view, and nothing but the two pictures is in the frame. A
+recorded flight is a demonstration, not an acceptance flight: the windows
+slow the simulator under the host verdict's floor
+([`specification.md`](specification.md) A11, [`roadmap.md`](roadmap.md) item
+20). The world's half is as dark as the location is.
+
 ## What Is Planned And Not Yet Runnable
 
 So that nobody searches for a script that does not exist. The roadmap
@@ -91,8 +105,8 @@ So that nobody searches for a script that does not exist. The roadmap
 - **item 24** — item 19's proof flown: B physically unreachable and given
   up by the proof, not by the battery; closed by item 18's blocking
   scenario;
-- **item 20** — a recording of RViz written with nobody at the desk, for
-  every scenario above, and the simulation slowed on purpose so that four
-  vehicles fit the workstation.
+- **item 20** — the simulation slowed on purpose so that four vehicles fit
+  the workstation and a recorded flight counts as an acceptance one (the
+  recording itself is built, above).
 
 None of these has a command yet. What exists is in the two tables above.

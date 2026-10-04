@@ -982,6 +982,55 @@ changed after the item was written:
   when item 15 needs four vehicles or the heaviest configuration is to be
   measured. The stage numbers are kept, because other pages name them.
 
+### Built On 2026-10-04: The Unattended Recording
+
+Stages 3 and 2, for the recordings of item 17's scenarios, by the plain way
+the revision above allows, chosen by measurement:
+
+- **A recorded flight is the headless flight with its pictures on the
+  desktop** (`RECORD_VIDEO=1`): the server renders headless and the mission
+  check runs as in the acceptance, and beside them the Gazebo window opens
+  with the 3D scene alone (`gazebo_gui_recording.config`, its following
+  camera as in a GUI flight) and RViz in both views, written from the
+  debugging configurations with the panels gone and the top-down view
+  following the vehicle (`scripts/rviz_recording_view.py`).
+- **Each window's picture is taken where it is drawn**
+  (`scripts/frame_pace_shim.c`, preloaded into the three windows): on every
+  buffer swap the middle of the 3D view, in the shape of a half of the split
+  picture, is read back through a pixel buffer object and handed to a FIFO.
+  What is read is the view, not the window, so no panel, toolbar or desktop
+  can be in the frame, and nothing depends on how the windows lie on the
+  screen. The same shim paces the Gazebo window to 24 frames a second: it
+  redraws the scene at the display's 144 Hz otherwise.
+- **The recorder** (`scripts/record_flight_video.py`, on the host) stores
+  the three streams through the GPU's encoder while the flight flies and
+  joins them after it: two files a flight, the world on the left and RViz
+  on the right, 1920 x 1080, 24 frames a second, cut to the mission from its
+  readiness to its result, and checked (size, length against the flight, a
+  picture that is neither black nor still).
+- **One command a flight, one a night**: `tools/record_flight.sh` and
+  `tools/record_batch.sh`, which flies every scenario of item 17 round robin
+  and writes an index beside the videos. The desktop is kept from going idle
+  by an inhibitor while a flight lasts; none of its settings is changed.
+
+Tried and left: the windows read through the X server (it works on the
+Wayland desktop, the windows being XWayland's, but each window read cost the
+simulator a seventh of its speed), and the desktop's own screen recorder
+(not to be driven without a person).
+
+**What the recording costs, and what that decides.** The windows beside a
+flight hold the simulator at 0.72 to 0.80 of real time on the stereo set
+(r1015 to r1017), under the floor of the host's verdict, and they do so
+whatever captures them: stopped in flight the Gazebo window gives back 0.08
+and the two RViz 0.13. A recorded flight is therefore a demonstration and
+never an acceptance flight (specification A11); each scenario's acceptance is
+its headless flight on the same commit. Making a recorded flight count is
+this item's remainder: the pictures rendered after the flight from a
+recording of its topics, or stages 0 and 1 below, with which the simulation
+is slowed on purpose and the windows' price stops mattering. The world's
+half is as dark as the location is; on the lidar, which carries no light, it
+is black.
+
 ### Stage 0: The Onboard Loop Keeps Simulation Time
 
 The planning tick and the offboard tick move from wall-clock timers to the

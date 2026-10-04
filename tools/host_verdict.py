@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
-import re
+import statistics
 import sys
 
 MINIMUM_REAL_TIME_FACTOR_P50 = {"stereo_tof": 0.82, "lidar": 0.97}
@@ -23,7 +23,7 @@ def verdict(profile: str, real_time_factor_p50: float | None, largest_gap_s: flo
     reasons = []
     floor = MINIMUM_REAL_TIME_FACTOR_P50[profile]
     if real_time_factor_p50 is None:
-        reasons.append("no real-time factor in the check's output")
+        reasons.append("no real-time factor in the resource record")
     elif real_time_factor_p50 < floor:
         reasons.append(f"real-time factor {real_time_factor_p50:.2f} at p50 under {floor:.2f}")
     if largest_gap_s >= MAXIMUM_SAMPLER_GAP_S:
@@ -34,12 +34,20 @@ def verdict(profile: str, real_time_factor_p50: float | None, largest_gap_s: flo
 def inspect(run: str) -> list[str]:
     overrides = json.load(open(f"log/runs/{run}/manifest.json")).get("effective_overrides", {})
     profile = "lidar" if overrides.get("NAVIGATION_SENSOR_PROFILE") == "lidar" else "stereo_tof"
-    found = re.search(r"real-time factor is ([\d.]+) at p50",
-                      open(f"log/tools/run_{run}.log", errors="ignore").read())
-    stamps = sorted({float(row["stamp_s"])
-                     for row in csv.DictReader(open(f"log/runs/{run}/resources.csv"))})
+    rows = list(csv.DictReader(open(f"log/runs/{run}/resources.csv")))
+    stamps = sorted({float(row["stamp_s"]) for row in rows})
     gap = max((b - a for a, b in zip(stamps, stamps[1:])), default=0.0)
-    return verdict(profile, float(found.group(1)) if found else None, gap)
+    # The median over the whole record, which every flight has: the mission check prints its own only for a flight
+    # that reached its goal.
+    factors = {}
+    for row in rows:
+        try:
+            factors[float(row["stamp_s"])] = float(row["real_time_factor"])
+        except (KeyError, ValueError):
+            continue
+    finite = [value for value in factors.values() if value == value]
+    median = statistics.median(finite) if finite else None
+    return verdict(profile, median, gap)
 
 
 def main() -> int:

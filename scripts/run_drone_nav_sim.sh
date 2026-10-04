@@ -7,6 +7,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/scripts/simulation_runtime_helpers.sh"
 # shellcheck source=runtime_evidence_runtime.sh
 source "${repo_root}/scripts/runtime_evidence_runtime.sh"
+# shellcheck source=video_recording_runtime.sh
+source "${repo_root}/scripts/video_recording_runtime.sh"
 # shellcheck source=px4_parameter_runtime.sh
 source "${repo_root}/scripts/px4_parameter_runtime.sh"
 # shellcheck source=lidar_profile_runtime.sh
@@ -324,9 +326,12 @@ true | false) ;;
   exit 1
   ;;
 esac
+# A recorded flight (roadmap item 20) is the headless one with its pictures
+# on a display; the check and the shutdown on the result stay the headless.
+record_video="$(normalize_bool "${RECORD_VIDEO:-false}")"
 if [[ -n "${ENABLE_RVIZ+x}" ]]; then
   enable_rviz="${ENABLE_RVIZ}"
-elif [[ -n "${headless}" ]]; then
+elif [[ -n "${headless}" ]] && ! bool_is_true "${record_video}"; then
   enable_rviz="false"
 else
   enable_rviz="true"
@@ -345,6 +350,11 @@ if bool_is_true "${enable_rviz_follow_camera}"; then
   rviz_config_file="${RVIZ_CONFIG_FILE:-${repo_root}/drone_city_nav/rviz/city_nav_debug.rviz}"
 else
   rviz_config_file="${RVIZ_CONFIG_FILE:-${repo_root}/drone_city_nav/rviz/city_nav_debug_top_down.rviz}"
+fi
+recording_rviz_environment=""
+if bool_is_true "${record_video}"; then
+  prepare_video_recording "${repo_root}" "${runtime_artifact_dir}"
+  rviz_config_file="${recording_rviz_config}"
 fi
 rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
 if ! bool_is_true "${enable_rviz}"; then
@@ -481,7 +491,7 @@ if bool_is_true "${active_static_map}"; then
 fi
 if [[ -n "${enable_lidar_debug_override}" ]]; then
   enable_lidar_debug="${enable_lidar_debug_override}"
-elif [[ -n "${headless}" ]]; then
+elif [[ -n "${headless}" ]] && ! bool_is_true "${record_video}"; then
   enable_lidar_debug="false"
 else
   enable_lidar_debug="true"
@@ -783,14 +793,19 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
     gz sim "${gz_args[@]}" "${gazebo_world_sdf_path}" &
   gz_server_pid=$!
 
-  if [[ -z "${headless}" ]]; then
+  if [[ -z "${headless}" ]] || bool_is_true "${record_video}"; then
     if ! wait_for_gazebo_scene_entity "${repo_root}" "${world_name}" \
       "${gazebo_gui_follow_target}" \
       "${gazebo_gui_follow_wait_s}"; then
       echo "WARNING: launching Gazebo GUI without the requested drone entity."
     fi
-    run_with_cpu_affinity "${diagnostics_cpu_list}" \
-      gz sim -g >> "${gz_gui_log_file}" 2>&1 &
+    if bool_is_true "${record_video}"; then
+      recorded_gazebo_gui "${repo_root}" "${runtime_artifact_dir}" \
+        >> "${gz_gui_log_file}" 2>&1 &
+    else
+      run_with_cpu_affinity "${diagnostics_cpu_list}" \
+        gz sim -g >> "${gz_gui_log_file}" 2>&1 &
+    fi
     gz_gui_pid=$!
     start_gazebo_gui_camera_logger "${repo_root}" "${run_log_dir}" "${gz_gui_log_file}"
     gz_camera_logger_pid="${GAZEBO_GUI_CAMERA_LOGGER_PID}"
@@ -939,6 +954,7 @@ else
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"
+    rviz_environment:="${recording_rviz_environment}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
     shutdown_on_mission_result:="${point_to_point_shutdown_on_mission_result}"
   )
@@ -1003,6 +1019,10 @@ if bool_is_true "${multi_vehicle_mission}" && [[ -z "${headless}" ]] &&
     --offset "${gazebo_gui_follow_offset}" \
     --wait-s "${gazebo_gui_follow_wait_s}" \
     > "${gz_spectator_log_file}" 2>&1 &
+fi
+if bool_is_true "${record_video}"; then
+  recorded_top_view "${runtime_artifact_dir}" \
+    > "${runtime_artifact_dir}/rviz_top_down.log" 2>&1 &
 fi
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav "${launch_file}" \

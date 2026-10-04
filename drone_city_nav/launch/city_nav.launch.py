@@ -680,14 +680,27 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": True}],
     )
 
-    rviz = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        output="screen",
-        condition=IfCondition(enable_rviz),
-        arguments=["-d", rviz_config],
-        parameters=[{"use_sim_time": True}],
+    rviz = OpaqueFunction(
+        function=lambda context: [
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                output="screen",
+                condition=IfCondition(enable_rviz),
+                arguments=["-d", rviz_config],
+                parameters=[{"use_sim_time": True}],
+                # The frame capture of a recorded flight (roadmap item 20),
+                # preloaded into this RViz alone.
+                additional_env=dict(
+                    item.split("=", 1)
+                    for item in LaunchConfiguration("rviz_environment")
+                    .perform(context)
+                    .split(";")
+                    if item
+                ),
+            )
+        ]
     )
 
     return LaunchDescription(
@@ -825,6 +838,11 @@ def generate_launch_description():
                 "enable_rviz",
                 default_value="false",
                 description="Start RViz with the navigation debug view.",
+            ),
+            DeclareLaunchArgument(
+                "rviz_environment",
+                default_value="",
+                description="Environment of RViz alone, as NAME=value;NAME=value.",
             ),
             DeclareLaunchArgument(
                 "use_static_map",
