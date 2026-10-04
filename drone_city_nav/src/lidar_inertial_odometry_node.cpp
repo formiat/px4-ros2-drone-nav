@@ -190,6 +190,19 @@ private:
             Eigen::Vector3d{sample.accelerometer_mps2.x, sample.accelerometer_mps2.y,
                             sample.accelerometer_mps2.z}});
     ++imu_samples_;
+    // Of the scans the IMU has reached, the newest is registered and the older
+    // are let go. Registered in turn, a stretch of registrations longer than
+    // the scan period kept every later scan late: the pose reached the
+    // autopilot 0.7 to 0.8 s old, it stopped fusing it, lost its position
+    // 4.3 s later and the vehicle crashed (r1053, with the recording's
+    // windows beside the flight: 10 percent of registrations over 100 ms,
+    // against none headless).
+    while (pending_clouds_.size() > 1U &&
+           last_imu_stamp_ns_ >=
+               rclcpp::Time{pending_clouds_[1]->header.stamp}.nanoseconds()) {
+      pending_clouds_.pop_front();
+      ++dropped_scans_;
+    }
     if (!pending_clouds_.empty() &&
         last_imu_stamp_ns_ >=
             rclcpp::Time{pending_clouds_.front()->header.stamp}.nanoseconds()) {
@@ -277,7 +290,7 @@ private:
         "iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
         "imu_samples=%" PRIu64 " scans=%" PRIu64 " healthy_scans=%" PRIu64
-        " published_scans=%" PRIu64 " unmapped_imu=%" PRIu64
+        " published_scans=%" PRIu64 " dropped_scans=%" PRIu64 " unmapped_imu=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
@@ -286,8 +299,9 @@ private:
         estimate.iterations, estimate.scan_points, estimate.submap_points,
         estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
         1.0e-6 * static_cast<double>(imu_gap_max_ns_), imu_samples_, scans_,
-        healthy_scans_, published_scans_, unmapped_imu_samples_, map_xy.x, map_xy.y,
-        -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
+        healthy_scans_, published_scans_, dropped_scans_, unmapped_imu_samples_,
+        map_xy.x, map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
+        mapYaw(estimate));
     if (scans_ % 10U == 0U) {
       imu_gap_max_ns_ = 0;
     }
@@ -341,6 +355,7 @@ private:
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};
+  std::uint64_t dropped_scans_{0U};
   std::uint64_t published_scans_{0U};
 };
 
