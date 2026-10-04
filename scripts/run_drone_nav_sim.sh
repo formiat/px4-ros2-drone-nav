@@ -954,7 +954,6 @@ else
     enable_obstacle_memory:="${enable_obstacle_memory}"
     enable_rviz:="${enable_rviz}"
     rviz_config:="${rviz_config_file}"
-    rviz_environment:="${recording_rviz_environment}"
     rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
     shutdown_on_mission_result:="${point_to_point_shutdown_on_mission_result}"
   )
@@ -1021,6 +1020,7 @@ if bool_is_true "${multi_vehicle_mission}" && [[ -z "${headless}" ]] &&
     > "${gz_spectator_log_file}" 2>&1 &
 fi
 if bool_is_true "${record_video}"; then
+  ros_launch_args+=(rviz_environment:="${recording_rviz_environment}")
   recorded_top_view "${runtime_artifact_dir}" \
     > "${runtime_artifact_dir}/rviz_top_down.log" 2>&1 &
 fi

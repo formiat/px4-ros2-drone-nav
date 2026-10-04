@@ -90,7 +90,11 @@ class RecordingRuntimeContractTest(unittest.TestCase):
         for call in ("prepare_video_recording", "recorded_gazebo_gui", "recorded_top_view"):
             self.assertIn(call, runner)
             self.assertIn(f"{call}() {{", runtime)
-        self.assertIn('rviz_environment:="${recording_rviz_environment}"', runner)
+        # Passed only by a recorded flight: an empty launch argument is
+        # malformed and no flight starts (r1019).
+        self.assertIn('ros_launch_args+=(rviz_environment:="${recording_rviz_environment}")',
+                      runner)
+        self.assertNotIn('\n    rviz_environment:=', runner)
         self.assertIn("gazebo_gui_recording.config", runtime)
         self.assertIn("frame_pace_shim.c", runtime)
         for view in ("world", "follow", "top"):
