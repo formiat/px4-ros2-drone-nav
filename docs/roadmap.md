@@ -502,7 +502,9 @@ replaces it:
   lifts when the vehicle sees through the place again, and how it fades when
   the vehicle does not come back is stage 4's question.
 
-The blocking scenario needs item 19's proof to close, which item 24 flies.
+The blocking scenario is where item 19's proof is flown: its flights must
+give the goal up by the proof (`trigger=topological`), not by the light's
+battery or the light's judgment, and they close item 24.
 
 The navigation invariants hold in the form restated for this item, below.
 Vertical motion stays free, and nothing keyed on the vehicle's history is a
@@ -579,8 +581,7 @@ no collision, drawn in RViz like every evaluation object. Light that enters
 it does not come back; a vehicle that turns away from it sees as before; a
 vehicle that flies into it meets nothing. It has no shape that churns and no
 veil, so the rule is settled on it before smoke adds both. It is not a
-feature of its own: it is the absorbing end of what a plume does, and it is
-what closes the way by darkness in item 24.
+feature of its own: it is the absorbing end of what a plume does.
 
 Complete when the vehicle does not enter the sphere, routes around it where
 a way exists, and the memory holds it closed from every side it was seen
@@ -872,7 +873,9 @@ stated; when, **on the camera profile and on the lidar profile alike**,
 five flights through the smoky location reach the goal in truth or retreat
 and land without a collision, with no phantom occupancy surviving the
 flight longer than the time stage 4 states for a mark of unobservability; and when, on both profiles, five flights of the
-blocking scenario return to the start in truth without a collision. Accepting on one profile would prove the
+blocking scenario return to the start in truth without a collision, the
+goal given up by item 19's proof (`trigger=topological`), which closes
+item 24. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
 
@@ -1304,41 +1307,52 @@ not.
 ## 24. Item 19's Proof, Flown
 
 **Type:** validation debt of item 19. Decided by the project owner on
-2026-10-03.
+2026-10-03, restated the same day.
 
-**Hard prerequisites:** item 18 stage 0b, for the darkness that closes the
-way and its dense marking.
+**Hard prerequisites:** none of its own. It is closed by a flight series
+another item flies anyway (below).
 
 Item 19's topological proof that a goal is unreachable has never fired in a
 flight: it is held by twelve unit tests alone (specification F15). Every
-return flown was the light's battery or the light's judgment. The proof is
-not about a sensor, so any sensor set may fly it; the owner's direction is
-the stereo set, **the way closed by darkness** (so that what closes the way
-is something the vehicle measures: the black sphere of item 18 stage 0b, a
-volume that swallows the light that enters it, laid across the only
-passage), and **the memory's decay switched off**
-(`decay_seconds_per_confirmation: 0`), so that what the vehicle has seen
-stays seen. The part of the location left reachable is small enough to be
-explored in minutes, not an hour.
+return flown was the light's battery or the light's judgment. What this item
+validates is the algorithm, the proof that point B is **physically**
+unreachable, and nothing else about the flight:
 
-What has to be settled on the way, by measurement:
+- **The sensor set does not matter**, and neither does what closes the way.
+  The proof reads the memory, not a sensor: the 3D lidar serves, the stereo
+  set serves, smoke serves, a physical partition serves.
+- **The return is by the proof, not by the battery.** In these flights the
+  vehicle is not bounded by its light's charge: the goal is given up with
+  `trigger=topological`, and a flight that returns by `battery` or by
+  `unreliable_light` does not count. On the stereo set the charge is set so
+  that it cannot be what turns the vehicle home, or the lidar is flown,
+  which carries no light battery at all.
+- **The memory's decay stays off** (specification K10), so that what the
+  vehicle has seen stays seen.
+- **The reachable part of the location is small enough** to be explored in
+  minutes, not an hour.
 
-- **Darkness is marked with holes.** The frustum a blind frame marks is laid
-  rays apart, and the goal's region leaked round it when B lay in the dark
-  (r816). The marking has to be dense enough to close a passage.
-- **The light's judgment comes first.** A vehicle blind for 3.5 s judges its
-  light unreliable and turns home (K12) before any proof stands. The
-  scenario has to let the proof speak: the order of the two triggers, or the
-  judgment's reach, is decided here.
+**What closes this item.** Item 18's blocking scenario, "smoke closes the
+passage to B, no route exists, the vehicle flies home", flown and inspected
+with the goal given up by the proof. When that series passes, this item is
+complete: no flight of its own is needed, and nothing is re-flown on the
+stereo set with a black sphere or with any other barrier.
+
+What has to hold in those flights, and is checked in them:
+
+- **The closure is marked densely enough to close.** Evidence laid rays
+  apart let the goal's region leak round it when B lay in the dark (r816).
+- **No other trigger speaks first.** A vehicle blind for 3.5 s judges its
+  light unreliable and turns home (K12) before any proof stands; the
+  scenario lets the proof speak, by the order of the triggers or by flying
+  the lidar.
 - **What else leaks.** Walls never looked at close by themselves, because
   the planner flies to every opening it believes in; free voxels behind
   true walls do not, and are measured on a memory snapshot of the flight.
 
-If darkness cannot be made to close a passage, a physical textured partition
-is the fallback, and says so in the record.
-
-Complete when five flights give the goal up with `trigger=topological`, the
-truth grid confirms no way existed, and the vehicle is home in truth.
+Complete when five flights of item 18's blocking scenario give the goal up
+with `trigger=topological`, the truth grid confirms no way existed, and the
+vehicle is home in truth, on either sensor set.
 
 ## Completed
 

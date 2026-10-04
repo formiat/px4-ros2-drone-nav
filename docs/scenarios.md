@@ -88,8 +88,9 @@ So that nobody searches for a script that does not exist. The roadmap
   until it decays or the sensor looks there again;
 - **item 23** — rooms filled with moderate smoke the vehicle flies through,
   one of them on the way in every flight;
-- **item 24** — item 19's proof flown: a way closed by darkness, the
-  memory's decay off, the goal given up by the proof;
+- **item 24** — item 19's proof flown: B physically unreachable and given
+  up by the proof, not by the battery; closed by item 18's blocking
+  scenario;
 - **item 20** — a recording of RViz written with nobody at the desk, for
   every scenario above, and the simulation slowed on purpose so that four
   vehicles fit the workstation.
