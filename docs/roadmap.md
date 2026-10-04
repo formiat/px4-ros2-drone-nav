@@ -953,6 +953,21 @@ changed after the item was written:
   stage 2's camera and RViz's half is stage 3's capture, joined on the
   flight's clock. The world's half is as dark as the Gazebo window of a
   hand-made recording is since item 17: the lamp's cone and what it lights.
+- **Every way of recording is allowed** (the owner, 2026-10-03), the plain
+  one included: the windows open on the workstation's own display and the
+  screen captured. The recordings are made at night, the workstation is not
+  used then, and an open window is in nobody's way. So the stages below are
+  the candidates and not the prescription: the Gazebo window with its own
+  following camera beside RViz, on the real display, is what the owner
+  records by hand and is the first thing to try, and a camera sensor in the
+  world or a virtual display is built only where the plain way fails. The
+  way is chosen by measurement: the picture, the real-time factor of the
+  recorded flight against specification A7, and whether a batch runs a
+  night through with nobody at the desk. What the choice must state: the
+  workstation's session is Wayland, where a capture of the screen goes
+  through the desktop's screencast and not through X; windows have to be
+  placed without a person; and a flight with the GUI open is the GUI
+  scenario, not the headless acceptance flight.
 - **The order.** Stages 3 and 2 together, for the recordings; stages 0 and 1
   when item 15 needs four vehicles or the heaviest configuration is to be
   measured. The stage numbers are kept, because other pages name them.
