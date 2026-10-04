@@ -881,12 +881,13 @@ the set where it should be least needed.
 **Type:** simulation infrastructure and one honesty repair of the onboard
 loop; no navigation policy.
 
-**Hard prerequisites:** none for stages 0 to 2; stage 3 is optional and
-depends on nothing but a display server.
+**Hard prerequisites:** none. Stage 3 depends on nothing but a display
+server and is built first (revised on 2026-10-03, below).
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission for the acceptance of stage 0, the cooperative-traffic mission for
-what the item is for.
+mission. The cooperative-traffic mission is what stages 0 and 1 are for, and
+it is flown under item 15, not here: no cooperative flight is flown before
+item 15 closes (the owner's rule).
 
 Asked by the project owner on 2026-09-25. The reference workstation holds two
 lidar vehicles at real time and not four (item 15), and a demonstration
@@ -923,14 +924,35 @@ screen. The facts this item rests on were established on 2026-09-25:
   committed route, the goal) exist only in RViz, which needs a display
   server, and a capture of that display runs on the wall clock.
 
+**Revised on 2026-10-03, by the project owner's decision.** Three things
+changed after the item was written:
+
+- **The location is dark.** Since item 17 the only light is the one the
+  vehicle carries, and the location's own never comes back (specification
+  A10). A light in Gazebo belongs to the scene, not to a camera, so a
+  spectator camera in the world sees what the vehicle's lamp lights and
+  black around it. The picture that shows a flight is RViz: the memory, the
+  route, the goal, the evaluation objects. Stage 3 is therefore the
+  recording this item delivers and is built first; stage 2 is the secondary
+  picture.
+- **What the recording is for.** The demonstrations of item 17's scenarios,
+  recorded at night with nobody at the desk, several takes of each and the
+  best one kept, because no two flights are alike. A single camera vehicle
+  holds real time headless, so these recordings need neither stage 0 nor
+  stage 1.
+- **The order.** Stage 3, then stage 2, for the recordings; stages 0 and 1
+  when item 15 needs four vehicles or the heaviest configuration is to be
+  measured. The stage numbers are kept, because other pages name them.
+
 ### Stage 0: The Onboard Loop Keeps Simulation Time
 
 The planning tick and the offboard tick move from wall-clock timers to the
 node clock under `use_sim_time`, which every onboard node already declares
 for its stamps. At a factor of 1.0 nothing should change but timer jitter,
-which is what the acceptance measures: both series on the one commit, the
-camera series against the 1.798 m/s of a34690ba and the lidar series against
-2.617, the tick and planner percentiles beside their debt figures. At a
+which is what the acceptance measures: both series on the one commit,
+against both series flown on the commit before it (not against an older
+base: the stack has moved through items 19 and 17 since this was written),
+the tick and planner percentiles beside their debt figures. At a
 factor below 1.0 the loop then slows with the world and the load falls with
 the factor; what remains unequal is the wall-clock latency of the transport
 and the planner's 150 ms budget, which become shorter in simulated seconds by
@@ -941,6 +963,17 @@ the truth. The register's tick past its 20 ms deadline (P2) is re-measured
 here, on the node clock, and the deadline question is decided on those
 percentiles; the rework of the tick, if one is wanted, is not this item's.
 
+What the stage has to state before it changes anything: the audit. Twelve
+wall-clock timers sit in nine sources (the planning tick, the offboard tick,
+three in the mission monitor, two in the controller's interfaces, the truth
+adapter, and the cooperative agent, referee, spectator and diagnostics mux),
+and 62 sources read the monotonic clock for budgets, latencies and
+watchdogs. The audit lists each and says which follows the simulation: a
+period or a freshness watchdog does, a compute budget (the planner's 150 ms,
+the assembly's 12 ms) does not, since it measures the host. Startup waits
+for `/clock`. `mppi_offboard_node.cpp` stands at its 1000-line cap, so its
+change comes with a cut elsewhere in it.
+
 ### Stage 1: The Factor As A Parameter Of The Run
 
 `<real_time_factor>` becomes an input of the environment materialization,
@@ -948,9 +981,10 @@ which already rewrites the worlds it installs, and an environment variable
 of the simulation scripts with 1.0 as the default; the runtime manifest
 records the factor asked for and the resource record keeps reporting the
 one achieved. The quiet-host gate is unaffected: it reads processes, not the
-factor. A cooperative flight of four lidar vehicles at 0.5 then costs the
-host what two cost at 1.0, which the workstation holds (item 15), at twice
-the wall time: twelve minutes for a six-minute flight. The register's
+factor. A cooperative flight of four lidar vehicles at 0.5 would then cost
+the host what two cost at 1.0, which the workstation holds (item 15), at
+twice the wall time: twelve minutes for a six-minute flight; that flight is
+item 15's. Here the factor is proven on one vehicle. The register's
 heaviest configuration (S3), the stereo pair beside the lidar at a factor of
 0.83 with the loop on the wall clock, is flown here at 0.5 with the loop
 slowed with the world, which is the first time its figures mean anything;
@@ -968,28 +1002,53 @@ profile already loads to 40 percent at real time and which the factor of
 stage 1 relieves. The recording plays at the flight's true speed and is a
 product of every headless run that asks for it, with nobody at the desk.
 
-### Stage 3: RViz In The Background, If Wanted
+In the dark location this picture shows the cone of the vehicle's lamp and
+nothing else, which is true to the flight and says little about it. It is
+the second picture, beside stage 3's, and is built after it. Whether the
+camera's own gain may brighten it is stated with the recording: a gain is
+the camera's, a light would be the location's and is not allowed.
+
+### Stage 3: RViz In The Background
+
+Built first, and the recording this item delivers (revised on 2026-10-03):
+in a dark location RViz is where a flight can be seen.
 
 The only way to record RViz without a person is a virtual display: `Xvfb`
 with software rendering, or a second X server on the GPU with a dummy
-screen, and `ffmpeg` capturing it. It is a workaround and is named one: the
-capture runs on the wall clock, so at a factor below 1.0 it is slow motion
-by a varying amount and is re-timed afterwards from the factor the resource
-record sampled. The stage is optional; the honest recording of the item is
-stage 2, and a project that wants the overlays in the picture without RViz
-would have to render them in the world, which this item does not do.
+screen, and `ffmpeg` capturing it. The container image carries neither
+`Xvfb` nor `ffmpeg` today; both are added to it. The capture runs on the
+wall clock: at a factor of 1.0, which a single camera vehicle holds
+headless, it is the flight's own speed to within the factor the resource
+record samples, and at a factor below 1.0 it is slow motion by a varying
+amount and is re-timed afterwards from that record.
+
+What the stage delivers, for every scenario that asks for it by one switch
+of the run: RViz started on the virtual display with the repository's
+configuration and a camera that follows the vehicle, the capture written to
+the run's directory beside the logs from the mission's start to its result,
+and the simulation run headless as the acceptance flights are, so that the
+recorded flight is an ordinary one. The cost of RViz's rendering beside the
+flight is measured: a recording that pushes the real-time factor under 0.95
+is not a recording of the flight the acceptance flies, and software
+rendering is replaced by the GPU server if it does. A batch launcher flies
+a list of scenarios one after another, several takes each, unattended.
 
 ### Measurement And Completion
 
-Stage 0 is complete with both acceptance series green on its commit and the
-tick and planner percentiles reported beside the previous ones. Stage 1 is
-complete when a four-vehicle cooperative flight at a factor of 0.5 runs on
-the reference workstation with the load recorded, its separation figures
-read in metres and simulation time as item 15 prescribes. Stage 2 is
-complete when a headless run writes a playable recording of its whole flight
-without a display server, with the GPU cost stated. Stage 3, if built, is
-complete when a background capture of RViz is re-timed to the flight's clock
-within one second over the flight.
+Stage 3 is complete when an unattended batch has recorded every scenario of
+item 17 with nobody at the desk, each recording playable from the mission's
+start to its result, the real-time factor of each recorded flight at 0.95
+or above, and the cost of the capture stated; at a factor below 1.0 a
+capture re-timed to the flight's clock within one second over the flight.
+Stage 2 is complete when a headless run writes a playable recording of its
+whole flight from a camera in the world without a display server, with the
+GPU cost stated. Stage 0 is complete with both acceptance series green on
+its commit, against both series on the commit before it, and the tick and
+planner percentiles reported beside the previous ones. Stage 1 is complete
+when a single-vehicle flight at a factor of 0.5 reaches its goal with the
+factor asked for in the manifest and the one achieved in the resource
+record, and the heaviest configuration (S3) has been flown at 0.5; the
+four-vehicle cooperative flight at 0.5 is item 15's.
 
 ## 21. Moving Obstacles: Doors And Bodies That Move Slowly
 

@@ -90,7 +90,8 @@ So that nobody searches for a script that does not exist. The roadmap
   one of them on the way in every flight;
 - **item 24** — item 19's proof flown: a way closed by darkness, the
   memory's decay off, the goal given up by the proof;
-- **item 20** — the simulation slowed on purpose so that four vehicles fit
-  the workstation, and a recording of the flight written without a screen.
+- **item 20** — a recording of RViz written with nobody at the desk, for
+  every scenario above, and the simulation slowed on purpose so that four
+  vehicles fit the workstation.
 
 None of these has a command yet. What exists is in the two tables above.
