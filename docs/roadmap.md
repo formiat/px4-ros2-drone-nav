@@ -583,6 +583,15 @@ vehicle that flies into it meets nothing. It has no shape that churns and no
 veil, so the rule is settled on it before smoke adds both. It is not a
 feature of its own: it is the absorbing end of what a plume does.
 
+**The sphere is a scenario of its own and never a part of the ordinary
+flight** (decided by the project owner on 2026-10-03). Once smoke stands in
+the location in every flight, a local plume exercises the same reading of a
+part of the frame on both sensor sets, and a second permanent object that
+only the stereo set feels would repeat it and blur what a flight was
+affected by. The sphere stays a named scenario, run on request, beside the
+route and on it, so that the rule can be checked on the clean object at any
+time.
+
 Complete when the vehicle does not enter the sphere, routes around it where
 a way exists, and the memory holds it closed from every side it was seen
 from, on five flights with the sphere beside the route and five with it on
