@@ -434,7 +434,10 @@ comparable.
 
 **Hard prerequisites:** item 17 stage 0 for stages 1 to 4 (smoke is detected
 through the measured range); item 17 stage 8 for stage 0 below, whose fail
-evidence, decay and restated invariant it applies to smoke and the lidar.
+evidence and restated invariant it applies to smoke and the lidar. The
+memory's decay by time, which this item was first written on, is switched
+off since 2026-10-03 (specification K10): how a mark of unobservability
+fades is settled here with item 21's transient class, not assumed.
 
 **Validation environment:** Urban Circuit Practice 01, the point-to-point
 mission, on both sensor profiles.
@@ -495,12 +498,11 @@ replaces it:
   during a flight, so that the difficulty of the location does not change
   with time. Its shape does, as a smoke grenade's or a local source's plume
   churns, because that is what smoke looks like and what the sensors have to
-  cope with. Item 17 stage 8's decay still applies to the memory: a smoky place that
-  is not re-observed decays to unknown and a re-approach restores it, which
-  with constant smoke is a re-probe that always confirms.
+  cope with. A mark of smoke in the memory is transient (item 21's class): it
+  lifts when the vehicle sees through the place again, and how it fades when
+  the vehicle does not come back is stage 4's question.
 
-The blocking scenario needs item 19's proof to close in this location, which
-item 17 stage 8 settles before it is flown.
+The blocking scenario needs item 19's proof to close, which item 24 flies.
 
 The navigation invariants hold in the form restated for this item, below.
 Vertical motion stays free, and nothing keyed on the vehicle's history is a
@@ -508,12 +510,11 @@ rule.
 
 ### Stage 0: Smoke And The Lidar In The Memory
 
-Item 17 stage 8 builds the memory's third kind of evidence, **fail**, its
-decay by confirmation count and the invariant restated around it, for
-darkness. This stage applies them to what this item adds: smoke on every
-sensor, and the patterns in which the lidar fails. A person crossing the
-frame is transient occupancy, and item 17 stage 8's decay clears the trail
-it leaves.
+Item 17 stage 8 builds the memory's third kind of evidence, **fail**, and
+the invariant restated around it, for darkness. This stage applies them to
+what this item adds: smoke on every sensor, and the patterns in which the
+lidar fails. A person crossing the frame is transient occupancy, item 21's
+class, cleared by the next look and not by its age.
 
 - **The lidar.** A single ray with no return is ambiguous: nothing within
   range, or something that absorbed or deflected the beam — black smoke, a
@@ -536,6 +537,57 @@ into it — and under the restated rule it is unobservable and closed. But
 in this simulator; the repair is recorded as designed and not verified until
 a dropout by material is modelled.
 
+### Stage 0b: Unobservable By Direction, On The Stereo Pair
+
+Added by the project owner on 2026-10-03, and built first: everything the
+stereo set does with a local plume depends on it.
+
+The stereo pair does not say "I looked and nothing is there". It gives a
+depth where it matched and is silent everywhere else, and its silence is one
+for every cause: too far for the light, no texture, smoke, a surface that
+swallows the light. Item 17 taught the stack to read that silence for the
+frame as a whole (specification K9, K14): a frame that observes too little
+is blind, and what it looks at is marked. A local plume fills a part of the
+frame. The frame as a whole stays healthy, the directions without depth are
+unknown, unknown is free (I1), and the vehicle flies into the plume. The
+same hole lets a uniform panel across the route into the memory as nothing
+(the register's textureless-surface entry, r783). The lidar's half of this
+is stage 0's dropout pattern; the pair has none.
+
+What tells a silent direction that is far from one that is closed, by
+measurement only:
+
+- **Its neighbours.** A patch without depth whose border returns surfaces at
+  two or three metres, with a sharp edge, is not a corridor: an opening
+  shows something of what lies behind it at its rim.
+- **The approach.** An opening opens as the vehicle nears it: the light
+  begins to reach, depth appears behind the rim. A patch that stays silent
+  while the range to its border falls under what the light carries is
+  closed. This is the strongest sign and it arrives late, so the speed
+  toward a silent patch is bounded by the range to its border, as the
+  contract bounds every other motion.
+- **A second sensor.** The time-of-flight ring is active and reads in the
+  dark to 4 m: a return behind a patch the pair is silent on says the pair
+  failed, not the world. An absorbing surface silences both.
+
+A direction judged closed is marked unobservable in the memory, the fail
+evidence of item 17, ray by ray and dense enough to close what it covers
+(the frustum marking of K14 leaks between its rays, r816).
+
+**The test object is a black sphere**: a matte, unlit, two-sided visual with
+no collision, drawn in RViz like every evaluation object. Light that enters
+it does not come back; a vehicle that turns away from it sees as before; a
+vehicle that flies into it meets nothing. It has no shape that churns and no
+veil, so the rule is settled on it before smoke adds both. It is not a
+feature of its own: it is the absorbing end of what a plume does, and it is
+what closes the way by darkness in item 24.
+
+Complete when the vehicle does not enter the sphere, routes around it where
+a way exists, and the memory holds it closed from every side it was seen
+from, on five flights with the sphere beside the route and five with it on
+the route; and when a uniform matte panel across the route is not flown
+into.
+
 ### Stage 1: Smoke In The Simulator
 
 Gazebo already carries the tool, built for this purpose: the
@@ -551,11 +603,23 @@ of the location, as the dark world of item 17 is; nothing reaches production
 code. Global fog through `<scene><fog>` under ogre2 is checked before it is
 relied on.
 
+**The vehicle's own light in smoke** is measured here, before anything is
+built on it. This item was written for a lit location; since item 17 the
+only light is the one the vehicle carries, beside the cameras, and smoke
+scatters it straight back into them. That may help, a bright veil being
+unlike the black silence of distance, or it may harm, the matcher finding
+correspondences in the veil and returning a depth that is not there. What
+the pair's depth, its matched share and the estimator's tracked features do
+in a plume lit from the camera's own position is the first measurement of
+this stage, by density; a light set apart from the pair is the remedy to
+compare.
+
 ### Stage 2: Detecting Smoke
 
-Mostly free. Item 17 stage 0 already turns the contract's forward range into
-a measurement, and smoke is one more way that range collapses: the vehicle
-slows and stops without a classifier. Two signatures separate smoke from a
+Free only where smoke fills the frame. Item 17 stage 0 already turns the
+contract's forward range into a measurement, and smoke all round is one more
+way that range collapses: the vehicle slows and stops without a classifier.
+A plume in a part of the frame does not collapse it, and is stage 0b's. Two signatures separate smoke from a
 wall where that matters: the time-of-flight zones report signal rate and
 ambient per zone, and smoke is a low signal spread over every zone at short
 range in every direction, which no wall is; and a surface the pair sees that
@@ -756,12 +820,17 @@ light's battery holds only the way back, item 17 stage 5), and it lands there, i
 proven unreachable; that is a rule of time on the vehicle's own state, not a
 prohibition of space, and it is the same time the light of item 17 stage 5
 is given to return. And the
-closed region **decays** by item 17 stage 8's rule when it is not re-observed, so a
-plume that has drifted out of view does not close its corridor for the rest
-of the flight: the region returns to unknown, the vehicle approaches again,
-and the sensor either sees through, which lifts the closure by measurement,
-or does not, which restores it. That re-approach is a probe bounded by the
-decay time, not an oscillation.
+closed region must not close its corridor for the rest of the flight once
+the plume has drifted out of view. With the memory's decay by time switched
+off (specification K10) nothing fades by age, and a place the planner will
+not route into is a place the vehicle never looks at again. So a mark of
+unobservability is transient in item 21's sense and carries its own rule,
+settled in this stage by measurement: it lifts when the vehicle sees through
+the place, and a mark not confirmed for a stated time returns to unknown,
+which sends the vehicle to look again; the sensor then either sees through
+or restores the mark. That re-approach is a probe bounded by the stated
+time, not an oscillation, and the time applies to these marks alone, never
+to what is static.
 
 ### What The Additions Cost, And Against What
 
@@ -796,12 +865,13 @@ occupancy, and how long each survived; route replacements caused by them;
 the rung of the ladder reached and when; the minimum distance to true
 occupancy; and physical collisions.
 
-This item is complete when stage 0 has landed and both acceptance series
+This item is complete when stage 0b's sphere and panel flights have passed;
+when stage 0 has landed and both acceptance series
 have been re-flown on it, with the route stability and the speed it costs
 stated; when, **on the camera profile and on the lidar profile alike**,
 five flights through the smoky location reach the goal in truth or retreat
-and land without a collision, with no phantom occupancy older than the stated
-decay surviving the flight; and when, on both profiles, five flights of the
+and land without a collision, with no phantom occupancy surviving the
+flight longer than the time stage 4 states for a mark of unobservability; and when, on both profiles, five flights of the
 blocking scenario return to the start in truth without a collision. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
@@ -1167,17 +1237,17 @@ not.
 **Type:** validation debt of item 19. Decided by the project owner on
 2026-10-03.
 
-**Hard prerequisites:** none.
+**Hard prerequisites:** item 18 stage 0b, for the darkness that closes the
+way and its dense marking.
 
 Item 19's topological proof that a goal is unreachable has never fired in a
 flight: it is held by twelve unit tests alone (specification F15). Every
 return flown was the light's battery or the light's judgment. The proof is
 not about a sensor, so any sensor set may fly it; the owner's direction is
 the stereo set, **the way closed by darkness** (so that what closes the way
-is something the vehicle measures; the zones that failed the vehicle's own
-light were removed on 2026-10-03, so what makes the darkness is settled
-here: a region of the location the light does not carry through, or
-item 18's smoke), and **the memory's decay switched off**
+is something the vehicle measures: the black sphere of item 18 stage 0b, a
+volume that swallows the light that enters it, laid across the only
+passage), and **the memory's decay switched off**
 (`decay_seconds_per_confirmation: 0`), so that what the vehicle has seen
 stays seen. The part of the location left reachable is small enough to be
 explored in minutes, not an hour.
