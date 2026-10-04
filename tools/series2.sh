@@ -22,6 +22,8 @@ for id in "$@"; do
   env "${envs[@]}" DRONE_GAZEBO_RUN_ID=$id SMOKE_DURATION_S=${SMOKE_DURATION_S:-600} ./scripts/dev_shell.sh make ${TARGET:-sim-urban-point-to-point-headless} > "log/tools/run_$id.log" 2>&1
   ./scripts/stop_sim.sh > /dev/null 2>&1
   grep -E '^FAIL|^(OK|NOTE): (mean flight|crash|no crash|post-bootstrap|persistent planner p95|mission monitor|execution ownership|the true position|real-time factor|the goal was given up|the vehicle returned|the vehicle is whole|production tick wall time|no vehicle collided)' "log/tools/run_$id.log" >> "$out"
+  # whether the flight counts, by the host it was flown on (specification A7)
+  python3 tools/host_verdict.py "$id" >> "$out" 2>&1
   # foreign load during the flight, for the record
   echo "   rust_busy_after=$(ps -eo pcpu,comm | grep -E 'rustc|clippy|cargo' | awk '$1>5{c++} END{print c+0}') load_after=$(cut -d' ' -f1-3 /proc/loadavg)" >> "$out"
   echo "== $id end $(date -u +%H:%M:%S)" >> "$out"

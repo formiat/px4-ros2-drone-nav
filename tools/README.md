@@ -33,11 +33,12 @@ mission check's output in `log/tools/run_rNNN.log`.
 |---|---|---|
 | `gates.sh` | The whole pre-commit gate in the dev container, detached: format, build, unit tests, script tests, quality. Verdict in `log/tools/gate_flag.txt` (`X=0` is green), output in `log/tools/gate_all.log`. | `./tools/gates.sh`, then poll the flag. Do not edit tracked files while it runs. |
 | `series2.sh` | Acceptance flights one at a time on the current commit. Prunes logs older than a week, waits until the host has been quiet for 60 s, stops any simulation before and after, appends the check's key lines to `log/tools/journal/series_<commit>_<profile>.txt`. | `./tools/series2.sh r950 r951` (cameras); `./tools/series2.sh --lidar r954` (`--lidar` first); another scenario with `TARGET=sim-urban-light-lost-headless SMOKE_DURATION_S=400 ./tools/series2.sh r939`. |
+| `host_verdict.py` | Whether a flight counts, by the host it was flown on (specification A7): `HOST valid` or `HOST VOID` with the reason, from the real-time factor at the median (0.82 on the stereo set, 0.97 on the lidar) and the resource sampler's largest gap (2 s). The series launcher appends it to the series table after every flight. | `python3 tools/host_verdict.py r981` |
 | `mx.sh` | One flight of roadmap item 17's acceptance matrix by line number (1 cameras, 2 lidar, 3 long failures, 4 light lost, 5 severe failure, 7 low battery, 8 goal outside). Refuses to start while a flight runs or the run exists; marks its end in `log/tools/mx_flag.txt`. | `./tools/mx.sh 5 r944 &` |
 | `mxw.sh` | Waits up to 9.5 minutes for that flight; prints `DONE` or `RUNNING`. Never stops a flight. | `./tools/mxw.sh r944` |
 
-Flights run strictly one at a time, and a flight under another task's load on
-the host is void and flown again.
+Flights run strictly one at a time. A flight `host_verdict.py` calls void is
+flown again, and a crash in it is not a defect.
 
 ## Reading A Flight
 
