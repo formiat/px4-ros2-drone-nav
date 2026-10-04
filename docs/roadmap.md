@@ -1042,14 +1042,29 @@ is not a recording of the flight the acceptance flies, and software
 rendering is replaced by the GPU server if it does. The world camera's
 recording of stage 2 and this capture are joined side by side into one
 file, the world on the left and RViz on the right, aligned on the mission's
-start. A batch launcher flies a list of scenarios one after another,
+start.
+
+Nobody moves the view during a recording: it is what the configuration
+says, following the vehicle, for the whole flight. One fixed view loses the
+vehicle behind a floor or in a shaft where a person at the desk would have
+turned it, so **every recorded flight is captured in both of the
+repository's views by default**, the third-person one
+(`city_nav_debug.rviz`) and the top-down one
+(`city_nav_debug_top_down.rviz`), two RViz instances on the one flight. Each
+gives a split file of its own with the same world half, and the better one
+is chosen when the recording is cut. One view alone is a switch of the run.
+The second instance's cost is in the measurement above: both together must
+leave the real-time factor at 0.95 or over. The memory's cloud in RViz is
+drawn translucent as it is and does not hide the vehicle; nothing is
+changed there. A batch launcher flies a list of scenarios one after another,
 several takes each, unattended.
 
 ### Measurement And Completion
 
 Stages 3 and 2 are complete together when an unattended batch has recorded
-every scenario of item 17 with nobody at the desk, each recording one split
-file, the 3D world on the left and RViz on the right, playable from the
+every scenario of item 17 with nobody at the desk, each recording two split
+files, the 3D world on the left and RViz on the right, one with the
+third-person view and one with the top-down view, playable from the
 mission's start to its result, the real-time factor of each recorded flight at 0.95
 or above, and the cost of the capture stated; at a factor below 1.0 a
 capture re-timed to the flight's clock within one second over the flight.
