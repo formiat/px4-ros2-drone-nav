@@ -190,19 +190,6 @@ private:
             Eigen::Vector3d{sample.accelerometer_mps2.x, sample.accelerometer_mps2.y,
                             sample.accelerometer_mps2.z}});
     ++imu_samples_;
-    // Of the scans the IMU has reached, the newest is registered and the older
-    // are let go. Registered in turn, a stretch of registrations longer than
-    // the scan period kept every later scan late: the pose reached the
-    // autopilot 0.7 to 0.8 s old, it stopped fusing it, lost its position
-    // 4.3 s later and the vehicle crashed (r1053, with the recording's
-    // windows beside the flight: 10 percent of registrations over 100 ms,
-    // against none headless).
-    while (pending_clouds_.size() > 1U &&
-           last_imu_stamp_ns_ >=
-               rclcpp::Time{pending_clouds_[1]->header.stamp}.nanoseconds()) {
-      pending_clouds_.pop_front();
-      ++dropped_scans_;
-    }
     if (!pending_clouds_.empty() &&
         last_imu_stamp_ns_ >=
             rclcpp::Time{pending_clouds_.front()->header.stamp}.nanoseconds()) {
@@ -235,6 +222,22 @@ private:
     if (!odometry_->initialized()) {
       return;
     }
+    // A scan that waited longer than a scan period and a half is let go, and
+    // never two in a row. Registrations that outlast the period queue the
+    // scans behind them: with the recording's windows beside a flight 10 to
+    // 15 percent took over 100 ms (none do headless), the pose reached the
+    // autopilot 0.7 to 1.3 s old, it stopped fusing it, lost its position
+    // seconds later and the vehicle crashed (r1053, r1066). Letting every
+    // other scan go keeps the pose within two registrations of the present.
+    constexpr std::int64_t kMaximumScanAgeNs{150'000'000};
+    const std::int64_t scan_stamp_ns = rclcpp::Time{cloud.header.stamp}.nanoseconds();
+    if (!last_scan_dropped_ &&
+        get_clock()->now().nanoseconds() - scan_stamp_ns > kMaximumScanAgeNs) {
+      last_scan_dropped_ = true;
+      ++dropped_scans_;
+      return;
+    }
+    last_scan_dropped_ = false;
     const auto started = std::chrono::steady_clock::now();
     const std::optional<std::vector<Point3>> returns = decodePointCloudReturns(cloud);
     if (!returns.has_value()) {
@@ -356,6 +359,7 @@ private:
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};
   std::uint64_t dropped_scans_{0U};
+  bool last_scan_dropped_{false};
   std::uint64_t published_scans_{0U};
 };
 
