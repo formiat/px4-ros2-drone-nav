@@ -1009,7 +1009,8 @@ the revision above allows, chosen by measurement:
   readiness to its result, and checked (size, length against the flight, a
   picture that is neither black nor still).
 - **One command a flight, one a night**: `tools/record_flight.sh` and
-  `tools/record_batch.sh`, which flies every scenario of item 17 round robin
+  `tools/record_batch.sh`, which flies every scenario of item 17 on the
+  stereo set round robin
   and writes an index beside the videos. The desktop is kept from going idle
   by an inhibitor while a flight lasts; none of its settings is changed.
 
@@ -1029,11 +1030,13 @@ this item's remainder: the pictures rendered after the flight from a
 recording of its topics, or stages 0 and 1 below, with which the simulation
 is slowed on purpose and the windows' price stops mattering. The world's
 half is as dark as the location is; on the lidar, which carries no light, it
-is black.
+is black, and flights on the lidar are no longer recorded (the owner's rule
+of 2026-10-04, specification A11).
 
 **Recorded on 2026-10-04.** Three passes over the seven scenarios of item 17,
 round robin, with nobody at the desk: 27 flights, 54 split files, the index
-beside them (`log/videos/2026-10-04/`, kept from the pruning). Every
+beside them (`log/videos/2026-10-04/`, kept from the pruning; the six lidar
+recordings were deleted since, the batch flies the stereo set alone). Every
 scenario has three takes whose flight passed its check but the long flight
 under failures, which passed once in five. What the batch showed besides the
 pictures:

@@ -82,7 +82,7 @@ the lidar) flies one scenario as its headless flight with the Gazebo window
 and RViz open, and leaves two split videos in `DIRECTORY`: the 3D world on
 the left, RViz on the right, one with the third-person view and one with the
 top-down view. `./tools/record_batch.sh DIRECTORY PASSES FIRST_RUN` flies
-every scenario above round robin and writes `index.md` beside the videos.
+every scenario above on the stereo set round robin and writes `index.md` beside the videos.
 Nobody moves a view, and nothing but the two pictures is in the frame. A
 recorded flight is a demonstration, not an acceptance flight: the windows
 slow the simulator under the host verdict's floor

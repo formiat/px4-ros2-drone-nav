@@ -44,12 +44,14 @@ flown again, and a crash in it is not a defect.
 
 | Tool | What it does | Use |
 |---|---|---|
-| `record_flight.sh` | One flight of a named scenario (`point-to-point`, `light-lost`, `light-failure`, `low-battery`, `long-failures`, `return-home`; `--lidar` first for the lidar) flown as its headless flight with the Gazebo window and RViz open, and recorded: two split videos in the directory, the world on the left and RViz on the right, third-person and top-down. The desktop is kept from going idle meanwhile. The recorder's output is `log/tools/record_RUN.log`. | `./tools/record_flight.sh light-lost r1020 log/videos/2026-10-04` |
-| `record_batch.sh` | Every scenario of roadmap item 17 round robin, all once, then all again, for the stated number of passes; a flight that failed or whose recording is not one is flown again at the end of its pass. Videos, `index.md` and `batch.log` in the directory, which it keeps from the pruning. | `./tools/record_batch.sh log/videos/2026-10-04 3 1020 &` |
+| `record_flight.sh` | One flight of a named scenario (`point-to-point`, `light-lost`, `light-failure`, `low-battery`, `long-failures`, `return-home`; the stereo set only) flown as its headless flight with the Gazebo window and RViz open, and recorded: two split videos in the directory, the world on the left and RViz on the right, third-person and top-down. The desktop is kept from going idle meanwhile. The recorder's output is `log/tools/record_RUN.log`. | `./tools/record_flight.sh light-lost r1020 log/videos/2026-10-04` |
+| `record_batch.sh` | Every scenario of roadmap item 17 on the stereo set round robin, all once, then all again, for the stated number of passes; a flight that failed or whose recording is not one is flown again at the end of its pass. Videos, `index.md` and `batch.log` in the directory, which it keeps from the pruning. | `./tools/record_batch.sh log/videos/2026-10-04 3 1020 &` |
 | `record_index.py` | The index row of one recorded flight (the batch calls it). | `python3 tools/record_index.py light-lost r1020 log/videos/2026-10-04` |
 
 A recorded flight is a demonstration and never an acceptance flight
-(specification A11): `HOST VOID` in its row is the price of the windows.
+(specification A11): `HOST VOID` in its row is the price of the windows. Lidar
+flights are not recorded: the location is dark and the lidar carries no
+light, so the world half of the picture shows nothing.
 
 ## Reading A Flight
 

@@ -122,10 +122,12 @@ class RecordingRuntimeContractTest(unittest.TestCase):
 
     def test_the_batch_flies_every_scenario_round_robin(self) -> None:
         batch = (REPOSITORY / "tools/record_batch.sh").read_text()
-        for scenario in ("point-to-point", "--lidar point-to-point", "long-failures",
+        for scenario in ("point-to-point", "long-failures",
                          "light-lost", "light-failure", "low-battery", "return-home"):
             self.assertIn(f'"{scenario}"', batch)
         self.assertLess(batch.index('for pass in'), batch.index('for scenario in "${scenarios[@]}"'))
+        # A lidar flight is not recorded (specification A11).
+        self.assertNotIn("lidar", batch)
         flight = (REPOSITORY / "tools/record_flight.sh").read_text()
         self.assertIn("RECORD_VIDEO=1", flight)
         self.assertIn("gnome-session-inhibit --inhibit idle", flight)
