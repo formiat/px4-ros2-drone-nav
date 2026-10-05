@@ -33,6 +33,14 @@ class HostVerdictTest(unittest.TestCase):
         self.assertTrue(HOST.verdict("stereo_tof", 0.40, 1.0, 0.5))
         self.assertTrue(HOST.verdict("lidar", 0.47, 1.0, 0.5))
 
+    def test_a_starved_estimator_voids_a_flight_at_real_time(self) -> None:
+        self.assertEqual([], HOST.verdict("lidar", 1.0, 1.0, 1.0, 180.0))
+        self.assertTrue(HOST.verdict("lidar", 1.0, 1.0, 1.0, 900.0))
+        line = ("[lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY healthy=true "
+                "published=true scan_ms=70.1 imu_lag_ms=0.0 imu_gap_max_ms=12.0 "
+                "pose_age_max_ms=164.5 imu_samples=7")
+        self.assertEqual(["164.5"], HOST.POSE_AGE_PATTERN.findall(line))
+
     def test_the_series_launcher_records_the_verdict(self) -> None:
         launcher = (PATH.parent / "series2.sh").read_text(encoding="utf-8")
         self.assertIn("tools/host_verdict.py", launcher)

@@ -280,6 +280,10 @@ private:
               estimate, static_cast<std::uint64_t>(synchronised_ns / 1000)));
           published = true;
           ++published_scans_;
+          // How old the pose is when it leaves for the autopilot: a host
+          // that starves the estimator shows here and nowhere else (r1053).
+          pose_age_max_ns_ =
+              std::max(pose_age_max_ns_, get_clock()->now().nanoseconds() - stamp_ns);
         }
       }
     }
@@ -292,6 +296,7 @@ private:
         "speed_mps=%.2f "
         "iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
+        "pose_age_max_ms=%.1f "
         "imu_samples=%" PRIu64 " scans=%" PRIu64 " healthy_scans=%" PRIu64
         " published_scans=%" PRIu64 " dropped_scans=%" PRIu64 " unmapped_imu=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
@@ -301,12 +306,14 @@ private:
         estimate.correction_along_track_m, estimate.velocity_ned_mps.norm(),
         estimate.iterations, estimate.scan_points, estimate.submap_points,
         estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
-        1.0e-6 * static_cast<double>(imu_gap_max_ns_), imu_samples_, scans_,
+        1.0e-6 * static_cast<double>(imu_gap_max_ns_),
+        1.0e-6 * static_cast<double>(pose_age_max_ns_), imu_samples_, scans_,
         healthy_scans_, published_scans_, dropped_scans_, unmapped_imu_samples_,
         map_xy.x, map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
         mapYaw(estimate));
     if (scans_ % 10U == 0U) {
       imu_gap_max_ns_ = 0;
+      pose_age_max_ns_ = 0;
     }
   }
 
@@ -355,6 +362,7 @@ private:
   // scans: the estimator integrates each sample over the interval before it.
   std::int64_t last_imu_stamp_ns_{0};
   std::int64_t imu_gap_max_ns_{0};
+  std::int64_t pose_age_max_ns_{0};
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};

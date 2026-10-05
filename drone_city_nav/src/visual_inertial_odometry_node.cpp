@@ -376,6 +376,10 @@ private:
         estimate, static_cast<std::uint64_t>(synchronised_ns / 1000)));
     last_autopilot_stamp_ns_ = stamp_ns;
     ++published_poses_;
+    // How old the pose is when it leaves for the autopilot: a host that
+    // starves the estimator shows here and nowhere else.
+    pose_age_max_ns_ =
+        std::max(pose_age_max_ns_, get_clock()->now().nanoseconds() - stamp_ns);
   }
 
   void queueIfPaired() {
@@ -475,6 +479,7 @@ private:
         "gated=%zu untriangulated=%zu residual_sigma=%.2f "
         "weakest_velocity_sigma_mps=%.3f "
         "clones=%zu speed_mps=%.2f frame_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
+        "pose_age_max_ms=%.1f "
         "imu_samples=%" PRIu64 " frames=%" PRIu64 " frames_without_estimate=%" PRIu64
         " unmapped_imu=%" PRIu64 " published_poses=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
@@ -484,12 +489,14 @@ private:
         estimate.weakest_velocity_sigma_mps, estimate.clones,
         estimate.velocity_ned_mps.norm(), frame_ms,
         1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
-        1.0e-6 * static_cast<double>(imu_gap_max_ns_), imu_samples_, frames_,
+        1.0e-6 * static_cast<double>(imu_gap_max_ns_),
+        1.0e-6 * static_cast<double>(pose_age_max_ns_), imu_samples_, frames_,
         frames_without_estimate_, unmapped_imu_samples_, published_poses_, map_xy.x,
         map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
         mapYaw(estimate));
     if (frames_ % 8U == 0U) {
       imu_gap_max_ns_ = 0;
+      pose_age_max_ns_ = 0;
     }
   }
 
@@ -795,6 +802,7 @@ private:
   // The longest interval between consecutive IMU samples over the last eight
   // frames: past 50 ms the filter treats it as a hole.
   std::int64_t imu_gap_max_ns_{0};
+  std::int64_t pose_age_max_ns_{0};
   std::uint64_t imu_samples_{0U};
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t frames_{0U};
