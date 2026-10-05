@@ -169,16 +169,32 @@ separation and its margin in metres, delivery latency and loss, the share of
 flight time a peer is unknown, the frame error between vehicles — are metres,
 fractions and simulation-time intervals, and none of them is corrupted.
 
-What a low real-time factor does corrupt: the mean flight speed, which is
-measured on the wall clock and is a requirement of the single-vehicle
-missions, not of this item; and the tick and planner percentiles, which
-measure this code in real time. And one effect that runs the wrong way and is
-easy to miss — the onboard nodes are **not** in lockstep. At a real-time
-factor of 0.6 the planner takes about 72 ticks per simulated second instead of
-43, so the vehicle flies with an effectively faster computer and the
-navigation looks better than it is. A slow host flatters this stack rather
-than punishing it, which is why such flights may not be mixed with the
+What a low real-time factor does corrupt is what is measured on the host's
+clock: the tick and planner percentiles, and the time each computation takes,
+which at a factor of 0.5 is half as long in flight. Since item 20 (2026-10-05,
+specification K24, K25) the onboard loop keeps the simulation clock, so it
+slows with the world and its rate stays at most its nominal 50 ticks a
+simulated second (the 72 against 43 measured here before was the wall timer);
+the mean flight speed is measured on the simulation clock too. What is left is
+that a slowed flight is flown with a faster computer than the vehicle has: on
+one vehicle at 0.5 the tick took 10.8 ms of simulation against 22 at 1.0, and
+2 percent of the ticks passed 20 ms against 67 to 71. A slow host still
+flatters this stack, which is why slowed flights are not mixed with the
 single-vehicle series.
+
+Whether four vehicles at 0.5 are flattered is not known, and is decided by
+one measurement before anything is built (the owner's decision of
+2026-10-05, specification K25): four vehicles share the host, each
+computation is slowed by the others, and the contention may give back what
+the slowing takes. The first four-vehicle flight at 0.5 reports each
+vehicle's tick in milliseconds of simulation. Near 22 ms, the tick of one
+vehicle at 1.0, the contention already flies each vehicle with the computer it
+has, and the flight is taken as it is. Clearly shorter, the cooperative
+flights are flattered, and a relay outside the onboard code holds each
+estimate, memory update and horizon until its age on the simulation clock
+reaches its age divided by the factor (size M; it leaves the tick's rate as
+it is). The delay is never emulated inside the onboard nodes: that would put
+simulation-only behaviour into the production code.
 
 ### What Two Vehicles Cover, And What They Do Not
 
@@ -426,7 +442,8 @@ cannot show — a partition that hides half the fleet, the shared radio budget
 across four senders, multi-hop relaying, and passage lane capacity — and it is
 flown at whatever real-time factor the host gives, with its separation,
 channel and frame figures counted and its timing figures recorded as not
-comparable.
+comparable. Before that flight's figures are taken, its per-vehicle tick in milliseconds
+of simulation decides whether the delay relay above is needed.
 
 ## 18. Flight Through Transient And Scattering Obstacles
 
