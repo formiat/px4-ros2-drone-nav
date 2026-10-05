@@ -157,12 +157,21 @@ lost) states its own result in [`docs/scenarios.md`](docs/scenarios.md).
 
 **Whether a flight counts** (specification A6, A7) is decided by
 measurement: the simulator's real-time factor at the median is at least 0.82
-on the stereo set or 0.97 on the 3D lidar, and the resource sampler's record
-has no gap of 2 s or more. `python3 tools/host_verdict.py r1100` prints
-`HOST valid` or `HOST VOID`; the series appends it to the table. A void
-flight is flown again and a crash in it is not a defect. A recorded flight
-(`RECORD_VIDEO=1`, `tools/record_flight.sh`) is a demonstration and never an
-acceptance flight (A11).
+on the stereo set or 0.97 on the 3D lidar of the factor the run asked for,
+the resource sampler's record has no gap of 2 s or more, and the estimator's
+poses reached the autopilot no older than 300 ms at the 95th percentile.
+`python3 tools/host_verdict.py r1100` prints `HOST valid` or `HOST VOID`; the
+series appends it to the table. A void flight is flown again and a crash in
+it is not a defect.
+
+**A slowed flight** (`REAL_TIME_FACTOR=0.5 ./tools/series2.sh r1100`) slows
+the simulator and the onboard loop together (specification K24, K25). It
+lightens the host, which is what a recording or a heavy configuration needs,
+and it flies the vehicle with a faster computer than it has: a change is
+accepted at a factor of 1.0, and a slowed flight's figures are compared with
+flights at the same factor only. A recorded flight
+(`tools/record_flight.sh`, a factor of 0.6) that the verdict counts is a
+flight like any other (A11); its video is the whole flight.
 
 **A failure in a flight that counts** is repaired with its measured cause,
 and the series is flown again from its first flight (R5). Read the flight

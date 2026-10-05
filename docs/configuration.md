@@ -374,6 +374,18 @@ sections stay the lidar's). The final-revalidation evidence parameters are
 placed out of reach on purpose, so that the check counts a return home as the
 outcome asked for, and `TRUTH_OCCUPANCY_3D_PATH` names the truth grid the check
 floods to confirm it ([scenarios.md](scenarios.md)).
+`REAL_TIME_FACTOR` (1.0 unless set, above 0 and at most 1) slows the whole
+flight against the wall clock: the preparation writes it into the worlds'
+physics, the autopilot follows in lockstep, and the onboard loop keeps the
+simulation clock, so every period and freshness watchdog slows with it
+(specification K24, K25). The manifest records it, the host's verdict is
+read against it, and `SMOKE_DURATION_S` is seconds of simulation: the runner
+waits that many divided by the factor on the wall clock. The waits of the
+launch itself (`STARTUP_SLEEP_S`, `PX4_PARAM_DELAY_S`, the waits for the
+world and the GUI) stay wall-clock seconds: they wait for processes to
+start, which the factor does not slow. A slowed flight flies with a faster
+computer than the vehicle has, so a change is accepted at 1.0 only
+([testing.md](testing.md)).
 The flights of roadmap item 17 add their own, all recorded in the manifest:
 `BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte panels), `LIGHT_FAULTS=none|moderate|severe|lost` with
 `LIGHT_FAULT_SEED` (the carried light's injected failures; moderate is the

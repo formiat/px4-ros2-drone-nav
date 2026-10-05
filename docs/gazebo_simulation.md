@@ -266,6 +266,55 @@ Useful checks:
 If these checks fail, fix coordinate configuration before tuning planning or
 control.
 
+## Clocks
+
+Gazebo steps the world 4 ms at a time and throttles itself to
+`<real_time_factor>` of the wall clock; PX4 SITL runs in lockstep and its
+stamps are the simulation clock (`UXRCE_DDS_SYNCT=0`); every ROS node runs
+with `use_sim_time` and reads `/clock` from the bridge. The factor is a
+parameter of the run, `REAL_TIME_FACTOR` (1.0 unless set, at most 1), which
+`scripts/prepare_environment_simulation.py` writes into the worlds it
+installs ([configuration.md](configuration.md), specification K25).
+
+The audit of roadmap item 20 stage 0 (2026-10-05) sorted every place where a
+single-vehicle node read the wall or the monotonic clock: twelve wall timers
+in nine sources and the monotonic clock in 62. A period or a freshness
+watchdog keeps the node clock, so it slows with the world; a compute budget
+or a measured duration keeps the monotonic clock, because it measures the
+host (specification K24).
+
+| What | Where | Clock since the audit |
+|---|---|---|
+| Planning tick (50 Hz) and its phase offset | `production_mppi_node_runtime.cpp`, `production_mppi_node_interfaces.cpp` | node (was wall) |
+| Offboard tick (20 ms) | `mppi_offboard_node.cpp` | node (was wall) |
+| Planner heartbeat (250 ms); its age at the offboard (1.0 s, land after 5.0 s) | `production_mppi_node_interfaces.cpp`, `mppi_offboard_node.cpp` | node (was wall, monotonic) |
+| Reachability flood (10 s), mission summary (5 s) | `mission_monitor_node.cpp` | node (was wall) |
+| Obstacle memory transport period (10 Hz), snapshot periods, display cloud period | `obstacle_memory_transport_3d.cpp`, `obstacle_memory_transport_policy_3d.cpp` | node (was monotonic) |
+| ESDF build rate (5 Hz) and its retry moments | `world/world_pipeline_3d.cpp`, `world/observed_world_builder_3d.cpp` | node, handed over by the controller (was monotonic) |
+| Ages of poses, scans, frames, horizons against their stamps (78 reads) | every node | node (already) |
+| Scan age the lidar-inertial estimator lets go (K23), the camera estimator's frame ages | the estimators | node (already) |
+| The carried light's schedule, the camera stream's faults | `scripts/carried_light.py`, `scripts/camera_stream_faults.py` | Gazebo's clock and the frames' own stamps (already) |
+| Planner budget (150 ms), horizon assembly (12 ms), every `*_ms` duration of the tick, the memory, the estimators | planner, assembler, nodes | monotonic: they measure the host |
+| Receipt moment of the autopilot's messages, for the admission of its stamps | `production_mppi_node_inputs.cpp`, `production_mppi_node_navigation_input.cpp` | monotonic on purpose: the autopilot's clock must not run ahead of the receipts, which holds at any factor up to 1 |
+| Diagnostics file flush, queue latency of the memory worker, producer identity | sinks and workers | monotonic or system: diagnostics |
+| Mission monitor's 100 ms before shutdown | `mission_monitor_node.cpp` | wall: process teardown |
+| Resource sampler (1 s), pose and setpoint captures | `scripts/capture_*.py` | wall: they measure the host; the pose capture records both clocks |
+| Cooperative agent, referee, spectator, diagnostics multiplexer, truth adapter | multi-vehicle launch only | wall, until roadmap item 15 flies them |
+
+A timer on the node clock fires on the clock's own grain, one physics step:
+at a factor of 1.0 the planning loop ran 37.7 to 39.5 times a simulated
+second against 40.6 to 41.6 a wall second on the wall timer, and both
+acceptance series stayed inside the base's spread (r1073 to r1082). A wait
+on the node clock inside a worker thread (the memory's transport, the ESDF
+builds) asks the clock again every 2 ms, since a condition variable cannot
+wait on a clock that is not the host's.
+
+What a flight slowed against the wall clock still gets for nothing is what
+stays on the monotonic clock: at 0.5 the tick's 22 ms are 11 ms of flight,
+the planner's 150 ms budget 75 ms, and the observation reaches the tick 168
+ms old instead of 260 to 296 (r1088). The numbers are in specification K25
+and the rule that follows from them in [testing.md](testing.md).
+
 ## Headless Versus GUI Runs
 
 GUI runs are better for visual inspection. Headless runs are better for repeat

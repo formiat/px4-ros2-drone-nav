@@ -33,7 +33,7 @@ mission check's output in `log/tools/run_rNNN.log`.
 |---|---|---|
 | `gates.sh` | The whole pre-commit gate in the dev container, detached: format, build, unit tests, script tests, quality. Verdict in `log/tools/gate_flag.txt` (`X=0` is green), output in `log/tools/gate_all.log`. | `./tools/gates.sh`, then poll the flag. Do not edit tracked files while it runs. |
 | `series2.sh` | Acceptance flights one at a time on the current commit. Prunes logs older than a week, waits until the host has been quiet for 60 s, stops any simulation before and after, appends the check's key lines to `log/tools/journal/series_<commit>_<profile>.txt`. | `./tools/series2.sh r950 r951` (cameras); `./tools/series2.sh --lidar r954` (`--lidar` first); another scenario with `TARGET=sim-urban-light-lost-headless SMOKE_DURATION_S=400 ./tools/series2.sh r939`. |
-| `host_verdict.py` | Whether a flight counts, by the host it was flown on (specification A7): `HOST valid` or `HOST VOID` with the reason, from the real-time factor at the median (0.82 on the stereo set, 0.97 on the lidar) and the resource sampler's largest gap (2 s). The series launcher appends it to the series table after every flight. | `python3 tools/host_verdict.py r981` |
+| `host_verdict.py` | Whether a flight counts, by the host it was flown on (specification A7): `HOST valid` or `HOST VOID` with the reason, from the real-time factor at the median (0.82 on the stereo set, 0.97 on the lidar, of the factor the run asked for), the resource sampler's largest gap (2 s) and the age of the estimator's poses on their way to the autopilot (300 ms at the 95th percentile). The series launcher appends it to the series table after every flight. | `python3 tools/host_verdict.py r981` |
 | `mx.sh` | One flight of roadmap item 17's acceptance matrix by line number (1 cameras, 2 lidar, 3 long failures, 4 light lost, 5 severe failure, 7 low battery, 8 goal outside). Refuses to start while a flight runs or the run exists; marks its end in `log/tools/mx_flag.txt`. | `./tools/mx.sh 5 r944 &` |
 | `mxw.sh` | Waits up to 9.5 minutes for that flight; prints `DONE` or `RUNNING`. Never stops a flight. | `./tools/mxw.sh r944` |
 
@@ -44,14 +44,15 @@ flown again, and a crash in it is not a defect.
 
 | Tool | What it does | Use |
 |---|---|---|
-| `record_flight.sh` | One flight of a named scenario (`point-to-point`, `light-lost`, `light-failure`, `low-battery`, `long-failures`, `return-home`; the stereo set only) flown as its headless flight with the Gazebo window and RViz open, and recorded: two split videos in the directory, the world on the left and RViz on the right, third-person and top-down. The desktop is kept from going idle meanwhile. The recorder's output is `log/tools/record_RUN.log`. | `./tools/record_flight.sh light-lost r1020 log/videos/2026-10-04` |
+| `record_flight.sh` | One flight of a named scenario (`point-to-point`, `light-lost`, `light-failure`, `low-battery`, `long-failures`, `return-home`; the stereo set only) flown as its headless flight with the Gazebo window and RViz open, at a real-time factor of 0.6 unless `REAL_TIME_FACTOR` says otherwise, and recorded: two split videos in the directory, the world on the left and RViz on the right, third-person and top-down, each the whole flight at the flight's own pace. A recording whose window stood still, whose half was a slideshow while the vehicle moved, that is off the flight's clock by more than a second or shorter than a minute is `BAD`. The desktop is kept from going idle meanwhile. The recorder's output is `log/tools/record_RUN.log`. | `./tools/record_flight.sh light-lost r1020 log/videos/2026-10-04` |
 | `record_batch.sh` | Every scenario of roadmap item 17 on the stereo set round robin, all once, then all again, for the stated number of passes; a flight that failed or whose recording is not one is flown again at the end of its pass. Videos, `index.md` and `batch.log` in the directory, which it keeps from the pruning. | `./tools/record_batch.sh log/videos/2026-10-04 3 1020 &` |
 | `record_index.py` | The index row of one recorded flight (the batch calls it). | `python3 tools/record_index.py light-lost r1020 log/videos/2026-10-04` |
 
-A recorded flight is a demonstration and never an acceptance flight
-(specification A11): `HOST VOID` in its row is the price of the windows. Lidar
+A recorded flight the host's verdict counts is a flight like any other
+(specification A11); a row that says `HOST VOID` is a demonstration. Lidar
 flights are not recorded: the location is dark and the lidar carries no
-light, so the world half of the picture shows nothing.
+light, so the world half of the picture shows nothing. A slowed flight of
+any kind is `REAL_TIME_FACTOR=0.5 ./tools/series2.sh r1100`.
 
 ## Reading A Flight
 

@@ -330,6 +330,41 @@ the observation age at the median into the memory's scan-to-publication
 time, the delivery and the wait for the tick (measured 184 to 200 ms at p50
 at the 10 Hz transport: 114 to 136, 0.16 and 48 to 56).
 
+### A slowed flight
+
+`REAL_TIME_FACTOR` below 1 slows the simulator and the onboard loop together
+(specification K24, K25). What the check reads on the simulation clock means
+what it meant: the mean flight speed, the true position at the goal, the
+ages of observations, poses and the ESDF, the route availability and the
+holds, the estimators' publication rates (per second of simulation: a
+lidar-inertial flight at 0.5 publishes 10 poses a simulated second and 5 a
+wall second, and the 5 Hz floor is asked of the first). What it reads on the
+wall clock measures the host and is shorter in flight by the factor: the
+production tick's wall time (`MAXIMUM_TICK_TOTAL_P50_MS`, the share of ticks
+past 20 ms), the planner's p95 against its 150 ms budget, the transport
+deliveries. At 0.5 a 22 ms tick is 11 ms of flight and 2 percent of the
+ticks pass 20 ms of simulation against 67 to 71 at 1.0 (r1088 against r1073
+to r1077). So those lines of a slowed flight are compared with flights at
+the same factor and never with a series at 1.0, and a change is accepted at
+1.0 (A1). The host's verdict (`tools/host_verdict.py`) is read against the
+factor asked for: 0.82 or 0.97 of it at the median.
+
+Every flight's estimator also reports how old its poses were when they left
+for the autopilot (`pose_age_max_ms` in its health line, the oldest of each
+second). The verdict voids a flight whose 95th percentile passes 300 ms: a
+host can hold the simulator at real time and starve the estimator (r1053,
+r1066: 0.7 to 1.3 s). On a quiet host it is 64 ms on the stereo set and 96
+ms on the lidar (r1096, r1097).
+
+A recorded flight (`tools/record_flight.sh`) is such a slowed flight, at 0.6,
+with the Gazebo window and RViz open; its mission check and its verdict are
+the ordinary ones. Its recorder (`scripts/record_flight_video.py`) refuses a
+recording whose window redrew fewer than half its frames in more than 2
+percent of the seconds, whose half showed fewer than six different frames a
+second at the median while the vehicle moved, whose length is off the
+flight's simulation time by more than a second, or that is shorter than a
+minute.
+
 ### Localization profile
 
 `validate_localization_profile` (`scripts/headless_runtime_evidence.py`)

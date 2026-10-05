@@ -77,17 +77,21 @@ Gazebo and RViz open after the result so the world can be inspected.
 
 ## Recording A Flight With Nobody At The Desk
 
-`./tools/record_flight.sh SCENARIO RUN DIRECTORY` (with `--lidar` first for
-the lidar) flies one scenario as its headless flight with the Gazebo window
-and RViz open, and leaves two split videos in `DIRECTORY`: the 3D world on
-the left, RViz on the right, one with the third-person view and one with the
-top-down view. `./tools/record_batch.sh DIRECTORY PASSES FIRST_RUN` flies
+`./tools/record_flight.sh SCENARIO RUN DIRECTORY` flies one scenario on the
+stereo set as its headless flight with the Gazebo window and RViz open, and
+leaves two split videos in `DIRECTORY`: the 3D world on the left, RViz on
+the right, one with the third-person view and one with the top-down view.
+A video is the whole flight, from the windows standing to the flight's end,
+at the flight's own pace, never cut and never shorter than a minute. `./tools/record_batch.sh DIRECTORY PASSES FIRST_RUN` flies
 every scenario above on the stereo set round robin and writes `index.md` beside the videos.
 Nobody moves a view, and nothing but the two pictures is in the frame. A
-recorded flight is a demonstration, not an acceptance flight: the windows
-slow the simulator under the host verdict's floor
-([`specification.md`](specification.md) A11, [`roadmap.md`](roadmap.md) item
-20). The world's half is as dark as the location is.
+recorded flight is flown at a real-time factor of 0.6 (`REAL_TIME_FACTOR`),
+which the reference workstation holds beside the windows; one the host's
+verdict counts is a flight like any other
+([`specification.md`](specification.md) A7, A11, K25;
+[`roadmap.md`](roadmap.md) item 20). The world's half is as dark as the
+location is, and flights on the lidar, which carries no light, are not
+recorded.
 
 ## What Is Planned And Not Yet Runnable
 

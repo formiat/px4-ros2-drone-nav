@@ -43,8 +43,8 @@ def main() -> int:
     scenario, run, directory = sys.argv[1], sys.argv[2], Path(sys.argv[3])
     index = directory / "index.md"
     if not index.exists():
-        index.write_text("# Recorded flights\n\nEvery recorded flight is a demonstration (specification A11): the "
-                         "host's verdict is void by the price of the recording.\n\n" + HEADER)
+        index.write_text("# Recorded flights\n\nA recorded flight is flown slowed against the wall clock and judged like "
+                         "any other (specification A7, A11): the host's verdict is in its row.\n\n" + HEADER)
     text, good = row(scenario, run, directory)
     with index.open("a") as stream:
         stream.write(text)
