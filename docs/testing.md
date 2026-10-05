@@ -374,12 +374,13 @@ Python test that depends on C++ expression order.
 
 ## Before Commit
 
-Minimum expected checks:
+The whole gate green (specification A5; [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+has the workflow, the flights and what a change records):
 
-1. Format changed C++ files if any.
-2. Run targeted new/changed tests if any.
-3. Run `make quality`.
-4. Confirm `git status --short` contains only intended changes.
+1. `make format` on the changed C++ files.
+2. `make build`, `make test`, `make test-scripts`, `make quality`
+   (`./tools/gates.sh` runs all five from the host).
+3. Confirm `git status --short` contains only intended changes.
 
 Generated logs, bags, build outputs, and `.agent-io` transport files must not
 be committed.
