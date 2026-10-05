@@ -173,5 +173,19 @@ class RecordingRuntimeContractTest(unittest.TestCase):
         self.assertIn("gnome-session-inhibit --inhibit idle", flight)
 
 
+class RecordingToolsContractTest(unittest.TestCase):
+    def test_every_recording_tool_is_tracked_and_documented(self) -> None:
+        readme = (REPOSITORY / "tools/README.md").read_text()
+        for tool in ("record_flight.sh", "record_batch.sh", "record_index.py",
+                     "record_until_pass.sh", "video_check.py", "window_rig.sh"):
+            self.assertTrue((REPOSITORY / "tools" / tool).is_file(), tool)
+            self.assertIn(f"`{tool}`", readme)
+
+    def test_the_video_check_judges_by_the_recorder_s_floors(self) -> None:
+        check = (REPOSITORY / "tools/video_check.py").read_text()
+        for name in ("MINIMUM_DISTINCT_FRAMES_PER_SECOND", "MINIMUM_DURATION_S"):
+            self.assertIn(f"recorder.{name}", check)
+
+
 if __name__ == "__main__":
     unittest.main()
