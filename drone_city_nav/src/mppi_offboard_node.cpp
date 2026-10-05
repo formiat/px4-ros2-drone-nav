@@ -608,9 +608,10 @@ private:
       publishUnavailableControlFeedback();
       return;
     }
-    const bool takeoff_ready =
-        position_valid_ && takeoff_complete_stamp_.has_value() &&
+    const bool takeoff_hovered =
+        takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
+    const bool takeoff_ready = position_valid_ && takeoff_hovered;
     const bool planner_heartbeat_fresh =
         planner_health_received_at_.has_value() &&
         (now() - *planner_health_received_at_).seconds() <= planner_health_timeout_s_;
@@ -637,13 +638,20 @@ private:
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
     const bool planned_path_fresh = navigating && plannedFinitePathFresh();
     const bool planned_path_completed = navigating && plannedFinitePathCompleted();
+    const bool blind_landing = takeoff_hovered &&
+                               (!require_mission_start_signal_ || mission_started_) &&
+                               dead_reckoning_landing_.due(now().nanoseconds());
     OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
-    if (planned_path_fresh) {
+    if (blind_landing) {
+      mode = OffboardSetpointMode::kVelocityCruise;
+    } else if (planned_path_fresh) {
       mode = OffboardSetpointMode::kTrajectoryPositionTracking;
     }
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
     bool exact_horizon_feedback_published{false};
-    if (!navigating) {
+    if (blind_landing) {
+      publishDeadReckoningLandingSetpoint();
+    } else if (!navigating) {
       publishTakeoffSetpoint();
       if (takeoff_ready && require_mission_start_signal_ && !mission_started_) {
         exact_horizon_feedback_published = publishPrestartPlannedHorizonReceipt();
@@ -653,8 +661,6 @@ private:
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
-    } else if (dead_reckoning_landing_.due(now().nanoseconds())) {
-      publishDeadReckoningLandingSetpoint();
     } else if (stationary_position_hold) {
       exact_horizon_feedback_published = publishStationaryPositionHoldSetpoint();
     } else if (planned_path_completed) {
@@ -975,7 +981,6 @@ private:
   double planner_health_timeout_s_{1.0};
   double planner_health_land_after_s_{5.0};
   bool planner_health_land_sent_{false};
-  // The heartbeat's age is read on the node clock, as its period is published.
   std::optional<rclcpp::Time> planner_health_received_at_;
   std::optional<rclcpp::Time> planner_health_loss_started_at_;
   Px4MapFrameTransform px4_map_transform_{};

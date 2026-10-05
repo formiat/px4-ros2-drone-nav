@@ -13,6 +13,11 @@ namespace drone_city_nav {
 // dead reckoned for three seconds, four seconds unaided, half a second past
 // the dark that judges the carried light (K12), the vehicle descends; a
 // source that sees again before the vehicle is down takes the flight back.
+// The descent asks the autopilot for a vertical velocity and no position, in
+// the velocity mode, so it goes on when the autopilot's own estimate stops
+// being a position: r1093 lost it at the touchdown, was sent the takeoff
+// setpoint in the descent's place, and the autopilot's failsafe held the
+// vehicle armed on the platform for six minutes.
 class DeadReckoningLanding final {
 public:
   // One pose of the position source, at `stamp_ns`. A source that falls silent
