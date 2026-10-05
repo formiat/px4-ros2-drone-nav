@@ -605,8 +605,12 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
             report_visual_inertial_health(ros_log, float(readiness.group(1)),
                                           float(result.group(1)), notes)
         return
+    # The log is stamped on the wall clock; a flight slowed against it
+    # (REAL_TIME_FACTOR) publishes at its rate per second of simulation.
+    real_time_factor = float(manifest.get("effective_overrides", {}).get("REAL_TIME_FACTOR",
+                                                                          1.0))
     if profile == "visual_inertial":
-        validate_visual_inertial_profile(ros_log, px4_log, errors, notes)
+        validate_visual_inertial_profile(ros_log, px4_log, errors, notes, real_time_factor)
         return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")
@@ -630,7 +634,7 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     if published is None:
         errors.append("FAIL: lidar_inertial profile publishes the estimator's odometry")
     elif readiness is not None and result is not None:
-        span_s = float(result.group(1)) - float(readiness.group(1))
+        span_s = (float(result.group(1)) - float(readiness.group(1))) * real_time_factor
         rate_hz = int(published.group(1)) / span_s if span_s > 0.0 else 0.0
         if rate_hz < MINIMUM_LIDAR_INERTIAL_PUBLISH_HZ:
             errors.append(
@@ -653,7 +657,8 @@ VISUAL_INERTIAL_PUBLISHED_PATTERN = re.compile(
 
 
 def validate_visual_inertial_profile(ros_log: str, px4_log: str, errors: list[str],
-                                     notes: list[str] | None) -> None:
+                                     notes: list[str] | None,
+                                     real_time_factor: float = 1.0) -> None:
     """That the flight flew what the profile says: the visual-inertial estimator
     in the autopilot's place for GNSS and compass, and no simulator truth as the
     heading. The estimator's quality is a note; what it answers for is the goal
@@ -681,7 +686,7 @@ def validate_visual_inertial_profile(ros_log: str, px4_log: str, errors: list[st
     if published is None or int(published.group(1)) == 0:
         errors.append("FAIL: visual_inertial profile publishes the estimator's odometry")
     elif readiness is not None and result is not None:
-        span_s = float(result.group(1)) - float(readiness.group(1))
+        span_s = (float(result.group(1)) - float(readiness.group(1))) * real_time_factor
         rate_hz = int(published.group(1)) / span_s if span_s > 0.0 else 0.0
         print(f"OK: localization profile is visual_inertial: GNSS and magnetometer "
               f"fusion off, no simulation heading source, {published.group(1)} poses "

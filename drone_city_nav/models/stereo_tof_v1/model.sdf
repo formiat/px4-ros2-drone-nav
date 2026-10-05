@@ -33,6 +33,10 @@
            every world; in the dark one it is the only light. -->
       <light name="carried_light" type="spot">
         <pose>0.02 0 0 0 0 0</pose>
+        <!-- No gizmo: the Gazebo window draws a light it is told to visualize
+             as a green wire frame on the vehicle, until the light's first
+             update hides it (recordings r1041, r1057). -->
+        <visualize>false</visualize>
         <cast_shadows>false</cast_shadows>
         <diffuse>1 1 1 1</diffuse>
         <specular>0.1 0.1 0.1 1</specular>

@@ -483,6 +483,17 @@ class RuntimeManifestTest(unittest.TestCase):
                                                     log + estimator + health, px4, errors)
         self.assertEqual(errors, [])
         self.assertIn("the estimator's odometry at 9.9 Hz", output.getvalue())
+        # A flight slowed to a half is stamped over twice the wall time: the
+        # rate is per second of simulation.
+        slowed = self._manifest("lidar_inertial")
+        slowed.write_text(json.dumps({"effective_overrides": {
+            "LOCALIZATION_PROFILE": "lidar_inertial", "REAL_TIME_FACTOR": "0.5"}}),
+            encoding="utf-8")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            validator.validate_localization_profile(slowed, log + estimator + health, px4,
+                                                    errors)
+        self.assertIn("the estimator's odometry at 19.9 Hz", output.getvalue())
         # The report before readiness is left out of the flight.
         self.assertIn("OK: lidar-inertial estimator health: matched share p50 0.80 min "
                       "0.70, residual p50 0.050 m max 0.060 m, weakest-axis information "

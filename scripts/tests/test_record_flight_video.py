@@ -29,36 +29,67 @@ class RecordingCommandsTest(unittest.TestCase):
         self.assertEqual(3, command.count("h264_nvenc"))
 
     def test_the_split_picture_is_the_world_left_and_the_view_right(self) -> None:
-        command = recorder.compose_command(Path("w.mkv"), Path("v.mkv"), 12.0, 100.0,
+        command = recorder.compose_command(Path("w.mkv"), Path("v.mkv"), 0.5, 0.52,
                                            Path("out.mp4"))
         graph = command[command.index("-filter_complex") + 1]
-        self.assertIn("[0:v]vflip,fps=24,scale=960:1080", graph)
-        self.assertIn("[1:v]vflip,fps=24,scale=960:1080", graph)
+        # Each half is re-timed to the simulation clock by its own pace.
+        self.assertIn("[0:v]vflip,setpts=0.500000*PTS,fps=24,scale=960:1080", graph)
+        self.assertIn("[1:v]vflip,setpts=0.520000*PTS,fps=24,scale=960:1080", graph)
         self.assertIn("[w][v]hstack=inputs=2", graph)
-        self.assertEqual(2, command.count("12.00"))
+        # The whole flight: nothing is cut out of a recording.
+        self.assertNotIn("-ss", command)
+        self.assertNotIn("-t", command)
         self.assertEqual("out.mp4", command[-1])
 
-    def test_the_cut_is_the_mission(self) -> None:
-        log = (
-            "[mission_monitor_node-7] [INFO] [100.5] [mission_monitor_node]: "
-            "MISSION_READINESS ready=true\n"
-            "[mission_monitor_node-7] [INFO] [300.0] [mission_monitor_node]: "
-            "MISSION_RESULT success=true\n"
-        )
-        self.assertEqual((100.5, 300.0), recorder.mission_window(log))
-        self.assertIsNone(recorder.mission_window("nothing"))
+    CLOCK = [(1000.0 + 0.1 * step, 50.0 + 0.05 * step, 0.2 * min(step, 300), 0.0, 5.0)
+             for step in range(601)]
+
+    def test_the_frames_are_timed_by_the_simulation_clock(self) -> None:
+        # Sixty wall seconds of a flight slowed to a half are thirty of flight.
+        self.assertAlmostEqual(50.0, recorder.simulation_time_at(self.CLOCK, 1000.0))
+        self.assertAlmostEqual(65.0, recorder.simulation_time_at(self.CLOCK, 1030.0))
+        self.assertAlmostEqual(80.0, recorder.simulation_time_at(self.CLOCK, 2000.0))
+
+    def test_the_slideshow_is_looked_for_where_the_vehicle_moves(self) -> None:
+        # 4 m/s for fifteen simulation seconds, then a hover.
+        self.assertEqual([0.0, 5.0, 10.0], recorder.moving_windows(self.CLOCK, 50.0, 80.0))
 
     def test_a_black_or_still_or_short_recording_is_not_one(self) -> None:
-        good = {"width": 1920, "height": 1080, "duration_s": 206.0}
+        good = {"width": 1920, "height": 1080, "duration_s": 200.4}
         picture = {"readable": True, "world_brightness": 5.0, "rviz_brightness": 40.0,
                    "change": 12.0}
-        self.assertEqual([], recorder.verdict(good, picture, 200.0))
-        self.assertTrue(recorder.verdict({**good, "duration_s": 90.0}, picture, 200.0))
-        self.assertTrue(recorder.verdict(good, {**picture, "rviz_brightness": 1.0}, 200.0))
-        self.assertTrue(recorder.verdict(good, {**picture, "change": 0.0}, 200.0))
-        self.assertTrue(recorder.verdict({**good, "width": 1280}, picture, 200.0))
+        still = {"world": 0.0, "follow": 0.01}
+        distinct = {"world": 19.0, "RViz": 14.0}
+        self.assertEqual([], recorder.verdict(good, picture, 200.0, still, distinct))
+        # Shorter than a minute, or off the flight's clock by more than a second.
+        self.assertTrue(recorder.verdict({**good, "duration_s": 37.0}, picture, 37.0, still,
+                                         distinct))
+        self.assertTrue(recorder.verdict({**good, "duration_s": 206.0}, picture, 200.0, still,
+                                         distinct))
+        self.assertTrue(recorder.verdict(good, {**picture, "rviz_brightness": 1.0}, 200.0,
+                                         still, distinct))
+        self.assertTrue(recorder.verdict(good, {**picture, "change": 0.0}, 200.0, still,
+                                         distinct))
+        self.assertTrue(recorder.verdict({**good, "width": 1280}, picture, 200.0, still,
+                                         distinct))
         # The world's half may be all but black: the location has no light.
-        self.assertEqual([], recorder.verdict(good, {**picture, "world_brightness": 0.5}, 200.0))
+        self.assertEqual([], recorder.verdict(good, {**picture, "world_brightness": 0.5},
+                                              200.0, still, distinct))
+        # A window that stood still, or a half that showed one frame a second
+        # while the vehicle moved, is a slideshow (r1030 to r1058).
+        self.assertTrue(recorder.verdict(good, picture, 200.0, {**still, "world": 0.9},
+                                         distinct))
+        self.assertTrue(recorder.verdict(good, picture, 200.0, still,
+                                         {**distinct, "world": 1.0}))
+
+    def test_the_redraws_of_a_window_are_read_second_by_second(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            (run / "capture_world.bgra.rate").write_text("100 24\n101 24\n103 1\n104 24\n")
+            # The second with no line is a second with no redraw.
+            self.assertEqual([24, 0, 1], recorder.redraws(run, "world", 100.2, 104.0))
+            self.assertEqual([], recorder.redraws(run, "top", 100.2, 104.0))
 
 
 class RecordingViewsTest(unittest.TestCase):
@@ -97,6 +128,15 @@ class RecordingRuntimeContractTest(unittest.TestCase):
         self.assertNotIn('\n    rviz_environment:=', runner)
         self.assertIn("gazebo_gui_recording.config", runtime)
         self.assertIn("frame_pace_shim.c", runtime)
+        # The Gazebo window never waits for a blank screen to present a frame.
+        self.assertIn("__GL_SYNC_TO_VBLANK=0 vblank_mode=0", runtime)
+        self.assertIn(".rate", (REPOSITORY / "scripts/frame_pace_shim.c").read_text())
+        # The carried light has no gizmo for the window to draw (r1041, r1057).
+        rig = (REPOSITORY / "drone_city_nav/models/stereo_tof_v1/model.sdf").read_text()
+        light = rig.split('<light name="carried_light"', 1)[1].split("</light>", 1)[0]
+        self.assertIn("<visualize>false</visualize>", light)
+        self.assertNotIn("visualize_visual",
+                         (REPOSITORY / "scripts/carried_light.py").read_text())
         for view in ("world", "follow", "top"):
             self.assertIn(f"capture_{view}.bgra", runtime.replace("${view}", view))
         self.assertIn("  RECORD_VIDEO\n", (REPOSITORY / "scripts/container_run.sh").read_text())

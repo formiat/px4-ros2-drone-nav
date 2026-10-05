@@ -12,7 +12,10 @@
  *   written to <FIFO>.size), through a pixel buffer object, so that the read
  *   of one frame is collected at the next and the drawing never waits for
  *   it. A thread writes the latest frame to the FIFO FRAME_CAPTURE_HZ times a
- *   second, bottom row first, as BGRA.
+ *   second, bottom row first, as BGRA. How many times the window redrew in
+ *   each second of the wall clock is written to <FIFO>.rate, a line for
+ *   every second it redrew in: a window the desktop stops presenting redraws
+ *   once a second and its recording is a slideshow (r1030 to r1058).
  *
  * Reading the windows through the X server instead cost the simulator a
  * seventh of its speed a window (r1005 to r1007). An evaluation tool: nothing
@@ -124,6 +127,32 @@ static void* write_frames(void* unused) {
   }
 }
 
+/* One line a second of the wall clock in <FIFO>.rate: the second and the
+   redraws of the captured window in it. */
+static void count_redraw(void) {
+  static FILE* rate;
+  static time_t second;
+  static int count;
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
+  if (rate == NULL) {
+    char path[4096];
+    snprintf(path, sizeof(path), "%s.rate", getenv("FRAME_CAPTURE_FIFO"));
+    rate = fopen(path, "w");
+    if (rate == NULL) {
+      return;
+    }
+    second = now.tv_sec;
+  }
+  if (now.tv_sec != second) {
+    fprintf(rate, "%ld %d\n", (long)second, count);
+    fflush(rate);
+    second = now.tv_sec;
+    count = 0;
+  }
+  ++count;
+}
+
 /* The frame about to be swapped on `drawable`, `width` x `height` pixels. A
    process swaps more than one surface (RViz keeps small hidden ones): the
    largest is the window. */
@@ -218,6 +247,7 @@ static void capture(unsigned long drawable, int width, int height) {
     state = 1;
     return; /* the first frame of a size fills its buffer; the next is read */
   }
+  count_redraw();
   get_integer(GL_PIXEL_PACK_BUFFER_BINDING, &old_pbo);
   get_integer(GL_READ_FRAMEBUFFER_BINDING, &old_fbo);
   get_integer(GL_PACK_ALIGNMENT, &old_align);

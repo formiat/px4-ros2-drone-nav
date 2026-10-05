@@ -31,11 +31,15 @@ prepare_video_recording() {
 # The Gazebo window of a recorded flight, in the foreground of the caller.
 # It redraws the scene at the display's refresh rate on its own; a recording
 # takes 24 frames a second of it. Its top bar, 48 pixels, stays out of the
-# picture.
+# picture. The window does not wait for the display to present a frame: a
+# desktop whose screen has gone blank presents one a second, and a window
+# waiting for it redrew once a second, which made eleven recordings of the
+# first batch slideshows (r1030 to r1058). The shim alone paces it.
 recorded_gazebo_gui() {
   local repo_root="$1"
   local run_directory="$2"
   LD_PRELOAD="${run_directory}/frame_pace_shim.so" FRAME_PACE_HZ=24 \
+    __GL_SYNC_TO_VBLANK=0 vblank_mode=0 \
     FRAME_CAPTURE_TOP=48 \
     FRAME_CAPTURE_FIFO="${run_directory}/capture_world.bgra" \
     gz sim -g --gui-config \
