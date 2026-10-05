@@ -61,10 +61,5 @@ TEST(LightReliabilityJudgment, FrequentOutagesAreUnreliable) {
   EXPECT_TRUE(reached);
 }
 
-TEST(CarriedLightGoalEstimate, TheWayToBIsMarginedAndTheStartFloored) {
-  EXPECT_DOUBLE_EQ(carriedLightGoalEstimateS(85.0, 0.0), 9.0 * 85.0 / 0.5 + 20.0);
-  EXPECT_DOUBLE_EQ(carriedLightGoalEstimateS(60.0, 1.6), 9.0 * 60.0 / 1.6 + 20.0);
-}
-
 } // namespace
 } // namespace drone_city_nav

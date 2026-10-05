@@ -10,9 +10,6 @@ namespace {
 // the forward sensor as blind, the line of the unobservable evidence too
 // (specification K12, K14): the range within a quarter metre of the margin.
 constexpr double kBlindSensorShare{0.35};
-constexpr double kGoalTimeMargin{9.0};
-constexpr double kMinimumMeanSpeedMps{0.5};
-constexpr double kGoalReserveS{20.0};
 
 } // namespace
 
@@ -53,14 +50,6 @@ double LightReliabilityJudgment::outageShare() const noexcept {
     outage_s += samples_[index - 1U].outage ? span_s : 0.0;
   }
   return total_s > 0.0 ? outage_s / total_s : 0.0;
-}
-
-double carriedLightGoalEstimateS(const double route_remaining_m,
-                                 const double mean_speed_mps) noexcept {
-  const double speed_mps = std::isfinite(mean_speed_mps)
-                               ? std::max(mean_speed_mps, kMinimumMeanSpeedMps)
-                               : kMinimumMeanSpeedMps;
-  return kGoalTimeMargin * std::max(0.0, route_remaining_m) / speed_mps + kGoalReserveS;
 }
 
 } // namespace drone_city_nav

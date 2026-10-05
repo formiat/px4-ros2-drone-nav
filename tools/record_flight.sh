@@ -16,11 +16,7 @@ case $scenario in
   light-lost) duration=400 ;;
   long-failures) duration=1500 ;;
   return-home) duration=900 ;;
-  light-failure) duration=1800 ;;
-  # The low-battery flight gives B up at the rule's first weighing, 20 m out (specification K11), and is home 32 s
-  # after its launch at the ordinary cruise speed (r1113): the same flight at 0.6 m/s lasts 66 s (r1120), and a
-  # recording is a minute or longer (A11).
-  low-battery) duration=1800; export CRUISE_SPEED_MPS="${CRUISE_SPEED_MPS:-0.6}" ;;
+  light-failure | low-battery) duration=1800 ;;
   *) echo "unknown scenario $scenario" >&2; exit 2 ;;
 esac
 # The flight starts 45 s after the simulator: the Gazebo window loads the scene for some 20 s, drawing nothing, and

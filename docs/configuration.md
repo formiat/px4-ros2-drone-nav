@@ -389,7 +389,7 @@ computer than the vehicle has, so a change is accepted at 1.0 only
 The flights of roadmap item 17 add their own, all recorded in the manifest:
 `BLANK_PANELS="x,y,z,yaw,width,height;..."` (uniform matte panels), `LIGHT_FAULTS=none|moderate|severe|lost` with
 `LIGHT_FAULT_SEED` (the carried light's injected failures; moderate is the
-default), `LIGHT_BATTERY_S` (seconds of light at launch, 3600; 720 in the return-home scenario, 240 in the low-battery one),
+default), `LIGHT_BATTERY_S` (seconds of light at launch, only in the scenarios that test a limited charge: 720 in the return-home scenario, 240 in the low-battery one; unset, the light never runs out and the vehicle never turns for it),
 `STREAM_FAULTS=none|moderate` with
 `STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
 then reads), and the three that tell the mission check what a named

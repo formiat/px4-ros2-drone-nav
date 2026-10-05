@@ -6,9 +6,10 @@ It sets the vehicle model's spot light through Gazebo's `light_config`
 service on the simulation clock and writes every change to the run's
 directory. Two things move the light:
 
-- its battery, whose charge the vehicle knows, as any airframe knows its
-  batteries: it drains at one constant rate from the charge at launch
-  (LIGHT_BATTERY_S, seconds of light) whatever the light does, the one
+- its battery, when the scenario gives it one (LIGHT_BATTERY_S, seconds of
+  light at launch; without it the light never runs out and no charge is
+  published): its charge, which the vehicle knows as any airframe knows its
+  batteries, drains at one constant rate whatever the light does, is the one
   thing of the light published on ROS (/carried_light/charge_s), and at
   zero the light goes out (specification F7, F8);
 - its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
@@ -152,7 +153,7 @@ def main() -> int:
     parser.add_argument("--world", required=True)
     parser.add_argument("--profile", default="none",
                         choices=("none", "moderate", "severe", "lost"))
-    parser.add_argument("--battery-s", type=float, default=3600.0)
+    parser.add_argument("--battery-s", type=float)
     parser.add_argument("--model", default="x500_lidar_3d_0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--horizon-s", type=float, default=3600.0)
@@ -233,8 +234,9 @@ def main() -> int:
             with lock:
                 t_s = clock["s"]
             if t_s is not None:
-                charge_s = max(0.0, args.battery_s - t_s)
-                if t_s - published_s >= 1.0:
+                charge_s = (float("inf") if args.battery_s is None
+                            else max(0.0, args.battery_s - t_s))
+                if args.battery_s is not None and t_s - published_s >= 1.0:
                     charge_pub.publish(Float64(data=charge_s))
                     published_s = t_s
                 with lock:

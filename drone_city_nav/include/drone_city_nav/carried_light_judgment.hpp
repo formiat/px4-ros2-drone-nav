@@ -56,13 +56,4 @@ private:
   bool unreliable_{false};
 };
 
-// The time the way to B will take, from the committed route's length left to
-// it and the flight's mean speed: the route through unknown space is the
-// shortest the vehicle may find, and on five camera flights the way it flew
-// took 2.5 to 3.7 times the estimate at the median and at most 8.7 times
-// (r773, r776, r781, r784, r785). The mean speed is floored at 0.5 m/s, as
-// the vehicle stands at the start.
-[[nodiscard]] double carriedLightGoalEstimateS(double route_remaining_m,
-                                               double mean_speed_mps) noexcept;
-
 } // namespace drone_city_nav

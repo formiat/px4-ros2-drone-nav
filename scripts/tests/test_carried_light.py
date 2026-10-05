@@ -26,6 +26,17 @@ class LightFaultInjectorContractTest(unittest.TestCase):
         self.assertEqual(1, source.count("create_publisher"))
         self.assertIn('create_publisher(Float64, "/carried_light/charge_s", 1)', source)
 
+    def test_a_battery_only_where_the_scenario_gives_one(self) -> None:
+        # Without LIGHT_BATTERY_S the light never runs out and no charge is
+        # published, so the vehicle never turns for its battery.
+        runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
+        self.assertIn('${LIGHT_BATTERY_S:+--battery-s "${LIGHT_BATTERY_S}"}', runtime)
+        self.assertNotIn("LIGHT_BATTERY_S:-", runtime)
+        source = INJECTOR_PATH.read_text()
+        self.assertIn('parser.add_argument("--battery-s", type=float)', source)
+        flight = (REPOSITORY / "tools/record_flight.sh").read_text()
+        self.assertNotIn("CRUISE_SPEED_MPS", flight)
+
     def test_no_production_source_reads_the_injection(self) -> None:
         production = REPOSITORY / "drone_city_nav"
         for path in production.rglob("*"):

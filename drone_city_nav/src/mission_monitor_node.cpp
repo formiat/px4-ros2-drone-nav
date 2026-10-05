@@ -656,10 +656,12 @@ private:
 
   static constexpr double kReturnEstimateMargin{2.0};
   static constexpr double kReturnReserveS{20.0};
-  static constexpr double kBatteryJudgedAfterM{20.0};
+  // The charge kept over what the way home needs when the vehicle turns
+  // (specification K11, the owner's rule of 2026-10-05).
+  static constexpr double kReturnChargeMargin{1.1};
 
   // Roadmap item 17 stage 5: the light judged from what the navigation sees,
-  // and the battery weighed against the way to B.
+  // and the battery weighed against the way home.
   void onNavigationProgress(const msg::NavigationProgress& progress) {
     if (result_reported_ || goal_substituted_ || !navigation_mission_ready_ ||
         progress.header.frame_id != frame_id_ ||
@@ -680,19 +682,13 @@ private:
       static_cast<void>(substituteGoalWithStart("unreliable_light", now_ns));
       return;
     }
-    // The battery is weighed once the vehicle has flown far enough for its
-    // mean speed to say something: at the start the speed is the floor's,
-    // and nine times the way to B over it asked 1172 s of light for a flight
-    // that takes about 300 (r787).
-    if (std::isfinite(light_charge_s_) && flown_path_m_ >= kBatteryJudgedAfterM) {
-      // Before a route reaches B, the straight line to it.
-      const double remaining_m =
-          std::isfinite(route_remaining_m_)
-              ? route_remaining_m_
-              : distance3D(latest_map_position_, waypoints_[active_waypoint_index_]);
-      if (light_charge_s_ < carriedLightGoalEstimateS(remaining_m, meanSpeed())) {
-        static_cast<void>(substituteGoalWithStart("battery", now_ns));
-      }
+    // The way to B is not known until it is flown, the way home is: the
+    // vehicle flies on while its charge covers the way home with a margin,
+    // and turns when it no longer does. A flight with no battery (no charge
+    // published) never turns for it.
+    if (std::isfinite(light_charge_s_) &&
+        light_charge_s_ < kReturnChargeMargin * homeEstimateS()) {
+      static_cast<void>(substituteGoalWithStart("battery", now_ns));
     }
   }
 
@@ -727,24 +723,19 @@ private:
     const double elapsed_s =
         mission_start_ns_ > 0 ? static_cast<double>(now_ns - mission_start_ns_) * 1.0e-9
                               : 0.0;
-    RCLCPP_WARN(
-        get_logger(),
-        "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
-        "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
-        " elapsed_s=%.1f flown_path_m=%.1f home_estimate_s=%.1f "
-        "light_charge_s=%.1f goal_estimate_s=%.1f route_remaining_m=%.1f "
-        "light_outage_s=%.1f light_outage_share=%.3f proof=%s "
-        "component_voxels=%zu",
-        trigger, original_goal.x, original_goal.y, original_goal.z, start.x, start.y,
-        start.z, return_epoch_, elapsed_s, flown_path_m_, homeEstimateS(),
-        light_charge_s_,
-        carriedLightGoalEstimateS(std::isfinite(route_remaining_m_)
-                                      ? route_remaining_m_
-                                      : distance3D(latest_map_position_, original_goal),
-                                  meanSpeed()),
-        route_remaining_m_, light_judgment_.currentOutageS(),
-        light_judgment_.outageShare(), goalReachabilityProofVerdict(latest_proof_),
-        latest_proof_.component_voxels);
+    RCLCPP_WARN(get_logger(),
+                "GOAL_UNREACHABLE trigger=%s goal=(%.3f,%.3f,%.3f) "
+                "substituted_goal=(%.3f,%.3f,%.3f) mission_epoch=%" PRIu64
+                " elapsed_s=%.1f flown_path_m=%.1f home_estimate_s=%.1f "
+                "light_charge_s=%.1f route_remaining_m=%.1f "
+                "light_outage_s=%.1f light_outage_share=%.3f proof=%s "
+                "component_voxels=%zu",
+                trigger, original_goal.x, original_goal.y, original_goal.z, start.x,
+                start.y, start.z, return_epoch_, elapsed_s, flown_path_m_,
+                homeEstimateS(), light_charge_s_, route_remaining_m_,
+                light_judgment_.currentOutageS(), light_judgment_.outageShare(),
+                goalReachabilityProofVerdict(latest_proof_),
+                latest_proof_.component_voxels);
     return true;
   }
 

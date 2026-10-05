@@ -76,7 +76,7 @@ start_runtime_evidence_capture() {
   if [[ "${CAMERA_PROFILE:-}" == "stereo_tof" ]] && ! bool_is_true "${multi_vehicle_mission}"; then
     python3 "${repo_root}/scripts/carried_light.py" \
       --world "${world_name}" --profile "${LIGHT_FAULTS:-none}" \
-      --seed "${LIGHT_FAULT_SEED:-0}" --battery-s "${LIGHT_BATTERY_S:-3600}" \
+      --seed "${LIGHT_FAULT_SEED:-0}" ${LIGHT_BATTERY_S:+--battery-s "${LIGHT_BATTERY_S}"} \
       --model "${default_gazebo_follow_target}" \
       --output "${runtime_artifact_dir}/carried_light.csv" \
       > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
