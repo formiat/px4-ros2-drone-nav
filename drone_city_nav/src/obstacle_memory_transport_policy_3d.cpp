@@ -33,7 +33,7 @@ ObstacleMemoryTransportDecision3D ObstacleMemoryTransportPolicy3D::decide(
   }
 
   const std::int64_t elapsed_ns =
-      std::max<std::int64_t>(0, input.now_steady_ns - last_snapshot_steady_ns_);
+      std::max<std::int64_t>(0, input.now_ns - last_snapshot_ns_);
   const double elapsed_s = static_cast<double>(elapsed_ns) * 1.0e-9;
   const double dirty_ratio = input.current_chunk_count == 0U
                                  ? 1.0
@@ -48,9 +48,9 @@ ObstacleMemoryTransportDecision3D ObstacleMemoryTransportPolicy3D::decide(
 }
 
 void ObstacleMemoryTransportPolicy3D::recordSnapshot(
-    const std::uint64_t revision, const std::int64_t now_steady_ns) noexcept {
+    const std::uint64_t revision, const std::int64_t now_ns) noexcept {
   base_snapshot_revision_ = revision;
-  last_snapshot_steady_ns_ = now_steady_ns;
+  last_snapshot_ns_ = now_ns;
 }
 
 std::uint64_t ObstacleMemoryTransportPolicy3D::baseSnapshotRevision() const noexcept {

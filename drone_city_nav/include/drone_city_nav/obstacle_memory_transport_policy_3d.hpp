@@ -18,7 +18,7 @@ enum class ObstacleMemoryTransportDecision3D : std::uint8_t {
 };
 
 struct ObstacleMemoryTransportPolicy3DInput {
-  std::int64_t now_steady_ns{0};
+  std::int64_t now_ns{0};
   std::uint64_t revision{0U};
   std::size_t current_chunk_count{0U};
   std::size_t dirty_chunk_count{0U};
@@ -32,13 +32,13 @@ public:
 
   [[nodiscard]] ObstacleMemoryTransportDecision3D
   decide(const ObstacleMemoryTransportPolicy3DInput& input) const noexcept;
-  void recordSnapshot(std::uint64_t revision, std::int64_t now_steady_ns) noexcept;
+  void recordSnapshot(std::uint64_t revision, std::int64_t now_ns) noexcept;
   [[nodiscard]] std::uint64_t baseSnapshotRevision() const noexcept;
 
 private:
   ObstacleMemoryTransportPolicy3DConfig config_{};
   std::uint64_t base_snapshot_revision_{0U};
-  std::int64_t last_snapshot_steady_ns_{0};
+  std::int64_t last_snapshot_ns_{0};
 };
 
 } // namespace drone_city_nav

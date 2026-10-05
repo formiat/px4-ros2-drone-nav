@@ -14,7 +14,7 @@ TEST(ObstacleMemoryTransportPolicy3DTest, RequiresInitialSnapshot) {
   ObstacleMemoryTransportPolicy3D policy;
 
   EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
-                .now_steady_ns = kSecondNs,
+                .now_ns = kSecondNs,
                 .revision = 1U,
                 .current_chunk_count = 10U,
                 .dirty_chunk_count = 10U,
@@ -29,7 +29,7 @@ TEST(ObstacleMemoryTransportPolicy3DTest, UsesCumulativeDeltaBeforeRebaseWindow)
   policy.recordSnapshot(1U, kSecondNs);
 
   EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
-                .now_steady_ns = 2 * kSecondNs,
+                .now_ns = 2 * kSecondNs,
                 .revision = 2U,
                 .current_chunk_count = 100U,
                 .dirty_chunk_count = 100U,
@@ -43,7 +43,7 @@ TEST(ObstacleMemoryTransportPolicy3DTest, RebasesWhenDeltaApproachesSnapshotSize
   policy.recordSnapshot(1U, kSecondNs);
 
   EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
-                .now_steady_ns = 11 * kSecondNs,
+                .now_ns = 11 * kSecondNs,
                 .revision = 2U,
                 .current_chunk_count = 100U,
                 .dirty_chunk_count = 75U,
@@ -57,7 +57,7 @@ TEST(ObstacleMemoryTransportPolicy3DTest, MaximumAgeEventuallyRebasesSmallDelta)
   policy.recordSnapshot(1U, kSecondNs);
 
   EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
-                .now_steady_ns = 31 * kSecondNs,
+                .now_ns = 31 * kSecondNs,
                 .revision = 2U,
                 .current_chunk_count = 100U,
                 .dirty_chunk_count = 1U,

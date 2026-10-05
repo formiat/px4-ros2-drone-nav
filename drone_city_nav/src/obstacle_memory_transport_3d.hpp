@@ -60,8 +60,9 @@ private:
   std::size_t debug_stride_{1U};
   std::uint64_t producer_instance_id_{0U};
   std::uint64_t sequence_{0U};
-  std::int64_t last_debug_steady_ns_{0};
-  std::chrono::steady_clock::time_point last_publish_time_{};
+  // Node clock: the simulation's in flight.
+  std::int64_t last_debug_ns_{0};
+  std::int64_t last_publish_ns_{0};
   std::set<OccupancyChunkIndex3D,
            bool (*)(const OccupancyChunkIndex3D&, const OccupancyChunkIndex3D&)>
       dirty_chunks_since_base_;

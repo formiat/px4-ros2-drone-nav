@@ -150,7 +150,7 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
 }
 
 void ProductionMppiNode::startPlanningTimer() {
-  planning_timer_ = create_wall_timer(
+  planning_timer_ = create_timer(
       std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
       [this]() { planningTick(); }, planning_callback_group_);
 }

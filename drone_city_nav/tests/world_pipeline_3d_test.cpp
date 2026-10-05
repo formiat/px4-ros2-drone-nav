@@ -633,6 +633,38 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesRebuiltChil
   EXPECT_EQ(pipeline.statistics().observed_full_builds, 2U);
 }
 
+TEST(WorldPipeline3DTest, ObservedBuildRateFollowsTheRuntimeClock) {
+  // A simulation slowed against the wall keeps its build rate: the limit is
+  // measured on the clock the runtime hands over, not on the monotonic one.
+  WorldPipeline3D::TimePoint clock{1s};
+  ObservedWorldRuntime3D runtime = observedRuntime();
+  runtime.now = [&clock]() { return clock; };
+  WorldPipeline3D pipeline{std::move(runtime)};
+  const GridBounds3D bounds{-32.0, -32.0, -8.0, 1.0, 64, 64, 16};
+  ObservedOccupancyGrid3D first_grid{bounds};
+  ASSERT_TRUE(first_grid.setState({29, 29, 8}, ObservedVoxelState::kOccupied));
+  const ObservedWorldUpdate3D first = pipeline.updateObservedWorld(
+      observedRequest(rawWorld(first_grid, 1U), WorldPipeline3D::TimePoint{}));
+  ASSERT_TRUE(first.published());
+
+  ObservedOccupancyGrid3D second_grid = first_grid;
+  const GridIndex3D inserted_cell{30, 29, 8};
+  ASSERT_TRUE(second_grid.setState(inserted_cell, ObservedVoxelState::kOccupied));
+  const auto second_raw =
+      rawWorld(second_grid, 2U,
+               std::vector<OccupancyChunkIndex3D>{
+                   ObservedOccupancyGrid3D::chunkIndex(inserted_cell)});
+  clock += 100ms;
+  const ObservedWorldUpdate3D throttled = pipeline.updateObservedWorld(
+      observedRequest(second_raw, WorldPipeline3D::TimePoint{}));
+  EXPECT_EQ(throttled.status, ObservedWorldUpdateStatus3D::kRateLimited);
+
+  clock += 2s;
+  const ObservedWorldUpdate3D rebuilt = pipeline.updateObservedWorld(
+      observedRequest(second_raw, WorldPipeline3D::TimePoint{}));
+  EXPECT_TRUE(rebuilt.published());
+}
+
 TEST(WorldPipeline3DTest,
      RawWorldFactoryRejectsMissingOwnerAndServiceReportsFailedUpload) {
   std::size_t uploads{0U};

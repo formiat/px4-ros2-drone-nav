@@ -329,9 +329,8 @@ public:
           onMemoryDelta(*message);
         });
     proof_timer_ =
-        create_wall_timer(std::chrono::seconds{10}, [this] { judgeReturnHome(); });
-    summary_timer_ =
-        create_wall_timer(std::chrono::seconds{5}, [this] { logSummary(); });
+        create_timer(std::chrono::seconds{10}, [this] { judgeReturnHome(); });
+    summary_timer_ = create_timer(std::chrono::seconds{5}, [this] { logSummary(); });
     RCLCPP_INFO(get_logger(),
                 "Mission monitor ready: start=(%.2f, %.2f) waypoint_count=%zu "
                 "first_goal=(%.2f, %.2f)",

@@ -24,6 +24,11 @@ void mergeDirtyChunks(std::vector<OccupancyChunkIndex3D>& destination,
   destination.erase(duplicates.begin(), duplicates.end());
 }
 
+[[nodiscard]] std::chrono::steady_clock::time_point
+rateClockNow(const ObservedWorldRuntime3D& runtime) {
+  return runtime.now ? runtime.now() : std::chrono::steady_clock::now();
+}
+
 } // namespace
 
 WorldPipeline3D::ResidentLease::ResidentLease(const WorldPipeline3D& owner)
@@ -271,7 +276,7 @@ WorldPipeline3D::updateObservedWorld(ObservedWorldBuildRequest3D request) {
     return result;
   }
   if (request.build_started_at == TimePoint{}) {
-    request.build_started_at = std::chrono::steady_clock::now();
+    request.build_started_at = rateClockNow(*runtime);
   }
   const ObservedWorldBuildAssessment3D assessment = observed_builder_->assess(
       std::move(request), residentSnapshot().world, observedBuildHistory());
@@ -461,7 +466,7 @@ ObservedWorldUpdate3D WorldPipeline3D::finishObservedWorldUpdate(
                                   assessment.observed_raw_world_owner,
                                   assessment.request.free_space_seed)) {
       result.status = ObservedWorldUpdateStatus3D::kSupersededTransientEvidenceParent;
-      result.retry_not_before = std::chrono::steady_clock::now();
+      result.retry_not_before = rateClockNow(runtime);
       result.world.reset();
       return result;
     }
@@ -491,7 +496,7 @@ ObservedWorldUpdate3D WorldPipeline3D::finishObservedWorldUpdate(
   PublicationLease publication = lockPublication();
   if (!residentParentMatches(build, publication.world())) {
     result.status = ObservedWorldUpdateStatus3D::kSupersededEsdfParent;
-    result.retry_not_before = std::chrono::steady_clock::now();
+    result.retry_not_before = rateClockNow(runtime);
     result.world.reset();
     return result;
   }
@@ -728,7 +733,7 @@ void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
     {
       std::unique_lock lock{queue_mutex_};
       while (!stop_token.stop_requested()) {
-        const TimePoint now = std::chrono::steady_clock::now();
+        const TimePoint now = rateClockNow(*runtime);
         if (std::optional scheduled = raw_world_scheduler_.takeReady(now)) {
           raw_world = std::move(*scheduled);
           break;
@@ -736,9 +741,12 @@ void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
         if (const std::optional<TimePoint> not_before =
                 raw_world_scheduler_.notBefore();
             not_before.has_value()) {
-          static_cast<void>(queue_condition_.wait_until(
-              lock, stop_token, not_before.value(), [this]() {
-                return raw_world_scheduler_.ready(std::chrono::steady_clock::now());
+          // The rate clock may be the simulation's, which a wait on the
+          // monotonic clock cannot follow: it is asked again every few
+          // milliseconds.
+          static_cast<void>(queue_condition_.wait_for(
+              lock, stop_token, std::chrono::milliseconds{2}, [this, runtime]() {
+                return raw_world_scheduler_.ready(rateClockNow(*runtime));
               }));
         } else {
           queue_condition_.wait(lock, stop_token,
@@ -767,7 +775,7 @@ void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
         if (request->raw_world != raw_world) {
           update.status = ObservedWorldUpdateStatus3D::kRawExecutionOwnerMismatch;
         } else {
-          request->build_started_at = std::chrono::steady_clock::now();
+          request->build_started_at = rateClockNow(*runtime);
           update = updateObservedWorld(std::move(*request));
         }
       }

@@ -28,12 +28,6 @@ void mergeDirtyChunks(std::vector<OccupancyChunkIndex3D>& destination,
   destination.erase(duplicates.begin(), duplicates.end());
 }
 
-[[nodiscard]] std::int64_t steadyNowNanoseconds() noexcept {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
-
 } // namespace
 
 ObstacleMemoryTransport3D::ObstacleMemoryTransport3D(
@@ -144,15 +138,17 @@ void ObstacleMemoryTransport3D::workerLoop(const std::stop_token stop_token) {
       if (stop_token.stop_requested()) {
         return;
       }
-      if (last_publish_time_ != std::chrono::steady_clock::time_point{}) {
-        const auto next_publish =
-            last_publish_time_ + std::chrono::duration<double>{update_period_s_};
-        queue_condition_.wait_until(lock, next_publish, [&stop_token]() {
-          return stop_token.stop_requested();
-        });
-        if (stop_token.stop_requested()) {
-          return;
-        }
+      // The period is kept on the node clock, the simulation's in flight,
+      // which a wait on the monotonic clock cannot follow: it is asked again
+      // every few milliseconds.
+      const std::int64_t next_publish_ns =
+          last_publish_ns_ + static_cast<std::int64_t>(update_period_s_ * 1.0e9);
+      while (last_publish_ns_ > 0 && !stop_token.stop_requested() &&
+             node_.get_clock()->now().nanoseconds() < next_publish_ns) {
+        queue_condition_.wait_for(lock, std::chrono::milliseconds{2});
+      }
+      if (stop_token.stop_requested()) {
+        return;
       }
       update = std::move(pending_update_);
       pending_update_.reset();
@@ -166,7 +162,7 @@ void ObstacleMemoryTransport3D::workerLoop(const std::stop_token stop_token) {
       RCLCPP_ERROR(node_.get_logger(),
                    "ONLINE_OCCUPANCY3D_TRANSPORT failed=true error='%s'", error.what());
     }
-    last_publish_time_ = std::chrono::steady_clock::now();
+    last_publish_ns_ = node_.get_clock()->now().nanoseconds();
   }
 }
 
@@ -182,10 +178,10 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
   std_msgs::msg::Header header;
   header.stamp = update.stamp;
   header.frame_id = frame_id_;
-  const std::int64_t now_steady_ns = steadyNowNanoseconds();
+  const std::int64_t now_ns = node_.get_clock()->now().nanoseconds();
   const ObstacleMemoryTransportDecision3D decision =
       policy_.decide(ObstacleMemoryTransportPolicy3DInput{
-          .now_steady_ns = now_steady_ns,
+          .now_ns = now_ns,
           .revision = update.changes.revision,
           .current_chunk_count = update.grid.chunks().size(),
           .dirty_chunk_count = dirty_chunks_since_base_.size(),
@@ -210,7 +206,7 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
     publish_ms = std::chrono::duration<double, std::milli>(
                      std::chrono::steady_clock::now() - publish_started)
                      .count();
-    policy_.recordSnapshot(update.changes.revision, now_steady_ns);
+    policy_.recordSnapshot(update.changes.revision, now_ns);
     dirty_chunks_since_base_.clear();
     snapshot_published = true;
   } else if (decision == ObstacleMemoryTransportDecision3D::kDelta) {
@@ -233,14 +229,14 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
   }
 
   const bool debug_cloud_due =
-      update.publish_debug && (last_debug_steady_ns_ <= 0 ||
-                               now_steady_ns - last_debug_steady_ns_ >=
-                                   static_cast<std::int64_t>(debug_period_s_ * 1.0e9));
+      update.publish_debug &&
+      (last_debug_ns_ <= 0 ||
+       now_ns - last_debug_ns_ >= static_cast<std::int64_t>(debug_period_s_ * 1.0e9));
   if (debug_cloud_due) {
     memory_cloud_pub_->publish(buildObservedOccupancyPointCloud3D(
         update.grid, header.stamp, frame_id_, gazebo_aligned_rviz_axes_swapped_,
         debug_stride_));
-    last_debug_steady_ns_ = now_steady_ns;
+    last_debug_ns_ = now_ns;
   }
 
   msg::ObstacleMemoryStatus status;

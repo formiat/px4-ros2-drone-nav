@@ -171,7 +171,7 @@ public:
         rclcpp::QoS{1}.reliable().transient_local(),
         [this](const std_msgs::msg::Bool::SharedPtr health) {
           planner_healthy_ = health->data;
-          planner_health_received_at_ = std::chrono::steady_clock::now();
+          planner_health_received_at_ = now();
         });
     applied_control_feedback_frame_id_ =
         declare_parameter<std::string>("applied_control_feedback_frame_id", "map");
@@ -291,8 +291,7 @@ public:
         px4_qos);
     last_command_time_ =
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
-    timer_ =
-        create_wall_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
+    timer_ = create_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
     RCLCPP_INFO(get_logger(),
                 "Production MPPI offboard ready: takeoff_climb_m=%.1f "
                 "takeoff_altitude_m=%.1f",
@@ -614,21 +613,16 @@ private:
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
     const bool planner_heartbeat_fresh =
         planner_health_received_at_.has_value() &&
-        std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                      *planner_health_received_at_)
-                .count() <= planner_health_timeout_s_;
+        (now() - *planner_health_received_at_).seconds() <= planner_health_timeout_s_;
     const bool planner_authorized =
         !require_planner_health_ || (planner_healthy_ && planner_heartbeat_fresh);
     if (takeoff_ready && !planner_authorized) {
       if (!planner_health_loss_started_at_.has_value()) {
-        planner_health_loss_started_at_ = std::chrono::steady_clock::now();
+        planner_health_loss_started_at_ = now();
         RCLCPP_ERROR(get_logger(), "PLANNER_HEALTH lost=true action=position_hold");
       }
       publishUnavailablePathHoldSetpoint();
-      const double loss_s =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                        *planner_health_loss_started_at_)
-              .count();
+      const double loss_s = (now() - *planner_health_loss_started_at_).seconds();
       if (!planner_health_land_sent_ && loss_s >= planner_health_land_after_s_) {
         publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND, 0.0F);
         planner_health_land_sent_ = true;
@@ -981,8 +975,9 @@ private:
   double planner_health_timeout_s_{1.0};
   double planner_health_land_after_s_{5.0};
   bool planner_health_land_sent_{false};
-  std::optional<std::chrono::steady_clock::time_point> planner_health_received_at_;
-  std::optional<std::chrono::steady_clock::time_point> planner_health_loss_started_at_;
+  // The heartbeat's age is read on the node clock, as its period is published.
+  std::optional<rclcpp::Time> planner_health_received_at_;
+  std::optional<rclcpp::Time> planner_health_loss_started_at_;
   Px4MapFrameTransform px4_map_transform_{};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
