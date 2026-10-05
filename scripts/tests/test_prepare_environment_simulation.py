@@ -136,5 +136,31 @@ class BlankPanelMaterializationTest(unittest.TestCase):
         self.assertIsNone(tree.getroot().find("world/model"))
 
 
+class RealTimeFactorTest(unittest.TestCase):
+    WORLD = ("<sdf><world name='test'><physics><max_step_size>0.004</max_step_size>"
+             "<real_time_factor>1.0</real_time_factor></physics></world></sdf>")
+
+    def test_the_factor_asked_for_is_the_world_s(self) -> None:
+        tree = ET.ElementTree(ET.fromstring(self.WORLD))
+
+        PREPARER.configure_real_time_factor(tree, "0.5")
+
+        self.assertEqual("0.5", tree.getroot().findtext("world/physics/real_time_factor"))
+        self.assertEqual("0.004", tree.getroot().findtext("world/physics/max_step_size"))
+
+    def test_the_default_leaves_the_world_as_it_was(self) -> None:
+        tree = ET.ElementTree(ET.fromstring(self.WORLD))
+
+        PREPARER.configure_real_time_factor(tree, "1.0")
+
+        self.assertEqual("1.0", tree.getroot().findtext("world/physics/real_time_factor"))
+
+    def test_a_factor_outside_the_range_is_refused(self) -> None:
+        for factor in ("0", "-1", "1.5", "fast"):
+            tree = ET.ElementTree(ET.fromstring(self.WORLD))
+            with self.assertRaises(PREPARER.EnvironmentPreparationError):
+                PREPARER.configure_real_time_factor(tree, factor)
+
+
 if __name__ == "__main__":
     unittest.main()

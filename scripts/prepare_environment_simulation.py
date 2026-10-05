@@ -371,6 +371,29 @@ def configure_gui_lighting(tree: ET.ElementTree) -> int:
     return 1
 
 
+def configure_real_time_factor(tree: ET.ElementTree, factor: str) -> None:
+    """The rate of the simulation clock against the wall clock (roadmap item
+    20 stage 1, `REAL_TIME_FACTOR`): the simulator throttles itself to it, the
+    autopilot follows in lockstep and the onboard loop keeps the simulation
+    clock, so the whole flight slows together. Never above 1: a simulation
+    faster than the wall clock is not a flight the host was measured for."""
+    try:
+        value = float(factor)
+    except ValueError as error:
+        raise EnvironmentPreparationError(
+            f"REAL_TIME_FACTOR is not a number: {factor!r}"
+        ) from error
+    if not 0.0 < value <= 1.0:
+        raise EnvironmentPreparationError(
+            f"REAL_TIME_FACTOR must be above 0 and at most 1, got {factor!r}"
+        )
+    elements = list(tree.getroot().iter("real_time_factor"))
+    if not elements:
+        raise EnvironmentPreparationError("the world's physics has no real_time_factor")
+    for element in elements:
+        element.text = repr(value)
+
+
 def configure_dark_lighting(tree: ET.ElementTree) -> int:
     """Roadmap item 17 stage 1: the location with no light of its own. The
     ambient term is zero and every light of the world goes, so whatever a
@@ -637,6 +660,8 @@ def main() -> None:
     add_launch_platforms(
         collision_tree, launch_platforms, mode=MaterializationMode.COLLISION
     )
+    real_time_factor = os.environ.get("REAL_TIME_FACTOR", "1.0")
+    configure_real_time_factor(collision_tree, real_time_factor)
     collision_report.collision_instances += len(launch_platforms)
     collision_report.geometry_types["box"] = (
         collision_report.geometry_types.get("box", 0) + len(launch_platforms)
@@ -659,6 +684,7 @@ def main() -> None:
         localized_mesh_root=runtime_root / "assets" / "sensor_meshes",
     ).materialize(source_world)
     add_launch_platforms(sensor_tree, launch_platforms, mode=MaterializationMode.SENSOR)
+    configure_real_time_factor(sensor_tree, real_time_factor)
     sensor_report.collision_instances += len(launch_platforms)
     sensor_report.visual_instances += len(launch_platforms)
     sensor_report.geometry_types["box"] = (
@@ -682,6 +708,7 @@ def main() -> None:
     ).materialize(source_world)
     add_launch_platforms(gui_tree, launch_platforms, mode=MaterializationMode.GUI)
     gui_report.light_instances = configure_gui_lighting(gui_tree)
+    configure_real_time_factor(gui_tree, real_time_factor)
     gui_report.collision_instances += len(launch_platforms)
     gui_report.visual_instances += len(launch_platforms)
     gui_report.geometry_types["box"] = (

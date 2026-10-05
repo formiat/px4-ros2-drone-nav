@@ -147,7 +147,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
   done
 fi
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
-smoke_duration_s="${SMOKE_DURATION_S:-0}"
+smoke_duration_s="$(awk -v s="${SMOKE_DURATION_S:-0}" -v f="${REAL_TIME_FACTOR:-1.0}" 'BEGIN { printf "%d", s / f }')" # simulation seconds
 require_observed_3d_route_volume_crossing="$(
   normalize_bool "${REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING:-false}"
 )"

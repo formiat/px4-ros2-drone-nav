@@ -28,6 +28,11 @@ class HostVerdictTest(unittest.TestCase):
         self.assertTrue(HOST.verdict("stereo_tof", 1.0, 3.7))
         self.assertTrue(HOST.verdict("stereo_tof", None, 0.0))
 
+    def test_a_slowed_flight_is_judged_against_the_factor_it_asked_for(self) -> None:
+        self.assertEqual([], HOST.verdict("stereo_tof", 0.5, 1.0, 0.5))
+        self.assertTrue(HOST.verdict("stereo_tof", 0.40, 1.0, 0.5))
+        self.assertTrue(HOST.verdict("lidar", 0.47, 1.0, 0.5))
+
     def test_the_series_launcher_records_the_verdict(self) -> None:
         launcher = (PATH.parent / "series2.sh").read_text(encoding="utf-8")
         self.assertIn("tools/host_verdict.py", launcher)
