@@ -884,308 +884,6 @@ item 24. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
 
-## 20. Slowed Simulation And Unattended Recording
-
-**Type:** simulation infrastructure and one honesty repair of the onboard
-loop; no navigation policy.
-
-**Hard prerequisites:** none. Stage 3 depends on nothing but a display
-server and is built first (revised on 2026-10-03, below).
-
-**Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission. The cooperative-traffic mission is what stages 0 and 1 are for, and
-it is flown under item 15, not here: no cooperative flight is flown before
-item 15 closes (the owner's rule).
-
-Asked by the project owner on 2026-09-25. The reference workstation holds two
-lidar vehicles at real time and not four (item 15), and a demonstration
-recording today means a person at the desk with the GUI open for six
-minutes. Both have the same answer: let the simulation run slower than the
-wall clock on purpose, and let the picture be rendered and written without a
-screen. The facts this item rests on were established on 2026-09-25:
-
-- **The simulator's clock rate is a world parameter.** The materialized
-  worlds carry `<max_step_size>0.004</max_step_size>` and
-  `<real_time_factor>1.0</real_time_factor>`; Gazebo throttles its server to
-  the factor, PX4 SITL runs in lockstep and follows, and since item 16
-  (`UXRCE_DDS_SYNCT=0`) every autopilot stamp is the simulation clock at any
-  factor. The mean flight speed of the second requirement is measured on the
-  simulation clock since 2026-09-25, so the check does not care either.
-- **Slowing the simulator halves only what runs on the simulation clock.**
-  Physics, the GPU lidars, the stereo pair and the depth node (215 percent
-  of a core, per frame), the obstacle memory (72 percent, per scan) and the
-  autopilot all take half the wall time per simulated second at a factor of
-  0.5. The planning tick (`tick_rate_hz`, a wall-clock rate) and the
-  offboard tick (`create_wall_timer`, 20 ms) do not: `production_mppi_node`
-  at 186 percent of a core costs the same wall second whatever the factor,
-  and with four vehicles that is 7.4 of the 8 physical cores before anything
-  else runs. Item 15 already records the other half of this fact: at a
-  real-time factor of 0.6 the planner takes about 72 ticks per simulated
-  second instead of 43, so a slow simulation flies the vehicle with a faster
-  computer than it has.
-- **The server already renders without a display.** Headless flights run
-  `gz sim -s --headless-rendering`; the stereo pair is rendered that way. A
-  camera sensor placed in the world for the picture renders the same way and
-  its frames carry the simulation stamp, so a recording made from them plays
-  at the flight's true speed whatever the factor was.
-- **RViz does not.** Its overlays (the memory, the current depth, the
-  committed route, the goal) exist only in RViz, which needs a display
-  server, and a capture of that display runs on the wall clock.
-
-**Revised on 2026-10-03, by the project owner's decision.** Three things
-changed after the item was written:
-
-- **The location is dark.** Since item 17 the only light is the one the
-  vehicle carries, and the location's own never comes back (specification
-  A10). A light in Gazebo belongs to the scene, not to a camera, so a
-  spectator camera in the world sees what the vehicle's lamp lights and
-  black around it. The picture that shows a flight is RViz: the memory, the
-  route, the goal, the evaluation objects. Stage 3 is therefore the
-  recording this item delivers and is built first; stage 2 is the secondary
-  picture.
-- **What the recording is for.** The demonstrations of item 17's scenarios,
-  recorded at night with nobody at the desk, several takes of each and the
-  best one kept, because no two flights are alike. A single camera vehicle
-  holds real time headless, so these recordings need neither stage 0 nor
-  stage 1.
-- **The product is the split picture** the owner records by hand today: the
-  3D world on the left, RViz on the right, one file. The world's half is
-  stage 2's camera and RViz's half is stage 3's capture, joined on the
-  flight's clock. The world's half is as dark as the Gazebo window of a
-  hand-made recording is since item 17: the lamp's cone and what it lights.
-- **Every way of recording is allowed** (the owner, 2026-10-03), the plain
-  one included: the windows open on the workstation's own display and the
-  screen captured. The recordings are made at night, the workstation is not
-  used then, and an open window is in nobody's way. So the stages below are
-  the candidates and not the prescription: the Gazebo window with its own
-  following camera beside RViz, on the real display, is what the owner
-  records by hand and is the first thing to try, and a camera sensor in the
-  world or a virtual display is built only where the plain way fails. The
-  way is chosen by measurement: the picture, the real-time factor of the
-  recorded flight against specification A7, and whether a batch runs a
-  night through with nobody at the desk. What the choice must state: the
-  workstation's session is Wayland, where a capture of the screen goes
-  through the desktop's screencast and not through X; windows have to be
-  placed without a person; and a flight with the GUI open is the GUI
-  scenario, not the headless acceptance flight.
-- **Nothing but the picture is in the picture** (the owner, 2026-10-03). A
-  window opened as it is carries what a recording does not want: RViz's
-  displays list, its views and tool panels and its toolbars, Gazebo's entity
-  tree, component inspector and world controls, title bars, the desktop.
-  They cover the flight. A recording shows the two views and nothing else:
-  RViz is started with a configuration for recording whose docks, panels and
-  toolbars are hidden, Gazebo with a GUI configuration that holds the 3D
-  scene alone, and whatever frame remains is cropped out of the capture.
-  The recording configurations are files of the repository, beside the
-  debugging ones, which stay as they are.
-- **The order.** Stages 3 and 2 together, for the recordings; stages 0 and 1
-  when item 15 needs four vehicles or the heaviest configuration is to be
-  measured. The stage numbers are kept, because other pages name them.
-
-### Built On 2026-10-04: The Unattended Recording
-
-Stages 3 and 2, for the recordings of item 17's scenarios, by the plain way
-the revision above allows, chosen by measurement:
-
-- **A recorded flight is the headless flight with its pictures on the
-  desktop** (`RECORD_VIDEO=1`): the server renders headless and the mission
-  check runs as in the acceptance, and beside them the Gazebo window opens
-  with the 3D scene alone (`gazebo_gui_recording.config`, its following
-  camera as in a GUI flight) and RViz in both views, written from the
-  debugging configurations with the panels gone and the top-down view
-  following the vehicle (`scripts/rviz_recording_view.py`).
-- **Each window's picture is taken where it is drawn**
-  (`scripts/frame_pace_shim.c`, preloaded into the three windows): on every
-  buffer swap the middle of the 3D view, in the shape of a half of the split
-  picture, is read back through a pixel buffer object and handed to a FIFO.
-  What is read is the view, not the window, so no panel, toolbar or desktop
-  can be in the frame, and nothing depends on how the windows lie on the
-  screen. The same shim paces the Gazebo window to 24 frames a second: it
-  redraws the scene at the display's 144 Hz otherwise.
-- **The recorder** (`scripts/record_flight_video.py`, on the host) stores
-  the three streams through the GPU's encoder while the flight flies and
-  joins them after it: two files a flight, the world on the left and RViz
-  on the right, 1920 x 1080, 24 frames a second, cut to the mission from its
-  readiness to its result, and checked (size, length against the flight, a
-  picture that is neither black nor still).
-- **One command a flight, one a night**: `tools/record_flight.sh` and
-  `tools/record_batch.sh`, which flies every scenario of item 17 on the
-  stereo set round robin
-  and writes an index beside the videos. The desktop is kept from going idle
-  by an inhibitor while a flight lasts; none of its settings is changed.
-
-Tried and left: the windows read through the X server (it works on the
-Wayland desktop, the windows being XWayland's, but each window read cost the
-simulator a seventh of its speed), and the desktop's own screen recorder
-(not to be driven without a person).
-
-**What the recording costs, and what that decides.** The windows beside a
-flight hold the simulator at 0.72 to 0.80 of real time on the stereo set
-(r1015 to r1017), under the floor of the host's verdict, and they do so
-whatever captures them: stopped in flight the Gazebo window gives back 0.08
-and the two RViz 0.13. A recorded flight is therefore a demonstration and
-never an acceptance flight (specification A11); each scenario's acceptance is
-its headless flight on the same commit. Making a recorded flight count is
-this item's remainder: the pictures rendered after the flight from a
-recording of its topics, or stages 0 and 1 below, with which the simulation
-is slowed on purpose and the windows' price stops mattering. The world's
-half is as dark as the location is; on the lidar, which carries no light, it
-is black, and flights on the lidar are no longer recorded (the owner's rule
-of 2026-10-04, specification A11).
-
-**Recorded on 2026-10-04.** Three passes over the seven scenarios of item 17,
-round robin, with nobody at the desk: 27 flights, 54 split files, the index
-beside them (`log/videos/2026-10-04/`, kept from the pruning; the six lidar
-recordings were deleted since, the batch flies the stereo set alone). Every
-scenario has three takes whose flight passed its check but the long flight
-under failures, which passed once in five. What the batch showed besides the
-pictures:
-
-- **The lidar's estimator was starved by the windows** and two recorded
-  lidar flights crashed (r1053, r1066) although the simulator held real
-  time: registrations ran over the scan period, the pose reached the
-  autopilot up to 1.3 s old, the autopilot stopped fusing it and lost its
-  position. Repaired (specification K23): a scan that waited a period and a
-  half is let go, never two in a row. Under the same load the recorded
-  flight then passed (r1067, 37 scans of 1550 let go), and the headless
-  series on the repair is five of five (r1068 to r1072, 2.52 to 3.14 m/s).
-- **The long flight under failures does not survive the recording**: an
-  eight-minute hold beside phantom occupancy that no longer fades (r1032,
-  the register's entry on the memory's decay), an acknowledgement 2.03 m
-  from its goal (r1037), two crashes with the estimate stepping under the
-  stream's failures and the slowed simulator (r1040, r1054). Headless it
-  passes six of six.
-- **One descent past the edge of the staging base clipped it** (r1044, the
-  simulator at 0.62 of real time); six headless flights of the same scenario
-  pass the same edge clean.
-
-### Stage 0: The Onboard Loop Keeps Simulation Time
-
-The planning tick and the offboard tick move from wall-clock timers to the
-node clock under `use_sim_time`, which every onboard node already declares
-for its stamps. At a factor of 1.0 nothing should change but timer jitter,
-which is what the acceptance measures: both series on the one commit,
-against both series flown on the commit before it (not against an older
-base: the stack has moved through items 19 and 17 since this was written),
-the tick and planner percentiles beside their debt figures. At a
-factor below 1.0 the loop then slows with the world and the load falls with
-the factor; what remains unequal is the wall-clock latency of the transport
-and the planner's 150 ms budget, which become shorter in simulated seconds by
-the factor, so a slowed flight still flatters the stack by that much and its
-speed figures are never compared with a real-time series. The stage lands
-first because without it a slowed run neither lightens the host nor tells
-the truth. The register's tick past its 20 ms deadline (P2) is re-measured
-here, on the node clock, and the deadline question is decided on those
-percentiles; the rework of the tick, if one is wanted, is not this item's.
-
-What the stage has to state before it changes anything: the audit. Twelve
-wall-clock timers sit in nine sources (the planning tick, the offboard tick,
-three in the mission monitor, two in the controller's interfaces, the truth
-adapter, and the cooperative agent, referee, spectator and diagnostics mux),
-and 62 sources read the monotonic clock for budgets, latencies and
-watchdogs. The audit lists each and says which follows the simulation: a
-period or a freshness watchdog does, a compute budget (the planner's 150 ms,
-the assembly's 12 ms) does not, since it measures the host. Startup waits
-for `/clock`. `mppi_offboard_node.cpp` stands at its 1000-line cap, so its
-change comes with a cut elsewhere in it.
-
-### Stage 1: The Factor As A Parameter Of The Run
-
-`<real_time_factor>` becomes an input of the environment materialization,
-which already rewrites the worlds it installs, and an environment variable
-of the simulation scripts with 1.0 as the default; the runtime manifest
-records the factor asked for and the resource record keeps reporting the
-one achieved. The quiet-host gate is unaffected: it reads processes, not the
-factor. A cooperative flight of four lidar vehicles at 0.5 would then cost
-the host what two cost at 1.0, which the workstation holds (item 15), at
-twice the wall time: twelve minutes for a six-minute flight; that flight is
-item 15's. Here the factor is proven on one vehicle. The register's
-heaviest configuration (S3), the stereo pair beside the lidar at a factor of
-0.83 with the loop on the wall clock, is flown here at 0.5 with the loop
-slowed with the world, which is the first time its figures mean anything;
-they are compared with each other, never with a real-time series.
-
-### Stage 2: The Picture Written Without A Screen
-
-A spectator camera as a sensor of the world, on the vehicle the spectator
-selection names (the cooperative missions already select and reselect a
-spectator) or at a stated pose, bridged like the pair's frames and written
-to a video file by a recorder that consumes the image topic, in the run's
-directory beside the logs. Resolution, rate and the camera's placement are
-stated with the cost of the extra render on the GPU, which the camera
-profile already loads to 40 percent at real time and which the factor of
-stage 1 relieves. The recording plays at the flight's true speed and is a
-product of every headless run that asks for it, with nobody at the desk.
-
-In the dark location this picture shows the cone of the vehicle's lamp and
-nothing else, which is true to the flight and says little about it alone.
-It is the left half of the split recording, beside stage 3's RViz, and is
-built with it. Whether the
-camera's own gain may brighten it is stated with the recording: a gain is
-the camera's, a light would be the location's and is not allowed.
-
-### Stage 3: RViz In The Background
-
-Built first, and the recording this item delivers (revised on 2026-10-03):
-in a dark location RViz is where a flight can be seen.
-
-The only way to record RViz without a person is a virtual display: `Xvfb`
-with software rendering, or a second X server on the GPU with a dummy
-screen, and `ffmpeg` capturing it. The container image carries neither
-`Xvfb` nor `ffmpeg` today; both are added to it. The capture runs on the
-wall clock: at a factor of 1.0, which a single camera vehicle holds
-headless, it is the flight's own speed to within the factor the resource
-record samples, and at a factor below 1.0 it is slow motion by a varying
-amount and is re-timed afterwards from that record.
-
-What the stage delivers, for every scenario that asks for it by one switch
-of the run: RViz started on the virtual display with the repository's
-configuration and a camera that follows the vehicle, the capture written to
-the run's directory beside the logs from the mission's start to its result,
-and the simulation run headless as the acceptance flights are, so that the
-recorded flight is an ordinary one. The cost of RViz's rendering beside the
-flight is measured: a recording that pushes the real-time factor under 0.95
-is not a recording of the flight the acceptance flies, and software
-rendering is replaced by the GPU server if it does. The world camera's
-recording of stage 2 and this capture are joined side by side into one
-file, the world on the left and RViz on the right, aligned on the mission's
-start.
-
-Nobody moves the view during a recording: it is what the configuration
-says, following the vehicle, for the whole flight. One fixed view loses the
-vehicle behind a floor or in a shaft where a person at the desk would have
-turned it, so **every recorded flight is captured in both of the
-repository's views by default**, the third-person one
-(`city_nav_debug.rviz`) and the top-down one
-(`city_nav_debug_top_down.rviz`), two RViz instances on the one flight. Each
-gives a split file of its own with the same world half, and the better one
-is chosen when the recording is cut. One view alone is a switch of the run.
-The second instance's cost is in the measurement above: both together must
-leave the real-time factor at 0.95 or over. The memory's cloud in RViz is
-drawn translucent as it is and does not hide the vehicle; nothing is
-changed there. A batch launcher flies a list of scenarios one after another,
-several takes each, unattended.
-
-### Measurement And Completion
-
-Stages 3 and 2 are complete together when an unattended batch has recorded
-every scenario of item 17 with nobody at the desk, each recording two split
-files, the 3D world on the left and RViz on the right, one with the
-third-person view and one with the top-down view, playable from the
-mission's start to its result, with no panel, list, toolbar or desktop in
-the frame, the real-time factor of each recorded flight at 0.95
-or above, and the cost of the capture stated; at a factor below 1.0 a
-capture re-timed to the flight's clock within one second over the flight.
-Stage 2 is complete when a headless run writes a playable recording of its
-whole flight from a camera in the world without a display server, with the
-GPU cost stated. Stage 0 is complete with both acceptance series green on
-its commit, against both series on the commit before it, and the tick and
-planner percentiles reported beside the previous ones. Stage 1 is complete
-when a single-vehicle flight at a factor of 0.5 reaches its goal with the
-factor asked for in the manifest and the one achieved in the resource
-record, and the heaviest configuration (S3) has been flown at 0.5; the
-four-vehicle cooperative flight at 0.5 is item 15's.
-
 ## 21. Moving Obstacles: Doors And Bodies That Move Slowly
 
 **Type:** perception and safety, general; not tied to a sensor.
@@ -2230,3 +1928,413 @@ now tested, and the return has changed shape:
   2026-09-30: a test of the return does not fly for an hour. The mission
   check floods the truth grid within the flight space for every injected
   goal.
+
+### 20. Slowed Simulation And Unattended Recording (Completed)
+
+Closed on 2026-10-05, not yet in a release; both final series were flown on
+df5a86b8. The simulation can be slowed against the wall clock with the stack
+slowed with it, and a recorded flight is a flight like any other. What was
+asked for and how it was built is kept below as it was written; this is what
+came of it.
+
+**Stage 0, the onboard loop on the simulation clock** (specification K24;
+the audit's table is in [`gazebo_simulation.md`](gazebo_simulation.md)).
+Twelve wall timers and the monotonic clock in 62 sources were sorted: every
+period and freshness watchdog of the single vehicle keeps the node clock
+(the two ticks, the planner's heartbeat and its age, the mission monitor's
+flood, the obstacle memory's transport period, the ESDF build rate), every
+compute budget and measured duration keeps the monotonic clock. At a factor
+of 1.0 nothing changed but the timer's grain:
+
+| Series | Stereo set, m/s | True position at B, m | Tick p50, ms | 3D lidar, m/s | True position, m | Tick p50, ms |
+|---|---|---|---|---|---|---|
+| Base (r983 to r987, r1068 to r1072) | 1.742 to 1.973, mean 1.89 | 0.80 to 1.25 | 21.3 to 22.2 | 2.522 to 3.140, mean 2.70 | 0.33 to 1.07 | 23.9 to 25.1 |
+| Stage 0 (666c0068: r1073 to r1077, r1078 to r1082) | 1.844 to 1.987, mean 1.895 | 0.86 to 1.24 | 21.6 to 22.5 | 2.637 to 2.734, mean 2.675 | 0.14 to 0.72 | 23.6 to 24.9 |
+| Final (df5a86b8: r1098 to r1102, r1103 to r1107) | 1.822 to 1.939, mean 1.875 | 0.78 to 1.69 | 21.4 to 22.3 | 2.733 to 2.941, mean 2.852 | 0.08 to 0.75 | 23.2 to 25.0 |
+
+Every flight counted by the host's verdict and none touched anything. The
+loop runs 37.7 to 39.5 times a simulated second, against 40.6 to 41.6 a wall
+second on the wall timer; the register's entry on the 20 ms deadline is
+decided on these figures. Each scenario of item 17 was flown once headless on
+the stage's commit and passed: the light lost (r1083, landed whole), the
+severe failure (r1084, home at 0.68 m), the low battery (r1085, 0.40 m), the
+goal outside (r1086, 0.66 m), the long flight under failures (r1087, 1.848
+m/s, 1.02 and 0.59 m).
+
+**Stage 1, the factor a parameter of the run** (`REAL_TIME_FACTOR`,
+specification K25, [`configuration.md`](configuration.md)). At 0.5 the stereo
+set reached B at 0.61 m at 1.948 m/s of simulation with the simulator at
+0.50 from the 5th to the 95th percentile and the onboard processes on 2.48
+cores at the median against 4.57 at 1.0 (r1088): the load falls with the
+factor, which is what four vehicles need. What a slowed flight flatters is
+measured: the tick takes 10.8 ms of simulation against 22, runs 47.5 times a
+simulated second against 38 to 39.5, 2 percent of the ticks pass 20 ms
+against 67 to 71, the observation reaches the tick 168 ms old against 260 to
+296, and the planner's 150 ms are 75 ms of flight. So a change is accepted
+at 1.0 only and a slowed flight is compared with flights at its own factor.
+The heaviest configuration, the stereo pair beside the lidar, flew at 0.5
+with its loop slowed with the world for the first time: 2.650 m/s, 0.26 m
+from the goal, the simulator at 0.50, 3.23 cores (r1089).
+
+**The recorded flight** (specification A11, A7). Beside the windows the
+simulator holds 0.6 and does not hold 0.7 (r1091, r1092), so a recorded
+flight asks for 0.6; the host's verdict is read against the factor asked
+for, and one it counts is a flight like any other. The first batch's defects
+were measured and repaired:
+
+- **The slideshow** in eleven recordings was not the host's performance:
+  with the screen blank (the desktop's idle timeout) the desktop presents
+  one frame a second, and the Gazebo window, which waited for the display,
+  redrew once a second. Reproduced on a test world: 1 redraw a second with
+  the screen off, 24 with the wait switched off. The window no longer waits.
+- **The green frame on the vehicle** was Gazebo's gizmo of the carried
+  light, drawn until the light's first update reached the window: 611 green
+  pixels on a test world, none after `<visualize>false</visualize>`.
+- **The takeoff unseen**: the Gazebo window loads the scene for some 20 s
+  after it opens and draws nothing meanwhile. A recorded flight starts 45 s
+  after the simulator.
+- **A recording is the whole flight**, never cut, at the flight's own pace:
+  each window's frames are re-timed to the simulation clock from the true
+  pose record, so a flight at 0.6 plays as long as it flew. The recorder
+  refuses a recording whose window stood still, whose half was a slideshow
+  while the vehicle moved, whose length is off the flight's by more than a
+  second, or that is shorter than a minute. The low-battery flight, home 32
+  s after its launch, is recorded at a cruise speed of 0.6 m/s, where the
+  same flight lasts 66 s.
+- **The host's verdict sees a starved estimator**: the poses' age on their
+  way to the autopilot, 64 and 96 ms at the 95th percentile on a quiet host
+  and 0.7 to 1.3 s in the two recorded lidar flights that crashed.
+
+One pass over the six scenarios on the stereo set, on df5a86b8, every flight
+counted by the verdict (`log/videos/2026-10-05/`):
+
+| Scenario | Run | Mission check | True position, m | Length, s | Different frames a second, world / RViz |
+|---|---|---|---|---|---|
+| Ordinary flight | r1109 | pass, 1.883 m/s | 1.09 | 232 | 23.2 / 23.8 |
+| Long flight under failures | r1121 | pass, 1.962 m/s | 0.96 and 0.82 | 667 | 23.0 / 23.8 |
+| The light lost | r1111 | pass, landed whole | | 65 | 22.4 / 23.8 |
+| The carried light fails | r1112 | pass, home by the unreliable light | 0.55 | 161 | 21.5 / 23.8 |
+| A low battery at launch (cruise 0.6 m/s) | r1120 | pass, home by the battery | 0.29 | 66 | 14.7 / 24.0 |
+| A goal outside the location | r1114 | pass, home by the battery | 0.30 | 161 | 22.7 / 24.0 |
+
+The same ordinary flight at 0.6 without the windows: 1.848 m/s, 1.16 m from
+the goal, route availability 98.9 percent against 97.7, tick 21.8 ms against
+22.7, 2.89 onboard cores against 3.11 (r1108 against r1109).
+
+**Found on the way.** The blind descent was published only while the
+autopilot called its position valid; a flight that lost it at the touchdown
+stood armed on the platform for six minutes (r1093, repaired, specification
+K19). The mission check read the estimators' publication rates per wall
+second. And the long flight under failures stands still near B when the
+simulator runs below real time, with the windows or without: three of nine
+such flights passed (r1110 and r1117 held, r1116 and r1121 passed at 0.6)
+against nine of nine at real time; the route's lifecycle finds and certifies
+a route and never activates it. It is in the register and is not met at a
+factor of 1.0, where a change is accepted.
+
+**Left for item 15**: the cooperative agent, referee, spectator, diagnostics
+multiplexer and the truth adapter keep their wall timers until a cooperative
+flight can be flown, and the flight of four lidar vehicles at 0.5 is that
+item's. Stage 2's camera in the world was not built: the Gazebo window gives
+the picture, and its price is paid in wall time since stage 1.
+
+
+**Type:** simulation infrastructure and one honesty repair of the onboard
+loop; no navigation policy.
+
+**Hard prerequisites:** none. Stage 3 depends on nothing but a display
+server and is built first (revised on 2026-10-03, below).
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission. The cooperative-traffic mission is what stages 0 and 1 are for, and
+it is flown under item 15, not here: no cooperative flight is flown before
+item 15 closes (the owner's rule).
+
+Asked by the project owner on 2026-09-25. The reference workstation holds two
+lidar vehicles at real time and not four (item 15), and a demonstration
+recording today means a person at the desk with the GUI open for six
+minutes. Both have the same answer: let the simulation run slower than the
+wall clock on purpose, and let the picture be rendered and written without a
+screen. The facts this item rests on were established on 2026-09-25:
+
+- **The simulator's clock rate is a world parameter.** The materialized
+  worlds carry `<max_step_size>0.004</max_step_size>` and
+  `<real_time_factor>1.0</real_time_factor>`; Gazebo throttles its server to
+  the factor, PX4 SITL runs in lockstep and follows, and since item 16
+  (`UXRCE_DDS_SYNCT=0`) every autopilot stamp is the simulation clock at any
+  factor. The mean flight speed of the second requirement is measured on the
+  simulation clock since 2026-09-25, so the check does not care either.
+- **Slowing the simulator halves only what runs on the simulation clock.**
+  Physics, the GPU lidars, the stereo pair and the depth node (215 percent
+  of a core, per frame), the obstacle memory (72 percent, per scan) and the
+  autopilot all take half the wall time per simulated second at a factor of
+  0.5. The planning tick (`tick_rate_hz`, a wall-clock rate) and the
+  offboard tick (`create_wall_timer`, 20 ms) do not: `production_mppi_node`
+  at 186 percent of a core costs the same wall second whatever the factor,
+  and with four vehicles that is 7.4 of the 8 physical cores before anything
+  else runs. Item 15 already records the other half of this fact: at a
+  real-time factor of 0.6 the planner takes about 72 ticks per simulated
+  second instead of 43, so a slow simulation flies the vehicle with a faster
+  computer than it has.
+- **The server already renders without a display.** Headless flights run
+  `gz sim -s --headless-rendering`; the stereo pair is rendered that way. A
+  camera sensor placed in the world for the picture renders the same way and
+  its frames carry the simulation stamp, so a recording made from them plays
+  at the flight's true speed whatever the factor was.
+- **RViz does not.** Its overlays (the memory, the current depth, the
+  committed route, the goal) exist only in RViz, which needs a display
+  server, and a capture of that display runs on the wall clock.
+
+**Revised on 2026-10-03, by the project owner's decision.** Three things
+changed after the item was written:
+
+- **The location is dark.** Since item 17 the only light is the one the
+  vehicle carries, and the location's own never comes back (specification
+  A10). A light in Gazebo belongs to the scene, not to a camera, so a
+  spectator camera in the world sees what the vehicle's lamp lights and
+  black around it. The picture that shows a flight is RViz: the memory, the
+  route, the goal, the evaluation objects. Stage 3 is therefore the
+  recording this item delivers and is built first; stage 2 is the secondary
+  picture.
+- **What the recording is for.** The demonstrations of item 17's scenarios,
+  recorded at night with nobody at the desk, several takes of each and the
+  best one kept, because no two flights are alike. A single camera vehicle
+  holds real time headless, so these recordings need neither stage 0 nor
+  stage 1.
+- **The product is the split picture** the owner records by hand today: the
+  3D world on the left, RViz on the right, one file. The world's half is
+  stage 2's camera and RViz's half is stage 3's capture, joined on the
+  flight's clock. The world's half is as dark as the Gazebo window of a
+  hand-made recording is since item 17: the lamp's cone and what it lights.
+- **Every way of recording is allowed** (the owner, 2026-10-03), the plain
+  one included: the windows open on the workstation's own display and the
+  screen captured. The recordings are made at night, the workstation is not
+  used then, and an open window is in nobody's way. So the stages below are
+  the candidates and not the prescription: the Gazebo window with its own
+  following camera beside RViz, on the real display, is what the owner
+  records by hand and is the first thing to try, and a camera sensor in the
+  world or a virtual display is built only where the plain way fails. The
+  way is chosen by measurement: the picture, the real-time factor of the
+  recorded flight against specification A7, and whether a batch runs a
+  night through with nobody at the desk. What the choice must state: the
+  workstation's session is Wayland, where a capture of the screen goes
+  through the desktop's screencast and not through X; windows have to be
+  placed without a person; and a flight with the GUI open is the GUI
+  scenario, not the headless acceptance flight.
+- **Nothing but the picture is in the picture** (the owner, 2026-10-03). A
+  window opened as it is carries what a recording does not want: RViz's
+  displays list, its views and tool panels and its toolbars, Gazebo's entity
+  tree, component inspector and world controls, title bars, the desktop.
+  They cover the flight. A recording shows the two views and nothing else:
+  RViz is started with a configuration for recording whose docks, panels and
+  toolbars are hidden, Gazebo with a GUI configuration that holds the 3D
+  scene alone, and whatever frame remains is cropped out of the capture.
+  The recording configurations are files of the repository, beside the
+  debugging ones, which stay as they are.
+- **The order.** Stages 3 and 2 together, for the recordings; stages 0 and 1
+  when item 15 needs four vehicles or the heaviest configuration is to be
+  measured. The stage numbers are kept, because other pages name them.
+
+#### Built On 2026-10-04: The Unattended Recording
+
+Stages 3 and 2, for the recordings of item 17's scenarios, by the plain way
+the revision above allows, chosen by measurement:
+
+- **A recorded flight is the headless flight with its pictures on the
+  desktop** (`RECORD_VIDEO=1`): the server renders headless and the mission
+  check runs as in the acceptance, and beside them the Gazebo window opens
+  with the 3D scene alone (`gazebo_gui_recording.config`, its following
+  camera as in a GUI flight) and RViz in both views, written from the
+  debugging configurations with the panels gone and the top-down view
+  following the vehicle (`scripts/rviz_recording_view.py`).
+- **Each window's picture is taken where it is drawn**
+  (`scripts/frame_pace_shim.c`, preloaded into the three windows): on every
+  buffer swap the middle of the 3D view, in the shape of a half of the split
+  picture, is read back through a pixel buffer object and handed to a FIFO.
+  What is read is the view, not the window, so no panel, toolbar or desktop
+  can be in the frame, and nothing depends on how the windows lie on the
+  screen. The same shim paces the Gazebo window to 24 frames a second: it
+  redraws the scene at the display's 144 Hz otherwise.
+- **The recorder** (`scripts/record_flight_video.py`, on the host) stores
+  the three streams through the GPU's encoder while the flight flies and
+  joins them after it: two files a flight, the world on the left and RViz
+  on the right, 1920 x 1080, 24 frames a second, cut to the mission from its
+  readiness to its result, and checked (size, length against the flight, a
+  picture that is neither black nor still).
+- **One command a flight, one a night**: `tools/record_flight.sh` and
+  `tools/record_batch.sh`, which flies every scenario of item 17 on the
+  stereo set round robin
+  and writes an index beside the videos. The desktop is kept from going idle
+  by an inhibitor while a flight lasts; none of its settings is changed.
+
+Tried and left: the windows read through the X server (it works on the
+Wayland desktop, the windows being XWayland's, but each window read cost the
+simulator a seventh of its speed), and the desktop's own screen recorder
+(not to be driven without a person).
+
+**What the recording costs, and what that decides.** The windows beside a
+flight hold the simulator at 0.72 to 0.80 of real time on the stereo set
+(r1015 to r1017), under the floor of the host's verdict, and they do so
+whatever captures them: stopped in flight the Gazebo window gives back 0.08
+and the two RViz 0.13. A recorded flight is therefore a demonstration and
+never an acceptance flight (specification A11); each scenario's acceptance is
+its headless flight on the same commit. Making a recorded flight count is
+this item's remainder: the pictures rendered after the flight from a
+recording of its topics, or stages 0 and 1 below, with which the simulation
+is slowed on purpose and the windows' price stops mattering. The world's
+half is as dark as the location is; on the lidar, which carries no light, it
+is black, and flights on the lidar are no longer recorded (the owner's rule
+of 2026-10-04, specification A11).
+
+**Recorded on 2026-10-04.** Three passes over the seven scenarios of item 17,
+round robin, with nobody at the desk: 27 flights, 54 split files, the index
+beside them (`log/videos/2026-10-04/`, kept from the pruning; the six lidar
+recordings were deleted since, the batch flies the stereo set alone). Every
+scenario has three takes whose flight passed its check but the long flight
+under failures, which passed once in five. What the batch showed besides the
+pictures:
+
+- **The lidar's estimator was starved by the windows** and two recorded
+  lidar flights crashed (r1053, r1066) although the simulator held real
+  time: registrations ran over the scan period, the pose reached the
+  autopilot up to 1.3 s old, the autopilot stopped fusing it and lost its
+  position. Repaired (specification K23): a scan that waited a period and a
+  half is let go, never two in a row. Under the same load the recorded
+  flight then passed (r1067, 37 scans of 1550 let go), and the headless
+  series on the repair is five of five (r1068 to r1072, 2.52 to 3.14 m/s).
+- **The long flight under failures does not survive the recording**: an
+  eight-minute hold beside phantom occupancy that no longer fades (r1032,
+  the register's entry on the memory's decay), an acknowledgement 2.03 m
+  from its goal (r1037), two crashes with the estimate stepping under the
+  stream's failures and the slowed simulator (r1040, r1054). Headless it
+  passes six of six.
+- **One descent past the edge of the staging base clipped it** (r1044, the
+  simulator at 0.62 of real time); six headless flights of the same scenario
+  pass the same edge clean.
+
+#### Stage 0: The Onboard Loop Keeps Simulation Time
+
+The planning tick and the offboard tick move from wall-clock timers to the
+node clock under `use_sim_time`, which every onboard node already declares
+for its stamps. At a factor of 1.0 nothing should change but timer jitter,
+which is what the acceptance measures: both series on the one commit,
+against both series flown on the commit before it (not against an older
+base: the stack has moved through items 19 and 17 since this was written),
+the tick and planner percentiles beside their debt figures. At a
+factor below 1.0 the loop then slows with the world and the load falls with
+the factor; what remains unequal is the wall-clock latency of the transport
+and the planner's 150 ms budget, which become shorter in simulated seconds by
+the factor, so a slowed flight still flatters the stack by that much and its
+speed figures are never compared with a real-time series. The stage lands
+first because without it a slowed run neither lightens the host nor tells
+the truth. The register's tick past its 20 ms deadline (P2) is re-measured
+here, on the node clock, and the deadline question is decided on those
+percentiles; the rework of the tick, if one is wanted, is not this item's.
+
+What the stage has to state before it changes anything: the audit. Twelve
+wall-clock timers sit in nine sources (the planning tick, the offboard tick,
+three in the mission monitor, two in the controller's interfaces, the truth
+adapter, and the cooperative agent, referee, spectator and diagnostics mux),
+and 62 sources read the monotonic clock for budgets, latencies and
+watchdogs. The audit lists each and says which follows the simulation: a
+period or a freshness watchdog does, a compute budget (the planner's 150 ms,
+the assembly's 12 ms) does not, since it measures the host. Startup waits
+for `/clock`. `mppi_offboard_node.cpp` stands at its 1000-line cap, so its
+change comes with a cut elsewhere in it.
+
+#### Stage 1: The Factor As A Parameter Of The Run
+
+`<real_time_factor>` becomes an input of the environment materialization,
+which already rewrites the worlds it installs, and an environment variable
+of the simulation scripts with 1.0 as the default; the runtime manifest
+records the factor asked for and the resource record keeps reporting the
+one achieved. The quiet-host gate is unaffected: it reads processes, not the
+factor. A cooperative flight of four lidar vehicles at 0.5 would then cost
+the host what two cost at 1.0, which the workstation holds (item 15), at
+twice the wall time: twelve minutes for a six-minute flight; that flight is
+item 15's. Here the factor is proven on one vehicle. The register's
+heaviest configuration (S3), the stereo pair beside the lidar at a factor of
+0.83 with the loop on the wall clock, is flown here at 0.5 with the loop
+slowed with the world, which is the first time its figures mean anything;
+they are compared with each other, never with a real-time series.
+
+#### Stage 2: The Picture Written Without A Screen
+
+A spectator camera as a sensor of the world, on the vehicle the spectator
+selection names (the cooperative missions already select and reselect a
+spectator) or at a stated pose, bridged like the pair's frames and written
+to a video file by a recorder that consumes the image topic, in the run's
+directory beside the logs. Resolution, rate and the camera's placement are
+stated with the cost of the extra render on the GPU, which the camera
+profile already loads to 40 percent at real time and which the factor of
+stage 1 relieves. The recording plays at the flight's true speed and is a
+product of every headless run that asks for it, with nobody at the desk.
+
+In the dark location this picture shows the cone of the vehicle's lamp and
+nothing else, which is true to the flight and says little about it alone.
+It is the left half of the split recording, beside stage 3's RViz, and is
+built with it. Whether the
+camera's own gain may brighten it is stated with the recording: a gain is
+the camera's, a light would be the location's and is not allowed.
+
+#### Stage 3: RViz In The Background
+
+Built first, and the recording this item delivers (revised on 2026-10-03):
+in a dark location RViz is where a flight can be seen.
+
+The only way to record RViz without a person is a virtual display: `Xvfb`
+with software rendering, or a second X server on the GPU with a dummy
+screen, and `ffmpeg` capturing it. The container image carries neither
+`Xvfb` nor `ffmpeg` today; both are added to it. The capture runs on the
+wall clock: at a factor of 1.0, which a single camera vehicle holds
+headless, it is the flight's own speed to within the factor the resource
+record samples, and at a factor below 1.0 it is slow motion by a varying
+amount and is re-timed afterwards from that record.
+
+What the stage delivers, for every scenario that asks for it by one switch
+of the run: RViz started on the virtual display with the repository's
+configuration and a camera that follows the vehicle, the capture written to
+the run's directory beside the logs from the mission's start to its result,
+and the simulation run headless as the acceptance flights are, so that the
+recorded flight is an ordinary one. The cost of RViz's rendering beside the
+flight is measured: a recording that pushes the real-time factor under 0.95
+is not a recording of the flight the acceptance flies, and software
+rendering is replaced by the GPU server if it does. The world camera's
+recording of stage 2 and this capture are joined side by side into one
+file, the world on the left and RViz on the right, aligned on the mission's
+start.
+
+Nobody moves the view during a recording: it is what the configuration
+says, following the vehicle, for the whole flight. One fixed view loses the
+vehicle behind a floor or in a shaft where a person at the desk would have
+turned it, so **every recorded flight is captured in both of the
+repository's views by default**, the third-person one
+(`city_nav_debug.rviz`) and the top-down one
+(`city_nav_debug_top_down.rviz`), two RViz instances on the one flight. Each
+gives a split file of its own with the same world half, and the better one
+is chosen when the recording is cut. One view alone is a switch of the run.
+The second instance's cost is in the measurement above: both together must
+leave the real-time factor at 0.95 or over. The memory's cloud in RViz is
+drawn translucent as it is and does not hide the vehicle; nothing is
+changed there. A batch launcher flies a list of scenarios one after another,
+several takes each, unattended.
+
+#### Measurement And Completion
+
+Stages 3 and 2 are complete together when an unattended batch has recorded
+every scenario of item 17 with nobody at the desk, each recording two split
+files, the 3D world on the left and RViz on the right, one with the
+third-person view and one with the top-down view, playable from the
+mission's start to its result, with no panel, list, toolbar or desktop in
+the frame, the real-time factor of each recorded flight at 0.95
+or above, and the cost of the capture stated; at a factor below 1.0 a
+capture re-timed to the flight's clock within one second over the flight.
+Stage 2 is complete when a headless run writes a playable recording of its
+whole flight from a camera in the world without a display server, with the
+GPU cost stated. Stage 0 is complete with both acceptance series green on
+its commit, against both series on the commit before it, and the tick and
+planner percentiles reported beside the previous ones. Stage 1 is complete
+when a single-vehicle flight at a factor of 0.5 reaches its goal with the
+factor asked for in the manifest and the one achieved in the resource
+record, and the heaviest configuration (S3) has been flown at 0.5; the
+four-vehicle cooperative flight at 0.5 is item 15's.
