@@ -32,6 +32,7 @@ import bisect
 import csv
 import json
 import signal
+import statistics
 import subprocess
 import sys
 import time
@@ -223,8 +224,8 @@ def verdict(info: dict, statistics: dict, flight_s: float,
             still_shares: dict[str, float], distinct: dict[str, float]) -> list[str]:
     """Why a recording is not one; empty when it is. `flight_s` is the
     recorded flight on the simulation clock, `still_shares` the share of the
-    seconds in which a window all but stood still, `distinct` the fewest
-    different frames a second a half showed while the vehicle moved."""
+    seconds in which a window all but stood still, `distinct` the different
+    frames a second a half showed while the vehicle moved, at the median."""
     reasons = []
     if (info.get("width"), info.get("height")) != (2 * HALF_WIDTH, HEIGHT):
         reasons.append(f"frame {info.get('width')}x{info.get('height')}")
@@ -292,7 +293,6 @@ def main() -> int:
     print(f"RECORDING started sizes={sizes}", flush=True)
     while flight_alive() and capture.poll() is None:
         time.sleep(1.0)
-    ended = time.time()
     if capture.poll() is None:
         capture.send_signal(signal.SIGINT)
         try:
@@ -304,14 +304,19 @@ def main() -> int:
     if len(clock) < 2:
         print("RECORDING none: no true pose record to time the frames by", flush=True)
         return 1
+    # Each window's frames span the wall clock from the first to its own
+    # last (the windows close one after another), and are re-timed to the
+    # simulation seconds that span covers.
     begin_sim_s = simulation_time_at(clock, started)
-    flight_s = simulation_time_at(clock, ended) - begin_sim_s
-    paces = {name: flight_s / max(probe(raw[name])["duration_s"], 1.0e-3) for name in SOURCES}
-    still_shares = {}
+    spans, paces, still_shares = {}, {}, {}
     for name in SOURCES:
-        counts = redraws(run_directory, name, started, ended)
+        wall_s = probe(raw[name])["duration_s"]
+        spans[name] = simulation_time_at(clock, started + wall_s) - begin_sim_s
+        paces[name] = spans[name] / max(wall_s, 1.0e-3)
+        counts = redraws(run_directory, name, started, started + wall_s)
         still = sum(count < MINIMUM_REDRAWS_PER_SECOND[name] for count in counts)
         still_shares[name] = still / len(counts) if counts else 1.0
+    flight_s = min(spans.values())
     windows = moving_windows(clock, begin_sim_s, begin_sim_s + flight_s)
     windows = windows[::max(1, len(windows) // MAXIMUM_WINDOWS_LOOKED_AT)]
     failed = False
@@ -320,18 +325,22 @@ def main() -> int:
         subprocess.run(compose_command(raw["world"], raw[view], paces["world"], paces[view],
                                        final), check=False)
         info = probe(final)
-        statistics = picture_statistics(final, info["duration_s"]) if info["duration_s"] else {}
+        picture = picture_statistics(final, info["duration_s"]) if info["duration_s"] else {}
+        # At the median: a view of the world may be dark or hidden for a
+        # while (the camera behind a wall at the start), a slideshow is one
+        # all along.
         distinct = {
-            half: min((distinct_frames_per_second(final, half == "world", begin)
-                       for begin in windows), default=MINIMUM_DISTINCT_FRAMES_PER_SECOND)
+            half: statistics.median(
+                [distinct_frames_per_second(final, half == "world", begin)
+                 for begin in windows] or [MINIMUM_DISTINCT_FRAMES_PER_SECOND])
             for half in ("world", "RViz")}
-        reasons = verdict(info, statistics, flight_s,
+        reasons = verdict(info, picture, flight_s,
                           {name: still_shares[name] for name in ("world", view)}, distinct)
         failed = failed or bool(reasons)
         print(f"RECORDING {'BAD' if reasons else 'ok'} {final} "
               f"duration={info['duration_s']:.1f}s flight={flight_s:.1f}s "
               f"still={json.dumps(still_shares)} distinct={json.dumps(distinct)} "
-              f"{json.dumps(statistics)}"
+              f"{json.dumps(picture)}"
               + (": " + "; ".join(reasons) if reasons else ""), flush=True)
     if not failed:
         for source in raw.values():

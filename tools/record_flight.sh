@@ -17,7 +17,9 @@ case $scenario in
   light-failure | low-battery) duration=1800 ;;
   *) echo "unknown scenario $scenario" >&2; exit 2 ;;
 esac
-RECORD_VIDEO=1 TARGET="sim-urban-${scenario}-headless" SMOKE_DURATION_S=$duration \
+# The flight starts 45 s after the simulator: the Gazebo window loads the scene for some 20 s, drawing nothing, and
+# a flight started at once took off unseen (r1090, r1092).
+RECORD_VIDEO=1 STARTUP_SLEEP_S=45 TARGET="sim-urban-${scenario}-headless" SMOKE_DURATION_S=$duration \
   ./tools/series2.sh "$run" > /dev/null 2>&1 &
 flight=$!
 name="${scenario}_${run}"
