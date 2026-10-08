@@ -215,8 +215,10 @@ def main() -> int:
 
     def on_progress(message: NavigationProgress) -> None:
         with lock:
-            state["seen"] = (message.sensor_measured_range_m / message.sensor_guaranteed_range_m
-                             if message.sensor_guaranteed_range_m > 0.0 else None)
+            # The share the frame grants, not the measured range over the
+            # guaranteed one: the range has a floor at the braking contract's
+            # 2 m margin, 31 % of 6.4 m in the dark (r1175); the share has none.
+            state["seen"] = message.sensor_frame_share
 
     def on_poses(message: Pose_V) -> None:
         for pose in message.pose:

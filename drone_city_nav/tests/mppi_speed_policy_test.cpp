@@ -67,6 +67,7 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
   const MppiSpeedPolicyResult lit = evaluateMppiSpeedPolicy(config, input);
   EXPECT_DOUBLE_EQ(lit.sensor_braking_limit_mps, configured);
   EXPECT_DOUBLE_EQ(lit.sensor_measured_range_m, 6.4);
+  EXPECT_DOUBLE_EQ(lit.sensor_frame_share, 1.0);
 
   input.sensor_observed_fraction = 0.15;
   const double dim = evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
@@ -77,6 +78,14 @@ TEST(MppiSpeedPolicyTest, TheContractReadsTheSensorsLatestFrame) {
   EXPECT_LT(blind.sensor_braking_limit_mps, 0.2);
   EXPECT_GT(blind.sensor_measured_range_m,
             config.sensor_braking_contract.physical_margin_m);
+  // The range has a floor at the margin, the share has none: it is what
+  // the evaluation shows as what the vehicle sees (K26), and the line of
+  // the dark (K14) and the carried light's judgement (K12) read it.
+  EXPECT_DOUBLE_EQ(blind.sensor_frame_share, 0.0);
+  EXPECT_DOUBLE_EQ(sensorFrameShare(0.9, std::nullopt), 1.0);
+  EXPECT_NEAR(sensorFrameShare(0.05, 0.9), 0.107, 0.001);
+  EXPECT_DOUBLE_EQ(sensorFrameShare(0.9, 0.04), 0.04);
+  EXPECT_LT(sensorFrameShare(0.05, 0.04), kSensorBlindFrameShare);
 
   input.state.vx = 0.1F;
   input.state.vz = 1.0F;

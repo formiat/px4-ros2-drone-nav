@@ -137,7 +137,7 @@ buildLidarDebugPointCloud(const std::span<const Point2> points, const double z_m
 sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
     const ObservedOccupancyGrid3D& grid, const builtin_interfaces::msg::Time& stamp,
     const std::string_view frame_id, const bool gazebo_aligned_axes_swapped,
-    const std::size_t stride) {
+    const std::size_t stride, const bool unobservable) {
   const std::size_t effective_stride = std::max<std::size_t>(1U, stride);
   std::vector<Point3> points;
   points.reserve(grid.occupiedVoxelCount() / effective_stride + 1U);
@@ -146,7 +146,9 @@ sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
     const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
     for (std::size_t word_index = 0U; word_index < chunk.occupied.size();
          ++word_index) {
-      std::uint64_t word = chunk.occupied.at(word_index);
+      std::uint64_t word = unobservable ? chunk.unobservable.at(word_index)
+                                        : chunk.occupied.at(word_index) &
+                                              ~chunk.unobservable.at(word_index);
       while (word != 0U) {
         const std::size_t bit_offset = static_cast<std::size_t>(std::countr_zero(word));
         const std::size_t local_index = word_index * 64U + bit_offset;

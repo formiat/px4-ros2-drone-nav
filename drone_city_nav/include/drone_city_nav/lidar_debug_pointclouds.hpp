@@ -35,10 +35,13 @@ buildLidarDebugPointCloud(std::span<const Point3> points,
                           const builtin_interfaces::msg::Time& stamp,
                           std::string_view frame_id, bool gazebo_aligned_axes_swapped);
 
+// The occupied voxels of the grid: with `unobservable` false the surfaces
+// (measured hits), with it true the space observed unobservable (darkness,
+// specification K14), so that RViz draws the two apart.
 [[nodiscard]] sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
     const ObservedOccupancyGrid3D& grid, const builtin_interfaces::msg::Time& stamp,
-    std::string_view frame_id, bool gazebo_aligned_axes_swapped,
-    std::size_t stride = 1U);
+    std::string_view frame_id, bool gazebo_aligned_axes_swapped, std::size_t stride,
+    bool unobservable);
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2 buildObstacleMemoryTriggerPointCloud(
     const std::unordered_map<std::size_t, MemoryCellProvenance>& active_provenance,

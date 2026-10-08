@@ -307,6 +307,7 @@ GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk
 }
 
 void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
+                                          const bool measured,
                                           ScanEvidence& scan_evidence,
                                           ScanEvidenceCursor& cursor) const {
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
@@ -322,6 +323,9 @@ void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool oc
   chunk.observed[word_index] |= bit;
   if (occupied) {
     chunk.occupied[word_index] |= bit;
+  }
+  if (measured) {
+    chunk.measured[word_index] |= bit;
   }
 }
 
@@ -442,6 +446,7 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
        ++word_index) {
     std::uint64_t remaining = chunk_evidence.observed[word_index];
     const std::uint64_t occupied_word = chunk_evidence.occupied[word_index];
+    const std::uint64_t measured_word = chunk_evidence.measured[word_index];
     while (remaining != 0U) {
       const std::size_t bit_offset =
           static_cast<std::size_t>(std::countr_zero(remaining));
@@ -494,14 +499,25 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       if (after == ObservedVoxelState::kFree) {
         scores->confirmations[bit_index] = 0U;
       }
-      if (before == after) {
-        continue;
+      if (before != after) {
+        static_cast<void>(grid_.setState(cell, after));
+        // The first observed voxel of a chunk materializes it.
+        grid_chunk = grid_.findChunk(chunk_index);
+        chunk_dirty = true;
+        ++stats.state_transitions;
       }
-      static_cast<void>(grid_.setState(cell, after));
-      // The first observed voxel of a chunk materializes it.
-      grid_chunk = grid_.findChunk(chunk_index);
-      chunk_dirty = true;
-      ++stats.state_transitions;
+      // An occupancy that only the dark the sensor looked into put there is
+      // observed unobservable (specification K14) until a measured return
+      // hits it: then it is a surface, and stays one while it is occupied.
+      if (after == ObservedVoxelState::kOccupied && occupied) {
+        const bool measured = (measured_word & (std::uint64_t{1U} << bit_offset)) != 0U;
+        if (grid_.setUnobservable(cell, !measured &&
+                                            (before != ObservedVoxelState::kOccupied ||
+                                             grid_.isUnobservable(cell)))) {
+          grid_chunk = grid_.findChunk(chunk_index);
+          chunk_dirty = true;
+        }
+      }
     }
   }
   if (chunk_dirty) {
@@ -574,17 +590,17 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   ScanEvidenceCursor cursor;
   if (beam.surface_only) {
     if (hit_cell.has_value()) {
-      recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
+      recordScanEvidence(*hit_cell, true, false, scan_evidence, cursor);
     }
     return;
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      recordScanEvidence(cell, false, scan_evidence, cursor);
+      recordScanEvidence(cell, false, false, scan_evidence, cursor);
     }
   });
   if (hit_cell.has_value()) {
-    recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
+    recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor);
   }
 }
 

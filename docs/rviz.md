@@ -41,7 +41,8 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |
 | Raw Memory Cells | `/drone_city_nav/raw_memory_obstacle_points` |
-| Accumulated 3D Obstacle Memory | `/drone_city_nav/raw_memory_obstacle_points_3d` |
+| Accumulated 3D Obstacle Memory | `/drone_city_nav/raw_memory_obstacle_points_3d` (the surfaces, pink) |
+| Observed Darkness | `/drone_city_nav/raw_memory_darkness_points_3d` (occupied without a measured hit, grey: the dark the camera looked into, K14) |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
 
 In the cooperative traffic mission, the lightweight planner paths are also
@@ -76,10 +77,12 @@ reads `/evaluation`.
   `LANDED`; red `CRASH`.
 - **The light's line** under it: `LIGHT`, a ten-step bar of the share of the
   nominal intensity the injector set (the harness's knowledge), beside
-  `SEES`, the share of its guaranteed range the vehicle's latest frame alone
-  grants (`/drone_city_nav/mppi/navigation_progress`, the braking contract's
-  measure and what the light is judged by, K12): the viewer sees the light
-  fall and the vehicle see it fall. In the scenarios that give the light a
+  `SEES`, the share of its configured range the vehicle's latest frame alone
+  grants (`sensor_frame_share` of `/drone_city_nav/mppi/navigation_progress`,
+  the braking contract's reading of the frame, which the light is judged by,
+  K12): the viewer sees the light fall and the vehicle see it fall. In the
+  dark it reads 4 %, not the 31 % the measured range would give, which has a
+  floor at the contract's 2 m margin. In the scenarios that give the light a
   battery, a third line, `CHARGE`, in seconds. Each line stands on a dark
   backdrop facing the camera, so that it reads over the memory's clouds.
 - **Two trails**, the vehicle's estimate (the drone marker the offboard

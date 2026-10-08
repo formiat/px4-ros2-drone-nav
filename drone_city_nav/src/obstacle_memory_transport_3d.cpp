@@ -79,6 +79,11 @@ ObstacleMemoryTransport3D::ObstacleMemoryTransport3D(
           "raw_memory_3d_pointcloud_topic",
           "/drone_city_nav/raw_memory_obstacle_points_3d"),
       rclcpp::QoS{1}.best_effort().transient_local());
+  darkness_cloud_pub_ = node_.create_publisher<sensor_msgs::msg::PointCloud2>(
+      node_.declare_parameter<std::string>(
+          "raw_memory_darkness_3d_pointcloud_topic",
+          "/drone_city_nav/raw_memory_darkness_points_3d"),
+      rclcpp::QoS{1}.best_effort().transient_local());
   worker_ = std::jthread([this](const std::stop_token token) { workerLoop(token); });
 
   RCLCPP_INFO(node_.get_logger(),
@@ -235,7 +240,10 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
   if (debug_cloud_due) {
     memory_cloud_pub_->publish(buildObservedOccupancyPointCloud3D(
         update.grid, header.stamp, frame_id_, gazebo_aligned_rviz_axes_swapped_,
-        debug_stride_));
+        debug_stride_, false));
+    darkness_cloud_pub_->publish(buildObservedOccupancyPointCloud3D(
+        update.grid, header.stamp, frame_id_, gazebo_aligned_rviz_axes_swapped_,
+        debug_stride_, true));
     last_debug_ns_ = now_ns;
   }
 

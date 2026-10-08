@@ -72,6 +72,16 @@ struct MppiSpeedPolicyConfig {
 // forward sensor is blind; the range falls linearly between.
 inline constexpr double kSensorHealthyObservedFraction{0.3};
 inline constexpr double kSensorBlindObservedFraction{0.02};
+// The share of its configured range the forward sensor's frame alone grants
+// (specification K9, K15): its observed fraction scaled between blind and
+// healthy, or its light headroom where that is smaller (a frame whose light
+// is running out observes as much as the light it has left, r800). The line
+// of darkness (K14) and what the carried light is judged by (K12) read it.
+[[nodiscard]] double sensorFrameShare(double observed_fraction,
+                                      std::optional<double> light_headroom) noexcept;
+// Under this share the braking contract reads the frame as blind: its range
+// comes within a quarter metre of the 2 m margin and the vehicle rests.
+inline constexpr double kSensorBlindFrameShare{0.35};
 
 struct MppiSpeedPolicyInput {
   mppi::State state{};
@@ -167,6 +177,10 @@ struct MppiSpeedPolicyResult {
   // The range the frame alone stands behind, before the memory answers back
   // along the flown path: what the carried light is judged by (K12).
   double sensor_frame_range_m{0.0};
+  // The share of the configured range that frame grants (sensorFrameShare),
+  // one where no frame was read: the range has a floor at the margin, this
+  // has none, and it is what the evaluation shows as what the vehicle sees.
+  double sensor_frame_share{1.0};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

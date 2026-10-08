@@ -335,7 +335,9 @@ Useful visualization topics:
 - `/drone_city_nav/latest_sensor_obstacle_scan`
 - `/drone_city_nav/current_lidar_returns_3d`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
-- `/drone_city_nav/raw_memory_obstacle_points_3d`
+- `/drone_city_nav/raw_memory_obstacle_points_3d` (the surfaces) and
+  `/drone_city_nav/raw_memory_darkness_points_3d` (the space observed
+  unobservable, specification K14: occupied without a measured hit)
 
 ## Common Problems
 

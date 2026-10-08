@@ -20,6 +20,11 @@ enum class ObservedVoxelState : std::uint8_t {
 struct ObservedOccupancyChunk3D {
   OccupancyGrid3D::Chunk observed{};
   OccupancyGrid3D::Chunk occupied{};
+  // Occupied voxels no measured return has hit: space observed unobservable
+  // (darkness, specification K14), told apart from a surface so that RViz
+  // draws it as what it is. A subset of `occupied`; the planner reads
+  // neither bit apart from the other.
+  OccupancyGrid3D::Chunk unobservable{};
 };
 
 class ObservedOccupancyChunkStorage3D {
@@ -57,6 +62,7 @@ public:
   [[nodiscard]] bool isKnown(GridIndex3D index) const noexcept;
   [[nodiscard]] bool isKnownFree(GridIndex3D index) const noexcept;
   [[nodiscard]] bool isOccupied(GridIndex3D index) const noexcept;
+  [[nodiscard]] bool isUnobservable(GridIndex3D index) const noexcept;
   [[nodiscard]] std::size_t knownVoxelCount() const noexcept;
   [[nodiscard]] std::size_t freeVoxelCount() const noexcept;
   [[nodiscard]] std::size_t occupiedVoxelCount() const noexcept;
@@ -66,6 +72,9 @@ public:
                                                      std::size_t bit_index) noexcept;
 
   bool setState(GridIndex3D index, ObservedVoxelState state);
+  // Marks an occupied voxel observed unobservable, or a surface again; a
+  // voxel not occupied is never unobservable.
+  bool setUnobservable(GridIndex3D index, bool unobservable);
   bool replaceChunk(OccupancyChunkIndex3D index, const Chunk& chunk);
   void clear();
 

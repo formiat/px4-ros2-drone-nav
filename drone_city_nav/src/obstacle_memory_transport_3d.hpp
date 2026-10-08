@@ -77,6 +77,7 @@ private:
   rclcpp::Publisher<msg::RawObstacleDelta3D>::SharedPtr delta_pub_;
   rclcpp::Publisher<msg::ObstacleMemoryStatus>::SharedPtr status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr memory_cloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr darkness_cloud_pub_;
 };
 
 } // namespace drone_city_nav

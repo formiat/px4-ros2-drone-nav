@@ -101,7 +101,7 @@ estimate against the truth, so that each scenario reads without a word:
 |---|---|
 | Ordinary dark flight | `TO GOAL` to `GOAL REACHED`; the light's bar dips and recovers with the moderate flicker, and the speed with it; the two trails lie on each other |
 | The carried light fails | the bar dips longer and longer, then `LIGHT UNRELIABLE -> HOME` in amber and the way back along the trail |
-| The light lost | the bar falls to zero, `DEAD RECKONING` in red, `LEVEL DESCENT`, `LANDED`; the white estimate and the green truth part by the drift of the reckoning, and the vehicle is down before the drift reaches a wall |
+| The light lost | both bars fall to zero (`SEES` to 4 %), `DEAD RECKONING` in red, `LEVEL DESCENT`, `LANDED`; the white estimate and the green truth part by the drift of the reckoning, and the vehicle is down before the drift reaches a wall |
 | A low battery at launch | the charge counts down beside the bar; `BATTERY -> HOME` when it no longer covers the way home with its margin |
 | A long flight under failures | `TO GOAL`, `GOAL REACHED`, then `TO GOAL` again for the start, under the flicker and the stream's failures |
 | A goal outside the location | the exploration, then `BATTERY -> HOME` and the way back |

@@ -278,22 +278,17 @@ constexpr double kBlindRangeAboveMarginM{1.0e-3};
 
 MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& configured,
                                              const MppiSpeedPolicyInput& input,
-                                             double& frame_range_m) {
+                                             double& frame_range_m,
+                                             double& frame_share) {
   MppiSpeedPolicyConfig config = configured;
   SensorBrakingContract3D& contract = config.sensor_braking_contract;
   frame_range_m = contract.guaranteed_detection_range_m;
+  frame_share = 1.0;
   if (input.sensor_observed_fraction.has_value() &&
       std::isfinite(*input.sensor_observed_fraction)) {
-    // A frame whose light is running out observes as much as the light it
-    // has left: its matches hold until the light is nearly gone (r800).
-    const double share = std::min(
-        std::clamp((*input.sensor_observed_fraction - kSensorBlindObservedFraction) /
-                       (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
-                   0.0, 1.0),
-        input.sensor_light_headroom.has_value() &&
-                std::isfinite(*input.sensor_light_headroom)
-            ? std::clamp(*input.sensor_light_headroom, 0.0, 1.0)
-            : 1.0);
+    const double share =
+        sensorFrameShare(*input.sensor_observed_fraction, input.sensor_light_headroom);
+    frame_share = share;
     // The way the vehicle came is never closed (I3): back along it the
     // memory's observed range answers for a frame whose light has faded,
     // which leaves the vehicle at the edge of the dark blind in every
@@ -318,12 +313,23 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
 
 } // namespace
 
+double sensorFrameShare(const double observed_fraction,
+                        const std::optional<double> light_headroom) noexcept {
+  return std::min(
+      std::clamp((observed_fraction - kSensorBlindObservedFraction) /
+                     (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
+                 0.0, 1.0),
+      light_headroom.has_value() && std::isfinite(*light_headroom)
+          ? std::clamp(*light_headroom, 0.0, 1.0)
+          : 1.0);
+}
+
 MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& configured,
                                               const MppiSpeedPolicyInput& input) {
   validateConfig(configured);
   MppiSpeedPolicyResult result;
-  const MppiSpeedPolicyConfig config =
-      measuredSensorContract(configured, input, result.sensor_frame_range_m);
+  const MppiSpeedPolicyConfig config = measuredSensorContract(
+      configured, input, result.sensor_frame_range_m, result.sensor_frame_share);
   result.sensor_measured_range_m =
       config.sensor_braking_contract.guaranteed_detection_range_m;
   result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;

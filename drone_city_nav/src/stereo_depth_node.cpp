@@ -295,6 +295,7 @@ private:
     std_msgs::msg::Float64 headroom_message;
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
+    const std::size_t stereo_returns = returns.size();
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -319,8 +320,20 @@ private:
         static_cast<double>(returns.size()) /
         static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                             (image_height_ / returns_config_.pixel_stride));
-    const std::vector<Point3> unobservable = unobservableFrustum(
-        rclcpp::Time{left->header.stamp}.seconds(), headroom, observed_share);
+    // A frame the braking contract reads as blind matches noise: in the dark
+    // of r1175 the pair still answered some hundred pixels a frame, hits in
+    // open air and free rays through the dark the vehicle had to treat as
+    // prohibited. Its stereo returns never reach the memory; the
+    // time-of-flight rays and the dark frustum (K14) do. The share is read
+    // from the whole frame first, as the contract reads it.
+    const bool blind =
+        sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
+    if (blind) {
+      returns.erase(returns.begin(),
+                    returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
+    }
+    const std::vector<Point3> unobservable =
+        unobservableFrustum(rclcpp::Time{left->header.stamp}.seconds(), blind);
     // A running count: the line is printed once a second and the frustum is
     // emitted once a second, and the two kept missing each other (r813).
     unobservable_total_ += unobservable.size();
@@ -369,10 +382,11 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "observed_share=%.3f noise=%.1f unobservable_total=%zu",
+                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
+                         "unobservable_total=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightness_by_metre.c_str(), headroom, observed_share, noise,
-                         unobservable_total_);
+                         brightness_by_metre.c_str(), headroom, observed_share,
+                         blind ? stereo_returns : 0U, noise, unobservable_total_);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -412,17 +426,12 @@ private:
   // three free voxels the body needs, so the dark around a goal it looked at
   // closes the goal's region for item 19's proof (specification K16).
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
-                                                        const double headroom,
-                                                        const double observed_share) {
+                                                        const bool blind) {
     // Dark is what the braking contract reads as blind (specification I2:
-    // the sensor looked and its range stayed below the margin): the smaller
-    // of the frame's light headroom and its observed share, scaled between
-    // the contract's blind and healthy fractions, under 0.35, where the
-    // range comes within a quarter metre of the 2 m margin and the vehicle
-    // rests. Read by the light alone, r815 held blind at the dark's edge with
-    // the headroom at 0.64 and the frame matching 3 percent, and marked
-    // nothing.
-    constexpr double kDimShare{0.35};
+    // the sensor looked and its range stayed below the margin): the frame's
+    // share (sensorFrameShare) under the contract's blind line. Read by the
+    // light alone, r815 held blind at the dark's edge with the headroom at
+    // 0.64 and the frame matching 3 percent, and marked nothing.
     constexpr double kDarknessS{2.5};
     constexpr double kConfirmationPeriodS{1.0};
     constexpr double kNearestM{1.5};
@@ -433,13 +442,8 @@ private:
     // darkness that had lasted a minute (r812): the dark ends after half a
     // second without a dark frame.
     constexpr double kDarknessGapS{0.5};
-    const double share = std::min(
-        headroom,
-        std::clamp((observed_share - kSensorBlindObservedFraction) /
-                       (kSensorHealthyObservedFraction - kSensorBlindObservedFraction),
-                   0.0, 1.0));
     std::vector<Point3> points;
-    if (!(share < kDimShare)) {
+    if (!blind) {
       if (stamp_s - last_dark_s_ > kDarknessGapS || stamp_s < last_dark_s_) {
         collapse_started_s_ = -1.0;
       }

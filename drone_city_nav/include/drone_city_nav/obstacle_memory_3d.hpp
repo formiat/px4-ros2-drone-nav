@@ -97,6 +97,9 @@ private:
   struct ScanEvidenceChunk {
     OccupancyGrid3D::Chunk observed{};
     OccupancyGrid3D::Chunk occupied{};
+    // Hit by a return the sensor measured, not by a surface sample or the
+    // dark it looked into (specification K14).
+    OccupancyGrid3D::Chunk measured{};
   };
 
   using ScanEvidence = std::unordered_map<OccupancyChunkIndex3D, ScanEvidenceChunk,
@@ -130,7 +133,8 @@ private:
   void decayUnconfirmed(std::int64_t now_ms, ObstacleMemory3DStats& stats);
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
-  void recordScanEvidence(GridIndex3D index, bool occupied, ScanEvidence& scan_evidence,
+  void recordScanEvidence(GridIndex3D index, bool occupied, bool measured,
+                          ScanEvidence& scan_evidence,
                           ScanEvidenceCursor& cursor) const;
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;

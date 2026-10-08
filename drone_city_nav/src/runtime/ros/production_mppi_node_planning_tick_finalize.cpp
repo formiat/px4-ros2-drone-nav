@@ -329,6 +329,7 @@ void ProductionMppiNode::publishNavigationProgress(
   message.header.stamp = get_clock()->now();
   message.header.frame_id = config_.world.frame_id;
   message.sensor_measured_range_m = speed_policy.sensor_frame_range_m;
+  message.sensor_frame_share = speed_policy.sensor_frame_share;
   message.sensor_guaranteed_range_m =
       config_.control.speed_policy.sensor_braking_contract.guaranteed_detection_range_m;
   message.route_remaining_m = route_remaining_m;

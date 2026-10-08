@@ -81,6 +81,67 @@ TEST(ObstacleMemory3D, SurfaceOnlyBeamMarksItsEndpointWithoutCarvingFreeSpace) {
   EXPECT_EQ(memory.grid().state({0, 0, 0}), ObservedVoxelState::kUnknown);
 }
 
+TEST(ObstacleMemory3D, DarknessIsUnobservableUntilAMeasuredReturnHitsIt) {
+  // Specification K14: the dark a sensor looked into is occupied without a
+  // measured hit, told apart from a surface for RViz; a measured return
+  // makes it a surface, free rays through it make it free and no longer
+  // dark.
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array dark{LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                                    .range_m = 8.0,
+                                    .hit = true,
+                                    .valid = true,
+                                    .surface_only = true}};
+  static_cast<void>(memory.integrateScan(
+      LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = dark}));
+  EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0}));
+  EXPECT_TRUE(memory.grid().isUnobservable({8, 0, 0}));
+
+  const std::array measured{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  static_cast<void>(memory.integrateScan(
+      LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = measured}));
+  EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0}));
+  EXPECT_FALSE(memory.grid().isUnobservable({8, 0, 0}));
+  // A surface the dark confirms stays a surface.
+  static_cast<void>(memory.integrateScan(
+      LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = dark}));
+  EXPECT_FALSE(memory.grid().isUnobservable({8, 0, 0}));
+
+  const std::array through{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 15.0, .hit = false, .valid = true}};
+  ObstacleMemory3D dark_memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  static_cast<void>(dark_memory.integrateScan(
+      LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = dark}));
+  for (int scan = 0; scan < 20; ++scan) {
+    static_cast<void>(dark_memory.integrateScan(
+        LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = through}));
+  }
+  EXPECT_TRUE(dark_memory.grid().isKnownFree({8, 0, 0}));
+  EXPECT_FALSE(dark_memory.grid().isUnobservable({8, 0, 0}));
+}
+
+TEST(ObservedOccupancyGrid3D, OnlyAnOccupiedVoxelIsUnobservable) {
+  ObservedOccupancyGrid3D grid{kBounds};
+  EXPECT_FALSE(grid.setUnobservable({1, 2, 3}, true));
+  EXPECT_TRUE(grid.setState({1, 2, 3}, ObservedVoxelState::kOccupied));
+  EXPECT_TRUE(grid.setUnobservable({1, 2, 3}, true));
+  EXPECT_FALSE(grid.setUnobservable({1, 2, 3}, true));
+  EXPECT_TRUE(grid.isUnobservable({1, 2, 3}));
+  EXPECT_TRUE(grid.setState({1, 2, 3}, ObservedVoxelState::kFree));
+  EXPECT_FALSE(grid.isUnobservable({1, 2, 3}));
+  // A replaced chunk's darkness is a subset of its occupancy.
+  ObservedOccupancyGrid3D::Chunk chunk{};
+  chunk.observed[0] = 0b11U;
+  chunk.occupied[0] = 0b01U;
+  chunk.unobservable[0] = 0b11U;
+  EXPECT_TRUE(grid.replaceChunk({0, 0, 0}, chunk));
+  EXPECT_TRUE(grid.isUnobservable({0, 0, 0}));
+  EXPECT_FALSE(grid.isUnobservable({1, 0, 0}));
+}
+
 TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};

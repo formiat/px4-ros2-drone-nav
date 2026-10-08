@@ -91,6 +91,10 @@ class StateWordsTest(unittest.TestCase):
         source = PATH.read_text()
         self.assertIn("Marker.CUBE", source)
         self.assertIn('"/drone_city_nav/mppi/navigation_progress"', source)
+        # The frame's share, not the measured range over the guaranteed one,
+        # which has a floor at the 2 m margin (31 % in the dark, r1175).
+        self.assertIn('state["seen"] = message.sensor_frame_share', source)
+        self.assertNotIn("sensor_measured_range_m", source)
 
 
 class EvaluationNamespaceContractTest(unittest.TestCase):

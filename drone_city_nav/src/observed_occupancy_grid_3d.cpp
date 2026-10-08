@@ -116,6 +116,14 @@ bool ObservedOccupancyGrid3D::isOccupied(const GridIndex3D index) const noexcept
   return state(index) == ObservedVoxelState::kOccupied;
 }
 
+bool ObservedOccupancyGrid3D::isUnobservable(const GridIndex3D index) const noexcept {
+  if (!contains(index)) {
+    return false;
+  }
+  const Chunk* const chunk = findChunk(chunkIndex(index));
+  return chunk != nullptr && bit(chunk->unobservable, localBitIndex(index));
+}
+
 std::size_t ObservedOccupancyGrid3D::knownVoxelCount() const noexcept {
   return known_voxels_;
 }
@@ -169,6 +177,7 @@ bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,
     Chunk& chunk = found->second.mutableChunk();
     setBit(chunk.observed, bit_index, false);
     setBit(chunk.occupied, bit_index, false);
+    setBit(chunk.unobservable, bit_index, false);
     if (chunkEmpty(chunk)) {
       chunks_.erase(found);
     }
@@ -176,8 +185,22 @@ bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,
     Chunk& chunk = mutableChunk(chunk_index);
     setBit(chunk.observed, bit_index, true);
     setBit(chunk.occupied, bit_index, state_value == ObservedVoxelState::kOccupied);
+    if (state_value != ObservedVoxelState::kOccupied) {
+      setBit(chunk.unobservable, bit_index, false);
+    }
   }
   updateCounts(before, state_value);
+  return true;
+}
+
+bool ObservedOccupancyGrid3D::setUnobservable(const GridIndex3D index,
+                                              const bool unobservable) {
+  if (state(index) != ObservedVoxelState::kOccupied ||
+      isUnobservable(index) == unobservable) {
+    return false;
+  }
+  setBit(mutableChunk(chunkIndex(index)).unobservable, localBitIndex(index),
+         unobservable);
   return true;
 }
 
@@ -185,7 +208,8 @@ bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
                                            const Chunk& chunk) {
   const auto found = chunks_.find(index);
   if (found != chunks_.end() && found->second->observed == chunk.observed &&
-      found->second->occupied == chunk.occupied) {
+      found->second->occupied == chunk.occupied &&
+      found->second->unobservable == chunk.unobservable) {
     return false;
   }
   occupied_content_fingerprint_cache_.reset();
@@ -203,6 +227,8 @@ bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
   Chunk normalized = chunk;
   std::ranges::transform(normalized.occupied, normalized.observed,
                          normalized.occupied.begin(), std::bit_and<>{});
+  std::ranges::transform(normalized.unobservable, normalized.occupied,
+                         normalized.unobservable.begin(), std::bit_and<>{});
   const std::size_t new_known = popcount(normalized.observed);
   const std::size_t new_occupied = popcount(normalized.occupied);
   known_voxels_ += new_known;
@@ -320,6 +346,7 @@ ObservedOccupancyGrid3D::crop(const GridBounds3D& crop_bounds) const {
         const std::optional<GridIndex3D> source = worldToCell(center);
         if (source.has_value()) {
           static_cast<void>(result.setState(target, state(*source)));
+          static_cast<void>(result.setUnobservable(target, isUnobservable(*source)));
         }
       }
     }
