@@ -40,6 +40,8 @@ class StateWordsTest(unittest.TestCase):
                          text(["GOAL_UNREACHABLE trigger=unreliable_light"], True, False,
                               True, True)[0])
         self.assertEqual("LEVEL DESCENT", text([], True, True, True, True)[0])
+        # On the pad the estimator declares dead reckoning too: not the flight's.
+        self.assertEqual("TAKEOFF", text([], True, False, True, False)[0])
         self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, True)[0])
         self.assertEqual("GOAL REACHED",
                          text(["MISSION_RESULT success=true reason=goal"], False, False,

@@ -70,9 +70,11 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         return "LANDED", GREY
     if any(event.startswith("MISSION_RESULT success=true") for event in events):
         return "GOAL REACHED", GREEN
-    if descending:
+    # The camera estimator declares dead reckoning on the pad too, where it
+    # has no motion to see; it reads as the flight's only once it is under way.
+    if descending and ready:
         return "LEVEL DESCENT", RED
-    if dead_reckoning:
+    if dead_reckoning and ready:
         return "DEAD RECKONING", RED
     home = next((event for event in reversed(events) if event.startswith("GOAL_UNREACHABLE")),
                 None)

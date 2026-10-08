@@ -4,8 +4,10 @@
 second (resources.csv); the watchdog takes the median of the last 30 samples after the flight has got going (the
 first sample at or above the floor) and compares it with the host verdict's floor, 0.82 on the stereo set or 0.97 on
 the 3D lidar of the factor the run asked for. Prints "WATCHDOG ok ..." and exits 0, or "WATCHDOG slow ..." and exits
-1; a run that has not got going yet, or has fewer than 30 samples since, is "WATCHDOG waiting" and exits 0. Nothing
-of the stack reads it: the launchers (fly_until_valid.sh, record_until_pass.sh) stop a slow flight and fly it again."""
+1; a run that has not got going yet, or has fewer than 30 samples since, is "WATCHDOG waiting" and exits 0, and so
+is a run whose mission has reported its result: what the simulator does while the flight winds down is nobody's
+verdict. Nothing of the stack reads it: the launchers (fly_until_valid.sh, record_until_pass.sh) stop a slow flight
+and fly it again."""
 
 from __future__ import annotations
 
@@ -54,7 +56,12 @@ def main() -> int:
                         help="the real-time factor the run asked for (REAL_TIME_FACTOR)")
     args = parser.parse_args()
     floor = host_verdict.MINIMUM_REAL_TIME_FACTOR_P50["lidar" if args.lidar else "stereo_tof"] * args.factor
-    state, median = judge(factors(Path(f"log/runs/{args.run}/resources.csv")), floor)
+    run = Path(f"log/runs/{args.run}")
+    try:
+        over = "MISSION_RESULT " in (run / "ros_drone_nav.log").read_text(errors="ignore")
+    except OSError:
+        over = False
+    state, median = ("waiting", None) if over else judge(factors(run / "resources.csv"), floor)
     detail = f"median {median:.2f} over the last {WINDOW_SAMPLES} s against {floor:.2f}" if median is not None else ""
     print(f"WATCHDOG {state} {args.run} {detail}".rstrip())
     return 1 if state == "slow" else 0
