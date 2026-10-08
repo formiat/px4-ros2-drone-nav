@@ -227,12 +227,19 @@ def main() -> int:
             markers = MarkerArray()
             # The words in the top left corner, the light's line under them.
             # Each line is centred on its anchor: the longer light line sits
-            # nearer the middle so that its left end stays in the picture.
+            # nearer the middle so that its left end stays in the picture. A
+            # line with nothing to say is deleted, never drawn blank: RViz
+            # dies on a text marker of one space (Ogre's vertex buffer of no
+            # glyphs, r1125, r1153, r1154).
             for identifier, line, height, right_share, up_share, tone in (
                     (0, text, TEXT_HEIGHT_M, -0.5, 0.86, color),
-                    (1, light or " ", 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
+                    (1, light, 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
                      AMBER if light and share is not None and share < 0.35 else GREY)):
                 words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
+                if not line.strip():
+                    words.action = Marker.DELETE
+                    markers.markers.append(words)
+                    continue
                 words.text = line
                 words.scale.z = height
                 offset = corner_offset(yaw, pitch, distance, right_share, up_share)

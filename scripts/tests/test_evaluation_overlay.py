@@ -58,6 +58,13 @@ class StateWordsTest(unittest.TestCase):
         _, _, z = OVERLAY.corner_offset(0.65, 0.95, 45.0, -0.55, 0.86)
         self.assertGreater(z, 5.0)
 
+    def test_a_blank_line_is_never_drawn(self) -> None:
+        # RViz dies on a text marker of one space (r1125, r1153, r1154): a
+        # line with nothing to say is deleted instead.
+        source = PATH.read_text()
+        self.assertNotIn('light or " "', source)
+        self.assertIn("words.action = Marker.DELETE", source)
+
     def test_the_light_s_line_is_a_bar_and_the_charge_only_with_a_battery(self) -> None:
         self.assertEqual("", OVERLAY.light_text(None, None))
         self.assertEqual("LIGHT |||||||||| 100 %", OVERLAY.light_text(1.0, None))
