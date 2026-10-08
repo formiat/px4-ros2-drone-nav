@@ -2,8 +2,10 @@
 """rtf_watchdog.py RUN [--lidar] [--factor F]: whether the flight RUN is being flown under a load that will void it
 (specification A4, A7), read while it flies. The resource sampler writes the simulator's real-time factor once a
 second (resources.csv); the watchdog takes the median of the last 30 samples after the flight has got going (the
-first sample at or above the floor) and compares it with the host verdict's floor, 0.82 on the stereo set or 0.97 on
-the 3D lidar of the factor the run asked for. Prints "WATCHDOG ok ..." and exits 0, or "WATCHDOG slow ..." and exits
+first sample at or above the floor) and compares it with 0.85 of the host verdict's floor, 0.82 on the stereo set or
+0.97 on the 3D lidar of the factor the run asked for: the verdict reads the median of the whole flight, which a short
+dip does not move (r1128 was stopped at 0.79 against 0.82 and would have counted), while a load that stays voids the
+flight at the end and the watchdog stops it at the 30 s window. Prints "WATCHDOG ok ..." and exits 0, or "WATCHDOG slow ..." and exits
 1; a run that has not got going yet, or has fewer than 30 samples since, is "WATCHDOG waiting" and exits 0, and so
 is a run whose mission has reported its result: what the simulator does while the flight winds down is nobody's
 verdict. Nothing of the stack reads it: the launchers (fly_until_valid.sh, record_until_pass.sh) stop a slow flight
@@ -21,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import host_verdict  # noqa: E402
 
 WINDOW_SAMPLES = 30
+WATCH_SHARE_OF_FLOOR = 0.85
 
 
 def factors(path: Path) -> list[float]:
@@ -55,7 +58,8 @@ def main() -> int:
     parser.add_argument("--factor", type=float, default=1.0,
                         help="the real-time factor the run asked for (REAL_TIME_FACTOR)")
     args = parser.parse_args()
-    floor = host_verdict.MINIMUM_REAL_TIME_FACTOR_P50["lidar" if args.lidar else "stereo_tof"] * args.factor
+    floor = (host_verdict.MINIMUM_REAL_TIME_FACTOR_P50["lidar" if args.lidar else "stereo_tof"]
+             * args.factor * WATCH_SHARE_OF_FLOOR)
     run = Path(f"log/runs/{args.run}")
     try:
         over = "MISSION_RESULT " in (run / "ros_drone_nav.log").read_text(errors="ignore")
