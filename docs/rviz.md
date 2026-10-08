@@ -77,7 +77,7 @@ reads `/evaluation`.
 - **The light's line** under it: `LIGHT`, a ten-step bar of the share of the
   nominal intensity the injector set (the harness's knowledge), beside
   `SEES`, the share of its guaranteed range the vehicle's latest frame alone
-  grants (`/drone_city_nav/navigation_progress`, the braking contract's
+  grants (`/drone_city_nav/mppi/navigation_progress`, the braking contract's
   measure and what the light is judged by, K12): the viewer sees the light
   fall and the vehicle see it fall. In the scenarios that give the light a
   battery, a third line, `CHARGE`, in seconds. Each line stands on a dark

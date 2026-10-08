@@ -25,7 +25,7 @@ not large).
 - the carried light: the share of its nominal intensity the injector set
   (/evaluation/light_share, the injector's knowledge, for the viewer) beside
   what the vehicle itself sees by it, the share of its guaranteed range the
-  latest frame alone grants (/drone_city_nav/navigation_progress, the
+  latest frame alone grants (/drone_city_nav/mppi/navigation_progress, the
   braking contract's measure, what the light is judged by, K12), and the
   charge of its battery in the scenarios that give it one
   (/carried_light/charge_s, what the vehicle knows). Each line stands on a
@@ -231,8 +231,8 @@ def main() -> int:
                              on_control_mode, best_effort)
     node.create_subscription(Float64, "/evaluation/light_share", on_share, 10)
     node.create_subscription(Float64, "/carried_light/charge_s", on_charge, 10)
-    node.create_subscription(NavigationProgress, "/drone_city_nav/navigation_progress",
-                             on_progress, best_effort)
+    node.create_subscription(NavigationProgress, "/drone_city_nav/mppi/navigation_progress",
+                             on_progress, 10)
     publishers = {view: node.create_publisher(MarkerArray, f"/evaluation/markers_{view}", 10)
                   for view in VIEWS}
     gz_node = GzNode()

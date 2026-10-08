@@ -90,7 +90,7 @@ class StateWordsTest(unittest.TestCase):
         self.assertAlmostEqual(math.sin(0.95), tz[2], places=3)
         source = PATH.read_text()
         self.assertIn("Marker.CUBE", source)
-        self.assertIn('"/drone_city_nav/navigation_progress"', source)
+        self.assertIn('"/drone_city_nav/mppi/navigation_progress"', source)
 
 
 class EvaluationNamespaceContractTest(unittest.TestCase):
