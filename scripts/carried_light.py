@@ -15,7 +15,10 @@ directory. Two things move the light:
 - its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
   evaluation component nobody tells the vehicle about. Their schedule never
   leaves this process, and no production node reads it (the contract test
-  holds it there); the vehicle learns of a failure only from its frames.
+  holds it there); the vehicle learns of a failure only from its frames. The
+  share of the nominal intensity the light is set to goes out for the viewer
+  alone, on /evaluation/light_share, which the RViz overlay draws and no
+  production node subscribes to.
 
 Two regimes, decided by the project owner on 2026-09-27:
 
@@ -183,6 +186,7 @@ def main() -> int:
     rclpy.init()
     ros_node = rclpy.create_node("carried_light")
     charge_pub = ros_node.create_publisher(Float64, "/carried_light/charge_s", 1)
+    share_pub = ros_node.create_publisher(Float64, "/evaluation/light_share", 1)
     node = Node()
     clock = {"s": None}
     lock = threading.Lock()
@@ -254,6 +258,7 @@ def main() -> int:
                     stream.flush()
                     if accepted:
                         applied = share
+                        share_pub.publish(Float64(data=share))
             time.sleep(UPDATE_PERIOD_S)
 
 

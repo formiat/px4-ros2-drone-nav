@@ -19,6 +19,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -314,6 +315,13 @@ public:
         declare_parameter<std::string>("navigation_objective_topic",
                                        "/drone_city_nav/navigation_objective"),
         rclcpp::QoS{1}.reliable().transient_local());
+    // The mission's events as the vehicle decides them (specification K26):
+    // what a ground station would show, and what the evaluation overlay
+    // draws in RViz. Kept for late subscribers.
+    mission_event_pub_ = create_publisher<std_msgs::msg::String>(
+        declare_parameter<std::string>("mission_event_topic",
+                                       "/drone_city_nav/mission_events"),
+        rclcpp::QoS{50}.reliable().transient_local());
     memory_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         declare_parameter<std::string>("raw_obstacle_snapshot_3d_topic",
                                        "/drone_city_nav/raw_obstacle_snapshot_3d"),
@@ -369,6 +377,7 @@ private:
                   "MISSION_READINESS ready=true mission_epoch=%" PRIu64
                   " health_sequence=%" PRIu64,
                   health.mission_epoch, health.sequence);
+      publishMissionEvent("MISSION_READINESS ready=true");
     }
     if (health.terminal) {
       report(false, navigationFailureReason(health.failure_reason));
@@ -717,6 +726,7 @@ private:
     completed_waypoint_count_ = 0U;
     minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
     goal_substituted_ = true;
+    publishMissionEvent(std::string{"GOAL_UNREACHABLE trigger="} + trigger);
     return_epoch_ = navigation_mission_epoch_;
     return_target_ = std::numeric_limits<std::size_t>::max();
     publishReturnObjective();
@@ -773,8 +783,16 @@ private:
                                 : speed_sum_mps_ / static_cast<double>(speed_samples_);
   }
 
+  void publishMissionEvent(const std::string& event) {
+    std_msgs::msg::String message;
+    message.data = event;
+    mission_event_pub_->publish(message);
+  }
+
   void report(const bool success, const std::string& reason) {
     result_reported_ = true;
+    publishMissionEvent(std::string{"MISSION_RESULT success="} +
+                        (success ? "true" : "false") + " reason=" + reason);
     const char* format =
         "MISSION_RESULT success=%s reason='%s' spawn_distance=%.2f "
         "max_distance_from_start=%.2f min_goal_distance=%.2f waypoint_count=%zu "
@@ -862,6 +880,7 @@ private:
   double route_remaining_m_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<msg::NavigationProgress>::SharedPtr navigation_progress_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_charge_sub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   double mission_ready_altitude_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double flown_path_m_{0.0};
   bool goal_substituted_{false};

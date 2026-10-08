@@ -4,6 +4,7 @@
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -44,6 +45,11 @@ public:
     vehicle_destroyed_pub_ = create_publisher<msg::VehicleDestroyed>(
         vehicle_destroyed_topic,
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local());
+    // The landing as an event of the mission (specification K26).
+    mission_event_pub_ = create_publisher<std_msgs::msg::String>(
+        declare_parameter<std::string>("mission_event_topic",
+                                       "/drone_city_nav/mission_events"),
+        rclcpp::QoS{50}.reliable().transient_local());
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
         vehicle_destroyed_topic,
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
@@ -173,6 +179,9 @@ private:
         landed_contact_s_ = contact_s;
         if (!landed_) {
           landed_ = true;
+          std_msgs::msg::String event;
+          event.data = "VEHICLE_LANDED";
+          mission_event_pub_->publish(event);
           RCLCPP_WARN(get_logger(),
                       "VEHICLE_LANDED drone_collision='%s' obstacle_collision='%s' "
                       "speed=%.2f horizontal_speed=%.2f attitude_rp=(%.3f, %.3f)",
@@ -233,6 +242,7 @@ private:
   static constexpr double kLandingSpeedMps{1.0};
   static constexpr double kLandingHorizontalSpeedMps{0.5};
   bool landed_{false};
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   static constexpr double kLandingContactGapS{0.5};
   static constexpr double kFloorNormalVerticalShare{0.9};
   double landed_contact_s_{-1.0};

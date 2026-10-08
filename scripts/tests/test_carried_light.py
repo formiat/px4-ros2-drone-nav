@@ -21,10 +21,14 @@ SPEC.loader.exec_module(INJECTOR)
 
 
 class LightFaultInjectorContractTest(unittest.TestCase):
-    def test_the_charge_is_all_it_publishes_on_ros(self) -> None:
+    def test_the_charge_is_all_it_publishes_for_the_vehicle(self) -> None:
+        # The charge is what the vehicle may know; the light's share goes to
+        # the viewer alone, in the evaluation namespace no production node
+        # reads (test_no_production_source_reads_the_injection).
         source = INJECTOR_PATH.read_text()
-        self.assertEqual(1, source.count("create_publisher"))
+        self.assertEqual(2, source.count("create_publisher"))
         self.assertIn('create_publisher(Float64, "/carried_light/charge_s", 1)', source)
+        self.assertIn('create_publisher(Float64, "/evaluation/light_share", 1)', source)
 
     def test_a_battery_only_where_the_scenario_gives_one(self) -> None:
         # Without LIGHT_BATTERY_S the light never runs out and no charge is
@@ -43,7 +47,7 @@ class LightFaultInjectorContractTest(unittest.TestCase):
             if path.suffix not in {".cpp", ".hpp", ".py", ".yaml", ".msg"}:
                 continue
             text = path.read_text(errors="ignore")
-            for word in ("light_fault", "LIGHT_FAULT", "light_config"):
+            for word in ("light_fault", "LIGHT_FAULT", "light_config", "/evaluation"):
                 self.assertNotIn(word, text, f"{path} reads the injection")
 
     def test_the_light_it_sends_is_the_models(self) -> None:

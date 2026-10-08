@@ -20,6 +20,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
@@ -204,6 +205,11 @@ public:
         declare_parameter<std::string>("estimate_pose_topic",
                                        "/drone_city_nav/visual_inertial_odometry/pose"),
         rclcpp::QoS{10});
+    // Dead reckoning declared and ended, as events of the mission (K26).
+    mission_event_pub_ = create_publisher<std_msgs::msg::String>(
+        declare_parameter<std::string>("mission_event_topic",
+                                       "/drone_city_nav/mission_events"),
+        rclcpp::QoS{50}.reliable().transient_local());
 
     // One group for the IMU and the frames: the filter and the tracker are
     // touched by one callback at a time, and a frame's 35 ms of tracking does
@@ -365,6 +371,12 @@ private:
     } else if (dead_reckoning_declared_) {
       RCLCPP_WARN(get_logger(),
                   "VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started=false");
+    }
+    if (estimate.dead_reckoning != dead_reckoning_declared_) {
+      std_msgs::msg::String event;
+      event.data = std::string{"VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started="} +
+                   (estimate.dead_reckoning ? "true" : "false");
+      mission_event_pub_->publish(event);
     }
     dead_reckoning_declared_ = estimate.dead_reckoning;
     const std::int64_t synchronised_ns =
@@ -775,6 +787,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   bool publish_to_autopilot_{false};
   std::int64_t last_autopilot_stamp_ns_{0};

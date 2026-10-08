@@ -115,6 +115,13 @@ Visualization Manager:
         drone: true
       Topic:
         Value: /drone_city_nav/drone_marker
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Evaluation Overlay
+      Namespaces:
+        evaluation: true
+      Topic:
+        Value: /evaluation/markers
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Name: Mission Outcome

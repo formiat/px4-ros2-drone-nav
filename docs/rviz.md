@@ -36,6 +36,7 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Selected MPPI Markers | `/drone_city_nav/mppi/markers` |
 | Vehicle Directions | `/drone_city_nav/vehicle_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
+| Evaluation Overlay | `/evaluation/markers` |
 | Current 3D Lidar Returns | `/drone_city_nav/current_lidar_returns_3d` |
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |
@@ -53,6 +54,31 @@ vehicle's complete memory point cloud are present but disabled by default, so
 they create no RViz subscription or rendering load until enabled. The
 `next_living` reselection policy moves the follow frame and the selected topics
 to the next vehicle in scenario order after a typed destruction event.
+
+## Evaluation Overlay
+
+What the vehicle decided, where it believes it is against where it truly is,
+and what its light does, drawn by `scripts/evaluation_overlay.py` whenever
+RViz is open (specification K26). An evaluation component: it reads the
+stack's own events (`/drone_city_nav/mission_events`), the vehicle's state,
+the offboard control mode and the destruction event, and what the evaluation
+knows (the Gazebo pose, the carried light's share); nothing of the stack
+reads `/evaluation`.
+
+- **The state in words** over the vehicle: `ON THE PAD`, `TAKEOFF`, `TO
+  GOAL`, `GOAL REACHED`; amber when the goal is given up, `LIGHT UNRELIABLE
+  -> HOME`, `BATTERY -> HOME`, `GOAL UNREACHABLE -> HOME`; red when the sight
+  is gone, `DEAD RECKONING` and `LEVEL DESCENT` (the velocity mode the
+  offboard asks of the autopilot, which is the blind descent's alone); grey
+  `LANDED`; red `CRASH`.
+- **The light's line** under it: a ten-step bar of the share of the nominal
+  intensity the injector set, the figure in percent, and in the scenarios
+  that give the light a battery its charge in seconds.
+- **Two trails**, the vehicle's estimate (the drone marker the offboard
+  publishes) in blue and the truth in yellow with a yellow sphere where the
+  vehicle really is. Where the light is lost the two part: what the trails
+  show is the dead reckoning's drift, and that the vehicle was down before
+  the drift carried it to a wall.
 
 ## MPPI Markers
 

@@ -90,6 +90,14 @@ start_runtime_evidence_capture() {
         > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
     fi
   fi
+  # The evaluation overlay of RViz: the vehicle's decisions in words, its
+  # estimate against the truth, and the carried light. Only where RViz is
+  # open; a headless acceptance flight carries nothing of it.
+  if bool_is_true "${enable_rviz}" && ! bool_is_true "${multi_vehicle_mission}"; then
+    python3 "${repo_root}/scripts/evaluation_overlay.py" \
+      --world "${world_name}" --model "${default_gazebo_follow_target}" \
+      > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
+  fi
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" ||
     [[ -z "${raw_snapshot_bounds_m}" ]]; then
