@@ -22,29 +22,29 @@ SPEC.loader.exec_module(OVERLAY)
 class StateWordsTest(unittest.TestCase):
     def test_the_words_follow_the_vehicle_s_decisions(self) -> None:
         text = OVERLAY.state_text
-        self.assertEqual("ON THE PAD", text([], False, False, False, False, False)[0])
-        self.assertEqual("TAKEOFF", text([], False, False, False, True, False)[0])
+        self.assertEqual("ON THE PAD", text([], False, False, False, False)[0])
+        self.assertEqual("TAKEOFF", text([], False, False, True, False)[0])
         self.assertEqual("TO GOAL", text(["MISSION_READINESS ready=true"], False, False,
-                                         False, True, True)[0])
+                                         True, True)[0])
         self.assertEqual("BATTERY -> HOME",
                          text(["MISSION_READINESS ready=true", "GOAL_UNREACHABLE trigger=battery"],
-                              False, False, False, True, True)[0])
+                              False, False, True, True)[0])
         self.assertEqual("LIGHT UNRELIABLE -> HOME",
                          text(["GOAL_UNREACHABLE trigger=unreliable_light"], False, False,
-                              False, True, True)[0])
+                              True, True)[0])
         self.assertEqual("GOAL UNREACHABLE -> HOME",
-                         text(["GOAL_UNREACHABLE trigger=topological"], False, False, False,
+                         text(["GOAL_UNREACHABLE trigger=topological"], False, False,
                               True, True)[0])
         # The sight gone overrides the way home; the descent overrides the reckoning.
         self.assertEqual("DEAD RECKONING",
                          text(["GOAL_UNREACHABLE trigger=unreliable_light"], True, False,
-                              False, True, True)[0])
-        self.assertEqual("LEVEL DESCENT", text([], True, True, False, True, True)[0])
-        self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, False, True)[0])
+                              True, True)[0])
+        self.assertEqual("LEVEL DESCENT", text([], True, True, True, True)[0])
+        self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, True)[0])
         self.assertEqual("GOAL REACHED",
                          text(["MISSION_RESULT success=true reason=goal"], False, False,
-                              False, True, True)[0])
-        self.assertEqual("CRASH", text(["VEHICLE_LANDED"], False, False, True, False, True)[0])
+                              True, True)[0])
+        self.assertEqual("CRASH", text(["VEHICLE_LANDED", "VEHICLE_DESTROYED"], False, False, False, True)[0])
 
     def test_the_light_s_line_is_a_bar_and_the_charge_only_with_a_battery(self) -> None:
         self.assertEqual("", OVERLAY.light_text(None, None))
@@ -71,6 +71,7 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         self.assertIn('"GOAL_UNREACHABLE trigger="', sources["mission_monitor_node.cpp"])
         self.assertIn('"MISSION_RESULT success="', sources["mission_monitor_node.cpp"])
         self.assertIn('"VEHICLE_LANDED"', sources["collision_crash_node.cpp"])
+        self.assertIn('"VEHICLE_DESTROYED"', sources["collision_crash_node.cpp"])
         self.assertIn('"VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started="',
                       sources["visual_inertial_odometry_node.cpp"])
 

@@ -11,9 +11,9 @@ show:
   vehicle: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
   GOAL UNREACHABLE -> HOME, DEAD RECKONING, LEVEL DESCENT, LANDED, CRASH.
   Its sources are the stack's own events (/drone_city_nav/mission_events,
-  specification K26), the vehicle's state, the offboard control mode the
-  vehicle asks of the autopilot (the velocity mode is the blind descent's,
-  K19) and the destruction event;
+  specification K26, the destruction among them), the navigation's
+  readiness and the offboard control mode the vehicle asks of the autopilot
+  (the velocity mode is the blind descent's, K19);
 - two trails: the vehicle's estimate (the drone marker the offboard
   publishes, /drone_city_nav/drone_marker) and the truth (the world's
   pose/info of Gazebo), with the truth as a small sphere where the vehicle
@@ -51,10 +51,10 @@ ESTIMATE = (0.25, 0.7, 1.0)
 TRUTH = (1.0, 1.0, 0.3)
 
 
-def state_text(events: list[str], dead_reckoning: bool, descending: bool, destroyed: bool,
+def state_text(events: list[str], dead_reckoning: bool, descending: bool,
                airborne: bool, ready: bool) -> tuple[str, tuple[float, float, float]]:
     """The words over the vehicle for what it has decided so far."""
-    if destroyed:
+    if any(event.startswith("VEHICLE_DESTROYED") for event in events):
         return "CRASH", RED
     if any(event.startswith("VEHICLE_LANDED") for event in events):
         return "LANDED", GREY
@@ -98,17 +98,14 @@ def main() -> int:
     from geometry_msgs.msg import Point
     from px4_msgs.msg import OffboardControlMode
     from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-    from std_msgs.msg import ColorRGBA, Float64, String
+    from std_msgs.msg import Bool, ColorRGBA, Float64, String
     from visualization_msgs.msg import Marker, MarkerArray
-
-    from drone_city_nav.msg import VehicleDestroyed, VehicleNavigationState
 
     rclpy.init()
     node = rclpy.create_node("evaluation_overlay")
     lock = threading.Lock()
     state = {"events": [], "estimate": None, "truth": None, "share": None, "charge": None,
-             "velocity_mode": False, "destroyed": False, "airborne": False, "ready": False,
-             "dead_reckoning": False}
+             "velocity_mode": False, "ready": False, "dead_reckoning": False}
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
 
@@ -126,18 +123,13 @@ def main() -> int:
         with lock:
             state["estimate"] = message.pose.position
 
-    def on_vehicle_state(message: VehicleNavigationState) -> None:
+    def on_ready(message: Bool) -> None:
         with lock:
-            state["airborne"] = message.airborne
-            state["ready"] = state["ready"] or message.navigation_ready
+            state["ready"] = state["ready"] or message.data
 
     def on_control_mode(message: OffboardControlMode) -> None:
         with lock:
             state["velocity_mode"] = message.velocity
-
-    def on_destroyed(_: VehicleDestroyed) -> None:
-        with lock:
-            state["destroyed"] = True
 
     def on_share(message: Float64) -> None:
         with lock:
@@ -156,13 +148,9 @@ def main() -> int:
 
     node.create_subscription(String, "/drone_city_nav/mission_events", on_event, kept)
     node.create_subscription(Marker, "/drone_city_nav/drone_marker", on_marker, 10)
-    node.create_subscription(VehicleNavigationState, "/drone_city_nav/vehicle_state",
-                             on_vehicle_state, best_effort)
+    node.create_subscription(Bool, "/drone_city_nav/navigation_ready", on_ready, kept)
     node.create_subscription(OffboardControlMode, "/fmu/in/offboard_control_mode",
                              on_control_mode, best_effort)
-    node.create_subscription(VehicleDestroyed, "/drone_city_nav/vehicle_destroyed",
-                             on_destroyed, QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                                                      durability=DurabilityPolicy.TRANSIENT_LOCAL))
     node.create_subscription(Float64, "/evaluation/light_share", on_share, 10)
     node.create_subscription(Float64, "/carried_light/charge_s", on_charge, 10)
     publisher = node.create_publisher(MarkerArray, "/evaluation/markers", 10)
@@ -189,9 +177,10 @@ def main() -> int:
         with lock:
             estimate = state["estimate"]
             truth = state["truth"]
+            # Airborne once the offboard publishes the vehicle's marker (a valid position).
             text, color = state_text(state["events"], state["dead_reckoning"],
-                                     state["velocity_mode"], state["destroyed"],
-                                     state["airborne"], state["ready"])
+                                     state["velocity_mode"], estimate is not None,
+                                     state["ready"])
             light = light_text(state["share"], state["charge"])
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))

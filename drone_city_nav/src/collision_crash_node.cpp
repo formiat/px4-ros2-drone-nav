@@ -213,6 +213,9 @@ private:
 
       destroyed_ = true;
       vehicle_destroyed_pub_->publish(event);
+      std_msgs::msg::String destroyed_event;
+      destroyed_event.data = "VEHICLE_DESTROYED";
+      mission_event_pub_->publish(destroyed_event);
       const double roll = attitude_valid_ ? attitude_.roll_rad
                                           : std::numeric_limits<double>::quiet_NaN();
       const double pitch = attitude_valid_ ? attitude_.pitch_rad

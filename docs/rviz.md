@@ -60,8 +60,8 @@ to the next vehicle in scenario order after a typed destruction event.
 What the vehicle decided, where it believes it is against where it truly is,
 and what its light does, drawn by `scripts/evaluation_overlay.py` whenever
 RViz is open (specification K26). An evaluation component: it reads the
-stack's own events (`/drone_city_nav/mission_events`), the vehicle's state,
-the offboard control mode and the destruction event, and what the evaluation
+stack's own events (`/drone_city_nav/mission_events`), the navigation's
+readiness and the offboard control mode, and what the evaluation
 knows (the Gazebo pose, the carried light's share); nothing of the stack
 reads `/evaluation`.
 
