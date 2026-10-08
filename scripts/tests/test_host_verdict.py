@@ -41,6 +41,29 @@ class HostVerdictTest(unittest.TestCase):
                 "pose_age_max_ms=164.5 imu_samples=7")
         self.assertEqual(["164.5"], HOST.POSE_AGE_PATTERN.findall(line))
 
+    def test_the_watchdog_judges_the_last_window_after_the_flight_got_going(self) -> None:
+        import importlib.util as util
+        spec = util.spec_from_file_location("rtf_watchdog", PATH.parent / "rtf_watchdog.py")
+        watchdog = util.module_from_spec(spec)
+        spec.loader.exec_module(watchdog)
+        startup = [0.03, 0.2, 0.5]
+        self.assertEqual(("waiting", None), watchdog.judge(startup + [0.99] * 10, 0.82))
+        self.assertEqual("ok", watchdog.judge(startup + [0.99] * 30, 0.82)[0])
+        # Thirty seconds of a loaded host after a sound start.
+        self.assertEqual("slow", watchdog.judge(startup + [0.99] * 40 + [0.6] * 30, 0.82)[0])
+        # A slowed run that asked for 0.5 is judged against half the floor.
+        self.assertEqual("ok", watchdog.judge([0.5] * 40, 0.41)[0])
+
+    def test_every_launcher_under_load_is_tracked_and_documented(self) -> None:
+        readme = (PATH.parents[1] / "tools/README.md").read_text()
+        for tool in ("rtf_watchdog.py", "fly_until_valid.sh", "record_until_pass.sh"):
+            self.assertTrue((PATH.parent / tool).is_file(), tool)
+            self.assertIn(f"`{tool}`", readme)
+        for launcher in ("fly_until_valid.sh", "record_until_pass.sh"):
+            text = (PATH.parent / launcher).read_text()
+            self.assertIn("tools/rtf_watchdog.py", text)
+            self.assertIn("tools/host_verdict.py", text)
+
     def test_the_series_launcher_records_the_verdict(self) -> None:
         launcher = (PATH.parent / "series2.sh").read_text(encoding="utf-8")
         self.assertIn("tools/host_verdict.py", launcher)

@@ -123,8 +123,12 @@ The rules of a flight (specification A2 to A4, A8):
   by waiting an hour.
 
 `tools/series2.sh` keeps these rules by itself and is the ordinary way to
-fly; everything the flights are launched and read with is in
-[`tools/README.md`](tools/README.md).
+fly. When another task may load the host while a flight flies,
+`tools/fly_until_valid.sh` (and `tools/record_until_pass.sh` for a recorded
+flight) wraps it: a flight the load slows under the verdict's floor is
+stopped at once and flown again when the host is quiet, and a void one is
+flown again; the foreign processes are left alone. Everything the flights
+are launched and read with is in [`tools/README.md`](tools/README.md).
 
 ## Accepting A Change
 
