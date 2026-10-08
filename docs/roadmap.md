@@ -1792,6 +1792,33 @@ and one repair, all of it flown again:
   and 23.2 to 24.6 on the lidar; route availability 97.5 to 98.4 percent
   and holds 1.5 to 2.6 percent on the stereo set.
 
+On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
+
+- **The battery is weighed against the way home** (70ac7a0e, specification
+  F7, K11): the way to B is not known until it is flown, so the vehicle
+  flies on while its charge covers 1.1 times the way home's estimate and
+  turns when it no longer does; a battery only in the scenarios that test
+  one. Flown at 1.0 on 52dc179c: the low battery (240 s) turns 61 s in at
+  101 to 103 m with 155 s left against 142 estimated home, and is home at
+  0.28 to 0.58 m with 104 to 114 s left (r1140 to r1144); the goal outside
+  (720 s) turns 211 s in at 389 to 404 m with 485 s left against 442, home
+  at 0.33 to 0.41 m with 354 to 364 s left (r1145 to r1149). Both ordinary
+  series on the same commit, now without a battery: the stereo set 1.818 to
+  1.918 m/s (mean 1.850), 1.00 to 1.38 m from B (r1130 to r1134); the lidar
+  2.420 to 2.891 (mean 2.607), 0.26 to 0.71 m (r1135 to r1139); the other
+  three scenarios once each (r1150 to r1152).
+- **The RViz evaluation overlay** (specification K26, [`rviz.md`](rviz.md)):
+  the mission's events published by the nodes that decide them, and over
+  the RViz view, in its top left corner, what the vehicle decided, the
+  carried light's bar and charge, and the vehicle's estimate against the
+  truth as two trails. It costs 0.20 cores at the median and runs only
+  where RViz is open. The six scenarios recorded with it on 532a8670 are in
+  `log/videos/2026-10-08/`, every flight counted by the verdict
+  ([`scenarios.md`](scenarios.md) says what each shows).
+- **Flights under the host's load** (specification A4): a flight is watched
+  while it flies and stopped when the load slows it, and flown again when
+  the host is quiet (`tools/fly_until_valid.sh`, `tools/record_until_pass.sh`).
+
 Known to remain. The lidar vehicle's return from a goal outside the location
 is not flown: the proof cannot hold a closure the size of a location and the
 lidar carries no light battery (F15, the owner's decision). Dead reckoning
