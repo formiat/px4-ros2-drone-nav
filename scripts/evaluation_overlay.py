@@ -49,7 +49,8 @@ RATE_HZ = 5.0
 TRAIL_POINTS = 2400  # at 5 Hz, eight minutes of flight
 TEXT_HEIGHT_M = 1.1  # about 1/40 of the view's height at the views' distances
 # The truth is drawn wider than the estimate: where the two lie on each other the
-# yellow shows as a rim round the blue, where they part both are seen.
+# green shows as a rim round the white, where they part both are seen (the
+# owner, 2026-10-08: not blue and yellow).
 TRAIL_WIDTH_M = {"estimate": 0.2, "truth": 0.35}
 TRAILS_EVERY_TICKS = 5  # the trails once a second: thousands of points a message
 TRUTH_RADIUS_M = 0.6
@@ -64,8 +65,8 @@ GREEN = (0.35, 0.95, 0.45)
 AMBER = (1.0, 0.75, 0.2)
 RED = (1.0, 0.3, 0.3)
 GREY = (0.8, 0.8, 0.8)
-ESTIMATE = (0.25, 0.7, 1.0)
-TRUTH = (1.0, 1.0, 0.3)
+ESTIMATE = (1.0, 1.0, 1.0)
+TRUTH = (0.4, 1.0, 0.4)
 
 
 def state_text(events: list[str], dead_reckoning: bool, descending: bool,

@@ -83,7 +83,7 @@ reads `/evaluation`.
   battery, a third line, `CHARGE`, in seconds. Each line stands on a dark
   backdrop facing the camera, so that it reads over the memory's clouds.
 - **Two trails**, the vehicle's estimate (the drone marker the offboard
-  publishes) in blue and the truth in yellow with a yellow sphere where the
+  publishes) in white and the truth in green with a green sphere where the
   vehicle really is. Where the light is lost the two part: what the trails
   show is the dead reckoning's drift, and that the vehicle was down before
   the drift carried it to a wall.
