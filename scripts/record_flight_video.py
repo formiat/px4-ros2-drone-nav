@@ -296,9 +296,11 @@ def main() -> int:
         print(f"RECORDING started sizes={sizes}", flush=True)
         while flight_alive() and capture.poll() is None:
             time.sleep(1.0)
-        if capture.poll() is not None and flight_alive():
-            print(f"RECORDING capture ended early with {capture.returncode} "
-                  f"(capture_ffmpeg.log)", flush=True)
+        # The windows close when the simulation ends, while the flight's check
+        # still runs: a capture that ended well then is in order.
+        if capture.poll() not in (None, 0):
+            print(f"RECORDING capture ended with {capture.returncode} (capture_ffmpeg.log)",
+                  flush=True)
     if capture.poll() is None:
         capture.send_signal(signal.SIGINT)
         try:

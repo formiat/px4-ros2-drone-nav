@@ -44,7 +44,10 @@ from collections import deque
 RATE_HZ = 5.0
 TRAIL_POINTS = 2400  # at 5 Hz, eight minutes of flight
 TEXT_HEIGHT_M = 1.1  # about 1/40 of the view's height at the views' distances
-TRAIL_WIDTH_M = 0.4
+# The truth is drawn wider than the estimate: where the two lie on each other the
+# yellow shows as a rim round the blue, where they part both are seen.
+TRAIL_WIDTH_M = {"estimate": 0.2, "truth": 0.35}
+TRAILS_EVERY_TICKS = 5  # the trails once a second: thousands of points a message
 TRUTH_RADIUS_M = 0.6
 # The two views of drone_city_nav/rviz (the recording's follow and top views):
 # RViz's Orbit camera at (yaw, pitch, distance) around the vehicle, and the
@@ -134,6 +137,7 @@ def main() -> int:
              "velocity_mode": False, "ready": False, "dead_reckoning": False}
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
+    ticks = [0]
 
     kept = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE,
                       durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -217,6 +221,8 @@ def main() -> int:
         anchor = estimate_trail[-1] if estimate_trail else (truth_trail[-1] if truth_trail else None)
         if anchor is None:
             return
+        ticks[0] += 1
+        trails_due = ticks[0] % TRAILS_EVERY_TICKS == 0
         for view, (yaw, pitch, distance) in VIEWS.items():
             markers = MarkerArray()
             # The words in the top left corner, the light's line under them.
@@ -232,12 +238,14 @@ def main() -> int:
                 offset = corner_offset(yaw, pitch, distance, right_share, up_share)
                 words.pose.position = point(tuple(a + o for a, o in zip(anchor, offset)))
                 markers.markers.append(words)
-            for identifier, trail, tone in ((2, estimate_trail, ESTIMATE), (3, truth_trail, TRUTH)):
+            for identifier, name, trail, tone in ((2, "estimate", estimate_trail, ESTIMATE),
+                                                  (3, "truth", truth_trail, TRUTH)):
+                if not trails_due or len(trail) < 2:
+                    continue
                 strip = marker(identifier, Marker.LINE_STRIP, tone, 0.9)
-                strip.scale.x = TRAIL_WIDTH_M
+                strip.scale.x = TRAIL_WIDTH_M[name]
                 strip.points = [point(xyz) for xyz in trail]
-                if len(strip.points) >= 2:
-                    markers.markers.append(strip)
+                markers.markers.append(strip)
             if truth_trail:
                 sphere = marker(4, Marker.SPHERE, TRUTH, 0.9)
                 sphere.scale.x = sphere.scale.y = sphere.scale.z = 2.0 * TRUTH_RADIUS_M
