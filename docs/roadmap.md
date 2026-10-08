@@ -1812,7 +1812,7 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   the RViz view, in its top left corner, what the vehicle decided, the
   carried light's bar and charge, and the vehicle's estimate against the
   truth as two trails. It costs 0.20 cores at the median and runs only
-  where RViz is open. The six scenarios recorded with it on 532a8670 are in
+  where RViz is open. The six scenarios recorded with it on 8edbf359 are in
   `log/videos/2026-10-08/`, every flight counted by the verdict
   ([`scenarios.md`](scenarios.md) says what each shows).
 - **Flights under the host's load** (specification A4): a flight is watched
