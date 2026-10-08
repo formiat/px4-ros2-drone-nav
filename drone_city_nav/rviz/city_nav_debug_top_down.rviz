@@ -121,7 +121,7 @@ Visualization Manager:
       Namespaces:
         evaluation: true
       Topic:
-        Value: /evaluation/markers
+        Value: /evaluation/markers_top
     - Alpha: 0.95
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

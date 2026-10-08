@@ -46,6 +46,16 @@ class StateWordsTest(unittest.TestCase):
                               True, True)[0])
         self.assertEqual("CRASH", text(["VEHICLE_LANDED", "VEHICLE_DESTROYED"], False, False, False, True)[0])
 
+    def test_the_words_sit_in_the_top_left_corner_of_each_view(self) -> None:
+        # Straight down with yaw 0, RViz's camera has +Y to its right and -X up.
+        x, y, z = OVERLAY.corner_offset(0.0, 1.5707, 50.0, -0.55, 0.86)
+        self.assertLess(y, -8.0)
+        self.assertLess(x, -15.0)
+        self.assertAlmostEqual(z, 0.0, places=1)
+        # The follow view looks down at 54 degrees: the offset climbs with the view's up.
+        _, _, z = OVERLAY.corner_offset(0.65, 0.95, 45.0, -0.55, 0.86)
+        self.assertGreater(z, 5.0)
+
     def test_the_light_s_line_is_a_bar_and_the_charge_only_with_a_battery(self) -> None:
         self.assertEqual("", OVERLAY.light_text(None, None))
         self.assertEqual("LIGHT |||||||||| 100 %", OVERLAY.light_text(1.0, None))
@@ -76,10 +86,15 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
                       sources["visual_inertial_odometry_node.cpp"])
 
     def test_both_rviz_views_show_the_overlay_and_rviz_starts_it(self) -> None:
-        for name in ("city_nav_debug.rviz", "city_nav_debug_top_down.rviz"):
+        for name, view in (("city_nav_debug.rviz", "follow"),
+                           ("city_nav_debug_top_down.rviz", "top")):
             config = (REPOSITORY / "drone_city_nav/rviz" / name).read_text()
             self.assertIn("Name: Evaluation Overlay", config)
-            self.assertIn("Value: /evaluation/markers", config)
+            self.assertIn(f"Value: /evaluation/markers_{view}", config)
+            # The view the words are placed for is the view of the configuration.
+            yaw, pitch, distance = OVERLAY.VIEWS[view]
+            self.assertIn(f"Yaw: {yaw:g}", config)
+            self.assertIn(f"Pitch: {pitch:g}", config)
         runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
         self.assertIn("scripts/evaluation_overlay.py", runtime)
         self.assertIn('bool_is_true "${enable_rviz}"', runtime)

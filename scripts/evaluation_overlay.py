@@ -3,12 +3,16 @@
 it is against where it truly is, and what its light does.
 
 An evaluation component beside a flight with RViz open. It reads what the
-stack publishes anyway and what the evaluation knows, and draws them as one
-MarkerArray on /evaluation/markers (frame gazebo_map), which both RViz views
-show:
+stack publishes anyway and what the evaluation knows, and draws them as a
+MarkerArray in the frame gazebo_map, one for each of the repository's two
+views (/evaluation/markers_follow, /evaluation/markers_top): RViz has no
+screen-fixed text, so the words are placed in the world where the view's
+camera, which orbits the vehicle at a fixed yaw, pitch and distance, sees
+them in its top left corner (the owner, 2026-10-07: not in the middle, and
+not large).
 
-- the state of the mission as the vehicle decided it, in words over the
-  vehicle: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
+- the state of the mission as the vehicle decided it, in words in the top
+  left corner of the view: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
   GOAL UNREACHABLE -> HOME, DEAD RECKONING, LEVEL DESCENT, LANDED, CRASH.
   Its sources are the stack's own events (/drone_city_nav/mission_events,
   specification K26, the destruction among them), the navigation's
@@ -39,9 +43,15 @@ from collections import deque
 
 RATE_HZ = 5.0
 TRAIL_POINTS = 2400  # at 5 Hz, eight minutes of flight
-TEXT_HEIGHT_M = 2.0
+TEXT_HEIGHT_M = 1.1  # about 1/40 of the view's height at the views' distances
 TRAIL_WIDTH_M = 0.4
 TRUTH_RADIUS_M = 0.6
+# The two views of drone_city_nav/rviz (the recording's follow and top views):
+# RViz's Orbit camera at (yaw, pitch, distance) around the vehicle, and the
+# vertical field of view RViz draws with.
+VIEWS = {"follow": (0.65, 0.95, 45.0), "top": (0.0, 1.5707, 50.0)}
+FIELD_OF_VIEW_RAD = 0.785
+WINDOW_ASPECT = 960.0 / 1080.0
 
 GREEN = (0.35, 0.95, 0.45)
 AMBER = (1.0, 0.75, 0.2)
@@ -73,6 +83,20 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN
     return ("TAKEOFF" if airborne else "ON THE PAD"), GREY
+
+
+def corner_offset(yaw: float, pitch: float, distance: float,
+                  right_share: float, up_share: float) -> tuple[float, float, float]:
+    """The world offset from the vehicle that an Orbit camera at (yaw, pitch,
+    distance) around it sees at (right_share, up_share) of the view's half
+    extents: the camera's right is (-sin yaw, cos yaw, 0) and its up, with Z
+    kept upright, (-cos yaw sin pitch, -sin yaw sin pitch, cos pitch)."""
+    half_height = distance * math.tan(FIELD_OF_VIEW_RAD / 2.0)
+    half_width = half_height * WINDOW_ASPECT
+    right = (-math.sin(yaw), math.cos(yaw), 0.0)
+    up = (-math.cos(yaw) * math.sin(pitch), -math.sin(yaw) * math.sin(pitch), math.cos(pitch))
+    return tuple(right_share * half_width * r + up_share * half_height * u
+                 for r, u in zip(right, up))
 
 
 def light_text(share: float | None, charge_s: float | None) -> str:
@@ -153,7 +177,8 @@ def main() -> int:
                              on_control_mode, best_effort)
     node.create_subscription(Float64, "/evaluation/light_share", on_share, 10)
     node.create_subscription(Float64, "/carried_light/charge_s", on_charge, 10)
-    publisher = node.create_publisher(MarkerArray, "/evaluation/markers", 10)
+    publishers = {view: node.create_publisher(MarkerArray, f"/evaluation/markers_{view}", 10)
+                  for view in VIEWS}
     gz_node = GzNode()
     gz_node.subscribe(Pose_V, f"/world/{args.world}/pose/info", on_poses)
 
@@ -177,11 +202,12 @@ def main() -> int:
         with lock:
             estimate = state["estimate"]
             truth = state["truth"]
+            share = state["share"]
             # Airborne once the offboard publishes the vehicle's marker (a valid position).
             text, color = state_text(state["events"], state["dead_reckoning"],
                                      state["velocity_mode"], estimate is not None,
                                      state["ready"])
-            light = light_text(state["share"], state["charge"])
+            light = light_text(share, state["charge"])
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))
         if truth is not None:
@@ -189,29 +215,33 @@ def main() -> int:
         anchor = estimate_trail[-1] if estimate_trail else (truth_trail[-1] if truth_trail else None)
         if anchor is None:
             return
-        markers = MarkerArray()
-        words = marker(0, Marker.TEXT_VIEW_FACING, color)
-        words.text = text
-        words.scale.z = TEXT_HEIGHT_M
-        words.pose.position = point((anchor[0], anchor[1], anchor[2] + 3.0))
-        markers.markers.append(words)
-        lamp = marker(1, Marker.TEXT_VIEW_FACING, AMBER if light and state["share"] < 0.35 else GREY)
-        lamp.text = light or " "
-        lamp.scale.z = 0.6 * TEXT_HEIGHT_M
-        lamp.pose.position = point((anchor[0], anchor[1], anchor[2] + 1.6))
-        markers.markers.append(lamp)
-        for identifier, trail, color in ((2, estimate_trail, ESTIMATE), (3, truth_trail, TRUTH)):
-            line = marker(identifier, Marker.LINE_STRIP, color, 0.9)
-            line.scale.x = TRAIL_WIDTH_M
-            line.points = [point(xyz) for xyz in trail]
-            if len(line.points) >= 2:
-                markers.markers.append(line)
-        if truth_trail:
-            sphere = marker(4, Marker.SPHERE, TRUTH, 0.9)
-            sphere.scale.x = sphere.scale.y = sphere.scale.z = 2.0 * TRUTH_RADIUS_M
-            sphere.pose.position = point(truth_trail[-1])
-            markers.markers.append(sphere)
-        publisher.publish(markers)
+        for view, (yaw, pitch, distance) in VIEWS.items():
+            markers = MarkerArray()
+            # The words in the top left corner, the light's line under them.
+            # Each line is centred on its anchor: the longer light line sits
+            # nearer the middle so that its left end stays in the picture.
+            for identifier, line, height, right_share, up_share, tone in (
+                    (0, text, TEXT_HEIGHT_M, -0.5, 0.86, color),
+                    (1, light or " ", 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
+                     AMBER if light and share is not None and share < 0.35 else GREY)):
+                words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
+                words.text = line
+                words.scale.z = height
+                offset = corner_offset(yaw, pitch, distance, right_share, up_share)
+                words.pose.position = point(tuple(a + o for a, o in zip(anchor, offset)))
+                markers.markers.append(words)
+            for identifier, trail, tone in ((2, estimate_trail, ESTIMATE), (3, truth_trail, TRUTH)):
+                strip = marker(identifier, Marker.LINE_STRIP, tone, 0.9)
+                strip.scale.x = TRAIL_WIDTH_M
+                strip.points = [point(xyz) for xyz in trail]
+                if len(strip.points) >= 2:
+                    markers.markers.append(strip)
+            if truth_trail:
+                sphere = marker(4, Marker.SPHERE, TRUTH, 0.9)
+                sphere.scale.x = sphere.scale.y = sphere.scale.z = 2.0 * TRUTH_RADIUS_M
+                sphere.pose.position = point(truth_trail[-1])
+                markers.markers.append(sphere)
+            publishers[view].publish(markers)
 
     node.create_timer(1.0 / RATE_HZ, publish)
     try:

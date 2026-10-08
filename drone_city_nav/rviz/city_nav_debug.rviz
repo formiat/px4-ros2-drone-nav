@@ -121,7 +121,7 @@ Visualization Manager:
       Namespaces:
         evaluation: true
       Topic:
-        Value: /evaluation/markers
+        Value: /evaluation/markers_follow
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Name: Mission Outcome

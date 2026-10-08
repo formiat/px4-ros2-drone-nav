@@ -36,7 +36,7 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Selected MPPI Markers | `/drone_city_nav/mppi/markers` |
 | Vehicle Directions | `/drone_city_nav/vehicle_directions` |
 | Drone | `/drone_city_nav/drone_marker` |
-| Evaluation Overlay | `/evaluation/markers` |
+| Evaluation Overlay | `/evaluation/markers_follow` (the following view), `/evaluation/markers_top` (the top-down view) |
 | Current 3D Lidar Returns | `/drone_city_nav/current_lidar_returns_3d` |
 | Raw Lidar Returns 3D | `/drone_city_nav/raw_lidar_hit_points_3d` |
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |
@@ -65,7 +65,10 @@ readiness and the offboard control mode, and what the evaluation
 knows (the Gazebo pose, the carried light's share); nothing of the stack
 reads `/evaluation`.
 
-- **The state in words** over the vehicle: `ON THE PAD`, `TAKEOFF`, `TO
+- **The state in words** in the top left corner of the view (RViz has no
+  screen-fixed text: the words are placed in the world where the view's
+  camera, orbiting the vehicle at its fixed yaw, pitch and distance, sees
+  them there, one marker set for each of the two views): `ON THE PAD`, `TAKEOFF`, `TO
   GOAL`, `GOAL REACHED`; amber when the goal is given up, `LIGHT UNRELIABLE
   -> HOME`, `BATTERY -> HOME`, `GOAL UNREACHABLE -> HOME`; red when the sight
   is gone, `DEAD RECKONING` and `LEVEL DESCENT` (the velocity mode the
