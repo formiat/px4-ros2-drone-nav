@@ -288,11 +288,17 @@ def main() -> int:
     args.output_directory.mkdir(parents=True, exist_ok=True)
     raw = {name: run_directory / f"capture_{name}.mkv" for name in SOURCES}
     started = time.time()
-    capture = subprocess.Popen(capture_command(sizes, run_directory, raw),
-                               stdin=subprocess.PIPE)
-    print(f"RECORDING started sizes={sizes}", flush=True)
-    while flight_alive() and capture.poll() is None:
-        time.sleep(1.0)
+    # The encoder's own words go to the run: a capture that ends early is
+    # explained there (r1125 left no stream and no word in the recorder's log).
+    with (run_directory / "capture_ffmpeg.log").open("w") as capture_log:
+        capture = subprocess.Popen(capture_command(sizes, run_directory, raw),
+                                   stdin=subprocess.PIPE, stderr=capture_log)
+        print(f"RECORDING started sizes={sizes}", flush=True)
+        while flight_alive() and capture.poll() is None:
+            time.sleep(1.0)
+        if capture.poll() is not None and flight_alive():
+            print(f"RECORDING capture ended early with {capture.returncode} "
+                  f"(capture_ffmpeg.log)", flush=True)
     if capture.poll() is None:
         capture.send_signal(signal.SIGINT)
         try:
