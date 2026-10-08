@@ -268,12 +268,17 @@ def main() -> int:
         return Path(f"/proc/{args.flight_pid}").exists()
 
     # The windows open and settle: a size that stands for five seconds is the
-    # size the frames will have.
-    deadline = time.time() + args.wait_s
+    # size the frames will have. The wait is counted from the run's start,
+    # not from this script's: the flight's launcher waits for a quiet host
+    # first, for as long as the host's load lasts (r1166, r1174: the windows
+    # opened after the recorder had given up).
+    deadline = None
     sizes: dict[str, tuple[int, int]] = {}
     stable_since = time.time()
     settled = False
-    while time.time() < deadline and flight_alive():
+    while (deadline is None or time.time() < deadline) and flight_alive():
+        if deadline is None and run_directory.is_dir():
+            deadline = time.time() + args.wait_s
         now = capture_sizes(run_directory)
         if now != sizes:
             sizes, stable_since = now, time.time()
