@@ -93,6 +93,19 @@ verdict counts is a flight like any other
 location is, and flights on the lidar, which carries no light, are not
 recorded.
 
+Whenever RViz is open, the evaluation overlay ([`rviz.md`](rviz.md),
+specification K26) writes over the vehicle what it has decided and draws its
+estimate against the truth, so that each scenario reads without a word:
+
+| Scenario | What the overlay shows |
+|---|---|
+| Ordinary dark flight | `TO GOAL` to `GOAL REACHED`; the light's bar dips and recovers with the moderate flicker, and the speed with it; the two trails lie on each other |
+| The carried light fails | the bar dips longer and longer, then `LIGHT UNRELIABLE -> HOME` in amber and the way back along the trail |
+| The light lost | the bar falls to zero, `DEAD RECKONING` in red, `LEVEL DESCENT`, `LANDED`; the blue estimate and the yellow truth part by the drift of the reckoning, and the vehicle is down before the drift reaches a wall |
+| A low battery at launch | the charge counts down beside the bar; `BATTERY -> HOME` when it no longer covers the way home with its margin |
+| A long flight under failures | `TO GOAL`, `GOAL REACHED`, then `TO GOAL` again for the start, under the flicker and the stream's failures |
+| A goal outside the location | the exploration, then `BATTERY -> HOME` and the way back |
+
 ## What Is Planned And Not Yet Runnable
 
 So that nobody searches for a script that does not exist. The roadmap
