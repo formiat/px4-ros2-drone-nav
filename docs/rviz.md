@@ -74,9 +74,14 @@ reads `/evaluation`.
   is gone, `DEAD RECKONING` and `LEVEL DESCENT` (the velocity mode the
   offboard asks of the autopilot, which is the blind descent's alone); grey
   `LANDED`; red `CRASH`.
-- **The light's line** under it: a ten-step bar of the share of the nominal
-  intensity the injector set, the figure in percent, and in the scenarios
-  that give the light a battery its charge in seconds.
+- **The light's line** under it: `LIGHT`, a ten-step bar of the share of the
+  nominal intensity the injector set (the harness's knowledge), beside
+  `SEES`, the share of its guaranteed range the vehicle's latest frame alone
+  grants (`/drone_city_nav/navigation_progress`, the braking contract's
+  measure and what the light is judged by, K12): the viewer sees the light
+  fall and the vehicle see it fall. In the scenarios that give the light a
+  battery, a third line, `CHARGE`, in seconds. Each line stands on a dark
+  backdrop facing the camera, so that it reads over the memory's clouds.
 - **Two trails**, the vehicle's estimate (the drone marker the offboard
   publishes) in blue and the truth in yellow with a yellow sphere where the
   vehicle really is. Where the light is lost the two part: what the trails

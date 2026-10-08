@@ -23,9 +23,13 @@ not large).
   pose/info of Gazebo), with the truth as a small sphere where the vehicle
   really is. Where the light is lost the two part;
 - the carried light: the share of its nominal intensity the injector set
-  (/evaluation/light_share, the injector's knowledge, for the viewer), and
-  the charge of its battery in the scenarios that give it one
-  (/carried_light/charge_s, what the vehicle knows).
+  (/evaluation/light_share, the injector's knowledge, for the viewer) beside
+  what the vehicle itself sees by it, the share of its guaranteed range the
+  latest frame alone grants (/drone_city_nav/navigation_progress, the
+  braking contract's measure, what the light is judged by, K12), and the
+  charge of its battery in the scenarios that give it one
+  (/carried_light/charge_s, what the vehicle knows). Each line stands on a
+  dark backdrop facing the view's camera, so that it reads over the memory.
 
 Nothing of the stack reads /evaluation (the contract test); the truth never
 reaches the control loop. Urban Circuit's map frame is the SDF frame, so the
@@ -104,15 +108,52 @@ def corner_offset(yaw: float, pitch: float, distance: float,
                  for r, u in zip(right, up))
 
 
-def light_text(share: float | None, charge_s: float | None) -> str:
-    """The light's line: a bar of its share and, with a battery, its charge."""
-    if share is None:
-        return ""
+def bar(share: float) -> str:
     filled = round(10 * max(0.0, min(1.0, share)))
-    text = f"LIGHT {'|' * filled}{'.' * (10 - filled)} {100.0 * share:3.0f} %"
-    if charge_s is not None and math.isfinite(charge_s):
-        text += f"   CHARGE {charge_s:4.0f} s"
-    return text
+    return f"{'|' * filled}{'.' * (10 - filled)} {100.0 * share:3.0f} %"
+
+
+def light_text(share: float | None, seen: float | None) -> str:
+    """The light's line: what the injector set beside what the vehicle sees
+    by it (the share of its guaranteed range the latest frame grants)."""
+    if share is None and seen is None:
+        return ""
+    parts = []
+    if share is not None:
+        parts.append(f"LIGHT {bar(share)}")
+    if seen is not None:
+        parts.append(f"SEES {bar(seen)}")
+    return "   ".join(parts)
+
+
+def charge_text(charge_s: float | None) -> str:
+    """The battery's line, in the scenarios that give the light one."""
+    if charge_s is None or not math.isfinite(charge_s):
+        return ""
+    return f"CHARGE {charge_s:4.0f} s"
+
+
+def facing(yaw: float, pitch: float) -> tuple[float, float, float, float]:
+    """The orientation (x, y, z, w) of a marker whose face looks at an Orbit
+    camera at (yaw, pitch): its x along the camera's right, its y along the
+    camera's up, its z towards the camera."""
+    right = (-math.sin(yaw), math.cos(yaw), 0.0)
+    up = (-math.cos(yaw) * math.sin(pitch), -math.sin(yaw) * math.sin(pitch), math.cos(pitch))
+    towards = (math.cos(yaw) * math.cos(pitch), math.sin(yaw) * math.cos(pitch), math.sin(pitch))
+    m = [[right[0], up[0], towards[0]], [right[1], up[1], towards[1]], [right[2], up[2], towards[2]]]
+    trace = m[0][0] + m[1][1] + m[2][2]
+    if trace > 0.0:
+        s = 0.5 / math.sqrt(trace + 1.0)
+        return ((m[2][1] - m[1][2]) * s, (m[0][2] - m[2][0]) * s, (m[1][0] - m[0][1]) * s,
+                0.25 / s)
+    if m[0][0] > m[1][1] and m[0][0] > m[2][2]:
+        s = 2.0 * math.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2])
+        return (0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s, (m[2][1] - m[1][2]) / s)
+    if m[1][1] > m[2][2]:
+        s = 2.0 * math.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2])
+        return ((m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[0][2] - m[2][0]) / s)
+    s = 2.0 * math.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1])
+    return ((m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[1][0] - m[0][1]) / s)
 
 
 def main() -> int:
@@ -130,11 +171,13 @@ def main() -> int:
     from std_msgs.msg import Bool, ColorRGBA, Float64, String
     from visualization_msgs.msg import Marker, MarkerArray
 
+    from drone_city_nav.msg import NavigationProgress
+
     rclpy.init()
     node = rclpy.create_node("evaluation_overlay")
     lock = threading.Lock()
     state = {"events": [], "estimate": None, "truth": None, "share": None, "charge": None,
-             "velocity_mode": False, "ready": False, "dead_reckoning": False}
+             "seen": None, "velocity_mode": False, "ready": False, "dead_reckoning": False}
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
     ticks = [0]
@@ -169,6 +212,11 @@ def main() -> int:
         with lock:
             state["charge"] = message.data
 
+    def on_progress(message: NavigationProgress) -> None:
+        with lock:
+            state["seen"] = (message.sensor_measured_range_m / message.sensor_guaranteed_range_m
+                             if message.sensor_guaranteed_range_m > 0.0 else None)
+
     def on_poses(message: Pose_V) -> None:
         for pose in message.pose:
             if pose.name == args.model:
@@ -183,6 +231,8 @@ def main() -> int:
                              on_control_mode, best_effort)
     node.create_subscription(Float64, "/evaluation/light_share", on_share, 10)
     node.create_subscription(Float64, "/carried_light/charge_s", on_charge, 10)
+    node.create_subscription(NavigationProgress, "/drone_city_nav/navigation_progress",
+                             on_progress, best_effort)
     publishers = {view: node.create_publisher(MarkerArray, f"/evaluation/markers_{view}", 10)
                   for view in VIEWS}
     gz_node = GzNode()
@@ -213,7 +263,8 @@ def main() -> int:
             text, color = state_text(state["events"], state["dead_reckoning"],
                                      state["velocity_mode"], estimate is not None,
                                      state["ready"])
-            light = light_text(share, state["charge"])
+            light = light_text(share, state["seen"])
+            charge = charge_text(state["charge"])
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))
         if truth is not None:
@@ -225,26 +276,40 @@ def main() -> int:
         trails_due = ticks[0] % TRAILS_EVERY_TICKS == 0
         for view, (yaw, pitch, distance) in VIEWS.items():
             markers = MarkerArray()
-            # The words in the top left corner, the light's line under them.
-            # Each line is centred on its anchor: the longer light line sits
-            # nearer the middle so that its left end stays in the picture. A
-            # line with nothing to say is deleted, never drawn blank: RViz
-            # dies on a text marker of one space (Ogre's vertex buffer of no
-            # glyphs, r1125, r1153, r1154).
+            # The words in the top left corner, the light's line under them and
+            # the charge under that, each on a dark backdrop facing the camera
+            # (the memory's clouds lie behind it). Each line is centred on its
+            # anchor: the longer light line sits nearer the middle so that its
+            # left end stays in the picture. A line with nothing to say is
+            # deleted, never drawn blank: RViz dies on a text marker of one
+            # space (Ogre's vertex buffer of no glyphs, r1125, r1153, r1154).
+            towards = (math.cos(yaw) * math.cos(pitch), math.sin(yaw) * math.cos(pitch),
+                       math.sin(pitch))
+            orientation = facing(yaw, pitch)
             for identifier, line, height, right_share, up_share, tone in (
                     (0, text, TEXT_HEIGHT_M, -0.5, 0.86, color),
                     (1, light, 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
-                     AMBER if light and share is not None and share < 0.35 else GREY)):
+                     AMBER if share is not None and share < 0.35 else GREY),
+                    (5, charge, 0.75 * TEXT_HEIGHT_M, -0.5, 0.71, GREY)):
                 words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
+                backdrop = marker(identifier + 10, Marker.CUBE, (0.0, 0.0, 0.0), 0.6)
                 if not line.strip():
-                    words.action = Marker.DELETE
-                    markers.markers.append(words)
+                    words.action = backdrop.action = Marker.DELETE
+                    markers.markers.extend((words, backdrop))
                     continue
                 words.text = line
                 words.scale.z = height
                 offset = corner_offset(yaw, pitch, distance, right_share, up_share)
-                words.pose.position = point(tuple(a + o for a, o in zip(anchor, offset)))
-                markers.markers.append(words)
+                position = tuple(a + o for a, o in zip(anchor, offset))
+                words.pose.position = point(position)
+                # A glyph of RViz's text is about 0.55 of its height wide.
+                backdrop.scale.x = 0.55 * height * len(line) + height
+                backdrop.scale.y = 1.4 * height
+                backdrop.scale.z = 0.02
+                backdrop.pose.position = point(tuple(p - 0.3 * t for p, t in zip(position, towards)))
+                (backdrop.pose.orientation.x, backdrop.pose.orientation.y,
+                 backdrop.pose.orientation.z, backdrop.pose.orientation.w) = orientation
+                markers.markers.extend((backdrop, words))
             for identifier, name, trail, tone in ((2, "estimate", estimate_trail, ESTIMATE),
                                                   (3, "truth", truth_trail, TRUTH)):
                 if not trails_due or len(trail) < 2:

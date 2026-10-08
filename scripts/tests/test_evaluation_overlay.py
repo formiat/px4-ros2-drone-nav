@@ -6,6 +6,7 @@ reads it back."""
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -63,13 +64,33 @@ class StateWordsTest(unittest.TestCase):
         # line with nothing to say is deleted instead.
         source = PATH.read_text()
         self.assertNotIn('light or " "', source)
-        self.assertIn("words.action = Marker.DELETE", source)
+        self.assertIn("words.action = backdrop.action = Marker.DELETE", source)
 
-    def test_the_light_s_line_is_a_bar_and_the_charge_only_with_a_battery(self) -> None:
+    def test_the_light_s_line_shows_what_was_set_beside_what_is_seen(self) -> None:
         self.assertEqual("", OVERLAY.light_text(None, None))
         self.assertEqual("LIGHT |||||||||| 100 %", OVERLAY.light_text(1.0, None))
-        self.assertEqual("LIGHT ||||......  42 %   CHARGE  183 s", OVERLAY.light_text(0.42, 183.2))
-        self.assertEqual("LIGHT ..........   0 %", OVERLAY.light_text(0.0, float("inf")))
+        self.assertEqual("LIGHT ||||......  42 %   SEES |||.......  31 %",
+                         OVERLAY.light_text(0.42, 0.31))
+        self.assertEqual("SEES ..........   0 %", OVERLAY.light_text(None, 0.0))
+        # The charge only in the scenarios that give the light a battery.
+        self.assertEqual("", OVERLAY.charge_text(None))
+        self.assertEqual("", OVERLAY.charge_text(float("inf")))
+        self.assertEqual("CHARGE  183 s", OVERLAY.charge_text(183.2))
+
+    def test_the_backdrop_faces_the_camera(self) -> None:
+        # Straight down: the backdrop's face looks up, its orientation a unit quaternion.
+        x, y, z, w = OVERLAY.facing(0.0, 1.5707)
+        self.assertAlmostEqual(1.0, x * x + y * y + z * z + w * w, places=6)
+        # A unit quaternion rotating (0, 0, 1) to the camera's direction (up, for pitch pi/2).
+        tz = 2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)
+        self.assertAlmostEqual(1.0, tz[2], places=3)
+        x, y, z, w = OVERLAY.facing(0.65, 0.95)
+        tz = 2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)
+        self.assertAlmostEqual(math.cos(0.65) * math.cos(0.95), tz[0], places=3)
+        self.assertAlmostEqual(math.sin(0.95), tz[2], places=3)
+        source = PATH.read_text()
+        self.assertIn("Marker.CUBE", source)
+        self.assertIn('"/drone_city_nav/navigation_progress"', source)
 
 
 class EvaluationNamespaceContractTest(unittest.TestCase):
