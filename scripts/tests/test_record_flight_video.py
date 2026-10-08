@@ -29,21 +29,44 @@ class RecordingCommandsTest(unittest.TestCase):
         self.assertEqual(3, command.count("h264_nvenc"))
 
     def test_the_split_picture_is_the_world_left_and_the_view_right(self) -> None:
-        command = recorder.compose_command(Path("w.mkv"), Path("v.mkv"), 0.52, 600.0,
-                                           Path("out.mp4"))
-        graph = command[command.index("-filter_complex") + 1]
-        # Both halves are re-timed to the simulation clock by the one pace
-        # of the wall seconds the flight's clock covers: a pace per window
-        # over its own length ran the world ahead of RViz by 17 s (r1179).
-        self.assertIn("[0:v]vflip,setpts=0.520000*PTS,fps=24,scale=960:1080", graph)
-        self.assertIn("[1:v]vflip,setpts=0.520000*PTS,fps=24,scale=960:1080", graph)
-        self.assertIn("[w][v]hstack=inputs=2", graph)
-        # The whole flight: nothing is cut out of a recording, each window
-        # is cut at the flight's end, where its clock ends.
-        self.assertNotIn("-ss", command)
-        self.assertEqual(["-t", "600.000", "-i", "w.mkv", "-t", "600.000", "-i", "v.mkv"],
-                         command[command.index("-t"):command.index("-t") + 8])
-        self.assertEqual("out.mp4", command[-1])
+        # Each window's frames are decoded up to the flight's end, where its
+        # clock ends (the world window lives on after the launch's shutdown,
+        # r1179), as halves the right way up, and the recording is written
+        # from the split pictures at the frame rate.
+        decode = recorder.decode_command(Path("w.mkv"), 600.0)
+        self.assertEqual(["-t", "600.000", "-i", "w.mkv", "-vf", "vflip,scale=960:1080"],
+                         decode[decode.index("-t"):decode.index("-t") + 6])
+        self.assertNotIn("-ss", decode)
+        encode = recorder.encode_command(Path("out.mp4"))
+        self.assertIn("-video_size 1920x1080 -framerate 24 -i -", " ".join(encode))
+        self.assertEqual("out.mp4", encode[-1])
+
+    def test_every_frame_shows_its_own_moment_of_the_flight(self) -> None:
+        # The owner's rule of 2026-10-08: a second of the recording is a
+        # second of the flight at every moment, no frame further than half
+        # a second from its moment. The host holds the simulator unevenly:
+        # here a flight at a half for twenty wall seconds, at a quarter for
+        # the next twenty, 24 frames a wall second. One pace over the whole
+        # (r1179) put frames 6.9 s from their moment.
+        clock = ([(1000.0 + 0.1 * step, 50.0 + 0.05 * step, 0.0, 0.0, 5.0)
+                  for step in range(200)] +
+                 [(1020.0 + 0.1 * step, 60.0 + 0.025 * step, 0.0, 0.0, 5.0)
+                  for step in range(201)])
+        table, offset = recorder.frame_table(clock, 1000.0, 24, 50.0, 15.0)
+        self.assertEqual(15 * 24, len(table))
+        # Ten seconds of flight at a half are twenty wall seconds, 480
+        # frames; the next five at a quarter are twenty wall seconds too:
+        # the table doubles its stride where the simulator slowed.
+        self.assertEqual(0, table[0])
+        self.assertEqual(240, table[5 * 24])
+        self.assertEqual(480, table[10 * 24])
+        # The last frame, 14.96 s of flight: 19.83 wall seconds at a quarter.
+        self.assertEqual(956, table[-1])
+        self.assertTrue(all(b >= a for a, b in zip(table, table[1:])))
+        # A frame comes every 1/24 wall second, 1/6 flight second at a
+        # quarter: no frame further than that from its moment.
+        self.assertLess(offset, 1.0 / 6.0 + 1.0e-6)
+        self.assertLess(offset, recorder.MAXIMUM_FRAME_OFFSET_S)
 
     CLOCK = [(1000.0 + 0.1 * step, 50.0 + 0.05 * step, 0.2 * min(step, 300), 0.0, 5.0)
              for step in range(601)]
@@ -64,27 +87,29 @@ class RecordingCommandsTest(unittest.TestCase):
                    "change": 12.0}
         still = {"world": 0.0, "follow": 0.01}
         distinct = {"world": 19.0, "RViz": 14.0}
-        self.assertEqual([], recorder.verdict(good, picture, 200.0, still, distinct))
+        self.assertEqual([], recorder.verdict(good, picture, 200.0, still, distinct, 0.07))
         # Shorter than a minute, or off the flight's clock by more than a second.
         self.assertTrue(recorder.verdict({**good, "duration_s": 37.0}, picture, 37.0, still,
-                                         distinct))
+                                         distinct, 0.07))
         self.assertTrue(recorder.verdict({**good, "duration_s": 206.0}, picture, 200.0, still,
-                                         distinct))
+                                         distinct, 0.07))
+        # Or with a frame further than half a second from its moment.
+        self.assertTrue(recorder.verdict(good, picture, 200.0, still, distinct, 0.6))
         self.assertTrue(recorder.verdict(good, {**picture, "rviz_brightness": 1.0}, 200.0,
-                                         still, distinct))
+                                         still, distinct, 0.07))
         self.assertTrue(recorder.verdict(good, {**picture, "change": 0.0}, 200.0, still,
-                                         distinct))
+                                         distinct, 0.07))
         self.assertTrue(recorder.verdict({**good, "width": 1280}, picture, 200.0, still,
-                                         distinct))
+                                         distinct, 0.07))
         # The world's half may be all but black: the location has no light.
         self.assertEqual([], recorder.verdict(good, {**picture, "world_brightness": 0.5},
-                                              200.0, still, distinct))
+                                              200.0, still, distinct, 0.07))
         # A window that stood still, or a half that showed one frame a second
         # while the vehicle moved, is a slideshow (r1030 to r1058).
         self.assertTrue(recorder.verdict(good, picture, 200.0, {**still, "world": 0.9},
-                                         distinct))
+                                         distinct, 0.07))
         self.assertTrue(recorder.verdict(good, picture, 200.0, still,
-                                         {**distinct, "world": 1.0}))
+                                         {**distinct, "world": 1.0}, 0.07))
 
     def test_the_redraws_of_a_window_are_read_second_by_second(self) -> None:
         import tempfile

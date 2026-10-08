@@ -362,8 +362,11 @@ the ordinary ones. Its recorder (`scripts/record_flight_video.py`) refuses a
 recording whose window redrew fewer than half its frames in more than 2
 percent of the seconds, whose half showed fewer than six different frames a
 second at the median while the vehicle moved, whose length is off the
-flight's simulation time by more than a second, or that is shorter than a
-minute.
+flight's simulation time by more than a second, that shows a frame further
+than half a second from its moment of the flight (each frame of the
+recording is the last the window drew at or before its moment on the
+simulation clock, so an unevenly held simulator plays second for second),
+or that is shorter than a minute.
 
 ### Localization profile
 

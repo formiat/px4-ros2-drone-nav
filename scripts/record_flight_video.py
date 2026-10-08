@@ -12,10 +12,13 @@ after the flight joins them into two files, the world on the left and RViz
 on the right, one for each view, and checks them.
 
 The recording is the whole flight, from the windows standing to the
-flight's end, with nothing cut out, and it plays at the flight's own pace:
-the frames are taken on the wall clock and re-timed to the simulation clock
-(the true pose record carries both), so a flight slowed against the wall
-(REAL_TIME_FACTOR) plays as long as it flew.
+flight's end, with nothing cut out, and it plays at the flight's own pace
+at every moment: the frames are taken on the wall clock, and each frame of
+the recording, FRAME_RATE a second of simulation, shows the last frame taken
+at or before its moment of the flight (the true pose record carries both
+clocks), so a flight slowed against the wall (REAL_TIME_FACTOR), or held
+unevenly by the host, plays as it flew, second for second (the owner's rule
+of 2026-10-08: no frame further than half a second from its moment).
 
 Nothing is read through the X server and nothing is put together during the
 flight: a window read through the server cost the simulator a seventh of its
@@ -49,6 +52,11 @@ CAPTURE_RATES = {"world": 24, "follow": 15, "top": 15}
 MINIMUM_DURATION_S = 60.0
 # The recording against the flight's simulation clock, over the whole flight.
 MAXIMUM_CLOCK_ERROR_S = 1.0
+# And at every moment of it: no frame shown further than this from the
+# moment of the flight it is shown at (the owner's rule of 2026-10-08). One
+# pace over the whole flight, with the host holding the simulator unevenly,
+# had frames 6.9 s from their moment (r1179).
+MAXIMUM_FRAME_OFFSET_S = 0.5
 # A window that redraws less often than this for a second is standing still:
 # the slideshow of the first batch redrew once a second (r1030 to r1058).
 MINIMUM_REDRAWS_PER_SECOND = {"world": 12, "follow": 7, "top": 7}
@@ -94,23 +102,87 @@ def capture_command(sizes: dict[str, tuple[int, int]], run_directory: Path,
     return command
 
 
-def compose_command(world: Path, view: Path, pace: float, flight_wall_s: float,
-                    output: Path) -> list[str]:
+def decode_command(source: Path, flight_wall_s: float) -> list[str]:
+    """One window's stored frames, up to the flight's end, as raw pictures
+    of a half of the recording, the right way up."""
+    return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-t", f"{flight_wall_s:.3f}",
+            "-i", str(source), "-vf", f"vflip,scale={HALF_WIDTH}:{HEIGHT}",
+            "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+
+
+def encode_command(output: Path) -> list[str]:
+    """The recording from raw split pictures, FRAME_RATE a second."""
+    return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
+            "-pix_fmt", "bgr24", "-video_size", f"{2 * HALF_WIDTH}x{HEIGHT}",
+            "-framerate", str(FRAME_RATE), "-i", "-", "-c:v", "libx264", "-preset",
+            "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            str(output)]
+
+
+def frame_table(clock: list[tuple[float, float, float, float, float]], started: float,
+                rate: int, begin_sim_s: float, flight_s: float) -> tuple[list[int], float]:
+    """For each frame of the recording, FRAME_RATE a second of simulation
+    from `begin_sim_s` over `flight_s`, the index of the window's frame to
+    show: the last one taken (on the wall clock, `rate` a second from
+    `started`) at or before that moment of the flight. With it, the largest
+    distance, in seconds of simulation, between a frame shown and the moment
+    it is shown at: the frames come `rate` a second of wall time, so it is
+    about a wall frame's worth of simulation, and more only where a window
+    stood or the clock jumped."""
+    table = []
+    offset = 0.0
+    index = 0
+    shown_sim_s = simulation_time_at(clock, started)
+    for frame in range(int(flight_s * FRAME_RATE)):
+        moment_s = begin_sim_s + frame / FRAME_RATE
+        while True:
+            next_sim_s = simulation_time_at(clock, started + (index + 1) / rate)
+            if next_sim_s > moment_s:
+                break
+            index += 1
+            shown_sim_s = next_sim_s
+        table.append(index)
+        offset = max(offset, moment_s - shown_sim_s)
+    return table, offset
+
+
+def compose(world: Path, view: Path, tables: dict[str, list[int]], flight_wall_s: float,
+            output: Path) -> int:
     """The split picture of one view, after the flight: the world on the
-    left, the view on the right, the whole of both up to the flight's end,
-    both re-timed by the one pace (seconds of simulation to a second of
-    frames) of the wall seconds the flight's clock covers."""
-    return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-t", f"{flight_wall_s:.3f}", "-i", str(world),
-            "-t", f"{flight_wall_s:.3f}", "-i", str(view),
-            "-filter_complex",
-            f"[0:v]vflip,setpts={pace:.6f}*PTS,fps={FRAME_RATE},"
-            f"scale={HALF_WIDTH}:{HEIGHT},setsar=1[w];"
-            f"[1:v]vflip,setpts={pace:.6f}*PTS,fps={FRAME_RATE},"
-            f"scale={HALF_WIDTH}:{HEIGHT},setsar=1[v];"
-            "[w][v]hstack=inputs=2:shortest=1,format=yuv420p",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-            "-movflags", "+faststart", str(output)]
+    left, the view on the right, frame by frame as the tables say, until
+    either window's frames run out. Returns the frames written."""
+    import numpy
+
+    half_bytes = HALF_WIDTH * HEIGHT * 3
+    sources = {"world": world, "view": view}
+    decoders = {name: subprocess.Popen(decode_command(path, flight_wall_s),
+                                       stdout=subprocess.PIPE)
+                for name, path in sources.items()}
+    encoder = subprocess.Popen(encode_command(output), stdin=subprocess.PIPE)
+    held: dict[str, bytes | None] = {name: None for name in sources}
+    read = {name: -1 for name in sources}
+    written = 0
+    try:
+        for frame in range(min(len(table) for table in tables.values())):
+            for name, table in tables.items():
+                while read[name] < table[frame]:
+                    data = decoders[name].stdout.read(half_bytes)
+                    if len(data) < half_bytes:
+                        return written
+                    held[name] = data
+                    read[name] += 1
+            picture = numpy.hstack([
+                numpy.frombuffer(held[name], dtype=numpy.uint8).reshape(HEIGHT, HALF_WIDTH, 3)
+                for name in ("world", "view")])
+            encoder.stdin.write(picture.tobytes())
+            written += 1
+        return written
+    finally:
+        for decoder in decoders.values():
+            decoder.kill()
+            decoder.wait()
+        encoder.stdin.close()
+        encoder.wait()
 
 
 def flight_clock(run_directory: Path) -> list[tuple[float, float, float, float, float]]:
@@ -223,12 +295,16 @@ def picture_statistics(path: Path, duration_s: float) -> dict:
 
 
 def verdict(info: dict, statistics: dict, flight_s: float,
-            still_shares: dict[str, float], distinct: dict[str, float]) -> list[str]:
+            still_shares: dict[str, float], distinct: dict[str, float],
+            offset_s: float) -> list[str]:
     """Why a recording is not one; empty when it is. `flight_s` is the
     recorded flight on the simulation clock, `still_shares` the share of the
     seconds in which a window all but stood still, `distinct` the different
-    frames a second a half showed while the vehicle moved, at the median."""
+    frames a second a half showed while the vehicle moved, at the median,
+    `offset_s` the furthest a frame shown is from its moment of the flight."""
     reasons = []
+    if offset_s > MAXIMUM_FRAME_OFFSET_S:
+        reasons.append(f"a frame {offset_s:.2f} s from its moment of the flight")
     if (info.get("width"), info.get("height")) != (2 * HALF_WIDTH, HEIGHT):
         reasons.append(f"frame {info.get('width')}x{info.get('height')}")
     duration_s = info.get("duration_s", 0.0)
@@ -321,28 +397,32 @@ def main() -> int:
         return 1
     # The flight's clock ends with the launch, which closes the following
     # RViz with it, while the world and the top-down windows live on until
-    # the simulation is stopped (r1179: 34 s more). Each window is cut at the
-    # clock's end, and both halves take the one pace of that interval: a pace
-    # per window over its own length ran the world 5 percent ahead of the
-    # RViz beside it, 17 s by the end of r1179.
+    # the simulation is stopped (r1179: 34 s more): each window is cut at the
+    # clock's end, and every frame of the recording is timed by the clock
+    # alone (frame_table), so the halves cannot part (a pace per window over
+    # its own length ran the world 17 s ahead of RViz by the end of r1179).
     begin_sim_s = simulation_time_at(clock, started)
     flight_wall_s = max(clock[-1][0] - started, 1.0e-3)
-    pace = (simulation_time_at(clock, clock[-1][0]) - begin_sim_s) / flight_wall_s
     spans, still_shares = {}, {}
     for name in SOURCES:
         wall_s = min(probe(raw[name])["duration_s"], flight_wall_s)
-        spans[name] = wall_s * pace
+        spans[name] = simulation_time_at(clock, started + wall_s) - begin_sim_s
         counts = redraws(run_directory, name, started, started + wall_s)
         still = sum(count < MINIMUM_REDRAWS_PER_SECOND[name] for count in counts)
         still_shares[name] = still / len(counts) if counts else 1.0
     flight_s = min(spans.values())
     windows = moving_windows(clock, begin_sim_s, begin_sim_s + flight_s)
     windows = windows[::max(1, len(windows) // MAXIMUM_WINDOWS_LOOKED_AT)]
+    tables, offsets = {}, {}
+    for name in SOURCES:
+        tables[name], offsets[name] = frame_table(clock, started, CAPTURE_RATES[name],
+                                                  begin_sim_s, flight_s)
     failed = False
     for view in VIEWS:
         final = args.output_directory / f"{args.name}_{view}.mp4"
-        subprocess.run(compose_command(raw["world"], raw[view], pace, flight_wall_s, final),
-                       check=False)
+        compose(raw["world"], raw[view], {"world": tables["world"], "view": tables[view]},
+                flight_wall_s, final)
+        offset_s = max(offsets["world"], offsets[view])
         info = probe(final)
         picture = picture_statistics(final, info["duration_s"]) if info["duration_s"] else {}
         # At the median: a view of the world may be dark or hidden for a
@@ -354,10 +434,12 @@ def main() -> int:
                  for begin in windows] or [MINIMUM_DISTINCT_FRAMES_PER_SECOND])
             for half in ("world", "RViz")}
         reasons = verdict(info, picture, flight_s,
-                          {name: still_shares[name] for name in ("world", view)}, distinct)
+                          {name: still_shares[name] for name in ("world", view)}, distinct,
+                          offset_s)
         failed = failed or bool(reasons)
         print(f"RECORDING {'BAD' if reasons else 'ok'} {final} "
               f"duration={info['duration_s']:.1f}s flight={flight_s:.1f}s "
+              f"frame_offset={offset_s:.2f}s "
               f"still={json.dumps(still_shares)} distinct={json.dumps(distinct)} "
               f"{json.dumps(picture)}"
               + (": " + "; ".join(reasons) if reasons else ""), flush=True)
