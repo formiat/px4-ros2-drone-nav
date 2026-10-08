@@ -94,17 +94,19 @@ def capture_command(sizes: dict[str, tuple[int, int]], run_directory: Path,
     return command
 
 
-def compose_command(world: Path, view: Path, world_pace: float, view_pace: float,
+def compose_command(world: Path, view: Path, pace: float, flight_wall_s: float,
                     output: Path) -> list[str]:
     """The split picture of one view, after the flight: the world on the
-    left, the view on the right, the whole of both, each re-timed by its
-    pace (seconds of simulation to a second of its frames)."""
+    left, the view on the right, the whole of both up to the flight's end,
+    both re-timed by the one pace (seconds of simulation to a second of
+    frames) of the wall seconds the flight's clock covers."""
     return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(world), "-i", str(view),
+            "-t", f"{flight_wall_s:.3f}", "-i", str(world),
+            "-t", f"{flight_wall_s:.3f}", "-i", str(view),
             "-filter_complex",
-            f"[0:v]vflip,setpts={world_pace:.6f}*PTS,fps={FRAME_RATE},"
+            f"[0:v]vflip,setpts={pace:.6f}*PTS,fps={FRAME_RATE},"
             f"scale={HALF_WIDTH}:{HEIGHT},setsar=1[w];"
-            f"[1:v]vflip,setpts={view_pace:.6f}*PTS,fps={FRAME_RATE},"
+            f"[1:v]vflip,setpts={pace:.6f}*PTS,fps={FRAME_RATE},"
             f"scale={HALF_WIDTH}:{HEIGHT},setsar=1[v];"
             "[w][v]hstack=inputs=2:shortest=1,format=yuv420p",
             "-c:v", "libx264", "-preset", "medium", "-crf", "20",
@@ -317,15 +319,19 @@ def main() -> int:
     if len(clock) < 2:
         print("RECORDING none: no true pose record to time the frames by", flush=True)
         return 1
-    # Each window's frames span the wall clock from the first to its own
-    # last (the windows close one after another), and are re-timed to the
-    # simulation seconds that span covers.
+    # The flight's clock ends with the launch, which closes the following
+    # RViz with it, while the world and the top-down windows live on until
+    # the simulation is stopped (r1179: 34 s more). Each window is cut at the
+    # clock's end, and both halves take the one pace of that interval: a pace
+    # per window over its own length ran the world 5 percent ahead of the
+    # RViz beside it, 17 s by the end of r1179.
     begin_sim_s = simulation_time_at(clock, started)
-    spans, paces, still_shares = {}, {}, {}
+    flight_wall_s = max(clock[-1][0] - started, 1.0e-3)
+    pace = (simulation_time_at(clock, clock[-1][0]) - begin_sim_s) / flight_wall_s
+    spans, still_shares = {}, {}
     for name in SOURCES:
-        wall_s = probe(raw[name])["duration_s"]
-        spans[name] = simulation_time_at(clock, started + wall_s) - begin_sim_s
-        paces[name] = spans[name] / max(wall_s, 1.0e-3)
+        wall_s = min(probe(raw[name])["duration_s"], flight_wall_s)
+        spans[name] = wall_s * pace
         counts = redraws(run_directory, name, started, started + wall_s)
         still = sum(count < MINIMUM_REDRAWS_PER_SECOND[name] for count in counts)
         still_shares[name] = still / len(counts) if counts else 1.0
@@ -335,8 +341,8 @@ def main() -> int:
     failed = False
     for view in VIEWS:
         final = args.output_directory / f"{args.name}_{view}.mp4"
-        subprocess.run(compose_command(raw["world"], raw[view], paces["world"], paces[view],
-                                       final), check=False)
+        subprocess.run(compose_command(raw["world"], raw[view], pace, flight_wall_s, final),
+                       check=False)
         info = probe(final)
         picture = picture_statistics(final, info["duration_s"]) if info["duration_s"] else {}
         # At the median: a view of the world may be dark or hidden for a

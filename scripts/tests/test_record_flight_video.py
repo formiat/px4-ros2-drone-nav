@@ -29,16 +29,20 @@ class RecordingCommandsTest(unittest.TestCase):
         self.assertEqual(3, command.count("h264_nvenc"))
 
     def test_the_split_picture_is_the_world_left_and_the_view_right(self) -> None:
-        command = recorder.compose_command(Path("w.mkv"), Path("v.mkv"), 0.5, 0.52,
+        command = recorder.compose_command(Path("w.mkv"), Path("v.mkv"), 0.52, 600.0,
                                            Path("out.mp4"))
         graph = command[command.index("-filter_complex") + 1]
-        # Each half is re-timed to the simulation clock by its own pace.
-        self.assertIn("[0:v]vflip,setpts=0.500000*PTS,fps=24,scale=960:1080", graph)
+        # Both halves are re-timed to the simulation clock by the one pace
+        # of the wall seconds the flight's clock covers: a pace per window
+        # over its own length ran the world ahead of RViz by 17 s (r1179).
+        self.assertIn("[0:v]vflip,setpts=0.520000*PTS,fps=24,scale=960:1080", graph)
         self.assertIn("[1:v]vflip,setpts=0.520000*PTS,fps=24,scale=960:1080", graph)
         self.assertIn("[w][v]hstack=inputs=2", graph)
-        # The whole flight: nothing is cut out of a recording.
+        # The whole flight: nothing is cut out of a recording, each window
+        # is cut at the flight's end, where its clock ends.
         self.assertNotIn("-ss", command)
-        self.assertNotIn("-t", command)
+        self.assertEqual(["-t", "600.000", "-i", "w.mkv", "-t", "600.000", "-i", "v.mkv"],
+                         command[command.index("-t"):command.index("-t") + 8])
         self.assertEqual("out.mp4", command[-1])
 
     CLOCK = [(1000.0 + 0.1 * step, 50.0 + 0.05 * step, 0.2 * min(step, 300), 0.0, 5.0)
