@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # record_flight.sh SCENARIO RUN DIRECTORY: one flight of a named scenario (point-to-point, light-lost,
-# light-failure, low-battery, long-failures, return-home) flown as the headless acceptance flight with its pictures on
+# light-failure, low-battery) flown as the headless acceptance flight with its pictures on
 # the desktop, and recorded: two split files in DIRECTORY, the 3D world on the left and RViz on the right, one with the
 # third-person view and one with the top-down view (roadmap item 20). Nobody has to be at the desk; the desktop is
 # kept from going idle while the flight lasts and nothing of its settings is changed. The flight is slowed against the
@@ -14,8 +14,10 @@ scenario=$1; run=$2; directory=$3
 case $scenario in
   point-to-point) duration=900 ;;
   light-lost) duration=400 ;;
-  long-failures) duration=1500 ;;
-  return-home) duration=900 ;;
+  # Set aside by the owner on 2026-10-08: neither is flown nor recorded without the owner's word, the goal-outside
+  # flight until item 19's proof is flown (roadmap item 24). FLY_SET_ASIDE=1 is that word.
+  long-failures) [ "${FLY_SET_ASIDE:-0}" = 1 ] || { echo "$scenario is set aside (the owner, 2026-10-08)" >&2; exit 2; }; duration=1500 ;;
+  return-home) [ "${FLY_SET_ASIDE:-0}" = 1 ] || { echo "$scenario is set aside (the owner, 2026-10-08)" >&2; exit 2; }; duration=900 ;;
   light-failure | low-battery) duration=1800 ;;
   *) echo "unknown scenario $scenario" >&2; exit 2 ;;
 esac

@@ -9,7 +9,9 @@ set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 directory=$1; passes=$2; number=$3
 mkdir -p "$directory"; touch "$directory/.keep"
-scenarios=("point-to-point" "long-failures" "light-lost" "light-failure" "low-battery" "return-home")
+# The long flight to B and back and the goal-outside flight are set aside (the owner, 2026-10-08): neither is flown
+# nor recorded without the owner's word, the latter until item 19's proof is flown (roadmap item 24).
+scenarios=("point-to-point" "light-lost" "light-failure" "low-battery")
 fly() {  # fly SCENARIO: 0 when the flight and its recording are good
   local run="r$number"
   number=$((number + 1))
