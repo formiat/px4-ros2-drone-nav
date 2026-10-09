@@ -21,6 +21,15 @@
  * seventh of its speed a window (r1005 to r1007). An evaluation tool: nothing
  * of the stack loads it.
  *
+ * The window of a recording opens below every other window and minimizes
+ * itself once it draws (the owner, 2026-10-08: the windows popped up over
+ * the owner's work): its _NET_WM_STATE asks for the bottom of the stack
+ * before it is mapped, and the first second it redraws twelve times or
+ * more it asks the window manager for the iconic state. A window that
+ * draws keeps drawing minimized, at the same rate (r1182, all three
+ * minimized in flight); one opened minimized never starts (the Gazebo
+ * window redrew once a second on the rig).
+ *
  * Build: cc -shared -fPIC -O2 -o frame_pace_shim.so frame_pace_shim.c -ldl -lpthread
  */
 #define _GNU_SOURCE
@@ -32,6 +41,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <X11/Xlib.h>
 
 #define GL_PIXEL_PACK_BUFFER 0x88EB
 #define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
@@ -87,6 +97,10 @@ static void pace(void) {
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned char* frame;
 static size_t frame_bytes;
+/* The X display and window of the captured surface, for the minimizing. */
+static void* x_display;
+static unsigned long x_window;
+static void minimize_window(void);
 
 static void* write_frames(void* unused) {
   const char* hz = getenv("FRAME_CAPTURE_HZ");
@@ -147,6 +161,9 @@ static void count_redraw(void) {
   if (now.tv_sec != second) {
     fprintf(rate, "%ld %d\n", (long)second, count);
     fflush(rate);
+    if (count >= 12) {
+      minimize_window();
+    }
     second = now.tv_sec;
     count = 0;
   }
@@ -290,6 +307,8 @@ void glXSwapBuffers(void* display, unsigned long drawable) {
   if (query != NULL) {
     query(display, drawable, GLX_WIDTH, &width);
     query(display, drawable, GLX_HEIGHT, &height);
+    x_display = display;
+    x_window = drawable;
     capture(drawable, (int)width, (int)height);
   }
   real(display, drawable);
@@ -310,4 +329,91 @@ unsigned int eglSwapBuffers(void* display, void* surface) {
     capture((unsigned long)surface, width, height);
   }
   return real(display, surface);
+}
+
+
+
+/* Once: the top-level window the captured surface is in (the ancestor the
+   window manager keeps a WM_STATE on; the GLX drawable is the window Qt
+   draws in for Gazebo, a child the renderer made inside it for RViz) asks
+   for the bottom of the stack and for the iconic state. Through Xlib, which
+   GLX brought in; Qt and the renderers made their display thread-safe. */
+static void minimize_window(void) {
+  static int done;
+  Display* display = (Display*)x_display;
+  Window window = (Window)x_window, root = 0, parent = 0, top = 0, *children = NULL;
+  Atom (*intern)(Display*, const char*, int) = dlsym(RTLD_DEFAULT, "XInternAtom");
+  int (*query_tree)(Display*, Window, Window*, Window*, Window**, unsigned int*) =
+      dlsym(RTLD_DEFAULT, "XQueryTree");
+  int (*get_property)(Display*, Window, Atom, long, long, int, Atom, Atom*, int*,
+                      unsigned long*, unsigned long*, unsigned char**) =
+      dlsym(RTLD_DEFAULT, "XGetWindowProperty");
+  int (*send_event)(Display*, Window, int, long, XEvent*) = dlsym(RTLD_DEFAULT, "XSendEvent");
+  int (*flush)(Display*) = dlsym(RTLD_DEFAULT, "XFlush");
+  int (*free_x)(void*) = dlsym(RTLD_DEFAULT, "XFree");
+  Atom wm_state, change_state, net_state, below;
+  unsigned int count = 0;
+  int depth;
+  if (done || getenv("FRAME_CAPTURE_FIFO") == NULL) {
+    return;
+  }
+  done = 1;
+  if (display == NULL || intern == NULL || query_tree == NULL || get_property == NULL ||
+      send_event == NULL || flush == NULL || free_x == NULL) {
+    fprintf(stderr, "frame capture: no Xlib to minimize the window with\n");
+    return;
+  }
+  wm_state = intern(display, "WM_STATE", 0);
+  change_state = intern(display, "WM_CHANGE_STATE", 0);
+  net_state = intern(display, "_NET_WM_STATE", 0);
+  below = intern(display, "_NET_WM_STATE_BELOW", 0);
+  /* The root, which the client messages go to (the Gazebo window is its
+     own top level: the walk below ends before it asks). */
+  if (query_tree(display, window, &root, &parent, &children, &count) == 0) {
+    return;
+  }
+  free_x(children);
+  children = NULL;
+  for (depth = 0; depth < 8 && window != 0; ++depth) {
+    Atom type = 0;
+    int format = 0;
+    unsigned long items = 0, left = 0;
+    unsigned char* data = NULL;
+    if (get_property(display, window, wm_state, 0, 2, 0, wm_state, &type, &format, &items,
+                     &left, &data) == 0 &&
+        data != NULL) {
+      free_x(data);
+      if (type == wm_state) {
+        top = window;
+        break;
+      }
+    }
+    if (query_tree(display, window, &root, &parent, &children, &count) == 0) {
+      break;
+    }
+    free_x(children);
+    children = NULL;
+    window = parent == root ? 0 : parent;
+  }
+  if (top == 0) {
+    fprintf(stderr, "frame capture: no managed window above 0x%lx\n", x_window);
+    return;
+  }
+  {
+    XEvent event;
+    memset(&event, 0, sizeof(event));
+    event.xclient.type = ClientMessage;
+    event.xclient.window = top;
+    event.xclient.format = 32;
+    event.xclient.message_type = net_state;
+    event.xclient.data.l[0] = 1; /* add */
+    event.xclient.data.l[1] = (long)below;
+    send_event(display, root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &event);
+    event.xclient.message_type = change_state;
+    event.xclient.data.l[0] = 3; /* IconicState */
+    event.xclient.data.l[1] = 0;
+    send_event(display, root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &event);
+    flush(display);
+  }
+  fprintf(stderr, "frame capture: window 0x%lx minimized\n", (unsigned long)top);
 }
