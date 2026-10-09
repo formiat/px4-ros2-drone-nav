@@ -1811,10 +1811,21 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   the mission's events published by the nodes that decide them, and over
   the RViz view, in its top left corner, what the vehicle decided, the
   carried light's bar and charge, and the vehicle's estimate against the
-  truth as two trails. It costs 0.20 cores at the median and runs only
-  where RViz is open. The scenarios recorded with it on 8edbf359 are in
-  `log/videos/2026-10-08/`, every flight counted by the verdict
-  ([`scenarios.md`](scenarios.md) says what each shows).
+  truth as two trails (white and green), and what the vehicle sees beside
+  what the light was set to. It costs 0.20 cores at the median and runs
+  only where RViz is open. The four scenarios recorded with it on dfe7121f
+  are in `log/videos/2026-10-08/` (r1182 to r1185), every flight counted by
+  the verdict ([`scenarios.md`](scenarios.md) says what each shows).
+- **Darkness told apart, and the recording second for second** (2026-10-08):
+  what the vehicle sees is the frame's share, not the measured range with
+  its floor at the margin (`SEES 4 %` in full dark, where it read 31 %); a
+  blind frame's stereo returns never reach the memory; the memory tells an
+  occupancy no measured return has hit from a surface and RViz draws it grey
+  (specification K14, K26, 5934e5ca); every frame of a recording shows its
+  own moment of the flight (A11, 633e77a1). The acceptance on 18ba583c, the
+  stereo set at 1.0: 1.822 to 1.995 m/s (mean 1.897), B within 0.03 m, no
+  contact, every flight counted (r1186 to r1190). The long flight to B and
+  back and the goal-outside flight are set aside (A8).
 - **Flights under the host's load** (specification A4): a flight is watched
   while it flies and stopped when the load slows it, and flown again when
   the host is quiet (`tools/fly_until_valid.sh`, `tools/record_until_pass.sh`).
