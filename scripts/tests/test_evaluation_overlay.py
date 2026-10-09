@@ -43,7 +43,11 @@ class StateWordsTest(unittest.TestCase):
         self.assertEqual("LEVEL DESCENT", text([], True, True, True, True)[0])
         # On the pad the estimator declares dead reckoning too: not the flight's.
         self.assertEqual("TAKEOFF", text([], True, False, True, False)[0])
-        self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, True)[0])
+        # LANDED while the vehicle stays where it touched down; one that flew
+        # on (r1184 touched a floor in flight) shows what it does now.
+        self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, True, True)[0])
+        self.assertEqual("TO GOAL", text(["VEHICLE_LANDED"], False, False, True, True, False)[0])
+        self.assertIn("math.dist((estimate.x, estimate.y, estimate.z)", PATH.read_text())
         self.assertEqual("GOAL REACHED",
                          text(["MISSION_RESULT success=true reason=goal"], False, False,
                               True, True)[0])

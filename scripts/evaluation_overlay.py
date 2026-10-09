@@ -54,6 +54,8 @@ TEXT_HEIGHT_M = 1.1  # about 1/40 of the view's height at the views' distances
 TRAIL_WIDTH_M = {"estimate": 0.2, "truth": 0.35}
 TRAILS_EVERY_TICKS = 5  # the trails once a second: thousands of points a message
 TRUTH_RADIUS_M = 0.6
+# LANDED while the estimate stays this close to where the vehicle touched down.
+LANDED_WITHIN_M = 0.5
 # The two views of drone_city_nav/rviz (the recording's follow and top views):
 # RViz's Orbit camera at (yaw, pitch, distance) around the vehicle, and the
 # vertical field of view RViz draws with.
@@ -70,11 +72,14 @@ TRUTH = (0.4, 1.0, 0.4)
 
 
 def state_text(events: list[str], dead_reckoning: bool, descending: bool,
-               airborne: bool, ready: bool) -> tuple[str, tuple[float, float, float]]:
-    """The words over the vehicle for what it has decided so far."""
+               airborne: bool, ready: bool,
+               landed: bool = False) -> tuple[str, tuple[float, float, float]]:
+    """The words over the vehicle for what it has decided so far. `landed`
+    while the vehicle stays where it touched down: the landing's event is
+    kept, the vehicle may fly on (r1184 touched a floor and flew on)."""
     if any(event.startswith("VEHICLE_DESTROYED") for event in events):
         return "CRASH", RED
-    if any(event.startswith("VEHICLE_LANDED") for event in events):
+    if landed:
         return "LANDED", GREY
     if any(event.startswith("MISSION_RESULT success=true") for event in events):
         return "GOAL REACHED", GREEN
@@ -178,7 +183,8 @@ def main() -> int:
     node = rclpy.create_node("evaluation_overlay")
     lock = threading.Lock()
     state = {"events": [], "estimate": None, "truth": None, "share": None, "charge": None,
-             "seen": None, "velocity_mode": False, "ready": False, "dead_reckoning": False}
+             "seen": None, "velocity_mode": False, "ready": False, "dead_reckoning": False,
+             "landed_at": None}
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
     ticks = [0]
@@ -192,6 +198,8 @@ def main() -> int:
             state["events"].append(message.data)
             if message.data.startswith("VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING"):
                 state["dead_reckoning"] = message.data.endswith("started=true")
+            if message.data.startswith("VEHICLE_LANDED"):
+                state["landed_at"] = state["estimate"]
 
     def on_marker(message: Marker) -> None:
         with lock:
@@ -263,9 +271,13 @@ def main() -> int:
             truth = state["truth"]
             share = state["share"]
             # Airborne once the offboard publishes the vehicle's marker (a valid position).
+            landed_at = state["landed_at"]
+            landed = (landed_at is not None and estimate is not None and
+                      math.dist((estimate.x, estimate.y, estimate.z),
+                                (landed_at.x, landed_at.y, landed_at.z)) < LANDED_WITHIN_M)
             text, color = state_text(state["events"], state["dead_reckoning"],
                                      state["velocity_mode"], estimate is not None,
-                                     state["ready"])
+                                     state["ready"], landed)
             light = light_text(share, state["seen"])
             charge = charge_text(state["charge"])
         if estimate is not None:

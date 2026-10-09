@@ -2,12 +2,14 @@
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <ros_gz_interfaces/msg/contacts.hpp>
@@ -50,6 +52,17 @@ public:
         declare_parameter<std::string>("mission_event_topic",
                                        "/drone_city_nav/mission_events"),
         rclcpp::QoS{50}.reliable().transient_local());
+    // A contact with a floor is a landing only while the offboard is landing
+    // the vehicle (specification A9), which its state says (the blind
+    // descent of K19). r1184 sank onto the floor of the staging area in
+    // flight, level and at 0.11 m/s, and read as a landing.
+    navigation_state_sub_ = create_subscription<msg::VehicleNavigationState>(
+        declare_parameter<std::string>("vehicle_navigation_state_topic",
+                                       "/drone_city_nav/vehicle_state"),
+        rclcpp::QoS{10}.best_effort(),
+        [this](const msg::VehicleNavigationState::SharedPtr state) {
+          descending_ = state->landing;
+        });
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
         vehicle_destroyed_topic,
         rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
@@ -171,7 +184,7 @@ private:
                        std::sqrt(normal.x * normal.x + normal.y * normal.y +
                                  normal.z * normal.z);
           });
-      if (body && on_floor && attitude_valid_ &&
+      if (body && on_floor && descending_ && attitude_valid_ &&
           std::abs(attitude_.roll_rad) < kLandingTiltRad &&
           std::abs(attitude_.pitch_rad) < kLandingTiltRad &&
           speed_mps_ < kLandingSpeedMps &&
@@ -263,6 +276,8 @@ private:
   rclcpp::Publisher<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_pub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<ros_gz_interfaces::msg::Contacts>::SharedPtr contacts_sub_;
+  rclcpp::Subscription<msg::VehicleNavigationState>::SharedPtr navigation_state_sub_;
+  bool descending_{false};
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
 };
 

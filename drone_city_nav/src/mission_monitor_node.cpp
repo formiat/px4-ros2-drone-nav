@@ -663,7 +663,10 @@ private:
            kReturnReserveS;
   }
 
-  static constexpr double kReturnEstimateMargin{2.0};
+  // The way home against the way out, which it retraces: 1.5 (the owner,
+  // 2026-10-09; at 2.0 the low-battery flight came home with 90 of its 240 s
+  // unspent, the way home having taken 62 s for 60 s out, r1185).
+  static constexpr double kReturnEstimateMargin{1.5};
   static constexpr double kReturnReserveS{20.0};
   // The charge kept over what the way home needs when the vehicle turns
   // (specification K11, the owner's rule of 2026-10-05).

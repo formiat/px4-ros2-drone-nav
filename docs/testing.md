@@ -185,8 +185,10 @@ scenarios say in the manifest what else may end them:
 
 The crash judge (`collision_crash_node`) knows one contact that is not a
 crash: a landing, the body on a surface whose normals are within 25 degrees
-of the vertical, level, under 1 m/s and under 0.5 m/s across it, and the
-contact kept without a half-second gap afterwards (specification A9). Every
+of the vertical, level, under 1 m/s and under 0.5 m/s across it, while the
+offboard is landing the vehicle (the blind descent of K19, which the
+vehicle's state carries), and the contact kept without a half-second gap
+afterwards (specification A9). A floor touched in flight is a crash (r1184). Every
 other contact destroys the vehicle, a rotor on a wall at 0.1 m/s included.
 The light's failures, its battery and the camera stream's
 failures are evaluation components (`scripts/carried_light.py`,

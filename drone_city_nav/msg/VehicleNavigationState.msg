@@ -8,3 +8,6 @@ bool heading_valid
 bool armed
 bool airborne
 bool navigation_ready
+# The blind descent of K19 under way: the crash judge counts a contact with a
+# floor as a landing only while it is (specification A9).
+bool landing

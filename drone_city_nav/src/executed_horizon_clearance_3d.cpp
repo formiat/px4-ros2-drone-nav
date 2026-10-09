@@ -19,6 +19,13 @@ namespace {
                     second.z - first.z);
 }
 
+// The estimate's vertical error the body's clearance is measured with
+// (specification K27): the camera estimator's height runs 0.3 to 0.6 m from
+// the truth, 0.57 m by the end of an ordinary flight (r1183), 0.5 m after
+// 2.8 s of dead reckoning (r1184), and a horizon that kept 0.3 m above a
+// floor by the estimate put the feet on it (r1184).
+constexpr double kEstimateVerticalErrorM{0.5};
+
 // The physical body alone, for the clearance a constrained sample's body keeps.
 [[nodiscard]] SweptFootprintConfig
 bodyFootprint(const SweptFootprintConfig& footprint) {
@@ -29,15 +36,32 @@ bodyFootprint(const SweptFootprintConfig& footprint) {
   return body;
 }
 
+// The body's clearance where the estimate puts it, and the error lower and
+// higher: the least of the three. The query is conservative over the whole
+// 3D offset of every sample, so a taller body would have lost the error
+// sideways too; a shifted centre loses it only where the error lies. The
+// shift is whole cells of the evidence grid (two of the 0.25 m grid), so
+// the samples keep their place in the cells and the query answers as it
+// does unshifted.
 [[nodiscard]] double bodyClearanceM(const EsdfGrid3D& grid,
                                     const std::span<const float> esdf_m,
                                     const Point3& first, const Point3& second,
                                     const SweptFootprintConfig& body) {
-  const DerivedFootprintClearance3D clearance =
-      querySweptFootprintClearance3D(grid, esdf_m, first, second, body);
-  return clearance.evidence.known_clearance_observed
-             ? clearance.evidence.minimum_known_clearance_m
-             : std::numeric_limits<double>::infinity();
+  const double resolution_m = static_cast<double>(grid.resolution_m);
+  const double error_m =
+      resolution_m > 0.0
+          ? std::ceil(kEstimateVerticalErrorM / resolution_m - 1.0e-9) * resolution_m
+          : kEstimateVerticalErrorM;
+  double clearance_m = std::numeric_limits<double>::infinity();
+  for (const double shift_m : {0.0, -error_m, error_m}) {
+    const DerivedFootprintClearance3D clearance = querySweptFootprintClearance3D(
+        grid, esdf_m, Point3{first.x, first.y, first.z + shift_m},
+        Point3{second.x, second.y, second.z + shift_m}, body);
+    if (clearance.evidence.known_clearance_observed) {
+      clearance_m = std::min(clearance_m, clearance.evidence.minimum_known_clearance_m);
+    }
+  }
+  return clearance_m;
 }
 
 } // namespace

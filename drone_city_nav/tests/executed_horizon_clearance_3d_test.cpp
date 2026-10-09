@@ -219,6 +219,66 @@ TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceIsMeasuredWithTheBodyFootpr
   EXPECT_TRUE(measured_on_its_own);
 }
 
+TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceCarriesTheEstimatesVerticalError) {
+  // Specification K27: the body's clearance to a floor is measured half a
+  // metre lower than the estimate puts the body, and to a ceiling half a
+  // metre higher (the camera estimator's height runs 0.3 to 0.6 m from the
+  // truth, r1183, r1184). A quarter-metre lattice over a floor at z = 0,
+  // the field the height above it: the body keeps half a metre less than
+  // the envelope of the same point. On the metre lattice of the other tests
+  // the shift is a whole cell, and beside a wall it takes nothing.
+  const EsdfGrid3D lattice{.width = 8,
+                           .height = 3,
+                           .resolution_m = 0.25F,
+                           .origin_x_m = 0.0F,
+                           .origin_y_m = 0.0F,
+                           .depth = 12,
+                           .origin_z_m = 0.0F,
+                           .outside_is_unknown = true};
+  std::vector<float> field(8U * 3U * 12U, 0.0F);
+  for (int z = 0; z < 12; ++z) {
+    for (int y = 0; y < 3; ++y) {
+      for (int x = 0; x < 8; ++x) {
+        field[(static_cast<std::size_t>(z) * 3U + static_cast<std::size_t>(y)) * 8U +
+              static_cast<std::size_t>(x)] = 0.25F * (static_cast<float>(z) + 0.5F);
+      }
+    }
+  }
+  SweptFootprintConfig footprint = pointFootprint();
+  footprint.body_radius_m = 0.0;
+  footprint.body_lower_extent_m = 0.0;
+  footprint.body_upper_extent_m = 0.0;
+  footprint.axial_samples = 2U;
+  std::vector<RouteSample3D> route;
+  for (int index = 0; index < 3; ++index) {
+    route.push_back(RouteSample3D{.position = {0.5 + 0.5 * index, 0.375, 1.5},
+                                  .tangent = {1.0, 0.0, 0.0},
+                                  .station_m = 0.5 * index});
+  }
+  const ExecutedHorizonClearance3D clearance =
+      measureRouteClearance3D(route, 0.0, 1.0, lattice, field, footprint, 2.0);
+  ASSERT_TRUE(clearance.constrained());
+  for (const ConstrainedHorizonSample3D& sample : clearance.constrained_samples) {
+    EXPECT_NEAR(sample.body_clearance_m, sample.clearance_m - 0.5, 0.13);
+  }
+  // Against a wall beside the motion the error takes nothing.
+  SweptFootprintConfig wall_footprint = pointFootprint();
+  wall_footprint.radius_m = 0.4;
+  wall_footprint.body_radius_m = 0.4;
+  wall_footprint.body_lower_extent_m = 0.0;
+  wall_footprint.body_upper_extent_m = 0.0;
+  wall_footprint.perimeter_samples = 8U;
+  wall_footprint.radial_rings = 1U;
+  wall_footprint.axial_samples = 2U;
+  const ExecutedHorizonClearance3D wall =
+      measureRouteClearance3D(routeAlongX(0.5, 10U), 2.0, 7.0, grid(),
+                              esdfToWallPlane(9.5F), wall_footprint, 2.0);
+  ASSERT_TRUE(wall.constrained());
+  for (const ConstrainedHorizonSample3D& sample : wall.constrained_samples) {
+    EXPECT_DOUBLE_EQ(sample.body_clearance_m, sample.clearance_m);
+  }
+}
+
 TEST(ExecutedHorizonClearance3DTest, MemoryAnswersHowFarAMotionWasObserved) {
   // A 20 m cube of 0.25 m voxels, observed free for x below 6 m: the shaft of
   // r500 seen from inside, its far wall never looked at.

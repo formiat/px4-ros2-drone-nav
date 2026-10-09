@@ -375,6 +375,7 @@ private:
     state.navigation_ready =
         state.airborne && takeoff_complete_stamp_.has_value() &&
         (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
+    state.landing = blind_landing_;
     navigation_state_pub_->publish(state);
     publishNavigationReadiness(state.navigation_ready);
   }
@@ -399,7 +400,11 @@ private:
     std_msgs::msg::Header header;
     header.stamp = now();
     header.frame_id = rviz_drone_follow_parent_frame_;
-    const Point3 position = rvizDronePosition();
+    const Point2 map_position =
+        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
+    const Point3 position = gazeboAlignedRvizFramePosition(
+        Point3{map_position.x, map_position.y, mapAltitudeM()},
+        gazebo_aligned_rviz_axes_swapped_);
     if (rviz_drone_follow_tf_broadcaster_) {
       rviz_drone_follow_tf_broadcaster_->sendTransform(
           droneFollowTransform(header, rviz_drone_follow_frame_, position));
@@ -411,14 +416,6 @@ private:
                            static_cast<float>(rviz_drone_marker_color_g_),
                            static_cast<float>(rviz_drone_marker_color_b_), 1.0F)));
     }
-  }
-
-  [[nodiscard]] Point3 rvizDronePosition() const noexcept {
-    const Point2 map_position =
-        px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
-    return gazeboAlignedRvizFramePosition(
-        Point3{map_position.x, map_position.y, mapAltitudeM()},
-        gazebo_aligned_rviz_axes_swapped_);
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -638,18 +635,18 @@ private:
     const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
     const bool planned_path_fresh = navigating && plannedFinitePathFresh();
     const bool planned_path_completed = navigating && plannedFinitePathCompleted();
-    const bool blind_landing = takeoff_hovered &&
-                               (!require_mission_start_signal_ || mission_started_) &&
-                               dead_reckoning_landing_.due(now().nanoseconds());
+    blind_landing_ = takeoff_hovered &&
+                     (!require_mission_start_signal_ || mission_started_) &&
+                     dead_reckoning_landing_.due(now().nanoseconds());
     OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
-    if (blind_landing) {
+    if (blind_landing_) {
       mode = OffboardSetpointMode::kVelocityCruise;
     } else if (planned_path_fresh) {
       mode = OffboardSetpointMode::kTrajectoryPositionTracking;
     }
     offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
     bool exact_horizon_feedback_published{false};
-    if (blind_landing) {
+    if (blind_landing_) {
       publishDeadReckoningLandingSetpoint();
     } else if (!navigating) {
       publishTakeoffSetpoint();
@@ -1012,6 +1009,8 @@ private:
   rclcpp::Publisher<msg::MppiControlFeedback>::SharedPtr applied_control_feedback_pub_;
   rclcpp::Publisher<msg::VehicleNavigationState>::SharedPtr navigation_state_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr navigation_readiness_pub_;
+  // The blind descent of K19 under way, carried by the vehicle's state (A9).
+  bool blind_landing_{false};
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
   // The hop from the controller: what the transport took to deliver each
   // horizon, reported with the applied-horizon diagnostic.
