@@ -2005,7 +2005,14 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   turns 72 s in with 140 s against 128 estimated and is home with about 81 s;
   two light-lost takes (r1192, r1193) tipped on uneven ground four seconds
   after a level touchdown, the known risk of the blind landing
-  ([technical_debt.md](technical_debt.md)).
+  ([technical_debt.md](technical_debt.md)). r1194 stood, on a slope of 12
+  degrees, and its estimate ran 100 m away in four seconds: the rotor-drag
+  model read the ground's friction (2.3 m/s² across the rotor axis) as 21
+  m/s; readings beyond any flight's drag are left out now (K13, 208ab74e),
+  and the acceptance on 5dd839b4 holds: 1.576 to 1.772 m/s (mean 1.700), B
+  within 0.03 m, no contact, every flight counted (r1205 to r1210). The
+  light-lost scenario was recorded again as r1211 (89ac0f10: the overlay's
+  `LANDED` by the truth, the recording ending with the mission's result).
 - **Flights under the host's load** (specification A4): a flight is watched
   while it flies and stopped when the load slows it, and flown again when
   the host is quiet (`tools/fly_until_valid.sh`, `tools/record_until_pass.sh`).
