@@ -564,14 +564,23 @@ void VisualInertialOdometry::Impl::holdHeight() {
 // drag of the body's velocity there and the accelerometer's bias. The model
 // is the hover's: the rotors' speed moves the coefficient with the thrust,
 // which the noise covers (0.036 m/s^2 of residual over the recorded flights).
+// A reading beyond what the drag of any flight can be is not drag: the
+// ground holding a body landed on a slope (r1194, tilted 12 degrees, read
+// 2.3 m/s^2 of the ground's friction for as long as it lay there, which the
+// model took for 21 m/s and ran the estimate 100 m away), or a collision.
+// Such a reading is left out; the drag of the fastest flight (5 m/s) is 0.53.
 void VisualInertialOdometry::Impl::fuseRotorDrag() {
   constexpr double kDragReadingSigmaMps2{0.05};
+  constexpr double kMaximumDragReadingMps2{0.5};
   if (!(config.rotor_drag_1ps > 0.0) || !(drag_reading_s > 0.0)) {
     return;
   }
   const Eigen::Vector2d reading = drag_reading_sum_mps / drag_reading_s;
   drag_reading_sum_mps.setZero();
   drag_reading_s = 0.0;
+  if ((reading - accelerometer_bias.head<2>()).norm() > kMaximumDragReadingMps2) {
+    return;
+  }
   const Eigen::Vector3d body_velocity = body_to_ned.transpose() * velocity;
   const double weight = config.observation_noise / kDragReadingSigmaMps2;
   Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(2, covariance.rows());

@@ -300,6 +300,40 @@ TEST(VisualInertialOdometry, TheRotorsDragBoundsADarkHoversDrift) {
   EXPECT_LT(hover(0.106), 0.5);
 }
 
+TEST(VisualInertialOdometry, TheGroundHoldingATiltedBodyIsNoDrag) {
+  // A body landed on a slope in the dark, 12 degrees from level: the ground's
+  // friction holds it, and the accelerometer reads 2 m/s^2 across the rotor
+  // axis for as long as it lies there. The drag model took that for a
+  // velocity of 21 m/s (r1194) and ran the estimate 100 m away in 4 s; a
+  // reading beyond any flight's drag is left out, and the IMU alone keeps
+  // the resting body where it is.
+  VisualInertialOdometryConfig config = testConfig();
+  config.rotor_drag_1ps = 0.106;
+  const double tilt = 12.0 * M_PI / 180.0;
+  const Eigen::Vector3d resting{config.gravity_mps2 * std::sin(tilt), 0.0,
+                                -config.gravity_mps2 * std::cos(tilt)};
+  VisualInertialOdometry odometry{config};
+  for (std::int64_t stamp = -400'000'000; stamp < 0; stamp += kImuPeriodNs) {
+    odometry.addImu(VisualInertialImuSample{.stamp_ns = stamp,
+                                            .gyro_radps = Eigen::Vector3d::Zero(),
+                                            .accelerometer_mps2 = resting});
+  }
+  odometry.initialize(0, Eigen::Vector3d::Zero(), 0.0);
+  VisualInertialEstimate estimate;
+  std::int64_t imu_stamp = 0;
+  for (std::int64_t frame = 1; frame <= 40; ++frame) {
+    const std::int64_t stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(VisualInertialImuSample{.stamp_ns = imu_stamp,
+                                              .gyro_radps = Eigen::Vector3d::Zero(),
+                                              .accelerometer_mps2 = resting});
+    }
+    estimate = odometry.addFrame(stamp, {});
+  }
+  EXPECT_LT(estimate.velocity_ned_mps.norm(), 0.5);
+  EXPECT_LT(estimate.position_ned_m.norm(), 1.0);
+}
+
 TEST(VisualInertialOdometry, AnUncertainVelocityIsNotHealthy) {
   // The flying filter holds its least certain velocity within 0.2 m/s; a
   // bound below what features give it makes even a sighted flight unhealthy.
