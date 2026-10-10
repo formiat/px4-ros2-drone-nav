@@ -296,6 +296,11 @@ void MppiOffboardNode::controlTick() {
       planner_health_loss_started_at_ = now();
       RCLCPP_ERROR(get_logger(), "PLANNER_HEALTH lost=true action=position_hold");
     }
+    // The offboard stream goes on through the hold: without its mode the
+    // autopilot leaves offboard within its own loss timeout and acts before
+    // the landing below (roadmap item 27, block 1).
+    offboard_mode_pub_->publish(
+        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
     publishUnavailablePathHoldSetpoint();
     const double loss_s = (now() - *planner_health_loss_started_at_).seconds();
     if (!planner_health_land_sent_ && loss_s >= planner_health_land_after_s_) {

@@ -1316,8 +1316,8 @@ be closed in the simulator:
   that holds the vehicle when the planner's heartbeat is lost returns before
   the tick publishes `OffboardControlMode` (`controlTick`), so the offboard
   stream stops, PX4 leaves offboard within its `COM_OF_LOSS_T` and its own
-  failsafe acts before the branch's landing after 5 s. Repaired with the next
-  code change: the mode is published before the branch returns.
+  failsafe acts before the branch's landing after 5 s. Repaired on
+  2026-10-09: the mode is published before the branch returns.
 - **No nominal landing and disarm**: a mission ends in a hold at the goal.
 - **No operator's commands**: stop, land, home, a new goal.
 - **The main battery is not read**; no geofence; the loss of the radio and of
