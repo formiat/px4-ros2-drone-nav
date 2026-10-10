@@ -71,6 +71,19 @@ class RecordingCommandsTest(unittest.TestCase):
     CLOCK = [(1000.0 + 0.1 * step, 50.0 + 0.05 * step, 0.2 * min(step, 300), 0.0, 5.0)
              for step in range(601)]
 
+    def test_the_recording_ends_with_the_missions_result(self) -> None:
+        # The pose record goes on while the launch winds down (r1194: 3.2 s
+        # after the result, the nodes gone and RViz's clouds with them).
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            self.assertEqual(2000.0, recorder.flight_end_wall_s(run, 2000.0))
+            (run / "ros_drone_nav.log").write_text(
+                "[mission_monitor_node-8] [ERROR] [1990.250000000] [mission_monitor_node]: "
+                "MISSION_RESULT success=false reason='vehicle_landed'\n")
+            self.assertAlmostEqual(1990.75, recorder.flight_end_wall_s(run, 2000.0))
+            self.assertEqual(1985.0, recorder.flight_end_wall_s(run, 1985.0))
+
     def test_the_frames_are_timed_by_the_simulation_clock(self) -> None:
         # Sixty wall seconds of a flight slowed to a half are thirty of flight.
         self.assertAlmostEqual(50.0, recorder.simulation_time_at(self.CLOCK, 1000.0))

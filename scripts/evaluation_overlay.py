@@ -54,7 +54,7 @@ TEXT_HEIGHT_M = 1.1  # about 1/40 of the view's height at the views' distances
 TRAIL_WIDTH_M = {"estimate": 0.2, "truth": 0.35}
 TRAILS_EVERY_TICKS = 5  # the trails once a second: thousands of points a message
 TRUTH_RADIUS_M = 0.6
-# LANDED while the estimate stays this close to where the vehicle touched down.
+# LANDED while the vehicle (the truth) stays this close to where it touched down.
 LANDED_WITHIN_M = 0.5
 # The two views of drone_city_nav/rviz (the recording's follow and top views):
 # RViz's Orbit camera at (yaw, pitch, distance) around the vehicle, and the
@@ -199,7 +199,11 @@ def main() -> int:
             if message.data.startswith("VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING"):
                 state["dead_reckoning"] = message.data.endswith("started=true")
             if message.data.startswith("VEHICLE_LANDED"):
-                state["landed_at"] = state["estimate"]
+                # Where the vehicle touched down, by the truth: the landing is
+                # physical, and the estimate on the ground drifts on without
+                # vision (0.1 m/s on r1202) and left the landing's half metre
+                # within seconds, turning the word back to the descent.
+                state["landed_at"] = state["truth"]
 
     def on_marker(message: Marker) -> None:
         with lock:
@@ -272,9 +276,8 @@ def main() -> int:
             share = state["share"]
             # Airborne once the offboard publishes the vehicle's marker (a valid position).
             landed_at = state["landed_at"]
-            landed = (landed_at is not None and estimate is not None and
-                      math.dist((estimate.x, estimate.y, estimate.z),
-                                (landed_at.x, landed_at.y, landed_at.z)) < LANDED_WITHIN_M)
+            landed = (landed_at is not None and truth is not None and
+                      math.dist(truth, landed_at) < LANDED_WITHIN_M)
             text, color = state_text(state["events"], state["dead_reckoning"],
                                      state["velocity_mode"], estimate is not None,
                                      state["ready"], landed)

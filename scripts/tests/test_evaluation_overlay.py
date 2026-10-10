@@ -47,7 +47,9 @@ class StateWordsTest(unittest.TestCase):
         # on (r1184 touched a floor in flight) shows what it does now.
         self.assertEqual("LANDED", text(["VEHICLE_LANDED"], True, True, False, True, True)[0])
         self.assertEqual("TO GOAL", text(["VEHICLE_LANDED"], False, False, True, True, False)[0])
-        self.assertIn("math.dist((estimate.x, estimate.y, estimate.z)", PATH.read_text())
+        # By the truth: the estimate drifts on the ground without vision.
+        self.assertIn("math.dist(truth, landed_at)", PATH.read_text())
+        self.assertIn('state["landed_at"] = state["truth"]', PATH.read_text())
         self.assertEqual("GOAL REACHED",
                          text(["MISSION_RESULT success=true reason=goal"], False, False,
                               True, True)[0])

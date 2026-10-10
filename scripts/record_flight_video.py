@@ -34,6 +34,7 @@ import argparse
 import bisect
 import csv
 import json
+import re
 import signal
 import statistics
 import subprocess
@@ -183,6 +184,20 @@ def compose(world: Path, view: Path, tables: dict[str, list[int]], flight_wall_s
             decoder.wait()
         encoder.stdin.close()
         encoder.wait()
+
+
+def flight_end_wall_s(run_directory: Path, clock_end_wall_s: float) -> float:
+    """The wall clock of the flight's end: half a second after the mission's
+    result (the logger stamps the run's log on the wall clock), for the word
+    to show, or the clock's end where no result was logged. The pose record
+    goes on after the result while the launch winds down (r1194: 3.2 s, the
+    nodes gone and RViz's clouds with them)."""
+    try:
+        text = (run_directory / "ros_drone_nav.log").read_text(errors="ignore")
+    except OSError:
+        return clock_end_wall_s
+    stamps = re.findall(r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_RESULT", text)
+    return min(clock_end_wall_s, float(stamps[0]) + 0.5) if stamps else clock_end_wall_s
 
 
 def flight_clock(run_directory: Path) -> list[tuple[float, float, float, float, float]]:
@@ -402,7 +417,7 @@ def main() -> int:
     # alone (frame_table), so the halves cannot part (a pace per window over
     # its own length ran the world 17 s ahead of RViz by the end of r1179).
     begin_sim_s = simulation_time_at(clock, started)
-    flight_wall_s = max(clock[-1][0] - started, 1.0e-3)
+    flight_wall_s = max(flight_end_wall_s(run_directory, clock[-1][0]) - started, 1.0e-3)
     spans, still_shares = {}, {}
     for name in SOURCES:
         wall_s = min(probe(raw[name])["duration_s"], flight_wall_s)
