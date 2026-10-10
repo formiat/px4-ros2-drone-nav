@@ -1192,6 +1192,173 @@ Complete when five flights of item 18's blocking scenario give the goal up
 with `trigger=topological`, the truth grid confirms no way existed, and the
 vehicle is home in truth, on either sensor set.
 
+## 25. The Estimator On Real Recordings
+
+**Type:** validation without a vehicle. Discussed with the project owner on
+2026-10-09 and recorded; not started.
+
+**Hard prerequisites:** none. It needs no hardware and no simulator.
+
+The offline replay of the visual-inertial estimator (`tools/vio/replay_vio.cpp`,
+`tools/vio/dark_drift.py`) runs the filter over a flight's record (frames, IMU,
+truth) with no simulator. The records come from Gazebo today; the same replay
+can take a public recording from a real vehicle, and that is the only way,
+without a vehicle, to learn how the estimator behaves on real sensor noise
+and whether anything in it is fitted to Gazebo. It also carries the debt of
+the reference visual-inertial system ([technical_debt.md](technical_debt.md),
+Localization): the reference and ours can be compared on the same record.
+
+Candidate recordings, all public, each with a calibration and a reference
+trajectory in the role Gazebo's truth plays here:
+
+- EuRoC MAV (ETH): stereo and IMU on a drone, a machine hall and a room,
+  reference from a laser tracker and motion capture. The first check and the
+  industry's common one. 752 x 480 global-shutter stereo with radial and
+  tangential distortion.
+- TUM-VI, UZH-FPV: wide-angle stereo and IMU, corridors; aggressive flights.
+  Drift over a first pass, the tracker's limits.
+- Hilti SLAM Challenge, NTU VIRAL: 3D lidar and IMU, for the lidar-inertial
+  estimator.
+- SubT-MRS: underground, darkness, smoke, dust, with lidar, cameras and a
+  thermal camera: the material of items 17, 18, 22 and 23.
+
+What it takes, in order:
+
+1. A converter from the recording's layout (images, IMU CSV, reference CSV)
+   to the replay's record. Small for EuRoC.
+2. The camera model as configuration, not geometry derived from the field of
+   view: `stereo_depth_node` and the estimator take the intrinsics from
+   `horizontal_fov_rad` and the image size (1280 x 960) and treat the pair as
+   ideal and rectified, which Gazebo's cameras are and real ones are not.
+   Intrinsics, distortion, the baseline, the camera-to-IMU extrinsics, the
+   IMU's noise and the time offset come from the recording's calibration,
+   and the frames are rectified first.
+3. The comparison with the reference the way `dark_drift.py` compares with
+   the truth.
+
+The same path serves the stereo depth and the obstacle memory, fed with the
+recording's frames, and the lidar-inertial estimator with the recording's
+clouds.
+
+What it cannot show: the loop is open. The vehicle in the recording flew as
+it flew and does not answer to the stack, so the planner, the control and the
+braking contract stay in the simulator. A first step that fits in a day: one
+EuRoC sequence through the replay; the drift against the reference beside the
+0.1 to 0.4 percent of the path the simulator shows.
+
+## 26. GPU Offload
+
+**Type:** decision, recorded 2026-10-09: not now, not before a target
+onboard computer exists.
+
+**Hard prerequisites:** a target board, whose measurements decide.
+
+On the GPU today runs the MPPI rollout alone, and it is the smallest part of
+the planning tick. On the CPU: the stereo matching (SGM, two threads, 1.4
+cores at 7.5 Hz: [resource_budget.md](resource_budget.md) says its place on a
+vehicle is a GPU or a depth accelerator, and the container's OpenCV is built
+without CUDA), the ESDF (three passes in the worker pool, then uploaded as a
+texture for MPPI), the swept-body collision checks of the horizon assembly
+(what dominates the tick, [performance.md](performance.md)), the VIO's
+feature tracker (part of 0.53 cores), the obstacle memory's ray tracing (0.6
+to 0.8 cores), the lidar-inertial registration (40 to 51 ms) and the D* Lite
+planner (its whole 150 ms budget, a setting).
+
+Why nothing moves now:
+
+- On the workstation nothing on the CPU fails a requirement: the flights pass
+  at their speeds, the onboard processes take 2.7 cores at p50 and the
+  planner's budget is a configuration, not a shortage.
+- The gain only matters on an onboard computer, and one of the Jetson class
+  has a GPU several times weaker than the RTX 3060 that shares memory with the
+  CPU: moving work blindly moves the shortage.
+- Another stereo matcher gives another depth, and the confident depth of 6.4 m
+  the braking contract stands on is re-measured with it.
+
+The order when a board exists: the stereo matching first, through a ready
+library (NVIDIA VPI on a Jetson), which frees a core and a half with almost no
+code of the project's; then measure on the board what is the bottleneck; only
+then the ESDF and the collision checks, which are the project's own CUDA and
+real work. The D* Lite planner, the memory's ray tracing and the lidar
+registration stay on the CPU.
+
+## 27. Readiness For A Real Vehicle
+
+**Type:** new capability, deferred. The project owner on 2026-10-09: no
+vehicle is coming soon, so nothing is adapted to hardware yet; the safety
+block is recorded here so that it is the first thing done when one is.
+
+**Hard prerequisites:** block 1 can be built and flown in the simulator
+today; everything after it waits for hardware.
+
+What carries over as it is: the onboard nodes (the obstacle memory, the
+planner, MPPI, both estimators, the offboard) read no truth from the
+simulator and have no dependency on Gazebo in their logic; `stereo_depth_node`
+takes plain `sensor_msgs/Image` (the launch starts its Gazebo variant); the
+IMU comes from PX4 over uXRCE, not from Gazebo; a real clock synchronisation
+with PX4 exists (`Px4RosTimeMapper`) and is switched off; the sources carry
+no x86 instructions; the way home, the light's judgment and the blind descent
+do not depend on the simulator.
+
+### Block 1: Safety
+
+The one block that blocks any flight with people near, and the one that can
+be closed in the simulator:
+
+- **The pilot has no priority.** `mppi_offboard_node` arms and enters offboard
+  by itself and resends both every 2 s (`auto_arm`, `auto_offboard`): a pilot
+  switching the mode is switched back, a vehicle that PX4's failsafe landed
+  and disarmed is armed again. A real vehicle needs the pilot's mode to win
+  and arming to come from the pilot.
+- **No reading of the radio and the kill switch**; of PX4's status only
+  "armed" and "offboard" are read, its failure flags are ignored.
+- **A defect in the planner-loss branch**, in the simulator too: the branch
+  that holds the vehicle when the planner's heartbeat is lost returns before
+  the tick publishes `OffboardControlMode` (`controlTick`), so the offboard
+  stream stops, PX4 leaves offboard within its `COM_OF_LOSS_T` and its own
+  failsafe acts before the branch's landing after 5 s. Repaired with the next
+  code change: the mode is published before the branch returns.
+- **No nominal landing and disarm**: a mission ends in a hold at the goal.
+- **No operator's commands**: stop, land, home, a new goal.
+- **The main battery is not read**; no geofence; the loss of the radio and of
+  the link are not handled.
+- **No PX4 parameter set for a real vehicle**: the simulation's switches the
+  supply check off (`CBRK_SUPPLY_CHK`) and the data-link loss reaction off
+  (`NAV_DLL_ACT 0`, `scripts/px4_parameter_runtime.sh`).
+
+### Later blocks, for when a vehicle exists
+
+2. Build and launch: the package needs Gazebo to build (`gz-sim8`,
+   `gz-transport13`, `sdformat14` in CMake) and the onboard and simulation
+   targets are one; the image is x86 with CUDA architectures 75 and 86; there
+   is no launch without the simulator and `use_sim_time` is set in every
+   node and held by a contract test; the uXRCE agent is UDP only; MPPI keeps
+   12 threads.
+3. Sensors: no camera calibration, distortion or rectification (intrinsics
+   from the field of view, an ideal pair, 1280 x 960 only, the pair's stamps
+   equal); no time-of-flight driver (64 zones in `gpu_lidar`'s layout, within
+   67 ms of the frame); the barometer, the light's charge and the camera's
+   gain come from the simulator; no onboard control of the light; the lidar
+   needs an organised 360 x 181 cloud without motion compensation; the
+   extrinsics live in SDF, C++, YAML and Python at once.
+4. Time and frames: the real clock synchronisation (`UXRCE_DDS_SYNCT=0`
+   today, zero EKF2 delays, the 4 ms frame-to-IMU offset fitted in the
+   simulator); the map is anchored to Gazebo's spawn (origin 54, 54; the
+   345 x 525 x 40 m grid of the Urban Circuit); the initial heading is a
+   parameter.
+5. The vehicle model: every constant is fitted to the x500 in Gazebo
+   (accelerations, lags, the body, the rotor drag 0.106, the yaw-rate lead
+   marked to fit again); a real frame is identified by hand first.
+6. Checks before a flight: no CI, no HITL, no replay of the whole stack from
+   a record; onboard logs without rotation; the bag without setpoints and
+   commands; crash detection rests on Gazebo's contacts, and the trial's
+   referee shares a class with the mission's logic.
+
+Order: block 1 in the simulator; the build split and a launch on recorded
+data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a
+net, manual first, then a hold, then a short route. Months of one person's
+work; the first two steps cost nothing.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
