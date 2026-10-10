@@ -25,13 +25,15 @@ avoidance, return to home, DARPA SubT.
 
 ## Demo Video
 
-[![Autonomous navigation of an urban location with no map, no GNSS and no lidar](https://img.youtube.com/vi/OUuAj2WNKzs/maxresdefault.jpg)](https://www.youtube.com/watch?v=OUuAj2WNKzs)
+[![Autonomous drone in a dark building, lit by its own light: 420 m, no GNSS, no lidar, no map](https://img.youtube.com/vi/WlpePGmt19A/maxresdefault.jpg)](https://www.youtube.com/watch?v=WlpePGmt19A)
 
-[Watch on YouTube](https://www.youtube.com/watch?v=OUuAj2WNKzs): point-to-point
-flight through the Urban Circuit Practice 01 location with no static map, no
-GNSS, no magnetometer and no lidar, on the forward stereo pair that both
-perceives the building and localizes the vehicle, as released in v0.4.0
-(September 2026).
+[Watch on YouTube](https://www.youtube.com/watch?v=WlpePGmt19A): point-to-point
+flight through the unlit Urban Circuit Practice 01 location, lit only by the
+light the vehicle carries, with no static map, no GNSS and no lidar, on the
+forward stereo pair, time-of-flight rangefinders and the IMU; 420 m at a mean
+1.8 m/s. The left half is the world as it is, the right half is RViz with what
+the vehicle knows and decides ([docs/rviz.md](docs/rviz.md)), the whole flight
+uncut in real time, as recorded for v0.5.0 (October 2026).
 
 ## Quick Start
 
