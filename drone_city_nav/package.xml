@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>drone_city_nav</name>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
   <description>Autonomous UAV navigation for PX4 and ROS 2 in Gazebo: GNSS-denied stereo visual-inertial odometry (VIO, MSCKF) and lidar-inertial odometry (LIO) with map-based relocalization (SLAM), 3D occupancy mapping, D* Lite path planning and GPU MPPI obstacle avoidance in PX4 offboard control.</description>
   <maintainer email="formiat95@gmail.com">Alexander Aglerimov</maintainer>
   <license>MIT</license>

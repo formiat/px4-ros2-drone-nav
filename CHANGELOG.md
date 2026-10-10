@@ -4,6 +4,117 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## v0.5.0 (2026-10-10)
+
+Flight in degraded visual conditions: the location has no light of its own,
+the vehicle carries the only one, and that light flickers, fails, runs out of
+charge or goes out for good. The vehicle judges its light by what its own
+camera sees, flies home when the light is unreliable or the charge no longer
+covers the way back, and when it is blind for good it descends level on the
+IMU and lands. Darkness the camera looked into is a measured prohibition,
+told apart from a surface. Every flight is recorded whole in real time with an
+RViz overlay of what the vehicle knows and decides. Validated on Urban Circuit
+Practice 01 (`environment-assets-urban-v1`) on the stereo set without GNSS, no
+static map, no lidar: five point-to-point flights on 5dd839b4, every one
+complete and collision-free with no failing line, 1.58 to 1.77 m/s (r1205 to
+r1210). Roadmap items 17, 19 and 20 close with it.
+
+Recordings of this release, the whole flight uncut in real time, the world on
+the left and RViz on the right:
+
+- Point-to-point through the dark building, 420 m:
+  <https://youtu.be/WlpePGmt19A>
+- The light lost mid-flight, dead reckoning, blind descent, landing:
+  <https://youtu.be/ED4aYhnpKRs>
+- The light failing, judged unreliable, the way home:
+  <https://youtu.be/PhPgzjhcdpQ>
+- A 240 s light battery, the turn home in time:
+  <https://youtu.be/QMme-iyhJrc>
+
+- Roadmap item 17: flight in degraded visual conditions
+  ([docs/scenarios.md](docs/scenarios.md), [docs/camera_perception.md](docs/camera_perception.md)).
+  The location's light is off for good; the vehicle's carried light is the
+  evaluation's, with three profiles: `moderate` (the norm of every flight: short
+  dimming every few seconds, dark never longer than 2 s), `severe` (outages
+  growing to 4.5 s every 8 s) and `lost` (gone from the forty-fifth second),
+  and an optional charge in seconds. The camera stream's own failures (frames
+  lost, frames late) are injected the same way. What the stack does with it:
+  - The braking contract reads the forward frame's light and its observed
+    share: a frame the contract reads as blind holds the vehicle where it
+    stood (specification K9, K15), and the carried light is judged unreliable
+    after one outage of 3.5 s or 60 percent of dark in two minutes (K12),
+    which gives the goal up for the start.
+  - Dead reckoning (K13): past its 1 s unaided timeout the visual-inertial
+    estimator keeps a sound pose for 10 s more, declared as such, its height
+    held to the barometer's change and its horizontal velocity bounded by the
+    rotors' drag; then it falls silent and the autopilot's own failsafe acts.
+    A reading across the rotor axis beyond any flight's drag is left out: a
+    body landed on a slope reads the ground's friction there, which the model
+    took for 21 m/s (r1194).
+  - Darkness is not unknown (K14): a blind frame held for 2.5 s marks the
+    frustum it looked into as observed unobservable, a prohibition as a
+    surface is, cleared when seen through again; a blind frame's stereo
+    returns never reach the memory; the memory tells an occupancy no measured
+    return has hit from a surface and RViz draws it grey.
+  - The blind landing (K19): three seconds into dead reckoning the offboard
+    descends the vehicle level at 0.5 m/s in the autopilot's velocity mode and
+    lands it; an estimator that sees again first takes the flight back.
+  - The battery (K11): the goal is given up for the start when the charge
+    left falls below 1.1 times the way home's estimate, one and a half times
+    the path flown over the mean speed with a 20 s reserve; a flight launched
+    without a battery never gives its goal up for it.
+  - The crash judge (A9): every contact is a crash, the one exception a level,
+    slow landing of the body on a floor while the offboard's blind descent
+    goes on; a floor touched in flight is a crash (r1184).
+  - The memory never forgets by time (K10, the owner's decision); the sensor
+    mount is repaired, the memory no longer a false layer 0.24 m above the
+    truth (K22).
+- Roadmap item 19: a goal proven unreachable sends the vehicle home. The
+  mission monitor floods the obstacle memory from the vehicle every 10 s
+  (`goal_reachability_proof_3d`) and, on a closed component, replaces the goal
+  with the start through the objective channel; the arrival at the start is a
+  goal's arrival like any other. Implemented and held by unit tests; the proof
+  has not fired in a flight yet (every return flown was the light's or the
+  battery's), which roadmap item 24 closes with item 18's blocking scenario.
+  The visual-inertial estimator relocalizes on its own map, 0.2 to 0.7 m at
+  the return.
+- Roadmap item 20: the simulation slowed and the flight recorded with nobody
+  at the desk. Every onboard timer runs on the node clock (K24);
+  `REAL_TIME_FACTOR` is a parameter of the run, 1.0 unless set, never above
+  (K25); the host's verdict counts a flight only when the simulator held the
+  factor it asked for and the estimator's pose age stayed under 300 ms (A7).
+  `tools/record_flight.sh` records a flight at 0.6 through a GL capture shim:
+  the whole flight, every frame re-timed to its moment on the simulation
+  clock (no frame further than 0.5 s from it, A11), the windows below the
+  others and minimized by themselves; `tools/fly_until_valid.sh` and
+  `tools/record_until_pass.sh` fly again under the host's load.
+- The RViz evaluation overlay (K26, [docs/rviz.md](docs/rviz.md)): the
+  mission's events on a topic, and over the view what the vehicle decided,
+  `LIGHT` (what the harness set) beside `SEES` (the share of its range the
+  vehicle's own frame grants), `CHARGE`, and the estimate's trail (white)
+  against the truth's (green). The evaluation reads the stack; nothing of the
+  stack reads the evaluation.
+- The clearance law carries the estimate's vertical error (K27): the body's
+  clearance is measured where the estimate puts it and 0.5 m lower and
+  higher, so a motion the estimate holds 0.3 m above a floor stops before
+  it. The camera estimator's height runs 0.3 to 0.6 m from the truth with or
+  without dead reckoning. The cost: the acceptance's mean speed 1.70 m/s
+  against 1.90 before it.
+- The offboard node is split into a header and three sources; its mode stream
+  goes on through a planner-loss hold (without it the autopilot left offboard
+  before the hold's landing).
+- Set aside by the owner (A8): the long flight to B and back, and the
+  goal-outside flight until item 19's proof is flown. The lidar is not
+  recorded (its picture is black). The cooperative mission waits for item 15.
+- Known risk, kept by the owner's decision
+  ([docs/technical_debt.md](docs/technical_debt.md)): the blind landing holds
+  no horizontal position and lands where the vehicle drifted to; of twelve
+  blind landings in the dark, nine stood, one met a ledge with a rotor
+  (r1181) and two tipped on uneven ground four seconds after a level touchdown
+  (r1192, r1193).
+- Validated with `environment-assets-urban-v1` on 5dd839b4 (the release's
+  stack; aaf105c2 adds the evaluation's fixes and the documentation).
+
 ## v0.4.0 (2026-09-20)
 
 Flight with no map, no GNSS, no magnetometer and no lidar: the vehicle

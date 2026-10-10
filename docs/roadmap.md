@@ -1775,7 +1775,7 @@ what is set aside, with the class of every entry, is
 
 ### 17. Flight In Degraded Visual Conditions (Completed)
 
-Closed on 2026-10-03 on 6e7ea775, not yet in a release. The camera vehicle
+Shipped in [v0.5.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.5.0) on 2026-10-10; closed on 2026-10-03 on 6e7ea775. The camera vehicle
 flies the urban point-to-point mission in a location with no light but the
 one it carries, under a light that flickers in every flight, and comes home
 when that light fails or when its battery will not last to the goal; with its light gone for good it descends and stays whole. The
@@ -2029,7 +2029,7 @@ obstacle (item 21). The register with the class of every entry is
 
 ### 19. A Goal Proven Unreachable: Return Home (Completed)
 
-Closed on 2026-09-27 on bf92e952, not yet in a release. When its goal is
+Shipped in [v0.5.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.5.0) on 2026-10-10; closed on 2026-09-27 on bf92e952. When its goal is
 proven unreachable, the vehicle gives it up and flies home: the mission monitor replaces the goal with the start through the
 objective channel by which any goal enters the navigation in flight, and the
 arrival at the start is a goal's arrival like any other (the 2.0 m capture
@@ -2173,7 +2173,7 @@ now tested, and the return has changed shape:
 
 ### 20. Slowed Simulation And Unattended Recording (Completed)
 
-Closed on 2026-10-05, not yet in a release; both final series were flown on
+Shipped in [v0.5.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.5.0) on 2026-10-10; closed on 2026-10-05; both final series were flown on
 df5a86b8. The simulation can be slowed against the wall clock with the stack
 slowed with it, and a recorded flight is a flight like any other. What was
 asked for and how it was built is kept below as it was written; this is what
