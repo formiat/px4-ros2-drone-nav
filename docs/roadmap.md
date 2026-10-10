@@ -2294,8 +2294,10 @@ and 62 sources read the monotonic clock for budgets, latencies and
 watchdogs. The audit lists each and says which follows the simulation: a
 period or a freshness watchdog does, a compute budget (the planner's 150 ms,
 the assembly's 12 ms) does not, since it measures the host. Startup waits
-for `/clock`. `mppi_offboard_node.cpp` stands at its 1000-line cap, so its
-change comes with a cut elsewhere in it.
+for `/clock`. `mppi_offboard_node.cpp` stood at its 1000-line cap then, so its
+change came with a cut elsewhere in it; on 2026-10-09 the node was split into
+a header and three sources (the session and the tick, the horizons and the
+setpoints, the autopilot's state), the owner's decision.
 
 #### Stage 1: The Factor As A Parameter Of The Run
 

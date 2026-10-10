@@ -16,7 +16,6 @@ CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 MESSAGE = PACKAGE / "msg" / "VehicleDestroyed.msg"
 REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "cooperative_traffic_referee_lifecycle.cpp"
-OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 COLLISION = SOURCE / "collision_crash_node.cpp"
 
 
@@ -52,7 +51,8 @@ class VehicleDestructionContractTest(unittest.TestCase):
             if "kPx4ForceDisarmMagicParam2" in path.read_text(encoding="utf-8")
         }
         self.assertEqual(owners, {"mppi_offboard_node.cpp"})
-        offboard = OFFBOARD.read_text(encoding="utf-8")
+        offboard = "\n".join(path.read_text(encoding="utf-8")
+                             for path in sorted(SOURCE.glob("mppi_offboard_node*.cpp")))
         self.assertIn("destruction_disarm.force_disarm_requested", offboard)
         self.assertIn("validVehicleDeathCause", offboard)
         self.assertIn("expected_vehicle_role_", offboard)

@@ -908,7 +908,9 @@ ament_target_dependencies(
   sensor_msgs)
 enable_project_warnings(obstacle_memory_3d_node)
 
-add_executable(mppi_offboard_node src/mppi_offboard_node.cpp)
+add_executable(mppi_offboard_node src/mppi_offboard_node.cpp
+                                  src/mppi_offboard_node_horizon.cpp
+                                  src/mppi_offboard_node_state.cpp)
 target_compile_features(mppi_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(mppi_offboard_node drone_city_nav_core
                       drone_city_nav_ros_adapters ${cpp_typesupport_target})

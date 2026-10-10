@@ -19,6 +19,7 @@ PX4_ADAPTER_SOURCES = {
     "drone_city_nav/src/px4_autopilot_adapter.cpp",
     "drone_city_nav/src/px4_offboard_setpoint_io.cpp",
     "drone_city_nav/src/mppi_offboard_node.cpp",
+    "drone_city_nav/src/mppi_offboard_node.hpp",
     "drone_city_nav/src/simulation_heading_source_node.cpp",
     "drone_city_nav/src/visual_inertial_odometry_node.cpp",
     "drone_city_nav/tests/px4_autopilot_adapter_test.cpp",

@@ -34,7 +34,6 @@ EXECUTION_RETENTION_SERVICE = SOURCE / "execution_supervisor_3d_retention.cpp"
 EXECUTION_HOLD_SERVICE = SOURCE / "execution_supervisor_3d_hold.cpp"
 EXECUTION_HOLD_TEST = PACKAGE / "tests" / "execution_supervisor_hold_3d_test.cpp"
 ROUTE_EXECUTION = EXECUTION_RUNTIME / "production_mppi_route_execution.cpp"
-OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OFFBOARD_NAMES = SOURCE / "mppi_offboard_node_names.hpp"
 MISSION_MONITOR = SOURCE / "mission_monitor_node.cpp"
 HORIZON_MESSAGE = PACKAGE / "msg" / "MppiTrajectoryHorizon.msg"
@@ -126,8 +125,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planning_cycle_test = PLANNING_COORDINATOR_TEST.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
-        offboard = OFFBOARD.read_text(encoding="utf-8") + OFFBOARD_NAMES.read_text(
-            encoding="utf-8"
+        offboard = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [*sorted(SOURCE.glob("mppi_offboard_node*.cpp")), OFFBOARD_NAMES]
         )
         planner = "\n".join(
             path.read_text(encoding="utf-8")
