@@ -16,7 +16,8 @@ told apart from a surface. Every flight is recorded whole in real time with an
 RViz overlay of what the vehicle knows and decides. Validated on Urban Circuit
 Practice 01 (`environment-assets-urban-v1`) on the stereo set without GNSS, no
 static map, no lidar: five point-to-point flights on 5dd839b4, every one
-complete and collision-free with no failing line, 1.58 to 1.77 m/s (r1205 to
+complete and collision-free with no failing line, 1.58 to 1.77 m/s with the
+true position 0.79 to 1.79 m from the goal at its acknowledgement (r1205 to
 r1210). Roadmap items 17, 19 and 20 close with it.
 
 Recordings of this release, the whole flight uncut in real time, the world on

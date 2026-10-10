@@ -1990,8 +1990,9 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   occupancy no measured return has hit from a surface and RViz draws it grey
   (specification K14, K26, 5934e5ca); every frame of a recording shows its
   own moment of the flight (A11, 633e77a1). The acceptance on 18ba583c, the
-  stereo set at 1.0: 1.822 to 1.995 m/s (mean 1.897), B within 0.03 m, no
-  contact, every flight counted (r1186 to r1190). The long flight to B and
+  stereo set at 1.0: 1.822 to 1.995 m/s (mean 1.897), the true position 0.76
+  to 1.21 m from B at its acknowledgement, no contact, every flight counted
+  (r1186 to r1190). The long flight to B and
   back and the goal-outside flight are set aside (A8).
 - **A floor touched in flight is a crash, the clearance law carries the
   estimate's vertical error, the way home at 1.5** (2026-10-09, A9, K27,
@@ -1999,8 +2000,8 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   stream kept through a planner-loss hold, b48f89eb). The acceptance on
   b48f89eb, the stereo set at 1.0: 1.640 to 1.878 m/s (mean 1.750, the
   clearance law under K27 holding the reference under 2 m/s in 27 percent
-  of the ticks against 11 before), B within 0.06 m, no contact, every flight
-  counted (r1197 to r1201). The four scenarios recorded again on it are in
+  of the ticks against 11 before), the true position 0.74 to 1.66 m from B at
+  its acknowledgement, no contact, every flight counted (r1197 to r1201). The four scenarios recorded again on it are in
   `log/videos/2026-10-09/` (r1191, r1194, r1195, r1196): the low battery now
   turns 72 s in with 140 s against 128 estimated and is home with about 81 s;
   two light-lost takes (r1192, r1193) tipped on uneven ground four seconds
@@ -2009,8 +2010,9 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   degrees, and its estimate ran 100 m away in four seconds: the rotor-drag
   model read the ground's friction (2.3 m/s² across the rotor axis) as 21
   m/s; readings beyond any flight's drag are left out now (K13, 208ab74e),
-  and the acceptance on 5dd839b4 holds: 1.576 to 1.772 m/s (mean 1.700), B
-  within 0.03 m, no contact, every flight counted (r1205 to r1210). The
+  and the acceptance on 5dd839b4 holds: 1.576 to 1.772 m/s (mean 1.700), the
+  true position 0.79 to 1.79 m from B at its acknowledgement, no contact,
+  every flight counted (r1205 to r1210). The
   light-lost scenario was recorded again as r1211 (89ac0f10: the overlay's
   `LANDED` by the truth, the recording ending with the mission's result).
 - **Flights under the host's load** (specification A4): a flight is watched
