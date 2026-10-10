@@ -1993,6 +1993,19 @@ On 2026-10-05 to 2026-10-08, by the owner's decisions, for the release:
   stereo set at 1.0: 1.822 to 1.995 m/s (mean 1.897), B within 0.03 m, no
   contact, every flight counted (r1186 to r1190). The long flight to B and
   back and the goal-outside flight are set aside (A8).
+- **A floor touched in flight is a crash, the clearance law carries the
+  estimate's vertical error, the way home at 1.5** (2026-10-09, A9, K27,
+  K11, 0a332c4d; the offboard split into three sources, acaa4b1f; its mode
+  stream kept through a planner-loss hold, b48f89eb). The acceptance on
+  b48f89eb, the stereo set at 1.0: 1.640 to 1.878 m/s (mean 1.750, the
+  clearance law under K27 holding the reference under 2 m/s in 27 percent
+  of the ticks against 11 before), B within 0.06 m, no contact, every flight
+  counted (r1197 to r1201). The four scenarios recorded again on it are in
+  `log/videos/2026-10-09/` (r1191, r1194, r1195, r1196): the low battery now
+  turns 72 s in with 140 s against 128 estimated and is home with about 81 s;
+  two light-lost takes (r1192, r1193) tipped on uneven ground four seconds
+  after a level touchdown, the known risk of the blind landing
+  ([technical_debt.md](technical_debt.md)).
 - **Flights under the host's load** (specification A4): a flight is watched
   while it flies and stopped when the load slows it, and flown again when
   the host is quiet (`tools/fly_until_valid.sh`, `tools/record_until_pass.sh`).
