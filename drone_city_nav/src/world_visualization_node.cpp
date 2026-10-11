@@ -1,11 +1,9 @@
 #include "drone_city_nav/world_visualization_node.hpp"
 
-#include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
-#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -27,14 +25,6 @@ public:
     gazebo_aligned_axes_swapped_ = declare_parameter<bool>(
         std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     const auto durable_qos = rclcpp::QoS{1}.reliable().transient_local();
-    raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("raw_obstacle_grid_topic",
-                                       "/drone_city_nav/raw_obstacle_grid"),
-        durable_qos);
-    static_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("static_map_grid_topic",
-                                       "/drone_city_nav/static_map_grid"),
-        durable_qos);
     static_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("static_map_points_topic",
                                        "/drone_city_nav/static_map_points"),
@@ -43,15 +33,6 @@ public:
         declare_parameter<std::string>("static_building_markers_topic",
                                        "/drone_city_nav/static_building_markers"),
         durable_qos);
-    raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
-        declare_parameter<std::string>("raw_obstacle_snapshot_topic",
-                                       "/drone_city_nav/raw_obstacle_snapshot"),
-        durable_qos, [this](const msg::RawObstacleSnapshot::SharedPtr snapshot) {
-          nav_msgs::msg::OccupancyGrid grid = snapshot->grid;
-          grid.header.stamp = now();
-          grid.header.frame_id = frame_id_;
-          raw_grid_pub_->publish(grid);
-        });
 
     const auto package_share = std::filesystem::path{
         ament_index_cpp::get_package_share_directory("drone_city_nav")};
@@ -100,12 +81,9 @@ private:
 
   std::string frame_id_{"map"};
   bool gazebo_aligned_axes_swapped_{true};
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_grid_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_points_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       static_buildings_pub_;
-  rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
 };
 
 std::shared_ptr<rclcpp::Node>

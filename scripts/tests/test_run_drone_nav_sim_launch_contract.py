@@ -257,13 +257,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         for config_path in RVIZ_CONFIGS:
             with self.subTest(config=config_path.name):
                 config = config_path.read_text(encoding="utf-8")
-                static_map_display = config.split(
-                    "Name: Static City Map", 1
-                )[1].split("Name: Static Building Volumes", 1)[0]
-                display = config.split("Name: Static City Map Points", 1)[1].split(
-                    "Name: Static Building Volumes", 1
-                )[0]
-                self.assertIn("Alpha: 0.12", static_map_display)
+                before, after = config.split("Name: Static City Map Points", 1)
+                display_head = before.rsplit("    - Alpha: ", 1)[1]
+                display = after.split("Name: Static Building Volumes", 1)[0]
+                self.assertTrue(display_head.startswith("0.12\n"))
                 self.assertIn("Durability Policy: Transient Local", display)
                 self.assertIn("Reliability Policy: Reliable", display)
                 self.assertIn("History Policy: Keep Last", display)

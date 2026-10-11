@@ -319,7 +319,6 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot_3d`
 - `/drone_city_nav/raw_obstacle_delta_3d`
-- `/drone_city_nav/raw_obstacle_grid`
 - `/drone_city_nav/latest_sensor_obstacle_scan`
 - `/drone_city_nav/current_lidar_returns_3d`
 - `/drone_city_nav/raw_lidar_hit_points_3d`

@@ -65,8 +65,6 @@ rosidl_generate_interfaces(
   ${PROJECT_NAME}
   "msg/ObstacleMemoryStatus.msg"
   "msg/LatestSensorObstacleScan.msg"
-  "msg/RawObstacleDelta.msg"
-  "msg/RawObstacleSnapshot.msg"
   "msg/ObservedObstacleChunk3D.msg"
   "msg/RawObstacleDelta3D.msg"
   "msg/RawObstacleSnapshot3D.msg"
@@ -602,7 +600,6 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/px4_autopilot_adapter.hpp
     include/drone_city_nav/px4_offboard_setpoint_io.hpp
     include/drone_city_nav/raw_obstacle_3d_ros.hpp
-    include/drone_city_nav/raw_obstacle_delta.hpp
     include/drone_city_nav/ros_conversions.hpp
     include/drone_city_nav/spectator_diagnostics_selection_ros.hpp
     include/drone_city_nav/static_map_debug.hpp
@@ -857,7 +854,6 @@ add_library(
   src/lidar_debug_pointclouds.cpp
   src/mppi_debug_markers.cpp
   src/ros_conversions.cpp
-  src/raw_obstacle_delta.cpp
   src/raw_obstacle_3d_ros.cpp
   src/spectator_diagnostics_selection_ros.cpp
   src/static_map_debug.cpp
@@ -1408,10 +1404,6 @@ if(BUILD_TESTING)
   enable_project_warnings(esdf_query_test)
 
 
-  ament_add_gtest(raw_obstacle_delta_test tests/raw_obstacle_delta_test.cpp)
-  target_compile_features(raw_obstacle_delta_test PRIVATE cxx_std_20)
-  target_link_libraries(raw_obstacle_delta_test drone_city_nav_ros_adapters)
-  enable_project_warnings(raw_obstacle_delta_test)
 
   ament_add_gtest(execution_horizon_contract_ros_test
                   tests/execution_horizon_contract_ros_test.cpp)

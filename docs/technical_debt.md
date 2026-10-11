@@ -113,6 +113,19 @@ light-lost and severe-failure scenarios) left the register; C8 was measured
 and keeps its remedy; L7 was repaired in part; L2's re-anchor was not built
 (K1).
 
+On 2026-10-10 (the technical-debt goal before roadmap item 18) R4 left the
+register: the 2D memory class, its ingestion helpers, the hit diagnostics and
+the four messages only the class filled went (5b6cde28), and with them the
+rest of R1's residue the removal of the node had left behind: the 2D raw
+transport (`RawObstacleSnapshot`, `RawObstacleDelta`, the delta library and
+its test), the world visualization node's subscription to a snapshot nobody
+published and its two grid publishers nobody fed, the RViz displays of those
+grids and the bag script's topics. What remains of the 2D path is names: the
+multi-vehicle launch still wires the 2D topic names into its memory and
+planner parameters and the diagnostics multiplexer still subscribes to the
+2D clouds, both unflown until item 15; they go with item 15's first flight,
+by the rule P9 was decided on (an unflown change is not a change to make).
+
 On 2026-10-04 the entry of a spurious occupied layer over the staging base
 (the former third (c) entry) left the register: it was no layer. The whole
 memory stood 0.24 m above the world because the sensors were mounted 0.24 m
@@ -230,7 +243,6 @@ laid out on 2026-09-25, with the effort and the quality each was given.
 
 | Debt | Measured | Class | Found by |
 |---|---|---|---|
-| The 2D memory core class `ObstacleMemory` (obstacle_memory.hpp/.cpp) and its ingestion helpers (lidar_beam_observation, lidar_ingestion_decision and confidence, ambiguous_lidar_hit_tracker, the expected-surface providers) stay in the core library after the 2D lidar path was removed (59f55e1f), because `lidar_memory_hit_diagnostics.hpp` and `lidar_debug_pointclouds.hpp` include the class and `obstacle_memory_3d_node` uses those headers' 3D functions. Nothing constructs the class at runtime; its unit test still runs. The remainder is a refactor of the two headers, then the removal. | one class, six helper sources, one test | (b) | R1, 2026-09-26 |
 | Fourteen sources sit near the 1000-line cap and most of the package lies flat in `src/`. | `swept_footprint.cpp` at 994 non-blank lines | (b) | item 10 |
 | What a recorded flight still costs. Since roadmap item 20 closed, a recorded flight is flown at a real-time factor of 0.6 with the loop slowed with the simulator and is judged like any other (specification A11, K25): six scenarios of six recorded on df5a86b8 counted by the host's verdict. What remains: the windows' price is paid in wall time (a flight of 225 s takes 375 s), 0.6 is the largest factor the reference workstation holds beside them (0.70 at the median and 0.63 at the 25th percentile when 0.7 is asked for), and how windows on the other GPU, at 13 to 29 percent of a core each, slow the simulator was never found. A recording at real time needs the pictures rendered after the flight from a recording of its topics and poses. | r1091 at 0.7, r1092 and r1109 at 0.6; at a factor of 1.0 the stereo set held 0.61 to 0.82 over 21 recorded flights of 2026-10-04; r1016: 0.715 / 0.793 / 0.850 / 0.866 with the windows stopped in turn | (b) | item 20 |
 | The long flight under failures stands still near B when the simulator runs below real time. To B and back with the stream's and the light's moderate failures, the vehicle stops within 8 m of B, before it or just after, and stands until the window ends: the route is blocked by the memory's occupancy, the planner keeps finding and certifying a successor and the lifecycle never activates it (of the last 400 planner results of r1110, 215 were `certified_pending` and 79 `stale_route_generation`; the route generation did not change for 20 minutes, with 12072 updates asked for by a blocked route and 279 stalled releases). It is not the recording: the same flight held without a window at 0.6 (r1117) and passed with the memory's display clouds on at real time (r1118). By the simulator's rate: nine of nine at 0.87 to 1.00 of real time, three of nine at 0.6 to 0.8 (the five recorded at a factor of 1.0 on 2026-10-04, where the windows held the simulator down, among them). So a stack with more wall time per simulated second, which is a faster onboard computer, loses a flight the slower one flies; what in the lifecycle's timing depends on the ratio is not found, and at a factor of 1.0, where a change is accepted (K25), it is not met. One instance of 2026-10-04 (r1032) had occupancy with no truth near it beside the vehicle, which the memory no longer forgets (K10); r1110's blocking cells all have truth within 0.5 m. Repair: the planner's state at a hold replayed offline, which the stack has no tool for. | r1110 (recorded, 0.6): B at 0.49 m, then 165 of 216 mission summaries at rest; r1117 (headless, 0.6): 68 of 129 at rest; r1116, r1121 (0.6): passed, 1.842 and 1.962 m/s; r1087, r1118 (1.0): passed | (a) | item 20 |

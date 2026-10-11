@@ -30,7 +30,6 @@ means the parameter and the transform disagree, not a planner coordinate error.
 
 | Display | Topic |
 |---|---|
-| Raw Obstacle Grid | `/drone_city_nav/raw_obstacle_grid` |
 | Static City Map Points | `/drone_city_nav/static_map_points` |
 | Selected MPPI Horizon | `/drone_city_nav/mppi/path` |
 | Selected MPPI Markers | `/drone_city_nav/mppi/markers` |

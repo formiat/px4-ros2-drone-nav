@@ -637,8 +637,7 @@ contain only direct sensor evidence. Each timestamp-aligned scan first publishes
 points validate the complete finite path without waiting for persistent-memory
 integration. The planner builds a distance-derived risk field without
 materializing inflated grids. Static mode instead loads raw Occupancy3D
-directly. `/drone_city_nav/raw_obstacle_grid` is visualization-only and must not
-be wired back into planner or offboard validation.
+directly.
 
 RViz publishes the selected spectator's latest 3D returns on
 `/drone_city_nav/current_lidar_returns_3d` and its downsampled accumulated

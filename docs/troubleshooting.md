@@ -95,7 +95,6 @@ quaternion. Do not correct this with a fixed arbitrary yaw subtraction.
 
 Check the actual topics:
 
-- `/drone_city_nav/raw_obstacle_grid`;
 - `/drone_city_nav/mppi/path`;
 - `/drone_city_nav/mppi/markers`;
 - `/drone_city_nav/drone_marker`.
