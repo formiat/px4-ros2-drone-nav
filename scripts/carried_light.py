@@ -136,6 +136,37 @@ def schedule(profile: str, seed: int, horizon_s: float) -> list[Outage]:
         count += 1
 
 
+def zones_from(text: str) -> list[tuple[float, float, float, float, float]]:
+    """LIGHT_ZONES: "x,y,z,radius,falloff" in the world frame, several separated by ";":
+    a fade of the light over distance, the rig that measures how early the frames
+    warn of a fading light (technical_debt.md, Camera Perception; smoke brings the
+    same fade, roadmap items 18 and 23). Evaluation only: the vehicle learns of it
+    from its frames alone."""
+    zones = []
+    for part in filter(None, (item.strip() for item in text.split(";"))):
+        x, y, z, radius, falloff = (float(value) for value in part.split(","))
+        if radius < 0.0 or falloff <= 0.0:
+            raise ValueError(f"light zone '{part}' needs a radius and a falloff")
+        zones.append((x, y, z, radius, falloff))
+    return zones
+
+
+def zone_share(zones, position) -> float:
+    """The share of the light the zones leave at `position`: out inside the
+    radius, and across the falloff halved six times over, evenly, toward it.
+    The camera's gain makes up a light dimmed eightfold, so a linear fade left
+    the frames unchanged until the last few decimetres (r799, r800, r802);
+    halved evenly, the gain runs out part way across and the frames darken
+    over the rest."""
+    share = 1.0
+    for x, y, z, radius, falloff in zones:
+        distance = ((position[0] - x) ** 2 + (position[1] - y) ** 2 +
+                    (position[2] - z) ** 2) ** 0.5
+        across = max(0.0, min(1.0, (distance - radius) / falloff))
+        share = min(share, 0.0 if distance <= radius else 2.0 ** (-6.0 * (1.0 - across)))
+    return share
+
+
 def share_at(outages: list[Outage], t_s: float) -> float:
     return min((outage.share(t_s) for outage in outages), default=1.0)
 
@@ -159,6 +190,7 @@ def main() -> int:
     parser.add_argument("--battery-s", type=float)
     parser.add_argument("--model", default="x500_lidar_3d_0")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--zones", default="")
     parser.add_argument("--horizon-s", type=float, default=3600.0)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
@@ -174,6 +206,7 @@ def main() -> int:
 
     outages = ([] if args.profile == "none"
                else schedule(args.profile, args.seed, args.horizon_s))
+    zones = zones_from(args.zones)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with (args.output.with_suffix(".schedule.csv")).open("w", newline="") as stream:
         writer = csv.writer(stream)
@@ -251,6 +284,8 @@ def main() -> int:
                         airborne_s = t_s
                         print(f"airborne at sim {t_s:.3f} s", flush=True)
                 share = scheduled_share(outages, t_s, airborne_s) if charge_s > 0.0 else 0.0
+                if zones and xyz is not None:
+                    share = min(share, zone_share(zones, xyz))
                 share = round(share, 3)
                 if share != applied:
                     accepted = request(NOMINAL_INTENSITY * share)
