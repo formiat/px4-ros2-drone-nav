@@ -188,6 +188,54 @@ TEST(RouteLifecycle3DTest, NewMissionEpochCanReplaceTheActiveIntent) {
   EXPECT_TRUE(assessment.replacementAllowed());
 }
 
+// Specification K20: the objective moved within its epoch, and the candidate
+// routes to where it is now.
+TEST(RouteLifecycle3DTest, AMovedTargetWithinTheEpochReplacesTheActiveIntent) {
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
+  MaterializedRouteProposal3D replacement = persistentMissionProposal();
+  replacement.objective.goal.x += 25.0;
+  replacement.objective.sample_sequence += 1U;
+  replacement.intent.mission_target = replacement.objective.goal;
+  replacement.intent.id = makeRouteIntentId3D(replacement.intent.mission_target,
+                                              replacement.objective.mission_epoch);
+
+  const RouteProposalReplacementAssessment3D assessment =
+      assessRouteProposalReplacement3D(&active, replacement, {});
+
+  EXPECT_TRUE(assessment.replacementAllowed());
+}
+
+// Specification K20: a candidate planned for an older sample of the objective
+// does not activate; the active route is not judged by its sample.
+TEST(RouteLifecycle3DTest, ACandidateForAnOlderObjectiveSampleCannotActivate) {
+  const MaterializedRouteProposal3D proposal = validProposal();
+  const std::vector<RouteSample3D> route = straightRoute();
+  NavigationWorldCertificate3D resident_world = proposal.validated_world;
+  StaticRouteObjective current = proposal.objective;
+  current.sample_sequence = proposal.objective.sample_sequence + 1U;
+  const auto observe = [&](const StaticRouteObjective& objective) {
+    return RouteActivationObservation3D{
+        .resident_world = resident_world,
+        .current_objective = objective,
+        .position = {6.5, 1.5, 1.5},
+        .maximum_cross_track_m = 2.0,
+        .footprint = {.radius_m = 0.0,
+                      .perimeter_samples = 0U,
+                      .radial_rings = 0U,
+                      .axial_samples = 1U,
+                      .sweep_step_m = 0.25},
+    };
+  };
+
+  EXPECT_FALSE(
+      assessRouteActivation3D(proposal, route, observe(current)).objective_matches);
+  EXPECT_TRUE(assessRouteActivation3D(proposal, route, observe(proposal.objective))
+                  .objective_matches);
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
+  EXPECT_NE(assessRouteExecution3D(&activated, route, observation(current)).status,
+            RouteExecutionStatus3D::kObjectiveMismatch);
+}
+
 TEST(RouteLifecycle3DTest, CertifiedCurrentStateSafetyReplanCanReplaceSameIntent) {
   const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
   const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();

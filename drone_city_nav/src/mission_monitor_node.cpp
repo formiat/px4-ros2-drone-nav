@@ -730,7 +730,10 @@ private:
     minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
     goal_substituted_ = true;
     publishMissionEvent(std::string{"GOAL_UNREACHABLE trigger="} + trigger);
-    return_epoch_ = navigation_mission_epoch_;
+    // The return is one mission epoch (K20), opened here; its objective then
+    // moves along the trail a sample at a time.
+    return_epoch_ = navigation_mission_epoch_ + 1U;
+    return_sample_ = 0U;
     return_target_ = std::numeric_limits<std::size_t>::max();
     publishReturnObjective();
     const double elapsed_s =
@@ -763,13 +766,14 @@ private:
     return_target_ = target;
     const Point3 position =
         target == 0U ? waypoints_.front() : return_trail_.points()[target];
-    // Each point is a goal of its own, in a new mission epoch: the planner
-    // keeps its route to a goal moved within the epoch as an equivalent one
-    // (r908 stood 540 s at the first point with the objective 20 m on).
+    // Each point is a sample of the return's one objective (K20): the planner
+    // routes to the moved target afresh and its lifecycle replaces the route
+    // to the old one (r908 stood 540 s at the first point with the objective
+    // 20 m on, when it kept that route as equivalent).
     msg::NavigationObjective objective;
     objective.stamp = now();
-    objective.mission_epoch = ++return_epoch_;
-    objective.sample_sequence = 1U;
+    objective.mission_epoch = return_epoch_;
+    objective.sample_sequence = ++return_sample_;
     objective.position.x = position.x;
     objective.position.y = position.y;
     objective.position.z = position.z;
@@ -777,8 +781,10 @@ private:
     objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
     objective_pub_->publish(objective);
     RCLCPP_INFO(get_logger(),
-                "RETURN_TRAIL objective=(%.3f,%.3f,%.3f) index=%zu of %zu", position.x,
-                position.y, position.z, target, return_trail_.points().size());
+                "RETURN_TRAIL objective=(%.3f,%.3f,%.3f) index=%zu of %zu "
+                "mission_epoch=%" PRIu64 " sample=%" PRIu64,
+                position.x, position.y, position.z, target,
+                return_trail_.points().size(), return_epoch_, return_sample_);
   }
 
   [[nodiscard]] double meanSpeed() const noexcept {
@@ -889,6 +895,7 @@ private:
   bool goal_substituted_{false};
   ReturnTrail return_trail_;
   std::uint64_t return_epoch_{0U};
+  std::uint64_t return_sample_{0U};
   std::size_t return_target_{std::numeric_limits<std::size_t>::max()};
   GoalReachabilityProof3D latest_proof_{};
   std::future<GoalReachabilityProof3D> proof_future_;

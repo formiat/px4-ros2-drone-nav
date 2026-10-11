@@ -50,7 +50,7 @@ void ProductionMppiConfigLoader::declarePlanning() {
   planning.configured_mission_objective_enabled =
       declare<bool>("configured_mission_objective_enabled", false);
   planning.dynamic_objective_replan_distance_m =
-      declare<double>("dynamic_objective_replan_distance_m", 5.0);
+      declare<double>("dynamic_objective_replan_distance_m", 2.0);
   planning.dynamic_objective_replan_period_s =
       declare<double>("dynamic_objective_replan_period_s", 0.25);
   planning.tracking_objective_ray_sample_spacing_m =

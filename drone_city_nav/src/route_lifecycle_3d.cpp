@@ -256,6 +256,15 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
   if (ownership_lineage_changed) {
     return {};
   }
+  // Specification K20: a position objective moved within its epoch (the way
+  // home, a trail point at a time) is served by a route to where it is now;
+  // the active route, to where it was, is neither equivalent nor a rival
+  // (r908 stood 540 s at a trail point with the objective 20 m on).
+  if (!active->continuous_tracking &&
+      !samePoint(active->mission_target, replacement->mission_target,
+                 observation.mission_target_tolerance_m)) {
+    return {};
+  }
   return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
 }
 
@@ -293,10 +302,17 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
           proposal.validated_world.raw_validated_through_revision,
       .raw_world_compatible = !observation.raw_validation_required,
   };
+  // A candidate planned for an older sample of a position objective (K20:
+  // the objective moved on while the search ran) serves a target nobody asks
+  // for; the active route is judged at the execution boundary without this,
+  // so that it carries the vehicle until its successor replaces it.
   result.objective_matches =
       staticRouteObjectiveMatches(proposal.objective, observation.current_objective,
                                   observation.minimum_tracking_sample_sequence,
-                                  std::numeric_limits<double>::infinity());
+                                  std::numeric_limits<double>::infinity()) &&
+      (proposal.objective.continuous_tracking ||
+       proposal.objective.sample_sequence >=
+           observation.current_objective.sample_sequence);
   if (observation.raw_validation_required) {
     result.raw_world_compatible =
         observation.latest_raw_occupancy != nullptr &&
