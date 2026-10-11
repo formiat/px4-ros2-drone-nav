@@ -7,7 +7,6 @@
 #include "drone_city_nav/latest_sensor_obstacle_scan_ros.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
-#include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_scan_3d.hpp"

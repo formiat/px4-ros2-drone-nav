@@ -63,10 +63,6 @@ pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
-  "msg/ObstacleMemoryHitObservation.msg"
-  "msg/ObstacleMemoryCellProvenance.msg"
-  "msg/ObstacleMemoryProvenance.msg"
-  "msg/ObstacleMemorySnapshot.msg"
   "msg/ObstacleMemoryStatus.msg"
   "msg/LatestSensorObstacleScan.msg"
   "msg/RawObstacleDelta.msg"
@@ -235,7 +231,6 @@ target_link_libraries(drone_city_nav_route_contracts PUBLIC drone_city_nav_model
 
 add_drone_city_nav_layer(
   drone_city_nav_world
-  src/ambiguous_lidar_hit_tracker.cpp
   src/collision_voxelizer.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
@@ -243,19 +238,14 @@ add_drone_city_nav_layer(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_obstacle_distance_3d.cpp
-  src/known_static_lidar_hit_classifier.cpp
   src/latest_sensor_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_beam_observation.cpp
-  src/lidar_ingestion_confidence.cpp
-  src/lidar_ingestion_decision.cpp
-  src/lidar_memory_hit_diagnostics.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
   src/mapping_lifecycle.cpp
-  src/obstacle_memory.cpp
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_transport_policy_3d.cpp
   src/observed_esdf_3d.cpp
@@ -470,7 +460,6 @@ set(DRONE_CITY_NAV_ROUTE_CONTRACTS_HEADERS
     include/drone_city_nav/route_risk_tier_3d.hpp)
 
 set(DRONE_CITY_NAV_WORLD_HEADERS
-    include/drone_city_nav/ambiguous_lidar_hit_tracker.hpp
     include/drone_city_nav/collision_voxelizer.hpp
     include/drone_city_nav/distance_field.hpp
     include/drone_city_nav/distance_field_3d.hpp
@@ -479,13 +468,9 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/grid_config.hpp
     include/drone_city_nav/grid_overlay.hpp
     include/drone_city_nav/known_obstacle_distance_3d.hpp
-    include/drone_city_nav/known_static_lidar_hit_classifier.hpp
     include/drone_city_nav/latest_sensor_obstacle_scan.hpp
     include/drone_city_nav/lidar_acquisition_pose.hpp
     include/drone_city_nav/lidar_beam_observation.hpp
-    include/drone_city_nav/lidar_ingestion_decision.hpp
-    include/drone_city_nav/lidar_memory_hit_diagnostics.hpp
-    include/drone_city_nav/lidar_motion_compensation.hpp
     include/drone_city_nav/lidar_pose_history.hpp
     include/drone_city_nav/lidar_projection.hpp
     include/drone_city_nav/lidar_scan_3d.hpp
@@ -494,7 +479,6 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/mapping_lifecycle.hpp
     include/drone_city_nav/observed_esdf_3d.hpp
     include/drone_city_nav/observed_occupancy_grid_3d.hpp
-    include/drone_city_nav/obstacle_memory.hpp
     include/drone_city_nav/obstacle_memory_3d.hpp
     include/drone_city_nav/obstacle_memory_transport_policy_3d.hpp
     include/drone_city_nav/occupancy_grid.hpp
@@ -1335,16 +1319,8 @@ if(BUILD_TESTING)
     enable_project_warnings(${target_name})
   endfunction()
 
-  add_drone_city_nav_core_gtest(ambiguous_lidar_hit_tracker_test
-                                tests/ambiguous_lidar_hit_tracker_test.cpp)
   add_drone_city_nav_ros_adapter_gtest(
     lidar_debug_pointclouds_test tests/lidar_debug_pointclouds_test.cpp)
-  add_drone_city_nav_core_gtest(lidar_ingestion_decision_test
-                                tests/lidar_ingestion_decision_test.cpp)
-  add_drone_city_nav_core_gtest(lidar_memory_hit_diagnostics_test
-                                tests/lidar_memory_hit_diagnostics_test.cpp)
-  add_drone_city_nav_core_gtest(lidar_motion_compensation_test
-                                tests/lidar_motion_compensation_test.cpp)
 
   add_drone_city_nav_private_runtime_gtest(
     production_mppi_route_world_test
@@ -1380,8 +1356,6 @@ if(BUILD_TESTING)
   add_drone_city_nav_private_runtime_gtest(
     route_execution_selector_3d_test
     tests/route_execution_selector_3d_test.cpp drone_city_nav_route_runtime)
-  add_drone_city_nav_core_gtest(obstacle_memory_test
-                                tests/obstacle_memory_test.cpp)
   add_drone_city_nav_core_gtest(px4_ros_time_mapper_test
                                 tests/px4_ros_time_mapper_test.cpp)
 

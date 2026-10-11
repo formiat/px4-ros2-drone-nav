@@ -1,5 +1,4 @@
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
-#include "drone_city_nav/obstacle_memory.hpp"
 
 #include <gtest/gtest.h>
 
@@ -113,55 +112,6 @@ TEST(LidarAcquisitionPoseTest, ThePositionAndTheAttitudeAreSampledAtTheirOwnOffs
   EXPECT_EQ(result.alignment.attitude_timing.requested_stamp_ns -
                 result.alignment.position_timing.requested_stamp_ns,
             100'000'000);
-}
-
-TEST(LidarAcquisitionPoseTest, OffsetChangesIntegratedPhysicalWallLocation) {
-  const Px4RosTimeMapper mapper = makeReadyIdentityTimeMapper();
-  const LidarPoseHistory history = makeMovingPoseHistory();
-  const LaserScanTiming timing{1'010'000'000, true, 0.0, 1'020'000'000, true};
-  const LidarAcquisitionPoseResult acquisition = resolveLidarAcquisitionBeamPoses(
-      history, timing, 1U,
-      LidarAcquisitionPoseConfig{.apply_source_time_offsets = true,
-                                 .position_source_time_offset_s = 0.1,
-                                 .attitude_source_time_offset_s = 0.1,
-                                 .require_source_timestamp_alignment = true},
-      std::nullopt, &mapper);
-  ASSERT_TRUE(acquisition.resolved());
-
-  ObstacleMemoryGrid memory{GridBounds{0.0, -1.0, 0.5, 40, 4}};
-  const std::vector<float> ranges{5.0F};
-  LaserScan2DView scan{};
-  scan.ranges = ranges;
-  scan.angle_increment_rad = 1.0;
-  scan.range_min_m = 0.1;
-  scan.range_max_m = 20.0;
-  scan.origin_altitude_m = 10.0;
-  scan.altitude_valid = true;
-  scan.attitude_valid = true;
-  scan.timing = timing;
-  scan.beam_projection_poses = acquisition.alignment.poses;
-  scan.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
-  const LidarProjectionPose& pose = acquisition.alignment.poses.front();
-
-  const ObstacleMemoryStats stats = memory.integrateScan(
-      Pose2{pose.position, pose.yaw_rad}, scan, ObstacleMemoryConfig{});
-
-  EXPECT_EQ(stats.hit_beams, 1U);
-  const auto lagged_wall_cell = memory.rawGrid().worldToCell(Point2{14.0, 0.0});
-  ASSERT_TRUE(lagged_wall_cell.has_value());
-  EXPECT_EQ(memory.rawGrid().state(lagged_wall_cell.value_or(GridIndex{})),
-            CellState::kFree);
-  std::optional<Point2> occupied_center;
-  for (int y = 0; y < memory.rawGrid().height(); ++y) {
-    for (int x = 0; x < memory.rawGrid().width(); ++x) {
-      const GridIndex cell{x, y};
-      if (memory.rawGrid().isOccupied(cell)) {
-        occupied_center = memory.rawGrid().cellCenter(cell);
-      }
-    }
-  }
-  ASSERT_TRUE(occupied_center.has_value());
-  EXPECT_NEAR(occupied_center.value_or(Point2{}).x, 15.0, 0.26);
 }
 
 TEST(LidarAcquisitionPoseTest, RejectsReceiveTimeFallbackForMapping) {

@@ -145,13 +145,6 @@ from occupied voxel centers and separately publishes the current scan on
 `/drone_city_nav/current_lidar_returns_3d`. Neither visualization cloud is a
 planner input.
 
-The planner replaces its current memory state only when stamp, frame, complete
-map metadata, raw row-major grid hash, occupied count, and every provenance
-record agree exactly inside that one message. Callback backlog may drop an old
-snapshot, but it cannot deliver its grid without its provenance or vice versa.
-An invalid atomic pair is ignored as a whole, leaving the previous valid pair in
-use. Planning never waits for a later diagnostics callback.
-
 The throttled producer summary reports `serialized_bytes`, measured from the
 actual ROS CDR serialization buffer. This includes variable-length cell and
 string payloads and is intended for monitoring DDS bandwidth growth.
@@ -296,8 +289,7 @@ costs; a risk band does not independently remove a physically free rollout.
 Every bounded transport update publishes a small `ObstacleMemoryStatus` carrying
 the producer identity, monotonically increasing sequence, occupied count, and
 which larger artifacts were emitted for that update. The planner consumes this
-message for memory revision diagnostics without receiving the grid or sparse
-provenance payload.
+message for memory revision diagnostics without receiving the grid.
 
 No-static production planning receives an adaptive `RawObstacleSnapshot3D` base and the latest
 cumulative `RawObstacleDelta3D` dirty chunks relative to that base. The direct
@@ -307,9 +299,7 @@ an expensive snapshot cannot make the physical scan stale. Static planning
 consumes neither sensor-world transport; raw Occupancy3D is its
 authoritative world.
 
-`ObstacleMemorySnapshot` remains an atomic raw-grid/provenance artifact for
-offline auditing and debug consumers. It, the standalone grid/provenance topics,
-and the 3D diagnostic point cloud use bounded cadences. The 3D runtime transport
+The 3D diagnostic point clouds use bounded cadences. The 3D runtime transport
 coalesces superseded revisions, publishes cumulative deltas at a configured
 rate, and rebases only when the delta approaches snapshot size or the maximum
 base age expires. This avoids rebuilding a multi-megabyte full snapshot for
@@ -326,8 +316,6 @@ Useful visualization topics:
 
 - `/drone_city_nav/static_map_points`
 - `/drone_city_nav/obstacle_memory_grid`
-- `/drone_city_nav/obstacle_memory_provenance`
-- `/drone_city_nav/obstacle_memory_snapshot`
 - `/drone_city_nav/obstacle_memory_status`
 - `/drone_city_nav/raw_obstacle_snapshot_3d`
 - `/drone_city_nav/raw_obstacle_delta_3d`

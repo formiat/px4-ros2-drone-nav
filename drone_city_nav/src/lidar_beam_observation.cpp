@@ -5,21 +5,6 @@
 
 namespace drone_city_nav {
 
-const char*
-lidarProjectionPoseSourceName(const LidarProjectionPoseSource source) noexcept {
-  switch (source) {
-    case LidarProjectionPoseSource::kCallbackPoseFallback:
-      return "callback_pose_fallback";
-    case LidarProjectionPoseSource::kMotionExtrapolatedFallback:
-      return "motion_extrapolated_fallback";
-    case LidarProjectionPoseSource::kReceiveTimestampAligned:
-      return "receive_timestamp_aligned";
-    case LidarProjectionPoseSource::kSourceTimestampAligned:
-      return "source_timestamp_aligned";
-  }
-  return "unknown";
-}
-
 LidarBeamTimestamp
 lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
                               const std::size_t beam_index) noexcept {
@@ -45,63 +30,6 @@ lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
   }
   const auto rounded_offset_ns = static_cast<std::int64_t>(std::round(offset_ns));
   return LidarBeamTimestamp{timing.first_beam_stamp_ns + rounded_offset_ns, true};
-}
-
-LidarBeamObservation makeLidarBeamObservation(
-    const LaserScanTiming& timing, const std::size_t beam_index,
-    const LidarBeamProjection& projection, const double effective_max_range_m,
-    const LidarProjectionPose& source_pose,
-    const LidarProjectionConfig& projection_config, const bool timestamp_aligned_pose,
-    const LidarProjectionPoseSource projection_pose_source) {
-  const LidarBeamTimestamp acquisition_stamp =
-      lidarBeamAcquisitionTimestamp(timing, beam_index);
-  const bool source_attitude_valid = source_pose.attitude_valid &&
-                                     std::isfinite(source_pose.roll_rad) &&
-                                     std::isfinite(source_pose.pitch_rad);
-  return LidarBeamObservation{
-      .beam_index = beam_index,
-      .scan_stamp_ns = timing.first_beam_stamp_ns,
-      .scan_stamp_valid =
-          timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0,
-      .acquisition_stamp_ns = acquisition_stamp.stamp_ns,
-      .acquisition_stamp_valid = acquisition_stamp.valid,
-      .receive_stamp_ns = timing.receive_stamp_ns,
-      .receive_stamp_valid = timing.receive_stamp_valid,
-      .timestamp_aligned_pose = timestamp_aligned_pose,
-      .projection_pose_source = projection_pose_source,
-      .projection = projection,
-      .measured_range_m = projection.used_range_m,
-      .effective_max_range_m = effective_max_range_m,
-      .attitude_compensation_required = projection_config.compensate_attitude,
-      .source_attitude_valid = source_attitude_valid,
-      .source_roll_rad = source_attitude_valid
-                             ? source_pose.roll_rad
-                             : std::numeric_limits<double>::quiet_NaN(),
-      .source_pitch_rad = source_attitude_valid
-                              ? source_pose.pitch_rad
-                              : std::numeric_limits<double>::quiet_NaN(),
-      .source_tilt_rad = source_attitude_valid
-                             ? std::hypot(source_pose.roll_rad, source_pose.pitch_rad)
-                             : std::numeric_limits<double>::quiet_NaN(),
-  };
-}
-
-KnownStaticClassificationSnapshot
-makeKnownStaticClassificationSnapshot(const bool classifier_applied,
-                                      const KnownStaticLidarHitResult& classification) {
-  return KnownStaticClassificationSnapshot{
-      .classifier_applied = classifier_applied,
-      .classification = classification.classification,
-      .volume_matched = classification.volume_matched,
-      .confident_face_interior = classification.confident_face_interior,
-      .part_kind_valid = classification.volume_matched,
-      .part_kind = classification.part_kind,
-      .structure_id = std::string{classification.structure_id},
-      .opening_id = std::string{classification.opening_id},
-      .part_id = std::string{classification.part_id},
-      .expected_range_m = classification.expected_range_m,
-      .range_delta_m = classification.range_delta_m,
-  };
 }
 
 } // namespace drone_city_nav
