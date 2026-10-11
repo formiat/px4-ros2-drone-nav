@@ -2,7 +2,9 @@
 // extract_bag.py output (DIR/scans.bin, DIR/imu.csv), merging IMU and scans by stamp (IMU delivered up to
 // the scan stamp), and writes DIR/replay.csv (or out=PATH): stamp_ns,x,y,z,healthy,information,degenerate,
 // bias_x,bias_y,bias_z,vx,vy,vz, plus PATH.ms with the registration time p50 p95 p99 max and the count
-// over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel.
+// over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel;
+// hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
+// must register from a prior the IMU alone carried: the recovery's case.
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -19,11 +21,14 @@ int main(int argc, char** argv) {
   double heading = std::atof(argv[2]);
   LidarInertialOdometryConfig config;
   long long lag_ns = 0;
+  double hole_from_s = -1.0, hole_to_s = -1.0;
   std::string out_path;
   for (int i = 3; i < argc; ++i) {
     std::string kv = argv[i]; auto eq = kv.find('='); std::string k = kv.substr(0, eq); double v = std::atof(kv.c_str() + eq + 1);
     if (k == "out") { out_path = kv.substr(eq + 1); continue; }
     if (k == "lag") lag_ns = static_cast<long long>(v * 1e6);
+    else if (k == "hole_from") hole_from_s = v;
+    else if (k == "hole_to") hole_to_s = v;
     else if (k == "gate") config.innovation_gate_sigma = v;
     else if (k == "keyframes") config.maximum_keyframes = static_cast<std::size_t>(v);
     else if (k == "kftrans") config.keyframe_translation_m = v;
@@ -51,6 +56,7 @@ int main(int argc, char** argv) {
   long long stamp; unsigned n;
   std::vector<float> buffer;
   std::vector<double> durations;
+  long long first_stamp = -1;
   while (std::fread(&stamp, sizeof stamp, 1, scans) == 1 && std::fread(&n, sizeof n, 1, scans) == 1) {
     buffer.resize(3 * n);
     if (std::fread(buffer.data(), sizeof(float), 3 * n, scans) != 3 * n) break;
@@ -60,6 +66,9 @@ int main(int argc, char** argv) {
       odometry.addImu(LidarInertialImuSample{.stamp_ns = s.t, .gyro_radps = {s.g[0], s.g[1], s.g[2]}, .accelerometer_mps2 = {s.a[0], s.a[1], s.a[2]}});
     }
     if (!odometry.initialized()) continue;
+    if (first_stamp < 0) first_stamp = stamp;
+    const double since_first_s = static_cast<double>(stamp - first_stamp) * 1e-9;
+    if (since_first_s >= hole_from_s && since_first_s < hole_to_s) continue;
     std::vector<Eigen::Vector3d> points; points.reserve(n);
     for (unsigned i = 0; i < n; ++i) points.emplace_back(buffer[3 * i], buffer[3 * i + 1], buffer[3 * i + 2]);
     const auto started = std::chrono::steady_clock::now();
