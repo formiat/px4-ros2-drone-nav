@@ -591,14 +591,15 @@ private:
   // depth registered against the long-lived map confirms the pose: a fit
   // within the ordinary correction's reach of it; one farther slid into
   // another fit (r1294: 3.38 m with three axes observed, the autopilot 0.04 m
-  // from the truth). The drift is then the ordinary map correction's, in its
-  // small steps. Until a registration confirms, for at most 3 s, the
-  // estimator stays silent and the autopilot keeps its failsafe; then the
-  // filter starts on the autopilot's pose unconfirmed.
+  // from the truth); it is reported, and the drift is the ordinary map
+  // correction's, in its small steps. The filter starts as soon as the stream
+  // flows: the autopilot holds its position valid for about 4.5 s without the
+  // external odometry (its accuracy past 1 m), and a 4 s hole and a wait for
+  // a confirmation left it without one; its failsafe landed the vehicle blind
+  // at 2 m/s into the staging area (r1296).
   void reinitialiseFromAutopilot(const std::int64_t stamp_ns,
                                  const std::vector<Eigen::Vector3d>& points_body) {
     constexpr std::int64_t kAutopilotStateFreshNs{1'000'000'000};
-    constexpr std::int64_t kUnconfirmedRestartNs{3'000'000'000};
     std::optional<AutopilotLocalState> local_state;
     std::optional<AutopilotAttitude> attitude;
     std::int64_t state_ns{0};
@@ -627,9 +628,6 @@ private:
                            local_state.has_value() ? "true" : "false",
                            map_.pointCount());
       return;
-    }
-    if (restart_tries_since_ns_ == 0) {
-      restart_tries_since_ns_ = now_ns;
     }
     // The autopilot's pose in the frame the filter publishes in: its position
     // in the map's frame back to the local NED, its velocity likewise, its
@@ -671,9 +669,7 @@ private:
         matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
         registration.residual_rms_m <= kMapMaximumResidualRmsM &&
         innovation_m <= kMapCorrectionReachM;
-    const bool unconfirmed =
-        !confirmed && now_ns - restart_tries_since_ns_ >= kUnconfirmedRestartNs;
-    if (confirmed || unconfirmed) {
+    {
       // At the latest IMU sample, on the autopilot's pose carried to it; the
       // filter's own frame lies the applied map offset behind the published
       // one.
@@ -688,19 +684,16 @@ private:
           rotation.transpose() * velocity_ned,
           Eigen::Quaterniond{rotation.transpose() * rotation_ned.toRotationMatrix()});
       ++reinitialisations_;
-      restart_tries_since_ns_ = 0;
     }
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
         "matched=%.2f matched_points=%.0f residual_m=%.3f innovation_m=%.2f "
         "depth_age_s=%.2f prior=(%.2f,%.2f,%.2f) reinitialisations=%" PRIu64,
-        confirmed     ? "confirmed"
-        : unconfirmed ? "unconfirmed"
-                      : "waiting",
-        registration.matched_fraction, matched_points, registration.residual_rms_m,
-        innovation_m, 1.0e-9 * static_cast<double>(state_ns - stamp_ns), prior.x(),
-        prior.y(), prior.z(), reinitialisations_);
+        confirmed ? "confirmed" : "unconfirmed", registration.matched_fraction,
+        matched_points, registration.residual_rms_m, innovation_m,
+        1.0e-9 * static_cast<double>(state_ns - stamp_ns), prior.x(), prior.y(),
+        prior.z(), reinitialisations_);
   }
 
   // The surface returns within the confident depth, in the body frame, one
@@ -942,7 +935,6 @@ private:
   std::int64_t autopilot_state_ros_ns_{0};
   std::uint64_t reinitialisations_{0U};
   // The first try of the restart under way, on the node's clock; zero: none.
-  std::int64_t restart_tries_since_ns_{0};
   rclcpp::CallbackGroup::SharedPtr group_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;

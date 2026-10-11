@@ -375,10 +375,17 @@ void MppiOffboardNode::controlTick() {
   blind_landing_ = takeoff_hovered &&
                    (!require_mission_start_signal_ || mission_started_) &&
                    dead_reckoning_landing_.due(now().nanoseconds());
+  // The autopilot's position lost in flight (its accuracy past its limit):
+  // the takeoff setpoint, a position, went out in its place, at a stale
+  // position, and the autopilot judged it invalid and landed blind at 2 m/s
+  // (r1296). The vehicle holds still in the velocity mode instead.
+  const bool position_lost_in_flight =
+      !blind_landing_ && !position_valid_ && takeoff_complete_stamp_.has_value();
   OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
-  if (blind_landing_) {
+  if (blind_landing_ || position_lost_in_flight) {
     mode = OffboardSetpointMode::kVelocityCruise;
-  } else {
+  }
+  if (!blind_landing_) {
     blind_descent_reflex_.reset();
   }
   if (!blind_landing_ && planned_path_fresh) {
@@ -388,6 +395,12 @@ void MppiOffboardNode::controlTick() {
   bool exact_horizon_feedback_published{false};
   if (blind_landing_) {
     publishDeadReckoningLandingSetpoint();
+  } else if (position_lost_in_flight) {
+    constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
+    setpoint_pub_->publish(buildMppiTrajectorySetpoint(
+        nowMicros(), Point2{0.0, 0.0}, 0.0, Point2{0.0, 0.0}, nan, nan, 0.0));
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "POSITION_LOST in_flight=true action=velocity_hold");
   } else if (!navigating) {
     publishTakeoffSetpoint();
     if (takeoff_ready && require_mission_start_signal_ && !mission_started_) {
