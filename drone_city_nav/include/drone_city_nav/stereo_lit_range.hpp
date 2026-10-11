@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -16,13 +17,26 @@ namespace drone_city_nav {
 // range ends there (technical_debt.md, Camera Perception: the frames gave no
 // warning of a fading light, r800 and r906). Metres where nothing matched
 // give no verdict, and the range runs on through them.
+// The value a lit frame reads, as the median of the last thirty seconds of
+// lit frames (225 at the pair's rate); none until ten seconds of them.
+class LitBaseline {
+public:
+  static constexpr std::size_t kFrames{225U};
+  static constexpr std::size_t kMinimumFrames{75U};
+
+  void observe(double value);
+  [[nodiscard]] std::optional<double> median() const;
+
+private:
+  std::vector<double> values_;
+  std::size_t next_{0U};
+};
+
 class LitRangeTracker {
 public:
   static constexpr std::size_t kMetres{8U};
   static constexpr std::size_t kReferenceMetre{2U};
   static constexpr double kFadeLine{0.2};
-  static constexpr std::size_t kBaselineFrames{225U};
-  static constexpr std::size_t kMinimumBaselineFrames{75U};
 
   // `brightness_by_metre`: the mean grey of the matched pixels in each metre
   // of depth from the first, negative where none matched. `lit` says whether
@@ -31,13 +45,7 @@ public:
   [[nodiscard]] double observe(std::span<const double> brightness_by_metre, bool lit);
 
 private:
-  struct Baseline {
-    std::vector<double> ratios;
-    std::size_t next{0U};
-    [[nodiscard]] double median() const;
-  };
-
-  std::array<Baseline, kMetres> baselines_{};
+  std::array<LitBaseline, kMetres> baselines_{};
 };
 
 } // namespace drone_city_nav

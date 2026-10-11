@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include <algorithm>
 #include <array>
@@ -37,6 +38,11 @@ public:
   explicit GazeboStereoImageSource(const rclcpp::NodeOptions& options)
       : rclcpp::Node{"gazebo_stereo_image_source", options},
         frame_id_{declare_parameter<std::string>("frame_id", "stereo_left")} {
+    // The gain the driver applied to the left frame, as a real camera's driver
+    // reports its gain: the stereo node reads the light from it (K15).
+    gain_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("left_gain_topic", "/stereo/left/gain"),
+        rclcpp::SensorDataQoS{}.keep_last(1));
     subscribe("left");
     subscribe("right");
     relayBarometer();
@@ -127,6 +133,11 @@ private:
       std::copy_n(source, pixels, message->data.begin());
     }
     applyAutomaticGain(message->data, left);
+    if (left) {
+      std_msgs::msg::Float64 gain_message;
+      gain_message.data = gain_.load(std::memory_order_relaxed);
+      gain_pub_->publish(gain_message);
+    }
     publisher.publish(std::move(message));
   }
 
@@ -187,6 +198,7 @@ private:
   static constexpr double kGainFollowing{0.3};
 
   std::atomic<double> gain_{1.0};
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr gain_pub_;
   rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_pub_;
   std::string frame_id_;
   gz::transport::Node gazebo_;

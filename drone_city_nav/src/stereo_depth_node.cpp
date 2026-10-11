@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -130,6 +131,13 @@ public:
         image_qos, [this](const sensor_msgs::msg::Image::ConstSharedPtr image) {
           left_ = image;
           matchIfPaired();
+        });
+    // The gain the camera's driver applied to the left frame; the frames
+    // arrive gained, so the light itself is the brightness over the gain.
+    gain_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("left_gain_topic", "/stereo/left/gain"),
+        image_qos, [this](const std_msgs::msg::Float64::ConstSharedPtr gain) {
+          camera_gain_.store(std::max(1.0, gain->data), std::memory_order_relaxed);
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -292,15 +300,33 @@ private:
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
-    // The light the frame has left: its brightness headroom, and no more than
-    // the range its brightness follows the carried light's falloff to, over
-    // the depth the pair is confident of (specification K15).
-    const double brightness_headroom = lightHeadroom(left_grey);
-    const double lit_range_m =
-        lit_range_tracker_.observe(brightness_by_metre, brightness_headroom > 0.9);
-    const double headroom = std::min(
-        brightness_headroom,
-        std::min(1.0, lit_range_m / stereoConfidentDepthM(geometry_, returns_config_)));
+    // The light the frame has left (specification K15): its brightness
+    // headroom; no more than the range its brightness follows the carried
+    // light's falloff to, over the depth the pair is confident of; and no
+    // more than the light share, the brightness over the gain against its
+    // lit baseline, floored at the blind line while the frame still sees, so
+    // a dimmed light bounds the range and only a frame that cannot see holds.
+    const double brightness_p95 = brightnessPercentile(left_grey);
+    const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
+    const bool lit = brightness_headroom > 0.9;
+    const double lit_range_m = lit_range_tracker_.observe(brightness_by_metre, lit);
+    const double raw_brightness =
+        brightness_p95 / camera_gain_.load(std::memory_order_relaxed);
+    const std::optional<double> lit_brightness = raw_brightness_baseline_.median();
+    const double light_share =
+        lit_brightness.has_value() && *lit_brightness > 0.0
+            ? std::max(brightness_headroom > kSensorBlindFrameShare
+                           ? kSensorBlindFrameShare
+                           : 0.0,
+                       std::min(1.0, raw_brightness / *lit_brightness))
+            : 1.0;
+    if (lit) {
+      raw_brightness_baseline_.observe(raw_brightness);
+    }
+    const double headroom =
+        std::min({brightness_headroom, light_share,
+                  std::min(1.0, lit_range_m / stereoConfidentDepthM(geometry_,
+                                                                    returns_config_))});
     std_msgs::msg::Float64 headroom_message;
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
@@ -391,12 +417,13 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "lit_range_m=%.1f observed_share=%.3f blind_dropped=%zu "
-                         "noise=%.1f unobservable_total=%zu",
+                         "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
+                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
+                         "unobservable_total=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightnessByMetreText(brightness_by_metre).c_str(), headroom,
-                         lit_range_m, observed_share, blind ? stereo_returns : 0U,
-                         noise, unobservable_total_);
+                         lit_range_m, light_share, raw_brightness, observed_share,
+                         blind ? stereo_returns : 0U, noise, unobservable_total_);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -404,8 +431,9 @@ private:
   // cannot. The pair's depth does not show a fading light: its matches held
   // until the light was under a hundredth of itself, and the vehicle flew at
   // 2.4 m/s into a dark that had put it out (r800).
-  [[nodiscard]] static double lightHeadroom(const cv::Mat& grey) {
-    constexpr double kGainTargetGrey{200.0};
+  static constexpr double kGainTargetGrey{200.0};
+
+  [[nodiscard]] static double brightnessPercentile(const cv::Mat& grey) {
     std::array<std::size_t, 256U> histogram{};
     std::size_t samples{0U};
     for (int row = 0; row < grey.rows; row += kNoiseSampleStride) {
@@ -419,10 +447,10 @@ private:
     for (std::size_t level = 0U; level < histogram.size(); ++level) {
       below += histogram[level];
       if (20U * below >= 19U * samples) {
-        return std::min(1.0, static_cast<double>(level) / kGainTargetGrey);
+        return static_cast<double>(level);
       }
     }
-    return 1.0;
+    return 255.0;
   }
 
   // Roadmap item 17 stage 8: darkness is not unknown. A frame the braking
@@ -617,6 +645,9 @@ private:
   StereoPairGeometry geometry_{};
   StereoDepthReturnsConfig returns_config_{};
   LitRangeTracker lit_range_tracker_;
+  LitBaseline raw_brightness_baseline_;
+  std::atomic<double> camera_gain_{1.0};
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr gain_sub_;
   int far_disparities_{64};
   cv::Ptr<cv::StereoSGBM> far_matcher_;
   cv::Ptr<cv::StereoSGBM> near_matcher_;

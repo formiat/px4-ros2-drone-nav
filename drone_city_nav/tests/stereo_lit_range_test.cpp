@@ -14,10 +14,25 @@ constexpr std::array<double, 8> kLit{-1.0, 170.0, 140.0, 110.0, 90.0, 70.0, 55.0
 
 LitRangeTracker learned() {
   LitRangeTracker tracker;
-  for (std::size_t frame = 0U; frame < LitRangeTracker::kBaselineFrames; ++frame) {
+  for (std::size_t frame = 0U; frame < LitBaseline::kFrames; ++frame) {
     static_cast<void>(tracker.observe(kLit, true));
   }
   return tracker;
+}
+
+TEST(LitBaseline, TheMedianOfTheLastFramesOnceTenSecondsOfThem) {
+  LitBaseline baseline;
+  for (std::size_t frame = 0U; frame < LitBaseline::kMinimumFrames - 1U; ++frame) {
+    baseline.observe(100.0);
+  }
+  EXPECT_FALSE(baseline.median().has_value());
+  baseline.observe(100.0);
+  EXPECT_DOUBLE_EQ(baseline.median().value_or(0.0), 100.0);
+  // Thirty seconds of lower frames replace the window.
+  for (std::size_t frame = 0U; frame < LitBaseline::kFrames; ++frame) {
+    baseline.observe(40.0);
+  }
+  EXPECT_DOUBLE_EQ(baseline.median().value_or(0.0), 40.0);
 }
 
 TEST(LitRangeTracker, ThePlainFrameLightsTheWholeSpan) {

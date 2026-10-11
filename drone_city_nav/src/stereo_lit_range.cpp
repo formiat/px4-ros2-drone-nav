@@ -4,8 +4,20 @@
 
 namespace drone_city_nav {
 
-double LitRangeTracker::Baseline::median() const {
-  std::vector<double> sorted = ratios;
+void LitBaseline::observe(const double value) {
+  if (values_.size() < kFrames) {
+    values_.push_back(value);
+  } else {
+    values_[next_] = value;
+    next_ = (next_ + 1U) % kFrames;
+  }
+}
+
+std::optional<double> LitBaseline::median() const {
+  if (values_.size() < kMinimumFrames) {
+    return std::nullopt;
+  }
+  std::vector<double> sorted = values_;
   const auto middle = sorted.begin() + static_cast<std::ptrdiff_t>(sorted.size() / 2U);
   std::nth_element(sorted.begin(), middle, sorted.end());
   return *middle;
@@ -29,21 +41,16 @@ double LitRangeTracker::observe(const std::span<const double> brightness_by_metr
       continue;
     }
     const double ratio = brightness / reference;
-    Baseline& baseline = baselines_[metre];
-    if (!faded && baseline.ratios.size() >= kMinimumBaselineFrames &&
-        ratio < kFadeLine * baseline.median()) {
+    LitBaseline& baseline = baselines_[metre];
+    const std::optional<double> lit_ratio = baseline.median();
+    if (!faded && lit_ratio.has_value() && ratio < kFadeLine * *lit_ratio) {
       faded = true;
       lit_range_m = static_cast<double>(metre);
     } else if (!faded) {
       lit_range_m = static_cast<double>(metre + 1U);
     }
     if (lit) {
-      if (baseline.ratios.size() < kBaselineFrames) {
-        baseline.ratios.push_back(ratio);
-      } else {
-        baseline.ratios[baseline.next] = ratio;
-        baseline.next = (baseline.next + 1U) % kBaselineFrames;
-      }
+      baseline.observe(ratio);
     }
   }
   return lit_range_m;

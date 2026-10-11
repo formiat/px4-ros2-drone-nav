@@ -89,7 +89,17 @@ the correction is recorded beside it.
   fifth of the proportion it held over the last thirty seconds of lit frames
   ends the lit range (`stereo_lit_range.hpp`; the `STEREO_DEPTH` line prints
   `lit_range_m`). On the records of r1191 and r1206 to r1211 the proportions
-  hold within a factor of three over a flight and a fade reads a tenth.
+  hold within a factor of three over a flight and a fade reads a tenth. A
+  light that dims as a whole, the lamp failing or the rig that dims it by
+  the vehicle's position (`LIGHT_ZONES`), dims every metre alike and the lit
+  range cannot see it; the gain can, and the headroom is also no more than
+  the **light share**, the frame's brightness over the gain the driver
+  reports (`/stereo/left/gain`) against the median of the last thirty
+  seconds of lit frames, floored at the blind line while the frame's own
+  headroom is above it: a dimmed light bounds the range and only a frame
+  that cannot see holds. On the fade rig (r1225) the gain climbed from 2.0
+  to 5.5 and the raw brightness fell to a quarter 3 m before the dark while
+  the headroom still read 0.71 to 1.00.
 - **Darkness is observed, not unknown** (stage 8, specification F6,
   K12 and K14). A frame the contract reads as blind (a share under 0.35,
   where the range is within a quarter metre of the margin) for 2.5 s marks
