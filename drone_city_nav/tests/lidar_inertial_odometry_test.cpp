@@ -280,6 +280,46 @@ TEST(LidarInertialOdometryTest, ALostScanHoldsThePositionUntilOneRegistersAgain)
   EXPECT_LT((back.position_ned_m - position).norm(), 0.15);
 }
 
+// Two walls at x = +-10 m: a scan taken 0.8 m (two cells) from where the
+// filter believes the vehicle is finds no wall within the update's one ring of
+// cells, and the recovery finds both within its two (technical_debt.md,
+// Localization: the recovery's search reached no further than the update's
+// before 2026-10-10).
+TEST(LidarInertialOdometryTest, TheRecoverySearchesUpToTheWidenedDistance) {
+  std::vector<Eigen::Vector3d> walls;
+  for (double a = -10.0; a <= 10.0; a += 0.25) {
+    for (double b = -6.0; b <= 0.0; b += 0.25) {
+      walls.emplace_back(10.0, a, b);
+      walls.emplace_back(-10.0, a, b);
+    }
+  }
+  LidarInertialOdometryConfig config;
+  ASSERT_DOUBLE_EQ(config.maximum_correspondence_m, 1.0);
+  ASSERT_DOUBLE_EQ(config.recovery_correspondence_factor, 3.0);
+  LidarInertialOdometry odometry{config};
+  const Eigen::Vector3d position{0.0, 0.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, position, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  std::int64_t stamp = kSecond / 2;
+  for (int k = 0; k < 5; ++k, stamp += kSecond / 10) {
+    ASSERT_TRUE(odometry.addScan(stamp, scanFrom(walls, position, level)).healthy);
+    for (int i = 1; i <= 10; ++i) {
+      odometry.addImu(restSample(stamp + i * kSecond / 100, level));
+    }
+  }
+  const Eigen::Vector3d moved = position + Eigen::Vector3d{0.8, 0.0, 0.0};
+  const LidarInertialEstimate recovered =
+      odometry.addScan(stamp, scanFrom(walls, moved, level));
+  EXPECT_TRUE(recovered.healthy);
+  // The scan registered 0.8 m from a prior the rest had made tight, so the
+  // innovation gate keeps the position where it was; the gate has its own test.
+  EXPECT_GT(recovered.gated_axes, 0U);
+  EXPECT_LT((recovered.position_ned_m - position).norm(), 0.05);
+}
+
 TEST(LidarInertialOdometryTest,
      AnEmptyScanIsNotHealthyAndAnUninitializedEstimatorSaysSo) {
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};

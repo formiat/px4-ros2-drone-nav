@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -53,6 +54,43 @@ TEST(PointPlaneMap3D, TheRegistrationRecoversTheBodyPoseFromAnOffsetPrior) {
   EXPECT_LT((registration.position - body_position).norm(), 0.03)
       << registration.position.transpose() << " matched "
       << registration.matched_fraction << " iterations " << registration.iterations;
+}
+
+// One wall at x = 0, seen from a prior 0.8 m (two cells) off along x: the
+// one ring of cells the search covers by default finds no point of it and
+// the registration matches nothing; two rings reach the wall and the offset
+// goes (the other axes stay at the prior, which is the truth there).
+TEST(PointPlaneMap3D, TheSearchReachesAsManyRingsOfCellsAsItIsGiven) {
+  std::vector<Eigen::Vector3d> wall;
+  for (int i = 0; i < 40; ++i) {
+    for (int j = 0; j < 40; ++j) {
+      wall.emplace_back(0.0, 0.05 + 0.1 * static_cast<double>(i),
+                        0.05 + 0.1 * static_cast<double>(j));
+    }
+  }
+  PointPlaneMap3D map{
+      PointPlaneMapConfig3D{.cell_m = 0.4, .maximum_points_per_cell = 6U}};
+  map.insert(wall, 1U, 0);
+  const Eigen::Vector3d body_position{1.0, 1.0, 1.0};
+  std::vector<Eigen::Vector3d> body;
+  for (std::size_t index = 0U; index < wall.size(); index += 7U) {
+    body.push_back(wall[index] - body_position);
+  }
+  const Eigen::Vector3d prior = body_position + Eigen::Vector3d{0.8, 0.0, 0.0};
+  PointPlaneRegistrationConfig3D config =
+      registrationConfig(std::numeric_limits<std::int64_t>::max());
+  config.maximum_correspondence_m = 3.0;
+  const PointPlaneRegistration3D one_ring =
+      registerPointsToPlanes(map, body, prior, Eigen::Quaterniond::Identity(), config);
+  EXPECT_EQ(one_ring.matched_fraction, 0.0);
+  EXPECT_FALSE(one_ring.converged);
+  config.search_ring_cells = 2;
+  const PointPlaneRegistration3D two_rings =
+      registerPointsToPlanes(map, body, prior, Eigen::Quaterniond::Identity(), config);
+  EXPECT_TRUE(two_rings.converged);
+  EXPECT_GT(two_rings.matched_fraction, 0.9);
+  EXPECT_NEAR(two_rings.position.x(), body_position.x(), 0.03)
+      << two_rings.position.transpose() << " matched " << two_rings.matched_fraction;
 }
 
 TEST(PointPlaneMap3D, CellsBornAfterTheLimitAreNotMatched) {

@@ -210,15 +210,16 @@ void PointPlaneMap3D::remove(const std::span<const Eigen::Vector3d> points_world
 
 bool PointPlaneMap3D::nearest(const Eigen::Vector3d& query,
                               const double maximum_distance_m,
-                              const std::int64_t born_by_ns, Eigen::Vector3d& point,
+                              const std::int64_t born_by_ns,
+                              const std::int32_t ring_cells, Eigen::Vector3d& point,
                               Eigen::Vector3d& normal) {
   Impl& impl = *impl_;
   const CellKey center = cellOf(query, impl.config.cell_m);
   double best = maximum_distance_m * maximum_distance_m;
   Cell* best_cell = nullptr;
-  for (std::int32_t dx = -1; dx <= 1; ++dx) {
-    for (std::int32_t dy = -1; dy <= 1; ++dy) {
-      for (std::int32_t dz = -1; dz <= 1; ++dz) {
+  for (std::int32_t dx = -ring_cells; dx <= ring_cells; ++dx) {
+    for (std::int32_t dy = -ring_cells; dy <= ring_cells; ++dy) {
+      for (std::int32_t dz = -ring_cells; dz <= ring_cells; ++dz) {
         const auto found =
             impl.cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
         if (found == impl.cells.end() || found->second.born_ns > born_by_ns) {
@@ -267,7 +268,7 @@ PointPlaneRegistration3D registerPointsToPlanes(
       const Eigen::Vector3d rotated = rotation * point_body;
       const Eigen::Vector3d point_world = rotated + result.position;
       if (!map.nearest(point_world, config.maximum_correspondence_m, config.born_by_ns,
-                       map_point, normal)) {
+                       config.search_ring_cells, map_point, normal)) {
         continue;
       }
       const double residual = normal.dot(point_world - map_point);

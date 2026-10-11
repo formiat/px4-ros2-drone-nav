@@ -54,9 +54,11 @@ struct LidarInertialOdometryConfig {
   std::size_t maximum_points_per_cell{6U};
   // When a scan fails to register from the propagated pose, it is tried
   // again from the last registered pose carried forward at its velocity,
-  // with the correspondence distance widened by this factor; until a scan
-  // registers again the position holds there and only the attitude follows
-  // the gyroscope, so a lost scan cannot send the estimate running.
+  // with the search one ring of cells wider (0.8 to 1.2 m at the default
+  // cell against 0.4 to 0.8) and correspondences accepted up to the
+  // distance widened by this factor; until a scan registers again the
+  // position holds there and only the attitude follows the gyroscope, so a
+  // lost scan cannot send the estimate running.
   double recovery_correspondence_factor{3.0};
   // The registration is healthy when at least this share of the scan
   // matched and the residual stayed under this width. A translational axis

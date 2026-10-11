@@ -91,6 +91,25 @@ on recordings before any flight.
 | `vio/drag_bench.sh`, `vio/drag_report.py` | Dark-window replays of two recorded flights with and without the rotor drag fusion (specification K21), and the drift table. | inside the container the bench, then `python3 tools/vio/drag_report.py` |
 | `vio/dark_drift.py` | Position error of dark-window replays against the lit replay. | `python3 tools/vio/dark_drift.py log/tools/replay/r779` |
 
+## Replaying The Lidar-Inertial Estimator Offline (`lio/`)
+
+A lidar flight's scans and the autopilot's IMU recorded as a rosbag inside the
+simulation container, extracted once, and replayed through the repository's
+lidar-inertial estimator with no simulator; a change of that estimator is
+measured on the record before any flight (roadmap item 13 set its thresholds
+this way). The record lands under `log/tools/replay/RUN/`, a directory kept by
+its `.keep`.
+
+| Tool | What it does | Use |
+|---|---|---|
+| `lio/record_flight.sh` | One flight on the lidar profile through `fly_until_valid.sh` (one attempt) with `ros2 bag record` of `/lidar_3d/points` and the IMU attached inside the container, then the extraction. | `./tools/lio/record_flight.sh r1230` |
+| `lio/extract_bag.py` | The bag's scans (body FRD, the extrinsic of `urban_mvp.yaml` applied) to `scans.bin` and the IMU to `imu.csv`, record by record, so a bag cut off without its footer still yields its data. | inside the container, called by `record_flight.sh` |
+| `lio/build_replay.sh`, `lio/replay_lio.cpp` | Builds the replay against the tree's localization library (after `make build`) and runs the estimator over a record; options are `key=value` overrides of the estimator's configuration (`corr`, `recovery`, `keyframes`, `range`, ...), `lag` in ms and `out`. Writes the trajectory and the registration times. | `./tools/lio/build_replay.sh`, then inside the container `log/tools/replay/replay_lio log/tools/replay/r1230 HEADING out=log/tools/replay/r1230/base.csv` |
+| `lio/compare.py` | Horizontal error of a replay against the flight's truth, the mission check's own measurement, in ten-second windows. | `python3 tools/lio/compare.py log/runs/r1230 log/tools/replay/r1230/base.csv` |
+
+The heading argument is the vehicle's initial heading in NED radians (the
+`initial_heading_rad` the flight ran with).
+
 One-off diagnostics written for a single investigation stay in
 `log/tools/diagnostics/` and are not tracked; the goal journals in
 `log/tools/journal/` say which was used for what.

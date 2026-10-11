@@ -43,10 +43,13 @@ public:
 
   // The nearest point to `query` within `maximum_distance_m`, with its cell's
   // plane normal, among the cells whose first point arrived no later than
-  // `born_by_ns`; false when there is none or its cell has no plane.
+  // `born_by_ns`; false when there is none or its cell has no plane. The
+  // search covers `ring_cells` cells around the query's on each axis: one
+  // ring reaches 0.4 to 0.8 m at the default cell, two rings 0.8 to 1.2 m, at
+  // 27 and 125 cells a point.
   [[nodiscard]] bool nearest(const Eigen::Vector3d& query, double maximum_distance_m,
-                             std::int64_t born_by_ns, Eigen::Vector3d& point,
-                             Eigen::Vector3d& normal);
+                             std::int64_t born_by_ns, std::int32_t ring_cells,
+                             Eigen::Vector3d& point, Eigen::Vector3d& normal);
 
 private:
   struct Impl;
@@ -55,6 +58,8 @@ private:
 
 struct PointPlaneRegistrationConfig3D {
   double maximum_correspondence_m{1.0};
+  // Rings of cells the correspondence search covers around each point.
+  std::int32_t search_ring_cells{1};
   std::size_t maximum_iterations{10U};
   double convergence_translation_m{1.0e-3};
   double convergence_rotation_rad{1.0e-4};

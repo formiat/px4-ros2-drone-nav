@@ -151,16 +151,19 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
 }
 
 // The registration of the thinned scan against the submap from the prior
-// pose. The correspondence search reads the submap's own configured distance.
+// pose, with the correspondence distance and the search's reach in rings of
+// cells the caller names.
 [[nodiscard]] PointPlaneRegistration3D
 registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
              const Eigen::Vector3d& prior_position,
              const Eigen::Quaterniond& prior_rotation,
-             const LidarInertialOdometryConfig& config, const double correspondence_m) {
+             const LidarInertialOdometryConfig& config, const double correspondence_m,
+             const std::int32_t search_ring_cells) {
   return registerPointsToPlanes(
       submap.map(), points_body, prior_position, prior_rotation,
       PointPlaneRegistrationConfig3D{
           .maximum_correspondence_m = correspondence_m,
+          .search_ring_cells = search_ring_cells,
           .maximum_iterations = config.maximum_iterations,
           .convergence_translation_m = config.convergence_translation_m,
           .convergence_rotation_rad = config.convergence_rotation_rad,
@@ -398,16 +401,21 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     };
     PointPlaneRegistration3D registration =
         registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config,
-                     impl.config.maximum_correspondence_m);
+                     impl.config.maximum_correspondence_m, 1);
     healthy = assess(registration);
     if (!healthy && impl.has_registered) {
-      LidarInertialOdometryConfig wide = impl.config;
-      wide.maximum_correspondence_m *= impl.config.recovery_correspondence_factor;
-      // The search keeps the configured distance, as it always has: the
-      // widened configuration reaches the registration's other settings only.
+      // The recovery searches one ring of cells further than the update and
+      // accepts correspondences up to the widened distance. Until 2026-10-10
+      // the widened distance never reached the search and the search's reach
+      // was the update's, so the recovery registered as the update did from
+      // another prior (technical_debt.md, Localization).
+      constexpr std::int32_t kRecoverySearchRingCells{2};
       const PointPlaneRegistration3D recovered =
           registerScan(impl.submap, thinned, impl.carriedPosition(stamp_ns),
-                       prior_rotation, wide, impl.config.maximum_correspondence_m);
+                       prior_rotation, impl.config,
+                       impl.config.maximum_correspondence_m *
+                           impl.config.recovery_correspondence_factor,
+                       kRecoverySearchRingCells);
       if (assess(recovered)) {
         registration = recovered;
         healthy = true;
