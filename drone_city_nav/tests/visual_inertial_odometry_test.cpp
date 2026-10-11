@@ -544,6 +544,12 @@ TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
   const Eigen::Vector3d velocity =
       (Motion::position(12.01) - Motion::position(11.99)) / 0.02;
   EXPECT_LT((last.velocity_ned_mps - velocity).norm(), 0.3);
+  // The heading stays the one it was started with (r1299: turned 4.8 degrees).
+  const Eigen::Matrix3d truth_turn = Motion::bodyToNed(12.0);
+  const Eigen::Matrix3d estimate_turn = last.body_to_ned.toRotationMatrix();
+  const double heading_error = std::atan2(estimate_turn(1, 0), estimate_turn(0, 0)) -
+                               std::atan2(truth_turn(1, 0), truth_turn(0, 0));
+  EXPECT_LT(std::abs(std::remainder(heading_error, 2.0 * M_PI)), 0.01);
 }
 
 } // namespace

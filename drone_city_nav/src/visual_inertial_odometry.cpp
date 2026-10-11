@@ -660,13 +660,16 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
   if (!state.initialized) {
     return;
   }
-  // The pose a registration gives: a few decimetres and a few degrees at
-  // most; the velocity the autopilot carried through the hole on its own
-  // IMU, half a metre a second of it, which the first frames' tracks
-  // correct (started with none at 1.5 m/s the filter gated its features
-  // and never caught up).
+  // The autopilot's pose after its dead reckoning: a few decimetres and a
+  // few degrees of tilt at most; the velocity it carried through the hole on
+  // its own IMU, half a metre a second of it, which the first frames' tracks
+  // correct (started with none at 1.5 m/s the filter gated its features and
+  // never caught up). The heading is the autopilot's, held as the start
+  // holds it: features do not observe it, and with a sigma of degrees the
+  // first updates turned it by 4.8 degrees and the flight drifted 0.1 m/s
+  // (r1299).
   constexpr double kPositionSigmaM{0.3};
-  constexpr double kAttitudeSigmaRad{0.05};
+  constexpr double kTiltSigmaRad{0.05};
   constexpr double kVelocitySigmaMps{0.5};
   const auto square = [](const double value) { return value * value; };
   state.body_to_ned = body_to_ned.normalized().toRotationMatrix();
@@ -691,9 +694,13 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
   // The biases' block sits after the IMU states, before the clones' blocks.
   const Eigen::MatrixXd biases = state.covariance.block<6, 6>(kGyroBias, kGyroBias);
   state.covariance = Eigen::MatrixXd::Zero(kImuStates, kImuStates);
-  state.covariance.block<3, 3>(kTheta, kTheta)
-      .diagonal()
-      .setConstant(square(kAttitudeSigmaRad));
+  const Eigen::Vector3d down_body =
+      state.body_to_ned.transpose() * Eigen::Vector3d::UnitZ();
+  state.covariance.block<3, 3>(kTheta, kTheta) =
+      square(kTiltSigmaRad) *
+          (Eigen::Matrix3d::Identity() - down_body * down_body.transpose()) +
+      square(state.config.initial_heading_sigma_rad) * down_body *
+          down_body.transpose();
   state.covariance.block<3, 3>(kPosition, kPosition)
       .diagonal()
       .setConstant(square(kPositionSigmaM));
