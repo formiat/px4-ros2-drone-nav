@@ -45,8 +45,9 @@ struct AutopilotLocalState {
 struct AutopilotAttitude {
   std::uint64_t timestamp_us{0U};
   std::uint64_t timestamp_sample_us{0U};
-  // The body attitude as a Hamilton quaternion (w, x, y, z) rotating the
-  // world NED frame into the body FRD frame. The lidar registration and the
+  // The body attitude as a Hamilton quaternion (w, x, y, z): the rotation of
+  // the world NED frame into the body FRD frame's orientation, which turns a
+  // body vector into NED (PX4's vehicle_attitude.q). The lidar registration and the
   // tilt laws read this convention; an adapter for an autopilot with another
   // convention converts into it.
   std::array<float, 4> quaternion{1.0F, 0.0F, 0.0F, 0.0F};

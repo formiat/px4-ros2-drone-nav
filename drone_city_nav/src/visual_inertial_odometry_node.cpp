@@ -622,23 +622,29 @@ private:
     }
     // The autopilot's pose in the frame the filter publishes in: its position
     // in the map's frame back to the local NED, its attitude's quaternion
-    // rotating NED into the body, inverted.
+    // turning the body into NED.
     const Point2 local_xy = transform_.mapPositionToLocal(
         Point2{local_state->position.x, local_state->position.y});
     const Eigen::Vector3d prior{local_xy.x, local_xy.y,
                                 -(local_state->position.z - transform_.map_origin.z)};
-    const Eigen::Quaterniond ned_to_body{
-        attitude->quaternion[0], attitude->quaternion[1], attitude->quaternion[2],
-        attitude->quaternion[3]};
-    const Eigen::Quaterniond prior_rotation = ned_to_body.conjugate().normalized();
+    // The contract's quaternion turns a body vector into NED, as the lidar
+    // projection reads it (r1288: inverted, the heading came out mirrored and
+    // no point of the depth met the map).
+    const Eigen::Quaterniond prior_rotation =
+        Eigen::Quaterniond{attitude->quaternion[0], attitude->quaternion[1],
+                           attitude->quaternion[2], attitude->quaternion[3]}
+            .normalized();
+    // The whole map, its newest points too: nothing was added to it while the
+    // filter was lost, and the points of the 20 s before the hole are where the
+    // vehicle is (the ordinary correction's age window left only points 40 m
+    // behind a vehicle flying on, r1288).
     const PointPlaneRegistration3D registration = registerPointsToPlanes(
         map_, points_body, prior, prior_rotation,
         PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
                                        .maximum_iterations = 10U,
                                        .convergence_translation_m = 1.0e-3,
                                        .convergence_rotation_rad = 1.0e-4,
-                                       .robust_width_m = 0.2,
-                                       .born_by_ns = stamp_ns - kMapAgeNs});
+                                       .robust_width_m = 0.2});
     const double matched_points =
         registration.matched_fraction * static_cast<double>(points_body.size());
     const bool held = registration.converged &&
