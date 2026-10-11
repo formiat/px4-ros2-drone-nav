@@ -602,14 +602,22 @@ private:
         attitude = autopilot_attitude_;
       }
     }
+    // The autopilot's position is taken whatever it calls its validity: it
+    // stops vouching for it within a second or two of the external odometry
+    // falling silent (r1283: invalid 0.8 s after a 2 s hole) while its
+    // inertial dead reckoning is still the best prior there is; the
+    // registration against the map accepts or refuses it.
+    const auto finite3 = [](const auto& value) {
+      return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    };
     if (!local_state.has_value() || !attitude.has_value() ||
-        !local_state->position_valid || !local_state->velocity_valid || map_.empty()) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 2000,
-          "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=no_prior "
-          "autopilot_position_valid=%s map_points=%zu",
-          local_state.has_value() && local_state->position_valid ? "true" : "false",
-          map_.pointCount());
+        !finite3(local_state->position) || !finite3(local_state->velocity) ||
+        map_.empty()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=no_prior "
+                           "autopilot_state_fresh=%s map_points=%zu",
+                           local_state.has_value() ? "true" : "false",
+                           map_.pointCount());
       return;
     }
     // The autopilot's pose in the frame the filter publishes in: its position
