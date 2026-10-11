@@ -1,5 +1,7 @@
 #include "mppi_offboard_node.hpp"
 
+#include "drone_city_nav/ros_conversions.hpp"
+
 namespace drone_city_nav {
 
 MppiOffboardNode::MppiOffboardNode()
@@ -233,6 +235,32 @@ MppiOffboardNode::MppiOffboardNode()
       px4_qos, [this](const px4_msgs::msg::VehicleOdometry::SharedPtr odometry) {
         dead_reckoning_landing_.observe(now().nanoseconds(), odometry->quality == 0);
       });
+  // The ring's lateral units, as the stereo node reads them (the same
+  // topics); the nearest return of each is the reflex of the blind descent.
+  constexpr std::array<const char*, kTofRingUnits> kTofRingSides{"front", "back",
+                                                                 "left", "right"};
+  for (std::size_t unit = 0U; unit < kTofRingUnits; ++unit) {
+    const std::string side{kTofRingSides[unit]};
+    tof_ring_subs_[unit] = create_subscription<sensor_msgs::msg::PointCloud2>(
+        declare_parameter<std::string>("tof_" + side + "_topic",
+                                       "/tof/" + side + "/points"),
+        rclcpp::SensorDataQoS{}.keep_last(1),
+        [this, unit](const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) {
+          const std::optional<std::vector<Point3>> points =
+              decodePointCloudReturns(*cloud);
+          if (!points.has_value()) {
+            return;
+          }
+          double nearest_m = std::numeric_limits<double>::infinity();
+          for (const Point3& point : *points) {
+            const double range_m = std::hypot(point.x, point.y, point.z);
+            if (std::isfinite(range_m) && range_m > 0.0) {
+              nearest_m = std::min(nearest_m, range_m);
+            }
+          }
+          tof_ring_nearest_m_[unit] = std::make_pair(now(), nearest_m);
+        });
+  }
   offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
       declare_parameter<std::string>("offboard_control_mode_topic",
                                      "/fmu/in/offboard_control_mode"),
@@ -251,6 +279,23 @@ MppiOffboardNode::MppiOffboardNode()
               "Production MPPI offboard ready: takeoff_climb_m=%.1f "
               "takeoff_altitude_m=%.1f",
               takeoff_climb_m_, takeoffAltitudeM());
+}
+
+TofRingRanges MppiOffboardNode::freshTofRingRanges() const {
+  constexpr double kFreshS{0.5};
+  const rclcpp::Time current = now();
+  const auto fresh = [&](const std::size_t unit) -> std::optional<double> {
+    const std::optional<std::pair<rclcpp::Time, double>>& reading =
+        tof_ring_nearest_m_[unit];
+    if (!reading.has_value() || (current - reading->first).seconds() > kFreshS) {
+      return std::nullopt;
+    }
+    return reading->second;
+  };
+  return TofRingRanges{.front_m = fresh(0U),
+                       .back_m = fresh(1U),
+                       .left_m = fresh(2U),
+                       .right_m = fresh(3U)};
 }
 
 void MppiOffboardNode::controlTick() {

@@ -908,6 +908,7 @@ ament_target_dependencies(
   geometry_msgs
   px4_msgs
   rclcpp
+  sensor_msgs
   std_msgs
   tf2_ros
   visualization_msgs)

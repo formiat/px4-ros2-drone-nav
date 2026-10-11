@@ -26,6 +26,7 @@
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
@@ -135,6 +136,15 @@ private:
   ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   DeadReckoningLanding dead_reckoning_landing_;
+  // The time-of-flight ring's lateral units, the nearest return each saw
+  // last and when: the reflex of the blind descent (K19).
+  static constexpr std::size_t kTofRingUnits{4U};
+  std::array<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr,
+             kTofRingUnits>
+      tof_ring_subs_{};
+  std::array<std::optional<std::pair<rclcpp::Time, double>>, kTofRingUnits>
+      tof_ring_nearest_m_{};
+  [[nodiscard]] TofRingRanges freshTofRingRanges() const;
   std::int64_t yaw_rate_lead_ns_{0};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
   bool gazebo_aligned_rviz_axes_swapped_{true};

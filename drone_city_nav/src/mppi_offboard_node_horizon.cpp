@@ -159,11 +159,21 @@ bool MppiOffboardNode::plannedFinitePathCompleted() const {
 void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
   constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
-  setpoint_pub_->publish(buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan},
-                                                     -kLandingSpeedMps,
-                                                     Point2{0.0, 0.0}, nan, nan, 0.0));
+  // The ring keeps the surfaces it sees off the body (the reflex of K19);
+  // without a heading the descent is vertical as before.
+  const TofRingRanges ranges = freshTofRingRanges();
+  const Point2 reflex =
+      heading_valid_ ? blindDescentReflexVelocityNed(
+                           ranges, px4_map_transform_.mapYawToPx4Heading(heading_rad_))
+                     : Point2{0.0, 0.0};
+  setpoint_pub_->publish(buildMppiTrajectorySetpoint(
+      nowMicros(), reflex, -kLandingSpeedMps, Point2{0.0, 0.0}, nan, nan, 0.0));
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                       "DEAD_RECKONING_LANDING descending=true");
+                       "DEAD_RECKONING_LANDING descending=true reflex=(%.2f,%.2f) "
+                       "ring_m=(%.2f,%.2f,%.2f,%.2f)",
+                       reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
+                       ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
+                       ranges.right_m.value_or(-1.0));
 }
 
 void MppiOffboardNode::publishTakeoffSetpoint() {

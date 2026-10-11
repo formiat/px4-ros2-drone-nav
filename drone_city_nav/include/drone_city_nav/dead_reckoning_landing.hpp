@@ -1,5 +1,8 @@
 #pragma once
 
+#include "drone_city_nav/types.hpp"
+
+#include <cmath>
 #include <cstdint>
 #include <optional>
 
@@ -38,5 +41,42 @@ public:
 private:
   std::optional<std::int64_t> since_ns_;
 };
+
+// The reflex of the descent (K19): the time-of-flight ring's lateral units
+// keep the surfaces they see off the body while the descent holds no
+// position. Dead reckoning carried the vehicle 0.55 to 1.25 m in the 6 to 9 s
+// to the ground (r934 to r943), and r1181 met the ledge of the staging area
+// with a rotor at 0.6 m/s; the ring sees 2.8 m to each side, in truth. A unit
+// that reads a surface nearer than 1.2 m, the body's radius and the rest
+// clearance and a quarter metre of the drift, sends the vehicle away from it
+// at 0.3 m/s; two facing surfaces cancel and the vehicle stays between them.
+// The ranges are the units' own, forward, backward, left and right of the
+// body; a unit without a fresh reading reads nothing. The velocity comes
+// back in the autopilot's local frame for the body heading there.
+struct TofRingRanges {
+  std::optional<double> front_m;
+  std::optional<double> back_m;
+  std::optional<double> left_m;
+  std::optional<double> right_m;
+};
+
+[[nodiscard]] inline Point2
+blindDescentReflexVelocityNed(const TofRingRanges& ranges,
+                              const double heading_ned_rad) noexcept {
+  constexpr double kReflexRangeM{1.2};
+  constexpr double kReflexSpeedMps{0.3};
+  const auto near = [](const std::optional<double>& range_m) {
+    return range_m.has_value() && std::isfinite(*range_m) && *range_m < kReflexRangeM;
+  };
+  // The body's forward-right-down frame: away from a surface on the left is
+  // to the right, away from one ahead is backward.
+  const double forward = (near(ranges.back_m) ? kReflexSpeedMps : 0.0) -
+                         (near(ranges.front_m) ? kReflexSpeedMps : 0.0);
+  const double right = (near(ranges.left_m) ? kReflexSpeedMps : 0.0) -
+                       (near(ranges.right_m) ? kReflexSpeedMps : 0.0);
+  const double cosine = std::cos(heading_ned_rad);
+  const double sine = std::sin(heading_ned_rad);
+  return Point2{cosine * forward - sine * right, sine * forward + cosine * right};
+}
 
 } // namespace drone_city_nav
