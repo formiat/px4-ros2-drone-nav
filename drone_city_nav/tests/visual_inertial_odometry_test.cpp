@@ -508,38 +508,47 @@ TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
   std::int64_t restarted_ns = 0;
   std::int64_t healthy_again_ns = 0;
   VisualInertialEstimate last;
+  bool lost_after_restart = false;
   for (std::int64_t frame = 1; frame <= frames; ++frame) {
     const std::int64_t stamp = frame * kFramePeriodNs;
     for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
-      if (!hole.contains(imu_stamp)) {
-        odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      if (hole.contains(imu_stamp)) {
+        continue;
+      }
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      // As the node starts it: on the stream's first sample after the hole,
+      // at the autopilot's attitude's moment, which may be a few
+      // milliseconds older than that sample (r1309).
+      if (!restarted && static_cast<double>(imu_stamp) * 1.0e-9 >= hole.to_s) {
+        restarted_ns = imu_stamp - 2'000'000;
+        const double t = static_cast<double>(restarted_ns) * 1.0e-9;
+        const Eigen::Vector3d velocity =
+            (Motion::position(t + 0.01) - Motion::position(t - 0.01)) / 0.02;
+        odometry.reinitialize(restarted_ns,
+                              Motion::position(t) + Eigen::Vector3d{0.3, -0.2, 0.1},
+                              velocity + Eigen::Vector3d{0.2, -0.1, 0.1},
+                              Eigen::Quaterniond{Motion::bodyToNed(t)});
+        restarted = true;
       }
     }
+    // The node drops the frames held through the hole.
     if (hole.contains(stamp)) {
       continue;
     }
     const double t = static_cast<double>(stamp) * 1.0e-9;
-    if (odometry.lost() && !restarted) {
-      const Eigen::Vector3d velocity =
-          (Motion::position(t + 0.01) - Motion::position(t - 0.01)) / 0.02;
-      odometry.reinitialize(stamp,
-                            Motion::position(t) + Eigen::Vector3d{0.3, -0.2, 0.1},
-                            velocity + Eigen::Vector3d{0.2, -0.1, 0.1},
-                            Eigen::Quaterniond{Motion::bodyToNed(t)});
-      restarted = true;
-      restarted_ns = stamp;
-    }
     last = odometry.addFrame(
         stamp, observe(config, t, points, config.observation_noise, generator));
     if (restarted && last.healthy && healthy_again_ns == 0) {
       healthy_again_ns = stamp;
     }
+    lost_after_restart = lost_after_restart || (restarted && last.lost);
   }
   ASSERT_TRUE(restarted);
   // Healthy from the next frame on, the restart's pose its fix (r1306: the
   // features' first update came too late for the autopilot).
   EXPECT_GT(healthy_again_ns, 0);
   EXPECT_LE(healthy_again_ns, restarted_ns + kFramePeriodNs);
+  EXPECT_FALSE(lost_after_restart);
   EXPECT_TRUE(last.healthy);
   EXPECT_FALSE(last.lost);
   // The prior's own offset (0.37 m) stays, no feature can tell it; the

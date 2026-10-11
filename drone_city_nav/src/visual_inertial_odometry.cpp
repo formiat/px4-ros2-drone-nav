@@ -693,6 +693,17 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
     state.last_imu = state.imu.front();
     state.imu.pop_front();
   }
+  // The restart's moment has its own sample, the nearest reading known: the
+  // autopilot's attitude may be a few milliseconds older than the stream's
+  // first sample after the hole, and the sample from before the hole then
+  // bracketed the hole again at the first step and the filter was lost at
+  // once (r1309).
+  if (!state.imu.empty() || state.last_imu.has_value()) {
+    VisualInertialImuSample sample =
+        state.imu.empty() ? *state.last_imu : state.imu.front();
+    sample.stamp_ns = stamp_ns;
+    state.last_imu = sample;
+  }
   state.held_barometric_height_m = state.barometric_height_m;
   state.drag_reading_sum_mps.setZero();
   state.drag_reading_s = 0.0;
