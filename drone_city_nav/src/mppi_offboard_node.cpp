@@ -368,7 +368,10 @@ void MppiOffboardNode::controlTick() {
   OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
   if (blind_landing_) {
     mode = OffboardSetpointMode::kVelocityCruise;
-  } else if (planned_path_fresh) {
+  } else {
+    blind_descent_reflex_.reset();
+  }
+  if (!blind_landing_ && planned_path_fresh) {
     mode = OffboardSetpointMode::kTrajectoryPositionTracking;
   }
   offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));

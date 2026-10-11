@@ -136,6 +136,7 @@ private:
   ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   DeadReckoningLanding dead_reckoning_landing_;
+  BlindDescentReflex blind_descent_reflex_;
   // The time-of-flight ring's lateral units, the nearest return each saw
   // last and when: the reflex of the blind descent (K19).
   static constexpr std::size_t kTofRingUnits{4U};

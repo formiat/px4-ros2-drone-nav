@@ -179,6 +179,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -212,6 +217,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -248,6 +258,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -281,6 +296,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -314,6 +334,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>
@@ -347,6 +372,11 @@
             <mean>0.0</mean>
             <stddev>0.02</stddev>
           </noise>
+          <!-- The cameras' mask: the vehicle's own yellow overlay (bit 25 of
+               x500_lidar_3d, drawn for the recordings) is 0.075 m under the
+               front unit's cone and read 0.22 m on every flight (r1237 to
+               r1240), the reflex pushing backward on it. -->
+          <visibility_mask>218103807</visibility_mask>
         </ray>
         <always_on>true</always_on>
         <update_rate>7.5</update_rate>

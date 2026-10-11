@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/types.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -53,6 +54,13 @@ private:
 // The ranges are the units' own, forward, backward, left and right of the
 // body; a unit without a fresh reading reads nothing. The velocity comes
 // back in the autopilot's local frame for the body heading there.
+// The velocity is closed on the range itself: the autopilot runs its velocity
+// loop on the dead-reckoned estimate, whose error is the drift the reflex
+// answers for (0.25 to 0.3 m/s on r1237 to r1240, the vehicle still in truth
+// while the estimate moved at the 0.3 m/s asked), so the range the unit reads
+// is the only measure of the motion. The range is asked to open at 0.3 m/s
+// from where the push began, and each metre it lags adds a metre per second,
+// up to 1.0 m/s; the push never pulls toward the surface.
 struct TofRingRanges {
   std::optional<double> front_m;
   std::optional<double> back_m;
@@ -60,23 +68,67 @@ struct TofRingRanges {
   std::optional<double> right_m;
 };
 
-[[nodiscard]] inline Point2
-blindDescentReflexVelocityNed(const TofRingRanges& ranges,
-                              const double heading_ned_rad) noexcept {
-  constexpr double kReflexRangeM{1.2};
-  constexpr double kReflexSpeedMps{0.3};
-  const auto near = [](const std::optional<double>& range_m) {
-    return range_m.has_value() && std::isfinite(*range_m) && *range_m < kReflexRangeM;
+class BlindDescentReflex final {
+public:
+  static constexpr double kReflexRangeM{1.2};
+  static constexpr double kReflexSpeedMps{0.3};
+  static constexpr double kLagGainPerS{1.0};
+  static constexpr double kMaximumSpeedMps{1.0};
+
+  [[nodiscard]] Point2 observe(const TofRingRanges& ranges, const std::int64_t stamp_ns,
+                               const double heading_ned_rad) noexcept {
+    // The body's forward-right-down frame: away from a surface on the left is
+    // to the right, away from one ahead is backward.
+    const double forward = axisSpeed(forward_, ranges.back_m, ranges.front_m, stamp_ns);
+    const double right = axisSpeed(right_, ranges.left_m, ranges.right_m, stamp_ns);
+    const double cosine = std::cos(heading_ned_rad);
+    const double sine = std::sin(heading_ned_rad);
+    return Point2{cosine * forward - sine * right, sine * forward + cosine * right};
+  }
+
+  // The descent over: the next one begins its pushes afresh.
+  void reset() noexcept {
+    forward_ = Axis{};
+    right_ = Axis{};
+  }
+
+private:
+  struct Axis {
+    std::optional<std::int64_t> since_ns;
+    double range_at_start_m{0.0};
+    double sign{0.0};
   };
-  // The body's forward-right-down frame: away from a surface on the left is
-  // to the right, away from one ahead is backward.
-  const double forward = (near(ranges.back_m) ? kReflexSpeedMps : 0.0) -
-                         (near(ranges.front_m) ? kReflexSpeedMps : 0.0);
-  const double right = (near(ranges.left_m) ? kReflexSpeedMps : 0.0) -
-                       (near(ranges.right_m) ? kReflexSpeedMps : 0.0);
-  const double cosine = std::cos(heading_ned_rad);
-  const double sine = std::sin(heading_ned_rad);
-  return Point2{cosine * forward - sine * right, sine * forward + cosine * right};
-}
+
+  [[nodiscard]] static bool near(const std::optional<double>& range_m) noexcept {
+    return range_m.has_value() && std::isfinite(*range_m) && *range_m < kReflexRangeM;
+  }
+
+  // The speed along one axis, positive toward `positive_side`'s unit: the
+  // push away from the one near unit, nothing between two or none.
+  [[nodiscard]] static double axisSpeed(Axis& axis,
+                                        const std::optional<double>& positive_side_m,
+                                        const std::optional<double>& negative_side_m,
+                                        const std::int64_t stamp_ns) noexcept {
+    const bool positive_near = near(positive_side_m);
+    const bool negative_near = near(negative_side_m);
+    if (positive_near == negative_near) {
+      axis = Axis{};
+      return 0.0;
+    }
+    const double sign = positive_near ? 1.0 : -1.0;
+    const double range_m = positive_near ? *positive_side_m : *negative_side_m;
+    if (!axis.since_ns.has_value() || axis.sign != sign) {
+      axis = Axis{.since_ns = stamp_ns, .range_at_start_m = range_m, .sign = sign};
+    }
+    const double elapsed_s = 1.0e-9 * static_cast<double>(stamp_ns - *axis.since_ns);
+    const double asked_m = axis.range_at_start_m + kReflexSpeedMps * elapsed_s;
+    const double speed = std::clamp(
+        kReflexSpeedMps + kLagGainPerS * (asked_m - range_m), 0.0, kMaximumSpeedMps);
+    return sign * speed;
+  }
+
+  Axis forward_;
+  Axis right_;
+};
 
 } // namespace drone_city_nav

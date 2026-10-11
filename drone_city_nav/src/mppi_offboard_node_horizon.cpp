@@ -162,10 +162,11 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
   // The ring keeps the surfaces it sees off the body (the reflex of K19);
   // without a heading the descent is vertical as before.
   const TofRingRanges ranges = freshTofRingRanges();
-  const Point2 reflex =
-      heading_valid_ ? blindDescentReflexVelocityNed(
-                           ranges, px4_map_transform_.mapYawToPx4Heading(heading_rad_))
-                     : Point2{0.0, 0.0};
+  const Point2 reflex = heading_valid_
+                            ? blind_descent_reflex_.observe(
+                                  ranges, now().nanoseconds(),
+                                  px4_map_transform_.mapYawToPx4Heading(heading_rad_))
+                            : Point2{0.0, 0.0};
   setpoint_pub_->publish(buildMppiTrajectorySetpoint(
       nowMicros(), reflex, -kLandingSpeedMps, Point2{0.0, 0.0}, nan, nan, 0.0));
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
