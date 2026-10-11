@@ -583,30 +583,38 @@ private:
 
   // Specification K28: a filter lost in a hole of its IMU stream (r720,
   // r723: a host frozen for seconds) stayed lost for the flight and the
-  // autopilot landed the vehicle. Now the autopilot's own position and
-  // attitude, which it carried through the hole on its IMU, are the prior,
-  // the frame's depth is registered against the long-lived map from it, and
-  // the filter starts again at the registered pose, its frame continuous, so
-  // the navigation stays open and the flight goes on; until a registration
-  // holds, the estimator stays silent and the autopilot keeps its failsafe.
+  // autopilot landed the vehicle. Now the filter starts again on the
+  // autopilot's own pose and velocity, which it carried through the hole on
+  // its IMU: its frame stays the autopilot's, so the autopilot sees no reset
+  // and the navigation stays open (r1294: a restart 3.4 m off reset the
+  // autopilot by 3.7 m and the navigation closed for the flight). The frame's
+  // depth registered against the long-lived map confirms the pose: a fit
+  // within the ordinary correction's reach of it; one farther slid into
+  // another fit (r1294: 3.38 m with three axes observed, the autopilot 0.04 m
+  // from the truth). The drift is then the ordinary map correction's, in its
+  // small steps. Until a registration confirms, for at most 3 s, the
+  // estimator stays silent and the autopilot keeps its failsafe; then the
+  // filter starts on the autopilot's pose unconfirmed.
   void reinitialiseFromAutopilot(const std::int64_t stamp_ns,
                                  const std::vector<Eigen::Vector3d>& points_body) {
     constexpr std::int64_t kAutopilotStateFreshNs{1'000'000'000};
+    constexpr std::int64_t kUnconfirmedRestartNs{3'000'000'000};
     std::optional<AutopilotLocalState> local_state;
     std::optional<AutopilotAttitude> attitude;
+    std::int64_t state_ns{0};
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
     {
       const std::scoped_lock lock{autopilot_state_mutex_};
-      if (get_clock()->now().nanoseconds() - autopilot_state_ros_ns_ <=
-          kAutopilotStateFreshNs) {
+      if (now_ns - autopilot_state_ros_ns_ <= kAutopilotStateFreshNs) {
         local_state = autopilot_local_state_;
         attitude = autopilot_attitude_;
+        state_ns = autopilot_state_ros_ns_;
       }
     }
     // The autopilot's position is taken whatever it calls its validity: it
     // stops vouching for it within a second or two of the external odometry
     // falling silent (r1283: invalid 0.8 s after a 2 s hole) while its
-    // inertial dead reckoning is still the best prior there is; the
-    // registration against the map accepts or refuses it.
+    // inertial dead reckoning is still the best prior there is.
     const auto finite3 = [](const auto& value) {
       return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     };
@@ -620,26 +628,35 @@ private:
                            map_.pointCount());
       return;
     }
+    if (restart_tries_since_ns_ == 0) {
+      restart_tries_since_ns_ = now_ns;
+    }
     // The autopilot's pose in the frame the filter publishes in: its position
-    // in the map's frame back to the local NED, its attitude's quaternion
-    // turning the body into NED.
+    // in the map's frame back to the local NED, its velocity likewise, its
+    // attitude's quaternion turning the body into NED (r1288: inverted, the
+    // heading came out mirrored and no point of the depth met the map).
     const Point2 local_xy = transform_.mapPositionToLocal(
         Point2{local_state->position.x, local_state->position.y});
-    const Eigen::Vector3d prior{local_xy.x, local_xy.y,
-                                -(local_state->position.z - transform_.map_origin.z)};
-    // The contract's quaternion turns a body vector into NED, as the lidar
-    // projection reads it (r1288: inverted, the heading came out mirrored and
-    // no point of the depth met the map).
-    const Eigen::Quaterniond prior_rotation =
+    const Eigen::Vector3d position_at_state{
+        local_xy.x, local_xy.y, -(local_state->position.z - transform_.map_origin.z)};
+    const Point2 local_velocity = transform_.mapVectorToLocal(
+        Point2{local_state->velocity.x, local_state->velocity.y});
+    const Eigen::Vector3d velocity_ned{local_velocity.x, local_velocity.y,
+                                       -local_state->velocity.z};
+    const Eigen::Quaterniond rotation_ned =
         Eigen::Quaterniond{attitude->quaternion[0], attitude->quaternion[1],
                            attitude->quaternion[2], attitude->quaternion[3]}
             .normalized();
+    // The depth's moment: the autopilot's position carried back to it.
+    const Eigen::Vector3d prior =
+        position_at_state +
+        velocity_ned * (1.0e-9 * static_cast<double>(stamp_ns - state_ns));
     // The whole map, its newest points too: nothing was added to it while the
     // filter was lost, and the points of the 20 s before the hole are where the
     // vehicle is (the ordinary correction's age window left only points 40 m
     // behind a vehicle flying on, r1288).
     const PointPlaneRegistration3D registration = registerPointsToPlanes(
-        map_, points_body, prior, prior_rotation,
+        map_, points_body, prior, rotation_ned,
         PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
                                        .maximum_iterations = 10U,
                                        .convergence_translation_m = 1.0e-3,
@@ -647,69 +664,43 @@ private:
                                        .robust_width_m = 0.2});
     const double matched_points =
         registration.matched_fraction * static_cast<double>(points_body.size());
-    const bool held = registration.converged &&
-                      registration.matched_fraction >= kMapMinimumMatchedFraction &&
-                      matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
-                      registration.residual_rms_m <= kMapMaximumResidualRmsM;
-    // The registration corrects the prior only where it observes: along an
-    // axis whose information is the ordinary correction's minimum, and in
-    // heading when the heading's information is (r1290: down a corridor the
-    // walls fix the cross-track only, the registration slid 4.5 m along it,
-    // a match of 89 % at 0.03 m, and the restart held there).
-    Eigen::Vector3d registered = prior;
-    int observed_axes = 0;
-    const Eigen::Matrix3d translational =
-        registration.information.bottomRightCorner<3, 3>();
-    if (held) {
-      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
-      for (int axis = 0; axis < 3; ++axis) {
-        if (solver.eigenvalues()(axis) / matched_points >=
-            kMapMinimumInformationPerPoint) {
-          const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
-          registered += direction.dot(registration.position - prior) * direction;
-          ++observed_axes;
-        }
-      }
-    }
-    const Eigen::Matrix<double, 1, 3> coupling =
-        registration.information.block<1, 3>(2, 3);
-    const bool heading_observed =
-        held && (registration.information(2, 2) -
-                 coupling.dot(translational.ldlt().solve(coupling.transpose()))) /
-                        matched_points >=
-                    kMapMinimumYawInformationPerPoint;
-    if (held) {
-      // The registered pose is in the published frame; the filter's own frame
-      // lies the applied offset behind it.
+    const double innovation_m = (registration.position - prior).norm();
+    const bool confirmed =
+        registration.converged &&
+        registration.matched_fraction >= kMapMinimumMatchedFraction &&
+        matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
+        registration.residual_rms_m <= kMapMaximumResidualRmsM &&
+        innovation_m <= kMapCorrectionReachM;
+    const bool unconfirmed =
+        !confirmed && now_ns - restart_tries_since_ns_ >= kUnconfirmedRestartNs;
+    if (confirmed || unconfirmed) {
+      // At the latest IMU sample, on the autopilot's pose carried to it; the
+      // filter's own frame lies the applied map offset behind the published
+      // one.
       const std::scoped_lock lock{odometry_mutex_};
+      const std::int64_t restart_ns = std::max(stamp_ns, last_imu_stamp_ns_);
+      const Eigen::Vector3d position_ned =
+          position_at_state +
+          velocity_ned * (1.0e-9 * static_cast<double>(restart_ns - state_ns));
       const Eigen::Matrix3d rotation = map_applied_.rotation();
-      const Eigen::Vector3d position =
-          rotation.transpose() * (registered - map_applied_.translation);
-      const Eigen::Quaterniond body_to_ned{
-          rotation.transpose() *
-          (heading_observed ? registration.rotation : prior_rotation)
-              .toRotationMatrix()};
-      // The autopilot's velocity, carried through the hole on its own IMU:
-      // from the map's frame (z up) into the local NED, then the filter's.
-      const Point2 local_velocity = transform_.mapVectorToLocal(
-          Point2{local_state->velocity.x, local_state->velocity.y});
-      const Eigen::Vector3d velocity =
-          rotation.transpose() *
-          Eigen::Vector3d{local_velocity.x, local_velocity.y, -local_state->velocity.z};
-      odometry_->reinitialize(stamp_ns, position, velocity, body_to_ned);
+      odometry_->reinitialize(
+          restart_ns, rotation.transpose() * (position_ned - map_applied_.translation),
+          rotation.transpose() * velocity_ned,
+          Eigen::Quaterniond{rotation.transpose() * rotation_ned.toRotationMatrix()});
       ++reinitialisations_;
+      restart_tries_since_ns_ = 0;
     }
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
-        "matched=%.2f matched_points=%.0f residual_m=%.3f observed_axes=%d heading=%s "
-        "applied_m=%.2f innovation_m=%.2f prior=(%.2f,%.2f,%.2f) "
-        "reinitialisations=%" PRIu64,
-        held ? "held" : "weak", registration.matched_fraction, matched_points,
-        registration.residual_rms_m, observed_axes,
-        heading_observed ? "observed" : "prior", (registered - prior).norm(),
-        (registration.position - prior).norm(), prior.x(), prior.y(), prior.z(),
-        reinitialisations_);
+        "matched=%.2f matched_points=%.0f residual_m=%.3f innovation_m=%.2f "
+        "depth_age_s=%.2f prior=(%.2f,%.2f,%.2f) reinitialisations=%" PRIu64,
+        confirmed     ? "confirmed"
+        : unconfirmed ? "unconfirmed"
+                      : "waiting",
+        registration.matched_fraction, matched_points, registration.residual_rms_m,
+        innovation_m, 1.0e-9 * static_cast<double>(state_ns - stamp_ns), prior.x(),
+        prior.y(), prior.z(), reinitialisations_);
   }
 
   // The surface returns within the confident depth, in the body frame, one
@@ -950,6 +941,8 @@ private:
   std::optional<AutopilotAttitude> autopilot_attitude_;
   std::int64_t autopilot_state_ros_ns_{0};
   std::uint64_t reinitialisations_{0U};
+  // The first try of the restart under way, on the node's clock; zero: none.
+  std::int64_t restart_tries_since_ns_{0};
   rclcpp::CallbackGroup::SharedPtr group_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
