@@ -265,6 +265,8 @@ public:
             .imu = [this](const AutopilotImuSample& sample) { onImu(sample); },
             .clock_sync =
                 [this](const AutopilotClockSync& sample) {
+                  // The restart maps the autopilot's stamps from another group.
+                  const std::scoped_lock lock{odometry_mutex_};
                   time_mapper_.observeTimesync(
                       sample.timestamp_us, sample.estimated_offset_us,
                       sample.round_trip_time_us, get_clock()->now().nanoseconds());
@@ -648,6 +650,25 @@ private:
                            map_.pointCount());
       return;
     }
+    // The restart's moment is the autopilot's attitude's own sample on the
+    // IMU's clock, its position carried from its own sample: after a hole the
+    // frames held through it keep the IMU's callback busy and its newest
+    // sample up to a second behind, and a filter started at that sample on
+    // an attitude of now turned through that second twice (r1304: 10.8
+    // degrees off while the vehicle turned at 15 degrees a second).
+    std::int64_t attitude_ns{0};
+    {
+      const std::scoped_lock lock{odometry_mutex_};
+      const LidarPoseSourceStampResult position_stamp = resolveLidarPoseSourceStamp(
+          time_mapper_, local_state->timestamp_sample_us, now_ns);
+      const LidarPoseSourceStampResult attitude_stamp = resolveLidarPoseSourceStamp(
+          time_mapper_, attitude->timestamp_sample_us, now_ns);
+      if (!position_stamp.resolved() || !attitude_stamp.resolved()) {
+        return;
+      }
+      state_ns = position_stamp.mapped_ros_stamp_ns;
+      attitude_ns = attitude_stamp.mapped_ros_stamp_ns;
+    }
     // The autopilot's pose in the frame the filter publishes in: its position
     // in the map's frame back to the local NED, its velocity likewise, its
     // attitude's quaternion turning the body into NED (r1288: inverted, the
@@ -688,12 +709,14 @@ private:
         matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
         registration.residual_rms_m <= kMapMaximumResidualRmsM &&
         innovation_m <= kMapCorrectionReachM;
+    std::int64_t imu_behind_ns{0};
     {
-      // At the latest IMU sample, on the autopilot's pose carried to it; the
+      // At the attitude's sample, the autopilot's position carried to it; the
       // filter's own frame lies the applied map offset behind the published
       // one.
       const std::scoped_lock lock{odometry_mutex_};
-      const std::int64_t restart_ns = std::max(stamp_ns, last_imu_stamp_ns_);
+      const std::int64_t restart_ns = attitude_ns;
+      imu_behind_ns = now_ns - last_imu_stamp_ns_;
       const Eigen::Vector3d position_ned =
           position_at_state +
           velocity_ned * (1.0e-9 * static_cast<double>(restart_ns - state_ns));
@@ -704,15 +727,20 @@ private:
           Eigen::Quaterniond{rotation.transpose() * rotation_ned.toRotationMatrix()});
       ++reinitialisations_;
     }
+    const Eigen::Matrix3d body_to_ned = rotation_ned.toRotationMatrix();
+    const double heading_deg =
+        std::atan2(body_to_ned(1, 0), body_to_ned(0, 0)) * 180.0 / M_PI;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
         "matched=%.2f matched_points=%.0f residual_m=%.3f innovation_m=%.2f "
-        "depth_age_s=%.2f prior=(%.2f,%.2f,%.2f) reinitialisations=%" PRIu64,
+        "depth_age_s=%.2f prior=(%.2f,%.2f,%.2f) heading_deg=%.1f "
+        "attitude_age_ms=%.0f imu_behind_ms=%.0f reinitialisations=%" PRIu64,
         confirmed ? "confirmed" : "unconfirmed", registration.matched_fraction,
         matched_points, registration.residual_rms_m, innovation_m,
         1.0e-9 * static_cast<double>(state_ns - stamp_ns), prior.x(), prior.y(),
-        prior.z(), reinitialisations_);
+        prior.z(), heading_deg, 1.0e-6 * static_cast<double>(now_ns - attitude_ns),
+        1.0e-6 * static_cast<double>(imu_behind_ns), reinitialisations_);
   }
 
   // The surface returns within the confident depth, in the body frame, one
