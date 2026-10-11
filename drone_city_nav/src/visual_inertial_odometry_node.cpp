@@ -651,15 +651,44 @@ private:
                       registration.matched_fraction >= kMapMinimumMatchedFraction &&
                       matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
                       registration.residual_rms_m <= kMapMaximumResidualRmsM;
+    // The registration corrects the prior only where it observes: along an
+    // axis whose information is the ordinary correction's minimum, and in
+    // heading when the heading's information is (r1290: down a corridor the
+    // walls fix the cross-track only, the registration slid 4.5 m along it,
+    // a match of 89 % at 0.03 m, and the restart held there).
+    Eigen::Vector3d registered = prior;
+    int observed_axes = 0;
+    const Eigen::Matrix3d translational =
+        registration.information.bottomRightCorner<3, 3>();
+    if (held) {
+      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
+      for (int axis = 0; axis < 3; ++axis) {
+        if (solver.eigenvalues()(axis) / matched_points >=
+            kMapMinimumInformationPerPoint) {
+          const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
+          registered += direction.dot(registration.position - prior) * direction;
+          ++observed_axes;
+        }
+      }
+    }
+    const Eigen::Matrix<double, 1, 3> coupling =
+        registration.information.block<1, 3>(2, 3);
+    const bool heading_observed =
+        held && (registration.information(2, 2) -
+                 coupling.dot(translational.ldlt().solve(coupling.transpose()))) /
+                        matched_points >=
+                    kMapMinimumYawInformationPerPoint;
     if (held) {
       // The registered pose is in the published frame; the filter's own frame
       // lies the applied offset behind it.
       const std::scoped_lock lock{odometry_mutex_};
       const Eigen::Matrix3d rotation = map_applied_.rotation();
       const Eigen::Vector3d position =
-          rotation.transpose() * (registration.position - map_applied_.translation);
-      const Eigen::Quaterniond body_to_ned{rotation.transpose() *
-                                           registration.rotation.toRotationMatrix()};
+          rotation.transpose() * (registered - map_applied_.translation);
+      const Eigen::Quaterniond body_to_ned{
+          rotation.transpose() *
+          (heading_observed ? registration.rotation : prior_rotation)
+              .toRotationMatrix()};
       // The autopilot's velocity, carried through the hole on its own IMU:
       // from the map's frame (z up) into the local NED, then the filter's.
       const Point2 local_velocity = transform_.mapVectorToLocal(
@@ -673,11 +702,14 @@ private:
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
-        "matched=%.2f matched_points=%.0f residual_m=%.3f "
-        "innovation_m=%.2f prior=(%.2f,%.2f,%.2f) reinitialisations=%" PRIu64,
+        "matched=%.2f matched_points=%.0f residual_m=%.3f observed_axes=%d heading=%s "
+        "applied_m=%.2f innovation_m=%.2f prior=(%.2f,%.2f,%.2f) "
+        "reinitialisations=%" PRIu64,
         held ? "held" : "weak", registration.matched_fraction, matched_points,
-        registration.residual_rms_m, (registration.position - prior).norm(), prior.x(),
-        prior.y(), prior.z(), reinitialisations_);
+        registration.residual_rms_m, observed_axes,
+        heading_observed ? "observed" : "prior", (registered - prior).norm(),
+        (registration.position - prior).norm(), prior.x(), prior.y(), prior.z(),
+        reinitialisations_);
   }
 
   // The surface returns within the confident depth, in the body frame, one
