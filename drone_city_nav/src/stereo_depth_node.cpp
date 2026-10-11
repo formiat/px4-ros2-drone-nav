@@ -303,9 +303,12 @@ private:
     // The light the frame has left (specification K15): its brightness
     // headroom; no more than the range its brightness follows the carried
     // light's falloff to, over the depth the pair is confident of; and no
-    // more than the light share, the brightness over the gain against its
-    // lit baseline, floored at the blind line while the frame still sees, so
-    // a dimmed light bounds the range and only a frame that cannot see holds.
+    // more than the light share, the brightness over the gain against half
+    // its lit baseline (a lit frame's brightness varies with the scene from
+    // 54 to 142 over a flight, median 96, r1227; a light at least twofold
+    // dimmer than its lit value is the lamp's doing), floored at the blind
+    // line while the frame still sees, so a dimmed light bounds the range and
+    // only a frame that cannot see holds.
     const double brightness_p95 = brightnessPercentile(left_grey);
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
@@ -318,7 +321,7 @@ private:
             ? std::max(brightness_headroom > kSensorBlindFrameShare
                            ? kSensorBlindFrameShare
                            : 0.0,
-                       std::min(1.0, raw_brightness / *lit_brightness))
+                       std::min(1.0, raw_brightness / (0.5 * *lit_brightness)))
             : 1.0;
     if (lit) {
       raw_brightness_baseline_.observe(raw_brightness);

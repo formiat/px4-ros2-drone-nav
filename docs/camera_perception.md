@@ -94,9 +94,11 @@ the correction is recorded beside it.
   the vehicle's position (`LIGHT_ZONES`), dims every metre alike and the lit
   range cannot see it; the gain can, and the headroom is also no more than
   the **light share**, the frame's brightness over the gain the driver
-  reports (`/stereo/left/gain`) against the median of the last thirty
-  seconds of lit frames, floored at the blind line while the frame's own
-  headroom is above it: a dimmed light bounds the range and only a frame
+  reports (`/stereo/left/gain`) against half the median of the last thirty
+  seconds of lit frames (a lit frame's brightness varies with the scene by
+  a factor of 1.5 either way, 54 to 142 over r1227; a light at least twofold
+  dimmer is the lamp's doing), floored at the blind line while the frame's
+  own headroom is above it: a dimmed light bounds the range and only a frame
   that cannot see holds. On the fade rig (r1225) the gain climbed from 2.0
   to 5.5 and the raw brightness fell to a quarter 3 m before the dark while
   the headroom still read 0.71 to 1.00.
