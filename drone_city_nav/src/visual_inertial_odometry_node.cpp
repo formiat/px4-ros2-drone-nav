@@ -174,6 +174,7 @@ public:
     config.rotor_drag_1ps =
         declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
     odometry_ = std::make_unique<VisualInertialOdometry>(config);
+    maximum_unaided_ns_ = static_cast<std::int64_t>(config.maximum_unaided_s * 1.0e9);
 
     // A frame's stamp against the IMU's clock, measured on the rotation both
     // see: the share of gated features over a sweep of this offset has its
@@ -351,6 +352,8 @@ private:
       return;
     }
     const std::int64_t stamp_ns = source.mapped_ros_stamp_ns;
+    const bool hole =
+        last_imu_stamp_ns_ > 0 && stamp_ns - last_imu_stamp_ns_ > maximum_unaided_ns_;
     if (last_imu_stamp_ns_ > 0 && stamp_ns > last_imu_stamp_ns_) {
       imu_gap_max_ns_ = std::max(imu_gap_max_ns_, stamp_ns - last_imu_stamp_ns_);
     }
@@ -365,6 +368,21 @@ private:
                             sample.accelerometer_mps2.z}});
     gyro_.push_back(GyroSample{.stamp_ns = stamp_ns, .rate_radps = gyro});
     ++imu_samples_;
+    // Specification K28: the stream back after a hole. The frames held
+    // through it could only meet a lost filter, a second and a half of them
+    // under this lock, which kept the restart waiting (r1306); they are
+    // dropped, the next frame tracks without the gyroscope's turn across the
+    // hole, and the filter starts again here. Only a hole restarts it: one
+    // lost after its dead reckoning stays lost (specification K13).
+    if (hole && odometry_->initialized()) {
+      std::erase_if(pending_,
+                    [stamp_ns](const Pair& pair) { return pair.stamp_ns <= stamp_ns; });
+      previous_frame_stamp_ns_ = 0;
+      restart_due_ = true;
+    }
+    if (restart_due_ && reinitialiseFromAutopilot()) {
+      restart_due_ = false;
+    }
     // A frame waits for the IMU up to its own stamp, in order: the filter
     // clones the pose where the propagation stands.
     while (!pending_.empty() && last_imu_stamp_ns_ >= pending_.front().stamp_ns) {
@@ -557,19 +575,6 @@ private:
     if (points_body.empty()) {
       return;
     }
-    // A lost filter starts again once its stream flows again: started inside
-    // the hole it would be lost again a second on.
-    constexpr std::int64_t kFlowingImuNs{100'000'000};
-    bool lost{false};
-    {
-      const std::scoped_lock lock{odometry_mutex_};
-      lost = odometry_->lost() && last_imu_stamp_ns_ > 0 &&
-             stamp_ns - last_imu_stamp_ns_ <= kFlowingImuNs;
-    }
-    if (lost) {
-      reinitialiseFromAutopilot(stamp_ns, points_body);
-      return;
-    }
     std::optional<VisualInertialClonePose> pose;
     {
       const std::scoped_lock lock{odometry_mutex_};
@@ -605,24 +610,22 @@ private:
   // autopilot's own pose and velocity, which it carried through the hole on
   // its IMU: its frame stays the autopilot's, so the autopilot sees no reset
   // and the navigation stays open (r1294: a restart 3.4 m off reset the
-  // autopilot by 3.7 m and the navigation closed for the flight). The frame's
-  // depth registered against the long-lived map confirms the pose: a fit
-  // within the ordinary correction's reach of it; one farther slid into
-  // another fit (r1294: 3.38 m with three axes observed, the autopilot 0.04 m
-  // from the truth); it is reported, and the drift is the ordinary map
-  // correction's, in its small steps. The filter starts as soon as the stream
-  // flows: the autopilot holds its position valid for about 4.5 s without the
-  // external odometry (its accuracy past 1 m), and a 4 s hole and a wait for
-  // a confirmation left it without one; its failsafe landed the vehicle blind
-  // at 2 m/s into the staging area (r1296).
-  void reinitialiseFromAutopilot(const std::int64_t stamp_ns,
-                                 const std::vector<Eigen::Vector3d>& points_body) {
+  // autopilot by 3.7 m and the navigation closed for the flight). It starts
+  // on the stream's first sample after the hole, healthy from it: the
+  // autopilot holds its position valid for about 4.6 s without the external
+  // odometry, and a restart that waited for the depth and for features came
+  // 1.6 s after a 4 s hole, when the autopilot's failsafe had already let the
+  // vehicle drift blind at 2 m/s into a wall (r1296, r1306). Its moment is
+  // the autopilot's attitude's own sample on the IMU's clock, the position
+  // carried from its own sample (r1304: started at an IMU sample a second
+  // behind the attitude, the filter turned through that second twice).
+  // Under the odometry mutex; returns whether the filter started.
+  bool reinitialiseFromAutopilot() {
     // Both the position and the attitude this recent (they arrive at 50 Hz
     // and more).
     constexpr std::int64_t kAutopilotStateFreshNs{200'000'000};
     std::optional<AutopilotLocalState> local_state;
     std::optional<AutopilotAttitude> attitude;
-    std::int64_t state_ns{0};
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     {
       const std::scoped_lock lock{autopilot_state_mutex_};
@@ -630,7 +633,6 @@ private:
           now_ns - autopilot_attitude_ros_ns_ <= kAutopilotStateFreshNs) {
         local_state = autopilot_local_state_;
         attitude = autopilot_attitude_;
-        state_ns = autopilot_state_ros_ns_;
       }
     }
     // The autopilot's position is taken whatever it calls its validity: it
@@ -641,106 +643,56 @@ private:
       return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     };
     if (!local_state.has_value() || !attitude.has_value() ||
-        !finite3(local_state->position) || !finite3(local_state->velocity) ||
-        map_.empty()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=no_prior "
-                           "autopilot_state_fresh=%s map_points=%zu",
-                           local_state.has_value() ? "true" : "false",
-                           map_.pointCount());
-      return;
+        !finite3(local_state->position) || !finite3(local_state->velocity)) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=no_prior");
+      return false;
     }
-    // The restart's moment is the autopilot's attitude's own sample on the
-    // IMU's clock, its position carried from its own sample: after a hole the
-    // frames held through it keep the IMU's callback busy and its newest
-    // sample up to a second behind, and a filter started at that sample on
-    // an attitude of now turned through that second twice (r1304: 10.8
-    // degrees off while the vehicle turned at 15 degrees a second).
-    std::int64_t attitude_ns{0};
-    {
-      const std::scoped_lock lock{odometry_mutex_};
-      const LidarPoseSourceStampResult position_stamp = resolveLidarPoseSourceStamp(
-          time_mapper_, local_state->timestamp_sample_us, now_ns);
-      const LidarPoseSourceStampResult attitude_stamp = resolveLidarPoseSourceStamp(
-          time_mapper_, attitude->timestamp_sample_us, now_ns);
-      if (!position_stamp.resolved() || !attitude_stamp.resolved()) {
-        return;
-      }
-      state_ns = position_stamp.mapped_ros_stamp_ns;
-      attitude_ns = attitude_stamp.mapped_ros_stamp_ns;
+    const LidarPoseSourceStampResult position_stamp = resolveLidarPoseSourceStamp(
+        time_mapper_, local_state->timestamp_sample_us, now_ns);
+    const LidarPoseSourceStampResult attitude_stamp = resolveLidarPoseSourceStamp(
+        time_mapper_, attitude->timestamp_sample_us, now_ns);
+    if (!position_stamp.resolved() || !attitude_stamp.resolved()) {
+      return false;
     }
+    const std::int64_t restart_ns = attitude_stamp.mapped_ros_stamp_ns;
     // The autopilot's pose in the frame the filter publishes in: its position
     // in the map's frame back to the local NED, its velocity likewise, its
     // attitude's quaternion turning the body into NED (r1288: inverted, the
-    // heading came out mirrored and no point of the depth met the map).
+    // heading came out mirrored).
     const Point2 local_xy = transform_.mapPositionToLocal(
         Point2{local_state->position.x, local_state->position.y});
-    const Eigen::Vector3d position_at_state{
-        local_xy.x, local_xy.y, -(local_state->position.z - transform_.map_origin.z)};
     const Point2 local_velocity = transform_.mapVectorToLocal(
         Point2{local_state->velocity.x, local_state->velocity.y});
     const Eigen::Vector3d velocity_ned{local_velocity.x, local_velocity.y,
                                        -local_state->velocity.z};
+    const Eigen::Vector3d position_ned =
+        Eigen::Vector3d{local_xy.x, local_xy.y,
+                        -(local_state->position.z - transform_.map_origin.z)} +
+        velocity_ned * (1.0e-9 * static_cast<double>(
+                                     restart_ns - position_stamp.mapped_ros_stamp_ns));
     const Eigen::Quaterniond rotation_ned =
         Eigen::Quaterniond{attitude->quaternion[0], attitude->quaternion[1],
                            attitude->quaternion[2], attitude->quaternion[3]}
             .normalized();
-    // The depth's moment: the autopilot's position carried back to it.
-    const Eigen::Vector3d prior =
-        position_at_state +
-        velocity_ned * (1.0e-9 * static_cast<double>(stamp_ns - state_ns));
-    // The whole map, its newest points too: nothing was added to it while the
-    // filter was lost, and the points of the 20 s before the hole are where the
-    // vehicle is (the ordinary correction's age window left only points 40 m
-    // behind a vehicle flying on, r1288).
-    const PointPlaneRegistration3D registration = registerPointsToPlanes(
-        map_, points_body, prior, rotation_ned,
-        PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
-                                       .maximum_iterations = 10U,
-                                       .convergence_translation_m = 1.0e-3,
-                                       .convergence_rotation_rad = 1.0e-4,
-                                       .robust_width_m = 0.2});
-    const double matched_points =
-        registration.matched_fraction * static_cast<double>(points_body.size());
-    const double innovation_m = (registration.position - prior).norm();
-    const bool confirmed =
-        registration.converged &&
-        registration.matched_fraction >= kMapMinimumMatchedFraction &&
-        matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
-        registration.residual_rms_m <= kMapMaximumResidualRmsM &&
-        innovation_m <= kMapCorrectionReachM;
-    std::int64_t imu_behind_ns{0};
-    {
-      // At the attitude's sample, the autopilot's position carried to it; the
-      // filter's own frame lies the applied map offset behind the published
-      // one.
-      const std::scoped_lock lock{odometry_mutex_};
-      const std::int64_t restart_ns = attitude_ns;
-      imu_behind_ns = now_ns - last_imu_stamp_ns_;
-      const Eigen::Vector3d position_ned =
-          position_at_state +
-          velocity_ned * (1.0e-9 * static_cast<double>(restart_ns - state_ns));
-      const Eigen::Matrix3d rotation = map_applied_.rotation();
-      odometry_->reinitialize(
-          restart_ns, rotation.transpose() * (position_ned - map_applied_.translation),
-          rotation.transpose() * velocity_ned,
-          Eigen::Quaterniond{rotation.transpose() * rotation_ned.toRotationMatrix()});
-      ++reinitialisations_;
-    }
+    // The filter's own frame lies the applied map offset behind the published
+    // one.
+    const Eigen::Matrix3d rotation = map_applied_.rotation();
+    odometry_->reinitialize(
+        restart_ns, rotation.transpose() * (position_ned - map_applied_.translation),
+        rotation.transpose() * velocity_ned,
+        Eigen::Quaterniond{rotation.transpose() * rotation_ned.toRotationMatrix()});
+    ++reinitialisations_;
     const Eigen::Matrix3d body_to_ned = rotation_ned.toRotationMatrix();
-    const double heading_deg =
-        std::atan2(body_to_ned(1, 0), body_to_ned(0, 0)) * 180.0 / M_PI;
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
-        "matched=%.2f matched_points=%.0f residual_m=%.3f innovation_m=%.2f "
-        "depth_age_s=%.2f prior=(%.2f,%.2f,%.2f) heading_deg=%.1f "
-        "attitude_age_ms=%.0f imu_behind_ms=%.0f reinitialisations=%" PRIu64,
-        confirmed ? "confirmed" : "unconfirmed", registration.matched_fraction,
-        matched_points, registration.residual_rms_m, innovation_m,
-        1.0e-9 * static_cast<double>(state_ns - stamp_ns), prior.x(), prior.y(),
-        prior.z(), heading_deg, 1.0e-6 * static_cast<double>(now_ns - attitude_ns),
-        1.0e-6 * static_cast<double>(imu_behind_ns), reinitialisations_);
+    RCLCPP_WARN(get_logger(),
+                "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=started "
+                "position=(%.2f,%.2f,%.2f) heading_deg=%.1f attitude_age_ms=%.0f "
+                "reinitialisations=%" PRIu64,
+                position_ned.x(), position_ned.y(), position_ned.z(),
+                std::atan2(body_to_ned(1, 0), body_to_ned(0, 0)) * 180.0 / M_PI,
+                1.0e-6 * static_cast<double>(now_ns - restart_ns), reinitialisations_);
+    return true;
   }
 
   // The surface returns within the confident depth, in the body frame, one
@@ -981,6 +933,8 @@ private:
   std::optional<AutopilotAttitude> autopilot_attitude_;
   std::int64_t autopilot_state_ros_ns_{0};
   std::int64_t autopilot_attitude_ros_ns_{0};
+  std::int64_t maximum_unaided_ns_{0};
+  bool restart_due_{false};
   std::unique_ptr<AutopilotStateSource> autopilot_pose_;
   rclcpp::CallbackGroup::SharedPtr autopilot_pose_group_;
   std::uint64_t reinitialisations_{0U};

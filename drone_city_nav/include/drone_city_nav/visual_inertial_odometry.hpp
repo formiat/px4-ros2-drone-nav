@@ -220,7 +220,8 @@ public:
   // from the autopilot's own estimate, the pose registered against the
   // long-lived map, with a wide uncertainty about them; the biases stay.
   // The IMU samples before the stamp are dropped, the clones and tracks
-  // with them, and the estimate is healthy again once features correct it.
+  // with them; the pose given is the restart's fix, and the estimate is
+  // healthy from it for the unaided second, as after any update.
   void reinitialize(std::int64_t stamp_ns, const Eigen::Vector3d& position_ned_m,
                     const Eigen::Vector3d& velocity_ned_mps,
                     const Eigen::Quaterniond& body_to_ned);

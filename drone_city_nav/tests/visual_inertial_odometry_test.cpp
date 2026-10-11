@@ -505,6 +505,7 @@ TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
   const auto frames = static_cast<std::int64_t>(12.0 * 1.0e9) / kFramePeriodNs;
   std::int64_t imu_stamp = 0;
   bool restarted = false;
+  std::int64_t restarted_ns = 0;
   std::int64_t healthy_again_ns = 0;
   VisualInertialEstimate last;
   for (std::int64_t frame = 1; frame <= frames; ++frame) {
@@ -526,6 +527,7 @@ TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
                             velocity + Eigen::Vector3d{0.2, -0.1, 0.1},
                             Eigen::Quaterniond{Motion::bodyToNed(t)});
       restarted = true;
+      restarted_ns = stamp;
     }
     last = odometry.addFrame(
         stamp, observe(config, t, points, config.observation_noise, generator));
@@ -534,8 +536,10 @@ TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
     }
   }
   ASSERT_TRUE(restarted);
+  // Healthy from the next frame on, the restart's pose its fix (r1306: the
+  // features' first update came too late for the autopilot).
   EXPECT_GT(healthy_again_ns, 0);
-  EXPECT_LT(static_cast<double>(healthy_again_ns) * 1.0e-9, hole.to_s + 1.0);
+  EXPECT_LE(healthy_again_ns, restarted_ns + kFramePeriodNs);
   EXPECT_TRUE(last.healthy);
   EXPECT_FALSE(last.lost);
   // The prior's own offset (0.37 m) stays, no feature can tell it; the

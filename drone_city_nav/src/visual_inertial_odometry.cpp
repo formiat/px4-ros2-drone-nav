@@ -679,7 +679,12 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
   state.first_position = state.position;
   state.first_velocity = state.velocity;
   state.stamp_ns = stamp_ns;
-  state.last_update_stamp_ns = 0;
+  // The autopilot's pose is the restart's fix: the estimate is healthy from
+  // it for the unaided second, as after any update, and the autopilot has it
+  // again before its own dead reckoning runs out (r1306: half a second
+  // waiting for the features' first update after a 4 s hole and it had
+  // given its position up).
+  state.last_update_stamp_ns = stamp_ns;
   state.held_height_ned_m = position_ned_m.z();
   state.lost = false;
   state.clones.clear();
@@ -688,7 +693,7 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
     state.last_imu = state.imu.front();
     state.imu.pop_front();
   }
-  state.held_barometric_height_m.reset();
+  state.held_barometric_height_m = state.barometric_height_m;
   state.drag_reading_sum_mps.setZero();
   state.drag_reading_s = 0.0;
   // The biases' block sits after the IMU states, before the clones' blocks.
