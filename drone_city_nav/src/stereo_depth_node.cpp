@@ -3,6 +3,7 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
+#include "drone_city_nav/stereo_lit_range.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -285,13 +286,21 @@ private:
       }
     }
     const double noise = rejectMatchesWithinNoise(left_grey, disparity);
-    const std::string brightness_by_metre =
+    const std::array<double, LitRangeTracker::kMetres> brightness_by_metre =
         matchedBrightnessByMetre(left_grey, disparity);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
-    const double headroom = lightHeadroom(left_grey);
+    // The light the frame has left: its brightness headroom, and no more than
+    // the range its brightness follows the carried light's falloff to, over
+    // the depth the pair is confident of (specification K15).
+    const double brightness_headroom = lightHeadroom(left_grey);
+    const double lit_range_m =
+        lit_range_tracker_.observe(brightness_by_metre, brightness_headroom > 0.9);
+    const double headroom = std::min(
+        brightness_headroom,
+        std::min(1.0, lit_range_m / stereoConfidentDepthM(geometry_, returns_config_)));
     std_msgs::msg::Float64 headroom_message;
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
@@ -382,11 +391,12 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-                         "unobservable_total=%zu",
+                         "lit_range_m=%.1f observed_share=%.3f blind_dropped=%zu "
+                         "noise=%.1f unobservable_total=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightness_by_metre.c_str(), headroom, observed_share,
-                         blind ? stereo_returns : 0U, noise, unobservable_total_);
+                         brightnessByMetreText(brightness_by_metre).c_str(), headroom,
+                         lit_range_m, observed_share, blind ? stereo_returns : 0U,
+                         noise, unobservable_total_);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -480,9 +490,9 @@ private:
   // each metre of depth, from 0 to 8 m (-1 where none matched), which is
   // what the carried light gives a surface at each distance in the dark
   // world; the image source logs the gain it applied.
-  [[nodiscard]] std::string matchedBrightnessByMetre(const cv::Mat& grey,
-                                                     const cv::Mat& disparity) const {
-    constexpr std::size_t kMetres{8U};
+  [[nodiscard]] std::array<double, LitRangeTracker::kMetres>
+  matchedBrightnessByMetre(const cv::Mat& grey, const cv::Mat& disparity) const {
+    constexpr std::size_t kMetres{LitRangeTracker::kMetres};
     std::array<double, kMetres> sum{};
     std::array<std::size_t, kMetres> count{};
     const auto stride = static_cast<int>(returns_config_.pixel_stride);
@@ -501,13 +511,21 @@ private:
         }
       }
     }
-    std::string text;
+    std::array<double, kMetres> brightness{};
     for (std::size_t metre = 0U; metre < kMetres; ++metre) {
+      brightness[metre] =
+          count[metre] == 0U ? -1.0 : sum[metre] / static_cast<double>(count[metre]);
+    }
+    return brightness;
+  }
+
+  [[nodiscard]] static std::string brightnessByMetreText(
+      const std::array<double, LitRangeTracker::kMetres>& brightness) {
+    std::string text;
+    for (std::size_t metre = 0U; metre < brightness.size(); ++metre) {
       text += (metre == 0U ? "" : "/") +
-              std::to_string(
-                  count[metre] == 0U
-                      ? -1L
-                      : std::lround(sum[metre] / static_cast<double>(count[metre])));
+              std::to_string(brightness[metre] < 0.0 ? -1L
+                                                     : std::lround(brightness[metre]));
     }
     return text;
   }
@@ -598,6 +616,7 @@ private:
   std::size_t image_height_{0U};
   StereoPairGeometry geometry_{};
   StereoDepthReturnsConfig returns_config_{};
+  LitRangeTracker lit_range_tracker_;
   int far_disparities_{64};
   cv::Ptr<cv::StereoSGBM> far_matcher_;
   cv::Ptr<cv::StereoSGBM> near_matcher_;

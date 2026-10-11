@@ -78,7 +78,18 @@ the correction is recorded beside it.
   the depth until the light is under a hundredth of itself (r800 flew at
   2.4 m/s into a dark that had put its light out), so the contract reads the
   smaller of that share and the frame's **light headroom**: the 95th
-  percentile of the frame's brightness over the 200 the gain aims it at.
+  percentile of the frame's brightness over the 200 the gain aims it at. The
+  headroom cannot see the first third of a fade over distance either, since
+  the gain makes the light up to a factor of eight (lit, it sits at 1.7 to
+  2.6), so since 2026-10-11 the headroom is no more than the frame's **lit
+  range** over the confident depth (specification K15): in clear air each
+  metre of depth is lit in a fixed proportion to the 2 to 3 m metre whatever
+  the light does, a flicker dimming every metre alike, while a fade over
+  distance, as smoke, darkens the far metres first; a metre reading under a
+  fifth of the proportion it held over the last thirty seconds of lit frames
+  ends the lit range (`stereo_lit_range.hpp`; the `STEREO_DEPTH` line prints
+  `lit_range_m`). On the records of r1191 and r1206 to r1211 the proportions
+  hold within a factor of three over a flight and a fade reads a tenth.
 - **Darkness is observed, not unknown** (stage 8, specification F6,
   K12 and K14). A frame the contract reads as blind (a share under 0.35,
   where the range is within a quarter metre of the margin) for 2.5 s marks
