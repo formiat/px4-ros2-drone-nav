@@ -960,13 +960,23 @@ VisualInertialOdometry::predicted(const std::int64_t stamp_ns) const {
     body_to_ned = body_to_ned * half_turn * half_turn;
     at_ns = end_ns;
   };
+  // Specification K28: a prediction across a hole of the stream is none. At
+  // the hole's end the stream resumes before the frames held through it reach
+  // the filter, and the pose predicted across it on the average of its two
+  // ends went to the autopilot as dead reckoning, which moved the autopilot's
+  // own estimate by 3.7 m (r1292).
+  const auto unaided_ns =
+      static_cast<std::int64_t>(state.config.maximum_unaided_s * 1.0e9);
+  bool across_hole = false;
   for (const VisualInertialImuSample& sample : state.imu) {
     if (sample.stamp_ns > stamp_ns) {
       break;
     }
+    across_hole = across_hole || sample.stamp_ns - from.stamp_ns > unaided_ns;
     advance(sample, sample.stamp_ns);
     from = sample;
   }
+  across_hole = across_hole || stamp_ns - from.stamp_ns > unaided_ns;
   estimate.imu_lag_ns = stamp_ns - at_ns;
   advance(from, stamp_ns);
   estimate.stamp_ns = stamp_ns;
@@ -980,6 +990,11 @@ VisualInertialOdometry::predicted(const std::int64_t stamp_ns) const {
       static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
           state.config.maximum_imu_period_s;
   state.judgeDeadReckoning(estimate);
+  if (across_hole) {
+    estimate.healthy = false;
+    estimate.dead_reckoning = false;
+    estimate.lost = true;
+  }
   return estimate;
 }
 

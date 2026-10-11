@@ -474,8 +474,14 @@ TEST(VisualInertialOdometry, FramesHeldThroughAHoleDoNotBridgeIt) {
     static_cast<void>(frameAt(stamp));
   }
   ASSERT_FALSE(odometry.lost());
-  // The stream resumes; the frames held through the hole follow.
+  // The stream resumes; the frames held through the hole follow. Before they
+  // do, the pose predicted across the hole is no estimate at all (r1292).
   feedImuTo(static_cast<std::int64_t>((hole.to_s + 0.5) * 1.0e9));
+  const VisualInertialEstimate across =
+      odometry.predicted(static_cast<std::int64_t>((hole.to_s + 0.2) * 1.0e9));
+  EXPECT_FALSE(across.healthy);
+  EXPECT_FALSE(across.dead_reckoning);
+  EXPECT_TRUE(across.lost);
   VisualInertialEstimate last;
   for (; static_cast<double>(stamp) * 1.0e-9 <= hole.to_s + 0.5;
        stamp += kFramePeriodNs) {
