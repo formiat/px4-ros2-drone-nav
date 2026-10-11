@@ -250,6 +250,16 @@ std::int64_t VisualInertialOdometry::Impl::propagateTo(const std::int64_t target
     if (!imu.empty()) {
       to = imu.front();
       end_ns = std::min(target_ns, to.stamp_ns);
+      // Two samples further apart than the unaided timeout bound a hole,
+      // however short the steps that cross it: the node holds its frames
+      // until the stream covers them and then feeds them a tenth of a second
+      // apart, so no single step was ever longer than a second and a 2 s
+      // hole was crossed on the average of its two ends, published healthy
+      // and flown into the staging area four seconds later (r1258, r1260).
+      if (static_cast<double>(to.stamp_ns - from.stamp_ns) * 1.0e-9 >
+          config.maximum_unaided_s) {
+        lost = true;
+      }
     } else {
       // The lag is the stream's silence since its last sample, not since the
       // state's last step: measured from the state, a hole the frames kept

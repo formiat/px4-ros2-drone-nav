@@ -236,9 +236,14 @@ MppiOffboardNode::MppiOffboardNode()
         dead_reckoning_landing_.observe(now().nanoseconds(), odometry->quality == 0);
       });
   // The ring's lateral units, as the stereo node reads them (the same
-  // topics); the nearest return of each is the reflex of the blind descent.
-  constexpr std::array<const char*, kTofRingUnits> kTofRingSides{"front", "back",
-                                                                 "left", "right"};
+  // topics), and the down unit; the nearest return of each is the reflex of
+  // the blind descent. A lateral unit counts its near-horizontal rows only
+  // (the four middle ones of eight, within 9 degrees): its lower rows meet
+  // the floor below, not a wall beside the body (r1267, r1268).
+  constexpr std::array<const char*, kTofRingUnits> kTofRingSides{
+      "front", "back", "left", "right", "down"};
+  constexpr std::size_t kTofDownUnit{4U};
+  constexpr double kRingElevationRad{0.16};
   for (std::size_t unit = 0U; unit < kTofRingUnits; ++unit) {
     const std::string side{kTofRingSides[unit]};
     tof_ring_subs_[unit] = create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -254,7 +259,11 @@ MppiOffboardNode::MppiOffboardNode()
           double nearest_m = std::numeric_limits<double>::infinity();
           for (const Point3& point : *points) {
             const double range_m = std::hypot(point.x, point.y, point.z);
-            if (std::isfinite(range_m) && range_m > 0.0) {
+            const bool level =
+                unit == kTofDownUnit ||
+                std::abs(std::atan2(point.z, std::hypot(point.x, point.y))) <=
+                    kRingElevationRad;
+            if (level && std::isfinite(range_m) && range_m > 0.0) {
               nearest_m = std::min(nearest_m, range_m);
             }
           }
@@ -295,7 +304,8 @@ TofRingRanges MppiOffboardNode::freshTofRingRanges() const {
   return TofRingRanges{.front_m = fresh(0U),
                        .back_m = fresh(1U),
                        .left_m = fresh(2U),
-                       .right_m = fresh(3U)};
+                       .right_m = fresh(3U),
+                       .down_m = fresh(4U)};
 }
 
 void MppiOffboardNode::controlTick() {

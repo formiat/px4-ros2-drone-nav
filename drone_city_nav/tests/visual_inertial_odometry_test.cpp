@@ -445,6 +445,46 @@ TEST(VisualInertialOdometry, AFrameBeforeTheDeclaredPoseIsNoEstimate) {
   EXPECT_EQ(estimate.clones, 0U);
 }
 
+// Specification K28: the frames the node held through a hole reach the
+// filter once the stream covers them, a frame period apart; the hole is one
+// all the same (r1258, r1260 crossed 2 s that way, healthy).
+TEST(VisualInertialOdometry, FramesHeldThroughAHoleDoNotBridgeIt) {
+  const VisualInertialOdometryConfig config = testConfig();
+  std::mt19937 generator{11U};
+  const std::vector<Eigen::Vector3d> points = landmarks(generator);
+  VisualInertialOdometry odometry{config};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  const Hole hole{4.0, 4.0 + config.maximum_unaided_s + 1.0};
+  std::int64_t imu_stamp = 0;
+  const auto feedImuTo = [&](const std::int64_t until_ns) {
+    for (; imu_stamp <= until_ns; imu_stamp += kImuPeriodNs) {
+      if (!hole.contains(imu_stamp)) {
+        odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      }
+    }
+  };
+  const auto frameAt = [&](const std::int64_t stamp) {
+    const double t = static_cast<double>(stamp) * 1.0e-9;
+    return odometry.addFrame(
+        stamp, observe(config, t, points, config.observation_noise, generator));
+  };
+  std::int64_t stamp = kFramePeriodNs;
+  for (; static_cast<double>(stamp) * 1.0e-9 < hole.from_s; stamp += kFramePeriodNs) {
+    feedImuTo(stamp);
+    static_cast<void>(frameAt(stamp));
+  }
+  ASSERT_FALSE(odometry.lost());
+  // The stream resumes; the frames held through the hole follow.
+  feedImuTo(static_cast<std::int64_t>((hole.to_s + 0.5) * 1.0e9));
+  VisualInertialEstimate last;
+  for (; static_cast<double>(stamp) * 1.0e-9 <= hole.to_s + 0.5;
+       stamp += kFramePeriodNs) {
+    last = frameAt(stamp);
+  }
+  EXPECT_TRUE(odometry.lost());
+  EXPECT_FALSE(last.healthy);
+}
+
 // Specification K28: after a hole the filter cannot bridge, started again at
 // a pose and velocity the autopilot would give, a few decimetres and tenths
 // of a metre a second off, it is healthy again once features correct it,

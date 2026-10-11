@@ -171,10 +171,10 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
       nowMicros(), reflex, -kLandingSpeedMps, Point2{0.0, 0.0}, nan, nan, 0.0));
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                        "DEAD_RECKONING_LANDING descending=true reflex=(%.2f,%.2f) "
-                       "ring_m=(%.2f,%.2f,%.2f,%.2f)",
+                       "ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
                        reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
                        ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
-                       ranges.right_m.value_or(-1.0));
+                       ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));
 }
 
 void MppiOffboardNode::publishTakeoffSetpoint() {

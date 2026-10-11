@@ -61,11 +61,18 @@ private:
 // is the only measure of the motion. The range is asked to open at 0.3 m/s
 // from where the push began, and each metre it lags adds a metre per second,
 // up to 1.0 m/s; the push never pulls toward the surface.
+// The lateral units count only their near-horizontal rows (the caller's), and
+// no push is given once the down unit reads the floor within 0.65 m (the feet
+// half a metre above it): a sloped floor met by the descent closes the
+// range by itself, and the closed law read it as lag and drove the vehicle
+// downhill at 0.65 m/s into the ramp of the staging area (r1267, r1268, a
+// landing at more than 0.5 m/s sideways is a crash by A9).
 struct TofRingRanges {
   std::optional<double> front_m;
   std::optional<double> back_m;
   std::optional<double> left_m;
   std::optional<double> right_m;
+  std::optional<double> down_m;
 };
 
 class BlindDescentReflex final {
@@ -74,9 +81,14 @@ public:
   static constexpr double kReflexSpeedMps{0.3};
   static constexpr double kLagGainPerS{1.0};
   static constexpr double kMaximumSpeedMps{1.0};
+  static constexpr double kFloorStopM{0.65};
 
   [[nodiscard]] Point2 observe(const TofRingRanges& ranges, const std::int64_t stamp_ns,
                                const double heading_ned_rad) noexcept {
+    if (ranges.down_m.has_value() && *ranges.down_m < kFloorStopM) {
+      reset();
+      return Point2{0.0, 0.0};
+    }
     // The body's forward-right-down frame: away from a surface on the left is
     // to the right, away from one ahead is backward.
     const double forward = axisSpeed(forward_, ranges.back_m, ranges.front_m, stamp_ns);

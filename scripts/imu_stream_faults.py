@@ -91,15 +91,18 @@ def main() -> int:
 
     node.create_subscription(SensorCombined, args.topic, relay, qos)
     print(f"IMU_STREAM_FAULTS profile={args.profile} holes={len(holes)}", flush=True)
+    from rclpy.executors import ExternalShutdownException
+    # The flight's end stops the process from outside: a shutdown, not a fault.
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.5)
             with lock:
                 log.flush()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    log.close()
     node.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
     return 0
 
 

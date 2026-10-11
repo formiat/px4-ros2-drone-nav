@@ -137,9 +137,9 @@ private:
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   DeadReckoningLanding dead_reckoning_landing_;
   BlindDescentReflex blind_descent_reflex_;
-  // The time-of-flight ring's lateral units, the nearest return each saw
-  // last and when: the reflex of the blind descent (K19).
-  static constexpr std::size_t kTofRingUnits{4U};
+  // The time-of-flight ring's lateral units and the down unit, the nearest
+  // return each saw last and when: the reflex of the blind descent (K19).
+  static constexpr std::size_t kTofRingUnits{5U};
   std::array<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr,
              kTofRingUnits>
       tof_ring_subs_{};
