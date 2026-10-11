@@ -26,7 +26,7 @@ static std::vector<std::vector<std::string>> csv(const std::string& path) {
 }
 int main(int argc, char** argv) {
   const std::string dir = argv[1];
-  std::map<std::string, std::string> opt{{"imu", "px4"}, {"offset_ms", "0"}, {"every", "1"}, {"start_s", "0"}, {"prior", "1"}, {"scale", "1"}, {"features", "200"}, {"clones", "12"}, {"noise_px", "1.0"}, {"tag", "run"}, {"end_s", "1e9"}, {"dark_from_s", "-1"}, {"dark_to_s", "-1"}, {"baro", "0"}, {"ramp_s", "0"}};
+  std::map<std::string, std::string> opt{{"imu", "px4"}, {"offset_ms", "0"}, {"every", "1"}, {"start_s", "0"}, {"prior", "1"}, {"imu_hole_from_s", "-1"}, {"imu_hole_to_s", "-1"}, {"reinit_error_m", "0.3"}, {"scale", "1"}, {"features", "200"}, {"clones", "12"}, {"noise_px", "1.0"}, {"tag", "run"}, {"end_s", "1e9"}, {"dark_from_s", "-1"}, {"dark_to_s", "-1"}, {"baro", "0"}, {"ramp_s", "0"}};
   for (int i = 2; i < argc; ++i) { std::string kv = argv[i]; auto eq = kv.find('='); opt[kv.substr(0, eq)] = kv.substr(eq + 1); }
   const double offset_s = std::atof(opt["offset_ms"].c_str()) * 1e-3; const int every = std::atoi(opt["every"].c_str()); const int scale = std::atoi(opt["scale"].c_str());
   // ENU/FLU truth -> NED/FRD
@@ -113,7 +113,9 @@ int main(int argc, char** argv) {
         const Imu& s = imu[next_imu]; const double from = std::max(previous_stamp, next_imu > 0 ? imu[next_imu - 1].t : s.t);
         const Eigen::Vector3d w = s.g * (s.t - from); const double angle = w.norm();
         if (angle > 1e-12) turn = turn * Eigen::AngleAxisd{angle, w / angle}.toRotationMatrix();
-        odometry.addImu({static_cast<std::int64_t>(s.t * 1e9), s.g, s.a}); ++next_imu;
+        // A hole in the IMU stream, as a stalled host leaves one (K28): the samples inside it never reach the filter.
+        if (!(s.t >= std::atof(opt["imu_hole_from_s"].c_str()) && s.t < std::atof(opt["imu_hole_to_s"].c_str()))) odometry.addImu({static_cast<std::int64_t>(s.t * 1e9), s.g, s.a});
+        ++next_imu;
         if (opt["baro"] == "1") { static std::mt19937 g{3}; std::normal_distribution<double> n{0.0, 0.25}; baro_h = 0.96 * baro_h + 0.04 * (-truthAt(s.t).p.z() + n(g)); odometry.addBarometricHeight(baro_h); }
       }
       if (opt["prior"] == "1") prior = camera_to_body.transpose() * turn.transpose() * camera_to_body;
@@ -121,6 +123,14 @@ int main(int argc, char** argv) {
     const auto t0 = std::chrono::steady_clock::now();
     const std::vector<StereoFeatureObservation> observations = tracker.track(l, r, prior);
     const auto t1 = std::chrono::steady_clock::now();
+    if (odometry.lost() && next_imu > 0 && imu[next_imu - 1].t >= f.t - 0.1 && !(imu[next_imu - 1].t >= std::atof(opt["imu_hole_from_s"].c_str()) && imu[next_imu - 1].t < std::atof(opt["imu_hole_to_s"].c_str()))) {
+      // The node's prior is the autopilot's pose registered against the map; here the truth a registration's error off;
+      // the start waits for the stream to flow again (a filter started inside the hole is lost again a second on).
+      const Truth tr = truthAt(f.t);
+      const Eigen::Vector3d tv = (truthAt(f.t + 0.05).p - truthAt(f.t - 0.05).p) / 0.1;
+      odometry.reinitialize(static_cast<std::int64_t>(stamp * 1e9), tr.p + Eigen::Vector3d{std::atof(opt["reinit_error_m"].c_str()), 0.0, 0.0}, tv, tr.q);
+      std::fprintf(stderr, "REINITIALIZED t=%.3f\n", f.t);
+    }
     const VisualInertialEstimate e = odometry.addFrame(static_cast<std::int64_t>(stamp * 1e9), observations);
     const auto t2 = std::chrono::steady_clock::now();
     const Truth t = truthAt(f.t);

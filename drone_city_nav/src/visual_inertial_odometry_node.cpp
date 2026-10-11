@@ -222,6 +222,12 @@ public:
     autopilot_ = std::make_unique<AutopilotStateSource>(
         *this, transform_,
         AutopilotStateTopics{
+            // The autopilot's own estimate is read for one purpose: the
+            // prior of an initialisation in flight after a hole (K28).
+            .local_state = declare_parameter<std::string>(
+                "px4_local_position_topic", "/fmu/out/vehicle_local_position"),
+            .attitude = declare_parameter<std::string>("px4_vehicle_attitude_topic",
+                                                       "/fmu/out/vehicle_attitude"),
             .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
                                                   "/fmu/out/sensor_combined"),
             .clock_sync = declare_parameter<std::string>("px4_timesync_status_topic",
@@ -229,6 +235,17 @@ public:
         },
         px4_qos,
         AutopilotStateCallbacks{
+            .local_state =
+                [this](const AutopilotLocalState& state) {
+                  const std::scoped_lock lock{autopilot_state_mutex_};
+                  autopilot_local_state_ = state;
+                  autopilot_state_ros_ns_ = get_clock()->now().nanoseconds();
+                },
+            .attitude =
+                [this](const AutopilotAttitude& attitude) {
+                  const std::scoped_lock lock{autopilot_state_mutex_};
+                  autopilot_attitude_ = attitude;
+                },
             .imu = [this](const AutopilotImuSample& sample) { onImu(sample); },
             .clock_sync =
                 [this](const AutopilotClockSync& sample) {
@@ -522,6 +539,19 @@ private:
     if (points_body.empty()) {
       return;
     }
+    // A lost filter starts again once its stream flows again: started inside
+    // the hole it would be lost again a second on.
+    constexpr std::int64_t kFlowingImuNs{100'000'000};
+    bool lost{false};
+    {
+      const std::scoped_lock lock{odometry_mutex_};
+      lost = odometry_->lost() && last_imu_stamp_ns_ > 0 &&
+             stamp_ns - last_imu_stamp_ns_ <= kFlowingImuNs;
+    }
+    if (lost) {
+      reinitialiseFromAutopilot(stamp_ns, points_body);
+      return;
+    }
     std::optional<VisualInertialClonePose> pose;
     {
       const std::scoped_lock lock{odometry_mutex_};
@@ -549,6 +579,91 @@ private:
       point = rotation * point + position;
     }
     map_.insert(points_body, 0U, stamp_ns);
+  }
+
+  // Specification K28: a filter lost in a hole of its IMU stream (r720,
+  // r723: a host frozen for seconds) stayed lost for the flight and the
+  // autopilot landed the vehicle. Now the autopilot's own position and
+  // attitude, which it carried through the hole on its IMU, are the prior,
+  // the frame's depth is registered against the long-lived map from it, and
+  // the filter starts again at the registered pose, its frame continuous, so
+  // the navigation stays open and the flight goes on; until a registration
+  // holds, the estimator stays silent and the autopilot keeps its failsafe.
+  void reinitialiseFromAutopilot(const std::int64_t stamp_ns,
+                                 const std::vector<Eigen::Vector3d>& points_body) {
+    constexpr std::int64_t kAutopilotStateFreshNs{1'000'000'000};
+    std::optional<AutopilotLocalState> local_state;
+    std::optional<AutopilotAttitude> attitude;
+    {
+      const std::scoped_lock lock{autopilot_state_mutex_};
+      if (get_clock()->now().nanoseconds() - autopilot_state_ros_ns_ <=
+          kAutopilotStateFreshNs) {
+        local_state = autopilot_local_state_;
+        attitude = autopilot_attitude_;
+      }
+    }
+    if (!local_state.has_value() || !attitude.has_value() ||
+        !local_state->position_valid || !local_state->velocity_valid || map_.empty()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=no_prior "
+          "autopilot_position_valid=%s map_points=%zu",
+          local_state.has_value() && local_state->position_valid ? "true" : "false",
+          map_.pointCount());
+      return;
+    }
+    // The autopilot's pose in the frame the filter publishes in: its position
+    // in the map's frame back to the local NED, its attitude's quaternion
+    // rotating NED into the body, inverted.
+    const Point2 local_xy = transform_.mapPositionToLocal(
+        Point2{local_state->position.x, local_state->position.y});
+    const Eigen::Vector3d prior{local_xy.x, local_xy.y,
+                                -(local_state->position.z - transform_.map_origin.z)};
+    const Eigen::Quaterniond ned_to_body{
+        attitude->quaternion[0], attitude->quaternion[1], attitude->quaternion[2],
+        attitude->quaternion[3]};
+    const Eigen::Quaterniond prior_rotation = ned_to_body.conjugate().normalized();
+    const PointPlaneRegistration3D registration = registerPointsToPlanes(
+        map_, points_body, prior, prior_rotation,
+        PointPlaneRegistrationConfig3D{.maximum_correspondence_m = 1.0,
+                                       .maximum_iterations = 10U,
+                                       .convergence_translation_m = 1.0e-3,
+                                       .convergence_rotation_rad = 1.0e-4,
+                                       .robust_width_m = 0.2,
+                                       .born_by_ns = stamp_ns - kMapAgeNs});
+    const double matched_points =
+        registration.matched_fraction * static_cast<double>(points_body.size());
+    const bool held = registration.converged &&
+                      registration.matched_fraction >= kMapMinimumMatchedFraction &&
+                      matched_points >= static_cast<double>(kMapMinimumMatchedPoints) &&
+                      registration.residual_rms_m <= kMapMaximumResidualRmsM;
+    if (held) {
+      // The registered pose is in the published frame; the filter's own frame
+      // lies the applied offset behind it.
+      const std::scoped_lock lock{odometry_mutex_};
+      const Eigen::Matrix3d rotation = map_applied_.rotation();
+      const Eigen::Vector3d position =
+          rotation.transpose() * (registration.position - map_applied_.translation);
+      const Eigen::Quaterniond body_to_ned{rotation.transpose() *
+                                           registration.rotation.toRotationMatrix()};
+      // The autopilot's velocity, carried through the hole on its own IMU:
+      // from the map's frame (z up) into the local NED, then the filter's.
+      const Point2 local_velocity = transform_.mapVectorToLocal(
+          Point2{local_state->velocity.x, local_state->velocity.y});
+      const Eigen::Vector3d velocity =
+          rotation.transpose() *
+          Eigen::Vector3d{local_velocity.x, local_velocity.y, -local_state->velocity.z};
+      odometry_->reinitialize(stamp_ns, position, velocity, body_to_ned);
+      ++reinitialisations_;
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "VISUAL_INERTIAL_ODOMETRY_REINITIALISATION outcome=%s "
+        "matched=%.2f matched_points=%.0f residual_m=%.3f "
+        "innovation_m=%.2f prior=(%.2f,%.2f,%.2f) reinitialisations=%" PRIu64,
+        held ? "held" : "weak", registration.matched_fraction, matched_points,
+        registration.residual_rms_m, (registration.position - prior).norm(), prior.x(),
+        prior.y(), prior.z(), reinitialisations_);
   }
 
   // The surface returns within the confident depth, in the body frame, one
@@ -783,6 +898,12 @@ private:
   std::uint64_t map_frames_without_clone_{0U};
   std::unique_ptr<StereoFeatureTracker> tracker_;
   std::unique_ptr<AutopilotStateSource> autopilot_;
+  // The autopilot's own estimate, the prior of an initialisation in flight.
+  std::mutex autopilot_state_mutex_;
+  std::optional<AutopilotLocalState> autopilot_local_state_;
+  std::optional<AutopilotAttitude> autopilot_attitude_;
+  std::int64_t autopilot_state_ros_ns_{0};
+  std::uint64_t reinitialisations_{0U};
   rclcpp::CallbackGroup::SharedPtr group_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;

@@ -445,5 +445,60 @@ TEST(VisualInertialOdometry, AFrameBeforeTheDeclaredPoseIsNoEstimate) {
   EXPECT_EQ(estimate.clones, 0U);
 }
 
+// Specification K28: after a hole the filter cannot bridge, started again at
+// a pose and velocity the autopilot would give, a few decimetres and tenths
+// of a metre a second off, it is healthy again once features correct it,
+// holds the velocity, and carries the prior's offset and no more.
+TEST(VisualInertialOdometry, StartedAgainAfterAHoleTheFilterRecovers) {
+  const VisualInertialOdometryConfig config = testConfig();
+  std::mt19937 generator{7U};
+  const std::vector<Eigen::Vector3d> points = landmarks(generator);
+  VisualInertialOdometry odometry{config};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  const Hole hole{5.0, 5.0 + config.maximum_unaided_s + 0.5};
+  const auto frames = static_cast<std::int64_t>(12.0 * 1.0e9) / kFramePeriodNs;
+  std::int64_t imu_stamp = 0;
+  bool restarted = false;
+  std::int64_t healthy_again_ns = 0;
+  VisualInertialEstimate last;
+  for (std::int64_t frame = 1; frame <= frames; ++frame) {
+    const std::int64_t stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      if (!hole.contains(imu_stamp)) {
+        odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      }
+    }
+    if (hole.contains(stamp)) {
+      continue;
+    }
+    const double t = static_cast<double>(stamp) * 1.0e-9;
+    if (odometry.lost() && !restarted) {
+      const Eigen::Vector3d velocity =
+          (Motion::position(t + 0.01) - Motion::position(t - 0.01)) / 0.02;
+      odometry.reinitialize(stamp,
+                            Motion::position(t) + Eigen::Vector3d{0.3, -0.2, 0.1},
+                            velocity + Eigen::Vector3d{0.2, -0.1, 0.1},
+                            Eigen::Quaterniond{Motion::bodyToNed(t)});
+      restarted = true;
+    }
+    last = odometry.addFrame(
+        stamp, observe(config, t, points, config.observation_noise, generator));
+    if (restarted && last.healthy && healthy_again_ns == 0) {
+      healthy_again_ns = stamp;
+    }
+  }
+  ASSERT_TRUE(restarted);
+  EXPECT_GT(healthy_again_ns, 0);
+  EXPECT_LT(static_cast<double>(healthy_again_ns) * 1.0e-9, hole.to_s + 1.0);
+  EXPECT_TRUE(last.healthy);
+  EXPECT_FALSE(last.lost);
+  // The prior's own offset (0.37 m) stays, no feature can tell it; the
+  // filter adds no more than a decimetre over the next five seconds.
+  EXPECT_LT((last.position_ned_m - Motion::position(12.0)).norm(), 0.5);
+  const Eigen::Vector3d velocity =
+      (Motion::position(12.01) - Motion::position(11.99)) / 0.02;
+  EXPECT_LT((last.velocity_ned_mps - velocity).norm(), 0.3);
+}
+
 } // namespace
 } // namespace drone_city_nav

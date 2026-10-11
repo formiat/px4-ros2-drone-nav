@@ -251,7 +251,17 @@ std::int64_t VisualInertialOdometry::Impl::propagateTo(const std::int64_t target
       to = imu.front();
       end_ns = std::min(target_ns, to.stamp_ns);
     } else {
-      imu_lag_ns = target_ns - std::max(stamp_ns, from.stamp_ns);
+      // The lag is the stream's silence since its last sample, not since the
+      // state's last step: measured from the state, a hole the frames kept
+      // stepping across read as one frame period (replayed with the frames
+      // flowing through a 4 s hole, the filter held its last sample to 218 m
+      // of error without ever calling itself lost). Specification K28: a
+      // stream silent longer than the unaided timeout is a hole whether or
+      // not frames keep coming.
+      imu_lag_ns = std::max<std::int64_t>(0, target_ns - from.stamp_ns);
+      if (static_cast<double>(imu_lag_ns) * 1.0e-9 > config.maximum_unaided_s) {
+        lost = true;
+      }
     }
     const double dt = static_cast<double>(end_ns - stamp_ns) * 1.0e-9;
     if (dt > config.maximum_unaided_s) {
@@ -628,6 +638,61 @@ bool VisualInertialOdometry::initialized() const noexcept {
   return impl_->initialized;
 }
 
+bool VisualInertialOdometry::lost() const noexcept {
+  return impl_->initialized && impl_->lost;
+}
+
+void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
+                                          const Eigen::Vector3d& position_ned_m,
+                                          const Eigen::Vector3d& velocity_ned_mps,
+                                          const Eigen::Quaterniond& body_to_ned) {
+  Impl& state = *impl_;
+  if (!state.initialized) {
+    return;
+  }
+  // The pose a registration gives: a few decimetres and a few degrees at
+  // most; the velocity the autopilot carried through the hole on its own
+  // IMU, half a metre a second of it, which the first frames' tracks
+  // correct (started with none at 1.5 m/s the filter gated its features
+  // and never caught up).
+  constexpr double kPositionSigmaM{0.3};
+  constexpr double kAttitudeSigmaRad{0.05};
+  constexpr double kVelocitySigmaMps{0.5};
+  const auto square = [](const double value) { return value * value; };
+  state.body_to_ned = body_to_ned.normalized().toRotationMatrix();
+  state.position = position_ned_m;
+  state.velocity = velocity_ned_mps;
+  state.first_body_to_ned = state.body_to_ned;
+  state.first_position = state.position;
+  state.first_velocity = state.velocity;
+  state.stamp_ns = stamp_ns;
+  state.last_update_stamp_ns = 0;
+  state.held_height_ned_m = position_ned_m.z();
+  state.lost = false;
+  state.clones.clear();
+  state.tracks.clear();
+  while (!state.imu.empty() && state.imu.front().stamp_ns <= stamp_ns) {
+    state.last_imu = state.imu.front();
+    state.imu.pop_front();
+  }
+  state.held_barometric_height_m.reset();
+  state.drag_reading_sum_mps.setZero();
+  state.drag_reading_s = 0.0;
+  // The biases' block sits after the IMU states, before the clones' blocks.
+  const Eigen::MatrixXd biases = state.covariance.block<6, 6>(kGyroBias, kGyroBias);
+  state.covariance = Eigen::MatrixXd::Zero(kImuStates, kImuStates);
+  state.covariance.block<3, 3>(kTheta, kTheta)
+      .diagonal()
+      .setConstant(square(kAttitudeSigmaRad));
+  state.covariance.block<3, 3>(kPosition, kPosition)
+      .diagonal()
+      .setConstant(square(kPositionSigmaM));
+  state.covariance.block<3, 3>(kVelocity, kVelocity)
+      .diagonal()
+      .setConstant(square(kVelocitySigmaMps));
+  state.covariance.block<6, 6>(kGyroBias, kGyroBias) = biases;
+}
+
 void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
                                         const Eigen::Vector3d& position_ned_m,
                                         const double heading_rad) {
@@ -848,6 +913,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
           state.config.maximum_unaided_s + state.config.maximum_dead_reckoning_s) {
     state.lost = true;
   }
+  estimate.lost = state.lost;
   estimate.clones = state.clones.size();
   estimate.tracked_features = state.tracks.size();
   state.last_estimate = estimate;

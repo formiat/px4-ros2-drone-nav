@@ -230,6 +230,7 @@ def generate_launch_description():
     shutdown_on_mission_result = LaunchConfiguration("shutdown_on_mission_result")
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
+    imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -328,6 +329,11 @@ def generate_launch_description():
             if localization in ("visual_inertial_shadow", "visual_inertial")
             else None
         )
+        imu_suffix = imu_topic_suffix.perform(context).strip()
+        if visual_inertial_overrides is not None and imu_suffix:
+            visual_inertial_overrides["px4_sensor_combined_topic"] = (
+                "/fmu/out/sensor_combined" + imu_suffix
+            )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
@@ -790,6 +796,15 @@ def generate_launch_description():
                     "pair and two time-of-flight sensors, roadmap item 14; the "
                     "lidar is absent from the vehicle) or lidar (the whole "
                     "sphere)."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "imu_topic_suffix",
+                default_value="",
+                description=(
+                    "Suffix of the autopilot's IMU topic the camera estimator reads: set "
+                    "when an evaluation relay republishes the samples with holes "
+                    "(specification K28)."
                 ),
             ),
             DeclareLaunchArgument(

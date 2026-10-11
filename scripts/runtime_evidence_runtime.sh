@@ -90,6 +90,14 @@ start_runtime_evidence_capture() {
         --output "${runtime_artifact_dir}/camera_stream.csv" \
         > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
     fi
+    # Specification K28: the autopilot's IMU stream failing, the same kind of
+    # component: the camera estimator reads its samples from the relay.
+    if [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]]; then
+      python3 "${repo_root}/scripts/imu_stream_faults.py" \
+        --profile "${IMU_FAULTS}" \
+        --output "${runtime_artifact_dir}/imu_stream.csv" \
+        > "${runtime_artifact_dir}/imu_stream.log" 2>&1 &
+    fi
   fi
   # The evaluation overlay of RViz: the vehicle's decisions in words, its
   # estimate against the truth, and the carried light. Only where RViz is

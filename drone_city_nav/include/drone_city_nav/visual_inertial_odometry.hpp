@@ -175,6 +175,9 @@ struct VisualInertialEstimate {
   bool healthy{false};
   // Past the unaided timeout and inside the dead reckoning that follows it.
   bool dead_reckoning{false};
+  // Lost in a hole of the IMU stream longer than the unaided timeout, or past
+  // the dead reckoning: silent until initialised again in flight (K28).
+  bool lost{false};
   // How long since features last corrected the estimate.
   double unaided_s{0.0};
   // How far behind the frame the last IMU sample was when the frame was
@@ -211,6 +214,17 @@ public:
   void initialize(std::int64_t stamp_ns, const Eigen::Vector3d& position_ned_m,
                   double heading_rad);
   [[nodiscard]] bool initialized() const noexcept;
+
+  // Specification K28: a filter lost in a hole of its IMU stream starts
+  // again in flight at the pose and velocity given, which the caller took
+  // from the autopilot's own estimate, the pose registered against the
+  // long-lived map, with a wide uncertainty about them; the biases stay.
+  // The IMU samples before the stamp are dropped, the clones and tracks
+  // with them, and the estimate is healthy again once features correct it.
+  void reinitialize(std::int64_t stamp_ns, const Eigen::Vector3d& position_ned_m,
+                    const Eigen::Vector3d& velocity_ned_mps,
+                    const Eigen::Quaterniond& body_to_ned);
+  [[nodiscard]] bool lost() const noexcept;
 
   void addImu(const VisualInertialImuSample& sample);
   // The barometer's height, in metres up from any origin: through a dark

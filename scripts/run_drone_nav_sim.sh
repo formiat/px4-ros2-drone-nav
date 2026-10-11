@@ -972,6 +972,8 @@ else
   if [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]]; then
     ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
   fi
+  # K28: the IMU stream failing, injected by a relay the camera estimator reads from.
+  [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]] && ros_launch_args+=(imu_topic_suffix:=/relayed)
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
