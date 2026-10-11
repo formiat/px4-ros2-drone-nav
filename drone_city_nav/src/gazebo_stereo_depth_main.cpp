@@ -216,11 +216,11 @@ int main(int argc, char** argv) {
   const rclcpp::NodeOptions in_process =
       rclcpp::NodeOptions{}.use_intra_process_comms(true);
   // One thread matches pairs, one takes the time-of-flight scans, and one
-  // more tracks features and one registers the depth against the
-  // estimator's map when the estimator is hosted; the images arrive on
-  // Gazebo's own threads.
+  // more tracks features, one registers the depth against the estimator's
+  // map and one reads the autopilot's pose when the estimator is hosted; the
+  // images arrive on Gazebo's own threads.
   rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{},
-                                                    estimator ? 4U : 2U};
+                                                    estimator ? 5U : 2U};
   const auto source =
       std::make_shared<drone_city_nav::GazeboStereoImageSource>(in_process);
   const auto depth = drone_city_nav::makeStereoDepthNode(in_process);

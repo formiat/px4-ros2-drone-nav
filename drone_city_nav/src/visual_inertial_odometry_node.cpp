@@ -219,19 +219,22 @@ public:
     in_group.callback_group = group_;
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{100}}.best_effort().durability_volatile();
-    autopilot_ = std::make_unique<AutopilotStateSource>(
+    // The autopilot's own estimate is read for one purpose: the prior of an
+    // initialisation in flight after a hole (K28). In a group of its own: in
+    // the IMU's group it waited behind the frames held through a hole, and a
+    // restart took an attitude two seconds old while the vehicle turned at
+    // 30 degrees a second (r1302: 16 degrees off).
+    autopilot_pose_group_ =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions in_pose_group;
+    in_pose_group.callback_group = autopilot_pose_group_;
+    autopilot_pose_ = std::make_unique<AutopilotStateSource>(
         *this, transform_,
         AutopilotStateTopics{
-            // The autopilot's own estimate is read for one purpose: the
-            // prior of an initialisation in flight after a hole (K28).
             .local_state = declare_parameter<std::string>(
                 "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1"),
             .attitude = declare_parameter<std::string>("px4_vehicle_attitude_topic",
                                                        "/fmu/out/vehicle_attitude"),
-            .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
-                                                  "/fmu/out/sensor_combined"),
-            .clock_sync = declare_parameter<std::string>("px4_timesync_status_topic",
-                                                         "/fmu/out/timesync_status"),
         },
         px4_qos,
         AutopilotStateCallbacks{
@@ -245,7 +248,20 @@ public:
                 [this](const AutopilotAttitude& attitude) {
                   const std::scoped_lock lock{autopilot_state_mutex_};
                   autopilot_attitude_ = attitude;
+                  autopilot_attitude_ros_ns_ = get_clock()->now().nanoseconds();
                 },
+        },
+        in_pose_group, in_pose_group);
+    autopilot_ = std::make_unique<AutopilotStateSource>(
+        *this, transform_,
+        AutopilotStateTopics{
+            .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
+                                                  "/fmu/out/sensor_combined"),
+            .clock_sync = declare_parameter<std::string>("px4_timesync_status_topic",
+                                                         "/fmu/out/timesync_status"),
+        },
+        px4_qos,
+        AutopilotStateCallbacks{
             .imu = [this](const AutopilotImuSample& sample) { onImu(sample); },
             .clock_sync =
                 [this](const AutopilotClockSync& sample) {
@@ -599,14 +615,17 @@ private:
   // at 2 m/s into the staging area (r1296).
   void reinitialiseFromAutopilot(const std::int64_t stamp_ns,
                                  const std::vector<Eigen::Vector3d>& points_body) {
-    constexpr std::int64_t kAutopilotStateFreshNs{1'000'000'000};
+    // Both the position and the attitude this recent (they arrive at 50 Hz
+    // and more).
+    constexpr std::int64_t kAutopilotStateFreshNs{200'000'000};
     std::optional<AutopilotLocalState> local_state;
     std::optional<AutopilotAttitude> attitude;
     std::int64_t state_ns{0};
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     {
       const std::scoped_lock lock{autopilot_state_mutex_};
-      if (now_ns - autopilot_state_ros_ns_ <= kAutopilotStateFreshNs) {
+      if (now_ns - autopilot_state_ros_ns_ <= kAutopilotStateFreshNs &&
+          now_ns - autopilot_attitude_ros_ns_ <= kAutopilotStateFreshNs) {
         local_state = autopilot_local_state_;
         attitude = autopilot_attitude_;
         state_ns = autopilot_state_ros_ns_;
@@ -933,6 +952,9 @@ private:
   std::optional<AutopilotLocalState> autopilot_local_state_;
   std::optional<AutopilotAttitude> autopilot_attitude_;
   std::int64_t autopilot_state_ros_ns_{0};
+  std::int64_t autopilot_attitude_ros_ns_{0};
+  std::unique_ptr<AutopilotStateSource> autopilot_pose_;
+  rclcpp::CallbackGroup::SharedPtr autopilot_pose_group_;
   std::uint64_t reinitialisations_{0U};
   // The first try of the restart under way, on the node's clock; zero: none.
   rclcpp::CallbackGroup::SharedPtr group_;
