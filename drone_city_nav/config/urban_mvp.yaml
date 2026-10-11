@@ -787,6 +787,10 @@ production_mppi_node:
 
 visual_inertial_odometry_node:
   ros__parameters:
+    # The autopilot's own estimate, the prior of a restart in flight (K28); the
+    # local position is a versioned message (_v1).
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     # Lockstep simulation: the autopilot stamps on the simulation clock.
     px4_clock_is_ros_clock: true
     # The rotors' drag the estimator fuses as a velocity (specification K21):

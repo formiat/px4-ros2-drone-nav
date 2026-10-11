@@ -46,5 +46,18 @@ class AutopilotContractBoundaryTest(unittest.TestCase):
             self.assertTrue((REPOSITORY / relative).is_file(), relative)
 
 
+class VersionedTopicContractTest(unittest.TestCase):
+    def test_the_configuration_names_the_versioned_px4_topics(self) -> None:
+        # PX4's bridge appends the message's version to a topic's name
+        # (vehicle_local_position_v1, vehicle_status_v1, battery_status_v1); a
+        # node subscribed to the bare name hears nothing (r1285: the camera
+        # estimator's restart had no prior for the whole flight).
+        configuration = (REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text()
+        for bare in ("vehicle_local_position", "vehicle_status", "battery_status"):
+            for line in configuration.splitlines():
+                if f"/fmu/out/{bare}" in line:
+                    self.assertIn(f"/fmu/out/{bare}_v1", line, line)
+
+
 if __name__ == "__main__":
     unittest.main()

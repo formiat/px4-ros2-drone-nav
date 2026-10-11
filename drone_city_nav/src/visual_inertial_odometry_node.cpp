@@ -225,7 +225,7 @@ public:
             // The autopilot's own estimate is read for one purpose: the
             // prior of an initialisation in flight after a hole (K28).
             .local_state = declare_parameter<std::string>(
-                "px4_local_position_topic", "/fmu/out/vehicle_local_position"),
+                "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1"),
             .attitude = declare_parameter<std::string>("px4_vehicle_attitude_topic",
                                                        "/fmu/out/vehicle_attitude"),
             .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
