@@ -61,9 +61,6 @@ PRODUCTION_MPPI_SOURCE = (
     / "ros"
     / "production_mppi_node.cpp"
 )
-PRODUCTION_MPPI_CONFIG_SOURCE = PRODUCTION_MPPI_SOURCE.with_name(
-    "production_mppi_config_ros.cpp"
-)
 PRODUCTION_MPPI_RUNTIME_SOURCE = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
@@ -123,7 +120,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         cls.production_mppi_config_source_text = (
-            PRODUCTION_MPPI_CONFIG_SOURCE.read_text(encoding="utf-8")
+            "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in sorted(
+                    PRODUCTION_MPPI_SOURCE.parent.glob("production_mppi_config_ros*")
+                )
+            )
         )
         cls.production_mppi_runtime_source_text = (
             PRODUCTION_MPPI_RUNTIME_SOURCE.read_text(encoding="utf-8")

@@ -223,6 +223,7 @@ target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
 add_drone_city_nav_layer(
   drone_city_nav_route_contracts
   src/route_3d.cpp
+  src/route_3d_prefix.cpp
   src/route_3d_passage.cpp
   src/route_3d_spans.cpp)
 target_link_libraries(drone_city_nav_route_contracts PUBLIC drone_city_nav_model)
@@ -271,6 +272,7 @@ add_drone_city_nav_layer(
   src/sensor_braking_contract_3d.cpp
   src/proprioceptive_contact_seed_3d.cpp
   src/swept_footprint.cpp
+  src/swept_footprint_seed.cpp
   src/tof_zone_returns.cpp
   src/swept_footprint_2d.cpp
   src/swept_footprint_body.cpp
@@ -298,6 +300,7 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d_escape_search.cpp
   src/persistent_dstar_lite_planner_3d_feasible_search.cpp
   src/persistent_dstar_lite_planner_3d_lattice.cpp
+  src/persistent_dstar_lite_planner_3d_lattice_edges.cpp
   src/persistent_dstar_lite_planner_3d_lattice_departure.cpp
   src/persistent_dstar_lite_planner_3d_lattice_edge_cache.cpp
   src/persistent_dstar_lite_planner_3d_lattice_ranking.cpp
@@ -774,8 +777,10 @@ set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
     src/route_application/production_mppi_route_helpers.cpp
     src/route_application/route_activation_coordinator_3d.cpp
     src/route_application/route_activation_preparation_3d.cpp
+    src/route_application/route_activation_preparation_3d_assessment.cpp
     src/route_application/route_lifecycle_coordinator_3d.cpp
     src/route_application/route_lifecycle_coordinator_3d_names.cpp
+    src/route_application/route_lifecycle_coordinator_3d_extension.cpp
     src/route_application/route_lifecycle_coordinator_3d_replan.cpp
     src/route_application/route_planner_3d.cpp
     src/route_application/route_planning_coordinator_3d.cpp
@@ -874,6 +879,8 @@ ament_target_dependencies(
 enable_project_warnings(drone_city_nav_ros_adapters)
 
 add_executable(obstacle_memory_3d_node src/obstacle_memory_3d_node.cpp
+                                       src/obstacle_memory_3d_node_autopilot.cpp
+                                       src/obstacle_memory_3d_node_clouds.cpp
                                        src/obstacle_memory_3d_worker.cpp
                                        src/obstacle_memory_node_helpers.cpp
                                        src/obstacle_memory_transport_3d.cpp)
@@ -1076,6 +1083,8 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_production_mppi_component SHARED
     src/runtime/ros/raw_world_ingress_ros_3d.cpp
     src/runtime/ros/production_mppi_config_ros.cpp
+    src/runtime/ros/production_mppi_config_ros_control.cpp
+    src/runtime/ros/production_mppi_config_ros_planning.cpp
     src/runtime/ros/production_mppi_node.cpp
     src/runtime/ros/production_mppi_node_interfaces.cpp
     src/runtime/ros/production_mppi_node_health.cpp

@@ -17,15 +17,15 @@ INCLUDE = PACKAGE / "include" / "drone_city_nav"
 CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 PLANNER_NODE = ROS_RUNTIME / "production_mppi_node.cpp"
 PLANNER_CONFIG_HEADER = MPPI_RUNTIME / "production_mppi_config.hpp"
-PLANNER_CONFIG_LOADER = ROS_RUNTIME / "production_mppi_config_ros.cpp"
+PLANNER_CONFIG_LOADERS = sorted(ROS_RUNTIME.glob("production_mppi_config_ros*"))
 EXECUTION = ROS_RUNTIME / "production_mppi_node_execution.cpp"
 EXECUTION_ASSEMBLER = MPPI_RUNTIME / "execution_horizon_assembler_3d.cpp"
 EXECUTION_PUBLICATION = ROS_RUNTIME / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = ROS_RUNTIME / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = ROS_RUNTIME / "production_mppi_node_execution_retention.cpp"
 ROUTE_ACTIVATION = EXECUTION_RUNTIME / "route_activation_coordinator_3d.cpp"
-ROUTE_ACTIVATION_PREPARATION = (
-    EXECUTION_RUNTIME / "route_activation_preparation_3d.cpp"
+ROUTE_ACTIVATION_PREPARATIONS = sorted(
+    EXECUTION_RUNTIME.glob("route_activation_preparation_3d*")
 )
 ROUTE_EXECUTION = EXECUTION_RUNTIME / "production_mppi_route_execution.cpp"
 CAPTURE_GATE_HEADER = INCLUDE / "mission_waypoint_capture_gate.hpp"
@@ -50,7 +50,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         observed_consumers = {
             "activation": (
                 ROUTE_ACTIVATION.read_text(encoding="utf-8")
-                + ROUTE_ACTIVATION_PREPARATION.read_text(encoding="utf-8")
+                + "\n".join(
+                    path.read_text(encoding="utf-8")
+                    for path in ROUTE_ACTIVATION_PREPARATIONS
+                )
             ),
             "execution": read_execution_sources(),
             "route_execution": ROUTE_EXECUTION.read_text(encoding="utf-8"),
@@ -73,7 +76,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
     def test_vehicle_status_budget_covers_px4_two_hertz_cadence(self) -> None:
         planner_node = PLANNER_NODE.read_text(encoding="utf-8")
         planner_config_header = PLANNER_CONFIG_HEADER.read_text(encoding="utf-8")
-        planner_config_loader = PLANNER_CONFIG_LOADER.read_text(encoding="utf-8")
+        planner_config_loader = "\n".join(
+            path.read_text(encoding="utf-8") for path in PLANNER_CONFIG_LOADERS
+        )
         capture_header = CAPTURE_GATE_HEADER.read_text(encoding="utf-8")
         config = CONFIG.read_text(encoding="utf-8")
         capture_test = CAPTURE_GATE_TEST.read_text(encoding="utf-8")

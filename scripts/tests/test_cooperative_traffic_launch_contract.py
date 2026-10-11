@@ -108,9 +108,10 @@ class CooperativeTrafficLaunchContractTest(unittest.TestCase):
         referee = (
             PACKAGE / "src" / "cooperative_traffic_referee_node.cpp"
         ).read_text(encoding="utf-8")
-        obstacle_memory = (
-            PACKAGE / "src" / "obstacle_memory_3d_node.cpp"
-        ).read_text(encoding="utf-8")
+        obstacle_memory = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((PACKAGE / "src").glob("obstacle_memory_3d_node*"))
+        )
 
         self.assertNotIn("inputFresh(execution_horizon_receive_ns_", agent)
         self.assertIn("valid_until_ns <= now_ns", agent)

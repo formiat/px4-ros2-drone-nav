@@ -83,7 +83,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         vertical_max = float(vertical.findtext("max_angle", "nan"))
         guaranteed_range_m = planner["guaranteed_lidar_detection_range_m"]
         physical_margin_m = planner["sensor_braking_physical_margin_m"]
-        source = (ROS_RUNTIME / "production_mppi_config_ros.cpp").read_text()
+        source = "\n".join(
+            path.read_text()
+            for path in sorted(ROS_RUNTIME.glob("production_mppi_config_ros*"))
+        )
         cpu_dynamics = (PACKAGE / "src/motion_dynamics_3d.cpp").read_text()
         cuda_dynamics = (PACKAGE / "src/mppi/mppi_engine_kernels.cuh").read_text()
 
@@ -154,7 +157,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("translationalSpeedLimitAlong3D(", cuda_dynamics)
 
     def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
-        config_source = (ROS_RUNTIME / "production_mppi_config_ros.cpp").read_text()
+        config_source = "\n".join(
+            path.read_text()
+            for path in sorted(ROS_RUNTIME.glob("production_mppi_config_ros*"))
+        )
         runtime_source = (ROS_RUNTIME / "production_mppi_node_interfaces.cpp").read_text()
         config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
         parameters = config["production_mppi_node"]["ros__parameters"]

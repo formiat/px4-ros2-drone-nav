@@ -9,6 +9,25 @@
 
 namespace drone_city_nav::swept_footprint_detail {
 
+// Whether an axis-aligned box meets the finite cylinder of a body at `center`
+// along `axis`, conservatively: defined in swept_footprint_seed.cpp.
+[[nodiscard]] bool boxIntersectsFiniteCylinder(const Point3& center,
+                                               const FootprintBodyAxis& axis,
+                                               const Point3& lower, const Point3& upper,
+                                               double lower_extent_m,
+                                               double upper_extent_m,
+                                               double radius_squared) noexcept;
+
+// Whether `point` lies inside the body at `center` along `requested_axis`.
+[[nodiscard]] bool pointIntersectsBody(const Point3& point, const Point3& center,
+                                       const FootprintBodyAxis& requested_axis,
+                                       const SweptFootprintConfig& config) noexcept;
+
+// The physical body inside the envelope: the configured body radius and
+// extents, never larger than the envelope's.
+[[nodiscard]] SweptFootprintConfig
+physicalBody(const SweptFootprintConfig& footprint) noexcept;
+
 [[nodiscard]] inline SweptFootprintResult
 makeStatusResult(const SweptFootprintStatus status,
                  const Point3& failure_point) noexcept {

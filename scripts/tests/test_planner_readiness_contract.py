@@ -18,7 +18,7 @@ OBSERVED_ESDF = ROS_RUNTIME / "production_mppi_node_observed_esdf.cpp"
 PLANNER = ROS_RUNTIME / "production_mppi_node.cpp"
 PLANNER_INTERFACES = ROS_RUNTIME / "production_mppi_node_interfaces.cpp"
 PLANNER_CONFIG_HEADER = MPPI_RUNTIME / "production_mppi_config.hpp"
-PLANNER_CONFIG_LOADER = ROS_RUNTIME / "production_mppi_config_ros.cpp"
+PLANNER_CONFIG_LOADERS = sorted(ROS_RUNTIME.glob("production_mppi_config_ros*"))
 PLANNING_TICK = ROS_RUNTIME / "production_mppi_node_planning_tick.cpp"
 PLANNING_COORDINATOR = MPPI_RUNTIME / "planning_cycle_coordinator_3d.cpp"
 PLANNING_COORDINATOR_TEST = (
@@ -131,7 +131,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
         planner = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PLANNER, PLANNER_CONFIG_LOADER)
+            for path in (PLANNER, *PLANNER_CONFIG_LOADERS)
         )
         horizon_message = HORIZON_MESSAGE.read_text(encoding="utf-8")
         speed_policy = SPEED_POLICY.read_text(encoding="utf-8")
@@ -257,7 +257,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planner_interfaces = PLANNER_INTERFACES.read_text(encoding="utf-8")
         planner_config = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PLANNER_CONFIG_HEADER, PLANNER_CONFIG_LOADER)
+            for path in (PLANNER_CONFIG_HEADER, *PLANNER_CONFIG_LOADERS)
         )
         mission_monitor = MISSION_MONITOR.read_text(encoding="utf-8")
         config = CONFIG.read_text(encoding="utf-8")
@@ -284,7 +284,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
     def test_planners_publish_latched_world_readiness(self) -> None:
         planner = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PLANNER, PLANNER_INTERFACES, PLANNER_CONFIG_LOADER)
+            for path in (PLANNER, PLANNER_INTERFACES, *PLANNER_CONFIG_LOADERS)
         )
         launch = LAUNCH.read_text(encoding="utf-8")
 
