@@ -73,6 +73,7 @@ any kind is `REAL_TIME_FACTOR=0.5 ./tools/series2.sh r1100`.
 | `lost_inspect.py` | A light-lost flight by phase: dead reckoning, judgment, landing or contact, truth at each, the drift between. | `python3 tools/lost_inspect.py r939` |
 | `crash_context.py` | State, readiness, executor and offboard lines in the seconds before `VEHICLE_DESTROYED`. | `python3 tools/crash_context.py r932 8` |
 | `body_truth_clearance.py` | The true body's clearance to the true location over a flight (needs the 0.25 m truth grid in `log/tools/truth25`). | `python3 tools/body_truth_clearance.py r958` |
+| `phantom_blocks.py` | Blocked-route episodes of 5 s and more (the controller held by the blocked route's law) and every cell the trajectory validator named in a block, looked up in the 0.25 m truth grid: a cell with no truth within 0.5 m is a phantom (roadmap item 18; needs `log/tools/truth25`). | `python3 tools/phantom_blocks.py r1213 r1214` |
 | `yaw_overshoot.py` | Gaze overshoots: the heading swinging more than 45 degrees past its target. | `python3 tools/yaw_overshoot.py r949` |
 | `room_time.py`, `room_churn.py` | Seconds a flight spends in the shaft room at (53, -7), and the routes, holds and limiters inside it. Location-specific by design: they measure one register entry. | `python3 tools/room_time.py r958` |
 | `sensor_range_compare.py`, `sensor_limit_why.py` | The braking contract's measured range and the speed it allowed; the ticks where the limit is low with the range high. | `python3 tools/sensor_range_compare.py r949` |
