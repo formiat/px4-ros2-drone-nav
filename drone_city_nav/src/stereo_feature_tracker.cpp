@@ -55,10 +55,9 @@ template<typename T> void keep(std::vector<T>& values, const std::vector<bool>& 
 struct StereoFeatureTracker::Impl {
   explicit Impl(const StereoFeatureTrackerConfig& configuration)
       : config_{configuration},
-        focal_px_{0.5 * static_cast<double>(configuration.image_width) /
-                  std::tan(0.5 * configuration.horizontal_fov_rad)},
-        centre_px_{0.5F * static_cast<float>(configuration.image_width),
-                   0.5F * static_cast<float>(configuration.image_height)} {
+        focal_px_{configuration.focal_px},
+        centre_px_{static_cast<float>(configuration.principal_x_px),
+                   static_cast<float>(configuration.principal_y_px)} {
   }
 
   [[nodiscard]] std::vector<StereoFeatureObservation>

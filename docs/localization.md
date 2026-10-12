@@ -426,3 +426,38 @@ cores and 90 MB of map. A first pass through new ground drifts as before, 0.1
 to 0.4 percent of the path: nothing old lies there to register against. The
 lidar estimator is unchanged: its own submap bounds it, 0.15 to 0.30 m at the
 end of the doubled path (r727 to r731).
+
+### On Real Recordings (EuRoC MAV)
+
+Roadmap item 25: the camera estimator replayed on real recordings, with no
+simulator. The stereo pair is configured by its calibration (specification
+K33): each camera's pinhole intrinsics and radial-tangential distortion, the
+right camera's frame from the left one's and the left camera's pose in the
+body; both camera nodes rectify the pair before matching (OpenCV's stereo
+rectification, the valid pixels kept), the tracker sees the rectified
+pinhole and the depth's points go back into the physical camera's frame. The
+simulated pair is configured as the ideal pair it is and its frames pass
+untouched, so the flights are unchanged.
+
+The EuRoC MAV dataset (ETH Zurich, a VI-Sensor on a hexacopter: a global
+shutter stereo pair at 20 Hz, 752 x 480, an ADIS16448 IMU at 200 Hz, a Vicon
+reference) is published on the ETH Research Collection (DOI
+10.3929/ethz-b-000690084) as one archive per room; the Vicon room 1 archive
+holds V1_01_easy, V1_02_medium and V1_03_difficult. The data stay in
+`/data/gazebo/datasets/euroc/`; `tools/vio/euroc_to_replay.py` turns a
+sequence into the replay's record (the sensor's IMU frame has x up, so every
+stream is turned into a forward-left-up vehicle frame, as the simulated
+vehicle's) and `tools/vio/euroc_report.py` measures a replay against the
+reference. The filter starts on the reference's pose at the first frame, at
+rest, as on the simulator's records.
+
+| Sequence | Path | ATE (4-DOF aligned) | Without alignment | RTE over 10 m | At the end |
+| --- | --- | --- | --- | --- | --- |
+| V1_01_easy | 58.6 m | 0.050 m | 0.172 m | 0.183 m | 0.06 m, 0.11 % |
+| V1_02_medium | 75.9 m | 0.046 m | 0.103 m | 0.111 m | 0.13 m, 0.17 % |
+| V1_03_difficult | 78.9 m | 0.115 m | 0.341 m | 0.165 m | 0.33 m, 0.42 % |
+
+Features are used on 92 to 97 % of the frames; the rectified focal length is
+436.2 px and the baseline 0.110 m. Against the simulator's first passes, 0.1
+to 0.4 percent of the path, the real recordings drift alike, the fastest and
+darkest of the three (V1_03, motion blur) the most.

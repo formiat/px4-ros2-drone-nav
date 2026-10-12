@@ -787,6 +787,20 @@ production_mppi_node:
 
 visual_inertial_odometry_node:
   ros__parameters:
+    # Specification K33: the pair as its calibration states it: pinhole
+    # intrinsics [fx, fy, cx, cy] and radial-tangential distortion
+    # [k1, k2, p1, p2] of each camera, the right camera's frame from the left
+    # one's (x_right = R x_left + t). The simulated pair of
+    # models/stereo_tof_v1 is the ideal one: 120 degrees over 1280 pixels, no
+    # distortion, the right camera 0.2 m along x; its frames are not remapped.
+    image_width: 1280
+    image_height: 960
+    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
+    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
+    right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    right_from_left_translation_m: [-0.2, 0.0, 0.0]
     # The autopilot's own estimate, the prior of a restart in flight (K28); the
     # local position is a versioned message (_v1).
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
@@ -1358,11 +1372,20 @@ stereo_depth_node:
     left_image_topic: /stereo/left/image
     right_image_topic: /stereo/right/image
     returns_topic: /stereo_depth/points
-    # The pair of models/stereo_tof_v1.
+    # Specification K33: the pair as its calibration states it: pinhole
+    # intrinsics [fx, fy, cx, cy] and radial-tangential distortion
+    # [k1, k2, p1, p2] of each camera, the right camera's frame from the left
+    # one's (x_right = R x_left + t). The simulated pair of
+    # models/stereo_tof_v1 is the ideal one: 120 degrees over 1280 pixels, no
+    # distortion, the right camera 0.2 m along x; its frames are not remapped.
     image_width: 1280
     image_height: 960
-    horizontal_fov_rad: 2.0943951023931953
-    baseline_m: 0.20
+    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
+    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
+    right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    right_from_left_translation_m: [-0.2, 0.0, 0.0]
     # Semi-global matching (OpenCV StereoSGBM, three-way). 256 disparities put
     # the nearest matched depth at 0.29 m, inside the shafts whose walls stand
     # 0.5 to 1 m from the vehicle.

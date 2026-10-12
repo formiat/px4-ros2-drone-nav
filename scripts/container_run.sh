@@ -195,6 +195,7 @@ docker run --rm "${tty_args[@]}" \
   "${group_args[@]}" \
   "${env_args[@]}" \
   --volume "${repo_root}:/workspace:rw" \
+  ${DATASETS_DIR:+--volume "${DATASETS_DIR}:/datasets:rw"} \
   --volume /tmp/.X11-unix:/tmp/.X11-unix:ro \
   "${xauthority_args[@]}" \
   --workdir /workspace \

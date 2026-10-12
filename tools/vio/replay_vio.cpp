@@ -5,12 +5,15 @@
 // Output DIR/replay_<tag>.csv: stamp_s,px,py,pz,qw,qx,qy,qz,vx,vy,vz,tx,ty,tz,tqw,tqx,tqy,tqz,tracked,candidates,used,gated,untriangulated,rms,ms_track,ms_filter
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 #include "stereo_feature_tracker.hpp"
+#include "stereo_rectifier.hpp"
 #include <opencv2/imgproc.hpp>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <numbers>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -57,6 +60,9 @@ int main(int argc, char** argv) {
   config.maximum_clones = static_cast<std::size_t>(std::atoi(opt["clones"].c_str()));
   StereoFeatureTrackerConfig tracker_config;
   tracker_config.image_width = static_cast<std::size_t>(ordered.front().w / scale); tracker_config.image_height = static_cast<std::size_t>(ordered.front().h / scale);
+  // The simulated pair's pinhole: 120 degrees over the width, the principal point at the centre.
+  tracker_config.focal_px = 0.5 * tracker_config.image_width / std::tan(std::numbers::pi / 3.0);
+  tracker_config.principal_x_px = 0.5 * tracker_config.image_width; tracker_config.principal_y_px = 0.5 * tracker_config.image_height;
   tracker_config.maximum_features = static_cast<std::size_t>(std::atoi(opt["features"].c_str()));
   if (scale > 1) { tracker_config.minimum_distance_px /= scale; tracker_config.maximum_disparity_px /= scale; tracker_config.minimum_disparity_px /= scale; }
   for (auto& [k, v] : opt) {
@@ -71,10 +77,40 @@ int main(int argc, char** argv) {
     if (k == "baseline") { config.left_camera.position_body_m.y() = -0.5 * std::atof(v.c_str()); config.right_camera.position_body_m.y() = 0.5 * std::atof(v.c_str()); }
     if (k == "maxdepth") config.maximum_depth_m = std::atof(v.c_str());
     if (k == "mindisp") tracker_config.minimum_disparity_px = std::atof(v.c_str());
-    if (k == "fov") tracker_config.horizontal_fov_rad = std::atof(v.c_str());
+    if (k == "fov") { tracker_config.focal_px = 0.5 * tracker_config.image_width / std::tan(0.5 * std::atof(v.c_str())); }
     if (k == "minframes") config.minimum_track_frames = static_cast<std::size_t>(std::atoi(v.c_str()));
   }
-  const double focal = 0.5 * tracker_config.image_width / std::tan(0.5 * tracker_config.horizontal_fov_rad);
+  // A real pair's calibration (calibration=PATH, tools/vio/euroc_to_replay.py, specification K33): the frames are
+  // rectified, the tracker sees the rectified pinhole, the filter the rectified left camera and the IMU's noise.
+  std::optional<StereoRectifier> rectifier;
+  if (!opt["calibration"].empty()) {
+    std::map<std::string, std::vector<double>> c;
+    { std::ifstream f(opt["calibration"]); std::string line;
+      while (std::getline(f, line)) { std::stringstream s(line); std::string key; s >> key; double v; while (s >> v) c[key].push_back(v); } }
+    const auto camera = [&](const std::string& side) {
+      const auto& i = c.at(side + "_intrinsics"); const auto& d = c.at(side + "_distortion");
+      return PinholeCamera{.fx = i[0], .fy = i[1], .cx = i[2], .cy = i[3], .distortion = {d[0], d[1], d[2], d[3]}}; };
+    StereoCalibration calibration{.width = static_cast<std::size_t>(c.at("size")[0]), .height = static_cast<std::size_t>(c.at("size")[1]),
+                                  .left = camera("left"), .right = camera("right")};
+    calibration.right_from_left_rotation = Eigen::Map<const Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>(c.at("right_from_left_rotation").data());
+    calibration.right_from_left_translation_m = Eigen::Map<const Eigen::Vector3d>(c.at("right_from_left_translation").data());
+    rectifier.emplace(calibration);
+    const RectifiedStereo& r = rectifier->rectified();
+    tracker_config.image_width = calibration.width / scale; tracker_config.image_height = calibration.height / scale;
+    tracker_config.focal_px = r.focal_px / scale; tracker_config.principal_x_px = r.principal_x_px / scale; tracker_config.principal_y_px = r.principal_y_px / scale;
+    // The body of the record is FLU (imu=gz): the filter's FRD body is it turned about x.
+    const Eigen::Matrix3d left_to_body = Eigen::Map<const Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>(c.at("left_to_body_rotation").data());
+    camera_to_body = frd_to_flu * left_to_body * r.rectified_from_left.transpose();
+    const Eigen::Vector3d left_position = frd_to_flu * Eigen::Map<const Eigen::Vector3d>(c.at("left_position_body").data());
+    config.left_camera = {Eigen::Quaterniond{camera_to_body}, left_position};
+    config.right_camera = {Eigen::Quaterniond{camera_to_body}, left_position + camera_to_body * Eigen::Vector3d{r.baseline_m, 0.0, 0.0}};
+    config.gyro_noise_radps_sqrt_hz = c.at("gyroscope_noise_density")[0];
+    config.accelerometer_noise_mps2_sqrt_hz = c.at("accelerometer_noise_density")[0];
+    config.gyro_bias_walk_radps2_sqrt_hz = c.at("gyroscope_random_walk")[0];
+    config.accelerometer_bias_walk_mps3_sqrt_hz = c.at("accelerometer_random_walk")[0];
+    std::fprintf(stderr, "CALIBRATION focal_px=%.2f principal=(%.1f,%.1f) baseline_m=%.4f ideal=%d\n", r.focal_px, r.principal_x_px, r.principal_y_px, r.baseline_m, int(rectifier->ideal()));
+  }
+  const double focal = tracker_config.focal_px;
   config.observation_noise = std::atof(opt["noise_px"].c_str()) / focal;
   VisualInertialOdometry odometry{config};
   StereoFeatureTracker tracker{tracker_config};
@@ -89,6 +125,7 @@ int main(int argc, char** argv) {
     l_full.create(f.h, f.w, CV_8UC1); r_full.create(f.h, f.w, CV_8UC1);
     std::fseek(left, f.left_offset - 1, SEEK_SET); std::fseek(right, f.right_offset - 1, SEEK_SET);
     if (std::fread(l_full.data, 1, static_cast<std::size_t>(f.w) * f.h, left) != static_cast<std::size_t>(f.w) * f.h || std::fread(r_full.data, 1, static_cast<std::size_t>(f.w) * f.h, right) != static_cast<std::size_t>(f.w) * f.h) break;
+    if (rectifier) { auto rectified = rectifier->rectify(l_full, r_full); l_full = rectified[0]; r_full = rectified[1]; }
     if (scale > 1) { cv::resize(l_full, l, {}, 1.0 / scale, 1.0 / scale, cv::INTER_AREA); cv::resize(r_full, r, {}, 1.0 / scale, 1.0 / scale, cv::INTER_AREA); } else { l = l_full; r = r_full; }
     if (f.t >= std::atof(opt["dark_from_s"].c_str()) && f.t < std::atof(opt["dark_to_s"].c_str())) { l = cv::Mat::zeros(l.size(), l.type()); r = cv::Mat::zeros(r.size(), r.type()); }
     { const double from = std::atof(opt["dark_from_s"].c_str()), ramp = std::atof(opt["ramp_s"].c_str());

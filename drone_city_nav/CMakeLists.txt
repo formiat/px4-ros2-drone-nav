@@ -968,6 +968,7 @@ foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
   # asked, the visual-inertial estimator that reads the same frames.
   add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
                                          src/stereo_feature_tracker.cpp
+                                         src/stereo_rectifier.cpp
                                          src/visual_inertial_odometry_node.cpp)
   target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
   target_include_directories(${stereo_depth_process} SYSTEM
@@ -1277,6 +1278,9 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/route_application"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ros")
+  # The stereo pair's headers in src/ hold OpenCV's images.
+  target_include_directories(drone_city_nav_header_self_containment SYSTEM
+                             PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(
     drone_city_nav_header_self_containment
     drone_city_nav_core drone_city_nav_ros_adapters ${cpp_typesupport_target})
@@ -1433,6 +1437,15 @@ if(BUILD_TESTING)
   target_compile_features(point_plane_map_3d_test PRIVATE cxx_std_20)
   target_link_libraries(point_plane_map_3d_test drone_city_nav_localization)
   enable_project_warnings(point_plane_map_3d_test)
+
+  ament_add_gtest(stereo_rectifier_test tests/stereo_rectifier_test.cpp
+                  src/stereo_rectifier.cpp)
+  target_compile_features(stereo_rectifier_test PRIVATE cxx_std_20)
+  target_include_directories(stereo_rectifier_test SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_include_directories(stereo_rectifier_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(stereo_rectifier_test drone_city_nav_core Eigen3::Eigen
+                        ${OpenCV_LIBS})
+  enable_project_warnings(stereo_rectifier_test)
 
   ament_add_gtest(visual_inertial_odometry_test
                   tests/visual_inertial_odometry_test.cpp)

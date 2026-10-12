@@ -31,6 +31,8 @@
 #include <utility>
 #include <vector>
 
+#include "stereo_calibration_ros.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -64,19 +66,26 @@ class StereoDepthNode final : public rclcpp::Node {
 public:
   explicit StereoDepthNode(const rclcpp::NodeOptions& options)
       : rclcpp::Node{"stereo_depth_node", options} {
-    const double horizontal_fov_rad =
-        declare_parameter<double>("horizontal_fov_rad", 2.0943951023931953);
-    image_width_ =
-        static_cast<std::size_t>(declare_parameter<int>("image_width", 1280));
-    image_height_ =
-        static_cast<std::size_t>(declare_parameter<int>("image_height", 960));
+    // Specification K33: the pair from its calibration, rectified before the
+    // matcher; the depth is the rectified pair's.
+    const StereoCalibration calibration = declareStereoCalibration(*this);
+    rectifier_ = std::make_unique<StereoRectifier>(calibration);
+    image_width_ = calibration.width;
+    image_height_ = calibration.height;
+    const RectifiedStereo& rectified = rectifier_->rectified();
     geometry_ = StereoPairGeometry{
-        .focal_px = 0.5 * static_cast<double>(image_width_) /
-                    std::tan(0.5 * horizontal_fov_rad),
-        .principal_x_px = 0.5 * static_cast<double>(image_width_),
-        .principal_y_px = 0.5 * static_cast<double>(image_height_),
-        .baseline_m = declare_parameter<double>("baseline_m", 0.20),
+        .focal_px = rectified.focal_px,
+        .principal_x_px = rectified.principal_x_px,
+        .principal_y_px = rectified.principal_y_px,
+        .baseline_m = rectified.baseline_m,
     };
+    // The rectified camera's forward-left-up frame back into the physical
+    // one's, for a pair that is not ideal.
+    const Eigen::Matrix3d optical_to_flu{
+        {0.0, 0.0, 1.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0}};
+    rectified_to_physical_flu_ = optical_to_flu *
+                                 rectified.rectified_from_left.transpose() *
+                                 optical_to_flu.transpose();
     returns_config_.pixel_stride =
         static_cast<std::size_t>(declare_parameter<int>("pixel_stride", 4));
     returns_config_.minimum_range_m = declare_parameter<double>("minimum_range_m", 0.3);
@@ -267,8 +276,10 @@ private:
       return;
     }
     const auto started = std::chrono::steady_clock::now();
-    const cv::Mat left_grey = grey(*left);
-    const cv::Mat right_grey = grey(*right);
+    const std::array<cv::Mat, 2> rectified_pair =
+        rectifier_->rectify(grey(*left), grey(*right));
+    const cv::Mat& left_grey = rectified_pair[0];
+    const cv::Mat& right_grey = rectified_pair[1];
     cv::Mat disparity;
     far_matcher_->compute(left_grey, right_grey, disparity);
     cv::Mat left_half;
@@ -334,6 +345,11 @@ private:
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
     const std::size_t stereo_returns = returns.size();
+    if (!rectifier_->ideal()) {
+      for (StereoDepthReturn& stereo_return : returns) {
+        stereo_return.point = toPhysicalFlu(stereo_return.point);
+      }
+    }
     std::size_t tof_rays{0U};
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
@@ -370,8 +386,13 @@ private:
       returns.erase(returns.begin(),
                     returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
     }
-    const std::vector<Point3> unobservable =
+    std::vector<Point3> unobservable =
         unobservableFrustum(rclcpp::Time{left->header.stamp}.seconds(), blind);
+    if (!rectifier_->ideal()) {
+      for (Point3& point : unobservable) {
+        point = toPhysicalFlu(point);
+      }
+    }
     // A running count: the line is printed once a second and the frustum is
     // emitted once a second, and the two kept missing each other (r813).
     unobservable_total_ += unobservable.size();
@@ -646,6 +667,15 @@ private:
   std::size_t image_width_{0U};
   std::size_t image_height_{0U};
   StereoPairGeometry geometry_{};
+  std::unique_ptr<StereoRectifier> rectifier_;
+  Eigen::Matrix3d rectified_to_physical_flu_{Eigen::Matrix3d::Identity()};
+
+  [[nodiscard]] Point3 toPhysicalFlu(const Point3& point) const {
+    const Eigen::Vector3d turned =
+        rectified_to_physical_flu_ * Eigen::Vector3d{point.x, point.y, point.z};
+    return Point3{turned.x(), turned.y(), turned.z()};
+  }
+
   StereoDepthReturnsConfig returns_config_{};
   LitRangeTracker lit_range_tracker_;
   LitBaseline raw_brightness_baseline_;

@@ -41,89 +41,14 @@
 #include <utility>
 #include <vector>
 
+#include "stereo_calibration_ros.hpp"
 #include "stereo_feature_tracker.hpp"
+#include "visual_inertial_odometry_node_internal.hpp"
 
 namespace drone_city_nav {
 namespace {
 
-// The vehicle stands still this many IMU samples before its pose is declared:
-// roll, pitch and the gyroscope bias come from them.
-constexpr std::uint64_t kRestSamplesBeforeInitialPose{100U};
-constexpr std::int64_t kAutopilotOdometryPeriodNs{40'000'000};
-
-// The long-lived map the depth is registered against where the vehicle has
-// been before (roadmap item 19 measured the drift of a doubled path at 0.4
-// to 4.1 m, r670 to r689, and r689 flew into the launch platform 4.1 m from
-// where the estimate put it). Surfaces within the confident depth only, in
-// the cells of the lidar-inertial estimator's map.
-constexpr double kMapCellM{0.4};
-constexpr std::size_t kMapPointsPerCell{6U};
-constexpr double kMapRangeM{6.0};
-constexpr std::size_t kMapMaximumScanPoints{3000U};
-// Only what was mapped this long ago is registered against: the depth
-// just laid down carries the same drift as the pose it is laid from.
-constexpr std::int64_t kMapAgeNs{20'000'000'000};
-// A registration every this long; the drift the map corrects accrues over
-// minutes.
-constexpr std::int64_t kMapRegistrationPeriodNs{500'000'000};
-// What makes a registration a correction: most of the scan matched old
-// cells, the fit is tight, and an axis carries information per matched
-// point above the floor (the lidar-inertial estimator's gates).
-constexpr double kMapMinimumMatchedFraction{0.3};
-constexpr std::size_t kMapMinimumMatchedPoints{150U};
-constexpr double kMapMaximumResidualRmsM{0.25};
-constexpr double kMapMinimumInformationPerPoint{0.01};
-// The correction is an offset from the filter's frame to the map's, kept
-// outside the filter: the filter's position is certain to a few centimetres
-// while its drift is metres (r691: clone sigma 0.05 m against innovations of
-// 0.4 to 1.0 m), and a Kalman step against it passed only innovations under
-// half a metre. A registration moves the target offset by this share of what
-// it measured along its observed axes, by no more than the step, and a
-// registration farther than the reach from its prior slid into another fit.
-// The share is small against the registration's own scatter: at a half and a
-// quarter metre per step, r709's target moved 0.2 to 0.35 m and its heading
-// half a degree between registrations a second apart, where the drift it
-// corrects accrues millimetres and hundredths of a degree per second.
-constexpr double kMapCorrectionGain{0.2};
-constexpr double kMapCorrectionStepM{0.1};
-constexpr double kMapCorrectionReachM{1.5};
-// The offset the autopilot sees follows the target at this rate: its fusion
-// of the external position takes motion, and a jump it may refuse.
-constexpr double kMapOffsetRateMps{0.2};
-// The heading the filter holds drifts too, one to four degrees over the
-// doubled path (r683 to r692), and a degree is 0.9 m over the 50 m of an
-// open stretch where nothing within the depth range fixes the position. A
-// registration whose depth fixes the heading, with the translation left
-// free, moves the target heading by this share of what it measured, by no
-// more than the step, and the published heading follows at the rate.
-constexpr double kMapYawGain{0.2};
-constexpr double kMapYawStepRad{0.0035};
-constexpr double kMapYawReachRad{0.087};
-constexpr double kMapMinimumYawInformationPerPoint{0.5};
-constexpr double kMapYawRateRadps{0.0175};
-
-// From the filter's frame to the map's: a turn about the vertical, then a
-// shift.
-struct MapFrameOffset {
-  double yaw_rad{0.0};
-  Eigen::Vector3d translation{Eigen::Vector3d::Zero()};
-
-  [[nodiscard]] Eigen::Matrix3d rotation() const {
-    return Eigen::AngleAxisd{yaw_rad, Eigen::Vector3d::UnitZ()}.toRotationMatrix();
-  }
-
-  [[nodiscard]] Eigen::Vector3d apply(const Eigen::Vector3d& position) const {
-    return rotation() * position + translation;
-  }
-};
-
-// The optical frame (x right, y down, z forward) of a camera that looks along
-// the body's x axis, in the body forward-right-down frame.
-[[nodiscard]] Eigen::Matrix3d forwardCameraToBody() {
-  Eigen::Matrix3d camera_to_body;
-  camera_to_body << 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0;
-  return camera_to_body;
-}
+using namespace visual_inertial_odometry_node_internal;
 
 class VisualInertialOdometryNode final : public rclcpp::Node {
 public:
@@ -133,13 +58,18 @@ public:
     time_mapper_ = Px4RosTimeMapper{Px4RosTimeMapperConfig{
         .shared_clock = declare_parameter<bool>("px4_clock_is_ros_clock", false)}};
 
+    // Specification K33: the pair from its calibration, rectified before the
+    // tracker; the tracker sees the rectified pinhole.
+    rectifier_ = std::make_unique<StereoRectifier>(declareStereoCalibration(*this));
+    const RectifiedStereo& rectified = rectifier_->rectified();
     StereoFeatureTrackerConfig tracker;
-    tracker.image_width = static_cast<std::size_t>(
-        declare_parameter<int>("image_width", static_cast<int>(tracker.image_width)));
-    tracker.image_height = static_cast<std::size_t>(
-        declare_parameter<int>("image_height", static_cast<int>(tracker.image_height)));
-    tracker.horizontal_fov_rad =
-        declare_parameter<double>("horizontal_fov_rad", tracker.horizontal_fov_rad);
+    tracker.image_width =
+        static_cast<std::size_t>(get_parameter("image_width").as_int());
+    tracker.image_height =
+        static_cast<std::size_t>(get_parameter("image_height").as_int());
+    tracker.focal_px = rectified.focal_px;
+    tracker.principal_x_px = rectified.principal_x_px;
+    tracker.principal_y_px = rectified.principal_y_px;
     tracker.maximum_features = static_cast<std::size_t>(declare_parameter<int>(
         "maximum_features", static_cast<int>(tracker.maximum_features)));
     image_width_ = tracker.image_width;
@@ -147,29 +77,45 @@ public:
     tracker_ = std::make_unique<StereoFeatureTracker>(tracker);
 
     // The pair sits on the body as the obstacle memory knows it: the left
-    // camera's position, the right one a baseline along the body's y axis.
+    // camera's position and its optical frame's rotation into the body's
+    // forward-right-down frame (the simulated camera looks along x); the
+    // filter sees the rectified left camera, the right one the rectified
+    // baseline along its x axis.
     const std::vector<double> left = declare_parameter<std::vector<double>>(
         "left_camera_position_body_frd_m", {0.32, -0.10, -0.02});
-    if (left.size() != 3U) {
-      throw std::invalid_argument{"the left camera position needs three values"};
+    const Eigen::Matrix3d forward = forwardCameraToBody();
+    const std::vector<double> rotation = declare_parameter<std::vector<double>>(
+        "left_camera_to_body_frd_rotation",
+        {forward(0, 0), forward(0, 1), forward(0, 2), forward(1, 0), forward(1, 1),
+         forward(1, 2), forward(2, 0), forward(2, 1), forward(2, 2)});
+    if (left.size() != 3U || rotation.size() != 9U) {
+      throw std::invalid_argument{"the left camera's pose needs 3 and 9 values"};
     }
-    const double baseline_m = declare_parameter<double>("baseline_m", 0.20);
     left_camera_body_ = Eigen::Vector3d{left[0], left[1], left[2]};
-    camera_to_body_ = forwardCameraToBody();
+    left_camera_to_body_ =
+        Eigen::Map<const Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>(rotation.data());
+    camera_to_body_ = left_camera_to_body_ * rectified.rectified_from_left.transpose();
     VisualInertialOdometryConfig config;
     config.left_camera = {.camera_to_body = Eigen::Quaterniond{camera_to_body_},
-                          .position_body_m = {left[0], left[1], left[2]}};
+                          .position_body_m = left_camera_body_};
     config.right_camera = {.camera_to_body = Eigen::Quaterniond{camera_to_body_},
-                           .position_body_m = {left[0], left[1] + baseline_m, left[2]}};
+                           .position_body_m =
+                               left_camera_body_ +
+                               camera_to_body_ *
+                                   Eigen::Vector3d{rectified.baseline_m, 0.0, 0.0}};
     config.maximum_clones = static_cast<std::size_t>(declare_parameter<int>(
         "maximum_clones", static_cast<int>(config.maximum_clones)));
-    config.observation_noise = declare_parameter<double>("observation_noise_px", 1.0) /
-                               (0.5 * static_cast<double>(tracker.image_width) /
-                                std::tan(0.5 * tracker.horizontal_fov_rad));
+    config.observation_noise =
+        declare_parameter<double>("observation_noise_px", 1.0) / rectified.focal_px;
     config.gyro_noise_radps_sqrt_hz = declare_parameter<double>(
         "gyro_noise_radps_sqrt_hz", config.gyro_noise_radps_sqrt_hz);
     config.accelerometer_noise_mps2_sqrt_hz = declare_parameter<double>(
         "accelerometer_noise_mps2_sqrt_hz", config.accelerometer_noise_mps2_sqrt_hz);
+    config.gyro_bias_walk_radps2_sqrt_hz = declare_parameter<double>(
+        "gyro_bias_walk_radps2_sqrt_hz", config.gyro_bias_walk_radps2_sqrt_hz);
+    config.accelerometer_bias_walk_mps3_sqrt_hz =
+        declare_parameter<double>("accelerometer_bias_walk_mps3_sqrt_hz",
+                                  config.accelerometer_bias_walk_mps3_sqrt_hz);
     // The airframe's: fitted per vehicle (visual_inertial_odometry.hpp).
     config.rotor_drag_1ps =
         declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
@@ -521,8 +467,11 @@ private:
     if (previous_frame_stamp_ns_ > 0) {
       turn = cameraTurn(previous_frame_stamp_ns_, pair.stamp_ns, gyro_bias_);
     }
-    const std::vector<StereoFeatureObservation> observations =
-        tracker_->track(grey(*pair.left), grey(*pair.right), turn);
+    const std::vector<StereoFeatureObservation> observations = [&] {
+      const std::array<cv::Mat, 2> rectified_pair =
+          rectifier_->rectify(grey(*pair.left), grey(*pair.right));
+      return tracker_->track(rectified_pair[0], rectified_pair[1], turn);
+    }();
     VisualInertialEstimate estimate = odometry_->addFrame(pair.stamp_ns, observations);
     previous_frame_stamp_ns_ = pair.stamp_ns;
     gyro_bias_ = estimate.gyro_bias_radps;
@@ -571,7 +520,8 @@ private:
   void onDepth(const sensor_msgs::msg::PointCloud2& cloud) {
     const std::int64_t stamp_ns =
         rclcpp::Time{cloud.header.stamp}.nanoseconds() + frame_stamp_offset_ns_;
-    std::vector<Eigen::Vector3d> points_body = thinnedDepth(cloud);
+    std::vector<Eigen::Vector3d> points_body =
+        thinnedDepth(cloud, left_camera_to_body_, left_camera_body_);
     if (points_body.empty()) {
       return;
     }
@@ -693,53 +643,6 @@ private:
                 std::atan2(body_to_ned(1, 0), body_to_ned(0, 0)) * 180.0 / M_PI,
                 1.0e-6 * static_cast<double>(now_ns - restart_ns), reinitialisations_);
     return true;
-  }
-
-  // The surface returns within the confident depth, in the body frame, one
-  // per cell: the centroid of the cell's returns.
-  [[nodiscard]] std::vector<Eigen::Vector3d>
-  thinnedDepth(const sensor_msgs::msg::PointCloud2& cloud) const {
-    struct Accumulator {
-      Eigen::Vector3d sum{Eigen::Vector3d::Zero()};
-      std::size_t count{0U};
-    };
-
-    double cell_m = kMapCellM;
-    std::vector<Eigen::Vector3d> body;
-    body.reserve(cloud.width * cloud.height);
-    sensor_msgs::PointCloud2ConstIterator<float> x{cloud, "x"};
-    sensor_msgs::PointCloud2ConstIterator<float> y{cloud, "y"};
-    sensor_msgs::PointCloud2ConstIterator<float> z{cloud, "z"};
-    sensor_msgs::PointCloud2ConstIterator<float> surface{cloud, "intensity"};
-    for (; x != x.end(); ++x, ++y, ++z, ++surface) {
-      const Eigen::Vector3d flu{*x, *y, *z};
-      if (*surface < 0.5F || !flu.allFinite() || flu.norm() > kMapRangeM) {
-        continue;
-      }
-      body.push_back(Eigen::Vector3d{flu.x(), -flu.y(), -flu.z()} + left_camera_body_);
-    }
-    std::vector<Eigen::Vector3d> thinned;
-    // A frame too dense for the budget is thinned coarser, not sampled, as
-    // the lidar-inertial estimator thins its scans.
-    do {
-      std::unordered_map<std::int64_t, Accumulator> cells;
-      for (const Eigen::Vector3d& point : body) {
-        const auto index = [cell_m](const double value) {
-          return static_cast<std::int64_t>(std::floor(value / cell_m)) & 0x1FFFFF;
-        };
-        Accumulator& cell = cells[(index(point.x()) << 42) | (index(point.y()) << 21) |
-                                  index(point.z())];
-        cell.sum += point;
-        ++cell.count;
-      }
-      thinned.clear();
-      thinned.reserve(cells.size());
-      for (const auto& [key, cell] : cells) {
-        thinned.push_back(cell.sum / static_cast<double>(cell.count));
-      }
-      cell_m *= 1.25;
-    } while (thinned.size() > kMapMaximumScanPoints);
-    return thinned;
   }
 
   [[nodiscard]] MapFrameOffset targetFrame() {
@@ -960,7 +863,11 @@ private:
   std::deque<GyroSample> gyro_;
   Px4MapFrameTransform transform_;
   Px4RosTimeMapper time_mapper_;
+  // The rectified left camera's optical frame in the body (the features'),
+  // and the physical one's (the depth's).
   Eigen::Matrix3d camera_to_body_{Eigen::Matrix3d::Identity()};
+  Eigen::Matrix3d left_camera_to_body_{Eigen::Matrix3d::Identity()};
+  std::unique_ptr<StereoRectifier> rectifier_;
   Eigen::Vector3d gyro_bias_{Eigen::Vector3d::Zero()};
   std::size_t image_width_{0U};
   std::size_t image_height_{0U};
