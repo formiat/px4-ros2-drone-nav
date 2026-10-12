@@ -177,6 +177,21 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
                        ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));
 }
 
+// Specification K30 (the owner's decision of 2026-10-10): a mission ends with
+// a landing where the vehicle stands, on the floor below it, and the
+// autopilot's own disarm once it detects the landing (COM_DISARM_LAND). The
+// position is held where the landing began and the vehicle descends at the
+// blind descent's 0.5 m/s, which the touchdown rule (A9) admits.
+void MppiOffboardNode::publishMissionLandingSetpoint() {
+  constexpr double kLandingSpeedMps{0.5};
+  setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+      nowMicros(), mission_landing_local_, std::numeric_limits<double>::quiet_NaN(),
+      mission_landing_yaw_rad_, -kLandingSpeedMps));
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                       "MISSION_LANDING descending=true altitude_m=%.2f",
+                       mapAltitudeM());
+}
+
 void MppiOffboardNode::publishTakeoffSetpoint() {
   setpoint_pub_->publish(buildPositionTrajectorySetpoint(
       nowMicros(), Point2{local_x_, local_y_},

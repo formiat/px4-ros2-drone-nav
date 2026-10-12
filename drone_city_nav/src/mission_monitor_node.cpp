@@ -3,6 +3,7 @@
 #include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/goal_reachability_proof_3d.hpp"
+#include "drone_city_nav/main_battery_estimate.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
@@ -13,6 +14,7 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot3_d.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
+#include "drone_city_nav/operator_command.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/return_trail.hpp"
 #include "drone_city_nav/types.hpp"
@@ -35,135 +37,11 @@
 #include <string>
 #include <vector>
 
+#include "mission_monitor_node_internal.hpp"
+
 namespace drone_city_nav {
-namespace {
 
-[[nodiscard]] std::int64_t
-timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
-  if (stamp.sec < 0 || stamp.nanosec >= 1'000'000'000U) {
-    return 0;
-  }
-  return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
-         static_cast<std::int64_t>(stamp.nanosec);
-}
-
-[[nodiscard]] bool finitePoint(const geometry_msgs::msg::Point& point) noexcept {
-  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
-}
-
-[[nodiscard]] Point3 point3(const geometry_msgs::msg::Point& point) noexcept {
-  return Point3{point.x, point.y, point.z};
-}
-
-constexpr std::uint64_t kAcknowledgementFingerprintOffset{
-    14'695'981'039'346'656'037ULL};
-constexpr std::uint64_t kAcknowledgementFingerprintPrime{1'099'511'628'211ULL};
-
-void appendAcknowledgementFingerprint(std::uint64_t& fingerprint,
-                                      const std::uint64_t word) noexcept {
-  for (std::size_t byte_index = 0U; byte_index < sizeof(word); ++byte_index) {
-    fingerprint ^= (word >> (byte_index * 8U)) & 0xFFU;
-    fingerprint *= kAcknowledgementFingerprintPrime;
-  }
-}
-
-[[nodiscard]] std::uint64_t canonicalDoubleBits(const double value) noexcept {
-  if (value == 0.0) {
-    return 0U;
-  }
-  if (std::isnan(value)) {
-    return 0x7FF8'0000'0000'0000ULL;
-  }
-  return std::bit_cast<std::uint64_t>(value);
-}
-
-[[nodiscard]] std::uint64_t acknowledgementContentFingerprint(
-    const msg::MissionWaypointAcknowledgement& acknowledgement) noexcept {
-  std::uint64_t fingerprint{kAcknowledgementFingerprintOffset};
-  appendAcknowledgementFingerprint(fingerprint, 1U); // Fingerprint schema.
-  appendAcknowledgementFingerprint(
-      fingerprint, static_cast<std::uint64_t>(acknowledgement.header.stamp.sec));
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.header.stamp.nanosec);
-  for (const char character : acknowledgement.header.frame_id) {
-    appendAcknowledgementFingerprint(fingerprint,
-                                     static_cast<unsigned char>(character));
-  }
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.header.frame_id.size());
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.producer_instance_id);
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.acknowledgement_sequence);
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.mission_epoch);
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.completed_waypoint_index);
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.completed_waypoint_count);
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.waypoint_count);
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.active_waypoint_index);
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.mission_completed ? 1U : 0U);
-  for (const geometry_msgs::msg::Point* const point :
-       {&acknowledgement.completed_goal, &acknowledgement.route_target,
-        &acknowledgement.stationary_hold_position}) {
-    appendAcknowledgementFingerprint(fingerprint, canonicalDoubleBits(point->x));
-    appendAcknowledgementFingerprint(fingerprint, canonicalDoubleBits(point->y));
-    appendAcknowledgementFingerprint(fingerprint, canonicalDoubleBits(point->z));
-  }
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.horizon_producer_instance_id);
-  appendAcknowledgementFingerprint(fingerprint, acknowledgement.horizon_sequence);
-  appendAcknowledgementFingerprint(fingerprint,
-                                   acknowledgement.offboard_producer_instance_id);
-  for (const builtin_interfaces::msg::Time* const stamp :
-       {&acknowledgement.horizon_valid_from, &acknowledgement.horizon_valid_until,
-        &acknowledgement.witness_stamp}) {
-    appendAcknowledgementFingerprint(fingerprint,
-                                     static_cast<std::uint64_t>(stamp->sec));
-    appendAcknowledgementFingerprint(fingerprint, stamp->nanosec);
-  }
-  return fingerprint == 0U ? 1U : fingerprint;
-}
-
-[[nodiscard]] const char* acknowledgementRejectionReason(
-    const MissionWaypointAcknowledgementAdmissionResult& admission) noexcept {
-  if (admission.conflict) {
-    return "identity_conflict";
-  }
-  if (admission.replay) {
-    return "replay";
-  }
-  if (admission.aggregate_replay) {
-    return "aggregate_replay";
-  }
-  if (admission.stale) {
-    return "stale";
-  }
-  if (admission.retired_capacity_exhausted) {
-    return "retired_capacity_exhausted";
-  }
-  if (admission.prospective_capacity_exhausted) {
-    return "prospective_capacity_exhausted";
-  }
-  return "invalid";
-}
-
-[[nodiscard]] const char* navigationFailureReason(const std::uint8_t reason) noexcept {
-  switch (reason) {
-    case msg::NavigationHealth::FAILURE_NONE:
-      return "none";
-    case msg::NavigationHealth::FAILURE_UNAVAILABLE_WORLD:
-      return "navigation_unavailable_world";
-    case msg::NavigationHealth::FAILURE_NO_EXECUTABLE_ROUTE:
-      return "navigation_no_executable_route";
-    case msg::NavigationHealth::FAILURE_NO_ACKNOWLEDGED_HORIZON:
-      return "navigation_no_acknowledged_horizon";
-    case msg::NavigationHealth::FAILURE_RECOVERY_BUDGET_EXHAUSTED:
-      return "navigation_recovery_budget_exhausted";
-    default:
-      return "navigation_invalid_failure_reason";
-  }
-}
-
-} // namespace
+using namespace mission_monitor_node_internal;
 
 class MissionMonitorNode final : public rclcpp::Node {
 public:
@@ -213,6 +91,8 @@ public:
                 "px4_local_position_topic", "/fmu/out/vehicle_local_position"),
             .status = declare_parameter<std::string>("px4_vehicle_status_topic",
                                                      "/fmu/out/vehicle_status"),
+            .battery = declare_parameter<std::string>("px4_battery_status_topic",
+                                                      "/fmu/out/battery_status_v1"),
         },
         px4_qos,
         AutopilotStateCallbacks{
@@ -222,11 +102,22 @@ public:
                 [this](const AutopilotStatus& status) {
                   // A vehicle that disarms before its mission's end has
                   // landed: the autopilot's landing when no position is left
-                  // (roadmap item 17 stage 5) ends the mission there.
+                  // (roadmap item 17 stage 5) or the operator's landing ends
+                  // the mission there. After the result, the disarm is the
+                  // end of the mission's own landing (K30).
                   if (armed_seen_ && !status.armed && !result_reported_) {
-                    report(false, "vehicle_landed");
+                    report(false,
+                           operator_landing_ ? "operator_landed" : "vehicle_landed");
+                  } else if (armed_seen_ && !status.armed && landing_after_result_ &&
+                             !landed_reported_) {
+                    finishLanding(true);
                   }
                   armed_seen_ = armed_seen_ || status.armed;
+                },
+            .battery =
+                [this](const AutopilotBattery& battery) {
+                  main_battery_.observe(now().seconds(), battery.remaining,
+                                        battery.time_remaining_s);
                 },
         });
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
@@ -315,6 +206,17 @@ public:
         declare_parameter<std::string>("navigation_objective_topic",
                                        "/drone_city_nav/navigation_objective"),
         rclcpp::QoS{1}.reliable().transient_local());
+    // The operator's commands (specification K31): stop, land, home, a new
+    // goal; the monitor sends "land" itself at the mission's end (K30).
+    const std::string operator_topic = declare_parameter<std::string>(
+        "operator_command_topic", "/drone_city_nav/operator_command");
+    operator_command_pub_ = create_publisher<std_msgs::msg::String>(
+        operator_topic, rclcpp::QoS{10}.reliable().transient_local());
+    operator_command_sub_ = create_subscription<std_msgs::msg::String>(
+        operator_topic, rclcpp::QoS{10}.reliable().transient_local(),
+        [this](const std_msgs::msg::String::SharedPtr command) {
+          onOperatorCommand(command->data);
+        });
     // The mission's events as the vehicle decides them (specification K26):
     // what a ground station would show, and what the evaluation overlay
     // draws in RViz. Kept for late subscribers.
@@ -404,7 +306,7 @@ private:
     latest_position_ = Point2{message.position.x, message.position.y};
     if (!goal_substituted_) {
       return_trail_.record(position);
-    } else {
+    } else if (!operator_hold_) {
       publishReturnObjective();
     }
     // The contract carries the map altitude; the monitor keeps the altitude
@@ -702,6 +604,73 @@ private:
         light_charge_s_ < kReturnChargeMargin * homeEstimateS()) {
       static_cast<void>(substituteGoalWithStart("battery", now_ns));
     }
+    // The vehicle's own battery by the same rule (specification K32).
+    if (main_battery_.timeLeftS() < kReturnChargeMargin * homeEstimateS()) {
+      static_cast<void>(substituteGoalWithStart("main_battery", now_ns));
+    }
+  }
+
+  // Specification K31: the operator's commands. A new goal is the mission's
+  // only waypoint from then on; a stop holds where the vehicle is until the
+  // next command; home gives the goal up for the start (K20); land is flown
+  // by the offboard, and the disarm ends the mission.
+  void onOperatorCommand(const std::string& text) {
+    const std::optional<OperatorCommand> command = parseOperatorCommand(text);
+    if (!command.has_value() || result_reported_ || !navigation_mission_ready_) {
+      return;
+    }
+    RCLCPP_WARN(get_logger(), "OPERATOR_COMMAND accepted=true command='%s'",
+                text.c_str());
+    publishMissionEvent("OPERATOR_COMMAND " + text);
+    switch (command->kind) {
+      case OperatorCommandKind::kStop:
+        operator_hold_ = true;
+        publishObjective(latest_map_position_, nextObjectiveEpoch(), 1U, true);
+        break;
+      case OperatorCommandKind::kGoal:
+        operator_hold_ = false;
+        goal_substituted_ = false;
+        waypoints_ = {command->goal};
+        goal_ = Point2{command->goal.x, command->goal.y};
+        active_waypoint_index_ = 0U;
+        completed_waypoint_count_ = 0U;
+        minimum_goal_distance_m_ = std::numeric_limits<double>::infinity();
+        publishObjective(command->goal, nextObjectiveEpoch(), 1U, false);
+        break;
+      case OperatorCommandKind::kHome:
+        operator_hold_ = false;
+        static_cast<void>(substituteGoalWithStart("operator", now().nanoseconds()));
+        break;
+      case OperatorCommandKind::kLand:
+        operator_landing_ = true;
+        break;
+    }
+  }
+
+  // The next mission epoch: one past the planner's and past every one the
+  // monitor published.
+  [[nodiscard]] std::uint64_t nextObjectiveEpoch() noexcept {
+    last_objective_epoch_ =
+        std::max(navigation_mission_epoch_, last_objective_epoch_) + 1U;
+    return last_objective_epoch_;
+  }
+
+  // A position objective on the channel every goal enters by: the return's
+  // trail points (K20) and the operator's goals and holds (K31).
+  void publishObjective(const Point3& position, const std::uint64_t epoch,
+                        const std::uint64_t sample, const bool hold) {
+    msg::NavigationObjective objective;
+    objective.stamp = now();
+    objective.mission_epoch = epoch;
+    objective.sample_sequence = sample;
+    objective.position.x = position.x;
+    objective.position.y = position.y;
+    objective.position.z = position.z;
+    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
+    objective.terminal_policy =
+        hold ? msg::NavigationObjective::TERMINAL_POLICY_IMMEDIATE_HOLD
+             : msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
+    objective_pub_->publish(objective);
   }
 
   // The return to home (RTH; PX4's own is RTL, which flies no map): the goal
@@ -732,7 +701,7 @@ private:
     publishMissionEvent(std::string{"GOAL_UNREACHABLE trigger="} + trigger);
     // The return is one mission epoch (K20), opened here; its objective then
     // moves along the trail a sample at a time.
-    return_epoch_ = navigation_mission_epoch_ + 1U;
+    return_epoch_ = nextObjectiveEpoch();
     return_sample_ = 0U;
     return_target_ = std::numeric_limits<std::size_t>::max();
     publishReturnObjective();
@@ -770,16 +739,7 @@ private:
     // routes to the moved target afresh and its lifecycle replaces the route
     // to the old one (r908 stood 540 s at the first point with the objective
     // 20 m on, when it kept that route as equivalent).
-    msg::NavigationObjective objective;
-    objective.stamp = now();
-    objective.mission_epoch = return_epoch_;
-    objective.sample_sequence = ++return_sample_;
-    objective.position.x = position.x;
-    objective.position.y = position.y;
-    objective.position.z = position.z;
-    objective.objective_type = msg::NavigationObjective::OBJECTIVE_TYPE_POSITION;
-    objective.terminal_policy = msg::NavigationObjective::TERMINAL_POLICY_POSITION_HOLD;
-    objective_pub_->publish(objective);
+    publishObjective(position, return_epoch_, ++return_sample_, false);
     RCLCPP_INFO(get_logger(),
                 "RETURN_TRAIL objective=(%.3f,%.3f,%.3f) index=%zu of %zu "
                 "mission_epoch=%" PRIu64 " sample=%" PRIu64,
@@ -820,6 +780,44 @@ private:
                    latest_position_.y, latest_altitude_m_, latest_speed_mps_,
                    maximum_speed_mps_, meanSpeed());
     }
+    // Specification K30: a mission that reached its goal or came home ends
+    // with a landing there and the autopilot's disarm; the monitor waits for
+    // it (90 s at most) before it ends the run.
+    if (success || reason == "goal_unreachable_returned") {
+      landing_after_result_ = true;
+      landing_requested_ns_ = now().nanoseconds();
+      std_msgs::msg::String land;
+      land.data = "land";
+      operator_command_pub_->publish(land);
+      RCLCPP_INFO(get_logger(), "MISSION_LANDING requested=true");
+      landing_timer_ = create_timer(std::chrono::seconds{1}, [this] {
+        if (!landed_reported_ &&
+            static_cast<double>(now().nanoseconds() - landing_requested_ns_) * 1.0e-9 >
+                kLandingTimeoutS) {
+          finishLanding(false);
+        }
+      });
+      return;
+    }
+    scheduleShutdown();
+  }
+
+  void finishLanding(const bool disarmed) {
+    landed_reported_ = true;
+    landing_timer_->cancel();
+    const double after_s =
+        static_cast<double>(now().nanoseconds() - landing_requested_ns_) * 1.0e-9;
+    publishMissionEvent(std::string{"MISSION_LANDED disarmed="} +
+                        (disarmed ? "true" : "false"));
+    RCLCPP_WARN(
+        get_logger(),
+        "MISSION_LANDED disarmed=%s after_s=%.1f final_position=(%.2f, %.2f, %.2f)",
+        disarmed ? "true" : "false", after_s, latest_map_position_.x,
+        latest_map_position_.y, latest_map_position_.z);
+    scheduleShutdown();
+  }
+
+  void scheduleShutdown() {
     if (shutdown_on_result_) {
       shutdown_timer_ = create_wall_timer(std::chrono::milliseconds{100}, [this] {
         shutdown_timer_->cancel();
@@ -914,6 +912,17 @@ private:
   rclcpp::Subscription<msg::NavigationHealth>::SharedPtr navigation_health_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
   rclcpp::TimerBase::SharedPtr shutdown_timer_;
+  static constexpr double kLandingTimeoutS{90.0};
+  MainBatteryEstimate main_battery_;
+  bool operator_hold_{false};
+  bool operator_landing_{false};
+  bool landing_after_result_{false};
+  bool landed_reported_{false};
+  std::int64_t landing_requested_ns_{0};
+  std::uint64_t last_objective_epoch_{0U};
+  rclcpp::TimerBase::SharedPtr landing_timer_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr operator_command_pub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr operator_command_sub_;
 };
 
 } // namespace drone_city_nav

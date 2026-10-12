@@ -559,6 +559,8 @@ set(DRONE_CITY_NAV_EXECUTION_HEADERS
     include/drone_city_nav/execution_supervisor_3d.hpp
     include/drone_city_nav/mission_goal_capture.hpp
     include/drone_city_nav/carried_light_judgment.hpp
+    include/drone_city_nav/main_battery_estimate.hpp
+    include/drone_city_nav/operator_command.hpp
     include/drone_city_nav/mission_waypoint_acknowledgement_admission.hpp
     include/drone_city_nav/mission_waypoint_capture_gate.hpp
     include/drone_city_nav/goal_reachability_proof_3d.hpp
@@ -2159,6 +2161,11 @@ if(BUILD_TESTING)
   target_compile_features(return_trail_test_current PRIVATE cxx_std_20)
   target_link_libraries(return_trail_test_current drone_city_nav_core)
   enable_project_warnings(return_trail_test_current)
+
+  ament_add_gtest(operator_command_test_current tests/operator_command_test.cpp)
+  target_compile_features(operator_command_test_current PRIVATE cxx_std_20)
+  target_link_libraries(operator_command_test_current drone_city_nav_core)
+  enable_project_warnings(operator_command_test_current)
 
   ament_add_gtest(dead_reckoning_landing_test_current
                   tests/dead_reckoning_landing_test.cpp)

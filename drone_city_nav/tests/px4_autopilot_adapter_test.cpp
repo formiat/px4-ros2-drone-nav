@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace drone_city_nav {
@@ -113,6 +114,48 @@ TEST(Px4AutopilotAdapter, TheFingerprintTellsSamplesApartByContentNotStamps) {
             px4LocalPositionToAutopilotState(restamped, transform).payload_fingerprint);
   EXPECT_NE(px4LocalPositionToAutopilotState(first, transform).payload_fingerprint,
             px4LocalPositionToAutopilotState(moved, transform).payload_fingerprint);
+}
+
+// Specification K29: the pilot's mode, the autopilot's own landing and
+// failsafe, a kill (termination, kill switch, forced disarm) and the links.
+TEST(Px4AutopilotAdapter, TheStatusTellsWhoFliesAndTheLinksAndBatteryCarryOver) {
+  using Status = px4_msgs::msg::VehicleStatus;
+  Status status;
+  status.arming_state = Status::ARMING_STATE_ARMED;
+  status.nav_state = Status::NAVIGATION_STATE_AUTO_LOITER;
+  status.failsafe = false;
+  AutopilotStatus converted = px4VehicleStatusToAutopilotStatus(status);
+  EXPECT_FALSE(converted.external_control);
+  EXPECT_FALSE(converted.autopilot_landing);
+  EXPECT_FALSE(converted.terminated);
+  status.nav_state = Status::NAVIGATION_STATE_DESCEND;
+  status.failsafe = true;
+  converted = px4VehicleStatusToAutopilotStatus(status);
+  EXPECT_TRUE(converted.autopilot_landing);
+  EXPECT_TRUE(converted.failsafe);
+  status.arming_state = Status::ARMING_STATE_DISARMED;
+  status.latest_disarming_reason = Status::ARM_DISARM_REASON_AUTO_DISARM_LAND;
+  EXPECT_FALSE(px4VehicleStatusToAutopilotStatus(status).terminated);
+  status.latest_disarming_reason = Status::ARM_DISARM_REASON_KILL_SWITCH;
+  EXPECT_TRUE(px4VehicleStatusToAutopilotStatus(status).terminated);
+  status.arming_state = Status::ARMING_STATE_ARMED;
+  status.nav_state = Status::NAVIGATION_STATE_TERMINATION;
+  EXPECT_TRUE(px4VehicleStatusToAutopilotStatus(status).terminated);
+
+  px4_msgs::msg::FailsafeFlags flags;
+  flags.manual_control_signal_lost = true;
+  flags.gcs_connection_lost = false;
+  const AutopilotLinks links = px4FailsafeFlagsToAutopilotLinks(flags);
+  EXPECT_TRUE(links.manual_control_lost);
+  EXPECT_FALSE(links.ground_station_lost);
+
+  px4_msgs::msg::BatteryStatus battery;
+  battery.remaining = 0.5F;
+  battery.time_remaining_s = std::numeric_limits<float>::quiet_NaN();
+  const AutopilotBattery converted_battery =
+      px4BatteryStatusToAutopilotBattery(battery);
+  EXPECT_DOUBLE_EQ(converted_battery.remaining, 0.5);
+  EXPECT_TRUE(std::isnan(converted_battery.time_remaining_s));
 }
 
 TEST(Px4AutopilotAdapter, StatusClockAndGroundContactCarryOver) {

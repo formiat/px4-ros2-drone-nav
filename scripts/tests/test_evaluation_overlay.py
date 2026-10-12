@@ -124,6 +124,13 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         self.assertIn('"VEHICLE_DESTROYED"', sources["collision_crash_node.cpp"])
         self.assertIn('"VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started="',
                       sources["visual_inertial_odometry_node.cpp"])
+        offboard = "\n".join(path.read_text() for path in sorted(
+            (REPOSITORY / "drone_city_nav/src").glob("mppi_offboard_node*.cpp")))
+        self.assertIn('"/drone_city_nav/mission_events"', offboard)
+        self.assertIn('"AUTOPILOT_CONTROL state=', offboard)
+        self.assertIn('"MISSION_LANDING started=true"', offboard)
+        self.assertIn('"MISSION_LANDED disarmed="', sources["mission_monitor_node.cpp"])
+        self.assertIn('"OPERATOR_COMMAND "', sources["mission_monitor_node.cpp"])
 
     def test_both_rviz_views_show_the_overlay_and_rviz_starts_it(self) -> None:
         for name, view in (("city_nav_debug.rviz", "follow"),

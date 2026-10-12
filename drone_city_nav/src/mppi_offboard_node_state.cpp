@@ -29,6 +29,80 @@ void MppiOffboardNode::onAutopilotStatus(const AutopilotStatus& status) {
     RCLCPP_INFO(get_logger(), "EXECUTION_HORIZON rearm_observed=true "
                               "action=wait_for_new_identity");
   }
+  // Specification K29: who flies the vehicle. The pilot's choice of mode and
+  // the autopilot's failsafe win and are never undone here.
+  const auto announce = [this](const std::string& event) {
+    RCLCPP_WARN(get_logger(), "%s", event.c_str());
+    publishMissionEvent(event);
+  };
+  if (in_control_seen_ && !flight_over_ &&
+      (status.terminated || (was_armed && !armed))) {
+    flight_over_ = true;
+    released_ = false;
+    announce(std::string{"AUTOPILOT_CONTROL state="} +
+             (status.terminated ? "terminated" : "disarmed") +
+             " mission_landing=" + (mission_landing_ ? "true" : "false"));
+    return;
+  }
+  if (armed && status.external_control) {
+    if (released_) {
+      released_ = false;
+      unavailable_path_hold_pin_.reset();
+      announce("AUTOPILOT_CONTROL state=resumed");
+    }
+    in_control_seen_ = true;
+  } else if (armed && in_control_seen_ && !released_ && !flight_over_) {
+    released_ = true;
+    unavailable_path_hold_pin_.reset();
+    announce(std::string{"AUTOPILOT_CONTROL state=released reason="} +
+             (status.failsafe            ? "failsafe"
+              : status.autopilot_landing ? "autopilot_landing"
+                                         : "pilot"));
+  }
+}
+
+void MppiOffboardNode::onAutopilotLinks(const AutopilotLinks& links) {
+  // A link is reported lost only once it was heard: a simulation without a
+  // radio or a ground station never hears either.
+  const auto follow = [this](const char* name, const bool lost, bool& heard,
+                             bool& was_lost) {
+    if (!lost) {
+      if (heard && was_lost) {
+        publishMissionEvent(std::string{name} + " lost=false");
+        RCLCPP_WARN(get_logger(), "%s lost=false", name);
+      }
+      heard = true;
+    } else if (heard && !was_lost) {
+      publishMissionEvent(std::string{name} + " lost=true");
+      RCLCPP_WARN(get_logger(), "%s lost=true", name);
+    }
+    was_lost = lost;
+  };
+  follow("RC_LINK", links.manual_control_lost, radio_heard_, radio_lost_);
+  follow("GCS_LINK", links.ground_station_lost, ground_station_heard_,
+         ground_station_lost_);
+}
+
+void MppiOffboardNode::onOperatorCommand(const std::string& text) {
+  const std::optional<OperatorCommand> command = parseOperatorCommand(text);
+  if (!command.has_value() || command->kind != OperatorCommandKind::kLand ||
+      mission_landing_ || flight_over_ || !in_control_seen_ || !vehicle_status_.armed) {
+    return;
+  }
+  mission_landing_ = true;
+  mission_landing_local_ = Point2{local_x_, local_y_};
+  mission_landing_yaw_rad_ = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
+  const Point2 map_xy = px4_map_transform_.localPositionToMap(mission_landing_local_);
+  RCLCPP_WARN(get_logger(),
+              "MISSION_LANDING started=true position=(%.2f,%.2f,%.2f) released=%s",
+              map_xy.x, map_xy.y, mapAltitudeM(), released_ ? "true" : "false");
+  publishMissionEvent("MISSION_LANDING started=true");
+}
+
+void MppiOffboardNode::publishMissionEvent(const std::string& event) {
+  std_msgs::msg::String message;
+  message.data = event;
+  mission_event_pub_->publish(message);
 }
 
 void MppiOffboardNode::onLocalState(const AutopilotLocalState& state) {
@@ -77,7 +151,10 @@ void MppiOffboardNode::publishNavigationState() {
   state.navigation_ready =
       state.airborne && takeoff_complete_stamp_.has_value() &&
       (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
-  state.landing = blind_landing_;
+  // A contact is a landing only while the vehicle is being landed (A9): the
+  // blind descent (K19), the mission's landing (K30), or the autopilot's own.
+  state.landing = blind_landing_ || mission_landing_ ||
+                  (vehicle_status_seen_ && vehicle_status_.autopilot_landing);
   navigation_state_pub_->publish(state);
   publishNavigationReadiness(state.navigation_ready);
 }

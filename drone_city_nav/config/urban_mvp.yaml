@@ -941,10 +941,9 @@ mppi_offboard_node:
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
     takeoff_hover_s: 2.0
-    warmup_setpoints: 20
-    command_resend_period_s: 2.0
-    auto_arm: true
-    auto_offboard: true
+    px4_failsafe_flags_topic: /fmu/out/failsafe_flags
+    mission_event_topic: /drone_city_nav/mission_events
+    operator_command_topic: /drone_city_nav/operator_command
     px4_local_origin_x_m: 54.0
     px4_local_origin_y_m: 54.0
     rviz_drone_marker_topic: /drone_city_nav/drone_marker
@@ -975,6 +974,8 @@ collision_crash_node:
 mission_monitor_node:
   ros__parameters:
     use_static_map: true
+    px4_battery_status_topic: /fmu/out/battery_status_v1
+    operator_command_topic: /drone_city_nav/operator_command
     frame_id: map
     vehicle_destroyed_topic: /drone_city_nav/vehicle_destroyed
     mission_waypoint_acknowledgement_topic: /drone_city_nav/mission_waypoint_acknowledgement

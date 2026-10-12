@@ -20,6 +20,8 @@ struct AutopilotStateTopics {
   std::string clock_sync;
   std::string status;
   std::string ground_contact;
+  std::string links;
+  std::string battery;
 };
 
 struct AutopilotStateCallbacks {
@@ -29,6 +31,8 @@ struct AutopilotStateCallbacks {
   std::function<void(const AutopilotClockSync&)> clock_sync;
   std::function<void(const AutopilotStatus&)> status;
   std::function<void(const AutopilotGroundContact&)> ground_contact;
+  std::function<void(const AutopilotLinks&)> links;
+  std::function<void(const AutopilotBattery&)> battery;
 };
 
 // Subscribes a node to the autopilot's messages and delivers them as the

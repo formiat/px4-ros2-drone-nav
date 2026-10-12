@@ -5,6 +5,8 @@
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 
+#include <px4_msgs/msg/battery_status.hpp>
+#include <px4_msgs/msg/failsafe_flags.hpp>
 #include <px4_msgs/msg/sensor_combined.hpp>
 #include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
@@ -50,5 +52,11 @@ px4VehicleStatusToAutopilotStatus(const px4_msgs::msg::VehicleStatus& message) n
 
 [[nodiscard]] AutopilotGroundContact px4LandDetectedToAutopilotGroundContact(
     const px4_msgs::msg::VehicleLandDetected& message) noexcept;
+
+[[nodiscard]] AutopilotLinks
+px4FailsafeFlagsToAutopilotLinks(const px4_msgs::msg::FailsafeFlags& message) noexcept;
+
+[[nodiscard]] AutopilotBattery px4BatteryStatusToAutopilotBattery(
+    const px4_msgs::msg::BatteryStatus& message) noexcept;
 
 } // namespace drone_city_nav

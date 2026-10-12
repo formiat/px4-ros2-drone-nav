@@ -198,12 +198,39 @@ px4TimesyncToAutopilotClockSync(const px4_msgs::msg::TimesyncStatus& message) no
 
 AutopilotStatus px4VehicleStatusToAutopilotStatus(
     const px4_msgs::msg::VehicleStatus& message) noexcept {
+  using Status = px4_msgs::msg::VehicleStatus;
+  const bool armed = message.arming_state == Status::ARMING_STATE_ARMED;
+  const std::uint8_t disarmed_by = message.latest_disarming_reason;
   return AutopilotStatus{
       .timestamp_us = message.timestamp,
-      .armed = message.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED,
-      .external_control =
-          message.nav_state == px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD,
+      .armed = armed,
+      .external_control = message.nav_state == Status::NAVIGATION_STATE_OFFBOARD,
+      .autopilot_landing = message.nav_state == Status::NAVIGATION_STATE_AUTO_LAND ||
+                           message.nav_state == Status::NAVIGATION_STATE_DESCEND,
+      .failsafe = message.failsafe,
+      // The kill switch stops the motors at once and disarms after
+      // COM_KILL_DISARM; a forced disarm is a ground station's kill.
+      .terminated =
+          message.nav_state == Status::NAVIGATION_STATE_TERMINATION ||
+          (!armed && (disarmed_by == Status::ARM_DISARM_REASON_KILL_SWITCH ||
+                      disarmed_by == Status::ARM_DISARM_REASON_LOCKDOWN ||
+                      disarmed_by == Status::ARM_DISARM_REASON_COMMAND_EXTERNAL ||
+                      disarmed_by == Status::ARM_DISARM_REASON_FAILURE_DETECTOR)),
   };
+}
+
+AutopilotLinks
+px4FailsafeFlagsToAutopilotLinks(const px4_msgs::msg::FailsafeFlags& message) noexcept {
+  return AutopilotLinks{.timestamp_us = message.timestamp,
+                        .manual_control_lost = message.manual_control_signal_lost,
+                        .ground_station_lost = message.gcs_connection_lost};
+}
+
+AutopilotBattery px4BatteryStatusToAutopilotBattery(
+    const px4_msgs::msg::BatteryStatus& message) noexcept {
+  return AutopilotBattery{.timestamp_us = message.timestamp,
+                          .remaining = message.remaining,
+                          .time_remaining_s = message.time_remaining_s};
 }
 
 AutopilotGroundContact px4LandDetectedToAutopilotGroundContact(
@@ -272,6 +299,24 @@ AutopilotStateSource::AutopilotStateSource(
               callback(px4LandDetectedToAutopilotGroundContact(*message));
             },
             status_options));
+  }
+  if (!topics.links.empty() && callbacks.links) {
+    subscriptions_.push_back(node.create_subscription<px4_msgs::msg::FailsafeFlags>(
+        topics.links, qos,
+        [callback = std::move(callbacks.links)](
+            const px4_msgs::msg::FailsafeFlags::SharedPtr message) {
+          callback(px4FailsafeFlagsToAutopilotLinks(*message));
+        },
+        status_options));
+  }
+  if (!topics.battery.empty() && callbacks.battery) {
+    subscriptions_.push_back(node.create_subscription<px4_msgs::msg::BatteryStatus>(
+        topics.battery, qos,
+        [callback = std::move(callbacks.battery)](
+            const px4_msgs::msg::BatteryStatus::SharedPtr message) {
+          callback(px4BatteryStatusToAutopilotBattery(*message));
+        },
+        status_options));
   }
 }
 

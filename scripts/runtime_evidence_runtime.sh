@@ -70,6 +70,18 @@ start_runtime_evidence_capture() {
     "${runtime_artifact_dir}/resources_host.json" \
     --world "${world_name}" \
     > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
+  # Roadmap item 27 block 1 (specification K29): the pilot, an evaluation
+  # component, puts each vehicle in offboard and arms it; nothing of the stack
+  # does. PILOT_EVENTS schedules its and the operator's actions, PILOT_RC a
+  # radio heard from the start.
+  local pilot_namespaces=""
+  if bool_is_true "${multi_vehicle_mission:-false}"; then
+    pilot_namespaces="${multi_vehicle_px4_namespaces[*]}"
+  fi
+  python3 "${repo_root}/scripts/sim_pilot.py" --namespaces "${pilot_namespaces}" \
+    --events "${PILOT_EVENTS:-}" $(bool_is_true "${PILOT_RC:-false}" && echo --rc) \
+    --output "${runtime_artifact_dir}/pilot.csv" \
+    > "${runtime_artifact_dir}/pilot.log" 2>&1 &
   # Roadmap item 17 stage 5: the light the camera vehicle carries, its
   # battery (the charge is published) and its injected failures (never
   # announced); the schedule and every change land beside the manifest.

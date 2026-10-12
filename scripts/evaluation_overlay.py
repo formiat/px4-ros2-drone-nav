@@ -79,8 +79,22 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     kept, the vehicle may fly on (r1184 touched a floor and flew on)."""
     if any(event.startswith("VEHICLE_DESTROYED") for event in events):
         return "CRASH", RED
+    # Who flies the vehicle (K29): the motors killed, the pilot's mode or the
+    # autopilot's failsafe, a radio gone silent.
+    control = next((event for event in reversed(events)
+                    if event.startswith("AUTOPILOT_CONTROL")), "")
+    if "state=terminated" in control:
+        return "MOTORS KILLED", RED
     if landed:
         return "LANDED", GREY
+    if "state=released" in control:
+        return (("PILOT FLIES", AMBER) if "reason=pilot" in control
+                else ("AUTOPILOT FAILSAFE", RED))
+    radio = next((event for event in reversed(events) if event.startswith("RC_LINK")), "")
+    if radio.endswith("lost=true"):
+        return "RC LOST", AMBER
+    if any(event.startswith("MISSION_LANDING started=true") for event in events):
+        return "LANDING", GREY
     if any(event.startswith("MISSION_RESULT success=true") for event in events):
         return "GOAL REACHED", GREEN
     # The camera estimator declares dead reckoning on the pad too, where it
@@ -89,11 +103,16 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         return "LEVEL DESCENT", RED
     if dead_reckoning and ready:
         return "DEAD RECKONING", RED
+    operator = next((event for event in reversed(events)
+                     if event.startswith("OPERATOR_COMMAND")), "")
+    if operator == "OPERATOR_COMMAND stop":
+        return "OPERATOR: HOLD", AMBER
     home = next((event for event in reversed(events) if event.startswith("GOAL_UNREACHABLE")),
                 None)
     if home is not None:
         trigger = home.split("trigger=", 1)[-1].split()[0]
-        words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY"}
+        words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
+                 "main_battery": "MAIN BATTERY", "operator": "OPERATOR"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN

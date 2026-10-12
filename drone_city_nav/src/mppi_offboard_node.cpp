@@ -56,14 +56,9 @@ MppiOffboardNode::MppiOffboardNode()
   }
   control_lookahead_ns_ =
       static_cast<std::int64_t>(std::floor(control_lookahead_ns + 0.5L));
-  warmup_setpoints_ =
-      static_cast<int>(declare_parameter<std::int64_t>("warmup_setpoints", 20));
-  command_resend_period_s_ = declare_parameter<double>("command_resend_period_s", 2.0);
   destruction_disarm_lifecycle_ = std::make_unique<VehicleDestructionDisarmLifecycle>(
       VehicleDestructionDisarmConfig{.retry_period_s = declare_parameter<double>(
                                          "death_force_disarm_retry_period_s", 0.2)});
-  auto_arm_ = declare_parameter<bool>("auto_arm", true);
-  auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
   expected_vehicle_role_ = static_cast<std::uint8_t>(declare_parameter<std::int64_t>(
       "vehicle_role", msg::VehicleDestroyed::ROLE_UNSPECIFIED));
   expected_vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
@@ -164,6 +159,8 @@ MppiOffboardNode::MppiOffboardNode()
               "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1"),
           .status = declare_parameter<std::string>("px4_vehicle_status_topic",
                                                    "/fmu/out/vehicle_status_v1"),
+          .links = declare_parameter<std::string>("px4_failsafe_flags_topic",
+                                                  "/fmu/out/failsafe_flags"),
       },
       px4_qos,
       AutopilotStateCallbacks{
@@ -171,6 +168,20 @@ MppiOffboardNode::MppiOffboardNode()
               [this](const AutopilotLocalState& state) { onLocalState(state); },
           .status =
               [this](const AutopilotStatus& status) { onAutopilotStatus(status); },
+          .links = [this](const AutopilotLinks& links) { onAutopilotLinks(links); },
+      });
+  // Who flies the vehicle, as the evaluation overlay draws it (K26, K29).
+  mission_event_pub_ = create_publisher<std_msgs::msg::String>(
+      declare_parameter<std::string>("mission_event_topic",
+                                     "/drone_city_nav/mission_events"),
+      rclcpp::QoS{50}.reliable().transient_local());
+  // The operator's commands (specification K31); the node acts on "land".
+  operator_command_sub_ = create_subscription<std_msgs::msg::String>(
+      declare_parameter<std::string>("operator_command_topic",
+                                     "/drone_city_nav/operator_command"),
+      rclcpp::QoS{10}.reliable().transient_local(),
+      [this](const std_msgs::msg::String::SharedPtr command) {
+        onOperatorCommand(command->data);
       });
   vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
       declare_parameter<std::string>("vehicle_destroyed_topic",
@@ -207,8 +218,6 @@ MppiOffboardNode::MppiOffboardNode()
         destruction_mission_epoch_ = destroyed->mission_epoch;
         destruction_disarm_lifecycle_->latch(now().nanoseconds());
         horizon_.reset();
-        auto_arm_ = false;
-        auto_offboard_ = false;
         RCLCPP_ERROR(get_logger(),
                      "VEHICLE_DESTROYED latched=true role=%s vehicle_id='%s' cause=%s "
                      "mission_epoch=%" PRIu64 " detail='%s' "
@@ -282,7 +291,6 @@ MppiOffboardNode::MppiOffboardNode()
       declare_parameter<std::string>("vehicle_command_topic",
                                      "/fmu/in/vehicle_command"),
       px4_qos);
-  last_command_time_ = now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
   timer_ = create_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
   RCLCPP_INFO(get_logger(),
               "Production MPPI offboard ready: takeoff_climb_m=%.1f "
@@ -334,6 +342,27 @@ void MppiOffboardNode::controlTick() {
                   vehicleDeathCauseName(destroyed_cause_), destruction_mission_epoch_,
                   destruction_detail_.c_str());
     }
+    publishUnavailableControlFeedback();
+    return;
+  }
+  // Specification K29: after the flight, nothing; while the pilot or the
+  // autopilot's failsafe flies the vehicle, a hold the pilot may hand the
+  // vehicle back to; the mission's landing (K30) before anything else.
+  if (flight_over_) {
+    publishUnavailableControlFeedback();
+    return;
+  }
+  if (released_) {
+    offboard_mode_pub_->publish(
+        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    publishUnavailablePathHoldSetpoint();
+    publishUnavailableControlFeedback();
+    return;
+  }
+  if (mission_landing_) {
+    offboard_mode_pub_->publish(
+        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    publishMissionLandingSetpoint();
     publishUnavailableControlFeedback();
     return;
   }
@@ -423,27 +452,6 @@ void MppiOffboardNode::controlTick() {
   }
   if (!exact_horizon_feedback_published) {
     publishUnavailableControlFeedback();
-  }
-  if (warmup_count_ < warmup_setpoints_) {
-    ++warmup_count_;
-    return;
-  }
-  const rclcpp::Time current = now();
-  if ((current - last_command_time_).seconds() < command_resend_period_s_) {
-    return;
-  }
-  if (!planner_authorized) {
-    return;
-  }
-  if (auto_offboard_ && !vehicle_status_.external_control) {
-    publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1.0F, 6.0F);
-    last_command_time_ = current;
-    return;
-  }
-  if (auto_arm_ && !vehicle_status_.armed) {
-    publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
-                   1.0F);
-    last_command_time_ = current;
   }
 }
 

@@ -73,6 +73,29 @@ struct AutopilotStatus {
   bool armed{false};
   // The autopilot flies the stack's setpoints (PX4: offboard mode).
   bool external_control{false};
+  // The autopilot lands the vehicle by a mode of its own (PX4: Land, Descend).
+  bool autopilot_landing{false};
+  // The autopilot acts on a failsafe of its own.
+  bool failsafe{false};
+  // The flight was terminated or the motors killed: by a kill switch, a
+  // lockdown, a forced disarm or the autopilot's failure detector.
+  bool terminated{false};
+};
+
+// The links the autopilot reports (specification K29): the pilot's radio and
+// the ground station. Lost means the autopilot has stopped hearing one.
+struct AutopilotLinks {
+  std::uint64_t timestamp_us{0U};
+  bool manual_control_lost{false};
+  bool ground_station_lost{false};
+};
+
+// The vehicle's main battery (specification K32): the share of its charge
+// left, and the time left the autopilot estimates, NaN where it has none.
+struct AutopilotBattery {
+  std::uint64_t timestamp_us{0U};
+  double remaining{0.0};
+  double time_remaining_s{0.0};
 };
 
 // The autopilot's own landing detector: any contact with the ground.

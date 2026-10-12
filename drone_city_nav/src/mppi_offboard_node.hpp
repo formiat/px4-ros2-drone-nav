@@ -14,6 +14,7 @@
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
+#include "drone_city_nav/operator_command.hpp"
 #include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
@@ -28,6 +29,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
 #include <algorithm>
@@ -58,6 +60,10 @@ public:
 private:
   void controlTick();
   void onAutopilotStatus(const AutopilotStatus& status);
+  void onAutopilotLinks(const AutopilotLinks& links);
+  void onOperatorCommand(const std::string& text);
+  void publishMissionEvent(const std::string& event);
+  void publishMissionLandingSetpoint();
   void onLocalState(const AutopilotLocalState& state);
   void publishNavigationState();
   void publishNavigationReadiness(bool ready);
@@ -91,7 +97,6 @@ private:
   FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};
   std::int64_t control_lookahead_ns_{50'000'000};
-  double command_resend_period_s_{2.0};
   double local_x_{0.0};
   double local_y_{0.0};
   double altitude_m_{0.0};
@@ -105,11 +110,23 @@ private:
   double rviz_drone_marker_color_r_{0.15};
   double rviz_drone_marker_color_g_{0.65};
   double rviz_drone_marker_color_b_{1.0};
-  int warmup_setpoints_{20};
-  int warmup_count_{0};
   std::int32_t rviz_drone_marker_id_{0};
-  bool auto_arm_{true};
-  bool auto_offboard_{true};
+  // Roadmap item 27 block 1 (specification K29): the pilot arms the vehicle
+  // and chooses its mode. The node flies it while it is armed in offboard;
+  // released while the pilot or the autopilot's failsafe flies it, it holds
+  // a stream the pilot may return to; once disarmed after a flight it sends
+  // nothing more. It never arms the vehicle or switches its mode.
+  bool in_control_seen_{false};
+  bool released_{false};
+  bool flight_over_{false};
+  bool radio_heard_{false};
+  bool radio_lost_{false};
+  bool ground_station_heard_{false};
+  bool ground_station_lost_{false};
+  // The landing that ends a mission (specification K30), where it began.
+  bool mission_landing_{false};
+  Point2 mission_landing_local_{};
+  double mission_landing_yaw_rad_{0.0};
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool vehicle_status_seen_{false};
@@ -134,7 +151,6 @@ private:
   std::optional<bool> last_navigation_readiness_;
   std::uint64_t offboard_producer_instance_id_{0U};
   ExecutionHorizonAdmissionState horizon_admission_{};
-  rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   DeadReckoningLanding dead_reckoning_landing_;
   BlindDescentReflex blind_descent_reflex_;
   // The time-of-flight ring's lateral units and the down unit, the nearest
@@ -177,6 +193,8 @@ private:
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr command_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr operator_command_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

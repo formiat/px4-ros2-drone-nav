@@ -309,6 +309,15 @@ def validate_return_home(ros_log: str, injected: bool, errors: list[str],
     )
 
 
+def validate_mission_landing(ros_log: str, errors: list[str]) -> None:
+    """Specification K30: a mission that reached its goal or came home ends with a
+    landing there and the autopilot's disarm."""
+    if re.search(r"MISSION_LANDED disarmed=true", ros_log) is None:
+        errors.append("FAIL: the vehicle landed and disarmed at the mission's end")
+    else:
+        print("OK: the vehicle landed and disarmed at the mission's end")
+
+
 def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true .*waypoint_count=([0-9]+) "
@@ -600,6 +609,8 @@ def main() -> int:
             )
         else:
             validate_point_to_point_waypoints(ros_log, errors)
+        if return_home_expected or args.mission_type != "cooperative_traffic":
+            validate_mission_landing(ros_log, errors)
     elif mission_failed:
         print("WARN: mission failure was allowed")
 

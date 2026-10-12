@@ -106,6 +106,17 @@ export_px4_estimator_parameters() {
     export PX4_PARAM_EKF2_EV_NOISE_MD=1
     export PX4_PARAM_EKF2_EVA_NOISE=0.01
   fi
+  # The simulated main battery (specification K32). PX4's battery simulator
+  # reports neither current nor time left and drained from full to its 50 %
+  # floor in the first minute of every flight; ordinary flights fly it full.
+  # MAIN_BATTERY_DRAIN_S drains it to 5 % over that many seconds instead, to
+  # fly the return on the main battery.
+  if [[ -n "${MAIN_BATTERY_DRAIN_S:-}" ]]; then
+    export PX4_PARAM_SIM_BAT_DRAIN="${MAIN_BATTERY_DRAIN_S}"
+    export PX4_PARAM_SIM_BAT_MIN_PCT=5
+  else
+    export PX4_PARAM_SIM_BAT_MIN_PCT=100
+  fi
 }
 
 px4_parameter_stream() {
