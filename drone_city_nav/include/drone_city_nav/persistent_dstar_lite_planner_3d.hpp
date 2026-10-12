@@ -363,6 +363,13 @@ struct PlannerTelemetry3D {
   std::size_t escape_search_probes{0U};
   std::size_t escape_search_explored_cells{0U};
   double escape_search_ms{0.0};
+  // The retreat along the flown trail, offered once the fill has given up:
+  // the trail's points whose anchor lies outside the closed component, and
+  // where the last one's first refused leg met the map (r1110 stood twenty
+  // minutes on a refused retreat, nothing telling which leg refused it).
+  bool retreat_attempted{false};
+  std::size_t retreat_candidates{0U};
+  Point3 retreat_refused_at{};
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};

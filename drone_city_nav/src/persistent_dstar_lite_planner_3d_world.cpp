@@ -91,7 +91,8 @@ void PersistentDStarLitePlanner3DImpl::noteFlownPosition(const Point3& position)
 }
 
 std::optional<EscapeSearch3D::Result3D>
-PersistentDStarLitePlanner3DImpl::retreatConnection(const Point3& start) const {
+PersistentDStarLitePlanner3DImpl::retreatConnection(
+    const Point3& start, PlannerTelemetry3D& telemetry) const {
   // The searches have closed the component around the vehicle and the fill
   // found no way out of it, but the vehicle flew in: every point of the trail
   // is a pose its body occupied, so the corridor it came through admits the
@@ -99,6 +100,7 @@ PersistentDStarLitePlanner3DImpl::retreatConnection(const Point3& start) const {
   // walks back along the trail to the first point that anchors outside the
   // closed component; the legs are validated against the current world by the
   // departure body, so a corridor that has genuinely closed yields nothing.
+  telemetry.retreat_attempted = true;
   std::vector<Point3> chain;
   for (auto point = flown_trail_.rbegin(); point != flown_trail_.rend(); ++point) {
     if (distance3D(start, *point) <= 1.0e-6) {
@@ -109,7 +111,9 @@ PersistentDStarLitePlanner3DImpl::retreatConnection(const Point3& start) const {
     if (!lattice_.nodeValid(anchor) || feasibility_search_.inClosedComponent(anchor)) {
       continue;
     }
-    if (!lattice_.departureReachable(start, chain, lattice_.pointFor(anchor))) {
+    ++telemetry.retreat_candidates;
+    if (!lattice_.departureReachable(start, chain, lattice_.pointFor(anchor),
+                                     &telemetry.retreat_refused_at)) {
       continue;
     }
     return EscapeSearch3D::Result3D{.anchor = anchor, .waypoints = chain};

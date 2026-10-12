@@ -291,18 +291,26 @@ PlannerLattice3D::GoalConnection3D PlannerLattice3D::selectGoalConnection(
 
 bool PlannerLattice3D::departureReachable(const Point3& start,
                                           const std::span<const Point3> waypoints,
-                                          const Point3& target) const {
+                                          const Point3& target,
+                                          Point3* const refused_at) const {
   // The whole departure, every waypoint leg and the leg onto the node, is
   // flown at hover and carries the departure exemption and the departure
   // body; the route is ordinary raw evidence from the node on.
   Point3 previous = start;
+  const auto leg = [&](const Point3& next) {
+    const OccupiedCollisionResult3D result = departureSegmentValidation(previous, next);
+    if (!result.clear() && refused_at != nullptr) {
+      *refused_at = result.failure_point;
+    }
+    previous = next;
+    return result.clear();
+  };
   for (const Point3& waypoint : waypoints) {
-    if (!departureSegmentValid(previous, waypoint)) {
+    if (!leg(waypoint)) {
       return false;
     }
-    previous = waypoint;
   }
-  return departureSegmentValid(previous, target);
+  return leg(target);
 }
 
 } // namespace drone_city_nav::detail

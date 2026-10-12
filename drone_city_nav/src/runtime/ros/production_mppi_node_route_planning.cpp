@@ -128,7 +128,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "departure_waypoints=%zu anchor_skip=%zu goal_refined=%s escape_attempted=%s "
         "escape_found=%s "
         "escape_active=%s escape_exhausted=%s escape_probes=%zu escape_cells=%zu "
-        "escape_ms=%.1f departure_nodes=%zu/%zu departure_rejected_legs=%zu "
+        "escape_ms=%.1f retreat_attempted=%s retreat_candidates=%zu "
+        "retreat_refused_at=(%.2f,%.2f,%.2f) "
+        "departure_nodes=%zu/%zu departure_rejected_legs=%zu "
         "departure_probes=%zu/%zu departure_deadline_hit=%s "
         "departure_failure=%s(%.2f,%.2f,%.2f) "
         "seed_distance_m=%.2f seed_tolerance_m=%.3f",
@@ -206,7 +208,11 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.escape_search_exhausted ? "true" : "false",
         planner_telemetry.escape_search_probes,
         planner_telemetry.escape_search_explored_cells,
-        planner_telemetry.escape_search_ms, planner_telemetry.departure_valid_nodes,
+        planner_telemetry.escape_search_ms,
+        planner_telemetry.retreat_attempted ? "true" : "false",
+        planner_telemetry.retreat_candidates, planner_telemetry.retreat_refused_at.x,
+        planner_telemetry.retreat_refused_at.y, planner_telemetry.retreat_refused_at.z,
+        planner_telemetry.departure_valid_nodes,
         planner_telemetry.departure_candidate_nodes,
         planner_telemetry.departure_rejected_legs,
         planner_telemetry.departure_refinement_reachable,

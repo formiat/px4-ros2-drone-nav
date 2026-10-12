@@ -383,10 +383,12 @@ public:
   // Whether the body reaches `target` from `start`, through `waypoint` when
   // one is set. The leg leaving the vehicle carries the departure exemption
   // for contact evidence the body already holds; every later leg is ordinary
-  // raw evidence.
+  // raw evidence. `refused_at`, when given, receives where a refused leg met
+  // the map.
   [[nodiscard]] bool departureReachable(const Point3& start,
                                         std::span<const Point3> waypoints,
-                                        const Point3& target) const;
+                                        const Point3& target,
+                                        Point3* refused_at = nullptr) const;
   // A short step off the straight segment between two node centres that clears
   // the body on both legs, or nothing. The lattice steps 2 m horizontally
   // against a 0.25 m map, so a doorway can be wide enough for the body and

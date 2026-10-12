@@ -323,7 +323,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (!escape_connection_.has_value() && !escape_search_pending_ &&
       closed_component_settled) {
     if (std::optional<EscapeSearch3D::Result3D> retreat =
-            retreatConnection(request.start)) {
+            retreatConnection(request.start, telemetry)) {
       escape_connection_ = std::move(retreat);
       departure_from_escape = true;
       telemetry.escape_search_found = true;

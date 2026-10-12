@@ -607,9 +607,9 @@ private:
   // The way back along the trail: the waypoints from the vehicle to the first
   // trail point whose anchor lies outside the component the searches closed,
   // or nothing when the trail offers none. Every leg answers to the departure
-  // body, exactly as an escape chain does.
+  // body, exactly as an escape chain does; what it tried lands in `telemetry`.
   [[nodiscard]] std::optional<EscapeSearch3D::Result3D>
-  retreatConnection(const Point3& start) const;
+  retreatConnection(const Point3& start, PlannerTelemetry3D& telemetry) const;
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;
