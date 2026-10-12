@@ -74,7 +74,7 @@ private:
   [[nodiscard]] double currentSpeedMps() const noexcept;
   [[nodiscard]] bool plannedFinitePathFresh() const;
   [[nodiscard]] bool plannedFinitePathCompleted() const;
-  void publishDeadReckoningLandingSetpoint();
+  void publishDeadReckoningLandingSetpoint(bool descending);
   void publishTakeoffSetpoint();
   [[nodiscard]] bool publishPrestartPlannedHorizonReceipt();
   [[nodiscard]] bool publishStationaryPositionHoldSetpoint();

@@ -156,7 +156,9 @@ bool MppiOffboardNode::plannedFinitePathCompleted() const {
 
 // Level, holding no position: a position held on a dead-reckoned estimate
 // tipped the landed vehicle over (r881). At 0.7 m/s one touched at 1.04.
-void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
+// Not descending, the same level hold keeps the vehicle where a stationary
+// hold stood when dead reckoning began, before the descent is due.
+void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending) {
   constexpr double kLandingSpeedMps{0.5};
   constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
   // The ring keeps the surfaces it sees off the body (the reflex of K19);
@@ -168,10 +170,12 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint() {
                                   px4_map_transform_.mapYawToPx4Heading(heading_rad_))
                             : Point2{0.0, 0.0};
   setpoint_pub_->publish(buildMppiTrajectorySetpoint(
-      nowMicros(), reflex, -kLandingSpeedMps, Point2{0.0, 0.0}, nan, nan, 0.0));
+      nowMicros(), reflex, descending ? -kLandingSpeedMps : 0.0, Point2{0.0, 0.0}, nan,
+      nan, 0.0));
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                       "DEAD_RECKONING_LANDING descending=true reflex=(%.2f,%.2f) "
-                       "ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
+                       "%s reflex=(%.2f,%.2f) ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
+                       descending ? "DEAD_RECKONING_LANDING descending=true"
+                                  : "DEAD_RECKONING_HOLD level=true",
                        reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
                        ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
                        ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));

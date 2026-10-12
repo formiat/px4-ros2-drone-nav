@@ -16,10 +16,16 @@ TEST(DeadReckoningLanding, LandsOnceTheSourceHasDeadReckonedThreeSeconds) {
   landing.observe(10 * kSecondNs, false);
   EXPECT_FALSE(landing.due(100 * kSecondNs));
 
+  EXPECT_FALSE(landing.active());
   landing.observe(20 * kSecondNs, true);
+  // Active from the first dead-reckoned pose: the level hold and its reflex
+  // begin there, the descent three seconds on (r1367).
+  EXPECT_TRUE(landing.active());
   landing.observe(21 * kSecondNs, true);
   EXPECT_FALSE(landing.due(22 * kSecondNs + kSecondNs / 2));
   EXPECT_TRUE(landing.due(23 * kSecondNs));
+  landing.observe(24 * kSecondNs, false);
+  EXPECT_FALSE(landing.active());
 }
 
 TEST(DeadReckoningLanding, ASourceThatSeesAgainTakesTheFlightBack) {

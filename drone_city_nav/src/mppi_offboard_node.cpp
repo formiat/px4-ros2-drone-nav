@@ -410,11 +410,19 @@ void MppiOffboardNode::controlTick() {
   // (r1296). The vehicle holds still in the velocity mode instead.
   const bool position_lost_in_flight =
       !blind_landing_ && !position_valid_ && takeoff_complete_stamp_.has_value();
+  // Specification K19: the ring's reflex holds from the first moment of dead
+  // reckoning, not from the descent. A stationary hold kept on the
+  // dead-reckoned estimate drifted 0.5 m into a wall in the three seconds
+  // before the descent, and the reflex that began with it came 0.4 s before
+  // the rotor met the wall (r1367). The hold is the descent's, level.
+  const bool dead_reckoning_hold = !blind_landing_ && !position_lost_in_flight &&
+                                   stationary_position_hold &&
+                                   dead_reckoning_landing_.active();
   OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
-  if (blind_landing_ || position_lost_in_flight) {
+  if (blind_landing_ || position_lost_in_flight || dead_reckoning_hold) {
     mode = OffboardSetpointMode::kVelocityCruise;
   }
-  if (!blind_landing_) {
+  if (!blind_landing_ && !dead_reckoning_hold) {
     blind_descent_reflex_.reset();
   }
   if (!blind_landing_ && planned_path_fresh) {
@@ -422,8 +430,8 @@ void MppiOffboardNode::controlTick() {
   }
   offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
   bool exact_horizon_feedback_published{false};
-  if (blind_landing_) {
-    publishDeadReckoningLandingSetpoint();
+  if (blind_landing_ || dead_reckoning_hold) {
+    publishDeadReckoningLandingSetpoint(blind_landing_);
   } else if (position_lost_in_flight) {
     constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
     setpoint_pub_->publish(buildMppiTrajectorySetpoint(

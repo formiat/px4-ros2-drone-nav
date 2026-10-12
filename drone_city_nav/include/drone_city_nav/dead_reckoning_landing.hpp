@@ -34,6 +34,11 @@ public:
     }
   }
 
+  // The source is dead reckoning now, however long it has been.
+  [[nodiscard]] bool active() const noexcept {
+    return since_ns_.has_value();
+  }
+
   [[nodiscard]] bool due(const std::int64_t now_ns) const noexcept {
     constexpr std::int64_t kDeadReckonedNs{3'000'000'000};
     return since_ns_.has_value() && now_ns - *since_ns_ >= kDeadReckonedNs;
