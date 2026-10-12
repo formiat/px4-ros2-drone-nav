@@ -51,11 +51,13 @@ public:
   // the exact start straight to it, so the anchor stays valid while that
   // departure segment does, wherever the vehicle drifted meanwhile.
   [[nodiscard]] PersistentPlannerNode3D anchor() const noexcept;
-  // Occupied evidence changed on the resident world. Every label is kept; the
-  // chain of lattice edges that reached it is re-validated lazily, when the
-  // search next touches the label, and the labels behind an edge that no
-  // longer survives are dropped and re-entered from their intact neighbours.
-  void noteWorldChanged() noexcept;
+  // Occupied evidence changed on the resident world in `changed_cells`. Every
+  // label is kept; the chain of lattice edges that reached it is re-validated
+  // lazily, when the search next touches the label, and the labels behind an
+  // edge that no longer survives are dropped and re-entered from their intact
+  // neighbours. An edge the sweep rejected is offered again only when a
+  // changed cell lies within one lattice step of it.
+  void noteWorldChanged(std::span<const GridIndex3D> changed_cells) noexcept;
   // True when the last advance() emptied the frontier without a candidate,
   // whether or not it restarted afterwards within the same call.
   [[nodiscard]] bool frontierExhausted() const noexcept;
@@ -85,6 +87,8 @@ public:
   [[nodiscard]] std::size_t restartCount() const noexcept;
   [[nodiscard]] std::size_t connectorSweepCount() const noexcept;
   [[nodiscard]] std::size_t invalidatedLabelCount() const noexcept;
+  // The edges the sweep rejected that the search withholds.
+  [[nodiscard]] std::size_t rejectedEdgeCount() const noexcept;
   // Labels whose chain broke and that were re-parented through an intact
   // neighbour instead of being dropped.
   [[nodiscard]] std::size_t adoptedLabelCount() const noexcept;

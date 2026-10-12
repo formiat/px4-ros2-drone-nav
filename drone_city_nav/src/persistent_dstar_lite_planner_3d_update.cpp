@@ -439,7 +439,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       // re-validates their edge chains lazily on the resident world; every
       // candidate it returns is raw-validated there as well. This marks them
       // for revalidation now, before the search runs.
-      feasibility_search_.noteWorldChanged();
+      feasibility_search_.noteWorldChanged(world_update.changed_cells);
       schedule_affected_vertices = true;
     }
     // The escape anchor is outside the component the searches were seeded
@@ -496,7 +496,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     applied_incumbent_rejection_sequence_ = request.incumbent_rejection_sequence;
     coordinator_.reset();
     execution_time_refiner_.reset();
-    feasibility_search_.noteWorldChanged();
+    // The consumer's evidence only closes: what the sweep rejected stays.
+    feasibility_search_.noteWorldChanged({});
   }
   if (const SpatialRouteCandidate3D* const incumbent = coordinator_.incumbent();
       incumbent != nullptr) {
@@ -628,6 +629,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.feasibility_restarts = feasibility_search_.restartCount();
     telemetry.feasibility_invalidated_labels =
         feasibility_search_.invalidatedLabelCount();
+    telemetry.feasibility_rejected_edges = feasibility_search_.rejectedEdgeCount();
     telemetry.feasibility_adopted_labels = feasibility_search_.adoptedLabelCount();
     const auto& invalid_segment = feasibility_search_.lastInvalidSegment();
     telemetry.feasibility_last_invalid_segment = invalid_segment.index;

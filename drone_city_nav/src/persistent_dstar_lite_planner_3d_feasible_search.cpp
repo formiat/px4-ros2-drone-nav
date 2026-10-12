@@ -109,8 +109,39 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
                            : std::nullopt;
 }
 
-void FeasiblePathSearch3D::noteWorldChanged() noexcept {
-  rejected_edges_.clear();
+void FeasiblePathSearch3D::noteWorldChanged(
+    const std::span<const GridIndex3D> changed_cells) noexcept {
+  // The sweep's verdict on an edge rests on the evidence around it alone, so
+  // a rejected edge is offered again only where the world changed within one
+  // lattice step of it. Offered again on every change, the same edges beside
+  // a wall, which the lattice prices open and the sweep closes, were found,
+  // swept and rejected anew on every update of a hovering vehicle whose memory
+  // changed somewhere each time: the search never reached a candidate and the
+  // vehicle stood beside B with its way home open on the map (r1365, P10).
+  const GridBounds3D& bounds = lattice_->bounds();
+  const double reach = config_->minimum_horizontal_step_m;
+  std::erase_if(rejected_edges_, [&](const PersistentPlannerEdge3D& edge) {
+    const Point3 from = lattice_->pointFor(edge.first);
+    const Point3 to = lattice_->pointFor(edge.second);
+    const double dx = to.x - from.x;
+    const double dy = to.y - from.y;
+    const double dz = to.z - from.z;
+    const double length_squared = dx * dx + dy * dy + dz * dz;
+    return std::ranges::any_of(changed_cells, [&](const GridIndex3D& cell) {
+      const double x = bounds.origin_x + (cell.x + 0.5) * bounds.resolution_m;
+      const double y = bounds.origin_y + (cell.y + 0.5) * bounds.resolution_m;
+      const double z = bounds.origin_z + (cell.z + 0.5) * bounds.resolution_m;
+      const double along =
+          length_squared > 0.0
+              ? std::clamp(((x - from.x) * dx + (y - from.y) * dy + (z - from.z) * dz) /
+                               length_squared,
+                           0.0, 1.0)
+              : 0.0;
+      return distance3D(Point3{x, y, z},
+                        Point3{from.x + along * dx, from.y + along * dy,
+                               from.z + along * dz}) <= reach;
+    });
+  });
   advanceValidationEpoch();
 }
 
@@ -714,6 +745,10 @@ double FeasiblePathSearch3D::closestGoalDistanceM() const noexcept {
 
 std::size_t FeasiblePathSearch3D::restartCount() const noexcept {
   return restart_count_;
+}
+
+std::size_t FeasiblePathSearch3D::rejectedEdgeCount() const noexcept {
+  return rejected_edges_.size();
 }
 
 std::size_t FeasiblePathSearch3D::invalidatedLabelCount() const noexcept {

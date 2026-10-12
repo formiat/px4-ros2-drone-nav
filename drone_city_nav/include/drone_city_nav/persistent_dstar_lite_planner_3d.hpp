@@ -391,6 +391,8 @@ struct PlannerTelemetry3D {
   // Labels dropped because a lattice edge on their chain stopped surviving
   // the resident world, since the planner was constructed.
   std::size_t feasibility_invalidated_labels{0U};
+  // The edges the raw sweep rejected that the feasibility search withholds.
+  std::size_t feasibility_rejected_edges{0U};
   std::size_t feasibility_adopted_labels{0U};
   std::size_t feasibility_last_invalid_segment{0U};
   // Its ends, and whether it was a lattice edge the search withheld; an
