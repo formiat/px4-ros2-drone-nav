@@ -1438,6 +1438,94 @@ data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a
 net, manual first, then a hold, then a short route. Months of one person's
 work; the first two steps cost nothing.
 
+## 28. The MPPI Engine Beyond CUDA
+
+**Type:** new capability, deferred; weighed on 2026-10-13 at the project
+owner's question (can the stack do without CUDA, or carry two backends), no
+decision taken.
+
+**Hard prerequisites:** none for step 1 (flights in the simulator); a chosen
+onboard computer without an NVIDIA GPU for step 3.
+
+**Where CUDA is.** In the MPPI engine alone: six files in `src/mppi/`
+(`*.cu`, `*.cuh`, about 3 400 lines) and about twelve kernels: the sampling
+noise, the rollouts against the ESDF, the reductions of costs and weights,
+the control update. Nothing else of the stack uses CUDA. The boundary is one
+class, `MppiCudaEngine` (`updateEsdf`, `plan`), with one consumer,
+`MppiController3D`, so another implementation can stand in its place without
+touching the rest. Today the planner is not built at all without CUDA
+(`production_mppi_node` sits under `DRONE_CITY_NAV_ENABLE_CUDA_MPPI`), so the
+stack does not fly without it. Two things make a port easy: the ESDF is read
+through a texture with point sampling, not the hardware's interpolation, so
+a lookup off the GPU gives the same value; the noise is a counter hash, not
+cuRAND. Two make it harder: the kernels' functions are `__device__` only (a
+host-and-device macro exists for two helpers), and the CPU reference
+(`simulateReference`), with which the engine re-simulates the sequence it
+selected, is a second implementation of the same model, not the kernel's code.
+
+**What a CPU costs, measured.** One rollout of the CPU reference, 120 steps
+(the 6 s static horizon), the urban body (0.82 m envelope, 12 x 2 x 3
+samples, the broad phase on), a 0.25 m ESDF of 40 x 40 x 16 m
+(`log/tools/trials/cpu_rollout_bench.cpp`, on the development host's Zen 3):
+
+| | Open space | A corridor (walls 1.5 m either side, the floor 1.5 m below) |
+|---|---|---|
+| One rollout on one core | 101 us | 1151 us |
+| Rollouts eight threads finish in 8 ms | 316 | 42 |
+| On the GPU today (RTX 3060 Laptop) | 8192 in 6.4 ms | 8192 in 6.4 ms |
+
+A gap of 25 to 200 times. The reference is not written for speed and a port
+of the kernel with SIMD would be several times faster, but an Arm core
+(Cortex-A78) does about half of a Zen 3 core, and the rest of the stack
+already takes 3.4 to 5.7 cores at p95 ([resource_budget.md](resource_budget.md)):
+a CPU in flight would carry 100 to 500 rollouts, another controller, tuned
+again from the start.
+
+**What a Jetson costs too.** The Orin NX 16GB's GPU does 1.9 to 2.4 TFLOPS
+in FP32 (1024 CUDA cores at 918 to 1173 MHz), the RTX 3060 Laptop about 11:
+the 6.4 ms of rollouts become 30 to 40 ms against the 20 ms tick, and the
+rollouts (`rollouts`, 8192) fall to about 1500 to 2000 on the Jetson the
+stack is sized for ([hardware_builds.md](hardware_builds.md)). How the
+controller flies with fewer rollouts is therefore needed whatever the
+vendor, and it is the same number that says whether a weaker GPU of another
+vendor is enough.
+
+The ways, weighed:
+
+| Way | Runs on | Size | For flight |
+|---|---|---|---|
+| A. A CPU backend: the kernels' bodies as shared host-and-device functions, the rollouts in a loop over threads | anything | M: one to two weeks, with the parity tests against the GPU | No (the table above). For continuous integration, development on a machine without NVIDIA and offline replays; the rollout model becomes one code instead of two |
+| B. A second backend in Vulkan compute or OpenCL | Vulkan: NVIDIA (the Jetson too), Qualcomm Adreno, Arm Mali, Intel and AMD integrated GPUs; OpenCL: the same but the Jetson, which ships no OpenCL | L to XL: about 1 300 lines of kernels again, the host side, parity tests, a board with such a GPU to test on | Yes, where the GPU is strong enough |
+| C. Vulkan in CUDA's place | every GPU, one code | XL: on the Jetson likely slower and harder to debug; the controller's core, long tuned, at risk | Yes |
+| D. SYCL or Kokkos, one C++ source | NVIDIA, AMD, Intel, CPUs | L | The mobile GPUs (Adreno, Mali) are poorly served, so the main case, the VOXL 2, stays closed |
+
+What a backend without CUDA would give: a free choice of vendor (the
+ModalAI VOXL 2 above all: the autopilot on board, 16 g, $1 250 with it,
+against an Orin NX at $999 since July 2026 plus a carrier board and a
+Pixhawk), independence from NVIDIA's prices, and continuous integration
+without NVIDIA (way A). What it would not: the rest of the stack needs 3.4
+to 5.7 Zen 3 cores at p95 whatever runs MPPI, so on boards with four large
+Arm cores (Raspberry Pi 5, RK3588, the VOXL 2) the CPU becomes the limit
+once MPPI has moved to their GPU. The boards that would fit are in
+[hardware_builds.md](hardware_builds.md).
+
+The order:
+
+1. Fly the controller at 8192, 4096, 2048 and 1024 rollouts in the
+   simulator (the parameter exists; camera and lidar series): the number the
+   Jetson needs anyway (item 27) and the one that decides whether a GPU of
+   the Iris Xe or Adreno class is enough.
+2. Way A when continuous integration or development without NVIDIA is
+   wanted; not a way to flight.
+3. Way B only for a chosen board without NVIDIA, the VOXL 2 most likely,
+   inside item 27; CUDA stays the backend of the Jetson.
+
+Complete, step by step: (1) the series at the four counts with the mean
+speed, the holds and the closest true clearance against 8192; (2) the engine
+built and its unit tests run on a machine without CUDA, the parity tests
+holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
+series on the board.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

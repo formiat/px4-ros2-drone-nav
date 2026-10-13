@@ -145,7 +145,9 @@ What the measurements do not exclude, and what they cannot say.
 The CUDA controller ties the stack to NVIDIA. That makes the Jetson Orin
 family (Orin Nano, Orin NX, AGX Orin) the class of drone computer the
 measurements do not exclude; the ModalAI VOXL 2, the Qualcomm RB5 and x86
-modules without an NVIDIA GPU cannot run the MPPI as written.
+modules without an NVIDIA GPU cannot run the MPPI as written. What a backend
+without CUDA would take, and why a CPU cannot carry the rollouts, is roadmap
+item 28.
 
 Within that class, measured: 2.73 cores at p50 and 3.36 at p95, 798 MiB of
 resident memory and 206 MiB of GPU memory. Every Orin module has at least
@@ -162,8 +164,10 @@ measurement:
   not a later one, and the budget itself is the parameter to revisit.
 - Assumption: the Orin GPUs are smaller than the RTX 3060 Laptop (1024 CUDA
   cores on Orin NX and the 8 GiB Orin Nano, 2048 on AGX Orin, against 3840,
-  per NVIDIA's published module specifications), so the 6.4 ms of rollout
-  time grows. The 20 ms tick deadline bounds it, and the lever is the
+  per NVIDIA's published module specifications; the Orin NX 16GB does 1.9
+  to 2.4 TFLOPS in FP32 against the RTX 3060 Laptop's about 11), so the
+  6.4 ms of rollout time grows, to 30 to 40 ms by that ratio. The 20 ms
+  tick deadline bounds it, and the lever is the
   rollout count (8192, `rollouts` in `config/urban_mvp.yaml`), which the
   controller reads at start; fewer rollouts is a worse local optimum, and
   how much worse is not measured.

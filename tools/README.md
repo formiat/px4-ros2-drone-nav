@@ -19,7 +19,7 @@ that is how anything worth more than a week is kept:
 | `log/tools/diagnostics/` | one-off scripts and data of single investigations |
 | `log/tools/vio/`, `log/tools/replay/` | recorded flights for the offline replay (r575, r576; r779, r795) and the replay binaries |
 | `log/tools/truth25/`, `log/tools/proof_leak/`, `log/tools/texture/`, `log/tools/stereo/` | truth grids and measurement data the documents cite |
-| `log/tools/part3/`, `log/tools/part6/`, `log/tools/part8/`, `log/tools/part11/`, `log/tools/stall/`, `log/tools/trials/` | the technical-debt goal's and the owner's trials' measurement scripts the documents cite (the blind phase: `part8/blind_*.py`; K27's cost on the lidar: `trials/k27_*.py`) |
+| `log/tools/part3/`, `log/tools/part6/`, `log/tools/part8/`, `log/tools/part11/`, `log/tools/stall/`, `log/tools/trials/` | the technical-debt goal's and the owner's trials' measurement scripts the documents cite (the blind phase: `part8/blind_*.py`; K27's cost on the lidar: `trials/k27_*.py`; a CPU rollout's cost: `trials/cpu_rollout_bench.cpp`) |
 
 A loose file cannot be kept: check logs (`run_rNNN.log`), gate logs and
 flags go after a week. A new recording or result that has to stay goes into

@@ -37,7 +37,7 @@ in July 2026) and are an order of magnitude, not a quote.
 | NVIDIA Jetson Orin Nano 8GB | 6 cores at up to 1.7 GHz, 1024 CUDA cores, 8 GiB | $399 the module ($299 before) [1]; the Super developer kit $399 ($249 before) [2] | Bench only | Six slower cores against the stack's 3.4 to 5.7 Zen 3 cores at p95; the cheapest way to build for arm64 and run the stack on recorded data and on a bench (roadmap item 27's first steps) |
 | NVIDIA Jetson AGX Orin 32GB / 64GB | 8 / 12 cores at 2.2 GHz, 1792 / 2048 CUDA cores, 32 / 64 GiB | $1 799 the 32GB module ($899 before) [2] | Compute yes, airframe no | The margin the NX lacks; 15 to 60 W and a larger heatsink and carrier push a 500 mm quadcopter to its payload; a larger airframe |
 | NVIDIA Jetson AGX Thor | Blackwell GPU | $5 499 the developer kit [2] | No | Out of proportion to the stack's measured need and to the airframe |
-| ModalAI VOXL 2 | Qualcomm QRB5165, 8 cores up to 3.09 GHz, 8 GiB, PX4 on board, 16 g | $1 249.99 [3] | No | No CUDA: the MPPI cannot run as written ([resource_budget.md](resource_budget.md)); otherwise the most integrated option (autopilot and computer in one, very light). A port of the controller would open it |
+| ModalAI VOXL 2 | Qualcomm QRB5165, 8 cores up to 3.09 GHz, 8 GiB, PX4 on board, 16 g | $1 249.99 [3] | No | No CUDA: the MPPI cannot run as written ([resource_budget.md](resource_budget.md)); otherwise the most integrated option (autopilot and computer in one, very light). A backend without CUDA would open it (below and roadmap item 28) |
 | Raspberry Pi 5 | 4 Cortex-A76, no CUDA | not priced | No | No CUDA, four cores |
 | An x86 board with a discrete NVIDIA GPU | the development host's class | not priced | No | Fits the compute, not a 500 mm quadcopter's mass and power |
 
@@ -98,6 +98,23 @@ airframe kit does not include it.
 | B. Bench | Orin Nano Super developer kit with the camera of C1 or C2 | $573 to $848 | For the bench | The arm64 build, the stack on recorded data and the cameras on a bench (roadmap item 27's first steps); not for flight |
 | Not fitting | a VOXL 2, a Raspberry Pi, an Orin Nano in flight, an AGX Orin on the X500 | — | No | No CUDA; too few cores; too heavy for the airframe |
 
+## Without CUDA
+
+What the boards above would be if the MPPI engine had a backend without CUDA
+(roadmap item 28: a CPU cannot carry the rollouts in flight, so the backend
+is another GPU interface, Vulkan compute or OpenCL). Against it stands the
+Orin NX 16GB's GPU, 1.9 to 2.4 TFLOPS in FP32 [15], itself four and a half
+to six times smaller than the development host's: every board here flies
+fewer rollouts than 8192, and how many are enough is item 28's first step.
+
+| Computer | CPU | GPU | Price, mass | Would fit | Why |
+|---|---|---|---|---|---|
+| An x86 board with a strong CPU and an integrated GPU, e.g. LattePanda Sigma (Core i5-1340P) | 12 cores, 16 threads, near the development host | Iris Xe, about 1.9 TFLOPS (80 execution units at 1.45 GHz, by arithmetic), the Orin NX's level | A$1 240 to 1 310; 438 g; 7 W headless to a 44 W processor [16] | In compute yes, with Vulkan or OpenCL | Heavy for the X500 V2's payload of about 1 kg |
+| ModalAI VOXL 2 (QRB5165) | 1 Cortex-A77 at 3.09 GHz, 3 at 2.42, 4 Cortex-A55 | Adreno 650, OpenCL 2.0 and Vulkan 1.1 [17]; its FP32 rate not found, about 1 TFLOPS is a guess | $1 249.99 with the autopilot; 16 g [3] | Perhaps, with work | Fewer rollouts, the stereo depth on its own accelerators; four large cores against the stack's 3.4 to 5.7 Zen 3 cores at p95, to measure |
+| Rockchip RK3588 (Radxa ROCK 5B+, 16 GiB) | 4 Cortex-A76 at 2.4 GHz, 4 Cortex-A55 | Mali-G610 MP4, 0.25 to 0.45 TFLOPS as measured [18] | about $120 to $190 [18] | Not for flight | A GPU four to eight times smaller than the Orin NX's and four large cores; a cheap bench or a machine for continuous integration |
+| Raspberry Pi 5 | 4 Cortex-A76 | small | — | No | Neither the CPU nor the GPU |
+| AMD Ryzen mini boards (Radeon 780M) | 8 Zen 4 cores | larger than the Iris Xe | not priced | In compute yes | Heavy and power-hungry |
+
 ## What The Software Supports Today
 
 | Sensor | In the simulator | For real hardware |
@@ -140,3 +157,7 @@ Prices and specifications as found on 2026-10-13.
 12. [Holybro Pixhawk 6C](https://holybro.com/products/pixhawk-6c).
 13. [Holybro X500 V2 PX4 development kit](https://shop.holybro.com/x500-kit_p1180.html); [the 6X kit at Pyrodrone](https://pyrodrone.com/products/holybro-x500-v2-pixhawk-development-kit-with-the-pixhawk-6x-standard-m10-gps-915mhz-telemetry-radio).
 14. [X500 V2 specifications at Elektor](https://www.elektor.com/products/holybro-x500-v2-arf-drone-kit), [mybotshop](https://www.mybotshop.de/Holybro-X500-V2-ARF-Kit_15).
+15. [Jetson Orin NX 16GB at flopper.io](https://flopper.io/gpu/nvidia-jetson-orin-nx-16gb) (2.4 TFLOPS at 1173 MHz; 1.9 at 918 MHz by arithmetic).
+16. [LattePanda Sigma at TechRadar](https://www.techradar.com/pro/lattepanda-sigma), [at Core Electronics](https://core-electronics.com.au/lattepanda-sigma-the-small-hackable-x86-windowslinux-single-board-computer-server-16gb-ram.html).
+17. [Adreno 650 at Notebookcheck](https://www.notebookcheck.net/Adreno-650-vs-Adreno-640_9971_9446.247598.0.html).
+18. [RK3588 boards at CNX Software](https://www.cnx-software.com/?p=94999), [ROCK 5B+ at RS](https://uk.rs-online.com/web/p/rock-sbc-boards/0162225?gb=s), [clpeak on a Mali-G610](https://monolithe.proj.lip6.fr/assets/benchmarks/clpeak/clpeak_opi5_gpu.txt).
