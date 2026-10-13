@@ -1409,9 +1409,10 @@ command retraces the trail.
    is no launch without the simulator and `use_sim_time` is set in every
    node and held by a contract test; the uXRCE agent is UDP only; MPPI keeps
    12 threads.
-3. Sensors: no camera calibration, distortion or rectification (intrinsics
-   from the field of view, an ideal pair, 1280 x 960 only, the pair's stamps
-   equal); no time-of-flight driver (64 zones in `gpu_lidar`'s layout, within
+3. Sensors: the pair is configured by its calibration, distortion and
+   rectification included (specification K33, run on EuRoC's 752 x 480
+   pair offline), but there is no camera driver and the pair's stamps are
+   taken as equal; no time-of-flight driver (64 zones in `gpu_lidar`'s layout, within
    67 ms of the frame); the barometer, the light's charge and the camera's
    gain come from the simulator; no onboard control of the light; the lidar
    needs an organised 360 x 181 cloud without motion compensation; the
@@ -1428,6 +1429,9 @@ command retraces the trail.
    a record; onboard logs without rotation; the bag without setpoints and
    commands; crash detection rests on Gazebo's contacts, and the trial's
    referee shares a class with the mission's logic.
+
+The hardware a vehicle could be built from, what fits and why, and what it
+costs: [hardware_builds.md](hardware_builds.md).
 
 Order: block 1 in the simulator; the build split and a launch on recorded
 data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a

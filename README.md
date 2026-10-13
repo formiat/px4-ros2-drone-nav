@@ -772,6 +772,7 @@ Key pages:
 - `docs/development.md`
 - `docs/troubleshooting.md`
 - `docs/performance.md`
+- `docs/hardware_builds.md`
 - `docs/technical_debt.md`
 - `tools/README.md` (the scripts the acceptance flights are launched and
   read with)

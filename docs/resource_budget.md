@@ -180,4 +180,5 @@ reads 3.5 to 3.8 cores at p50 and 4.4 to 4.7 at p95, 810 to 880 MiB at p95
 (r405 to r434). Not in these figures at all: the sensor driver and the
 flight controller link. Nothing here was run on an
 Orin: there is no arm64 build, and the only confirmation is a recorded
-flight on the device itself.
+flight on the device itself. The builds a vehicle could take, with
+their prices, are in [hardware_builds.md](hardware_builds.md).

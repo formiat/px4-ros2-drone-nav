@@ -20,6 +20,8 @@ The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to
 
 Accepted on the final code (4736b07e): cameras 1.651 to 1.764 m/s (mean 1.714), every check; lidar 2.046 to 2.607 (mean 2.333), two of five under 2.4 on K27 (the owner's number); the recording rendered afterwards ok (r1448; r1409 on 6a4fc785); the light lost and the loss beside a wall five times each, the light's failure, the IMU holes and the low battery once each, whole. On bc7c16a9: B and back three of three at 0.6 and two of two at 1.0, the light's failure five times; no contact.
 
+The owner's trials after it (2026-10-13): the lidar's own allowance below in K27 gained nothing and was reverted (the shift above is what costs the lidar, measured); no plan is flown on dead reckoning in the dark (K19, 50203340), waiting for its light-lost flight; the track record carries the frame's own range. A registry of hardware builds for a real vehicle ([docs/hardware_builds.md](docs/hardware_builds.md)).
+
 ## v0.5.0 (2026-10-10)
 
 Flight in degraded visual conditions: the location has no light of its own,
