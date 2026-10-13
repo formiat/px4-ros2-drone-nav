@@ -1458,11 +1458,47 @@ command retraces the trail.
    commands; crash detection rests on Gazebo's contacts, and the trial's
    referee shares a class with the mission's logic.
 
+### The arm64 Build (block 2, weighed on 2026-10-13)
+
+Needed for any real vehicle but one on an x86 board: every flight computer
+of the hardware registry is arm64 (the Jetson Orin and Thor, the VOXL 2, the
+RK3588), and the x86 boards are the heavy ones, which a product made in
+numbers weighs against (specification R6, [hardware_builds.md](hardware_builds.md)).
+
+What already holds: the sources carry no x86 instructions (no intrinsics,
+no `-march` or SIMD flags; checked on 2026-10-13); the image's base,
+`px4io/px4-dev`, is built for amd64 and arm64 on Ubuntu 24.04
+([PX4's container documentation](https://docs.px4.io/main/en/test_and_ci/docker.html));
+ROS 2 Jazzy ships for arm64; and since JetPack 7.2 (June 2026) the Orin runs
+Ubuntu 24.04 with CUDA 13, the image's distribution
+([JetPack 7.2](https://developer.nvidia.com/embedded/jetpack/downloads/archive-7.2)).
+
+What is missing, in order:
+
+1. An onboard build without Gazebo. The package requires `gz-sim8`,
+   `gz-transport13`, `gz-msgs10`, `gz-common5` and `sdformat14`; the targets
+   that use them are the simulation's and the tools' (the contact system,
+   the truth adapter, the Gazebo stereo node, the heading source, the SDF
+   voxelizer) and go behind an option; the onboard nodes take plain ROS
+   messages (the stereo node's plain variant takes `sensor_msgs/Image`).
+2. The Orin's CUDA architecture, 87, in `DRONE_CITY_NAV_CUDA_ARCHITECTURES`
+   (`75;86` today), and a build against CUDA 13 (the image carries 12.6).
+3. An arm64 image (the Dockerfile's CUDA repository is the x86_64 one; on a
+   Jetson CUDA comes with JetPack) and the unit tests run on arm64, on an
+   arm64 machine or under emulation.
+4. The stack on recorded data on an arm64 board, the Orin Nano Super
+   developer kit ($399, the registry's bench): the cores, the tick and the
+   rollouts the GPU carries, measured; the first number the registry and
+   item 28 wait for.
+
+Steps 1 to 3 need no vehicle and no board beyond an arm64 machine; step 4
+needs the bench board. An x86 board spares the port at a cost in mass.
+
 The hardware a vehicle could be built from, what fits and why, and what it
 costs: [hardware_builds.md](hardware_builds.md).
 
-Order: block 1 in the simulator; the build split and a launch on recorded
-data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a
+Order: block 1 in the simulator; the build split, the arm64 build and a
+launch on recorded data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a
 net, manual first, then a hold, then a short route. Months of one person's
 work; the first two steps cost nothing.
 

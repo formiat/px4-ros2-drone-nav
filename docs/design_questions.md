@@ -105,6 +105,20 @@ whether they come cheaper (5 to 20 percent of a vehicle) or simpler (in
 hardware on the VOXL 2 alone, in software nowhere), are in
 [hardware_builds.md](hardware_builds.md).
 
+## Do We Need An arm64 Build?
+
+Asked on 2026-10-13, for the day the stack goes onto a real vehicle. Yes:
+every flight computer the hardware registry finds fitting is arm64 (the
+Jetson Orin, the VOXL 2, the RK3588); only an x86 board with an integrated
+GPU spares the port, and it is the heaviest choice, which a product made in
+numbers weighs against (specification R6). The port is small in code and
+real in the build: the sources carry no x86 instructions, the base image and
+ROS 2 Jazzy exist for arm64, and the Orin runs Ubuntu 24.04 since JetPack 7.2;
+what is missing is an onboard build without Gazebo, the Orin's CUDA
+architecture (87) and CUDA 13, an arm64 image, and the stack measured on an
+arm64 board. The steps are roadmap item 27, "The arm64 Build"; the first
+three need no vehicle.
+
 ## What Does The Camera Vehicle Do In A Large Dark Space?
 
 Asked on 2026-10-13: a camera vehicle at night over open ground at a height,
