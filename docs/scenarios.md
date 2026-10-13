@@ -65,6 +65,28 @@ artifacts and load without further steps; the rest are evaluation candidates
 that need their source assets cached and say so if they are absent. Only the
 urban world has been flown.
 
+## The Pilot, The Operator And Injected Failures
+
+Every flight ends landed and disarmed: after the goal, or after the way home,
+the vehicle holds its position and descends until PX4 lands and disarms it
+(specification K30). The stack never arms the vehicle and never switches its
+mode (K29): in the simulation an evaluation pilot, `scripts/sim_pilot.py`,
+does it with the commands a radio or a ground station sends PX4, once at the
+start, and its record lands in `log/runs/<run-id>/pilot.csv`. These switches
+work on any scenario above; they are evaluation knowledge the vehicle never
+receives:
+
+| Switch | What it does |
+|---|---|
+| `PILOT_EVENTS="ACTION@SECONDS;..."` | the pilot's actions on the autopilot's clock: `hold`, `posctl`, `land`, `kill` (the motors killed in flight), `rc_loss` (the radio falls silent); and the operator's commands on `/drone_city_nav/operator_command` (K31): `cmd:stop`, `cmd:land`, `cmd:home`, `cmd:goal:X,Y,Z`. Example: `PILOT_EVENTS="cmd:stop@80;cmd:goal:0.749,21.247,9.6@100"` |
+| `PILOT_RC=1` | a radio heard from the start (the pilot's sticks centred), so that `posctl` is possible and `rc_loss` is a loss |
+| `MAIN_BATTERY_DRAIN_S=SECONDS` | PX4's simulated battery drains from full to 5 % over that time; the mission weighs it against the way home and returns (K32). Without it the battery stays full |
+| `IMU_FAULTS=holes` | holes in the autopilot's IMU stream as the camera estimator receives it, 2 s at 60 s and 4 s at 120 s; the estimator starts again on the autopilot's pose after each (K28) |
+| `LIGHT_ZONES="x,y,z,radius,falloff;..."` | the carried light out inside a radius and fading over the falloff around world points ([`camera_perception.md`](camera_perception.md)); `2,42.9,9.4,3,0.3` cuts it 0.2 m from a wall, the loss beside a wall |
+
+A GNSS-denied PX4 refuses `hold` (its Hold mode needs a global position);
+the pilot's means there are `posctl` with a radio, `land` and `kill`.
+
 ## Reading A Flight Afterwards
 
 A headless flight writes `log/runs/<run-id>/`: the manifest, the mission

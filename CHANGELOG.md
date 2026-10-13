@@ -4,6 +4,20 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## Unreleased
+
+The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to bc7c16a9; not a release.
+
+- **The pilot's authority and the mission's end** (roadmap item 27 block 1, specification K29 to K32, K34): the stack never arms the vehicle or switches its mode; every mission ends landed and disarmed; the operator's commands stop, land, home and goal; the main battery weighed against the way home; a PX4 parameter set for a real vehicle. The simulation's evaluation pilot (`scripts/sim_pilot.py`, `PILOT_EVENTS`, `PILOT_RC`).
+- **The camera estimator restarts in flight** after a hole in its IMU stream, on the autopilot's pose (K28; `IMU_FAULTS=holes`).
+- **The light's fade is read** before the dark (K15), and the time-of-flight ring keeps surfaces off the body from the first moment of dead reckoning through the level descent (K19).
+- **The way home in one mission epoch** (K20).
+- **The long flight under failures no longer stands near B below real time** (P10): the planner's feasibility search keeps the edges the raw sweep rejected until the world changes near them.
+- **The stereo pair by its calibration, the estimator on EuRoC MAV** (K33, roadmap item 25): Vicon room 1, ATE 0.046 to 0.115 m.
+- **Repository**: the 2D memory class and the 2D raw transport removed; eight sources split under the cap; the lidar-inertial recovery's search reach; the tools `phantom_blocks.py`, `closure.py`, `stall_report.py`.
+
+Accepted on bc7c16a9: cameras 1.638 to 1.786 m/s (mean 1.704), every check; lidar 2.078 to 2.462 (mean 2.289), four of five under 2.4 on K27 (the owner's number); B and back three of three at 0.6 and two of two at 1.0; the light lost, the loss beside a wall, the light's failure five times each and the IMU holes and the low battery once, no contact.
+
 ## v0.5.0 (2026-10-10)
 
 Flight in degraded visual conditions: the location has no light of its own,

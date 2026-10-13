@@ -8,11 +8,18 @@ for run in sys.argv[1:]:
     def at(pat):
         m = re.search(r'\[(\d+\.\d+)\] [^\n]*' + pat, log)
         return float(m.group(1)) if m else None
+    def all_at(pat):
+        return [float(m.group(1)) for m in re.finditer(r'\[(\d+\.\d+)\] [^\n]*' + pat, log)]
     def truth(t):
         i = np.argmin(abs(g[:, 4] - t)); return g[i, 1:4]
     t0 = at('MISSION_READINESS ready=true')
-    ev = [('dr', at('DEAD_RECKONING started=true')), ('judged', at('GOAL_UNREACHABLE trigger')),
-          ('land_cmd', at('DEAD_RECKONING_LANDING commanded=true')), ('landed', at('VEHICLE_LANDED')),
+    # The dead reckoning that ended in the landing: a short one on the pad before the take-off
+    # is not it (r1345: the first one, at -10 s, read 24 m of drift).
+    end_t = at('VEHICLE_LANDED') or at(r'collision_crash_node\]: VEHICLE_DESTROYED')
+    starts = [t for t in all_at('DEAD_RECKONING started=true') if end_t is None or t <= end_t]
+    descents = [t for t in all_at('DEAD_RECKONING_LANDING descending=true') if not starts or t >= starts[-1]]
+    ev = [('dr', starts[-1] if starts else None), ('judged', at('GOAL_UNREACHABLE trigger')),
+          ('land_cmd', descents[0] if descents else None), ('landed', at('VEHICLE_LANDED')),
           ('destroyed', at(r'collision_crash_node\]: VEHICLE_DESTROYED'))]
     print(f'== {run}')
     for name, t in ev:
@@ -21,7 +28,7 @@ for run in sys.argv[1:]:
     dr = dict(ev)['dr']; end = dict(ev)['landed'] or dict(ev)['destroyed']
     if dr and end:
         d = truth(end) - truth(dr); print(f'   drift dr->end {np.hypot(d[0], d[1]):.2f} m horizontal in {end - dr:.1f} s')
-    n_land = len(re.findall('DEAD_RECKONING_LANDING commanded=true', log))
+    n_land = len(re.findall('DEAD_RECKONING_LANDING descending=true', log))
     m = re.search(r'VEHICLE_LANDED[^\n]*', log)
     print(f'   landing commands {n_land}; ' + (m.group(0)[:230] if m else 'no VEHICLE_LANDED'))
     val = open(f'log/tools/run_{run}.log', errors='ignore').read()

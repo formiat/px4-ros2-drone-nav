@@ -118,6 +118,12 @@ configuration and the scenario's flight envelope, specification K16), and a
 start's component that reaches the goal, or leaves the truth grid where that
 space goes on, fails the flight. An injected flight's mean speed is a note.
 
+**The mission's end (roadmap item 27 block 1).** A mission that reached its
+goal, or came home, ends with a landing there and the autopilot's disarm
+(specification K30): the check requires `MISSION_LANDED disarmed=true`
+(`validate_mission_landing`). The truth at the goal and the mean speed are
+still measured at the goal's acknowledgement, before the landing.
+
 Every other measurement described below is a **note**: route availability and
 no-route holds, execution-ownership gaps, the planner's p95, the tick's wall
 time, the controller-dynamics measurements, the sensor evidence age, the

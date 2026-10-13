@@ -1195,7 +1195,8 @@ vehicle is home in truth, on either sensor set.
 ## 25. The Estimator On Real Recordings
 
 **Type:** validation without a vehicle. Discussed with the project owner on
-2026-10-09 and recorded; not started.
+2026-10-09 and recorded; begun on 2026-10-10 by the owner's word, the first
+step done on 2026-10-11 (below).
 
 **Hard prerequisites:** none. It needs no hardware and no simulator.
 
@@ -1245,6 +1246,27 @@ it flew and does not answer to the stack, so the planner, the control and the
 braking contract stay in the simulator. A first step that fits in a day: one
 EuRoC sequence through the replay; the drift against the reference beside the
 0.1 to 0.4 percent of the path the simulator shows.
+
+### The first step, done (2026-10-11, specification K33)
+
+The three steps above for EuRoC: the pair is configured by its calibration
+and rectified in both camera nodes (the simulated pair passes untouched),
+`tools/vio/euroc_to_replay.py` converts a sequence, `tools/vio/euroc_report.py`
+measures a replay against the reference. Vicon room 1 from the ETH Research
+Collection (DOI 10.3929/ethz-b-000690084), the data outside the tree:
+
+| Sequence | Path | ATE (4-DOF aligned) | RTE over 10 m | At the end |
+| --- | --- | --- | --- | --- |
+| V1_01_easy | 58.6 m | 0.050 m | 0.183 m | 0.11 % of the path |
+| V1_02_medium | 75.9 m | 0.046 m | 0.111 m | 0.17 % |
+| V1_03_difficult | 78.9 m | 0.115 m | 0.165 m | 0.42 % |
+
+Beside the simulator's first passes (0.1 to 0.4 % of the path) the real
+recordings drift alike; the details are in
+[localization.md](localization.md). Not done yet: the machine hall
+sequences, TUM-VI (its fisheye pair needs another camera model; the archive
+of room 1 is downloaded), the stereo depth and the memory on the
+recordings, the lidar recordings, a reference system on the same records.
 
 ## 26. GPU Offload
 
@@ -1325,6 +1347,59 @@ be closed in the simulator:
 - **No PX4 parameter set for a real vehicle**: the simulation's switches the
   supply check off (`CBRK_SUPPLY_CHK`) and the data-link loss reaction off
   (`NAV_DLL_ACT 0`, `scripts/px4_parameter_runtime.sh`).
+
+### Block 1 built and flown in the simulator (2026-10-11 and 12)
+
+Every point above is answered (f3e25734; specification K29 to K32, K34 and
+the amended A9):
+
+- **The pilot's authority** (K29): the stack never arms the vehicle and
+  never switches its mode; the offboard's auto-arm, auto-offboard and the
+  resends are gone. In the simulation an evaluation pilot
+  (`scripts/sim_pilot.py`) puts each vehicle in offboard and arms it once,
+  with the commands a radio or a ground station sends, and plays a schedule
+  of the pilot's and the operator's actions (`PILOT_EVENTS`). A mode the
+  pilot chooses or PX4's failsafe wins; the offboard reports
+  `AUTOPILOT_CONTROL` (released by the pilot, a failsafe or the autopilot's
+  landing; resumed; terminated; disarmed) and never answers it.
+- **The radio and the ground station** are read from PX4's failure flags and
+  reported (`RC_LINK`, `GCS_LINK`); PX4's own reaction acts.
+- **Every mission ends landed and disarmed** (K30): after the goal or the
+  return the vehicle holds its position and descends until PX4 lands and
+  disarms it; the mission check asks for `MISSION_LANDED disarmed=true`.
+- **The operator's commands** (K31) on `/drone_city_nav/operator_command`:
+  stop, land, home, goal X Y Z.
+- **The main battery** (K32): PX4's battery status weighed against the way
+  home with the return's margin (K11); a drained simulated battery turns
+  the vehicle home (`MAIN_BATTERY_DRAIN_S`).
+- **A PX4 parameter set for a real vehicle** (K34):
+  `drone_city_nav/config/px4/real_vehicle.params` with
+  [px4_parameters.md](px4_parameters.md); a geofence is in it as an example,
+  which PX4 evaluates on a global position a GNSS-denied flight does not
+  have.
+
+The injections, one flight each on f3e25734:
+
+| Injection | PX4 | The stack | End |
+| --- | --- | --- | --- |
+| The pilot's Hold (r1318) | refused: Hold needs a global position | nothing to answer | flew on |
+| The pilot's Position mode with a radio (r1326) | POSCTL in 36 ms | released, pilot | held by PX4 |
+| The pilot's Land (r1319) | AUTO_LAND in 0.1 s | released, autopilot's landing | landed |
+| The pilot's kill (r1320) | disarmed in 60 ms | terminated, never armed again | fell |
+| The radio's loss (r1321) | its failsafe, AUTO_LAND in 0.6 s | RC_LINK lost; released, failsafe | landed |
+| The operator's stop, then a goal (r1322) | offboard | still in 1.5 s from 2.3 m/s; the goal a new objective | flew to it |
+| The operator's home (r1323) | offboard | the way home along the trail | landed 0.33 m from the start, disarmed |
+| The operator's land (r1324) | offboard | the landing where it stood | landed, disarmed |
+| The main battery drained over 300 s (r1325) | offboard | home at 130 s, the way home 180 s with the margin over the time left | landed 0.24 m from the start, disarmed |
+
+Found on the way, none of them the stack's: a GNSS-denied PX4 refuses Hold
+(it needs a global position), so the pilot's means there are the Position
+mode with a radio, Land and the kill; the pilot's Land onto the staging
+platform's edge left PX4's land detector without a landing for the rest of
+the window (the vehicle held a quarter of its thrust on the edge); a goal
+given straight at the start is sought through the unknown and the start's
+room opens to the east, so the vehicle sought it far round, where the home
+command retraces the trail.
 
 ### Later blocks, for when a vehicle exists
 
@@ -2029,6 +2104,14 @@ shaft room costs the lidar's speed its tail. No smoke (item 18), no moving
 obstacle (item 21). The register with the class of every entry is
 [`technical_debt.md`](technical_debt.md).
 
+**Repaired after** (the technical-debt goal, 2026-10-10 to 13): the frames
+warn of a fading light, the contract reading the light's lit range over
+the depth and its share against the gain the driver applies (K15); the
+time-of-flight ring keeps surfaces off the body from the first moment of
+dead reckoning through the level descent, closed on the range it reads
+(K19); the ring's units carry the cameras' visibility mask. Accepted on
+the final commit: the light lost five times (r1384 to r1387, r1389: whole, 0.74 to 1.14 m of drift in 5.3 to 8.6 s of dead reckoning, the body's least true clearance 0.26 to 0.56 m), the loss beside a wall five times (r1390 to r1394: no contact, 0.60 to 1.23 m of drift, the least clearance 0.22 to 0.49 m), the light's failure five times (r1397, r1402 to r1405: home 0.77 to 1.28 m from the start by the truth). r1387 lay armed on the staging platform's edge after its blind landing: PX4's land detector, which a quarter of the thrust on an edge does not satisfy.
+
 ### 19. A Goal Proven Unreachable: Return Home (Completed)
 
 Shipped in [v0.5.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.5.0) on 2026-10-10; closed on 2026-09-27 on bf92e952. When its goal is
@@ -2172,6 +2255,12 @@ now tested, and the return has changed shape:
   2026-09-30: a test of the return does not fly for an hour. The mission
   check floods the truth grid within the flight space for every injected
   goal.
+
+**Repaired after** (the technical-debt goal, 2026-10-10 to 13): the way home
+moves its goal along the trail within one mission epoch, which the route
+lifecycle replans (K20): one mission epoch on each of the sixteen returns of the final series (light-failure and low-battery, r1355 to r1364 on fba5bead, r1397, r1402 to r1405, r1407 on bc7c16a9), the longest stand 0 to 3.5 s; before, r1225 took nine epochs and seven revocations. The camera estimator
+starts again in flight after a hole in its IMU stream (K28; the entry this
+item's r720 and r723 left): five flights with holes of 2 and 4 s on fba5bead and one on the final commit, every check passed, the autopilot reset by at most 0.043 m at a restart.
 
 ### 20. Slowed Simulation And Unattended Recording (Completed)
 
@@ -2584,3 +2673,5 @@ when a single-vehicle flight at a factor of 0.5 reaches its goal with the
 factor asked for in the manifest and the one achieved in the resource
 record, and the heaviest configuration (S3) has been flown at 0.5; the
 four-vehicle cooperative flight at 0.5 is item 15's.
+
+**Repaired after** (the technical-debt goal, 2026-10-12): the long flight under failures stood near B below real time (P10). r1110 stood in a component its planner believed closed, the retreat along its trail refused; r1365 (fba5bead) stood with its way home open on the map while the feasibility search found, swept and rejected the same edges beside a wall on every update, because every change of the world cleared the edges it had rejected. Repaired (3223df80): a rejected edge stays withheld until the world changes within one lattice step of it; the planner reports the trail retreat's attempt and the withheld edges. B and back on the goal's final commit (bc7c16a9): three of three at 0.6 (r1369 to r1371) and two of two at 1.0 (r1372, r1373), home, landed and disarmed at the start.

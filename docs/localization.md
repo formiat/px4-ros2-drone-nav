@@ -293,8 +293,15 @@ than the unaided timeout leaves the estimate unhealthy for the rest of the
 flight, and so does a velocity less certain than 1 m/s along any direction
 while it lasts (`maximum_velocity_sigma_mps`; the flying filter holds 0.08
 to 0.18): the estimator falls silent, the autopilot ends its external-vision
-fusion and its own failsafe lands the vehicle. The filter is not initialised
-again in flight; that is the register's remaining entry. The mission check reports these and the estimate
+fusion and its own failsafe lands the vehicle. Since 2026-10-11 (specification
+K28) the filter starts again in flight on the stream's first sample after
+the hole: on the autopilot's own position, velocity and attitude, which it
+carried through the hole on its IMU, at the attitude's own sample on the
+IMU's clock, so the autopilot sees no reset and the navigation stays open;
+the frames held through the hole are dropped, and the restart's pose is the
+filter's fix, healthy from it for the unaided second. Only a hole restarts
+it: a filter lost after its dead reckoning stays lost (K13). Flown with the
+relay's holes of 2 s at 60 s and 4 s at 120 s (`IMU_FAULTS=holes`): five flights of five on fba5bead (r1340 to r1344) and one on the goal's final commit (r1406, bc7c16a9): every check passed, 1.567 to 1.796 m/s, the truth 0.72 to 1.42 m from the goal, the autopilot reset by 0.009 to 0.043 m at each restart and its own position valid throughout (r1308: the external odometry's gaps were the holes themselves, 2.02 and 4.04 s). The filter's history on the way, fifteen defects from r1257 to r1309, is in the goal's journal. The mission check reports these and the estimate
 against the true pose as notes; what the estimate answers for is the
 programme's first requirement, checked by the truth: at every goal
 acknowledgement the true position is inside the 2.0 m capture radius
