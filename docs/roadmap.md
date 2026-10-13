@@ -1503,7 +1503,10 @@ What a backend without CUDA would give: a free choice of vendor (the
 ModalAI VOXL 2 above all: the autopilot on board, 16 g, $1 250 with it,
 against an Orin NX at $999 since July 2026 plus a carrier board and a
 Pixhawk), independence from NVIDIA's prices, and continuous integration
-without NVIDIA (way A). What it would not: the rest of the stack needs 3.4
+without NVIDIA (way A). Counted build by build it saves 5 to 20 percent of
+a vehicle, simplifies the hardware only on the VOXL 2 and the software
+nowhere ([hardware_builds.md](hardware_builds.md), "Cheaper Or Simpler
+Without CUDA?"). What it would not: the rest of the stack needs 3.4
 to 5.7 Zen 3 cores at p95 whatever runs MPPI, so on boards with four large
 Arm cores (Raspberry Pi 5, RK3588, the VOXL 2) the CPU becomes the limit
 once MPPI has moved to their GPU. The boards that would fit are in

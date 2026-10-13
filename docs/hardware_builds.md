@@ -41,9 +41,11 @@ in July 2026) and are an order of magnitude, not a quote.
 | Raspberry Pi 5 | 4 Cortex-A76, no CUDA | not priced | No | No CUDA, four cores |
 | An x86 board with a discrete NVIDIA GPU | the development host's class | not priced | No | Fits the compute, not a 500 mm quadcopter's mass and power |
 
-The carrier board for an Orin NX module (interfaces, the camera connectors,
-the cooling) is not priced here; nor is the arm64 build, which does not exist
-yet (roadmap item 27 block 2).
+An Orin NX module needs a carrier board (interfaces, the camera connectors,
+the cooling): Seeed's A603 is listed at €165 to $309 [19]; a whole box with
+the module, the carrier and a case (Seeed reComputer J4012) at $899, a price
+likely from before July 2026 [20]. The arm64 build does not exist yet
+(roadmap item 27 block 2).
 
 ## Stereo Cameras
 
@@ -85,9 +87,11 @@ of baseline times focal length ([camera_perception.md](camera_perception.md)).
 
 ## Builds
 
-Totals are of the priced parts; the carrier board, lenses, light, battery,
-radios, cabling and mounts come on top, and the autopilot's $212 too if the
-airframe kit does not include it.
+Totals are of the priced parts; the carrier board (€165 to $309), lenses,
+light, battery, radios, cabling and mounts come on top, and the autopilot's
+$212 too if the airframe kit does not include it. The same builds counted
+the other way, with the carrier board and the autopilot apart from a frame
+kit without one, are compared with the builds without CUDA below.
 
 | Build | Parts | Priced total | Status | Why |
 |---|---|---|---|---|
@@ -114,6 +118,55 @@ fewer rollouts than 8192, and how many are enough is item 28's first step.
 | Rockchip RK3588 (Radxa ROCK 5B+, 16 GiB) | 4 Cortex-A76 at 2.4 GHz, 4 Cortex-A55 | Mali-G610 MP4, 0.25 to 0.45 TFLOPS as measured [18] | about $120 to $190 [18] | Not for flight | A GPU four to eight times smaller than the Orin NX's and four large cores; a cheap bench or a machine for continuous integration |
 | Raspberry Pi 5 | 4 Cortex-A76 | small | — | No | Neither the CPU nor the GPU |
 | AMD Ryzen mini boards (Radeon 780M) | 8 Zen 4 cores | larger than the Iris Xe | not priced | In compute yes | Heavy and power-hungry |
+
+### Cheaper Or Simpler Without CUDA?
+
+The computer and the autopilot are where the builds differ:
+
+| Computer and autopilot | Parts | Price | Mass | Flies the stack? |
+|---|---|---|---|---|
+| Jetson (today's builds) | Orin NX 16GB $999, an A603 carrier €165 to $309 [19], a Pixhawk 6C $212 | about $1 380 to $1 520 | the module, carrier, heatsink and Pixhawk, not weighed | Yes; an arm64 build and fewer rollouts to come |
+| VOXL 2 | one board, PX4 on it | $1 250 | 16 g the board | Perhaps: a Vulkan or OpenCL backend, the CPU tight; whether its PX4 carries the uXRCE-DDS bridge the stack uses is not checked [21] |
+| x86 with an integrated GPU (LattePanda Sigma) | the board A$1 240 to 1 310 (about $810 to $860), a Pixhawk 6C $212 | about $1 020 to $1 070 | 438 g, 7 to 44 W | In compute yes, with a Vulkan or OpenCL backend |
+| RK3588 (ROCK 5B+) | the board $120 to $190, a Pixhawk 6C $212 | about $330 to $400 | light | No: the GPU and the CPU too small; a bench |
+
+Whole builds, counted alike: an X500 V2 frame kit without an autopilot
+(frame, motors, ESCs) at about €380, some $420 [22]; six VL53L5CX at $150
+(two on the lidar builds, $50); light, battery and radios left out, the same
+for all.
+
+| Build | Perception | Total |
+|---|---|---|
+| Jetson with its own pair on CSI (C1) | $174 | about $2 135 to $2 265 |
+| Jetson with an OAK-D Pro W (C2) | $449 | about $2 410 to $2 540 |
+| VOXL 2 with an OAK-D Pro W | $449 | about $2 270 |
+| x86 with an OAK-D Pro W | $449 | about $2 060, perhaps with a larger frame |
+| Jetson with a Livox Mid-360 | $979 | about $2 840 to $2 970 |
+| VOXL 2 with a Livox Mid-360 | $979 | about $2 700 (Ethernet through an expansion board, not checked) |
+| x86 with a Livox Mid-360 | $979 | about $2 490 |
+
+A camera pair of one's own on CSI ($174) belongs to its platform: an x86
+board has no CSI and the VOXL 2 its own camera family, so the camera builds
+without CUDA would most likely take a USB stereo camera at $449, and that
+eats the saving. The cheapest camera build that flies, the Jetson with its
+own pair, costs about what the builds without NVIDIA cost.
+
+- **Cheaper:** a little. The VOXL 2 saves about $140 to $270 on the computer
+  and the autopilot (5 to 10 percent of a build), an x86 board about $350 to
+  $450 (15 to 20 percent) and weighs 0.3 to 0.4 kg more, which costs flight
+  time and perhaps a larger frame. The cheap boards (RK3588, Raspberry Pi)
+  do not carry the stack.
+- **Simpler in hardware:** the VOXL 2 alone, one board in place of a
+  computer, a carrier and a Pixhawk, some 100 to 200 g lighter (an estimate,
+  nothing weighed). An x86 board is harder: mass, power, cooling.
+- **Simpler in software:** none. Each needs a Vulkan or OpenCL backend (L to
+  XL, weeks, roadmap item 28) and the controller tuned again on fewer
+  rollouts. One thing goes the other way on x86: no arm64 port, which the
+  Jetson still needs (item 27 block 2).
+- **Whether it pays:** weeks of a backend against $150 to $450 a vehicle
+  pays for a fleet of tens, or where mass and size matter. The VOXL 2's case
+  is not its price but its 16 g and its integration: a smaller and lighter
+  vehicle can be built on it.
 
 ## What The Software Supports Today
 
@@ -161,3 +214,7 @@ Prices and specifications as found on 2026-10-13.
 16. [LattePanda Sigma at TechRadar](https://www.techradar.com/pro/lattepanda-sigma), [at Core Electronics](https://core-electronics.com.au/lattepanda-sigma-the-small-hackable-x86-windowslinux-single-board-computer-server-16gb-ram.html).
 17. [Adreno 650 at Notebookcheck](https://www.notebookcheck.net/Adreno-650-vs-Adreno-640_9971_9446.247598.0.html).
 18. [RK3588 boards at CNX Software](https://www.cnx-software.com/?p=94999), [ROCK 5B+ at RS](https://uk.rs-online.com/web/p/rock-sbc-boards/0162225?gb=s), [clpeak on a Mali-G610](https://monolithe.proj.lip6.fr/assets/benchmarks/clpeak/clpeak_opi5_gpu.txt).
+19. [The A603 carrier at Robocraze](https://robocraze.com/products/seeed-studio-a603-carrier-board-for-jetson-orin%e2%84%a2-nx-orin%e2%84%a2-nano), [at rcdrone](https://rcdrone.top/ja/products/a603-carrier-board-for-jetson-orin%E2%84%A2-nx-orin%E2%84%A2-nano); Mouser lists it at €165.46.
+20. [reComputer J4012 at Hackster](https://hackster.io/products/buy/111291).
+21. [PX4's uXRCE-DDS bridge](https://docs.px4.io/main/en/middleware/uxrce_dds.html) (nothing on the VOXL 2 there).
+22. [X500 V2 ARF kit at Elektor](https://www.elektor.com/products/holybro-x500-v2-arf-drone-kit) (€379.95), [the frame kit at Flying Tech](https://www.flyingtech.co.uk/product/holybro-x500-v2-quadcopter-frame-kit/).
