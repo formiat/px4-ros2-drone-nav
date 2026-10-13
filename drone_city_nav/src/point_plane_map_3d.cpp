@@ -1,6 +1,7 @@
 #include "drone_city_nav/point_plane_map_3d.hpp"
 
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +66,7 @@ struct Cell {
 struct PointPlaneMap3D::Impl {
   explicit Impl(const PointPlaneMapConfig3D& config_in)
       : config(config_in) {
+    cells.max_load_factor(0.5F);
   }
 
   // A new point refits the planes of its own cell and the ring around it;
@@ -90,11 +92,16 @@ struct PointPlaneMap3D::Impl {
   // neighbours: the smallest principal axis, valid once the points are many
   // and flat enough. Two rings, because a scan thinned coarser than the
   // cell leaves one ring with too few points for a plane.
+  // One pass over the points, their moments taken about `around` (a point
+  // of the cell, so the offsets are a metre or two at most and the moments
+  // lose nothing to the location's coordinates): the two passes through a
+  // list of pointers cost a fifth of a registration (part 7 of the
+  // technical-debt goal, perf on r1212).
   void fitNormal(Cell& cell, const Eigen::Vector3d& around) {
     const CellKey center = cellOf(around, config.cell_m);
-    Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+    Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d moments = Eigen::Matrix3d::Zero();
     std::size_t count = 0U;
-    std::vector<const Eigen::Vector3d*> neighbours;
     for (std::int32_t dx = -2; dx <= 2; ++dx) {
       for (std::int32_t dy = -2; dy <= 2; ++dy) {
         for (std::int32_t dz = -2; dz <= 2; ++dz) {
@@ -104,8 +111,9 @@ struct PointPlaneMap3D::Impl {
             continue;
           }
           for (const Eigen::Vector3d& point : found->second.points) {
-            neighbours.push_back(&point);
-            mean += point;
+            const Eigen::Vector3d offset = point - around;
+            sum += offset;
+            moments += offset * offset.transpose();
             ++count;
           }
         }
@@ -116,13 +124,9 @@ struct PointPlaneMap3D::Impl {
     if (count < 6U) {
       return;
     }
-    mean /= static_cast<double>(count);
-    Eigen::Matrix3d covariance = Eigen::Matrix3d::Zero();
-    for (const Eigen::Vector3d* point : neighbours) {
-      const Eigen::Vector3d offset = *point - mean;
-      covariance += offset * offset.transpose();
-    }
-    covariance /= static_cast<double>(count);
+    const Eigen::Vector3d mean = sum / static_cast<double>(count);
+    const Eigen::Matrix3d covariance =
+        moments / static_cast<double>(count) - mean * mean.transpose();
     const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{covariance};
     const Eigen::Vector3d values = solver.eigenvalues();
     // A plane: the smallest spread is well below the middle one.
@@ -214,25 +218,49 @@ bool PointPlaneMap3D::nearest(const Eigen::Vector3d& query,
                               const std::int32_t ring_cells, Eigen::Vector3d& point,
                               Eigen::Vector3d& normal) {
   Impl& impl = *impl_;
-  const CellKey center = cellOf(query, impl.config.cell_m);
+  const double size = impl.config.cell_m;
+  const CellKey center = cellOf(query, size);
   double best = maximum_distance_m * maximum_distance_m;
   Cell* best_cell = nullptr;
+  const auto visit = [&](const std::int32_t dx, const std::int32_t dy,
+                         const std::int32_t dz) {
+    const auto found =
+        impl.cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
+    if (found == impl.cells.end() || found->second.born_ns > born_by_ns) {
+      return;
+    }
+    for (const Eigen::Vector3d& candidate : found->second.points) {
+      const double distance = (candidate - query).squaredNorm();
+      if (distance < best) {
+        best = distance;
+        point = candidate;
+        best_cell = &found->second;
+      }
+    }
+  };
+  // The query's own cell first; a neighbour whose box lies no nearer than the
+  // best point found is not looked up at all. The nearest point is the same;
+  // the lookups and the points read were a fifth of a registration (part 7,
+  // perf on r1212).
+  visit(0, 0, 0);
+  const auto box_gap = [&](const std::int32_t offset, const std::int32_t cell,
+                           const double value) {
+    const double low = static_cast<double>(cell + offset) * size;
+    return std::max({low - value, 0.0, value - (low + size)});
+  };
   for (std::int32_t dx = -ring_cells; dx <= ring_cells; ++dx) {
+    const double gap_x = box_gap(dx, center.x, query.x());
     for (std::int32_t dy = -ring_cells; dy <= ring_cells; ++dy) {
+      const double gap_y = box_gap(dy, center.y, query.y());
       for (std::int32_t dz = -ring_cells; dz <= ring_cells; ++dz) {
-        const auto found =
-            impl.cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-        if (found == impl.cells.end() || found->second.born_ns > born_by_ns) {
+        if (dx == 0 && dy == 0 && dz == 0) {
           continue;
         }
-        for (const Eigen::Vector3d& candidate : found->second.points) {
-          const double distance = (candidate - query).squaredNorm();
-          if (distance < best) {
-            best = distance;
-            point = candidate;
-            best_cell = &found->second;
-          }
+        const double gap_z = box_gap(dz, center.z, query.z());
+        if (gap_x * gap_x + gap_y * gap_y + gap_z * gap_z >= best) {
+          continue;
         }
+        visit(dx, dy, dz);
       }
     }
   }
