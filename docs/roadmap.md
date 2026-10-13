@@ -1268,6 +1268,25 @@ sequences, TUM-VI (its fisheye pair needs another camera model; the archive
 of room 1 is downloaded), the stereo depth and the memory on the
 recordings, the lidar recordings, a reference system on the same records.
 
+### What comes next (recommended on 2026-10-13)
+
+The owner's question whether ready estimators would have served better
+([design_questions.md](design_questions.md): not in vain, not to be redone,
+to be added to) ends in two steps here, both on recordings and both before
+any hardware:
+
+1. A reference estimator, OpenVINS, over the same EuRoC sequences beside
+   ours: the cheapest measure of how good ours is. It needs Ceres and
+   Boost.Filesystem in a tool image apart from the flight image. The owner
+   set it aside on 2026-09-25 until the drift rework
+   ([technical_debt.md](technical_debt.md)); this recommends it before the
+   hardware instead, and the decision stays the owner's.
+2. One public lidar recording (Hilti or NTU VIRAL) through the
+   lidar-inertial estimator and through FAST-LIO2: a real sweep moves during
+   its 100 ms and ours does not compensate it, and the replay decides
+   between writing the compensation and adopting FAST-LIO2 for the lidar
+   build ([hardware_builds.md](hardware_builds.md)).
+
 ## 26. GPU Offload
 
 **Type:** decision, recorded 2026-10-09: not now, not before a target
@@ -1301,7 +1320,10 @@ The order when a board exists: the stereo matching first, through a ready
 library (NVIDIA VPI on a Jetson), which frees a core and a half with almost no
 code of the project's; then measure on the board what is the bottleneck; only
 then the ESDF and the collision checks, which are the project's own CUDA and
-real work. The D* Lite planner, the memory's ray tracing and the lidar
+real work. For the ESDF a ready alternative exists, nvblox (NVIDIA's GPU
+TSDF and ESDF), which would need a layer of the project's own for the
+unobservable state (F6); only if the board's measurement asks for it
+([design_questions.md](design_questions.md)). The D* Lite planner, the memory's ray tracing and the lidar
 registration stay on the CPU.
 
 ## 27. Readiness For A Real Vehicle
@@ -1412,14 +1434,18 @@ command retraces the trail.
 3. Sensors: the pair is configured by its calibration, distortion and
    rectification included (specification K33, run on EuRoC's 752 x 480
    pair offline), but there is no camera driver and the pair's stamps are
-   taken as equal; no time-of-flight driver (64 zones in `gpu_lidar`'s layout, within
-   67 ms of the frame); the barometer, the light's charge and the camera's
-   gain come from the simulator; no onboard control of the light; the lidar
-   needs an organised 360 x 181 cloud without motion compensation; the
-   extrinsics live in SDF, C++, YAML and Python at once.
+   taken as equal; no time-of-flight driver (64 zones in `gpu_lidar`'s
+   layout, within 67 ms of the frame); the barometer, the light's charge
+   and the camera's gain come from the simulator; no onboard control of the
+   light; the lidar needs an organised 360 x 181 cloud without motion
+   compensation (writing the compensation or adopting FAST-LIO2 is decided
+   on a real recording, item 25); the extrinsics live in SDF, C++, YAML and
+   Python at once.
 4. Time and frames: the real clock synchronisation (`UXRCE_DDS_SYNCT=0`
    today, zero EKF2 delays, the 4 ms frame-to-IMU offset fitted in the
-   simulator); the map is anchored to Gazebo's spawn (origin 54, 54; the
+   simulator; before real cameras the frames' time offset and the
+   camera-to-IMU extrinsics are to be estimated online, as OpenVINS and
+   VINS-Fusion do); the map is anchored to Gazebo's spawn (origin 54, 54; the
    345 x 525 x 40 m grid of the Urban Circuit); the initial heading is a
    parameter.
 5. The vehicle model: every constant is fitted to the x500 in Gazebo

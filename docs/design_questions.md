@@ -56,15 +56,18 @@ redone; to be added to.
   the ready ones' order, and the blindness ladder lives inside it; replacing
   it now would mean rebuilding the ladder around a foreign filter and flying
   every scenario again. What to add: a reference estimator as a measuring
-  tool before the hardware (the cheapest step that says how good ours is),
-  loop closure (L1), the online time-offset calibration before real cameras
-  (roadmap item 27 block 4).
+  tool before the hardware (the cheapest step that says how good ours is;
+  roadmap item 25, its next steps, and the register's reference
+  visual-inertial system), loop closure (the register's unbounded drift,
+  L1), the online time-offset and extrinsics calibration before real
+  cameras (roadmap item 27 block 4).
 - The lidar-inertial estimator serves the simulator (the lidar flies 2.2 to
   2.5 m/s, its registration 35 ms at p95). On a real lidar it lacks motion
   compensation: decide then between writing it and adopting FAST-LIO2, by
   replaying one public real recording (roadmap item 25: Hilti, NTU VIRAL)
   through both; not before.
-- The ESDF on the GPU: only if an Orin's measurement asks for it.
+- The ESDF on the GPU (nvblox): only if an Orin's measurement asks for it
+  (roadmap item 26).
 
 In hindsight our own estimator cost more time than integrating a ready one
 would have, but that time bought the ladder the light scenarios rest on;
