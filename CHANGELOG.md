@@ -14,9 +14,11 @@ The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to
 - **The way home in one mission epoch** (K20).
 - **The long flight under failures no longer stands near B below real time** (P10): the planner's feasibility search keeps the edges the raw sweep rejected until the world changes near them.
 - **The stereo pair by its calibration, the estimator on EuRoC MAV** (K33, roadmap item 25): Vicon room 1, ATE 0.046 to 0.115 m.
+- **A flight recorded without slowing it** (A11): flown at real time with no window, its pictures rendered afterwards from a bag of what RViz shows and its true pose and light records (`tools/render_flight.sh`).
+- **The lidar-inertial registration cheaper**: 18 ms at the median and 35 at p95 in flight against 43 and 80, the same result.
 - **Repository**: the 2D memory class and the 2D raw transport removed; eight sources split under the cap; the lidar-inertial recovery's search reach; the tools `phantom_blocks.py`, `closure.py`, `stall_report.py`.
 
-Accepted on bc7c16a9: cameras 1.638 to 1.786 m/s (mean 1.704), every check; lidar 2.078 to 2.462 (mean 2.289), four of five under 2.4 on K27 (the owner's number); B and back three of three at 0.6 and two of two at 1.0; the light lost, the loss beside a wall, the light's failure five times each and the IMU holes and the low battery once, no contact.
+Accepted on the final code (4736b07e): cameras 1.651 to 1.764 m/s (mean 1.714), every check; lidar 2.046 to 2.607 (mean 2.333), two of five under 2.4 on K27 (the owner's number); the recording rendered afterwards (r1409, 6a4fc785) ok. On bc7c16a9 and 6a4fc785: B and back three of three at 0.6 and two of two at 1.0; the light lost, the loss beside a wall and the light's failure five times each, the IMU holes and the low battery; no contact.
 
 ## v0.5.0 (2026-10-10)
 

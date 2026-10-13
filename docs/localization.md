@@ -87,7 +87,7 @@ Per scan:
 
 Scans wait for the IMU up to their own stamp and keep their order; the
 subscription queues hold 100 IMU samples and 3 scans, because a
-registration takes 40 to 80 ms at p50 and p95 on the workstation and
+registration takes 16 to 20 ms at p50 and 30 to 39 ms at p95 on the workstation (4736b07e; 40 to 80 ms before the technical-debt goal's part 7) and
 longer at times. The published odometry carries the scan's stamp mapped
 into the autopilot's synchronised clock, the position and velocity
 variances from the filter and the orientation variance from the
