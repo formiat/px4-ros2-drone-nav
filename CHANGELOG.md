@@ -18,7 +18,7 @@ The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to
 - **The lidar-inertial registration cheaper**: 18 ms at the median and 35 at p95 in flight against 43 and 80, the same result.
 - **Repository**: the 2D memory class and the 2D raw transport removed; eight sources split under the cap; the lidar-inertial recovery's search reach; the tools `phantom_blocks.py`, `closure.py`, `stall_report.py`.
 
-Accepted on the final code (4736b07e): cameras 1.651 to 1.764 m/s (mean 1.714), every check; lidar 2.046 to 2.607 (mean 2.333), two of five under 2.4 on K27 (the owner's number); the recording rendered afterwards (r1409, 6a4fc785) ok. On bc7c16a9 and 6a4fc785: B and back three of three at 0.6 and two of two at 1.0; the light lost, the loss beside a wall and the light's failure five times each, the IMU holes and the low battery; no contact.
+Accepted on the final code (4736b07e): cameras 1.651 to 1.764 m/s (mean 1.714), every check; lidar 2.046 to 2.607 (mean 2.333), two of five under 2.4 on K27 (the owner's number); the recording rendered afterwards ok (r1448; r1409 on 6a4fc785); the light lost and the loss beside a wall five times each, the light's failure, the IMU holes and the low battery once each, whole. On bc7c16a9: B and back three of three at 0.6 and two of two at 1.0, the light's failure five times; no contact.
 
 ## v0.5.0 (2026-10-10)
 
