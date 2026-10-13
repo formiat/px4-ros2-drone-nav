@@ -135,10 +135,6 @@ private:
         world.physical_footprint.lower_extent_m;
     world.physical_footprint.body_upper_extent_m =
         world.physical_footprint.upper_extent_m;
-    world.physical_footprint.body_vertical_error_below_m =
-        declare<double>("physical_footprint_vertical_error_below_m", 0.5);
-    world.physical_footprint.body_vertical_error_above_m =
-        declare<double>("physical_footprint_vertical_error_above_m", 0.5);
     world.physical_footprint.perimeter_samples =
         declarePositiveSize("physical_footprint_samples", 12);
     world.physical_footprint.radial_rings =

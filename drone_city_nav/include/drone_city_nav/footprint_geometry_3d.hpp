@@ -25,14 +25,6 @@ struct SweptFootprintConfig {
   double body_radius_m{0.55};
   double body_lower_extent_m{0.23};
   double body_upper_extent_m{0.35};
-  // The estimate's vertical error the body's clearance is measured with
-  // (specification K27): the body is measured this much lower and this much
-  // higher than the estimate puts it. The camera estimator's height runs 0.3
-  // to 0.6 m from the truth, 0.57 m by the end of an ordinary flight (r1183),
-  // 0.5 m after 2.8 s of dead reckoning (r1184), and a horizon that kept 0.3 m
-  // above a floor by the estimate put the feet on it (r1184).
-  double body_vertical_error_below_m{0.5};
-  double body_vertical_error_above_m{0.5};
   std::size_t perimeter_samples{12U};
   std::size_t radial_rings{2U};
   std::size_t axial_samples{3U};

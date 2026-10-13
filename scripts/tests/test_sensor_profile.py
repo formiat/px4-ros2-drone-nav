@@ -40,16 +40,6 @@ class SensorProfileTest(unittest.TestCase):
             {"stereo_tof": "visual_inertial", "lidar": "lidar_inertial"},
             SUPPORT["DEFAULT_LOCALIZATION_PROFILES"])
 
-    def test_the_lidar_estimate_has_its_own_error_below(self) -> None:
-        # Specification K27: the lidar-inertial estimate runs low, so only the
-        # allowance below is a cell, the one above stays the camera's.
-        self.assertEqual({"physical_footprint_vertical_error_below_m": 0.25},
-                         SUPPORT["LIDAR_INERTIAL_VERTICAL_ERROR"])
-        single = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text()
-        self.assertIn('if localization == "lidar_inertial":\n'
-                      "            production_mppi_parameters.append("
-                      "LIDAR_INERTIAL_VERTICAL_ERROR)", single)
-
     def test_cameras_are_the_default_of_the_launch_support(self) -> None:
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_CAMERA_PROFILE"])
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_NAVIGATION_SENSOR_PROFILE"])

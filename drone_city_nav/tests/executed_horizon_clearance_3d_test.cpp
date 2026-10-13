@@ -261,14 +261,6 @@ TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceCarriesTheEstimatesVertical
   for (const ConstrainedHorizonSample3D& sample : clearance.constrained_samples) {
     EXPECT_NEAR(sample.body_clearance_m, sample.clearance_m - 0.5, 0.13);
   }
-  // The lidar-inertial estimate's error below is a quarter metre, one cell.
-  footprint.body_vertical_error_below_m = 0.25;
-  const ExecutedHorizonClearance3D lidar =
-      measureRouteClearance3D(route, 0.0, 1.0, lattice, field, footprint, 2.0);
-  ASSERT_TRUE(lidar.constrained());
-  for (const ConstrainedHorizonSample3D& sample : lidar.constrained_samples) {
-    EXPECT_NEAR(sample.body_clearance_m, sample.clearance_m - 0.25, 0.1);
-  }
   // Against a wall beside the motion the error takes nothing.
   SweptFootprintConfig wall_footprint = pointFootprint();
   wall_footprint.radius_m = 0.4;
