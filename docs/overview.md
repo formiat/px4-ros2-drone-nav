@@ -114,6 +114,8 @@ validated with a compass-grade heading of 2 degrees and more.
 - `environment_candidates.md`: external world selection, versioned artifact
   distribution, static-map import, and sparse-topology evidence.
 - `trajectory_optimization.md`: GPU MPPI optimization.
+- `hardware_builds.md`: hardware a real vehicle could be built from, and its cost.
+- `design_questions.md`: why the stack is built as it is, the owner's questions answered.
 - `replanning.md`: persistent route repair, atomic execution plans, and liveness.
 - `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.
 - `configuration.md`: parameter groups and source-of-truth guidance.

@@ -1529,6 +1529,50 @@ built and its unit tests run on a machine without CUDA, the parity tests
 holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
 series on the board.
 
+## 29. Telling A Failing Light From A Dark Place
+
+**Type:** new capability; decided by the project owner on 2026-10-13
+(specification F18), after the question of a camera vehicle in a large dark
+space ([design_questions.md](design_questions.md)).
+
+**Hard prerequisites:** none in the simulator; a light driver that reports
+its state on a real vehicle ([hardware_builds.md](hardware_builds.md)).
+
+In empty darkness, a large hall or open ground at night at a height, the
+frames see nothing within the light's reach, and the vehicle cannot tell
+that from a light that failed (specification I7): after 3.5 s it judges the
+light unreliable (K12) and turns home. A mode that reads darkness as free is
+not built: the estimator still has nothing to track (dead reckoning after
+1 s, K13, the descent 3 s later, K19), a lit surface without texture gives
+the stereo pair no depth, and a light that really fails in such a mode flies
+the vehicle blind at speed.
+
+What is built:
+
+1. The light's own reading. On a vehicle, the driver's current or a
+   photodiode at the emitter; in the simulator, the light's state as such a
+   driver would read it, published on board (the injector's schedule never
+   reaches the navigation: only what a driver measures does). K12 judges a
+   failing light by it; the frames' judgment stays for what the reading
+   cannot see (a soiled lens, a lamp that dims while drawing its current).
+2. The time-of-flight ring as a second witness: a unit, with its own
+   emitter, reads a surface within its range inside the camera's field
+   where the frame is dark: the light has failed.
+3. Darkness with a sound light stays observed unobservable to the braking
+   contract (I2, F6, K14): no speed into it, the speed the ring confirms at
+   most; but no "unreliable light, home" for it.
+
+For a truly large space the answer stays another sensor: the lidar build
+(40 m, its own emitter) or GNSS in the open at a height; this item does not
+make the camera vehicle fast there, it stops it from aborting.
+
+Complete when, in the simulator: a large dark hall (a world of its own, its
+floor textured and lit by the carried light only) is flown to its goal by
+the truth without a false judgment of the light and without contact (three
+flights); the light's failure is still judged, by the reading, no later
+than K12 judges it today (light-failure and light-lost, a flight each);
+an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

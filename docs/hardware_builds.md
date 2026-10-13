@@ -82,7 +82,7 @@ of baseline times focal length ([camera_perception.md](camera_perception.md)).
 |---|---|---|---|
 | Holybro Pixhawk 6C | $211.99 [12] | Yes | PX4 with uXRCE-DDS, as in the simulator; the agent link is UDP only today (roadmap item 27 block 2) |
 | Holybro X500 V2, PX4 development kit | $507.99 at Holybro (offered with the Pixhawk 6C or 6X; what the 6C kit includes to confirm) [13]; $946 to $1 150 with the 6X elsewhere [13] | Yes | The airframe the simulated model is fitted to; 610 g, 500 mm, about 18 min of hover with no payload on 4S 5000 mAh, a payload of 1.5 kg without the battery at 70 percent throttle by Holybro, about 1 kg with a 4S 5000 mAh by a retailer [14] |
-| Flood LED with a switchable driver that reports its state | not priced | Needed on the camera builds | The carried light (K11, K12); the light's own health reading would let the vehicle tell a failing light from a dark place, which today it cannot (specification I7) |
+| Flood LED with a switchable driver that reports its state | not priced | Needed on the camera builds | The carried light (K11, K12); the light's own health reading lets the vehicle tell a failing light from a dark place, which today it cannot (specification I7; roadmap item 29, F18) |
 | Radio control with a kill switch, telemetry radio, 4S battery | not priced | Needed | The pilot's authority and the kill switch (K29); the main battery's return (K32) |
 
 ## Builds
