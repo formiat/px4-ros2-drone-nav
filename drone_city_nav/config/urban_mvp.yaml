@@ -463,6 +463,11 @@ production_mppi_node:
     physical_footprint_body_radius_m: 0.55
     physical_footprint_lower_extent_m: 0.23
     physical_footprint_upper_extent_m: 0.35
+    # The estimate's vertical error the body's clearance is measured with
+    # (specification K27): the camera estimator's, 0.3 to 0.6 m. The
+    # lidar-inertial profile has its own below (sensor_profile.py).
+    physical_footprint_vertical_error_below_m: 0.5
+    physical_footprint_vertical_error_above_m: 0.5
     physical_footprint_samples: 12
     physical_footprint_radial_rings: 2
     physical_footprint_axial_samples: 3

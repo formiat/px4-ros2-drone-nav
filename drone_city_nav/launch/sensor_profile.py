@@ -70,6 +70,16 @@ DEFAULT_LOCALIZATION_PROFILES = {
     "lidar": "lidar_inertial",
 }
 
+# The lidar-inertial estimate's vertical error, which the body's clearance is
+# measured with (specification K27): -0.29 to +0.10 m against the frame's own
+# offset at rest (r1219, r1107), where the camera estimate's runs +0.03 to
+# +0.45 (the 0.5 m both ways of the parameters). The lidar estimate runs low,
+# so a ceiling is nearer than believed and the body is measured two cells of
+# the 0.25 m grid higher still; a floor is at most 0.10 m nearer, one cell.
+# The half metre below met the lidar's crisp floors: 2.852 m/s before K27,
+# 2.333 after it (r1425 to r1429).
+LIDAR_INERTIAL_VERTICAL_ERROR = {"physical_footprint_vertical_error_below_m": 0.25}
+
 
 def validate_sensor_profiles(camera_profile: str, navigation_sensor_profile: str):
     """Return the two profiles, normalized; the stereo navigation profile needs
