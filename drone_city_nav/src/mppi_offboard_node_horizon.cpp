@@ -172,13 +172,23 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
   setpoint_pub_->publish(buildMppiTrajectorySetpoint(
       nowMicros(), reflex, descending ? -kLandingSpeedMps : 0.0, Point2{0.0, 0.0}, nan,
       nan, 0.0));
-  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                       "%s reflex=(%.2f,%.2f) ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
-                       descending ? "DEAD_RECKONING_LANDING descending=true"
-                                  : "DEAD_RECKONING_HOLD level=true",
-                       reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
-                       ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
-                       ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));
+  // A throttle of its own for each: sharing one, the hold's lines kept the
+  // descent's first line up to 2 s behind its start (r1459 to r1461).
+  if (descending) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "DEAD_RECKONING_LANDING descending=true reflex=(%.2f,%.2f) "
+                         "ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
+                         reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
+                         ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
+                         ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));
+  } else {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "DEAD_RECKONING_HOLD level=true reflex=(%.2f,%.2f) "
+                         "ring_m=(%.2f,%.2f,%.2f,%.2f) down_m=%.2f",
+                         reflex.x, reflex.y, ranges.front_m.value_or(-1.0),
+                         ranges.back_m.value_or(-1.0), ranges.left_m.value_or(-1.0),
+                         ranges.right_m.value_or(-1.0), ranges.down_m.value_or(-1.0));
+  }
 }
 
 // Specification K30 (the owner's decision of 2026-10-10): a mission ends with

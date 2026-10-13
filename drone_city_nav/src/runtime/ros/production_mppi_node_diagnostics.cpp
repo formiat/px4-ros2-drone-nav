@@ -868,6 +868,11 @@ void ProductionMppiNode::processDiagnostics(
           << finiteOrNegative(speed_policy.unfaced_observed_range_m)
           << ",\"sensor_measured_range_m\":"
           << finiteOrNegative(speed_policy.sensor_measured_range_m)
+          // The range the frame alone grants, before the memory answers back
+          // along the flown path (K15): the light's measure (K12) and the
+          // offboard's dark hold's (K19).
+          << ",\"sensor_frame_range_m\":"
+          << finiteOrNegative(speed_policy.sensor_frame_range_m)
           << ",\"sensor_evidence_age_s\":"
           << finiteOrNegative(speed_policy.sensor_evidence_age_s)
           << ",\"yaw\":" << input.initial_state.yaw << ",\"yaw_rate\":"
