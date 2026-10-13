@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
-#include <unordered_map>
 #include <vector>
 
 namespace drone_city_nav {
@@ -118,7 +117,12 @@ private:
   std::uint64_t last_keyframe_id_{0U};
 };
 
-// One point per cell, the cell's centroid, within the range band.
+// One point per cell, the cell's centroid, within the range band, the cells
+// in the order the scan first meets them. The cells are found through an
+// open-addressed index sized for the scan at once: a node-based map grown
+// point by point was a quarter of a registration, its passes repeated as a
+// large scan is thinned coarser (part 7 of the technical-debt goal, perf on
+// r1212).
 [[nodiscard]] std::vector<Eigen::Vector3d>
 thinScan(const std::vector<Eigen::Vector3d>& points,
          const LidarInertialOdometryConfig& config) {
@@ -127,7 +131,16 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
     std::size_t count{0U};
   };
 
-  std::unordered_map<CellKey, Accumulator, CellKeyHash> cells;
+  std::size_t slots = 64U;
+  while (slots < 2U * points.size()) {
+    slots *= 2U;
+  }
+  const std::size_t mask = slots - 1U;
+  constexpr std::uint32_t kNone{0xFFFFFFFFU};
+  std::vector<CellKey> keys(slots);
+  std::vector<std::uint32_t> index(slots, kNone);
+  std::vector<Accumulator> cells;
+  cells.reserve(points.size());
   const double minimum = config.minimum_range_m * config.minimum_range_m;
   const double maximum = config.maximum_range_m * config.maximum_range_m;
   for (const Eigen::Vector3d& point : points) {
@@ -138,13 +151,27 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
     if (range < minimum || range > maximum) {
       continue;
     }
-    Accumulator& accumulator = cells[cellOf(point, config.scan_voxel_m)];
+    const CellKey key = cellOf(point, config.scan_voxel_m);
+    std::size_t slot =
+        static_cast<std::size_t>(static_cast<std::uint64_t>(CellKeyHash{}(key)) *
+                                     0x9E3779B97F4A7C15ULL >>
+                                 32U) &
+        mask;
+    while (index[slot] != kNone && !(keys[slot] == key)) {
+      slot = (slot + 1U) & mask;
+    }
+    if (index[slot] == kNone) {
+      index[slot] = static_cast<std::uint32_t>(cells.size());
+      keys[slot] = key;
+      cells.emplace_back();
+    }
+    Accumulator& accumulator = cells[index[slot]];
     accumulator.sum += point;
     ++accumulator.count;
   }
   std::vector<Eigen::Vector3d> thinned;
   thinned.reserve(cells.size());
-  for (const auto& [key, accumulator] : cells) {
+  for (const Accumulator& accumulator : cells) {
     thinned.push_back(accumulator.sum / static_cast<double>(accumulator.count));
   }
   return thinned;

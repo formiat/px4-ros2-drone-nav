@@ -2,10 +2,11 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -61,12 +62,120 @@ struct Cell {
   bool normal_stale{true};
 };
 
+// The cells in one open-addressed table: the keys and their states in two
+// compact arrays the probes read, the cells beside them. A node-based map
+// spent a quarter of a registration finding cells (part 7 of the
+// technical-debt goal, perf on r1212). Nothing iterates over the table, so
+// its layout reaches no result.
+class CellTable {
+public:
+  [[nodiscard]] Cell* find(const CellKey& key) noexcept {
+    if (keys_.empty()) {
+      return nullptr;
+    }
+    for (std::size_t slot = home(key);; slot = (slot + 1U) & mask_) {
+      if (states_[slot] == kEmpty) {
+        return nullptr;
+      }
+      if (states_[slot] == kFull && keys_[slot] == key) {
+        return &cells_[slot];
+      }
+    }
+  }
+
+  // The cell of `key`, created empty if absent, and whether it was.
+  std::pair<Cell*, bool> tryEmplace(const CellKey& key) {
+    if (Cell* const found = find(key)) {
+      return {found, false};
+    }
+    if (2U * (used_ + 1U) > keys_.size()) {
+      rebuild(std::max<std::size_t>(64U, 4U * (size_ + 1U)));
+    }
+    std::size_t slot = home(key);
+    while (states_[slot] == kFull) {
+      slot = (slot + 1U) & mask_;
+    }
+    if (states_[slot] == kEmpty) {
+      ++used_;
+    }
+    states_[slot] = kFull;
+    keys_[slot] = key;
+    cells_[slot] = Cell{};
+    ++size_;
+    return {&cells_[slot], true};
+  }
+
+  void erase(const CellKey& key) {
+    Cell* const found = find(key);
+    if (found == nullptr) {
+      return;
+    }
+    const auto slot = static_cast<std::size_t>(found - cells_.data());
+    states_[slot] = kErased;
+    cells_[slot] = Cell{};
+    --size_;
+  }
+
+  [[nodiscard]] bool empty() const noexcept {
+    return size_ == 0U;
+  }
+
+private:
+  static constexpr std::uint8_t kEmpty{0U};
+  static constexpr std::uint8_t kFull{1U};
+  static constexpr std::uint8_t kErased{2U};
+
+  [[nodiscard]] std::size_t home(const CellKey& key) const noexcept {
+    return static_cast<std::size_t>((static_cast<std::uint64_t>(CellKeyHash{}(key)) *
+                                     0x9E3779B97F4A7C15ULL) >>
+                                    shift_) &
+           mask_;
+  }
+
+  // At least `capacity` slots, a power of two; the erased slots are dropped.
+  void rebuild(const std::size_t capacity) {
+    std::size_t slots = 64U;
+    while (slots < capacity) {
+      slots *= 2U;
+    }
+    std::vector<CellKey> keys(slots);
+    std::vector<std::uint8_t> states(slots, kEmpty);
+    std::vector<Cell> cells(slots);
+    keys.swap(keys_);
+    states.swap(states_);
+    cells.swap(cells_);
+    mask_ = slots - 1U;
+    shift_ = 64U - static_cast<unsigned>(std::countr_zero(slots));
+    used_ = 0U;
+    for (std::size_t old = 0U; old < states.size(); ++old) {
+      if (states[old] != kFull) {
+        continue;
+      }
+      std::size_t slot = home(keys[old]);
+      while (states_[slot] != kEmpty) {
+        slot = (slot + 1U) & mask_;
+      }
+      states_[slot] = kFull;
+      keys_[slot] = keys[old];
+      cells_[slot] = std::move(cells[old]);
+      ++used_;
+    }
+  }
+
+  std::vector<CellKey> keys_;
+  std::vector<std::uint8_t> states_;
+  std::vector<Cell> cells_;
+  std::size_t mask_{0U};
+  unsigned shift_{64U};
+  std::size_t size_{0U};
+  std::size_t used_{0U};
+};
+
 } // namespace
 
 struct PointPlaneMap3D::Impl {
   explicit Impl(const PointPlaneMapConfig3D& config_in)
       : config(config_in) {
-    cells.max_load_factor(0.5F);
   }
 
   // A new point refits the planes of its own cell and the ring around it;
@@ -78,10 +187,9 @@ struct PointPlaneMap3D::Impl {
     for (std::int32_t dx = -1; dx <= 1; ++dx) {
       for (std::int32_t dy = -1; dy <= 1; ++dy) {
         for (std::int32_t dz = -1; dz <= 1; ++dz) {
-          const auto found =
-              cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-          if (found != cells.end()) {
-            found->second.normal_stale = true;
+          if (Cell* const found =
+                  cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz})) {
+            found->normal_stale = true;
           }
         }
       }
@@ -105,12 +213,12 @@ struct PointPlaneMap3D::Impl {
     for (std::int32_t dx = -2; dx <= 2; ++dx) {
       for (std::int32_t dy = -2; dy <= 2; ++dy) {
         for (std::int32_t dz = -2; dz <= 2; ++dz) {
-          const auto found =
+          const Cell* const found =
               cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-          if (found == cells.end()) {
+          if (found == nullptr) {
             continue;
           }
-          for (const Eigen::Vector3d& point : found->second.points) {
+          for (const Eigen::Vector3d& point : found->points) {
             const Eigen::Vector3d offset = point - around;
             sum += offset;
             moments += offset * offset.transpose();
@@ -138,7 +246,7 @@ struct PointPlaneMap3D::Impl {
   }
 
   PointPlaneMapConfig3D config;
-  std::unordered_map<CellKey, Cell, CellKeyHash> cells;
+  CellTable cells;
   std::size_t point_count{0U};
 };
 
@@ -161,8 +269,8 @@ void PointPlaneMap3D::insert(const std::span<const Eigen::Vector3d> points_world
   Impl& impl = *impl_;
   for (const Eigen::Vector3d& point : points_world) {
     const auto [found, created] =
-        impl.cells.try_emplace(cellOf(point, impl.config.cell_m));
-    Cell& cell = found->second;
+        impl.cells.tryEmplace(cellOf(point, impl.config.cell_m));
+    Cell& cell = *found;
     if (created) {
       cell.born_ns = stamp_ns;
     }
@@ -187,11 +295,12 @@ void PointPlaneMap3D::remove(const std::span<const Eigen::Vector3d> points_world
                              const std::uint64_t owner) {
   Impl& impl = *impl_;
   for (const Eigen::Vector3d& point : points_world) {
-    const auto found = impl.cells.find(cellOf(point, impl.config.cell_m));
-    if (found == impl.cells.end()) {
+    const CellKey key = cellOf(point, impl.config.cell_m);
+    Cell* const found = impl.cells.find(key);
+    if (found == nullptr) {
       continue;
     }
-    Cell& cell = found->second;
+    Cell& cell = *found;
     bool removed = false;
     for (std::size_t index = cell.owners.size(); index-- > 0U;) {
       if (cell.owners[index] != owner) {
@@ -207,7 +316,7 @@ void PointPlaneMap3D::remove(const std::span<const Eigen::Vector3d> points_world
     }
     impl.markNeighboursStale(point);
     if (cell.points.empty()) {
-      impl.cells.erase(found);
+      impl.cells.erase(key);
     }
   }
 }
@@ -224,17 +333,17 @@ bool PointPlaneMap3D::nearest(const Eigen::Vector3d& query,
   Cell* best_cell = nullptr;
   const auto visit = [&](const std::int32_t dx, const std::int32_t dy,
                          const std::int32_t dz) {
-    const auto found =
+    Cell* const found =
         impl.cells.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
-    if (found == impl.cells.end() || found->second.born_ns > born_by_ns) {
+    if (found == nullptr || found->born_ns > born_by_ns) {
       return;
     }
-    for (const Eigen::Vector3d& candidate : found->second.points) {
+    for (const Eigen::Vector3d& candidate : found->points) {
       const double distance = (candidate - query).squaredNorm();
       if (distance < best) {
         best = distance;
         point = candidate;
-        best_cell = &found->second;
+        best_cell = found;
       }
     }
   };
