@@ -40,6 +40,7 @@ aside, and this file what everything else is measured against.
 | R3 | The mean flight speed exceeds 1.2 m/s on the stereo set and 2.4 m/s on the 3D lidar, both without GNSS, measured on the simulation clock between mission readiness and the result. | Owner, 2026-09-19; simulation clock 2026-09-25 | The second requirement; the only speed target. |
 | R4 | Nothing else fails a flight: every other measurement of the check is a note. | Owner, 2026-09-19 | [`testing.md`](testing.md). |
 | R5 | What a series shows to be wrong is repaired with its measured cause; debt holds only what is (a) very hard, (b) in need of a deep rework, or (c) in need of the owner's decision, and says which. | Owner, 2026-09-19 | [`technical_debt.md`](technical_debt.md). |
+| R6 | The vehicle is meant to be a product made in numbers, not one vehicle: the cost of its parts and its mass are measures every hardware and compute decision answers to, and work done once that saves on every vehicle (a cheaper or lighter onboard computer, a sensor of the project's own, a stack that needs less compute) is weighed against the fleet, not against one vehicle. | Owner, 2026-10-13 | The owner on the builds without CUDA, which save $150 to $450 a vehicle for weeks of a backend: "we aim at exactly that, a mass product" ([hardware_builds.md](hardware_builds.md)). |
 
 ## Navigation Invariants
 
@@ -276,3 +277,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-10-13 | K19 | the daylight dead reckoning read with the frame seeing, the share 0.95 to 0.99 (r1430 to r1434) | the light's schedule: every hold of the trial inside a dark stretch (r1459 to r1462); the frame's own range recorded | Agent | The 0.95 to 0.99 was the track's measured range, which the memory answers back along the flown path (K15), not the frame's: r1462 read 6.4 m through a dark stretch on its way home (109.8 to 113.5 s, the light at 0). | a8bf7228 |
 | 2026-10-13 | F18 | — | new: the light judged by its own reading and the time-of-flight ring; darkness with a sound light unobservable, not free | Owner | The question of a large dark space; roadmap item 29. | fc537890 |
 | 2026-10-13 | I7 | the vehicle knows nothing of its light's failures | the same until roadmap item 29, which brings the light's own reading to the navigation (F18) | Owner | The owner's decision of 2026-10-13. | fc537890 |
+| 2026-10-13 | R6 | — | new: a product made in numbers; the parts' cost and the mass weighed against the fleet | Owner | The owner's statement of the project's aim. | this commit |

@@ -1506,7 +1506,11 @@ Pixhawk), independence from NVIDIA's prices, and continuous integration
 without NVIDIA (way A). Counted build by build it saves 5 to 20 percent of
 a vehicle, simplifies the hardware only on the VOXL 2 and the software
 nowhere ([hardware_builds.md](hardware_builds.md), "Cheaper Or Simpler
-Without CUDA?"). What it would not: the rest of the stack needs 3.4
+Without CUDA?"); the vehicle is meant to be made in numbers
+(specification R6), so a saving per vehicle counts against a fleet and the
+backend is a candidate, not a curiosity; the larger lever is the stack's own
+appetite for compute, which step 1 starts to measure. What it would not:
+the rest of the stack needs 3.4
 to 5.7 Zen 3 cores at p95 whatever runs MPPI, so on boards with four large
 Arm cores (Raspberry Pi 5, RK3588, the VOXL 2) the CPU becomes the limit
 once MPPI has moved to their GPU. The boards that would fit are in

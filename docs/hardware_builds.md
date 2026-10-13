@@ -164,9 +164,48 @@ own pair, costs about what the builds without NVIDIA cost.
   rollouts. One thing goes the other way on x86: no arm64 port, which the
   Jetson still needs (item 27 block 2).
 - **Whether it pays:** weeks of a backend against $150 to $450 a vehicle
-  pays for a fleet of tens, or where mass and size matter. The VOXL 2's case
-  is not its price but its 16 g and its integration: a smaller and lighter
-  vehicle can be built on it.
+  pays for a fleet of tens, or where mass and size matter, and the vehicle
+  is meant to be made in numbers (specification R6): at a hundred vehicles
+  the saving is $15 000 to $45 000, and the VOXL 2's 16 g and integration
+  make a smaller, lighter vehicle possible. The larger lever is below.
+
+## For A Product Made In Numbers
+
+The vehicle is meant to be a product made in numbers (specification R6), so
+the registry is read for the cost of a vehicle's parts and its mass, not for
+one prototype.
+
+- **The largest lever is the stack's own appetite for compute.** It needs
+  3.4 to 5.7 Zen 3 cores at p95 and 6.4 ms of an 11 TFLOPS GPU a tick
+  ([resource_budget.md](resource_budget.md)); the boards that carry it cost
+  about $1 000 to $1 500 with the autopilot. A stack that flew on an Orin
+  Nano ($399) or on a board of the RK3588 class ($120 to $190) would save
+  $600 to $1 300 a vehicle, more than any choice of GPU interface. The
+  levers: fewer rollouts (roadmap item 28, its first step), the stereo
+  matching off the CPU (item 26), the persistent planner's budget (it spends
+  its whole 150 ms, a setting), the memory's cost; each measured, none
+  bought by flying worse (R1 to R3).
+- **The camera build is the base product.** A lidar ($419 to $979) is a
+  variant for those who pay for it; the camera pair of the project's own
+  (calibrated by K33) over a packaged stereo camera at $449; the ToF ring's
+  sensors are cheap.
+- **One board for the computer and the autopilot**, the VOXL 2's class, or a
+  system-on-module on a carrier board of the project's own: fewer parts, less
+  mass, less cabling to assemble.
+- **The prices here are single units**, but NVIDIA's $999 for the Orin NX
+  16GB is already its price per thousand; at volume a module goes on a
+  carrier board of one's own.
+
+Not known yet, and each moves the choice:
+
+- **The market.** If it includes government customers in the United States,
+  the rules on parts made in China (NDAA, the Blue UAS lists) exclude much
+  of this registry (Livox, Unitree, Rockchip, many hobby autopilots) and
+  favour the VOXL 2, which ModalAI places in the Blue UAS Framework [23].
+- **The target price of a vehicle**, which says how much the stack's
+  compute may cost.
+- **The size and mass class**, which says whether a 500 mm quadcopter is the
+  vehicle at all.
 
 ## What The Software Supports Today
 
@@ -218,3 +257,4 @@ Prices and specifications as found on 2026-10-13.
 20. [reComputer J4012 at Hackster](https://hackster.io/products/buy/111291).
 21. [PX4's uXRCE-DDS bridge](https://docs.px4.io/main/en/middleware/uxrce_dds.html) (nothing on the VOXL 2 there).
 22. [X500 V2 ARF kit at Elektor](https://www.elektor.com/products/holybro-x500-v2-arf-drone-kit) (€379.95), [the frame kit at Flying Tech](https://www.flyingtech.co.uk/product/holybro-x500-v2-quadcopter-frame-kit/).
+23. [ModalAI's VOXL 2 launch, 2022](https://www.modalai.com/blogs/press-releases/modalai%E2%93%A1-launches-voxl%E2%93%A1-2-the-smallest-smartest-blue-uas-framework-autopilot-at-16g).

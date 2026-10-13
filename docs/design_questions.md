@@ -88,7 +88,8 @@ lookups a step, which a CPU cannot carry at this count (roadmap item 28
 measures it); the development laptop has an NVIDIA GPU; and above all the
 same CUDA code runs on a Jetson, the usual companion computer of a drone with
 heavy perception: one source from the laptop to the vehicle. The price is
-the tie to NVIDIA, weighed in roadmap item 28.
+the tie to NVIDIA, weighed in roadmap item 28, and with a product made in
+numbers (specification R6) a real cost on every vehicle.
 
 ## Can The Stack Do Without CUDA?
 
