@@ -40,7 +40,7 @@ aside, and this file what everything else is measured against.
 | R3 | The mean flight speed exceeds 1.2 m/s on the stereo set and 2.4 m/s on the 3D lidar, both without GNSS, measured on the simulation clock between mission readiness and the result. | Owner, 2026-09-19; simulation clock 2026-09-25 | The second requirement; the only speed target. |
 | R4 | Nothing else fails a flight: every other measurement of the check is a note. | Owner, 2026-09-19 | [`testing.md`](testing.md). |
 | R5 | What a series shows to be wrong is repaired with its measured cause; debt holds only what is (a) very hard, (b) in need of a deep rework, or (c) in need of the owner's decision, and says which. | Owner, 2026-09-19 | [`technical_debt.md`](technical_debt.md). |
-| R6 | The vehicle is meant to be a product made in numbers, not one vehicle: the cost of its parts and its mass are measures every hardware and compute decision answers to, and work done once that saves on every vehicle (a cheaper or lighter onboard computer, a sensor of the project's own, a stack that needs less compute) is weighed against the fleet, not against one vehicle. | Owner, 2026-10-13 | The owner on the builds without CUDA, which save $150 to $450 a vehicle for weeks of a backend: "we aim at exactly that, a mass product" ([hardware_builds.md](hardware_builds.md)). |
+| R6 | The vehicle is meant to be a product made in numbers, not one vehicle: the cost of its parts and its mass are measures every hardware and compute decision answers to, and work done once that saves on every vehicle (a cheaper or lighter onboard computer, a sensor of the project's own, a stack that needs less compute) is weighed against the fleet, not against one vehicle. The market and the target price are not set (2026-10-13): the vehicle goes where it fits best and is most convenient, and its hardware is made cheaper by adapting the software, never at the cost of the product's quality, the flight speed included (R1 to R3). | Owner, 2026-10-13; the market and the price, the same day | The owner on the builds without CUDA, which save $150 to $450 a vehicle for weeks of a backend: "we aim at exactly that, a mass product" ([hardware_builds.md](hardware_builds.md)). |
 
 ## Navigation Invariants
 
@@ -65,6 +65,7 @@ aside, and this file what everything else is measured against.
 | V4 | Two missions remain, urban point-to-point and cooperative traffic, on Urban Circuit Practice 01. | Owner, 2026-09-17 | The interception missions, the radar and the grid city were removed. |
 | V5 | The autopilot fuses the external odometry with a fixed noise of 0.3 m and 0.05 rad, not the estimator's variances. | Inherited (item 16) | r561: at 0.1 m a 0.4 m correction was gated out and the flight lost. |
 | V6 | The capture radius of a goal is 2.0 m (`mission_goal_capture_radius_m`). | Inherited | The radius R2 is judged by. |
+| V7 | The airframe is not set: the 500 mm quadcopter (the x500 the vehicle model is fitted to) was chosen at the project's start and is neither a goal nor a constraint; the vehicle's size and mass class are open to revision. | Owner, 2026-10-13 | The owner's answer on the size class a product made in numbers (R6) should have. |
 
 ## Acceptance And Runs
 
@@ -278,3 +279,5 @@ opened, so that the numbers above carry their history from the start.
 | 2026-10-13 | F18 | — | new: the light judged by its own reading and the time-of-flight ring; darkness with a sound light unobservable, not free | Owner | The question of a large dark space; roadmap item 29. | fc537890 |
 | 2026-10-13 | I7 | the vehicle knows nothing of its light's failures | the same until roadmap item 29, which brings the light's own reading to the navigation (F18) | Owner | The owner's decision of 2026-10-13. | fc537890 |
 | 2026-10-13 | R6 | — | new: a product made in numbers; the parts' cost and the mass weighed against the fleet | Owner | The owner's statement of the project's aim. | 80574d27 |
+| 2026-10-13 | R6 | the market, the target price unstated | not set: the vehicle goes where it fits best; its hardware made cheaper by adapting the software, never at the cost of quality, the flight speed included | Owner | The owner's answers to the questions of the hardware registry. | this commit |
+| 2026-10-13 | V7 | — | new: the airframe not set; the 500 mm quadcopter neither a goal nor a constraint | Owner | The owner's answer on the size class. | this commit |

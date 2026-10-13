@@ -81,7 +81,7 @@ of baseline times focal length ([camera_perception.md](camera_perception.md)).
 | Part | Price | Fits | Why |
 |---|---|---|---|
 | Holybro Pixhawk 6C | $211.99 [12] | Yes | PX4 with uXRCE-DDS, as in the simulator; the agent link is UDP only today (roadmap item 27 block 2) |
-| Holybro X500 V2, PX4 development kit | $507.99 at Holybro (offered with the Pixhawk 6C or 6X; what the 6C kit includes to confirm) [13]; $946 to $1 150 with the 6X elsewhere [13] | Yes | The airframe the simulated model is fitted to; 610 g, 500 mm, about 18 min of hover with no payload on 4S 5000 mAh, a payload of 1.5 kg without the battery at 70 percent throttle by Holybro, about 1 kg with a 4S 5000 mAh by a retailer [14] |
+| Holybro X500 V2, PX4 development kit | $507.99 at Holybro (offered with the Pixhawk 6C or 6X; what the 6C kit includes to confirm) [13]; $946 to $1 150 with the 6X elsewhere [13] | Yes | The airframe the simulated model is fitted to, not a requirement (specification V7); 610 g, 500 mm, about 18 min of hover with no payload on 4S 5000 mAh, a payload of 1.5 kg without the battery at 70 percent throttle by Holybro, about 1 kg with a 4S 5000 mAh by a retailer [14] |
 | Flood LED with a switchable driver that reports its state | not priced | Needed on the camera builds | The carried light (K11, K12); the light's own health reading lets the vehicle tell a failing light from a dark place, which today it cannot (specification I7; roadmap item 29, F18) |
 | Radio control with a kill switch, telemetry radio, 4S battery | not priced | Needed | The pilot's authority and the kill switch (K29); the main battery's return (K32) |
 
@@ -196,16 +196,21 @@ one prototype.
   16GB is already its price per thousand; at volume a module goes on a
   carrier board of one's own.
 
-Not known yet, and each moves the choice:
+The questions that move the choice most, and the owner's answers of
+2026-10-13 (specification R6, V7):
 
-- **The market.** If it includes government customers in the United States,
-  the rules on parts made in China (NDAA, the Blue UAS lists) exclude much
+- **The market: not set.** The vehicle goes where it fits best and is most
+  convenient. Should that be government customers in the United States, the
+  rules on parts made in China (NDAA, the Blue UAS lists) would exclude much
   of this registry (Livox, Unitree, Rockchip, many hobby autopilots) and
   favour the VOXL 2, which ModalAI places in the Blue UAS Framework [23].
-- **The target price of a vehicle**, which says how much the stack's
-  compute may cost.
-- **The size and mass class**, which says whether a 500 mm quadcopter is the
-  vehicle at all.
+- **The target price: not set.** The hardware is made cheaper by adapting
+  the software, never at the cost of the product's quality, the flight speed
+  included.
+- **The size and mass class: open.** The 500 mm quadcopter was chosen at the
+  project's start and is neither a goal nor a constraint; a smaller or
+  lighter vehicle is a candidate, and the boards that integrate the computer
+  and the autopilot (the VOXL 2's class) are what makes it possible.
 
 ## What The Software Supports Today
 

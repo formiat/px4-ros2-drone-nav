@@ -1450,7 +1450,9 @@ command retraces the trail.
    parameter.
 5. The vehicle model: every constant is fitted to the x500 in Gazebo
    (accelerations, lags, the body, the rotor drag 0.106, the yaw-rate lead
-   marked to fit again); a real frame is identified by hand first.
+   marked to fit again); a real frame is identified by hand first. The
+   airframe itself is open (specification V7): the x500 is where the model
+   was fitted, not what the vehicle must be.
 6. Checks before a flight: no CI, no HITL, no replay of the whole stack from
    a record; onboard logs without rotation; the bag without setpoints and
    commands; crash detection rests on Gazebo's contacts, and the trial's
