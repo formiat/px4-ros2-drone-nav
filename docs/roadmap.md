@@ -1641,6 +1641,56 @@ flights); the light's failure is still judged, by the reading, no later
 than K12 judges it today (light-failure and light-lost, a flight each);
 an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
 
+## 30. The Airframe's Size
+
+**Type:** new capability, deferred; weighed on 2026-10-13 at the project
+owner's question, no decision taken. The airframe is open (specification
+V7) and the vehicle is meant to be made in numbers (R6).
+
+**Hard prerequisites:** none for step 1; a chosen airframe class for step 2,
+which item 27's hardware (the computer, the sensors) has to fit.
+
+The x500, chosen at the project's start, is a development platform: 500 mm,
+about 2 kg built, about 18 min of flight without payload. Half of every
+flight runs within 2 m of a wall and a fifth within 1.5 m; at the narrowest
+points flown a wall stands 0.47 to 0.88 m from the body's axis, where the
+stack's body (0.55 m) and envelope (0.82 m) are already in evidence and the
+clearance laws hold the vehicle slow. By a what-if on the same flights a
+body smaller by 0.1 m would fly the cameras 16 to 23 percent faster and the
+lidar 31 to 43 percent, an optimistic bound
+([design_questions.md](design_questions.md), "Is The x500 The Right
+Vehicle?").
+
+The order:
+
+1. The body the stack models against the airframe it flies: 0.55 m against
+   the model's rotor tips at 0.39 m. The 0.16 m between them is today's only
+   horizontal margin against the estimate's drift, so a horizontal
+   allowance of its own (as K27 is the vertical one) comes first, then the
+   body at its true size, then the camera and lidar series. The first tenth
+   of a metre of the gain, with no new airframe
+   ([technical_debt.md](technical_debt.md)).
+2. An airframe class chosen with item 27's hardware: the computer and the
+   sensors it must carry (the 220 to 320 mm class needs a computer of the
+   VOXL 2's mass, [hardware_builds.md](hardware_builds.md)).
+3. Its Gazebo model with its real masses, the sensors' included (they weigh
+   nothing in the x500 model today), and its PX4 airframe: geometry, gains,
+   hover thrust.
+4. Every constant fitted to the x500 fitted again: the accelerations of the
+   speed profile (V3), the lags, the rotor drag (0.106, K13), the yaw-rate
+   lead, the tube's 0.075 s, the rest clearance (0.35 m), the lean law, the
+   time-of-flight reflex's distances (K19), the body and the envelope, the
+   landing speeds (K19, K30); the sensors' extrinsics, which live in SDF,
+   C++, YAML and Python at once; the model's name in the scripts and the
+   crash judge.
+5. Every acceptance series and scenario again.
+
+Size: step 1 is M (a design, a change and the series); steps 2 to 5 are L to
+XL.
+
+Complete when the chosen airframe flies the camera and the lidar series and
+the light scenarios with no contact, its speeds measured against the x500's.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

@@ -119,6 +119,88 @@ architecture (87) and CUDA 13, an arm64 image, and the stack measured on an
 arm64 board. The steps are roadmap item 27, "The arm64 Build"; the first
 three need no vehicle.
 
+## Is The x500 The Right Vehicle?
+
+Asked on 2026-10-13. The simulated vehicle is PX4's `x500`, a copy of
+Holybro's X500 V2, with the project's sensors on it (`x500_lidar_3d`).
+
+| Trait | The x500 | Read as |
+|---|---|---|
+| Size | 500 mm between motors, 11 inch rotors in the model: the motors 0.25 m from the centre, the rotor tips 0.39 m, about 0.77 m tip to tip. The stack models the body as a cylinder of 0.55 m radius and keeps an envelope of 0.82 m | Mid-to-large; large indoors and underground: a standard door is 0.8 to 0.9 m wide, and the stack wants 1.1 m for the body alone |
+| Mass | 2.0 kg in the model, whose sensors weigh nothing (0.000001 kg each); the real frame alone 610 g, a payload of up to 1.5 kg without the battery | Heavy: a real camera build weighs some 2 to 2.5 kg |
+| Flight time | about 18 min hovering without payload on 4S 5000 mAh, less with it | Short: most of the energy lifts the frame and the battery |
+| Price | the frame kit without an autopilot about €380, the PX4 kit $508 to $1 150 | Cheap as a development platform |
+| How common | PX4's default airframe in SITL and Holybro's reference kit, a large community | Common as a research platform, not as a product: an open frame, no enclosure, no weather sealing, no certification |
+| Necessary or excessive | a payload of 1.5 kg against some 0.3 to 0.5 kg the camera build carries (computer and sensors), 0.5 to 0.7 kg the lidar build | Excessive for a product, convenient for development: carries any computer and sensor on trial, robust, easy to repair, the PX4 model fitted |
+
+The class products go to, for comparison: ModalAI's Starling 2, 220 mm
+across, 280 g at take-off, over 40 min of flight, a VOXL 2 on board, $2 949.99
+as a development vehicle; the Starling 2 Max, 322 mm, 500 g, over 55 min, 500 g
+of payload besides, $2 999.99 ([hardware_builds.md](hardware_builds.md)).
+
+**What the routes ask of the size** (measured on 2026-10-13 on the final
+code's series, `log/tools/trials/airframe_size.py`: every 0.5 s of the
+mission, the horizontal distance from the body's axis to the nearest truly
+occupied voxel at the body's height, the 0.25 m truth grid):
+
+| Series | Nearest wall: least | p5 | p50 | Within 1.0 m | Within 1.5 m | Within 2.0 m |
+|---|---|---|---|---|---|---|
+| Cameras, r1430 to r1434 | 0.57 to 0.88 m | 0.99 to 1.22 | 2.01 to 2.13 | 1 to 6 % | 15 to 22 % | 40 to 49 % |
+| Lidar, r1425 to r1429 | 0.47 to 0.77 m | 0.96 to 1.13 | 1.92 to 2.04 | 2 to 6 % | 18 to 25 % | 48 to 56 % |
+
+Half of every flight runs within 2 m of a wall, a fifth within 1.5 m. At the
+narrowest points flown the wall stands 0.47 to 0.88 m from the axis: the
+x500's real rotor tips (0.39 m) pass with 0.08 to 0.5 m, while the stack's
+body (0.55 m) and envelope (0.82 m) are already in evidence there, and the
+clearance laws hold the vehicle slow. A vehicle whose rotor tips stand
+within 0.2 m of its axis (the 220 to 320 mm class) keeps the envelope's
+0.27 m beyond them at all but the narrowest of these points.
+
+**What a smaller body would give** (the same tool, a what-if on the same
+flights: the clearance laws admit clearance over 0.075 s, the tube law, so a
+body smaller by D gives every lateral sample D more clearance; each planned
+tick's reference is recomputed against its other limits and the cruise,
+and the path re-timed):
+
+| Series | Today, over the planned ticks | Body 0.10 m smaller | 0.20 m | 0.30 m |
+|---|---|---|---|---|
+| Cameras, r1430 to r1434 | 1.55 to 1.66 m/s | 1.90 to 1.95 (+16 to 23 %) | 1.93 to 1.97 | 1.93 to 1.97 (+17 to 25 %) |
+| Lidar, r1425 to r1429 | 1.98 to 2.48 m/s | 2.76 to 3.26 (+31 to 43 %) | 3.01 to 3.50 | 3.09 to 3.56 (+44 to 63 %) |
+
+An optimistic bound: no dynamics, the same routes (a smaller body would also
+open narrower and shorter ones, which counts the other way), and the lidar's
+vertical constraints (ceilings, K27) counted as if they too gained, which
+they do only if the body is also shorter. The camera saturates at a tenth
+of a metre: beyond it the braking contract's 6.4 m of range and the
+curvature law hold the speed. The lidar keeps gaining.
+
+**A finding on the way: the stack's body is larger than the x500's.** The
+body radius of 0.55 m was set as the x500's with its rotor tips (20f7a915);
+in the model the rotor tips stand at 0.39 m. The 0.16 m between them is the
+first tenth of a metre of the table above, with no new airframe, but it is
+also today's only horizontal margin against the estimate's drift (K27
+allows for the vertical error alone): taken away, the body needs a
+horizontal allowance of its own first. The register holds it
+([technical_debt.md](technical_debt.md)).
+
+**What a smaller airframe takes** (roadmap item 30): a Gazebo model with its
+real masses (the sensors' included), the PX4 airframe (geometry, gains,
+hover thrust); every constant fitted to the x500 fitted again (the
+accelerations of the speed profile, the lags, the rotor drag 0.106, the
+yaw-rate lead, the tube's 0.075 s, the rest clearance, the lean law, the
+time-of-flight reflex's distances, the body and the envelope, the landing
+speeds); the sensors' extrinsics, which live in SDF, C++, YAML and Python at
+once; the model's name in the scripts and the crash judge; then every
+acceptance series again. L to XL. The airframe is open (specification V7)
+and the product is made in numbers (R6), which a smaller, lighter vehicle
+serves: shorter routes, more speed in tight places, longer flight, an easier
+regulatory class (in the EU, as understood here, under 250 g C0, under 900 g
+C1, under 4 kg C2).
+
+**The verdict.** The x500 was the right start: cheap, known to everyone,
+with a margin for any experiment. As a product it is too large, too heavy
+and too hungry, and in tight places slower than it needs to be.
+
 ## What Does The Camera Vehicle Do In A Large Dark Space?
 
 Asked on 2026-10-13: a camera vehicle at night over open ground at a height,

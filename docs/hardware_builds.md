@@ -85,6 +85,20 @@ of baseline times focal length ([camera_perception.md](camera_perception.md)).
 | Flood LED with a switchable driver that reports its state | not priced | Needed on the camera builds | The carried light (K11, K12); the light's own health reading lets the vehicle tell a failing light from a dark place, which today it cannot (specification I7; roadmap item 29, F18) |
 | Radio control with a kill switch, telemetry radio, 4S battery | not priced | Needed | The pilot's authority and the kill switch (K29); the main battery's return (K32) |
 
+### Complete Vehicles Of The Class Products Go To
+
+| Vehicle | Size, mass | Flight time | On board | Price |
+|---|---|---|---|---|
+| ModalAI Starling 2 | 220 mm across, 280 g at take-off | over 40 min | VOXL 2, three tracking cameras, a colour camera, a time-of-flight camera, PX4 | $2 949.99 [24] |
+| ModalAI Starling 2 Max | 322 mm, 500 g, 500 g of payload besides | over 55 min | VOXL 2, PX4 | $2 999.99 [24] |
+| The x500 today | 500 mm, about 2 kg built | about 18 min without payload | any computer, a Pixhawk | $508 to $1 150 the kit |
+
+Development vehicles both, not products; what they show is the class: a
+VOXL 2 makes a vehicle of a few hundred grams that flies two to three
+times as long as the x500. Whether the x500 is the vehicle at all is open
+(specification V7); its size against the routes flown is in
+[design_questions.md](design_questions.md) and roadmap item 30.
+
 ## Builds
 
 Totals are of the priced parts; the carrier board (€165 to $309), lenses,
@@ -263,3 +277,4 @@ Prices and specifications as found on 2026-10-13.
 21. [PX4's uXRCE-DDS bridge](https://docs.px4.io/main/en/middleware/uxrce_dds.html) (nothing on the VOXL 2 there).
 22. [X500 V2 ARF kit at Elektor](https://www.elektor.com/products/holybro-x500-v2-arf-drone-kit) (€379.95), [the frame kit at Flying Tech](https://www.flyingtech.co.uk/product/holybro-x500-v2-quadcopter-frame-kit/).
 23. [ModalAI's VOXL 2 launch, 2022](https://www.modalai.com/blogs/press-releases/modalai%E2%93%A1-launches-voxl%E2%93%A1-2-the-smallest-smartest-blue-uas-framework-autopilot-at-16g).
+24. [Starling 2](https://modalai.com/starling-2), [Starling 2 Max](https://modalai.com/starling-2-max) at ModalAI.
