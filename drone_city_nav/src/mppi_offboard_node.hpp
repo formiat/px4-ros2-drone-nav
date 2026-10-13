@@ -11,6 +11,7 @@
 #include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/navigation_progress.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -190,6 +191,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr planner_health_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr visual_odometry_sub_;
+  rclcpp::Subscription<msg::NavigationProgress>::SharedPtr navigation_progress_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr command_pub_;

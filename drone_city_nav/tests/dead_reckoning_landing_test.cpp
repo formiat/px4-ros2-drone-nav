@@ -48,6 +48,27 @@ TEST(DeadReckoningLanding, ASilentSourceIsStillDeadReckoning) {
   EXPECT_TRUE(landing.due(500 * kSecondNs));
 }
 
+TEST(DeadReckoningLanding, DeadReckoningInTheDarkFliesNoPlan) {
+  DeadReckoningLanding landing;
+  // Blind frames before dead reckoning: the plan is flown.
+  landing.observeSensorShare(19 * kSecondNs, 0.31);
+  EXPECT_FALSE(landing.blind(19 * kSecondNs));
+  landing.observe(20 * kSecondNs, true);
+  landing.observeSensorShare(20 * kSecondNs, 0.31);
+  EXPECT_TRUE(landing.blind(20 * kSecondNs));
+  // A frame that sees, while the estimator still has no features.
+  landing.observeSensorShare(21 * kSecondNs, 0.99);
+  EXPECT_FALSE(landing.blind(21 * kSecondNs));
+  // A blind frame more than a second old says nothing.
+  landing.observeSensorShare(22 * kSecondNs, 0.31);
+  EXPECT_TRUE(landing.blind(23 * kSecondNs));
+  EXPECT_FALSE(landing.blind(23 * kSecondNs + 1));
+  // The source sees again.
+  landing.observeSensorShare(24 * kSecondNs, 0.31);
+  landing.observe(24 * kSecondNs, false);
+  EXPECT_FALSE(landing.blind(24 * kSecondNs));
+}
+
 TEST(BlindDescentReflex, ASurfaceOnTheLeftSendsTheVehicleRight) {
   BlindDescentReflex reflex;
   const Point2 velocity = reflex.observe(TofRingRanges{.front_m = 2.5,

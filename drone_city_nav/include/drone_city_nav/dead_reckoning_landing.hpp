@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <algorithm>
@@ -22,6 +23,12 @@ namespace drone_city_nav {
 // being a position: r1093 lost it at the touchdown, was sent the takeoff
 // setpoint in the descent's place, and the autopilot's failsafe held the
 // vehicle armed on the platform for six minutes.
+// Before the descent, dead reckoning in the dark flies no plan: the planner
+// flew its plan on the dead-reckoned estimate through the three seconds, up
+// to 1.3 m by the truth (r1441), and entered the descent at up to 0.6 m/s
+// (r1421, r1442). Dark is K12's blind frame; a frame that sees while the
+// estimator has no features (the flat staging base in daylight, 0.1 to 0.5 s
+// at a time, r1430 to r1434) keeps its plan.
 class DeadReckoningLanding final {
 public:
   // One pose of the position source, at `stamp_ns`. A source that falls silent
@@ -44,8 +51,27 @@ public:
     return since_ns_.has_value() && now_ns - *since_ns_ >= kDeadReckonedNs;
   }
 
+  // The share of its configured range the braking contract grants, the
+  // measure the light is judged by (K12), at `stamp_ns`.
+  void observeSensorShare(const std::int64_t stamp_ns,
+                          const double sensor_share) noexcept {
+    share_stamp_ns_ = stamp_ns;
+    share_blind_ = sensor_share >= 0.0 &&
+                   sensor_share < LightReliabilityJudgment::kBlindSensorShare;
+  }
+
+  // The source dead reckons and the latest frame, no older than a second, is
+  // blind.
+  [[nodiscard]] bool blind(const std::int64_t now_ns) const noexcept {
+    constexpr std::int64_t kShareFreshNs{1'000'000'000};
+    return active() && share_blind_ && share_stamp_ns_.has_value() &&
+           now_ns - *share_stamp_ns_ <= kShareFreshNs;
+  }
+
 private:
   std::optional<std::int64_t> since_ns_;
+  std::optional<std::int64_t> share_stamp_ns_;
+  bool share_blind_{false};
 };
 
 // The reflex of the descent (K19): the time-of-flight ring's lateral units

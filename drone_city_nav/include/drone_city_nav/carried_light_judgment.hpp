@@ -32,6 +32,10 @@ namespace drone_city_nav {
 // stands once reached: it sends the vehicle home.
 class LightReliabilityJudgment final {
 public:
+  // The share of its range the braking contract grants under which it reads
+  // the forward sensor as blind, the line of the unobservable evidence too
+  // (specification K12, K14): the range within a quarter metre of the margin.
+  static constexpr double kBlindSensorShare{0.35};
   static constexpr double kLongestOutageS{3.5};
   static constexpr double kWindowS{120.0};
   static constexpr double kOutageShare{0.6};

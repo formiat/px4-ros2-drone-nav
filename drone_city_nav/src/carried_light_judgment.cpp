@@ -4,14 +4,6 @@
 #include <cmath>
 
 namespace drone_city_nav {
-namespace {
-
-// The share of its range the braking contract grants under which it reads
-// the forward sensor as blind, the line of the unobservable evidence too
-// (specification K12, K14): the range within a quarter metre of the margin.
-constexpr double kBlindSensorShare{0.35};
-
-} // namespace
 
 void LightReliabilityJudgment::observe(const double stamp_s,
                                        const double sensor_share) {

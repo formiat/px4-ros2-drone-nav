@@ -244,6 +244,20 @@ MppiOffboardNode::MppiOffboardNode()
       px4_qos, [this](const px4_msgs::msg::VehicleOdometry::SharedPtr odometry) {
         dead_reckoning_landing_.observe(now().nanoseconds(), odometry->quality == 0);
       });
+  // The braking contract's share of its range, the measure the mission
+  // monitor judges the light by (K12): in the dark no plan is flown on dead
+  // reckoning (K19).
+  navigation_progress_sub_ = create_subscription<msg::NavigationProgress>(
+      declare_parameter<std::string>("navigation_progress_topic",
+                                     "/drone_city_nav/mppi/navigation_progress"),
+      rclcpp::QoS{1}.reliable(),
+      [this](const msg::NavigationProgress::SharedPtr progress) {
+        if (progress->sensor_guaranteed_range_m > 0.0) {
+          dead_reckoning_landing_.observeSensorShare(
+              now().nanoseconds(),
+              progress->sensor_measured_range_m / progress->sensor_guaranteed_range_m);
+        }
+      });
   // The ring's lateral units, as the stereo node reads them (the same
   // topics), and the down unit; the nearest return of each is the reflex of
   // the blind descent. A lateral unit counts its near-horizontal rows only
@@ -414,10 +428,12 @@ void MppiOffboardNode::controlTick() {
   // reckoning, not from the descent. A stationary hold kept on the
   // dead-reckoned estimate drifted 0.5 m into a wall in the three seconds
   // before the descent, and the reflex that began with it came 0.4 s before
-  // the rotor met the wall (r1367). The hold is the descent's, level.
-  const bool dead_reckoning_hold = !blind_landing_ && !position_lost_in_flight &&
-                                   stationary_position_hold &&
-                                   dead_reckoning_landing_.active();
+  // the rotor met the wall (r1367). The hold is the descent's, level, and in
+  // the dark it replaces a plan in flight too (DeadReckoningLanding).
+  const bool dead_reckoning_hold =
+      !blind_landing_ && !position_lost_in_flight && dead_reckoning_landing_.active() &&
+      (stationary_position_hold ||
+       (navigating && dead_reckoning_landing_.blind(now().nanoseconds())));
   OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
   if (blind_landing_ || position_lost_in_flight || dead_reckoning_hold) {
     mode = OffboardSetpointMode::kVelocityCruise;
@@ -425,7 +441,7 @@ void MppiOffboardNode::controlTick() {
   if (!blind_landing_ && !dead_reckoning_hold) {
     blind_descent_reflex_.reset();
   }
-  if (!blind_landing_ && planned_path_fresh) {
+  if (!blind_landing_ && !dead_reckoning_hold && planned_path_fresh) {
     mode = OffboardSetpointMode::kTrajectoryPositionTracking;
   }
   offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
