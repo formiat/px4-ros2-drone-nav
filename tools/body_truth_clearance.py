@@ -37,13 +37,14 @@ def clearance(x, y, z, reach=0.6):
                 if d < best and occupied(i, j, k):
                     best = d
     return best
-for run in sys.argv[1:]:
-    rows = [(float(r[0]), float(r[1]), float(r[2]), float(r[3])) for r in csv.reader(open(f'log/runs/{run}/gz_pose.csv'))]
-    z0 = rows[0][3]
-    start = next(n for n, r in enumerate(rows) if r[3] > z0 + 1.0)
-    rows = rows[start::5]
-    cl = [(clearance(x, y, z + CENTRE), t, x, y, z + CENTRE) for t, x, y, z in rows]
-    dt = np.median(np.diff([c[1] for c in cl]))
-    m = min(cl)
-    print(f"{run}: least {m[0]:.2f} m at t={m[1]:.1f} ({m[2]:.1f},{m[3]:.1f},{m[4]:.1f}); "
-          f"under 0.10 m {dt*sum(c[0] < 0.10 for c in cl):.1f} s, under 0.20 m {dt*sum(c[0] < 0.20 for c in cl):.1f} s")
+if __name__ == "__main__":
+    for run in sys.argv[1:]:
+        rows = [(float(r[0]), float(r[1]), float(r[2]), float(r[3])) for r in csv.reader(open(f'log/runs/{run}/gz_pose.csv'))]
+        z0 = rows[0][3]
+        start = next(n for n, r in enumerate(rows) if r[3] > z0 + 1.0)
+        rows = rows[start::5]
+        cl = [(clearance(x, y, z + CENTRE), t, x, y, z + CENTRE) for t, x, y, z in rows]
+        dt = np.median(np.diff([c[1] for c in cl]))
+        m = min(cl)
+        print(f"{run}: least {m[0]:.2f} m at t={m[1]:.1f} ({m[2]:.1f},{m[3]:.1f},{m[4]:.1f}); "
+              f"under 0.10 m {dt*sum(c[0] < 0.10 for c in cl):.1f} s, under 0.20 m {dt*sum(c[0] < 0.20 for c in cl):.1f} s")

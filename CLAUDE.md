@@ -33,6 +33,12 @@ run cited as evidence — goes into a directory that holds a `.keep` file at
 its top, which is never deleted; a loose file cannot be kept
 ([tools/README.md](tools/README.md)).
 
+A script that a tracked document cites lives under git in `tools/` (C++ built
+against the package in `drone_city_nav/tools/`) with a line in
+[tools/README.md](tools/README.md), never in `log/`: a figure in a document
+has to be reproducible from the repository. `log/tools/` holds drafts, data
+and what the tools write.
+
 The project's requirements, navigation invariants, acceptance conditions and
 the numbers the work relies on are in [docs/specification.md](docs/specification.md),
 each marked as set by the owner or by an agent. Read it before planning work

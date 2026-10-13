@@ -8,6 +8,14 @@ root on the host unless a line says "inside the container". What they write
 (run logs, flags, series tables, recordings, replay binaries) goes to
 `log/tools/`, which git ignores.
 
+**A script a tracked document cites lives here, under git** (C++ built
+against the package in `drone_city_nav/tools/`), with a line on this page:
+a figure in a document has to be reproducible from the repository.
+`log/tools/` holds drafts, data and what the tools write, never the code a
+document points at; a draft that a document comes to cite moves here first
+(the owner, 2026-10-13). `scripts/tests/test_tools_tracked.py` holds every
+tool to a line on this page and to parsing.
+
 `log/tools/` is pruned like every log (`scripts/prune_sim_logs.sh`, a week):
 an entry directly inside it goes when nothing in it was touched for seven
 days. A directory holding a `.keep` file at its top is never deleted, and
@@ -19,7 +27,7 @@ that is how anything worth more than a week is kept:
 | `log/tools/diagnostics/` | one-off scripts and data of single investigations |
 | `log/tools/vio/`, `log/tools/replay/` | recorded flights for the offline replay (r575, r576; r779, r795) and the replay binaries |
 | `log/tools/truth25/`, `log/tools/proof_leak/`, `log/tools/texture/`, `log/tools/stereo/` | truth grids and measurement data the documents cite |
-| `log/tools/part3/`, `log/tools/part6/`, `log/tools/part8/`, `log/tools/part11/`, `log/tools/stall/`, `log/tools/trials/` | the technical-debt goal's and the owner's trials' measurement scripts the documents cite (the blind phase: `part8/blind_*.py`; K27's cost on the lidar: `trials/k27_*.py`; a CPU rollout's cost: `trials/cpu_rollout_bench.cpp`; the airframe's size against the routes: `trials/airframe_size.py`) |
+| `log/tools/part3/`, `log/tools/part6/`, `log/tools/part8/`, `log/tools/part11/`, `log/tools/stall/`, `log/tools/trials/` | the technical-debt goal's and the owner's trials' drafts and data; the scripts the documents cite from them moved here (`blind_phase.py`, `k27_side.py`, `speed_limiters.py`, `airframe_size.py`, `drone_city_nav/tools/mppi_cpu_rollout_benchmark.cpp`) |
 
 A loose file cannot be kept: check logs (`run_rNNN.log`), gate logs and
 flags go after a week. A new recording or result that has to stay goes into
@@ -74,8 +82,13 @@ any kind is `REAL_TIME_FACTOR=0.5 ./tools/series2.sh r1100`.
 | `homeway.py` | The way home of a returned flight: when and where the goal was given up, seconds and metres home, trail points, revocations. | `python3 tools/homeway.py r974` |
 | `lost_inspect.py` | A light-lost flight by phase: dead reckoning, judgment, landing or contact, truth at each, the drift between. | `python3 tools/lost_inspect.py r939` |
 | `crash_context.py` | State, readiness, executor and offboard lines in the seconds before `VEHICLE_DESTROYED`. | `python3 tools/crash_context.py r932 8` |
+| `log_window.py` | The ROS log lines of a run between two simulation times, the simulation time in front (the wall stamps put on the simulation clock through the true pose record); by default the estimator's, the landing's and the mission's events. The other tools import its `events`. | `python3 tools/log_window.py r1459 60 90 DEAD_RECKONING` |
 | `body_truth_clearance.py` | The true body's clearance to the true location over a flight (needs the 0.25 m truth grid in `log/tools/truth25`). | `python3 tools/body_truth_clearance.py r958` |
 | `phantom_blocks.py` | Blocked-route episodes of 5 s and more (the controller held by the blocked route's law) and every cell the trajectory validator named in a block, looked up in the 0.25 m truth grid: a cell with no truth within 0.5 m is a phantom (roadmap item 18; needs `log/tools/truth25`). | `python3 tools/phantom_blocks.py r1213 r1214` |
+| `blind_phase.py` | The blind phase of a flight that lost its light: the plan flown on dead reckoning to the light's verdict, the descent (its height, its entry speed, the estimate's velocity error, its drift), the drift to the ground, the body's least clearance (a floor included) and the walls' (the documents' blind-descent figures, specification K19). Needs `log/tools/truth25`. | `python3 tools/blind_phase.py r1459 r1460` |
+| `speed_limiters.py` | What holds a flight under 1 m/s: the time under it, each limiter's share, the 5th percentile of the clearance laws' limits where they bind. | `python3 tools/speed_limiters.py r1449` |
+| `k27_side.py` | At the slow ticks the clearance laws limit, which of K27's vertical shifts brings the truth within half a metre of the body (below, above, neither), by the truth grid. Needs `log/tools/truth25`. | `python3 tools/k27_side.py r1449 r1425` |
+| `airframe_size.py` | What the routes flown ask of the vehicle's size (the distance from the body's axis to the nearest wall at its height) and a what-if of a body smaller by 0.1 to 0.3 m on the same flights (roadmap item 30). Needs `log/tools/truth25`. | `python3 tools/airframe_size.py r1430` |
 | `closure.py` | Where a raw snapshot of the memory closes the way between two points: the widest path's clearance (unknown is free) and its bottleneck. | `python3 tools/closure.py log/runs/r1365/raw_snapshot_3d_revision_2353.json 62.9,30.7,12.6 63.4,5.1,14.7` |
 | `stall_report.py` | A B-and-back flight's legs and its stall near B, and the snapshot nearest the stall measured from it to the trail behind it (fly it with `RAW_SNAPSHOT_BOUNDS_M` on B's area). | `python3 tools/stall_report.py r1365` |
 | `yaw_overshoot.py` | Gaze overshoots: the heading swinging more than 45 degrees past its target. | `python3 tools/yaw_overshoot.py r949` |
@@ -119,5 +132,10 @@ The heading argument is the vehicle's initial heading in NED radians (the
 `initial_heading_rad` the flight ran with).
 
 One-off diagnostics written for a single investigation stay in
-`log/tools/diagnostics/` and are not tracked; the goal journals in
-`log/tools/journal/` say which was used for what.
+`log/tools/diagnostics/` and are not tracked, as long as no document cites
+them; the goal journals in `log/tools/journal/` say which was used for what.
+
+The CPU rollout benchmark (roadmap item 28) is built with the package:
+`build/drone_city_nav/mppi_cpu_rollout_benchmark` inside the container
+prints what one MPPI rollout costs on a CPU core, in open space and in a
+corridor.

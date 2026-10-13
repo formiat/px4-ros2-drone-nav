@@ -1530,20 +1530,23 @@ selected, is a second implementation of the same model, not the kernel's code.
 **What a CPU costs, measured.** One rollout of the CPU reference, 120 steps
 (the 6 s static horizon), the urban body (0.82 m envelope, 12 x 2 x 3
 samples, the broad phase on), a 0.25 m ESDF of 40 x 40 x 16 m
-(`log/tools/trials/cpu_rollout_bench.cpp`, on the development host's Zen 3):
+(`drone_city_nav/tools/mppi_cpu_rollout_benchmark.cpp`, built with the
+package, on the development host's Zen 3 with the host quiet; a first
+measurement under another task's load read 101 and 1151 us):
 
 | | Open space | A corridor (walls 1.5 m either side, the floor 1.5 m below) |
 |---|---|---|
-| One rollout on one core | 101 us | 1151 us |
-| Rollouts eight threads finish in 8 ms | 316 | 42 |
+| One rollout on one core | 61 us | 850 us |
+| Rollouts eight threads finish in 8 ms | about 1000 | about 73 |
 | On the GPU today (RTX 3060 Laptop) | 8192 in 6.4 ms | 8192 in 6.4 ms |
 
-A gap of 25 to 200 times. The reference is not written for speed and a port
-of the kernel with SIMD would be several times faster, but an Arm core
-(Cortex-A78) does about half of a Zen 3 core, and the rest of the stack
-already takes 3.4 to 5.7 cores at p95 ([resource_budget.md](resource_budget.md)):
-a CPU in flight would carry 100 to 500 rollouts, another controller, tuned
-again from the start.
+A gap of 8 to 110 times, the corridor's the one that counts: the routes run
+within 2 m of a wall half the time (roadmap item 30). The reference is not
+written for speed and a port of the kernel with SIMD would be several times
+faster, but an Arm core (Cortex-A78) does about half of a Zen 3 core, and
+the rest of the stack already takes 3.4 to 5.7 cores at p95
+([resource_budget.md](resource_budget.md)): a CPU in flight would carry tens
+to a few hundred rollouts, another controller, tuned again from the start.
 
 **What a Jetson costs too.** The Orin NX 16GB's GPU does 1.9 to 2.4 TFLOPS
 in FP32 (1024 CUDA cores at 918 to 1173 MHz), the RTX 3060 Laptop about 11:

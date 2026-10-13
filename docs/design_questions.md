@@ -97,7 +97,7 @@ numbers (specification R6) a real cost on every vehicle.
 ## Can The Stack Do Without CUDA?
 
 Asked on 2026-10-13. CUDA is in the MPPI engine alone; a CPU cannot carry
-its rollouts in flight (25 to 200 times short, measured), another GPU
+its rollouts in flight (8 to 110 times short, measured), another GPU
 interface (Vulkan compute or OpenCL) could, and the Jetson itself will fly
 fewer rollouts than the development host. The ways, their size and the
 order are roadmap item 28; the boards that would fit without CUDA, and
@@ -139,7 +139,7 @@ as a development vehicle; the Starling 2 Max, 322 mm, 500 g, over 55 min, 500 g
 of payload besides, $2 999.99 ([hardware_builds.md](hardware_builds.md)).
 
 **What the routes ask of the size** (measured on 2026-10-13 on the final
-code's series, `log/tools/trials/airframe_size.py`: every 0.5 s of the
+code's series, `tools/airframe_size.py`: every 0.5 s of the
 mission, the horizontal distance from the body's axis to the nearest truly
 occupied voxel at the body's height, the 0.25 m truth grid):
 

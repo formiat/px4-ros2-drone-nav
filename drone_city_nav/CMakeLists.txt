@@ -707,6 +707,12 @@ target_compile_features(free_space_topology_compiler PRIVATE cxx_std_20)
 target_link_libraries(free_space_topology_compiler drone_city_nav_core)
 enable_project_warnings(free_space_topology_compiler)
 
+# What one MPPI rollout costs on a CPU core (roadmap item 28).
+add_executable(mppi_cpu_rollout_benchmark tools/mppi_cpu_rollout_benchmark.cpp)
+target_compile_features(mppi_cpu_rollout_benchmark PRIVATE cxx_std_20)
+target_link_libraries(mppi_cpu_rollout_benchmark drone_city_nav_control)
+enable_project_warnings(mppi_cpu_rollout_benchmark)
+
 add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
 target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
 target_link_libraries(
