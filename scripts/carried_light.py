@@ -61,6 +61,27 @@ SHORTEST_RAMP_S = 0.2
 UPDATE_PERIOD_S = 0.1
 
 
+
+def light_message(light, intensity: float):
+    """The carried light at `intensity`, every property set: the service
+    replaces the whole light. `light` is an empty gz.msgs.Light. A rendered
+    flight sets the light it replays the same way (render_world_replay.py)."""
+    light.name = LIGHT_NAME
+    light.type = light.SPOT
+    light.intensity = intensity
+    light.diffuse.r = light.diffuse.g = light.diffuse.b = light.diffuse.a = 1.0
+    light.specular.r = light.specular.g = light.specular.b = SPECULAR
+    light.specular.a = 1.0
+    light.range = LIGHT_RANGE_M
+    light.attenuation_constant = ATTENUATION_CONSTANT
+    light.attenuation_linear = ATTENUATION_LINEAR
+    light.attenuation_quadratic = ATTENUATION_QUADRATIC
+    light.spot_inner_angle = SPOT_INNER_ANGLE_RAD
+    light.spot_outer_angle = SPOT_OUTER_ANGLE_RAD
+    light.spot_falloff = SPOT_FALLOFF
+    light.direction.x = 1.0
+    return light
+
 @dataclass(frozen=True)
 class Outage:
     start_s: float
@@ -242,22 +263,7 @@ def main() -> int:
     service = f"/world/{args.world}/light_config"
 
     def request(intensity: float) -> bool:
-        light = Light()
-        light.name = LIGHT_NAME
-        light.type = Light.SPOT
-        light.intensity = intensity
-        light.diffuse.r = light.diffuse.g = light.diffuse.b = light.diffuse.a = 1.0
-        light.specular.r = light.specular.g = light.specular.b = SPECULAR
-        light.specular.a = 1.0
-        light.range = LIGHT_RANGE_M
-        light.attenuation_constant = ATTENUATION_CONSTANT
-        light.attenuation_linear = ATTENUATION_LINEAR
-        light.attenuation_quadratic = ATTENUATION_QUADRATIC
-        light.spot_inner_angle = SPOT_INNER_ANGLE_RAD
-        light.spot_outer_angle = SPOT_OUTER_ANGLE_RAD
-        light.spot_falloff = SPOT_FALLOFF
-        light.direction.x = 1.0
-        ok, reply = node.request(service, light, Light, Boolean, 1000)
+        ok, reply = node.request(service, light_message(Light(), intensity), Light, Boolean, 1000)
         return bool(ok and reply.data)
 
     with args.output.open("w", newline="") as stream:

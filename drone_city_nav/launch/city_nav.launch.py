@@ -686,8 +686,10 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": True}],
     )
 
+    # A flight rendered afterwards (scripts/render_flight_video.py) publishes
+    # all RViz shows and opens no window: its configuration is "none".
     rviz = OpaqueFunction(
-        function=lambda context: [
+        function=lambda context: [] if rviz_config.perform(context) == "none" else [
             Node(
                 package="rviz2",
                 executable="rviz2",

@@ -221,11 +221,42 @@ class RecordingRuntimeContractTest(unittest.TestCase):
         self.assertIn("gnome-session-inhibit --inhibit idle", flight)
 
 
+class RenderedFlightTest(unittest.TestCase):
+    """Part 6 of the technical-debt goal: the pictures drawn after the flight."""
+
+    def test_a_rendered_flight_is_the_ordinary_one_with_no_window(self) -> None:
+        tool = (REPOSITORY / "tools/render_flight.sh").read_text()
+        for setting in ("RENDER_BAG=1", "ENABLE_RVIZ=true", "RVIZ_CONFIG_FILE=none",
+                        "fly_until_valid.sh"):
+            self.assertIn(setting, tool)
+        self.assertNotIn("RECORD_VIDEO", tool)
+        self.assertNotIn("REAL_TIME_FACTOR", tool)
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text()
+        self.assertIn('rviz_config.perform(context) == "none"', launch)
+        runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
+        self.assertIn('if bool_is_true "${RENDER_BAG:-false}"; then', runtime)
+        self.assertIn("ros2 bag record --use-sim-time", runtime)
+
+    def test_the_world_is_replayed_through_the_true_poses_and_the_light(self) -> None:
+        import render_world_replay as replay
+
+        poses = [(10.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0),
+                 (11.0, 2.0, 4.0, 3.0, 0.0, 0.0, 0.0, 1.0)]
+        times = [pose[0] for pose in poses]
+        self.assertEqual(replay.pose_at(poses, times, 10.25), (0.5, 1.0, 1.5, 1.0, 0.0, 0.0, 0.0))
+        self.assertEqual(replay.pose_at(poses, times, 10.75)[3:], (0.0, 0.0, 0.0, 1.0))
+        shares = [(20.0, 1.0), (50.0, 0.4), (51.0, 1.0)]
+        self.assertEqual(replay.share_at(shares, 10.0), 1.0)
+        self.assertEqual(replay.share_at(shares, 50.5), 0.4)
+        self.assertEqual(replay.share_at(shares, 60.0), 1.0)
+
+
 class RecordingToolsContractTest(unittest.TestCase):
     def test_every_recording_tool_is_tracked_and_documented(self) -> None:
         readme = (REPOSITORY / "tools/README.md").read_text()
         for tool in ("record_flight.sh", "record_batch.sh", "record_index.py",
-                     "record_until_pass.sh", "video_check.py", "window_rig.sh"):
+                     "record_until_pass.sh", "video_check.py", "window_rig.sh",
+                     "render_flight.sh"):
             self.assertTrue((REPOSITORY / "tools" / tool).is_file(), tool)
             self.assertIn(f"`{tool}`", readme)
 

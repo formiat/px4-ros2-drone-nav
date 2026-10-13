@@ -119,6 +119,20 @@ start_runtime_evidence_capture() {
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
       > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
   fi
+  # A flight rendered afterwards (RENDER_BAG=1, scripts/render_flight_video.py):
+  # what both RViz views show, on the simulation's clock, for RViz to play back
+  # after the flight; the true pose and the light are the run's own records.
+  if bool_is_true "${RENDER_BAG:-false}"; then
+    ros2 bag record --use-sim-time -s sqlite3 -o "${runtime_artifact_dir}/render_bag" --topics \
+      /tf /tf_static /drone_city_nav/drone_marker /drone_city_nav/mppi/markers \
+      /drone_city_nav/mppi/path /drone_city_nav/raw_memory_darkness_points_3d \
+      /drone_city_nav/raw_memory_obstacle_points /drone_city_nav/raw_memory_obstacle_points_3d \
+      /drone_city_nav/raw_occupied_cells /drone_city_nav/remembered_lidar_points \
+      /drone_city_nav/static_building_markers /drone_city_nav/static_map_points \
+      /drone_city_nav/vehicle_directions /drone_city_nav/current_lidar_returns_3d \
+      /drone_city_nav/raw_lidar_hit_points_3d /evaluation/markers_follow /evaluation/markers_top \
+      > "${runtime_artifact_dir}/render_bag.log" 2>&1 &
+  fi
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" ||
     [[ -z "${raw_snapshot_bounds_m}" ]]; then

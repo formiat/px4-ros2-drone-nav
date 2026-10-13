@@ -115,6 +115,8 @@ verdict counts is a flight like any other
 location is, and flights on the lidar, which carries no light, are not
 recorded.
 
+`./tools/render_flight.sh SCENARIO RUN DIRECTORY` makes the same two files without slowing the flight: the scenario flies as its ordinary headless flight at real time with no window, recording what RViz shows, and the pictures are drawn afterwards, the world held paused with the vehicle moved through its true poses and its light as it was, RViz playing the record; the rotors stand still in the rendered world. It is how a flight is recorded since 2026-10-13 (specification A11).
+
 Whenever RViz is open, the evaluation overlay ([`rviz.md`](rviz.md),
 specification K26) writes over the vehicle what it has decided and draws its
 estimate against the truth, so that each scenario reads without a word:
