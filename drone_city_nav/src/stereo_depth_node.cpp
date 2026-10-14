@@ -30,6 +30,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -116,11 +117,15 @@ public:
     const int left_right_difference =
         declare_parameter<int>("left_right_maximum_difference_px", 1);
     const int uniqueness = declare_parameter<int>("uniqueness_ratio_percent", 10);
+    // A disparity island smaller than the speckle window is dropped by the
+    // matcher: 400 px, a patch 0.1 m across at 2 m and 0.27 m at 5 m, where
+    // 100 px left islands of a few pixels at a wrong depth (kLoneHitVoxelM).
+    constexpr int kSpeckleWindowPx{400};
     const auto matcher = [&](const int disparities) {
       return cv::StereoSGBM::create(
           0, disparities, block_size, 8 * block_size * block_size,
-          32 * block_size * block_size, left_right_difference, 31, uniqueness, 100, 2,
-          cv::StereoSGBM::MODE_SGBM_3WAY);
+          32 * block_size * block_size, left_right_difference, 31, uniqueness,
+          kSpeckleWindowPx, 2, cv::StereoSGBM::MODE_SGBM_3WAY);
     };
     far_matcher_ = matcher(far_disparities_);
     near_matcher_ = matcher(near_disparities);
@@ -325,6 +330,7 @@ private:
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
+    rejectLoneHits(returns);
     // The light the frame has left (specification K15): its brightness
     // headroom; no more than the range its brightness follows the carried
     // light's falloff to, over the depth the pair is confident of; and no
@@ -655,39 +661,21 @@ private:
   // dark world, lit by the vehicle's light and raised by the camera's gain,
   // those answers were surfaces in open air, and the vehicle spent 47
   // percent of a flight braking for routes they blocked (r764). The noise is
-  // estimated from the frame itself (Immerkaer's operator, robustly), and a
-  // match stands only where the local standard deviation clears it
-  // threefold.
+  // estimated from the frame itself (Immerkaer's operator, robustly), for
+  // each sixteenth of the brightness range: the camera's noise is added to
+  // the linear light and the frame is sRGB, so a dark patch carries more
+  // levels of it than a bright one (specification A12: 1.9 levels in shadow,
+  // 0.5 in the light). One estimate for the whole frame let noise through in
+  // the dark and refused texture in the light: on the record of r1476 it
+  // matched 0.25 of the pixels at 2 to 4 m, and 1.5 percent of its matches
+  // within 4.8 m were surfaces a metre before the truth; by brightness, 0.55
+  // and 0.8 percent (tools/stereo_depth_accuracy.sh). A match stands where
+  // the local standard deviation clears its brightness's noise twofold.
   static double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
     cv::Mat laplacian;
     const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
                             -2.0F, 1.0F, -2.0F, 1.0F);
     cv::filter2D(grey, laplacian, CV_32F, kernel);
-    // The operator's response is six noise deviations on a flat patch and
-    // far more on an edge; its median over the frame is the flat patches',
-    // and the edges of a textured scene do not move it the way they moved
-    // the mean (r765: the mean read texture as noise and discarded two
-    // thirds of a lit frame's matches).
-    std::array<std::size_t, kLaplacianBins> histogram{};
-    std::size_t samples{0U};
-    for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
-      const float* const values = laplacian.ptr<float>(row);
-      for (int column = 1; column + 1 < laplacian.cols; column += kNoiseSampleStride) {
-        ++histogram[std::min<std::size_t>(
-            kLaplacianBins - 1U, static_cast<std::size_t>(std::abs(values[column])))];
-        ++samples;
-      }
-    }
-    std::size_t below{0U};
-    double median_response{0.0};
-    for (std::size_t bin = 0U; bin < kLaplacianBins; ++bin) {
-      below += histogram[bin];
-      if (2U * below >= samples) {
-        median_response = static_cast<double>(bin) + 0.5;
-        break;
-      }
-    }
-    const double noise = 1.4826 * median_response / 6.0;
     cv::Mat grey_float;
     grey.convertTo(grey_float, CV_32F);
     cv::Mat mean;
@@ -695,19 +683,110 @@ private:
     const cv::Size window{kSignalWindowPx, kSignalWindowPx};
     cv::boxFilter(grey_float, mean, CV_32F, window);
     cv::boxFilter(grey_float.mul(grey_float), mean_square, CV_32F, window);
-    const float minimum_variance = static_cast<float>(
-        std::pow(kSignalOverNoise * std::max(noise, kMinimumNoiseLevels), 2.0));
+    // The operator's response is six noise deviations on a flat patch and
+    // far more on an edge; its median is the flat patches', and the edges of
+    // a textured scene do not move it the way they moved the mean (r765: the
+    // mean read texture as noise and discarded two thirds of a lit frame's
+    // matches).
+    std::vector<std::size_t> histograms(kBrightnessBins * kLaplacianBins, 0U);
+    std::array<std::size_t, kBrightnessBins> samples{};
+    for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
+      const float* const values = laplacian.ptr<float>(row);
+      const float* const means = mean.ptr<float>(row);
+      for (int column = 1; column + 1 < laplacian.cols; column += kNoiseSampleStride) {
+        const std::size_t bin = brightnessBin(means[column]);
+        ++histograms[bin * kLaplacianBins +
+                     std::min<std::size_t>(
+                         kLaplacianBins - 1U,
+                         static_cast<std::size_t>(std::abs(values[column])))];
+        ++samples[bin];
+      }
+    }
+    const auto noiseOf = [&](const std::size_t first_bin, const std::size_t last_bin) {
+      std::size_t count{0U};
+      for (std::size_t bin = first_bin; bin <= last_bin; ++bin) {
+        count += samples[bin];
+      }
+      std::size_t below{0U};
+      for (std::size_t response = 0U; response < kLaplacianBins; ++response) {
+        for (std::size_t bin = first_bin; bin <= last_bin; ++bin) {
+          below += histograms[bin * kLaplacianBins + response];
+        }
+        if (2U * below >= count) {
+          return 1.4826 * (static_cast<double>(response) + 0.5) / 6.0;
+        }
+      }
+      return 0.0;
+    };
+    const double noise = noiseOf(0U, kBrightnessBins - 1U);
+    // A brightness too rare in the frame to estimate takes the noise of the
+    // next darker one (the frame's own for the darkest).
+    std::array<float, kBrightnessBins> minimum_variance{};
+    double carried = noise;
+    for (std::size_t bin = 0U; bin < kBrightnessBins; ++bin) {
+      if (samples[bin] >= kMinimumBinSamples) {
+        carried = noiseOf(bin, bin);
+      }
+      minimum_variance[bin] = static_cast<float>(
+          std::pow(kSignalOverNoise * std::max(carried, kMinimumNoiseLevels), 2.0));
+    }
     for (int row = 0; row < disparity.rows; ++row) {
       const float* const means = mean.ptr<float>(row);
       const float* const squares = mean_square.ptr<float>(row);
       std::int16_t* const values = disparity.ptr<std::int16_t>(row);
       for (int column = 0; column < disparity.cols; ++column) {
-        if (squares[column] - means[column] * means[column] < minimum_variance) {
+        if (squares[column] - means[column] * means[column] <
+            minimum_variance[brightnessBin(means[column])]) {
           values[column] = std::int16_t{-16};
         }
       }
     }
     return noise;
+  }
+
+  // A hit alone in its voxel is no surface. The memory makes a voxel
+  // occupied on two hits, never one; the latest scan, which bounds the route
+  // ahead as it is, carried every hit, and with the pair's noise (A12) a few
+  // of the matcher's strays a frame stood in open air inside the route's
+  // tube: 98 percent of the latest scan's hits blocking a route were such
+  // strays, each holding the vehicle under the blocked route's law for 5 to
+  // 14 s (r1481, 159 s of a 380 s flight; the noiseless base had none). On a
+  // frame of the dark location 33 hits a frame have no truth within 0.5 m of
+  // them against 9 without the noise; the speckle window halves them and this
+  // rule brings them to 9, keeping 99 percent of the hits within a voxel of
+  // the truth (tools/stereo_depth_accuracy.sh on r1476 and r782). A surface
+  // within the confident depth puts several of the stride's rays in a voxel
+  // (at 5.2 m, 19 on a facing patch); free rays are untouched.
+  static void rejectLoneHits(std::vector<StereoDepthReturn>& returns) {
+    std::unordered_map<std::uint64_t, std::uint32_t> hits_by_voxel;
+    const auto voxel = [](const Point3& point) {
+      const auto coordinate = [](const double value) {
+        return static_cast<std::uint64_t>(
+                   static_cast<std::int64_t>(std::floor(value / kLoneHitVoxelM)) +
+                   (1LL << 20U)) &
+               ((1ULL << 21U) - 1ULL);
+      };
+      return (coordinate(point.x) << 42U) | (coordinate(point.y) << 21U) |
+             coordinate(point.z);
+    };
+    for (const StereoDepthReturn& stereo_return : returns) {
+      if (stereo_return.hit) {
+        ++hits_by_voxel[voxel(stereo_return.point)];
+      }
+    }
+    std::erase_if(returns, [&](const StereoDepthReturn& stereo_return) {
+      return stereo_return.hit &&
+             hits_by_voxel[voxel(stereo_return.point)] < kLoneHitVoxelLeastHits;
+    });
+  }
+
+  static constexpr double kLoneHitVoxelM{0.25};
+  static constexpr std::uint32_t kLoneHitVoxelLeastHits{2U};
+
+  [[nodiscard]] static std::size_t brightnessBin(const float mean) noexcept {
+    return std::min(
+        kBrightnessBins - 1U,
+        static_cast<std::size_t>(std::max(0.0F, mean) / kBrightnessBinLevels));
   }
 
   double collapse_started_s_{-1.0};
@@ -717,7 +796,10 @@ private:
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};
   static constexpr int kNoiseSampleStride{4};
-  static constexpr double kSignalOverNoise{3.0};
+  static constexpr double kSignalOverNoise{2.0};
+  static constexpr std::size_t kBrightnessBins{16U};
+  static constexpr float kBrightnessBinLevels{16.0F};
+  static constexpr std::size_t kMinimumBinSamples{50U};
   // A noiseless render still quantizes: never trust less than a level.
   static constexpr double kMinimumNoiseLevels{1.0};
 

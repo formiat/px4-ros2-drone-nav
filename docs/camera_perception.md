@@ -33,9 +33,29 @@ the correction is recorded beside it.
   in the dark as well); 6.4 m held. **With the pair's noise in effect**
   (specification A12, roadmap item 29, r1476, `tools/stereo_depth_accuracy.sh`)
   the error grows with the depth, the light's falloff leaving the far
-  surfaces dim against the noise: 0.38 px at p90 from 2 to 4 m, 0.81 from 4
-  to 6 and 1.96 from 6 to 8, matches within 0.25 m 98, 89 and 61 percent;
-  the depth it stands behind is 4.8 m (K7, `disparity_error_px` 0.80).
+  surfaces dim against the noise. With one noise estimate for the frame the
+  mask matched a quarter of the pixels at 2 to 4 m (0.25) and the error was
+  0.38 px at p90 there, 0.81 at 4 to 6 m and 1.96 at 6 to 8; the noise is
+  now estimated for each sixteenth of the brightness (a dark patch carries
+  more levels of it in sRGB than a bright one) and a match stands at twice
+  its brightness's noise: 0.73, 0.52, 0.35 and 0.25 of the pixels matched
+  from 1 to 8 m, 0.35, 0.68 and 1.43 px at p90 from 2 to 8 m, matches
+  within 0.25 m 99, 91 and 67 percent, and 0.8 percent of the matches within
+  4.8 m a surface a metre or more before the truth, against 1.5. The depth
+  it stands behind is 5.2 m (K7, `disparity_error_px` 0.68); on the
+  noiseless record of r782 the same mask gives 6.9 m and 0.82 of the pixels
+  matched at 2 to 4 m.
+- **A lone hit is no surface** (specification K35). The latest scan bounds
+  the route ahead with every hit it carries, and with the pair's noise the
+  matcher's strays, 2 to 9 a frame in open air 1 to 2.75 m ahead, held the
+  vehicle under the blocked route's law for 5 to 14 s at a time: 98 percent
+  of the hits blocking a route had no truth within 0.5 m (r1481), and the
+  camera flights fell to 1.06 to 1.21 m/s (r1476 to r1481). The matcher's
+  speckle window is 400 px (100 before) and a hit alone in its 0.25 m voxel
+  of the frame is dropped, the memory's own standard of two hits applied
+  within the frame: the strays on r1476's record fall from 33 a frame to 8
+  (9 to 4.4 on the noiseless r782), the coverage stays, and the ordinary
+  flight runs 1.464 m/s with no long block (r1482).
 - **The cameras' noise, in effect only since 2026-10-14** (specification
   A12, roadmap item 18 stage 1): gz-rendering raises the configured Gaussian
   to the power 2.1 before it adds it to the linear colour, so the 0.01 that
@@ -74,7 +94,7 @@ the correction is recorded beside it.
   The launch's one `obstacle_memory_3d_node` integrates them as it integrated
   the lidar's, two hits to a voxel.
 - **Speed and gaze** ([`trajectory_optimization.md`](trajectory_optimization.md)):
-  the braking contract reads 4.8 m (6.4 m before the pair's noise, 2.452
+  the braking contract reads 5.2 m (6.4 m before the pair's noise, 2.452
   m/s) and a 2.0 m margin inside 60 degrees of
   the heading and 52.4 degrees of the horizon, 2.8 m and a 1.0 m
   margin inside 22.5 degrees of the vertical (1.29 m/s); the gaze turns the

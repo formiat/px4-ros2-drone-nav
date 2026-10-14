@@ -276,7 +276,7 @@ doing:
   the space it has not seen.
 
 On the default stereo sensor set the contract is directional. Its range and
-margin are those of the sensor whose field holds the motion: the pair's 4.8 m
+margin are those of the sensor whose field holds the motion: the pair's 5.2 m
 (specification K7; 6.4 m and 2.452 m/s before the pair's noise)
 and 2.0 m inside 60 degrees of the heading and 52.4 degrees of the horizon, a time-of-flight sensor's 2.8 m and 1.0 m inside 22.5 degrees of
 the vertical (1.29 m/s). Two cases have no sensor behind them:

@@ -77,8 +77,8 @@ frame:
 
 - a pixel matched within the confident depth is a **hit**. The confident
   depth is where the depth error `z^2 * e / (b * f)` reaches one 0.25 m voxel
-  for the disparity error measured at p90 (0.80 px on r1476, the pair's
-  noise in effect; 0.45 px and 6.4 m on r476 without it): 4.8 m for the
+  for the disparity error measured at p90 (0.68 px on r1476, the pair's
+  noise in effect; 0.45 px and 6.4 m on r476 without it): 5.2 m for the
   1280 px, 120 degree, 0.20 m pair (specification K7);
 - a pixel matched deeper than that is a **free ray**: no surface measurement,
   but the surface is no nearer than the disparity plus its error allows, so

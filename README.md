@@ -363,7 +363,7 @@ cameras mounted and `lidar_inertial` has no scans to register without a lidar
 The sensor set is visible in the GUI and the position source is not. With the
 lidar the vehicle carries the sensor, RViz shows a full spherical scan, the
 obstacle memory fills in every direction to about 35 m and the flights run at
-2.4 to 2.7 m/s; with the cameras there is a forward depth cone about 4.8 m
+2.4 to 2.7 m/s; with the cameras there is a forward depth cone about 5.2 m
 deep and two small time-of-flight cones, memory grows only where the vehicle
 has looked, the vehicle turns to face where it is going, and the flights run at
 1.5 to 1.8 m/s. GNSS changes only what EKF2 fuses as its position, so the

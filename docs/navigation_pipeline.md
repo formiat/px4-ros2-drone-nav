@@ -256,7 +256,7 @@ profile selects distance-evidence preparation and observation limits, while
 cruise speed, absolute speed, and acceleration are explicit map-independent
 parameters.
 
-On the default stereo profile the sensor-braking bound is directional: 4.8 m
+On the default stereo profile the sensor-braking bound is directional: 5.2 m
 of range inside the pair's field (specification K7), 2.8 m inside a time-of-flight cone, and for
 a motion the vehicle does not face, the range memory has observed along it
 (nothing, where that is no more than the physical margin, until the gaze has

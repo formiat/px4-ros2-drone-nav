@@ -1654,9 +1654,10 @@ A12), where the noise in effect before was a tenth of one and the edge of the
 light's reach matched as if noiseless. With it the frames alone judged a
 sound light unreliable in ordinary flights (r1464 at 2.6 levels, 13.6 s in;
 r1465 at 1.2, 50 s in, in a flicker's dip): the light's own reading is what
-answers that. The guaranteed range (K7) measured again with it is 4.8 m,
-not 6.4 (r1476): the error grows with the depth as the light's falloff
-leaves far surfaces dim against the noise.
+answers that. The guaranteed range (K7) measured again with it is 5.2 m,
+not 6.4 (r1476), with the noise mask estimating the noise by brightness:
+the error grows with the depth as the light's falloff leaves far surfaces
+dim against the noise.
 
 Complete when, in the simulator: a large dark hall (a world of its own, its
 floor textured and lit by the carried light only) is flown to its goal by
@@ -2176,7 +2177,7 @@ Built, by stage, each decision the smallest change found:
   6.4 m at about 1.5 W on average, against 15 to 100 W for a continuous
   flood and 6.5 W for the lidar, for some tens of dollars (F12). The
   confident depth re-measured in the dark by that light stays 6.4 m (K7);
-  with the pair's noise in effect (A12) it is 4.8 m (r1476, item 29).
+  with the pair's noise in effect (A12) it is 5.2 m (r1476, item 29).
 - **Stage 2, surfaces the matcher cannot match** (d663be63). The curve of
   the matched share against texture is in
   [`camera_perception.md`](camera_perception.md): a texture-poor surface

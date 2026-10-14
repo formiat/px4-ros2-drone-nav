@@ -1406,13 +1406,14 @@ stereo_depth_node:
     minimum_range_m: 0.3
     # The disparity error at p90 over the recording flight r1476, the dark
     # location by the carried light with the pair's noise (specification A12,
-    # K7; tools/stereo_depth_accuracy.sh): 0.38 px from 2 to 4 m, 0.81 from 4
-    # to 6 and 1.96 from 6 to 8, the light's falloff leaving the far surfaces
-    # dim against the noise. With one voxel of allowed depth error a pixel
-    # deeper than sqrt(0.25 * 0.20 * 369.5 / 0.80) = 4.8 m is not evidence,
-    # the depth at which the 4 to 6 m band's error is a voxel; 0.45 px and
-    # 6.4 m held for a pair with a tenth of a level of noise (r476, r782).
-    disparity_error_px: 0.80
+    # K7; tools/stereo_depth_accuracy.sh) and the noise mask by brightness:
+    # 0.35 px from 2 to 4 m, 0.68 from 4 to 6 and 1.43 from 6 to 8, the
+    # light's falloff leaving the far surfaces dim against the noise. With one
+    # voxel of allowed depth error a pixel deeper than
+    # sqrt(0.25 * 0.20 * 369.5 / 0.68) = 5.2 m is not evidence, the depth at
+    # which the 4 to 6 m band's error is a voxel; 0.45 px and 6.4 m held for a
+    # pair with a tenth of a level of noise (r476, r782).
+    disparity_error_px: 0.68
     allowed_depth_error_m: 0.25
     # The six time-of-flight sensors of models/stereo_tof_v1 (VL53L8 class):
     # up, down and the ring of roadmap item 17 stage 4 (front, back, left,
