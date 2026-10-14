@@ -397,7 +397,11 @@ def configure_real_time_factor(tree: ET.ElementTree, factor: str) -> None:
 def configure_dark_lighting(tree: ET.ElementTree) -> int:
     """Roadmap item 17 stage 1: the location with no light of its own. The
     ambient term is zero and every light of the world goes, so whatever a
-    camera sees it sees by the light the vehicle carries."""
+    camera sees it sees by the light the vehicle carries; and what lies past
+    the cameras' far clip is black, not Gazebo's grey default (the dark hall
+    of roadmap item 29 set none, and its far wall stood in the frame as a
+    bright rectangle whose corners took the feature tracker's whole budget:
+    the estimator never started on the pad, r1466)."""
     world = tree.getroot().find("world")
     if world is None:
         raise EnvironmentPreparationError("materialized SDF has no world")
@@ -409,6 +413,10 @@ def configure_dark_lighting(tree: ET.ElementTree) -> int:
     if ambient is None:
         ambient = ET.SubElement(scene, "ambient")
     ambient.text = "0 0 0 1"
+    background = scene.find("background")
+    if background is None:
+        background = ET.SubElement(scene, "background")
+    background.text = "0 0 0 1"
     removed = 0
     for light in world.findall("light"):
         world.remove(light)

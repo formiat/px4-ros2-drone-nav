@@ -119,6 +119,7 @@ public:
     // The airframe's: fitted per vehicle (visual_inertial_odometry.hpp).
     config.rotor_drag_1ps =
         declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
+    odometry_config_ = config;
     odometry_ = std::make_unique<VisualInertialOdometry>(config);
     maximum_unaided_ns_ = static_cast<std::int64_t>(config.maximum_unaided_s * 1.0e9);
 
@@ -324,7 +325,11 @@ private:
       std::erase_if(pending_,
                     [stamp_ns](const Pair& pair) { return pair.stamp_ns <= stamp_ns; });
       previous_frame_stamp_ns_ = 0;
-      restart_due_ = true;
+      if (aided_) {
+        restart_due_ = true;
+      } else {
+        startAfresh("imu_hole");
+      }
     }
     if (restart_due_ && reinitialiseFromAutopilot()) {
       restart_due_ = false;
@@ -449,13 +454,31 @@ private:
     return camera_to_body_.transpose() * body_turn.transpose() * camera_to_body_;
   }
 
+  // A filter no feature has aided yet stands where the vehicle was declared
+  // to stand: the vehicle has not left the ground, for the autopilot has no
+  // position to take off on before the filter is aided. Started afresh
+  // there, it never carries the drift of its IMU alone, nor starts again on
+  // the autopilot's pose, which had nothing to vouch for it: on the dark
+  // hall's pad, where the estimator found nothing to track for nine
+  // minutes, its height ran to 380 m, a hole in the IMU stream restarted it
+  // on the autopilot's pose 16 m off, and the vehicle took off on it and
+  // struck a wall (r1466).
+  void startAfresh(const char* reason) {
+    odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
+    imu_samples_at_start_ = imu_samples_;
+    previous_frame_stamp_ns_ = 0;
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+                         "VISUAL_INERTIAL_ODOMETRY_START_AFRESH reason=%s", reason);
+  }
+
   void onPair(const Pair& pair) {
     if (!odometry_->initialized()) {
-      if (imu_samples_ < kRestSamplesBeforeInitialPose) {
+      if (imu_samples_ - imu_samples_at_start_ < kRestSamplesBeforeInitialPose) {
         return;
       }
       odometry_->initialize(pair.stamp_ns, Eigen::Vector3d::Zero(),
                             initial_heading_ned_rad_);
+      initialized_stamp_ns_ = pair.stamp_ns;
     }
     const auto started = std::chrono::steady_clock::now();
     // The tracker reads the buffers only; OpenCV has no const view of one.
@@ -474,6 +497,13 @@ private:
     }();
     VisualInertialEstimate estimate = odometry_->addFrame(pair.stamp_ns, observations);
     previous_frame_stamp_ns_ = pair.stamp_ns;
+    aided_ = aided_ || estimate.healthy;
+    // Time for its tracks to grow and aid it (a few frames), and no more.
+    constexpr std::int64_t kNeverAidedRestartNs{5'000'000'000};
+    if (!aided_ && pair.stamp_ns - initialized_stamp_ns_ > kNeverAidedRestartNs) {
+      startAfresh("never_aided");
+      return;
+    }
     gyro_bias_ = estimate.gyro_bias_radps;
     const double frame_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - started)
@@ -838,6 +868,11 @@ private:
   std::int64_t autopilot_attitude_ros_ns_{0};
   std::int64_t maximum_unaided_ns_{0};
   bool restart_due_{false};
+  // Whether any frame has aided the filter since the node started (onPair).
+  bool aided_{false};
+  VisualInertialOdometryConfig odometry_config_;
+  std::uint64_t imu_samples_at_start_{0U};
+  std::int64_t initialized_stamp_ns_{0};
   std::unique_ptr<AutopilotStateSource> autopilot_pose_;
   rclcpp::CallbackGroup::SharedPtr autopilot_pose_group_;
   std::uint64_t reinitialisations_{0U};

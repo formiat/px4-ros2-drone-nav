@@ -162,5 +162,21 @@ class RealTimeFactorTest(unittest.TestCase):
                 PREPARER.configure_real_time_factor(tree, factor)
 
 
+
+class DarkLightingTest(unittest.TestCase):
+    def test_the_dark_world_has_no_light_no_ambient_and_a_black_background(self) -> None:
+        # Roadmap item 29: a world that set no background showed Gazebo's
+        # grey past the cameras' far clip (r1466).
+        tree = ET.ElementTree(ET.fromstring(
+            "<sdf><world name='w'><scene><ambient>0.4 0.4 0.4 1</ambient></scene>"
+            "<light name='sun' type='directional'/></world></sdf>"))
+        self.assertEqual(1, PREPARER.configure_dark_lighting(tree))
+        world = tree.getroot().find("world")
+        assert world is not None
+        self.assertEqual([], world.findall("light"))
+        self.assertEqual("0 0 0 1", world.findtext("scene/ambient"))
+        self.assertEqual("0 0 0 1", world.findtext("scene/background"))
+
+
 if __name__ == "__main__":
     unittest.main()
