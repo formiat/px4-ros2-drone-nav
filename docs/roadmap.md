@@ -624,17 +624,18 @@ sensor; the thermal camera never sees them. Smoke is therefore a model, one
 field per smoky place that every sensor reads through a relay beside the
 flight: the pair by single scattering of the carried light, the time-of-flight
 ring and the lidar by the lidar equation (`SMOKE_ZONES`, RViz draws the
-places). On the way the cameras' noise was found a fraction of a level where
-item 17 stage 1 had meant 2.5, and set to it (A12).
+places). On the way the cameras' noise was found a tenth of a level where
+item 17 stage 1 had meant 2.5, and set to a small sensor's shot noise, about
+one (A12).
 
 What the vehicle meets: a plume is silence to the pair, not a surface (a wall
-5 m away is lost behind about 0.6 of optical depth, smoke is never matched);
+5 m away is lost behind about one optical depth, smoke is never matched);
 the lidar sees through 0.3 per metre and returns from the smoke's face from
 0.5; a time-of-flight unit sees smoke only round itself, from 1 per metre;
 the carried light set apart from the pair lowers the veil and does not give
 the wall back; the camera estimator tracks half its features in a plume and,
-flying 11 m through 3 m of smoke, ends 0.1 to 1 m off (2.6 m at the worst),
-through 7 m of it up to 8 m.
+flying 11 m through 3 m of smoke, ends 0.1 to 2.2 m off (3.6 m at the worst),
+through 7 m of it up to 4.6 m.
 
 The question as it stood: Gazebo already carries the tool, built for this
 purpose, the `ParticleEmitter` system of the DARPA SubT virtual track, and its
@@ -1648,11 +1649,12 @@ For a truly large space the answer stays another sensor: the lidar build
 make the camera vehicle fast there, it stops it from aborting.
 
 The darkness this item meets is the cameras' noise's (item 18 stage 1): since
-2026-10-14 the simulated pair carries the 2.6 levels item 17 stage 1 meant
-(specification A12), where the noise in effect before was a fraction of a
-level and the edge of the light's reach matched as if noiseless. The
-guaranteed range (K7, 6.4 m) is measured again with it before the hall is
-flown.
+2026-10-14 the simulated pair carries about a level of noise (specification
+A12), where the noise in effect before was a tenth of one and the edge of the
+light's reach matched as if noiseless. With it the frames alone judged a
+sound light unreliable in ordinary flights (r1464 at 2.6 levels, 13.6 s in;
+r1465 at 1.2, 50 s in, in a flicker's dip): the light's own reading is what
+answers that. The guaranteed range (K7, 6.4 m) is measured again with it.
 
 Complete when, in the simulator: a large dark hall (a world of its own, its
 floor textured and lit by the carried light only) is flown to its goal by
@@ -1660,6 +1662,16 @@ the truth without a false judgment of the light and without contact (three
 flights); the light's failure is still judged, by the reading, no later
 than K12 judges it today (light-failure and light-lost, a flight each);
 an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
+
+**The hall, built on 2026-10-14** (`environments/fixtures/dark_hall`,
+`./scripts/sim_dark_hall_headless.sh`, [`scenarios.md`](scenarios.md)): 80 x
+60 m and 20 m high, its floor and walls in a concrete texture of Urban's own
+statistics, the pad by the west wall and the goal 60 m east, flown at 6 m,
+where the pair's lowest rays meet the floor 7.6 m away. Urban's own largest
+room (the start's hall, about 25 m across, its walls 12.5 m from its centre:
+beyond the pair's confident depth but within the light's 25 m) is where every
+flight takes off, and with the pair's noise in effect it is already where the
+frames judged a sound light unreliable (r1464, r1465).
 
 ## 30. The Airframe's Size
 

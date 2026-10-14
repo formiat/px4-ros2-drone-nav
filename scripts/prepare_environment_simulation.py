@@ -561,19 +561,32 @@ def main() -> None:
             scenario_path = repository / scenario_path
         launch_platforms = load_launch_platforms(scenario_path.resolve())
     environment = find_environment(manifest, args.environment)
-    if environment["distribution"] != "release":
-        raise EnvironmentPreparationError(
-            "simulation preparation currently expects a release environment"
-        )
     install_root = args.asset_install_root
     if not install_root.is_absolute():
         install_root = repository / install_root
     install_root = install_root.resolve()
 
-    source_artifact_id = environment["source"]["bundle_artifact_id"]
-    source_root = ensure_release_artifact(
-        repository, manifest_path, environment, source_artifact_id, install_root
-    )
+    # A world the repository carries (roadmap item 29's dark hall) is its own
+    # source: no bundle to fetch, its textures beside it.
+    repository_world = environment["distribution"] == "repository"
+    if repository_world:
+        if args.runtime_map_mode == "static":
+            raise EnvironmentPreparationError(
+                "a repository world flies no-static"
+            )
+        source_world = repository / environment["source"]["url"].removeprefix(
+            "repository:"
+        )
+        source_root = source_world.parent
+    elif environment["distribution"] != "release":
+        raise EnvironmentPreparationError(
+            "simulation preparation expects a release or a repository environment"
+        )
+    else:
+        source_artifact_id = environment["source"]["bundle_artifact_id"]
+        source_root = ensure_release_artifact(
+            repository, manifest_path, environment, source_artifact_id, install_root
+        )
     static_map: dict | None = None
     occupancy: Path | None = None
     esdf: Path | None = None
@@ -618,7 +631,8 @@ def main() -> None:
         if topology.stat().st_size == 0:
             raise EnvironmentPreparationError("compiled topology is empty")
 
-    source_world = source_root / environment["source"]["entrypoint"]
+    if not repository_world:
+        source_world = source_root / environment["source"]["entrypoint"]
     if not source_world.is_file():
         raise EnvironmentPreparationError(f"source world is missing: {source_world}")
     runtime_root = (

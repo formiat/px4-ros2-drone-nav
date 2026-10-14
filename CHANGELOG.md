@@ -9,7 +9,7 @@ release names the asset tags it was validated with.
 The smoke-and-light goal (roadmap items 18, 29, 24 and 23; from 2026-10-13), in progress:
 
 - **Smoke in the simulator** (roadmap item 18 stage 1, specification A13): `SMOKE_ZONES` puts boxes of white smoke in the location, and every sensor is read through a smoke model (`simulation_smoke_sensor_node`): the pair by the carried light scattered in the smoke and the scene seen through it, the time-of-flight ring and the lidar by the lidar equation; RViz draws the places. Gazebo's particles were measured and set aside (unlit, their scatter ratio inert, their scene fog acting on nothing). A plume is silence to the pair, the lidar returns from its face from 0.5 per metre, the camera estimator loses metres flying through it (`tools/smoke_rig.py`).
-- **The pair's noise as item 17 meant it** (A12): 2.6 levels on the dark location's greys, where the setting had given a fraction of a level.
+- **The pair's noise in effect** (A12): about a level on the dark location's greys, a small sensor's shot noise there, where the setting had given a tenth of one.
 
 The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to bc7c16a9; not a release.
 

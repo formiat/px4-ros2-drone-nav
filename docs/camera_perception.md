@@ -36,10 +36,13 @@ the correction is recorded beside it.
   to the power 2.1 before it adds it to the linear colour, so the 0.01 that
   item 17 stage 1 set for about 2.5 levels gave 0.03 to 0.3 of a level, and
   the measurements of item 17 below were taken on frames all but noiseless;
-  the noise mask stood on its floor of one level. The setting is 0.05 now:
-  2.6 levels on the grey 30 to 50 the dark location's lit surfaces show, 3.5
-  in shadow, 1.1 in the light. With it the matched share of a textured wall
-  falls from 1.00 to 0.78 at 4.7 m and to 0.48 at 7.7 m
+  the noise mask stood on its floor of one level. The setting is 0.03 now:
+  1.2 levels on the grey 30 to 50 the dark location's lit surfaces show, 1.9
+  in shadow, 0.5 in the light, about a small sensor's shot noise there (2.6
+  levels, item 17's figure taken literally, would be a hundred electrons of
+  read noise, and left an ordinary flight half blind, r1464). With it a
+  textured wall 4.7 m away is still matched whole and one 7.7 m away 0.87 of
+  it against 1.00
   ([`obstacle_mapping.md`](obstacle_mapping.md), "Smoke In The Simulator");
   the guaranteed range (K7) is measured again in roadmap item 29.
 - **Surfaces without texture** (roadmap item 17 stage 2; `log/tools/texture`:

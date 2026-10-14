@@ -104,8 +104,9 @@ class SensorProfileTest(unittest.TestCase):
         self.assertEqual(
             2, runner.count('navigation_sensor_profile:="${navigation_sensor_profile}"'))
         makefile = (REPO_ROOT / "Makefile").read_text()
-        # Cameras need the textured world; both headless targets choose it.
-        self.assertEqual(2, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
+        # Cameras need the textured world; every headless target chooses it
+        # (Urban's two and the dark hall's).
+        self.assertEqual(3, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
 
 
 if __name__ == "__main__":

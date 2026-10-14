@@ -86,14 +86,15 @@
                way a real imager does in the dark (about 2.5 of 255 levels,
                a small CMOS sensor's read noise). gz-rendering adds the
                Gaussian raised to the power 2.1 to the linear colour, so the
-               0.01 first set here gave 0.03 to 0.3 of a level; 0.05 gives
-               2.6 on the grey 30 to 50 the dark location's lit surfaces
-               show, 3.5 in shadow and 1.1 in the light (specification A12;
-               the noise table of tools/smoke_rig_report.py). -->
+               0.01 first set here gave 0.03 to 0.3 of a level; 0.03 gives
+               1.2 on the grey 30 to 50 the dark location's lit surfaces
+               show, 1.9 in shadow and 0.4 in the light, about the shot noise
+               of a small sensor's pixel there (specification A12; the noise
+               table of tools/smoke_rig_report.py). -->
           <noise>
             <type>gaussian</type>
             <mean>0.0</mean>
-            <stddev>0.05</stddev>
+            <stddev>0.03</stddev>
           </noise>
         </camera>
         <always_on>true</always_on>
@@ -123,14 +124,15 @@
                way a real imager does in the dark (about 2.5 of 255 levels,
                a small CMOS sensor's read noise). gz-rendering adds the
                Gaussian raised to the power 2.1 to the linear colour, so the
-               0.01 first set here gave 0.03 to 0.3 of a level; 0.05 gives
-               2.6 on the grey 30 to 50 the dark location's lit surfaces
-               show, 3.5 in shadow and 1.1 in the light (specification A12;
-               the noise table of tools/smoke_rig_report.py). -->
+               0.01 first set here gave 0.03 to 0.3 of a level; 0.03 gives
+               1.2 on the grey 30 to 50 the dark location's lit surfaces
+               show, 1.9 in shadow and 0.4 in the light, about the shot noise
+               of a small sensor's pixel there (specification A12; the noise
+               table of tools/smoke_rig_report.py). -->
           <noise>
             <type>gaussian</type>
             <mean>0.0</mean>
-            <stddev>0.05</stddev>
+            <stddev>0.03</stddev>
           </noise>
         </camera>
         <always_on>true</always_on>

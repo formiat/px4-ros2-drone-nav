@@ -112,6 +112,93 @@ environments:
       world: fuel/fuel.gazebosim.org/openrobotics/worlds/urban%20circuit%20practice%2001/1/urban_circuit_practice_01.sdf
       materialization_report: work/urban_practice_01_materialization.json
   static_maps: []
+- id: dark_hall_fixture
+  display_name: Dark Hall
+  role: dark_space_mission
+  classification: test_fixture
+  distribution: repository
+  source:
+    provider: repository
+    url: repository:environments/fixtures/dark_hall/world.sdf
+    version: 1
+    license:
+      spdx: MIT
+      url: repository:LICENSE
+      attribution: Alexander Aglerimov and project contributors
+  repository_files:
+  - path: environments/fixtures/dark_hall/README.md
+    sha256: 14edd1e3de6ecb4e07a20342c8638d86a0c418c6ca8e3d61fa8602605a7b20f5
+    size_bytes: 1857
+  - path: environments/fixtures/dark_hall/generate.py
+    sha256: f9c3b98a154d77f9964912ba05de5eb3175c73e6eb9e7ae601df969fe982a59b
+    size_bytes: 6527
+  - path: environments/fixtures/dark_hall/world.sdf
+    sha256: 914fa5f06b07d7ae388c5c3ed1be86491c2b26ad20059d3fdaac25648e27d858
+    size_bytes: 46480
+  - path: environments/fixtures/dark_hall/texture.png
+    sha256: b68bd11030faf29e2d1d470518f9e1f8a8ce03ed4f0b693de138358c24af4593
+    size_bytes: 968970
+  - path: environments/fixtures/dark_hall/world.collisions.sdf
+    sha256: c4f0da02d20eb29ec324b69d34d7db2952c300187c2fe5d8befeb54910d8c19e
+    size_bytes: 3115
+  - path: environments/fixtures/dark_hall/world.occupancy3d
+    sha256: 474c203e10517d010be6df3454062849842503fc349fc65a502d1344560048a7
+    size_bytes: 498904
+  - path: environments/fixtures/dark_hall/world.esdf3d
+    sha256: f1feef12af4853cb7ae3d27759288089794368b97335d5d370068bc89c36cd73
+    size_bytes: 245232
+  - path: environments/fixtures/dark_hall/world.topology3d
+    sha256: e1a5f6bc232fe0fba14f62d9196c44dc2dd14ff559db7e3523c5901407351894
+    size_bytes: 105423
+  static_maps:
+  - id: r025
+    resolution_m: 0.25
+    origin_m:
+    - -2.5
+    - -2.5
+    - -2.5
+    dimensions:
+    - 340
+    - 260
+    - 100
+    dense_voxel_count: 8840000
+    collision_triangles: 84
+    occupied_voxels: 499845
+    occupied_chunks: 952
+    maximum_distance_m: 8.0
+    occupancy:
+      path: environments/fixtures/dark_hall/world.occupancy3d
+      sha256: 474c203e10517d010be6df3454062849842503fc349fc65a502d1344560048a7
+      size_bytes: 498904
+    esdf:
+      path: environments/fixtures/dark_hall/world.esdf3d
+      sha256: f1feef12af4853cb7ae3d27759288089794368b97335d5d370068bc89c36cd73
+      size_bytes: 245232
+    topology:
+      path: environments/fixtures/dark_hall/world.topology3d
+      sha256: e1a5f6bc232fe0fba14f62d9196c44dc2dd14ff559db7e3523c5901407351894
+      size_bytes: 105423
+    topology_compilation:
+      maximum_clearance_m: 6.0
+      open_space_clearance_m: 4.0
+      speed_limit_mps: 10.0
+      medial_clearance_weight: 2.0
+      medial_ridge_prominence_m: 0.1
+      medial_band_radius_cells: 1
+      chunk_size_cells: 32
+      minimum_open_region_voxels: 16
+      minimum_constrained_component_voxels: 16
+      minimum_portal_voxels: 4
+      maximum_portal_voxels: 100000
+      footprint_radius_m: 0.82
+      footprint_lower_extent_m: 0.23
+      footprint_upper_extent_m: 0.35
+      footprint_sweep_step_m: 0.25
+      minimum_segments: 1
+      expected_counts:
+        regions: 1
+        portals: 3
+        segments: 3
 - id: compact_3d_passage_fixture
   display_name: Compact 3D Passage Fixture
   role: integration_fixture

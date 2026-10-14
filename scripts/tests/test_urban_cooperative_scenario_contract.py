@@ -177,8 +177,9 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             ),
             2,
         )
-        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
-        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
+        # Urban's four targets and the dark hall's two (roadmap item 29).
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 6)
+        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 6)
         self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", makefile)
         self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertEqual(

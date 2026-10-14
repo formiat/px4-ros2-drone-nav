@@ -48,9 +48,13 @@ class CompileEnvironmentTopologyTest(unittest.TestCase):
         }
 
         # The release environments carry no static map any more (the ones
-        # published were checked and withdrawn); the fixture is the only one.
+        # published were checked and withdrawn); the repository's worlds do:
+        # the compact passage and roadmap item 29's dark hall, one open region.
         self.assertEqual(
-            {"compact_3d_passage_fixture": TopologyCounts(2, 2, 1)},
+            {
+                "compact_3d_passage_fixture": TopologyCounts(2, 2, 1),
+                "dark_hall_fixture": TopologyCounts(1, 3, 3),
+            },
             counts,
         )
 

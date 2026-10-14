@@ -404,8 +404,8 @@ may subscribe to it, and a sensor nobody subscribes to is not rendered.
 smoke model lays the smoke over each frame by (roadmap item 18 stage 1), and
 nothing else subscribes to them.
 
-The cameras' read noise is a Gaussian of 0.05 that gz-rendering raises to the
-power 2.1 and adds to the linear colour: 2.6 levels of 255 on the grey 30 to
+The cameras' noise is a Gaussian of 0.03 that gz-rendering raises to the
+power 2.1 and adds to the linear colour: 1.2 levels of 255 on the grey 30 to
 50 the dark location's lit surfaces show (specification A12).
 
 **Smoke** is not Gazebo's: its particles are unlit and scatter the depth

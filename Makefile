@@ -119,6 +119,42 @@ sim-urban-point-to-point-gui: build
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
+# Roadmap item 29: the large dark hall (environments/fixtures/dark_hall), the
+# point-to-point mission across it as the ordinary flight flies Urban's.
+DARK_HALL_SCENARIO_PATH := drone_city_nav/config/dark_hall_point_to_point_scenario.json
+
+.PHONY: sim-dark-hall-headless
+sim-dark-hall-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment dark_hall_fixture --runtime-map-mode no-static \
+		--scenario $(DARK_HALL_SCENARIO_PATH)
+	. external/environment-artifacts/derived/dark_hall_fixture/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(DARK_HALL_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-dark-hall-gui
+sim-dark-hall-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment dark_hall_fixture --runtime-map-mode no-static \
+		--scenario $(DARK_HALL_SCENARIO_PATH)
+	. external/environment-artifacts/derived/dark_hall_fixture/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(DARK_HALL_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
 # Named scenarios over the point-to-point mission: each sets what makes it
 # that scenario and runs the mission's target, so that every flight the
 # repository offers is one command (docs/scenarios.md).

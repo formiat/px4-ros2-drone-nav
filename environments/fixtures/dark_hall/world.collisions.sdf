@@ -1,0 +1,110 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.10">
+  <world name="dark_hall_collisions">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="default_physics" type="ignored">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <magnetic_field>1.2939e-06 2.1744e-05 -4.3045e-05</magnetic_field>
+    <atmosphere type="adiabatic" />
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+    <model name="hall_hall_shell_floor_1">
+      <static>true</static>
+      <pose>40 30 -0.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>81.0 61.0 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="hall_hall_shell_ceiling_2">
+      <static>true</static>
+      <pose>40 30 20.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>81.0 61.0 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="hall_hall_shell_west_wall_3">
+      <static>true</static>
+      <pose>-0.25 30 10 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 61.0 20.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="hall_hall_shell_east_wall_4">
+      <static>true</static>
+      <pose>80.25 30 10 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 61.0 20.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="hall_hall_shell_south_wall_5">
+      <static>true</static>
+      <pose>40 -0.25 10 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>81.0 0.5 20.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="hall_hall_shell_north_wall_6">
+      <static>true</static>
+      <pose>40 60.25 10 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>81.0 0.5 20.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    <model name="pad_pad_pad_collision_7">
+      <static>true</static>
+      <pose>8 30 0.25 0 -0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>3.0 3.0 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+  </world>
+</sdf>
