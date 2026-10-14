@@ -129,11 +129,21 @@ the correction is recorded beside it.
   guarantee. A motion the pair cannot see holds the vehicle where it stood
   when it went blind, following no route, until it sees again; back along
   the flown path the memory's observed range answers instead of the frame.
-  Read by the mission monitor, the same blind share is an outage of the
+  Read by the mission monitor, the same blind share was an outage of the
   carried light, on the frame's range alone (the memory raises the
   contract's back along the flown path): one of 3.5 s, or 60 percent of the
   last two minutes, judges the light unreliable and sends the vehicle home, because a vehicle gone blind
-  cannot tell a place that fails its light from a light that fails. What the flights found on the way is in the roadmap's entry:
+  cannot tell a place that fails its light from a light that fails.
+  **Since roadmap item 29** the light is judged by its driver's reading of
+  its output (`/carried_light/output_share`, under a quarter of nominal an
+  outage) and by the time-of-flight surfaces in the left frame that the
+  frame shows dark (`/stereo_depth/unlit_surface_share`); a blind frame alone
+  is an outage only where no reading is published. Under a light read sound
+  a blind frame is the place's darkness: it marks nothing in the memory, and
+  the memory's observed range (what the pair and the ring have observed)
+  answers for every motion, so a large dark space is crossed slowly
+  (specification K12, K14, K15, F18; r1473 hung in the dark hall under the
+  marks, r1474 crossed it). What the flights found on the way is in the roadmap's entry:
   a creep at zero reference into the dark (r807), the memory's range flown
   into it (r808), a soft stop ending inside it (r809), a hold that drifted
   with its route (r811, r813), darkness read by the light alone (r815).

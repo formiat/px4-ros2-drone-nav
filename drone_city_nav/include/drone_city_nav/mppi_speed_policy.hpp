@@ -116,6 +116,11 @@ struct MppiSpeedPolicyInput {
   // memory's range then answers for a frame too dim to see (specification
   // K15), because the way the vehicle came is never closed (I3).
   bool motion_along_flown_path{false};
+  // Whether the carried light's driver reads it sound (roadmap item 29): a
+  // frame blind under a sound light is the place's darkness, and the memory's
+  // range, what the pair and the time-of-flight ring observed, answers for
+  // every motion (specification K15, F18).
+  bool light_reads_sound{false};
   // Where the route ahead comes close to known occupied evidence, in the same
   // form as the executed horizon. The horizon reaches only as far as the
   // vehicle can stop, so at low speed it cannot see the tight spot the route

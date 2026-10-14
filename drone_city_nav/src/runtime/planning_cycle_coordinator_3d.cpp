@@ -1,5 +1,6 @@
 #include "planning_cycle_coordinator_3d.hpp"
 
+#include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/control_route_projection_3d.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/esdf_query.hpp"
@@ -514,6 +515,9 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           static_cast<double>(whole);
     }
     speed_policy_input.sensor_light_headroom = request.latest_light_headroom;
+    speed_policy_input.light_reads_sound =
+        request.latest_light_reading.has_value() &&
+        *request.latest_light_reading >= LightReliabilityJudgment::kLightReadingOutage;
     speed_policy_input.sensor_evidence_age_s =
         request.now_ns > frame.acquisitionStampNs()
             ? static_cast<double>(request.now_ns - frame.acquisitionStampNs()) * 1.0e-9

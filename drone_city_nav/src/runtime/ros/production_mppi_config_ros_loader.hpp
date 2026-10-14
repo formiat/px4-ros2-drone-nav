@@ -159,6 +159,8 @@ private:
         "raw_obstacle_delta_3d_topic", "/drone_city_nav/raw_obstacle_delta_3d");
     world.topics.light_headroom =
         declare<std::string>("light_headroom_topic", "/stereo_depth/light_headroom");
+    world.topics.carried_light_output = declare<std::string>(
+        "carried_light_output_topic", "/carried_light/output_share");
     world.topics.latest_sensor_obstacle_scan =
         declare<std::string>("latest_sensor_obstacle_scan_topic",
                              "/drone_city_nav/latest_sensor_obstacle_scan");

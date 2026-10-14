@@ -1,5 +1,6 @@
 #include "stereo_depth_node.hpp"
 
+#include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
@@ -132,6 +133,14 @@ public:
         declare_parameter<std::string>("light_headroom_topic",
                                        "/stereo_depth/light_headroom"),
         rclcpp::SensorDataQoS{});
+    // What the carried light's driver reads of its output (roadmap item 29).
+    light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("carried_light_output_topic",
+                                       "/carried_light/output_share"),
+        rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::Float64::ConstSharedPtr message) {
+          light_reading_.store(message->data, std::memory_order_relaxed);
+        });
     unlit_surface_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("unlit_surface_share_topic",
                                        "/stereo_depth/unlit_surface_share"),
@@ -428,8 +437,17 @@ private:
       returns.erase(returns.begin(),
                     returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
     }
-    std::vector<Point3> unobservable =
-        unobservableFrustum(rclcpp::Time{left->header.stamp}.seconds(), blind);
+    // Under a light its driver reads sound the dark is the place's, not
+    // the light's (roadmap item 29): the braking contract holds the vehicle
+    // to what it has observed, and the memory marks nothing for it. Marked,
+    // a large dark hall closed every direction the vehicle looked in, and its
+    // routes climbed to the ceiling around the marks (r1473).
+    const double light_reading = light_reading_.load(std::memory_order_relaxed);
+    const bool light_sound =
+        std::isfinite(light_reading) &&
+        light_reading >= LightReliabilityJudgment::kLightReadingOutage;
+    std::vector<Point3> unobservable = unobservableFrustum(
+        rclcpp::Time{left->header.stamp}.seconds(), blind && !light_sound);
     if (!rectifier_->ideal()) {
       for (Point3& point : unobservable) {
         point = toPhysicalFlu(point);
@@ -741,6 +759,8 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr returns_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr light_headroom_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr unlit_surface_pub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
+  std::atomic<double> light_reading_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::CallbackGroup::SharedPtr tof_callbacks_;

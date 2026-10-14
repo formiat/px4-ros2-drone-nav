@@ -607,6 +607,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                                        std::memory_order_relaxed);
       },
       sensor_evidence_subscription_options);
+  light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
+      config_.world.topics.carried_light_output, rclcpp::QoS{1}.reliable(),
+      [this](const std_msgs::msg::Float64::SharedPtr message) {
+        light_reading_.store(message->data, std::memory_order_relaxed);
+        light_reading_stamp_ns_.store(get_clock()->now().nanoseconds(),
+                                      std::memory_order_relaxed);
+      },
+      sensor_evidence_subscription_options);
   latest_sensor_obstacle_scan_sub_ = create_subscription<msg::LatestSensorObstacleScan>(
       config_.world.topics.latest_sensor_obstacle_scan, rclcpp::SensorDataQoS{},
       [this](const msg::LatestSensorObstacleScan::SharedPtr message,

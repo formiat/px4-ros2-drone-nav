@@ -149,6 +149,38 @@ TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
   EXPECT_GE(lit.target_lookahead_m, config.minimum_target_lookahead_m);
 }
 
+TEST(MppiSpeedPolicyTest, UnderASoundLightTheMemoryAnswersADarkFrameAnywhere) {
+  // Roadmap item 29: a large dark space under a light its driver reads
+  // sound. The frame is blind; the memory has observed 2.8 m ahead (the
+  // time-of-flight ring), and the vehicle may fly what that range admits and
+  // no more; read unsound, the dark frame holds it as before.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 6.4;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.6;
+  config.sensor_braking_contract.physical_margin_m = 2.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 0.5F;
+  input.sensor_observed_fraction = 0.04;
+  input.sensor_light_headroom = 1.0;
+  input.unfaced_observed_range_m = 2.8;
+  const MppiSpeedPolicyResult unsound = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(unsound.blind_along_motion);
+  input.light_reads_sound = true;
+  const MppiSpeedPolicyResult sound = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_FALSE(sound.blind_along_motion);
+  EXPECT_DOUBLE_EQ(sound.sensor_measured_range_m, 2.8);
+  EXPECT_GT(sound.sensor_braking_limit_mps, 0.3);
+  EXPECT_LT(sound.sensor_braking_limit_mps, 1.5);
+  // The frame's own range, what the light is judged by, stays blind.
+  EXPECT_DOUBLE_EQ(sound.sensor_frame_range_m, unsound.sensor_frame_range_m);
+  // Never past the configured range, whatever the memory has seen.
+  input.unfaced_observed_range_m = 20.0;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 6.4);
+}
+
 TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   // A pair that sees 60 degrees either side of the heading. Flying where it
   // looks the contract's range answers; flying sideways nothing looks, and

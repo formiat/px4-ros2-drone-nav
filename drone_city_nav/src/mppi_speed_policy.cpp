@@ -292,13 +292,17 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
     // The way the vehicle came is never closed (I3): back along it the
     // memory's observed range answers for a frame whose light has faded,
     // which leaves the vehicle at the edge of the dark blind in every
-    // direction (r803 stood 90 s). Anywhere else the frame limits: read
-    // for every motion, the memory flew r808 at 2 m/s into the dark over B,
-    // which it had seen free while the light still reached it.
+    // direction (r803 stood 90 s). Anywhere else the frame limits while the
+    // light is not read sound: read for every motion, the memory flew r808 at
+    // 2 m/s into the dark over B, which it had seen free while the light
+    // still reached it. Under a light its driver reads sound the dark is the
+    // place's (roadmap item 29): the memory answers for every motion, as far
+    // as the pair and the time-of-flight ring have observed, and a large dark
+    // space is crossed at the speed that range admits.
     frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
                              share * contract.guaranteed_detection_range_m);
     contract.guaranteed_detection_range_m = std::max(
-        {frame_range_m, input.motion_along_flown_path
+        {frame_range_m, input.motion_along_flown_path || input.light_reads_sound
                             ? std::min(contract.guaranteed_detection_range_m,
                                        input.unfaced_observed_range_m.value_or(0.0))
                             : 0.0});
