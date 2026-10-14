@@ -95,7 +95,7 @@
     </model>
     <model name="pad_pad_pad_collision_7">
       <static>true</static>
-      <pose>8 30 0.25 0 -0 0</pose>
+      <pose>4 30 0.25 0 -0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>

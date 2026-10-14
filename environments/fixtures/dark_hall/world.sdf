@@ -982,7 +982,7 @@
     <model name="pad">
       <static>true</static>
       <link name="pad">
-        <pose>8.0 30.0 0.25 0 0 0</pose>
+        <pose>4.0 30.0 0.25 0 0 0</pose>
         <collision name="collision">
           <geometry><box><size>3.0 3.0 0.5</size></box></geometry>
         </collision>

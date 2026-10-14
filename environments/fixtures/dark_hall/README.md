@@ -1,14 +1,18 @@
 # Dark Hall
 
 The large dark space of roadmap item 29: a closed hall 80 x 60 m and 20 m
-high with no light of its own, the vehicle's pad by its west wall at
-(8, 30) and the goal 60 m east of it. Flown at 6 m above the floor, the
+high with no light of its own, the vehicle's pad 4 m from its west wall at
+(4, 30), the vehicle facing the wall as it stands (its estimator starts on
+what it sees there, as on any start), and the goal 64 m east. Flown at 6 m
+above the floor, the
 carried light reaches the floor only at the bottom edge of the pair's
 frame and nothing ahead of it: the space a camera vehicle cannot tell from
 a failed light by its frames alone. The floor and the walls carry a concrete
 texture of the location's own statistics (Urban Circuit Practice 01's dirty
-concrete: linear albedo 0.10, deviation 0.03) in 10 m tiles; the ceiling is
-a plain dark grey.
+concrete: linear albedo 0.10, deviation 0.03) with its aggregate, stones of
+one to four centimetres whose edges give the feature tracker its corners (a
+smooth noise alone left the estimator nothing to start on, r1468), in 10 m
+tiles; the ceiling is a plain dark grey.
 
 `generate.py` writes `world.sdf` and `texture.png`, the same files on every
 run. The grids are built from the world as for every environment

@@ -53,7 +53,7 @@ class CompileEnvironmentTopologyTest(unittest.TestCase):
         self.assertEqual(
             {
                 "compact_3d_passage_fixture": TopologyCounts(2, 2, 1),
-                "dark_hall_fixture": TopologyCounts(1, 3, 3),
+                "dark_hall_fixture": TopologyCounts(1, 3, 2),
             },
             counts,
         )

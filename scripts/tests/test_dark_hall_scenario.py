@@ -27,10 +27,12 @@ class DarkHallScenarioTest(unittest.TestCase):
         self.assertEqual(scenario["canonical_world_path"], WORLD_PATH.resolve())
         self.assertEqual(scenario["gazebo_world_name"], "dark_hall_collisions")
         self.assertFalse(scenario["gazebo_axes_swapped"])
-        # The body the legs' 0.23 m above the pad's top at 0.5 m.
-        self.assertEqual(scenario["map_start_m"], (8.0, 30.0, 0.73))
+        # The body the legs' 0.23 m above the pad's top at 0.5 m, 4 m from the
+        # west wall and facing it: the estimator starts on the wall's texture.
+        self.assertEqual(scenario["map_start_m"], (4.0, 30.0, 0.73))
+        self.assertAlmostEqual(3.141592653589793, scenario["yaw_rad"])
         goal = scenario["mission_goal_sequence_m"][-1]
-        self.assertAlmostEqual(60.0, goal[0] - scenario["map_start_m"][0])
+        self.assertAlmostEqual(64.0, goal[0] - scenario["map_start_m"][0])
         # Flown 6 m over the floor: the pair's lowest rays meet it 7.6 m away,
         # at the edge of what the carried light lights.
         self.assertEqual(6.0, goal[2])

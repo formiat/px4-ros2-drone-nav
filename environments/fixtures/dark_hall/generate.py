@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """generate.py: writes this directory's world.sdf and texture.png (roadmap item 29, the large dark hall).
 
-A closed hall 80 x 60 m and 20 m high, the vehicle's pad by the west wall and its goal 60 m east of it. The floor
+A closed hall 80 x 60 m and 20 m high, the vehicle's pad 4 m from the west wall and its goal 64 m east of it. The floor
 and the walls carry a concrete texture of the location's own statistics in 10 m tiles (about 1 cm a texel); the
 ceiling is a plain grey. The
 world has no light of its own: the dark materialization keeps it unlit and only the carried light shines (A10).
@@ -19,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 LENGTH_M, WIDTH_M, HEIGHT_M = 80.0, 60.0, 20.0
 TILE_M = 10.0
 TEXTURE_PX = 1024
-PAD_XY_M = (8.0, 30.0)
+PAD_XY_M = (4.0, 30.0)
 PAD_SIZE_M = (3.0, 3.0, 0.5)
 
 
@@ -37,12 +37,23 @@ def value_noise(rng: np.random.Generator, cells: int) -> np.ndarray:
 
 def texture() -> np.ndarray:
     """Concrete as the location's own (Urban's ConcreteDirty: linear albedo 0.09, deviation 0.03): octaves from a
-    metre to a centimetre and a fine grain, scaled to a mean albedo of 0.10 and a deviation of 0.03."""
+    metre to a centimetre, a fine grain, and the aggregate, stones of one to four centimetres lighter or darker than
+    the cement, whose edges give a feature tracker its corners; scaled to a mean albedo of 0.10 and a deviation of
+    0.03."""
     rng = np.random.default_rng(29)
     field = np.zeros((TEXTURE_PX, TEXTURE_PX))
     for cells, amplitude in ((8, 1.0), (32, 0.8), (128, 0.6), (512, 0.45)):
         field += amplitude * value_noise(rng, cells)
     field += 0.35 * rng.standard_normal((TEXTURE_PX, TEXTURE_PX))
+    rows, columns = np.mgrid[0:TEXTURE_PX, 0:TEXTURE_PX]
+    for _ in range(3000):
+        centre_row, centre_column = rng.uniform(0, TEXTURE_PX, 2)
+        radius = rng.uniform(1.0, 4.0)
+        # Wrapping distance, so that the tiles join.
+        d_row = np.minimum(np.abs(rows - centre_row), TEXTURE_PX - np.abs(rows - centre_row))
+        d_column = np.minimum(np.abs(columns - centre_column), TEXTURE_PX - np.abs(columns - centre_column))
+        stone = np.clip(radius + 0.5 - np.hypot(d_row, d_column), 0.0, 1.0)
+        field += rng.choice((-1.0, 1.0)) * rng.uniform(1.5, 3.0) * stone
     linear = np.clip(0.10 + 0.03 * (field - field.mean()) / field.std(), 0.01, 0.95)
     # sRGB for the renderer's albedo map.
     srgb = np.where(linear <= 0.0031308, 12.92 * linear, 1.055 * linear ** (1.0 / 2.4) - 0.055)

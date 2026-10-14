@@ -4,8 +4,8 @@
   "vehicle": {
     "px4_model_target": "gz_x500_lidar_3d",
     "gazebo_model_name": "x500_lidar_3d_0",
-    "map_start_m": [8.0, 30.0, 0.73],
-    "yaw_rad": 0.0
+    "map_start_m": [4.0, 30.0, 0.73],
+    "yaw_rad": 3.141592653589793
   },
   "mission_goal_sequence_m": [[68.0, 30.0, 6.0]]
 }

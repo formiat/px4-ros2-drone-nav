@@ -1666,7 +1666,7 @@ an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
 **The hall, built on 2026-10-14** (`environments/fixtures/dark_hall`,
 `./scripts/sim_dark_hall_headless.sh`, [`scenarios.md`](scenarios.md)): 80 x
 60 m and 20 m high, its floor and walls in a concrete texture of Urban's own
-statistics, the pad by the west wall and the goal 60 m east, flown at 6 m,
+statistics, the pad 4 m from the west wall and the goal 64 m east, flown at 6 m,
 where the pair's lowest rays meet the floor 7.6 m away. Urban's own largest
 room (the start's hall, about 25 m across, its walls 12.5 m from its centre:
 beyond the pair's confident depth but within the light's 25 m) is where every
