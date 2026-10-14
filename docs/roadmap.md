@@ -1676,6 +1676,37 @@ beyond the pair's confident depth but within the light's 25 m) is where every
 flight takes off, and with the pair's noise in effect it is already where the
 frames judged a sound light unreliable (r1464, r1465).
 
+**Done on 2026-10-14** (code 0d2141a4; the recording checker 4c2a967d).
+Built: the light's injector publishes what its driver would read of the
+output (`/carried_light/output_share`, never its schedule); the depth node
+publishes the share of the time-of-flight surfaces in the left frame the
+frame shows dark; the mission monitor counts an outage when the reading is
+under 0.25 of nominal, or when a blind frame shows half the ring's surfaces
+in its field dark, and with no reading as before (K12, I7, F3). Under a
+light read sound a blind frame is the place's darkness: it marks nothing in
+the memory (K14; marked, the hall closed every direction and the routes
+climbed to 17 m under the 20 m ceiling, r1473) and the memory's observed
+range answers for every motion (K15), so the hall is crossed at about
+0.5 m/s. Found on the way: the hall's grey background past the far clip
+took the tracker's budget and a never-aided estimator restarted on the
+autopilot's pose into a wall (r1466; the background black, K28); the pad
+moved 4 m from the west wall facing it, the concrete given an aggregate
+(r1468, r1469); every headless flight records its true pose, a snapshot
+volume or none (r1466, r1471); the pair's noise (A12) cost the camera
+flights their speed through the matcher's strays blocking routes by the
+latest scan (K35, K7 5.2 m, the noise mask by brightness; 5563787d).
+
+| Flight | Run | Result |
+|---|---|---|
+| Before, the rules of 8771edbe | r1475 | the light judged unreliable 41.8 s after readiness, home; video `log/videos/2026-10-14/dark-hall_r1475_*.mp4` (BAD by A11's minute alone: the flight lasts 50 s) |
+| The hall, three | r1488, r1489, r1490 | goal by the truth 0.44, 0.53, 0.38 m; no contact, no judgment of the light; estimate error 0.43, 0.39, 0.42 m at most; r1490 marked darkness in a flicker's dip under 0.25 and flew around it; videos `dark-hall_r1488/9/90_{follow,top}.mp4`, RECORDING ok |
+| The light fails | r1486 | judged 32.0 s after readiness (55.1 s of simulation; the reading's line says 55.0 after take-off; the frames judged r1445 at 76.9 / 100.6), home 0.29 m, landed |
+| The light lost | r1487 | judged 55.0 s after readiness, dead reckoning from 75.0 s, blind landing at 79.8 s, whole |
+| Ordinary camera | r1485 | 1.429 m/s, goal 1.09 m, no contact (R3 holds; the base's 1.714 was a noiseless pair's, the range 6.4 m against 5.2) |
+
+Diagnostic flights on the way, none acceptance: r1464 to r1474, r1476 to
+r1484.
+
 ## 30. The Airframe's Size
 
 **Type:** new capability, deferred; weighed on 2026-10-13 at the project

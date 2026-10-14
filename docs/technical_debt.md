@@ -277,4 +277,15 @@ reports one echo a ray; the thermal camera sees through it (its response is
 stage 3's); the camera estimator's loss through it was replayed on a carrier
 with an IMU of its motion alone.
 
+Roadmap item 29 (2026-10-14): the stereo depth node drops a hit alone in
+its 0.25 m voxel (K35); an object thinner than what puts two of the stride's
+rays in a voxel is not seen by that rule, and no scenario holds one (a wire
+is below the stride anyway). The time-of-flight cross-check of K12 (surfaces
+the ring sees where the frame is dark) was never the judge in a flight: no
+scenario soils the lens or dims the lamp on its current, and every flight's
+unlit share read zero. In the dark hall a moderate flicker's dip under 0.25
+that outlasts K14's 2.5 s marks the frustum as darkness, and with the memory
+not forgetting (K10) the mark stays: r1490 flew around one; a hall of many
+such marks is not flown.
+
 The chain a blinded vehicle takes was flown in roadmap item 17: the estimator declares dead reckoning and then silence, the offboard descends level, and the vehicle lands whole (r939 to r943); under a failing light it comes home (r944 to r948). Not flown: the lidar vehicle's return from a goal outside the location (the proof's entry under Planning), a failure injected on the pad (an IMU hole there included), smoke (item 18) and moving obstacles (item 21). The loss of the light beside a wall is flown (the loss beside a wall, `LIGHT_ZONES`).

@@ -208,9 +208,13 @@ or in a very large closed space, gets no light back; does it take its light
 for failed and not fly? And should a "large-space mode" treat darkness as
 the absence of obstacles?
 
-Today, in empty darkness the frames see nothing within the light's reach:
-after 3.5 s the light is judged unreliable (K12) and the vehicle turns home
-along its trail. The larger trouble is the estimator: with nothing to track,
+Until roadmap item 29 (2026-10-14), in empty darkness the frames saw nothing
+within the light's reach: after 3.5 s the light was judged unreliable (K12)
+and the vehicle turned home along its trail (r1471 and r1475 in the dark
+hall, 0.4 m and 12 m from the start). Since then the light is judged by its
+driver's reading and the time-of-flight ring, and a dark place under a sound
+light is crossed at the speed the memory's observed range admits (r1488 to
+r1490, about 0.5 m/s across 64 m). The larger trouble is the estimator: with nothing to track,
 it dead reckons after 1 s (K13) and the vehicle descends 3 s later (K19),
 whatever the light. A mode that reads darkness as free is not built:
 
