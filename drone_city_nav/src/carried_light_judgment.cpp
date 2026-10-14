@@ -5,13 +5,19 @@
 
 namespace drone_city_nav {
 
-void LightReliabilityJudgment::observe(const double stamp_s,
-                                       const double sensor_share) {
+void LightReliabilityJudgment::observe(const double stamp_s, const double sensor_share,
+                                       const double light_reading,
+                                       const double unlit_surface_share) {
   if (!std::isfinite(stamp_s) || !std::isfinite(sensor_share) || sensor_share < 0.0 ||
       (!samples_.empty() && stamp_s < samples_.back().stamp_s)) {
     return;
   }
-  const bool outage = sensor_share < kBlindSensorShare;
+  const bool blind = sensor_share < kBlindSensorShare;
+  const bool outage = std::isfinite(light_reading)
+                          ? light_reading < kLightReadingOutage ||
+                                (blind && std::isfinite(unlit_surface_share) &&
+                                 unlit_surface_share >= kUnlitSurfaceShare)
+                          : blind;
   if (outage && outage_started_s_ < 0.0) {
     outage_started_s_ = stamp_s;
   } else if (!outage) {

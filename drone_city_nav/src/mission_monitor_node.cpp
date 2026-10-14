@@ -202,6 +202,23 @@ public:
             light_charge_s_ = message->data;
           }
         });
+    // Roadmap item 29: what the light's driver reads of its output, and the
+    // share of the time-of-flight surfaces in the camera's field its frame
+    // shows dark (specification K12).
+    light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("carried_light_output_topic",
+                                       "/carried_light/output_share"),
+        rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          light_reading_ = message->data;
+        });
+    unlit_surface_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("unlit_surface_share_topic",
+                                       "/stereo_depth/unlit_surface_share"),
+        rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          unlit_surface_share_ = message->data;
+        });
     objective_pub_ = create_publisher<msg::NavigationObjective>(
         declare_parameter<std::string>("navigation_objective_topic",
                                        "/drone_city_nav/navigation_objective"),
@@ -588,7 +605,8 @@ private:
                             progress.sensor_guaranteed_range_m > 0.0
                                 ? progress.sensor_measured_range_m /
                                       progress.sensor_guaranteed_range_m
-                                : -1.0);
+                                : -1.0,
+                            light_reading_, unlit_surface_share_);
     if (std::isfinite(progress.route_remaining_m)) {
       route_remaining_m_ = progress.route_remaining_m;
     }
@@ -887,6 +905,10 @@ private:
   double route_remaining_m_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<msg::NavigationProgress>::SharedPtr navigation_progress_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_charge_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr unlit_surface_sub_;
+  double light_reading_{std::numeric_limits<double>::quiet_NaN()};
+  double unlit_surface_share_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   double mission_ready_altitude_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double flown_path_m_{0.0};

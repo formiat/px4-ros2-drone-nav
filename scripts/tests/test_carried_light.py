@@ -21,13 +21,17 @@ SPEC.loader.exec_module(INJECTOR)
 
 
 class LightFaultInjectorContractTest(unittest.TestCase):
-    def test_the_charge_is_all_it_publishes_for_the_vehicle(self) -> None:
-        # The charge is what the vehicle may know; the light's share goes to
-        # the viewer alone, in the evaluation namespace no production node
-        # reads (test_no_production_source_reads_the_injection).
+    def test_the_charge_and_the_output_are_all_it_publishes_for_the_vehicle(self) -> None:
+        # The charge and what the light's driver reads of its output (roadmap
+        # item 29) are what the vehicle may know; the share as set goes to the
+        # viewer, in the evaluation namespace no production node reads
+        # (test_no_production_source_reads_the_injection). The output is the
+        # share the light took, never the schedule ahead of it.
         source = INJECTOR_PATH.read_text()
-        self.assertEqual(2, source.count("create_publisher"))
+        self.assertEqual(3, source.count("create_publisher"))
         self.assertIn('create_publisher(Float64, "/carried_light/charge_s", 1)', source)
+        self.assertIn('create_publisher(Float64, "/carried_light/output_share", 1)', source)
+        self.assertIn("output_pub.publish(Float64(data=applied))", source)
         self.assertIn('create_publisher(Float64, "/evaluation/light_share", 1)', source)
 
     def test_a_battery_only_where_the_scenario_gives_one(self) -> None:

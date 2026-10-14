@@ -9,16 +9,18 @@ directory. Two things move the light:
 - its battery, when the scenario gives it one (LIGHT_BATTERY_S, seconds of
   light at launch; without it the light never runs out and no charge is
   published): its charge, which the vehicle knows as any airframe knows its
-  batteries, drains at one constant rate whatever the light does, is the one
-  thing of the light published on ROS (/carried_light/charge_s), and at
-  zero the light goes out (specification F7, F8);
+  batteries, drains at one constant rate whatever the light does, is
+  published on ROS (/carried_light/charge_s), and at zero the light goes out
+  (specification F7, F8);
 - its failures, injected (LIGHT_FAULTS, seeded by LIGHT_FAULT_SEED): an
   evaluation component nobody tells the vehicle about. Their schedule never
   leaves this process, and no production node reads it (the contract test
-  holds it there); the vehicle learns of a failure only from its frames. The
-  share of the nominal intensity the light is set to goes out for the viewer
-  alone, on /evaluation/light_share, which the RViz overlay draws and no
-  production node subscribes to.
+  holds it there). The vehicle reads what the light's driver would read of
+  its output, the share of the nominal intensity the light is set to, on
+  /carried_light/output_share (roadmap item 29), never when or how the light
+  will fail; the same share goes out for the viewer on
+  /evaluation/light_share, which the RViz overlay draws and no production
+  node subscribes to.
 
 Two regimes, decided by the project owner on 2026-09-27:
 
@@ -240,6 +242,7 @@ def main() -> int:
     rclpy.init()
     ros_node = rclpy.create_node("carried_light")
     charge_pub = ros_node.create_publisher(Float64, "/carried_light/charge_s", 1)
+    output_pub = ros_node.create_publisher(Float64, "/carried_light/output_share", 1)
     share_pub = ros_node.create_publisher(Float64, "/evaluation/light_share", 1)
     node = Node()
     clock = {"s": None}
@@ -300,6 +303,8 @@ def main() -> int:
                     if accepted:
                         applied = share
                         share_pub.publish(Float64(data=share))
+                if applied is not None:
+                    output_pub.publish(Float64(data=applied))
             time.sleep(UPDATE_PERIOD_S)
 
 

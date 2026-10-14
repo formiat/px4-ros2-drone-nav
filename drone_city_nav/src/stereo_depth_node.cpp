@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <numbers>
@@ -130,6 +131,10 @@ public:
     light_headroom_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("light_headroom_topic",
                                        "/stereo_depth/light_headroom"),
+        rclcpp::SensorDataQoS{});
+    unlit_surface_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("unlit_surface_share_topic",
+                                       "/stereo_depth/unlit_surface_share"),
         rclcpp::SensorDataQoS{});
     returns_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("returns_topic", "/stereo_depth/points"),
@@ -351,6 +356,12 @@ private:
       }
     }
     std::size_t tof_rays{0U};
+    // Roadmap item 29: the time-of-flight surfaces in the left camera's field
+    // and how many of them the frame shows dark, a failure of the light its
+    // driver's reading cannot see (specification K12).
+    std::size_t surfaces_in_view{0U};
+    std::size_t unlit_surfaces{0U};
+    const double gain = camera_gain_.load(std::memory_order_relaxed);
     for (const TofSensor& sensor : tof_sensors_) {
       // The scan nearest the pair's moment; one of another moment is another
       // observation. A pair takes longer to match than a scan to arrive, so
@@ -366,8 +377,39 @@ private:
       }
       const std::vector<StereoDepthReturn> rays = tofZoneReturns(*zones, sensor.config);
       tof_rays += rays.size();
+      for (const StereoDepthReturn& ray : rays) {
+        if (!ray.hit) {
+          continue;
+        }
+        const Eigen::Vector3d rectified =
+            rectified_to_physical_flu_.transpose() *
+            Eigen::Vector3d{ray.point.x, ray.point.y, ray.point.z};
+        if (rectified.x() <= 0.0) {
+          continue;
+        }
+        const double column = geometry_.principal_x_px -
+                              geometry_.focal_px * rectified.y() / rectified.x();
+        const double row = geometry_.principal_y_px -
+                           geometry_.focal_px * rectified.z() / rectified.x();
+        const cv::Rect window{static_cast<int>(std::lround(column)) -
+                                  kSurfaceWindowPx / 2,
+                              static_cast<int>(std::lround(row)) - kSurfaceWindowPx / 2,
+                              kSurfaceWindowPx, kSurfaceWindowPx};
+        if ((window & cv::Rect{0, 0, left_grey.cols, left_grey.rows}) != window) {
+          continue;
+        }
+        ++surfaces_in_view;
+        unlit_surfaces +=
+            cv::mean(left_grey(window))[0] / gain < kUnlitRawGrey ? 1U : 0U;
+      }
       returns.insert(returns.end(), rays.begin(), rays.end());
     }
+    std_msgs::msg::Float64 unlit_message;
+    unlit_message.data = surfaces_in_view > 0U
+                             ? static_cast<double>(unlit_surfaces) /
+                                   static_cast<double>(surfaces_in_view)
+                             : std::numeric_limits<double>::quiet_NaN();
+    unlit_surface_pub_->publish(unlit_message);
     // The share of the frame observed as the braking contract reads it: every
     // return, the time-of-flight rays included, over the pair's samples.
     const double observed_share =
@@ -443,11 +485,12 @@ private:
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
                          "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
                          "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-                         "unobservable_total=%zu",
+                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightnessByMetreText(brightness_by_metre).c_str(), headroom,
                          lit_range_m, light_share, raw_brightness, observed_share,
-                         blind ? stereo_returns : 0U, noise, unobservable_total_);
+                         blind ? stereo_returns : 0U, noise, unobservable_total_,
+                         surfaces_in_view, unlit_surfaces);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -456,6 +499,13 @@ private:
   // until the light was under a hundredth of itself, and the vehicle flew at
   // 2.4 m/s into a dark that had put it out (r800).
   static constexpr double kGainTargetGrey{200.0};
+  // A time-of-flight surface's patch of the frame, and the brightness before
+  // the gain under which the frame shows it dark: the carried light at full
+  // shows the darkest surface it is likely to meet (an albedo of 0.03 at 60
+  // degrees) at the ring's 2.8 m at 36 levels and the light at a tenth of
+  // itself at 6; the camera's own noise is 1.2 to 1.9 levels (A12).
+  static constexpr int kSurfaceWindowPx{9};
+  static constexpr double kUnlitRawGrey{6.0};
 
   [[nodiscard]] static double brightnessPercentile(const cv::Mat& grey) {
     std::array<std::size_t, 256U> histogram{};
@@ -690,6 +740,7 @@ private:
   std::size_t pairs_{0U};
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr returns_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr light_headroom_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr unlit_surface_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::CallbackGroup::SharedPtr tof_callbacks_;

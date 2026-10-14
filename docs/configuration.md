@@ -345,8 +345,11 @@ flood of the memory that proves a goal unreachable, beyond which the proof
 stays undecided, and `minimum_target_z_m` and `maximum_target_z_m`, the
 planner's envelope, bound it in height (specification K16).
 It gives the goal up as well for the carried light's battery and for a light
-judged unreliable from the frames (specification K11, K12; the constants are
-in `carried_light_judgment.hpp`), and on the way home it hands the planner
+judged unreliable (specification K11, K12; the constants are in
+`carried_light_judgment.hpp`): by the light driver's reading of its output
+(`carried_light_output_topic`), by the time-of-flight surfaces the frame
+shows dark (`unlit_surface_share_topic`, published by `stereo_depth_node`)
+and, with no reading, by the frames alone. On the way home it hands the planner
 the trail it flew, point by point (`return_trail.hpp`, K20).
 `visual_inertial_odometry_node` fuses the rotors' drag: `rotor_drag_1ps`
 (0.106, a parameter) is this airframe's and must be fitted again for another
