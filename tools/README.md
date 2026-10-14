@@ -124,6 +124,9 @@ What the vehicle's sensors see through the smoke of roadmap item 18
 | `smoke_rig.py` | A world of its own with the vehicle's sensor sets on a carrier floating 1.5 m over a textured floor, a textured wall ahead and a box of smoke between them, read through `simulation_smoke_sensor_node` as in a flight (or Gazebo's particles, or its scene fog, for the comparison; or a matte panel, for the light's calibration). Each level saves every sensor's frames decoded; `record=` also records the pair as the camera driver passes it on, still or flying through the smoke (`move=1`), for the estimator's replay. The level's keys are in its header. Needs `make build`. | inside the container: `python3 tools/smoke_rig.py log/tools/part1/final w0,wall=5 w05,wall=5,sigma=0.5 v05,sigma=0.5,record=30 f05,sigma=0.5,record=1,move=1`; a record is replayed with `log/tools/vio/replay_vio log/tools/part1/vio/f05_vio imu=gz drag=0 tag=smoke` |
 | `smoke_rig_report.py` | The rig's levels as the vehicle's camera path would see them (the driver's gain, the depth node's matcher and noise mask): the wall's grey and contrast, the share matched on the wall and in the smoke, the front time-of-flight unit's zones, the lidar's forward rays from the smoke and the wall, the thermal camera; `--calibrate` the light's response from the panel levels; `--noise` the pair's noise by brightness; `--vio` the estimator's replays over the records. | on the host: `python3 tools/smoke_rig_report.py log/tools/part1/final w0 w05 --baseline w0` |
 | `light_lines.py` | The carried light's own reading against a line (roadmap item 29, specification K12), from the injector's own schedules: the longest stretch the moderate flicker (F1) keeps the light under the line over a thousand seeds and its 99th percentile, and when the severe failure and the light lost are first under it for the judgment's 3.5 s, in seconds after take-off. | `python3 tools/light_lines.py 0.25 0.35` |
+| `stereo_depth_accuracy.sh` | Specification K7's measurement: an ordinary camera flight on Urban whose pair and evaluation depth camera are recorded from its 60th second for 420 s, given the camera driver's gain and matched as the depth node matches; prints by depth band the share matched, the share within 0.25 m and the depth and disparity errors, and the confident depth the largest disparity error at the 90th percentile from 2 to 8 m gives. Records in `log/tools/stereo/RUN` and `RUNg`, the table in `RUN_accuracy.txt`. Not an acceptance flight. | `./tools/stereo_depth_accuracy.sh r1480` |
+| `stereo_record_frames.py` | The recorder `stereo_depth_accuracy.sh` runs inside the container: the pair and the evaluation depth camera over gz-transport, every KEEP-th frame of the pair's clock. | (by `stereo_depth_accuracy.sh`) |
+| `stereo_gain_copy.py` | A copy of such a record with the camera driver's gain applied to each pair (95th percentile to 200, 1 to 8). | `python3 tools/stereo_gain_copy.py log/tools/stereo/r1480 log/tools/stereo/r1480g` |
 | `media/fog/` | The particle texture of Fuel's Fog Emitter (OpenRobotics, CC BY 4.0) for the rig's `particles=` levels. | |
 
 ## Replaying The Lidar-Inertial Estimator Offline (`lio/`)
@@ -149,6 +152,12 @@ The heading argument is the vehicle's initial heading in NED radians (the
 One-off diagnostics written for a single investigation stay in
 `log/tools/diagnostics/` and are not tracked, as long as no document cites
 them; the goal journals in `log/tools/journal/` say which was used for what.
+
+The stereo pair's depth accuracy (specification K7) is built with the
+package: `build/drone_city_nav/stereo_depth_accuracy DIR` inside the
+container matches a gained record as the depth node does
+(`drone_city_nav/tools/stereo_depth_accuracy.cpp`, its noise mask a copy of
+the node's) and holds it against the evaluation depth camera.
 
 The CPU rollout benchmark (roadmap item 28) is built with the package:
 `build/drone_city_nav/mppi_cpu_rollout_benchmark` inside the container

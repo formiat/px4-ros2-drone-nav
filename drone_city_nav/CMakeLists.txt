@@ -713,6 +713,12 @@ target_compile_features(mppi_cpu_rollout_benchmark PRIVATE cxx_std_20)
 target_link_libraries(mppi_cpu_rollout_benchmark drone_city_nav_control)
 enable_project_warnings(mppi_cpu_rollout_benchmark)
 
+# The stereo pair's depth against the simulator's (specification K7).
+add_executable(stereo_depth_accuracy tools/stereo_depth_accuracy.cpp)
+target_compile_features(stereo_depth_accuracy PRIVATE cxx_std_20)
+target_include_directories(stereo_depth_accuracy SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(stereo_depth_accuracy ${OpenCV_LIBS})
+
 add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
 target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
 target_link_libraries(
