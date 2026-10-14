@@ -15,8 +15,9 @@ DEFAULT_CAMERA_PROFILE = "stereo_tof"
 SMOKE_TOPIC_SUFFIX = "/smoke"
 DEFAULT_NAVIGATION_SENSOR_PROFILE = "stereo_tof"
 
-# What the stereo profile guarantees to see, measured in roadmap item 14: the
-# pair recovers depth it can stand behind out to 6.4 m (disparity error 0.45 px
+# What the stereo profile guarantees to see, measured in roadmap item 14 and
+# again with the pair's noise in roadmap item 29 (specification K7, r1476): the
+# pair recovers depth it can stand behind out to 4.8 m (disparity error 0.80 px
 # at p90, a quarter-metre voxel) inside 60 degrees either side of the heading
 # and 52.4 degrees above and below the horizon (120 degrees on a 4:3 imager);
 # each time-of-flight sensor sees 2.8 m inside 22.5 degrees of the vertical. A
@@ -34,7 +35,7 @@ DEFAULT_NAVIGATION_SENSOR_PROFILE = "stereo_tof"
 # exits at the top through 39 routes; the estimator stayed healthy through
 # the 1988 degrees the vehicle turned there (tracked features p50 170).
 STEREO_TOF_OBSERVABILITY = {
-    "guaranteed_lidar_detection_range_m": 6.4,
+    "guaranteed_lidar_detection_range_m": 4.8,
     "forward_detection_vertical_half_angle_deg": 52.4,
     "forward_detection_horizontal_half_angle_deg": 60.0,
     "vertical_detection_range_m": 2.8,

@@ -30,7 +30,12 @@ the correction is recorded beside it.
   px at the median and 0.26 to 0.37 px at p90 from 2 to 8 m, the matched
   share of the pixels 0.62 at 2 to 4 m, 0.44 at 4 to 6 m and 0.39 at 6 to 8
   m (unmasked, the matcher answered on 98 percent of the pixels out to 40 m,
-  in the dark as well); 6.4 m holds.
+  in the dark as well); 6.4 m held. **With the pair's noise in effect**
+  (specification A12, roadmap item 29, r1476, `tools/stereo_depth_accuracy.sh`)
+  the error grows with the depth, the light's falloff leaving the far
+  surfaces dim against the noise: 0.38 px at p90 from 2 to 4 m, 0.81 from 4
+  to 6 and 1.96 from 6 to 8, matches within 0.25 m 98, 89 and 61 percent;
+  the depth it stands behind is 4.8 m (K7, `disparity_error_px` 0.80).
 - **The cameras' noise, in effect only since 2026-10-14** (specification
   A12, roadmap item 18 stage 1): gz-rendering raises the configured Gaussian
   to the power 2.1 before it adds it to the linear colour, so the 0.01 that
@@ -69,19 +74,20 @@ the correction is recorded beside it.
   The launch's one `obstacle_memory_3d_node` integrates them as it integrated
   the lidar's, two hits to a voxel.
 - **Speed and gaze** ([`trajectory_optimization.md`](trajectory_optimization.md)):
-  the braking contract reads 6.4 m and a 2.0 m margin inside 60 degrees of
-  the heading and 52.4 degrees of the horizon (2.452 m/s), 2.8 m and a 1.0 m
+  the braking contract reads 4.8 m (6.4 m before the pair's noise, 2.452
+  m/s) and a 2.0 m margin inside 60 degrees of
+  the heading and 52.4 degrees of the horizon, 2.8 m and a 1.0 m
   margin inside 22.5 degrees of the vertical (1.29 m/s); the gaze turns the
   heading to where the horizon moves over 1.5 s, and to the route's tangent
   while the vehicle rests, in a position hold as well; a motion the vehicle
   does not face is admitted what memory has observed along it, the body's
   radius wide, and nothing where it has observed no more than the margin.
-  Since roadmap item 17 the 6.4 m is the most a frame may stand behind, not
+  Since roadmap item 17 the configured range is the most a frame may stand behind, not
   a constant (below).
 - **The contract reads the frame** (roadmap item 17 stage 0, specification
   K9 and K15; `mppi_speed_policy.cpp`). The forward range is no longer a
   constant: a frame that observes 0.3 of the pixels it samples, or more,
-  stands behind the configured 6.4 m, one that observes 0.02 is blind, and
+  stands behind the configured range (K7), one that observes 0.02 is blind, and
   the range falls linearly between, down to a millimetre over the 2.0 m
   margin; the evidence age charged is the frame's measured age (0.16 to
   0.47 s, 0.22 s at the median, r747) instead of 600 ms. The share a frame
