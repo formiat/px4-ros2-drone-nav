@@ -611,31 +611,38 @@ one beside it, the vehicle does not fly into the panel, routes around it
 where a way exists, and the memory holds it closed from every side it was
 seen from.
 
-### Stage 1: Smoke In The Simulator
+### Stage 1: Smoke In The Simulator (Done)
 
-Gazebo already carries the tool, built for this purpose: the
-`ParticleEmitter` system was added for the DARPA SubT virtual track to mimic
-the smoke machines of the systems track and the dust of collapses, and its
-`particle_scatter_ratio` sets how the particles reach each sensor. The
-effects are defined per sensor type: an RGB camera sees the particles, a
-depth camera and a GPU lidar scatter on them with added Gaussian noise, and a
-thermal camera does not see them at all. Our time-of-flight sensors are
-`gpu_lidar`, so a plume blinds them in simulation as it does in reality, and
-so is the 3D lidar of the lidar profile. A plume is a materialization variant
-of the location, as the dark world of item 17 is; nothing reaches production
-code. Global fog through `<scene><fog>` under ogre2 is checked before it is
-relied on.
+Done on 2026-10-14 (specification A12, A13; the measurements in
+[`obstacle_mapping.md`](obstacle_mapping.md), "Smoke In The Simulator", the
+tool `tools/smoke_rig.py`). Gazebo's `ParticleEmitter` did not serve: its
+particles are unlit, so a camera sees them in the dark and the light's place
+does not matter to them; a depth sensor stops on the first one by a fixed
+chance whatever the path, and `particle_scatter_ratio` does not set that
+chance; the evaluation's depth camera scatters too; `<scene><fog>` acts on no
+sensor; the thermal camera never sees them. Smoke is therefore a model, one
+field per smoky place that every sensor reads through a relay beside the
+flight: the pair by single scattering of the carried light, the time-of-flight
+ring and the lidar by the lidar equation (`SMOKE_ZONES`, RViz draws the
+places). On the way the cameras' noise was found a fraction of a level where
+item 17 stage 1 had meant 2.5, and set to it (A12).
 
-**The vehicle's own light in smoke** is measured here, before anything is
-built on it. This item was written for a lit location; since item 17 the
-only light is the one the vehicle carries, beside the cameras, and smoke
-scatters it straight back into them. That may help, a bright veil being
-unlike the black silence of distance, or it may harm, the matcher finding
-correspondences in the veil and returning a depth that is not there. What
-the pair's depth, its matched share and the estimator's tracked features do
-in a plume lit from the camera's own position is the first measurement of
-this stage, by density; a light set apart from the pair is the remedy to
-compare.
+What the vehicle meets: a plume is silence to the pair, not a surface (a wall
+5 m away is lost behind about 0.6 of optical depth, smoke is never matched);
+the lidar sees through 0.3 per metre and returns from the smoke's face from
+0.5; a time-of-flight unit sees smoke only round itself, from 1 per metre;
+the carried light set apart from the pair lowers the veil and does not give
+the wall back; the camera estimator tracks half its features in a plume and,
+flying 11 m through 3 m of smoke, ends 0.1 to 1 m off (2.6 m at the worst),
+through 7 m of it up to 8 m.
+
+The question as it stood: Gazebo already carries the tool, built for this
+purpose, the `ParticleEmitter` system of the DARPA SubT virtual track, and its
+`particle_scatter_ratio` sets how the particles reach each sensor; the
+vehicle's own light in smoke, which the location's darkness makes the only
+light, scatters straight back into the cameras, and whether that helps or
+harms, and a light set apart from the pair as the remedy, were the first
+measurements.
 
 ### Stage 2: Detecting Smoke
 
@@ -1126,7 +1133,10 @@ Three hard places, each measured before anything is built:
   there is to tell them apart with.
 - **The simulator.** Everything above depends on how Gazebo shows smoke to
   a camera and to a lidar, which item 18 stage 1 settles; if its smoke is a
-  visual effect only, this item starts with the sensor models.
+  visual effect only, this item starts with the sensor models. Settled
+  (2026-10-14): smoke is a model the sensors read (specification A13), with
+  the lidar's single strongest echo; last-return selection needs the model
+  to report more than one echo a ray first.
 
 **Size:** L to XL.
 
@@ -1636,6 +1646,13 @@ What is built:
 For a truly large space the answer stays another sensor: the lidar build
 (40 m, its own emitter) or GNSS in the open at a height; this item does not
 make the camera vehicle fast there, it stops it from aborting.
+
+The darkness this item meets is the cameras' noise's (item 18 stage 1): since
+2026-10-14 the simulated pair carries the 2.6 levels item 17 stage 1 meant
+(specification A12), where the noise in effect before was a fraction of a
+level and the edge of the light's reach matched as if noiseless. The
+guaranteed range (K7, 6.4 m) is measured again with it before the hall is
+flown.
 
 Complete when, in the simulator: a large dark hall (a world of its own, its
 floor textured and lit by the carried light only) is flown to its goal by

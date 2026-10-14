@@ -51,7 +51,8 @@ prepare_runtime_evidence() {
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M \
     BLANK_PANELS REAL_TIME_FACTOR LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
-    STREAM_FAULT_SEED RETURN_HOME_ALLOWED VEHICLE_INTACT_EXPECTED; do
+    STREAM_FAULT_SEED RETURN_HOME_ALLOWED VEHICLE_INTACT_EXPECTED \
+    SMOKE_ZONES SMOKE_SEED; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
@@ -117,6 +118,7 @@ start_runtime_evidence_capture() {
   if bool_is_true "${enable_rviz}" && ! bool_is_true "${multi_vehicle_mission}"; then
     python3 "${repo_root}/scripts/evaluation_overlay.py" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
+      --smoke-zones "${SMOKE_ZONES:-}" \
       > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
   fi
   # A flight rendered afterwards (RENDER_BAG=1, scripts/render_flight_video.py):

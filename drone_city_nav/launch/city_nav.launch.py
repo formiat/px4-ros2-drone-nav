@@ -25,6 +25,7 @@ from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
     DEFAULT_LOCALIZATION_PROFILES,
     DEFAULT_NAVIGATION_SENSOR_PROFILE,
+    SMOKE_TOPIC_SUFFIX,
     STEREO_TOF_OBSERVABILITY,
     VISION_MEMORY_OVERRIDES,
     stereo_tof_topics,
@@ -107,6 +108,7 @@ def stereo_vision_nodes(
     shadow,
     visual_inertial_overrides,
     image_topic_suffix,
+    tof_topic_suffix,
 ):
     """The vision path of roadmap item 14: the pair's images and the
     time-of-flight scans bridged to ROS and depth recovered from them. In
@@ -116,7 +118,10 @@ def stereo_vision_nodes(
     With visual-inertial overrides the process that owns the pair's images
     also hosts the visual-inertial estimator of roadmap item 16."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
-        gazebo_world_name, gazebo_model_name, image_topic_suffix=image_topic_suffix
+        gazebo_world_name,
+        gazebo_model_name,
+        image_topic_suffix=image_topic_suffix,
+        tof_topic_suffix=tof_topic_suffix,
     )
     with open(params_path, encoding="utf-8") as params_stream:
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
@@ -230,6 +235,8 @@ def generate_launch_description():
     shutdown_on_mission_result = LaunchConfiguration("shutdown_on_mission_result")
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
+    smoke_zones = LaunchConfiguration("smoke_zones")
+    smoke_seed = LaunchConfiguration("smoke_seed")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
@@ -528,9 +535,38 @@ def generate_launch_description():
                 {"static_free_space_topology_3d_path": ""}
             )
         nodes = [gazebo_aligned_map_tf]
+        # Roadmap item 18 stage 1: with smoke in the location every sensor of
+        # the vehicle is read through the smoke model's relay.
+        smoke = smoke_zones.perform(context).strip()
+        image_suffix = stereo_image_topic_suffix.perform(context)
+        sensor_suffix = ""
+        if smoke:
+            if image_suffix:
+                raise RuntimeError(
+                    "smoke_zones and stereo_image_topic_suffix both relay the pair's images"
+                )
+            sensor_suffix = SMOKE_TOPIC_SUFFIX
+            image_suffix = SMOKE_TOPIC_SUFFIX
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="simulation_smoke_sensor_node",
+                    name="simulation_smoke_sensor_node",
+                    output="screen",
+                    parameters=[
+                        {
+                            "world_name": gazebo_world_name,
+                            "model_name": gazebo_model_name,
+                            "zones": smoke,
+                            "seed": int(smoke_seed.perform(context)),
+                            "output_suffix": SMOKE_TOPIC_SUFFIX,
+                        }
+                    ],
+                )
+            )
         if gazebo_bridge_enabled and navigation_sensors == "lidar":
             bridge_contract = (
-                f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
+                f"{lidar_gz_topic}{sensor_suffix}@sensor_msgs/msg/PointCloud2"
                 "[gz.msgs.PointCloudPacked"
             )
             ros_lidar_topic = "/lidar_3d/points"
@@ -544,7 +580,7 @@ def generate_launch_description():
                         bridge_contract,
                         "--ros-args",
                         "-r",
-                        f"{lidar_gz_topic}:={ros_lidar_topic}",
+                        f"{lidar_gz_topic}{sensor_suffix}:={ros_lidar_topic}",
                     ],
                 )
             )
@@ -557,7 +593,8 @@ def generate_launch_description():
                     gazebo_model_name,
                     shadow=navigation_sensors == "lidar",
                     visual_inertial_overrides=visual_inertial_overrides,
-                    image_topic_suffix=stereo_image_topic_suffix.perform(context),
+                    image_topic_suffix=image_suffix,
+                    tof_topic_suffix=sensor_suffix,
                 )
             )
         nodes.append(
@@ -808,6 +845,20 @@ def generate_launch_description():
                     "when an evaluation relay republishes the samples with holes "
                     "(specification K28)."
                 ),
+            ),
+            DeclareLaunchArgument(
+                "smoke_zones",
+                default_value="",
+                description=(
+                    "Smoky places of the location, 'x,y,z,sx,sy,sz,sigma' in the world "
+                    "frame separated by ';' (roadmap item 18 stage 1): every sensor is "
+                    "then read through the smoke model's relay."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "smoke_seed",
+                default_value="0",
+                description="Seed of the smoke's churn (roadmap item 18 stage 1).",
             ),
             DeclareLaunchArgument(
                 "stereo_image_topic_suffix",

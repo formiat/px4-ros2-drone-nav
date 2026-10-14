@@ -392,10 +392,11 @@ The flights of roadmap item 17 add their own, all recorded in the manifest:
 default), `LIGHT_BATTERY_S` (seconds of light at launch, only in the scenarios that test a limited charge: 720 in the return-home scenario, 240 in the low-battery one; unset, the light never runs out and the vehicle never turns for it),
 `STREAM_FAULTS=none|moderate` with
 `STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
-then reads), and the three that tell the mission check what a named
+then reads), `SMOKE_ZONES` with `SMOKE_SEED` (boxes of smoke every sensor is
+read through, roadmap item 18 stage 1, specification A13), and the three that tell the mission check what a named
 scenario asks for, `RETURN_HOME_EXPECTED`, `RETURN_HOME_ALLOWED` and
 `VEHICLE_INTACT_EXPECTED` ([testing.md](testing.md)). None of them reaches
-a production node: the light and its failures live in the
+a production node: the light and its failures and the smoke live in the
 simulator, and the vehicle reads its frames and its battery's charge.
 The location has no light of its own in any flight: the lit world is no
 longer selectable (the owner's rule of 2026-10-03, specification A10).

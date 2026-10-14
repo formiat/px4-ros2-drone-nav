@@ -969,9 +969,9 @@ else
   fi
   # Roadmap item 17 stage 5: the camera stream's failures are injected by a
   # relay the camera driver then reads from (runtime_evidence_runtime.sh).
-  if [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]]; then
-    ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
-  fi
+  [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]] && ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
+  # Roadmap item 18 stage 1: smoke in the location, every sensor read through it (the launch starts its relay).
+  [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")
   # K28: the IMU stream failing, injected by a relay the camera estimator reads from.
   [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]] && ros_launch_args+=(imu_topic_suffix:=/relayed)
 fi

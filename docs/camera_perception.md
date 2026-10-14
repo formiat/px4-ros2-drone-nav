@@ -31,6 +31,17 @@ the correction is recorded beside it.
   share of the pixels 0.62 at 2 to 4 m, 0.44 at 4 to 6 m and 0.39 at 6 to 8
   m (unmasked, the matcher answered on 98 percent of the pixels out to 40 m,
   in the dark as well); 6.4 m holds.
+- **The cameras' noise, in effect only since 2026-10-14** (specification
+  A12, roadmap item 18 stage 1): gz-rendering raises the configured Gaussian
+  to the power 2.1 before it adds it to the linear colour, so the 0.01 that
+  item 17 stage 1 set for about 2.5 levels gave 0.03 to 0.3 of a level, and
+  the measurements of item 17 below were taken on frames all but noiseless;
+  the noise mask stood on its floor of one level. The setting is 0.05 now:
+  2.6 levels on the grey 30 to 50 the dark location's lit surfaces show, 3.5
+  in shadow, 1.1 in the light. With it the matched share of a textured wall
+  falls from 1.00 to 0.78 at 4.7 m and to 0.48 at 7.7 m
+  ([`obstacle_mapping.md`](obstacle_mapping.md), "Smoke In The Simulator");
+  the guaranteed range (K7) is measured again in roadmap item 29.
 - **Surfaces without texture** (roadmap item 17 stage 2; `log/tools/texture`:
   a dark corridor of 1 m tiles around the vehicle's own sensor model, the
   carried light, the noise, the gain and the noise mask, against the

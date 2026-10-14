@@ -83,6 +83,7 @@ receives:
 | `MAIN_BATTERY_DRAIN_S=SECONDS` | PX4's simulated battery drains from full to 5 % over that time; the mission weighs it against the way home and returns (K32). Without it the battery stays full |
 | `IMU_FAULTS=holes` | holes in the autopilot's IMU stream as the camera estimator receives it, 2 s at 60 s and 4 s at 120 s; the estimator starts again on the autopilot's pose after each (K28) |
 | `LIGHT_ZONES="x,y,z,radius,falloff;..."` | the carried light out inside a radius and fading over the falloff around world points ([`camera_perception.md`](camera_perception.md)); `2,42.9,9.4,3,0.3` cuts it 0.2 m from a wall, the loss beside a wall |
+| `SMOKE_ZONES="x,y,z,sx,sy,sz,sigma;..."` | boxes of white smoke in the world frame, sigma their extinction coefficient per metre (the visibility about 3/sigma m), read by every sensor through the smoke model and drawn in RViz (specification A13, [`obstacle_mapping.md`](obstacle_mapping.md)); `SMOKE_SEED` the seed of their form. Not with `STREAM_FAULTS`, which relays the pair's images too |
 
 A GNSS-denied PX4 refuses `hold` (its Hold mode needs a global position);
 the pilot's means there are `posctl` with a radio, `land` and `kill`.

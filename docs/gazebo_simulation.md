@@ -400,3 +400,17 @@ one frame period (-0.02 to -0.04 s against the true pose, 232 frames).
 `evaluation_depth_left` is the simulator's depth at the left camera, for
 measuring against only: nothing in the perception, planning or control path
 may subscribe to it, and a sensor nobody subscribes to is not rendered.
+`evaluation_depth_right` is the same at the right camera; the two are what the
+smoke model lays the smoke over each frame by (roadmap item 18 stage 1), and
+nothing else subscribes to them.
+
+The cameras' read noise is a Gaussian of 0.05 that gz-rendering raises to the
+power 2.1 and adds to the linear colour: 2.6 levels of 255 on the grey 30 to
+50 the dark location's lit surfaces show (specification A12).
+
+**Smoke** is not Gazebo's: its particles are unlit and scatter the depth
+sensors by a fixed chance whatever the path, and its scene fog acts on no
+sensor. `SMOKE_ZONES` puts boxes of smoke in the location that
+`simulation_smoke_sensor_node` lays over every sensor between the simulator
+and the vehicle's drivers ([`obstacle_mapping.md`](obstacle_mapping.md),
+"Smoke In The Simulator", specification A13).

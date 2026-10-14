@@ -27,6 +27,7 @@ that is how anything worth more than a week is kept:
 | `log/tools/diagnostics/` | one-off scripts and data of single investigations |
 | `log/tools/vio/`, `log/tools/replay/` | recorded flights for the offline replay (r575, r576; r779, r795) and the replay binaries |
 | `log/tools/truth25/`, `log/tools/proof_leak/`, `log/tools/texture/`, `log/tools/stereo/` | truth grids and measurement data the documents cite |
+| `log/tools/part1/` | the smoke-and-light goal's part 1: the smoke rig's levels (`final/`) and the estimator's replays over the rig's records (`vio/`, their frames removed) the smoke documents cite |
 | `log/tools/part3/`, `log/tools/part6/`, `log/tools/part8/`, `log/tools/part11/`, `log/tools/stall/`, `log/tools/trials/` | the technical-debt goal's and the owner's trials' drafts and data; the scripts the documents cite from them moved here (`blind_phase.py`, `k27_side.py`, `speed_limiters.py`, `airframe_size.py`, `drone_city_nav/tools/mppi_cpu_rollout_benchmark.cpp`) |
 
 A loose file cannot be kept: check logs (`run_rNNN.log`), gate logs and
@@ -111,6 +112,18 @@ on recordings before any flight.
 | `vio/euroc_to_replay.py` | An EuRoC MAV sequence (ASL format) as a replay record: frames, the IMU turned into a forward-left-up vehicle frame, the reference, `calibration.txt` (roadmap item 25). The data stay in `/data/gazebo/datasets/` (the owner's rule), the replay sees them with `DATASETS_DIR=/data/gazebo/datasets` as `/datasets`. | `python3 -I tools/vio/euroc_to_replay.py /data/gazebo/datasets/euroc/V1_01_easy /data/gazebo/datasets/euroc/V1_01_easy/replay`, then `DATASETS_DIR=/data/gazebo/datasets ./scripts/container_run.sh bash -lc "log/tools/vio/replay_vio /datasets/euroc/V1_01_easy/replay imu=gz calibration=/datasets/euroc/V1_01_easy/replay/calibration.txt start_s=1.1 tag=k33"` |
 | `vio/euroc_report.py` | A replay of a real recording against its reference: ATE after a 4-DOF alignment and without one, RTE over 10 m, the drift at the end in percent of the path. | `python3 tools/vio/euroc_report.py /data/gazebo/datasets/euroc/V1_0*/replay/replay_k33.csv` |
 | `vio/dark_drift.py` | Position error of dark-window replays against the lit replay. | `python3 tools/vio/dark_drift.py log/tools/replay/r779` |
+
+## Smoke In The Simulator
+
+What the vehicle's sensors see through the smoke of roadmap item 18
+(specification A13; [`obstacle_mapping.md`](../docs/obstacle_mapping.md),
+"Smoke In The Simulator").
+
+| Tool | What | How |
+|---|---|---|
+| `smoke_rig.py` | A world of its own with the vehicle's sensor sets on a carrier floating 1.5 m over a textured floor, a textured wall ahead and a box of smoke between them, read through `simulation_smoke_sensor_node` as in a flight (or Gazebo's particles, or its scene fog, for the comparison; or a matte panel, for the light's calibration). Each level saves every sensor's frames decoded; `record=` also records the pair as the camera driver passes it on, still or flying through the smoke (`move=1`), for the estimator's replay. The level's keys are in its header. Needs `make build`. | inside the container: `python3 tools/smoke_rig.py log/tools/part1/final w0,wall=5 w05,wall=5,sigma=0.5 v05,sigma=0.5,record=30 f05,sigma=0.5,record=1,move=1`; a record is replayed with `log/tools/vio/replay_vio log/tools/part1/vio/f05_vio imu=gz drag=0 tag=smoke` |
+| `smoke_rig_report.py` | The rig's levels as the vehicle's camera path would see them (the driver's gain, the depth node's matcher and noise mask): the wall's grey and contrast, the share matched on the wall and in the smoke, the front time-of-flight unit's zones, the lidar's forward rays from the smoke and the wall, the thermal camera; `--calibrate` the light's response from the panel levels; `--noise` the pair's noise by brightness; `--vio` the estimator's replays over the records. | on the host: `python3 tools/smoke_rig_report.py log/tools/part1/final w0 w05 --baseline w0` |
+| `media/fog/` | The particle texture of Fuel's Fog Emitter (OpenRobotics, CC BY 4.0) for the rig's `particles=` levels. | |
 
 ## Replaying The Lidar-Inertial Estimator Offline (`lio/`)
 

@@ -89,6 +89,9 @@ reads `/evaluation`.
   vehicle really is. Where the light is lost the two part: what the trails
   show is the dead reckoning's drift, and that the vehicle was down before
   the drift carried it to a wall.
+- **The smoky places** of a flight with smoke (`SMOKE_ZONES`, roadmap item 18
+  stage 1): each a grey box, the denser the less transparent. The vehicle
+  meets the smoke only as its sensors show it.
 
 ## MPPI Markers
 

@@ -84,11 +84,16 @@
           <!-- Roadmap item 17 stage 1: read noise that does not fall with
                the light, so that the matcher degrades with the signal the
                way a real imager does in the dark (about 2.5 of 255 levels,
-               a small CMOS sensor's read noise). -->
+               a small CMOS sensor's read noise). gz-rendering adds the
+               Gaussian raised to the power 2.1 to the linear colour, so the
+               0.01 first set here gave 0.03 to 0.3 of a level; 0.05 gives
+               2.6 on the grey 30 to 50 the dark location's lit surfaces
+               show, 3.5 in shadow and 1.1 in the light (specification A12;
+               the noise table of tools/smoke_rig_report.py). -->
           <noise>
             <type>gaussian</type>
             <mean>0.0</mean>
-            <stddev>0.01</stddev>
+            <stddev>0.05</stddev>
           </noise>
         </camera>
         <always_on>true</always_on>
@@ -116,11 +121,16 @@
           <!-- Roadmap item 17 stage 1: read noise that does not fall with
                the light, so that the matcher degrades with the signal the
                way a real imager does in the dark (about 2.5 of 255 levels,
-               a small CMOS sensor's read noise). -->
+               a small CMOS sensor's read noise). gz-rendering adds the
+               Gaussian raised to the power 2.1 to the linear colour, so the
+               0.01 first set here gave 0.03 to 0.3 of a level; 0.05 gives
+               2.6 on the grey 30 to 50 the dark location's lit surfaces
+               show, 3.5 in shadow and 1.1 in the light (specification A12;
+               the noise table of tools/smoke_rig_report.py). -->
           <noise>
             <type>gaussian</type>
             <mean>0.0</mean>
-            <stddev>0.01</stddev>
+            <stddev>0.05</stddev>
           </noise>
         </camera>
         <always_on>true</always_on>
@@ -134,6 +144,29 @@
       <sensor name="evaluation_depth_left" type="depth_camera">
         <gz_frame_id>stereo_tof_link</gz_frame_id>
         <pose>0 0.10 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>2.0943951023931953</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+            <format>R_FLOAT32</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>60</far>
+          </clip>
+          <visibility_mask>218103807</visibility_mask>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>7.5</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <!-- The same at the right camera, for the smoke the simulated pair
+           sees (roadmap item 18 stage 1, simulation_smoke_sensor_node),
+           which lays the smoke over each frame by the depth of its own view. -->
+      <sensor name="evaluation_depth_right" type="depth_camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>0 -0.10 0 0 0 0</pose>
         <camera>
           <horizontal_fov>2.0943951023931953</horizontal_fov>
           <image>

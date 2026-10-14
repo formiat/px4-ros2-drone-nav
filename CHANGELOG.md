@@ -6,6 +6,11 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+The smoke-and-light goal (roadmap items 18, 29, 24 and 23; from 2026-10-13), in progress:
+
+- **Smoke in the simulator** (roadmap item 18 stage 1, specification A13): `SMOKE_ZONES` puts boxes of white smoke in the location, and every sensor is read through a smoke model (`simulation_smoke_sensor_node`): the pair by the carried light scattered in the smoke and the scene seen through it, the time-of-flight ring and the lidar by the lidar equation; RViz draws the places. Gazebo's particles were measured and set aside (unlit, their scatter ratio inert, their scene fog acting on nothing). A plume is silence to the pair, the lidar returns from its face from 0.5 per metre, the camera estimator loses metres flying through it (`tools/smoke_rig.py`).
+- **The pair's noise as item 17 meant it** (A12): 2.6 levels on the dark location's greys, where the setting had given a fraction of a level.
+
 The technical-debt goal before roadmap item 18 (2026-10-10 to 13), on main up to bc7c16a9; not a release.
 
 - **The pilot's authority and the mission's end** (roadmap item 27 block 1, specification K29 to K32, K34): the stack never arms the vehicle or switches its mode; every mission ends landed and disarmed; the operator's commands stop, land, home and goal; the main battery weighed against the way home; a PX4 parameter set for a real vehicle. The simulation's evaluation pilot (`scripts/sim_pilot.py`, `PILOT_EVENTS`, `PILOT_RC`).

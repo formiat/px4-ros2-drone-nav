@@ -968,6 +968,17 @@ target_link_libraries(
 ament_target_dependencies(simulation_truth_adapter_node rclcpp)
 enable_project_warnings(simulation_truth_adapter_node)
 
+# Roadmap item 18 stage 1: the smoke the simulated sensors see, an evaluation
+# component between Gazebo and the vehicle's drivers.
+add_executable(simulation_smoke_sensor_node src/simulation_smoke_sensor_node.cpp
+                                            src/simulation_smoke_model.cpp)
+target_compile_features(simulation_smoke_sensor_node PRIVATE cxx_std_20)
+target_link_libraries(
+  simulation_smoke_sensor_node Eigen3::Eigen gz-transport13::gz-transport13
+  gz-msgs10::gz-msgs10 sdformat14::sdformat14)
+ament_target_dependencies(simulation_smoke_sensor_node rclcpp std_msgs)
+enable_project_warnings(simulation_smoke_sensor_node)
+
 # The depth node in a process whose images arrive over ROS, and the same node
 # hosted beside the simulated pair's image source, which hands them over inside
 # the process.
@@ -1199,6 +1210,7 @@ install(
     mission_monitor_node
     cooperative_traffic_referee_node
     simulation_truth_adapter_node
+    simulation_smoke_sensor_node
     simulation_heading_source_node
     lidar_inertial_odometry_node
     stereo_depth_node
@@ -1391,6 +1403,14 @@ if(BUILD_TESTING)
   target_compile_features(simulation_truth_alignment_test PRIVATE cxx_std_20)
   target_link_libraries(simulation_truth_alignment_test drone_city_nav_core)
   enable_project_warnings(simulation_truth_alignment_test)
+
+  ament_add_gtest(simulation_smoke_model_test tests/simulation_smoke_model_test.cpp
+                  src/simulation_smoke_model.cpp)
+  target_compile_features(simulation_smoke_model_test PRIVATE cxx_std_20)
+  target_include_directories(simulation_smoke_model_test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(simulation_smoke_model_test Eigen3::Eigen)
+  enable_project_warnings(simulation_smoke_model_test)
 
   ament_add_gtest(map_to_sdf_transform_test
                   tests/map_to_sdf_transform_test.cpp)

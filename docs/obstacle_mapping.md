@@ -114,6 +114,116 @@ were found (r483); with the free rays and the time-of-flight zones 97.1
 percent within one voxel and 99.4 within two, 96.0 and 97.8 percent found,
 over 35 percent of the lidar's observed volume (r487).
 
+## Smoke In The Simulator
+
+Roadmap item 18 stage 1 (specification A13). A smoky place of a flight is a
+box of white smoke, `SMOKE_ZONES="x,y,z,sx,sy,sz,sigma"` in the world frame
+(several separated by `;`, `SMOKE_SEED` the seed of its form), sigma its
+extinction coefficient of visible light per metre; the visibility through it
+is about 3/sigma metres. Its place and its amount never change; its form
+churns, two octaves of value noise drifting through it (1.2 m at 0.15 m/s and
+0.35 m at 0.3 m/s, the density between about half and one and a half of
+sigma), and it thins out over the half metre inside each face.
+`simulation_smoke_sensor_node` (started by the launch when the zones are set)
+reads every sensor of the vehicle from Gazebo, lays the smoke over it and
+publishes it again under `/smoke`, where the vehicle's drivers read it; a
+message none of whose rays crosses smoke passes unchanged, and nothing of the
+vehicle reads the zones. RViz draws them as grey boxes, the denser the less
+transparent (`scripts/evaluation_overlay.py`).
+
+**Why a model and not Gazebo's particles.** Measured on the vehicle's own
+sensors (`tools/smoke_rig.py`, its levels in `log/tools/part1/final`): the
+`ParticleEmitter`'s particles are unlit, so the pair saw them at grey 91 with
+the light out and no ambient light at all, and a light set aside lit them
+exactly as one at the pair; a depth sensor stops on the first particle with a
+fixed chance, whatever the path through the plume, and the documented
+`particle_scatter_ratio` does not set that chance (at 10 particles a second
+0.38 of the lidar's forward rays returned from the particles at a ratio of 0.1
+and 0.23 at 0.9; 0.28 and 0.32 at 3 and 10 a second); the simulator's own
+depth camera, the evaluation's truth, scatters on them as well; `<scene><fog>`
+acts on no sensor under ogre2 (0.77 of the wall matched against 0.78 clear).
+The thermal camera does not see the particles at all and the model leaves it
+as it is: the wall reads 311 K at 5 m at every level; the thermal channel's
+response to smoke is stage 3's.
+
+**The pair.** Each frame is the clean one seen through the smoke both ways
+and lit through it, plus the light of the carried light the smoke scatters
+back: single scattering by an albedo of 0.9 and a Henyey-Greenstein phase of
+0.45, marched along one ray per 8 x 8 pixels in 0.1 m steps up to the clean
+frame's own depth (the evaluation depth cameras of both sides, rendered only
+for the model) and interpolated per pixel. The light's brightness on a surface
+is the simulator's own, measured on a matte panel on the light's axis from
+0.25 to 15 m (`tools/smoke_rig_report.py --calibrate`). The camera's noise
+goes down with the surface it came with and is added again as Gazebo adds it.
+A frame costs 20 to 70 ms on four threads, the most with smoke round the
+vehicle.
+
+**The time-of-flight ring and the lidar.** Each ray reports the strongest
+echo over the sensor's threshold, from the smoke or from the surface behind
+it, by the lidar equation: an echo is the backscatter met over the square of
+its distance, both ways through the smoke; the smoke's backscatter is its
+extinction over a lidar ratio of 53 sr (the albedo and the phase above; 40 to
+70 sr is measured for smoke), the threshold that of a matte surface of 0.5 at
+the sensor's maximum range, and the receiver takes the whole beam in from 1 m
+for the lidar and from 0.25 m for a time-of-flight unit. A smoke return lies
+somewhere in its 0.1 m bin and moves with the churn from scan to scan; the
+intensity is left as it was. The two overlap distances are chosen, not
+measured on a real unit: with them a time-of-flight unit is blinded by smoke
+round it once its visibility falls under about 4 m, not by a haze.
+
+**What each sensor sees.** A wall 5 m ahead, a box of smoke 1 to 4 m ahead,
+the light at the pair, the noise of specification A12 (the clear wall at 7.7
+m: 0.48 matched):
+
+| sigma, 1/m (visibility) | Wall grey, contrast | Pair: wall matched | Pair: matched in the smoke | Front time-of-flight | Lidar forward: smoke, wall |
+|---|---|---|---|---|---|
+| 0 | 73, 16.8 | 0.78 | 0 | nothing (the wall beyond 2.8 m) | 0, 1.00 |
+| 0.05 (60 m) | 71, 13.3 | 0.57 | 0 | nothing | 0, 1.00 |
+| 0.1 (30 m) | 69, 10.6 | 0.38 | 0 | nothing | 0, 1.00 |
+| 0.2 (15 m) | 67, 6.7 | 0.08 | 0 | nothing | 0, 1.00 |
+| 0.3 (10 m) | 66, 4.4 | 0 | 0 | nothing | 0, 1.00 |
+| 0.5 (6 m) | 66, 2.6 | 0 | 0 | nothing | 0.24, 0.76 |
+| 1 (3 m) | 68, 2.1 | 0 | 0 | nothing | 1.00, 0 |
+| 2 (1.5 m) | 71, 2.1 | 0 | 0 | nothing | 1.00, 0 |
+
+The pair loses the wall behind about 0.6 of optical depth (0.2 per metre over
+3 m), and smoke never becomes a matched surface: its veil is a smooth grey
+the noise mask refuses, so a plume is silence to the pair, as distance is,
+not a wall. With the noise of before A12 (0.01, a fraction of a level) the
+wall was matched whole through 0.2 per metre and 0.15 of it through 0.5. The
+lidar sees through 0.3 per metre and returns from the smoke's face from 0.5;
+the front time-of-flight unit sees nothing of smoke outside it, even of 2
+per metre 0.4 m ahead.
+
+With the smoke round the vehicle (3 m behind to 4 m ahead, the wall 5 m
+ahead): the pair matched 0.36, 0.02 and 0 of the wall at 0.1, 0.2 and 0.5 per
+metre; every time-of-flight zone read the smoke at 0.05 m from 1 per metre
+and none at 0.5; the lidar returned from the smoke from 0.5. **The light set
+apart** (0.45 m aside and 0.55 m below the pair, the remedy item 18 named)
+lowered the veil (grey 67, 64 and 59 against 69, 68 and 68) and matched less
+of the wall (0.20 and 0 at 0.1 and 0.2): what blinds the pair is the wall's
+light lost both ways through the smoke, not the veil.
+
+**The camera estimator** (`tools/vio/replay_vio.cpp` over the pair as the
+camera driver passes it on, an IMU of the motion alone, the rotor drag term
+off for a carrier that is no multicopter): standing still 30 s before a
+plume 1 m away, the features tracked fall from 125 (clear) to 119, 71 and 50
+at 0.2, 0.5 and 1 per metre, and the estimate stays within 0.05 m. Flying 11
+m at 1 m/s through the 3 m box:
+
+| sigma, 1/m | Features, mean (least) | Error at the end | Largest error |
+|---|---|---|---|
+| 0 | 128 (72) | 0.004 m | 0.19 m |
+| 0.2 | 122 (70) | 0.13 m | 0.28 m |
+| 0.5 | 112 (32) | 0.81 m | 2.6 m |
+| 1 | 100 (0) | 0.43 m | 2.1 m |
+| 2 | 97 (0) | 0.97 m | 2.5 m |
+| 0.2, 7 m of smoke | 114 (54) | 2.4 m | 4.4 m |
+| 0.5, 7 m of smoke | 96 (5) | 1.6 m | 8.2 m |
+
+Smoke the vehicle flies through costs the camera estimator metres over a few
+metres of path: what item 23 has to measure and answer first.
+
 ## Obstacle Memory
 
 `obstacle_memory_3d_node` accumulates scan evidence into its sparse

@@ -10,6 +10,9 @@ from __future__ import annotations
 CAMERA_PROFILES = ("none", "stereo_tof")
 NAVIGATION_SENSOR_PROFILES = ("lidar", "stereo_tof")
 DEFAULT_CAMERA_PROFILE = "stereo_tof"
+# Roadmap item 18 stage 1: the topics the smoke model's relay republishes
+# every sensor on (simulation_smoke_sensor_node), the drivers' input then.
+SMOKE_TOPIC_SUFFIX = "/smoke"
 DEFAULT_NAVIGATION_SENSOR_PROFILE = "stereo_tof"
 
 # What the stereo profile guarantees to see, measured in roadmap item 14: the
@@ -99,6 +102,7 @@ def stereo_tof_topics(
     model_name: str,
     vehicle_prefix: str = "",
     image_topic_suffix: str = "",
+    tof_topic_suffix: str = "",
 ):
     """How one vehicle's camera set reaches its depth node: (bridge arguments,
     bridge remaps, parameters of the `gazebo_stereo_depth_node` process). Only
@@ -106,7 +110,8 @@ def stereo_tof_topics(
     images are taken from Gazebo inside the depth node's process, because the
     bridge of two 1280 x 960 streams stalled the simulator. The returns topic
     is the vision memory's input. A suffix names the topics an evaluation relay
-    republishes the images on, the camera driver's input then."""
+    republishes the images on, the camera driver's input then; another the
+    time-of-flight clouds' (the smoke of roadmap item 18 stage 1)."""
     sensor_prefix = (
         f"/world/{world_name}/model/{model_name}/link/stereo_tof_link/sensor"
     )
@@ -128,7 +133,7 @@ def stereo_tof_topics(
     )
     depth_parameters["air_pressure_topic"] = f"{vehicle_prefix}/barometer/air_pressure"
     for side in ("up", "down", "front", "back", "left", "right"):
-        gz_topic = f"{sensor_prefix}/tof_{side}/scan/points"
+        gz_topic = f"{sensor_prefix}/tof_{side}/scan/points{tof_topic_suffix}"
         ros_topic = f"{vehicle_prefix}/tof/{side}/points"
         bridge_arguments.append(
             f"{gz_topic}@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked"

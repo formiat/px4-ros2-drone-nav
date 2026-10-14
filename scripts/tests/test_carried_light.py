@@ -46,6 +46,11 @@ class LightFaultInjectorContractTest(unittest.TestCase):
         for path in production.rglob("*"):
             if path.suffix not in {".cpp", ".hpp", ".py", ".yaml", ".msg"}:
                 continue
+            # The smoke model (roadmap item 18 stage 1) is an evaluation
+            # component: it reads the share the injector sets, as the overlay
+            # does; test_simulation_smoke.py holds the vehicle away from it.
+            if path.name.startswith("simulation_smoke_"):
+                continue
             text = path.read_text(errors="ignore")
             for word in ("light_fault", "LIGHT_FAULT", "light_config", "/evaluation"):
                 self.assertNotIn(word, text, f"{path} reads the injection")

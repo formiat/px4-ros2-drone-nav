@@ -30,12 +30,15 @@ not large).
   charge of its battery in the scenarios that give it one
   (/carried_light/charge_s, what the vehicle knows). Each line stands on a
   dark backdrop facing the view's camera, so that it reads over the memory.
+- the smoky places of the location (SMOKE_ZONES, roadmap item 18 stage 1),
+  each a grey box, the denser the less transparent: what the location holds,
+  which the vehicle meets only as its sensors show it.
 
 Nothing of the stack reads /evaluation (the contract test); the truth never
 reaches the control loop. Urban Circuit's map frame is the SDF frame, so the
 Gazebo pose is drawn as it comes; the drone marker is already in RViz's frame.
 
-  evaluation_overlay.py --world WORLD --model MODEL
+  evaluation_overlay.py --world WORLD --model MODEL [--smoke-zones ZONES]
 """
 
 from __future__ import annotations
@@ -69,6 +72,27 @@ RED = (1.0, 0.3, 0.3)
 GREY = (0.8, 0.8, 0.8)
 ESTIMATE = (1.0, 1.0, 1.0)
 TRUTH = (0.4, 1.0, 0.4)
+SMOKE = (0.62, 0.62, 0.66)
+
+
+def smoke_zones(text: str) -> list[tuple[tuple[float, ...], tuple[float, ...], float]]:
+    """SMOKE_ZONES as the smoke model reads it: "x,y,z,sx,sy,sz,sigma" in the
+    world frame, several separated by ";"."""
+    zones = []
+    for item in text.split(";"):
+        if not item.strip():
+            continue
+        values = [float(value) for value in item.split(",")]
+        if len(values) != 7:
+            raise ValueError(f"smoke zone '{item}': x,y,z,sx,sy,sz,sigma expected")
+        zones.append((tuple(values[:3]), tuple(values[3:6]), values[6]))
+    return zones
+
+
+def smoke_alpha(sigma_per_m: float) -> float:
+    """How opaque a zone is drawn: what a metre of it leaves of the light,
+    within a range a viewer still sees through."""
+    return min(0.55, 0.12 + 0.43 * (1.0 - math.exp(-sigma_per_m)))
 
 
 def state_text(events: list[str], dead_reckoning: bool, descending: bool,
@@ -185,7 +209,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--smoke-zones", default="")
     args = parser.parse_args()
+    zones = smoke_zones(args.smoke_zones)
 
     from gz.msgs10.pose_v_pb2 import Pose_V
     from gz.transport13 import Node as GzNode
@@ -355,6 +381,11 @@ def main() -> int:
                 strip.scale.x = TRAIL_WIDTH_M[name]
                 strip.points = [point(xyz) for xyz in trail]
                 markers.markers.append(strip)
+            for index, (center, size, sigma) in enumerate(zones):
+                box = marker(100 + index, Marker.CUBE, SMOKE, smoke_alpha(sigma))
+                box.pose.position = point(center)
+                box.scale.x, box.scale.y, box.scale.z = size
+                markers.markers.append(box)
             if truth_trail:
                 sphere = marker(4, Marker.SPHERE, TRUTH, 0.9)
                 sphere.scale.x = sphere.scale.y = sphere.scale.z = 2.0 * TRUTH_RADIUS_M

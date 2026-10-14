@@ -268,4 +268,13 @@ removed (roadmap item 15 waits for them); the cave and the finals locations
 are imported and load but have not been flown; the point-to-point mission has
 been flown from one start to one goal. Where each lands: the cooperative flights are item 15's, on the lidar profile by its decision, so the camera defaults for several vehicles stay unflown; the cave and the finals locations are flown by item 11's survey acquisition; item 19 flew the mission back and to a goal outside the location (r721 to r731), the first flights in another direction and with another goal; other starts and goals stay unflown.
 
+The smoke the simulated sensors see (specification A13, roadmap item 18
+stage 1) is a model checked against itself and against Gazebo's particles,
+not against a real sensor in real smoke: the smoke's albedo and phase (and
+the lidar ratio they give), the receivers' overlap distances (1 m for the
+lidar, 0.25 m for a time-of-flight unit) and the churn are chosen; the lidar
+reports one echo a ray; the thermal camera sees through it (its response is
+stage 3's); the camera estimator's loss through it was replayed on a carrier
+with an IMU of its motion alone.
+
 The chain a blinded vehicle takes was flown in roadmap item 17: the estimator declares dead reckoning and then silence, the offboard descends level, and the vehicle lands whole (r939 to r943); under a failing light it comes home (r944 to r948). Not flown: the lidar vehicle's return from a goal outside the location (the proof's entry under Planning), a failure injected on the pad (an IMU hole there included), smoke (item 18) and moving obstacles (item 21). The loss of the light beside a wall is flown (the loss beside a wall, `LIGHT_ZONES`).
