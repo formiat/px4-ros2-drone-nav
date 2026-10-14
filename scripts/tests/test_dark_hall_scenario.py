@@ -56,6 +56,15 @@ class DarkHallScenarioTest(unittest.TestCase):
         render = (REPOSITORY / "tools/render_flight.sh").read_text()
         self.assertIn('dark-hall) target="sim-dark-hall-headless"', render)
 
+    def test_a_flight_with_no_snapshot_volume_records_its_true_pose(self) -> None:
+        # The hall states no snapshot volume; its flights flew without the
+        # true pose the mission check and the rendering read (r1466, r1471).
+        runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
+        snapshot = runtime.index('if [[ -n "${raw_snapshot_bounds_m}" ]]; then')
+        self.assertLess(snapshot, runtime.index("capture_raw_snapshot_3d.py"))
+        self.assertLess(snapshot, runtime.index("capture_gazebo_pose.py"))
+        self.assertNotIn('[[ -z "${raw_snapshot_bounds_m}" ]]', runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

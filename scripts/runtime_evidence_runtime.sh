@@ -136,16 +136,20 @@ start_runtime_evidence_capture() {
       > "${runtime_artifact_dir}/render_bag.log" 2>&1 &
   fi
   if bool_is_true "${multi_vehicle_mission}" ||
-    bool_is_true "${active_static_map}" ||
-    [[ -z "${raw_snapshot_bounds_m}" ]]; then
+    bool_is_true "${active_static_map}"; then
     return
   fi
-  python3 "${repo_root}/scripts/capture_raw_snapshot_3d.py" \
-    --topic /drone_city_nav/raw_obstacle_snapshot_3d \
-    --output-directory "${runtime_artifact_dir}" \
-    --manifest "${runtime_manifest_path}" \
-    --bounds="${raw_snapshot_bounds_m}" \
-    > "${raw_snapshot_capture_log_file}" 2>&1 &
+  # The snapshot only where the scenario states its volume; the records
+  # below in every headless flight (the dark hall states none and flew
+  # without its true pose, r1466, r1471).
+  if [[ -n "${raw_snapshot_bounds_m}" ]]; then
+    python3 "${repo_root}/scripts/capture_raw_snapshot_3d.py" \
+      --topic /drone_city_nav/raw_obstacle_snapshot_3d \
+      --output-directory "${runtime_artifact_dir}" \
+      --manifest "${runtime_manifest_path}" \
+      --bounds="${raw_snapshot_bounds_m}" \
+      > "${raw_snapshot_capture_log_file}" 2>&1 &
+  fi
   # The controller-dynamics records the mission check reads: the setpoints
   # against the local position, and the true pose. Every headless flight
   # records them; a GUI flight on request.
