@@ -607,6 +607,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                                        std::memory_order_relaxed);
       },
       sensor_evidence_subscription_options);
+  silent_range_sub_ = create_subscription<std_msgs::msg::Float64>(
+      config_.world.topics.silent_range, rclcpp::SensorDataQoS{},
+      [this](const std_msgs::msg::Float64::SharedPtr message) {
+        silent_range_.store(message->data, std::memory_order_relaxed);
+        silent_range_stamp_ns_.store(get_clock()->now().nanoseconds(),
+                                     std::memory_order_relaxed);
+      },
+      sensor_evidence_subscription_options);
   light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
       config_.world.topics.carried_light_output, rclcpp::QoS{1}.reliable(),
       [this](const std_msgs::msg::Float64::SharedPtr message) {

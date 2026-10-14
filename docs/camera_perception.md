@@ -56,6 +56,23 @@ the correction is recorded beside it.
   within the frame: the strays on r1476's record fall from 33 a frame to 8
   (9 to 4.4 on the noiseless r782), the coverage stays, and the ordinary
   flight runs 1.464 m/s with no long block (r1482).
+- **A silent patch on the heading bounds the speed** (roadmap item 18
+  stage 0b, specification F13, K36; `stereo_silent_patches.cpp`). The pair's
+  silence inside a seeing frame has every cause at once; the stage was
+  written to mark a silent patch closed, ray by ray, where its rim is
+  matched within reach, flat and round it. Flown, that closed the dark
+  location: the lamp's shadows, dark corners and the ceiling bounded by lit
+  walls are such patches too, 417 of 476 and 671 of 764 frames closed
+  somewhere, five million marks, the mission lost (r1496, r1497). A uniform
+  panel, the stage's test object, enters the memory by its hits as it is:
+  44 percent of a 3 x 2 m panel's face 8 s after the vehicle came within 6 m
+  and 96 percent by the end, flown over 0.89 m clear; beside the route 79
+  percent, passed 0.82 m clear (r1491, r1495). What is kept of the stage is
+  its speed law: a closed patch holding the frame's centre within 15 degrees
+  publishes its rim's depth (`/stereo_depth/silent_range`), and the braking
+  contract's range along the heading is the smaller of the frame's and the
+  rim's, never under the margin: 1.300 m/s past the panel, the bound in 7
+  percent of the frames at 0.5 to 4.4 m (r1498).
 - **The cameras' noise, in effect only since 2026-10-14** (specification
   A12, roadmap item 18 stage 1): gz-rendering raises the configured Gaussian
   to the power 2.1 before it adds it to the linear colour, so the 0.01 that

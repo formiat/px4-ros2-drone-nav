@@ -301,6 +301,15 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
     // space is crossed at the speed that range admits.
     frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
                              share * contract.guaranteed_detection_range_m);
+    // A patch the pair is silent in on the heading, with a matched rim
+    // within reach, bounds the motion into it by the rim's depth, as a
+    // surface seen there would (specification F13).
+    if (input.sensor_silent_range_m.has_value() &&
+        std::isfinite(*input.sensor_silent_range_m) &&
+        *input.sensor_silent_range_m > 0.0) {
+      frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
+                               std::min(frame_range_m, *input.sensor_silent_range_m));
+    }
     contract.guaranteed_detection_range_m = std::max(
         {frame_range_m, input.motion_along_flown_path || input.light_reads_sound
                             ? std::min(contract.guaranteed_detection_range_m,

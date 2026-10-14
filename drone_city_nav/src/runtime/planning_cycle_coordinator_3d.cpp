@@ -515,6 +515,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           static_cast<double>(whole);
     }
     speed_policy_input.sensor_light_headroom = request.latest_light_headroom;
+    speed_policy_input.sensor_silent_range_m = request.latest_silent_range_m;
     speed_policy_input.light_reads_sound =
         request.latest_light_reading.has_value() &&
         *request.latest_light_reading >= LightReliabilityJudgment::kLightReadingOutage;

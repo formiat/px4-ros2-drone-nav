@@ -288,4 +288,18 @@ that outlasts K14's 2.5 s marks the frustum as darkness, and with the memory
 not forgetting (K10) the mark stays: r1490 flew around one; a hall of many
 such marks is not flown.
 
+The light injector's requests to the simulator (`scripts/carried_light.py`)
+time out under load, 45 to 111 a flight, and each stalled its schedule for
+the timeout: at 1000 ms two unanswered requests held a flicker's 1.5 s dip
+dark for 3.57 s and the vehicle judged its light at 3.5 s of outage,
+correctly for the light's true state (r1496). The timeout is 300 ms since
+2026-10-14; the dips a flight flies are still the light's actual ones, a
+little longer than F14 states where a request is unanswered. A flicker's
+dip prolonged this way is what r1464's and r1465's false verdicts may have
+been in part.
+
+Roadmap item 18 stage 0b's silent-patch bound (F13, K36) was measured on
+panels and the ordinary route; a plume's silence (stage 1's smoke in the
+pair) is stage 2's to measure against it.
+
 The chain a blinded vehicle takes was flown in roadmap item 17: the estimator declares dead reckoning and then silence, the offboard descends level, and the vehicle lands whole (r939 to r943); under a failing light it comes home (r944 to r948). Not flown: the lidar vehicle's return from a goal outside the location (the proof's entry under Planning), a failure injected on the pad (an IMU hole there included), smoke (item 18) and moving obstacles (item 21). The loss of the light beside a wall is flown (the loss beside a wall, `LIGHT_ZONES`).

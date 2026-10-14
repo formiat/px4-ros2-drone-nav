@@ -34,6 +34,11 @@ class LightFaultInjectorContractTest(unittest.TestCase):
         self.assertIn("output_pub.publish(Float64(data=applied))", source)
         self.assertIn('create_publisher(Float64, "/evaluation/light_share", 1)', source)
 
+    def test_an_unanswered_request_stalls_the_schedule_briefly(self) -> None:
+        # At 1000 ms two unanswered requests held a flicker's dip dark for
+        # 3.57 s and the vehicle judged its light (r1496).
+        self.assertIn("Light, Boolean, 300)", INJECTOR_PATH.read_text())
+
     def test_a_battery_only_where_the_scenario_gives_one(self) -> None:
         # Without LIGHT_BATTERY_S the light never runs out and no charge is
         # published, so the vehicle never turns for its battery.

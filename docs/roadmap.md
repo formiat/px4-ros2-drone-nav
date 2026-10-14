@@ -611,6 +611,26 @@ one beside it, the vehicle does not fly into the panel, routes around it
 where a way exists, and the memory holds it closed from every side it was
 seen from.
 
+**Measured and settled on 2026-10-14** (specification F13 rewritten, K36;
+`stereo_silent_patches.cpp`, `tools/panel_memory.py`). On the code before
+the stage a 3 x 2 m panel across the route entered the memory by its hits
+as it is, 44 percent of its face 8 s after the vehicle came within 6 m and
+96 percent by the end, and was flown over 0.89 m clear; beside the route 79
+percent, passed 0.82 m clear (r1491, r1495): the light's falloff and the
+panel's edges give the matcher some structure, two hits make a voxel, and
+the ring sees it at 2.8 m. The marking this stage was written for, a silent
+patch closed ray by ray where its rim is matched within reach, flat and
+round it, closed the dark location when flown: the lamp's shadows, dark
+corners and the ceiling bounded by lit walls are such patches too, 417 of
+476 and 671 of 764 frames closed somewhere, five million marks, the mission
+lost to a loop and a hold (r1496, r1497). It is a prohibition from a wrong
+measurement and is not built. Kept is the stage's speed law: a closed patch
+holding the frame's centre within 15 degrees bounds the braking contract's
+range along the heading by its rim's depth, never under the margin
+(`/stereo_depth/silent_range`); past the panel 1.300 m/s with the bound in
+7 percent of the frames at 0.5 to 4.4 m (r1498). The acceptance follows
+below once flown.
+
 ### Stage 1: Smoke In The Simulator (Done)
 
 Done on 2026-10-14 (specification A12, A13; the measurements in

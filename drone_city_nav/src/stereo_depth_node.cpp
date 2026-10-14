@@ -5,6 +5,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/stereo_lit_range.hpp"
+#include "drone_city_nav/stereo_silent_patches.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -49,6 +50,11 @@ struct TofMount {
 };
 
 constexpr std::size_t kTofSensorCount{6U};
+// The ring's forward sensor in kTofMounts, the second witness of a silent
+// patch (roadmap item 18 stage 0b).
+constexpr std::size_t kFrontTofSlot{2U};
+// The cone round the camera's axis a motion the heading follows lies in.
+constexpr double kSilentConeHalfAngleRad{0.26};
 constexpr std::array<TofMount, kTofSensorCount> kTofMounts = {{
     {"up", -0.5 * std::numbers::pi, 0.0, {-0.42, -0.10, 0.10}},
     {"down", 0.5 * std::numbers::pi, 0.0, {-0.32, -0.10, -0.12}},
@@ -99,6 +105,8 @@ public:
     if (!stereoDepthReturnsConfigIsValid(geometry_, returns_config_)) {
       throw std::invalid_argument{"invalid stereo depth configuration"};
     }
+    silent_patch_config_.confident_depth_m =
+        stereoConfidentDepthM(geometry_, returns_config_);
     // Far and near are matched apart. A search of 256 disparities at full
     // resolution costs 187 ms on two threads; the far surfaces need the full
     // resolution and only a short search, the near ones a long search and
@@ -146,6 +154,12 @@ public:
         [this](const std_msgs::msg::Float64::ConstSharedPtr message) {
           light_reading_.store(message->data, std::memory_order_relaxed);
         });
+    // Roadmap item 18 stage 0b: the depth a motion along the heading is
+    // bounded by where the pair is silent (NaN where it is not).
+    silent_range_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("silent_range_topic",
+                                       "/stereo_depth/silent_range"),
+        rclcpp::SensorDataQoS{});
     unlit_surface_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("unlit_surface_share_topic",
                                        "/stereo_depth/unlit_surface_share"),
@@ -365,6 +379,40 @@ private:
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
     const std::size_t stereo_returns = returns.size();
+    // Roadmap item 18 stage 0b: the frame's silent patches, judged on the
+    // rectified returns before they turn to the physical frame; the front
+    // time-of-flight sensor's free zones are the second witness.
+    std::vector<Point3> free_through;
+    {
+      const TofSensor& front = tof_sensors_[kFrontTofSlot];
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan =
+          nearest(front.scans, rclcpp::Time{left->header.stamp});
+      const std::optional<std::vector<Point3>> zones =
+          scan != nullptr ? decodePointCloudReturns(*scan) : std::nullopt;
+      if (zones.has_value()) {
+        for (const StereoDepthReturn& ray : tofZoneReturns(*zones, front.config)) {
+          if (!ray.hit) {
+            free_through.push_back(rectifier_->ideal() ? ray.point
+                                                       : toRectifiedFlu(ray.point));
+          }
+        }
+      }
+    }
+    const std::vector<SilentPatch> patches = silentPatches(
+        std::span<const StereoDepthReturn>{returns}, geometry_, returns_config_,
+        image_width_, image_height_, silent_patch_config_, free_through,
+        tof_sensors_[kFrontTofSlot].config.maximum_range_m);
+    const std::size_t closed_patches = static_cast<std::size_t>(std::ranges::count_if(
+        patches, [](const SilentPatch& patch) { return patch.closed; }));
+    // The range a motion along the heading is bounded by (specification F13):
+    // the rim's depth of a closed patch holding the frame's centre.
+    const double silent_range_m = silentRangeAheadM(
+        patches, geometry_, returns_config_.pixel_stride,
+        image_width_ / returns_config_.pixel_stride,
+        image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
+    std_msgs::msg::Float64 silent_message;
+    silent_message.data = silent_range_m;
+    silent_range_pub_->publish(silent_message);
     if (!rectifier_->ideal()) {
       for (StereoDepthReturn& stereo_return : returns) {
         stereo_return.point = toPhysicalFlu(stereo_return.point);
@@ -509,12 +557,14 @@ private:
                          "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
                          "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
                          "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu",
+                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
+                         "silent_patches=%zu closed=%zu silent_range_m=%.1f",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightnessByMetreText(brightness_by_metre).c_str(), headroom,
                          lit_range_m, light_share, raw_brightness, observed_share,
                          blind ? stereo_returns : 0U, noise, unobservable_total_,
-                         surfaces_in_view, unlit_surfaces);
+                         surfaces_in_view, unlit_surfaces, patches.size(),
+                         closed_patches, silent_range_m);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -826,7 +876,14 @@ private:
     return Point3{turned.x(), turned.y(), turned.z()};
   }
 
+  [[nodiscard]] Point3 toRectifiedFlu(const Point3& point) const {
+    const Eigen::Vector3d turned = rectified_to_physical_flu_.transpose() *
+                                   Eigen::Vector3d{point.x, point.y, point.z};
+    return Point3{turned.x(), turned.y(), turned.z()};
+  }
+
   StereoDepthReturnsConfig returns_config_{};
+  SilentPatchConfig silent_patch_config_{};
   LitRangeTracker lit_range_tracker_;
   LitBaseline raw_brightness_baseline_;
   std::atomic<double> camera_gain_{1.0};
@@ -841,6 +898,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr returns_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr light_headroom_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr unlit_surface_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr silent_range_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
   std::atomic<double> light_reading_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;

@@ -517,6 +517,24 @@ private:
 
   // Roadmap item 29: what the carried light's driver reads of its output,
   // published ten times a second; none without a light.
+  // Roadmap item 18 stage 0b: the depth the pair's silence ahead bounds a
+  // motion along the heading by (NaN: none), fresh as the headroom is.
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr silent_range_sub_;
+  std::atomic<double> silent_range_{std::numeric_limits<double>::quiet_NaN()};
+  std::atomic<std::int64_t> silent_range_stamp_ns_{0};
+
+  [[nodiscard]] std::optional<double>
+  latestSilentRange(const std::int64_t now_ns) const {
+    constexpr std::int64_t kFreshNs{600'000'000};
+    const std::int64_t stamp_ns =
+        silent_range_stamp_ns_.load(std::memory_order_relaxed);
+    const double range_m = silent_range_.load(std::memory_order_relaxed);
+    if (stamp_ns <= 0 || now_ns - stamp_ns > kFreshNs || !std::isfinite(range_m)) {
+      return std::nullopt;
+    }
+    return range_m;
+  }
+
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
   std::atomic<double> light_reading_{0.0};
   std::atomic<std::int64_t> light_reading_stamp_ns_{0};

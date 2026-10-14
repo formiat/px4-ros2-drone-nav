@@ -43,6 +43,7 @@ struct ProductionMppiWorldTopics {
   std::string raw_obstacle_delta_3d{"/drone_city_nav/raw_obstacle_delta_3d"};
   std::string light_headroom{"/stereo_depth/light_headroom"};
   std::string carried_light_output{"/carried_light/output_share"};
+  std::string silent_range{"/stereo_depth/silent_range"};
   std::string latest_sensor_obstacle_scan{
       "/drone_city_nav/latest_sensor_obstacle_scan"};
   std::string obstacle_memory_status{"/drone_city_nav/obstacle_memory_status"};

@@ -116,6 +116,11 @@ struct MppiSpeedPolicyInput {
   // memory's range then answers for a frame too dim to see (specification
   // K15), because the way the vehicle came is never closed (I3).
   bool motion_along_flown_path{false};
+  // The depth the forward sensor's silence ahead bounds a motion along the
+  // heading by (roadmap item 18 stage 0b, specification F13): the rim of a
+  // patch the pair matched nothing in, within its reach; absent where the
+  // heading looks at no such patch.
+  std::optional<double> sensor_silent_range_m;
   // Whether the carried light's driver reads it sound (roadmap item 29): a
   // frame blind under a sound light is the place's darkness, and the memory's
   // range, what the pair and the time-of-flight ring observed, answers for

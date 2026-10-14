@@ -256,6 +256,7 @@ add_drone_city_nav_layer(
   src/occupancy_grid_3d.cpp
   src/static_esdf_cache.cpp
   src/stereo_depth_returns.cpp
+  src/stereo_silent_patches.cpp
   src/stereo_lit_range.cpp
   src/tracked_agent_lidar_filter.cpp)
 target_link_libraries(
@@ -487,6 +488,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/occupancy_grid_3d.hpp
     include/drone_city_nav/static_esdf_cache.hpp
     include/drone_city_nav/stereo_depth_returns.hpp
+    include/drone_city_nav/stereo_silent_patches.hpp
     include/drone_city_nav/stereo_lit_range.hpp
     include/drone_city_nav/tracked_agent_lidar_filter.hpp
     include/drone_city_nav/world_snapshot_3d.hpp)
@@ -1850,6 +1852,9 @@ if(BUILD_TESTING)
   ament_add_gtest(stereo_depth_returns_test tests/stereo_depth_returns_test.cpp)
   target_compile_features(stereo_depth_returns_test PRIVATE cxx_std_20)
   target_link_libraries(stereo_depth_returns_test drone_city_nav_core)
+  ament_add_gtest(stereo_silent_patches_test tests/stereo_silent_patches_test.cpp)
+  target_compile_features(stereo_silent_patches_test PRIVATE cxx_std_20)
+  target_link_libraries(stereo_silent_patches_test drone_city_nav_core)
   enable_project_warnings(stereo_depth_returns_test)
   ament_add_gtest(stereo_lit_range_test tests/stereo_lit_range_test.cpp)
   target_compile_features(stereo_lit_range_test PRIVATE cxx_std_20)

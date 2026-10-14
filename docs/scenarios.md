@@ -46,7 +46,7 @@ it that scenario and runs the point-to-point mission's own target, so the
 flights differ in nothing but what their names say. The switches underneath
 (`CAMERA_PROFILE`, `NAVIGATION_SENSOR_PROFILE`, `LOCALIZATION_PROFILE`,
 `MISSION_GOALS_XYZ_M`, `SMOKE_DURATION_S`, and
-`BLANK_PANELS="x,y,z,yaw,width,height;..."`, uniform matte
+`BLANK_PANELS="x,y,z,yaw,width,height;..."` (roadmap item 18 stage 0b's test object: across the route at `8,21,9.5,1.5708,3,2`, beside it at `8,23,9.5,0,3,2`; `tools/panel_memory.py` reads what the memory held of one), uniform matte
 panels for roadmap item 17 stage 2) still work on any of them, for a
 combination no name covers; the estimator is not named when GNSS is off,
 because each sensor set has its own ([`localization.md`](localization.md)).

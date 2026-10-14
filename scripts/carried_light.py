@@ -266,7 +266,12 @@ def main() -> int:
     service = f"/world/{args.world}/light_config"
 
     def request(intensity: float) -> bool:
-        ok, reply = node.request(service, light_message(Light(), intensity), Light, Boolean, 1000)
+        # A request the simulator does not answer in time stalls this loop
+        # for the timeout, and the light stays where it was: at 1000 ms two
+        # unanswered requests on a flicker's way up held a 1.5 s dip dark for
+        # 3.57 s, and the vehicle judged its light (r1496; 45 to 111 such
+        # requests a flight). The schedule is re-sent every period anyway.
+        ok, reply = node.request(service, light_message(Light(), intensity), Light, Boolean, 300)
         return bool(ok and reply.data)
 
     with args.output.open("w", newline="") as stream:

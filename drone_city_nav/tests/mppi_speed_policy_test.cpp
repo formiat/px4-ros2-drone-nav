@@ -149,6 +149,32 @@ TEST(MppiSpeedPolicyTest, ADimFrameLeavesTheWayTheVehicleCameOpen) {
   EXPECT_GE(lit.target_lookahead_m, config.minimum_target_lookahead_m);
 }
 
+TEST(MppiSpeedPolicyTest, ASilentPatchOnTheHeadingBoundsTheMotionByItsRim) {
+  // A healthy frame; the pair silent on the heading past a rim at 3 m: the
+  // measured range is 3 m and the limit falls with it; no patch, the frame's.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 5.2;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.6;
+  config.sensor_braking_contract.physical_margin_m = 2.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 1.0F;
+  input.sensor_observed_fraction = 0.5;
+  input.sensor_light_headroom = 1.0;
+  const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(open.sensor_measured_range_m, 5.2);
+  input.sensor_silent_range_m = 3.0;
+  const MppiSpeedPolicyResult silent = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(silent.sensor_measured_range_m, 3.0);
+  EXPECT_LT(silent.sensor_braking_limit_mps, open.sensor_braking_limit_mps);
+  EXPECT_GT(silent.sensor_braking_limit_mps, 0.3);
+  // Never under the margin, whatever the rim says.
+  input.sensor_silent_range_m = 1.0;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 2.0);
+}
+
 TEST(MppiSpeedPolicyTest, UnderASoundLightTheMemoryAnswersADarkFrameAnywhere) {
   // Roadmap item 29: a large dark space under a light its driver reads
   // sound. The frame is blind; the memory has observed 2.8 m ahead (the
