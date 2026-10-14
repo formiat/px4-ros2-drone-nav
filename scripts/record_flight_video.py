@@ -63,8 +63,16 @@ MAXIMUM_FRAME_OFFSET_S = 0.5
 MINIMUM_REDRAWS_PER_SECOND = {"world": 12, "follow": 7, "top": 7}
 MAXIMUM_STILL_SECONDS_SHARE = 0.02
 # While the vehicle moves, each half shows this many different frames a
-# second or more; the slideshow showed one.
+# second or more; the slideshow showed one. A frame is different from the one
+# before it by DECIMATE_THRESHOLDS (ffmpeg's mpdecimate: the sum of absolute
+# differences over an 8x8 block, 100 is 1.6 levels a pixel): the dark hall of
+# roadmap item 29, a black void with the light's patch on the floor under a
+# vehicle the camera follows at 0.5 m/s, changes slowly, 1.2 to 3.6 frames a
+# second at the 400/200 the rule was written with, while its window redrew at
+# its rate (r1488); at 100/50 it shows 10 to 13, a landed vehicle's still
+# picture 0 (r1475) and an Urban flight 24 (r1448).
 MINIMUM_DISTINCT_FRAMES_PER_SECOND = 6.0
+DECIMATE_THRESHOLDS = "hi=100:lo=50"
 MOVING_SPEED_MPS = 0.5
 MOVING_WINDOW_S = 5.0
 MAXIMUM_WINDOWS_LOOKED_AT = 24
@@ -270,7 +278,7 @@ def distinct_frames_per_second(path: Path, left: bool, begin_s: float) -> float:
         ["ffmpeg", "-hide_banner", "-ss", f"{begin_s:.2f}", "-t", f"{MOVING_WINDOW_S:.2f}",
          "-i", str(path), "-vf",
          f"crop={HALF_WIDTH}:{HEIGHT}:{0 if left else HALF_WIDTH}:0,scale=240:270,"
-         "mpdecimate=hi=400:lo=200:frac=0.2,showinfo", "-f", "null", "-"],
+         f"mpdecimate={DECIMATE_THRESHOLDS}:frac=0.2,showinfo", "-f", "null", "-"],
         capture_output=True, text=True, check=False).stderr
     return log.count("pts_time:") / MOVING_WINDOW_S
 

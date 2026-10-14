@@ -94,6 +94,15 @@ class RecordingCommandsTest(unittest.TestCase):
         # 4 m/s for fifteen simulation seconds, then a hover.
         self.assertEqual([0.0, 5.0, 10.0], recorder.moving_windows(self.CLOCK, 50.0, 80.0))
 
+    def test_a_different_frame_is_read_at_the_dark_pictures_scale(self) -> None:
+        # The dark hall's world half (roadmap item 29) changes slowly: at the
+        # 400/200 the rule was written with it showed 1.2 to 3.6 different
+        # frames a second while its window redrew at its rate (r1488); at
+        # 100/50, 10 to 13, a still picture 0 and an Urban flight 24.
+        self.assertEqual("hi=100:lo=50", recorder.DECIMATE_THRESHOLDS)
+        source = (REPOSITORY / "scripts/record_flight_video.py").read_text()
+        self.assertIn("mpdecimate={DECIMATE_THRESHOLDS}", source)
+
     def test_a_black_or_still_or_short_recording_is_not_one(self) -> None:
         good = {"width": 1920, "height": 1080, "duration_s": 200.4}
         picture = {"readable": True, "world_brightness": 5.0, "rviz_brightness": 40.0,
