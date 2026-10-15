@@ -298,6 +298,15 @@ little longer than F14 states where a request is unanswered. A flicker's
 dip prolonged this way is what r1464's and r1465's false verdicts may have
 been in part.
 
+The camera estimator's drift with the pair's noise (A12): 1.2 to 2.0 m at
+the end of an Urban flight (r1512 1.19, r1514 1.94, r1495 2.03) against 0.7
+to 0.9 m before the noise (r1431 0.69), with the tracked features and the
+residuals unchanged (p50 170 features, 0.48 px against 0.41 px; the filter's
+observation noise is 1 px). Two of seventeen camera flights since the noise
+acknowledged their goal past the 2 m capture radius by the truth (r1495
+2.44 m, r1514 2.32 m). The estimator's noise model and its tracker under
+the imager's noise are not re-tuned here.
+
 Roadmap item 18 stage 0b's silent-patch bound (F13, K36) was measured on
 panels and the ordinary route; a plume's silence (stage 1's smoke in the
 pair) is stage 2's to measure against it.

@@ -628,8 +628,19 @@ measurement and is not built. Kept is the stage's speed law: a closed patch
 holding the frame's centre within 15 degrees bounds the braking contract's
 range along the heading by its rim's depth, never under the margin
 (`/stereo_depth/silent_range`); past the panel 1.300 m/s with the bound in
-7 percent of the frames at 0.5 to 4.4 m (r1498). The acceptance follows
-below once flown.
+7 percent of the frames at 0.5 to 4.4 m (r1498).
+
+**Accepted on 2026-10-15** (944241d3; the memory read by `tools/panel_memory.py`
+from each flight's bag):
+
+| Flights | Runs | Result |
+|---|---|---|
+| Panel across the route, five | r1499, r1500, r1501, r1503, r1504 | no contact, the body 0.88 to 2.63 m clear of the panel, the route over or beside it; the memory held 45 to 72 percent of the face occupied 8 s after the vehicle came within 6 m and 44 to 75 by the end; 1.29 to 1.41 m/s, the goal 0.83 to 1.32 m by the truth |
+| Panel beside the route, five | r1505, r1506, r1509, r1510, r1511 | no contact, 0.58 to 3.88 m clear; the memory 77 to 106 percent of the face from the side seen; 1.38 to 1.53 m/s, the goal 0.83 to 1.44 m |
+| Ordinary, five | r1512, r1513, r1514, r1515, r1516 | 1.38 to 1.45 m/s (r1485 before the stage: 1.43); no contact; r1514 acknowledged its goal 2.32 m from it by the truth, over the 2 m capture radius: the estimate's drift with the pair's noise (A12), 1.2 to 2.0 m at the end of a flight against 0.7 to 0.9 before it, with the tracked features and the residuals unchanged (p50 170 features, 0.48 px against 0.41); r1495 missed by 2.44 m the same way. The register holds it. |
+
+Voids on the way: r1502 (watchdog), r1507 and r1508 (real-time factor
+0.80 and 0.82 under the bag's load); r1492 and r1493 not flown.
 
 ### Stage 1: Smoke In The Simulator (Done)
 
