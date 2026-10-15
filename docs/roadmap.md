@@ -2661,8 +2661,10 @@ now tested, and the return has changed shape:
   dark is marked a ray apart and the goal region leaks round the frustum
   (r816): the return there is the light's judgment, not the proof's.
 - **The way home is the way out** (6d7af22d, K20): the substituted goal is
-  a point of the trail the vehicle flew, 25 m back, moved on as it is
-  neared, each in its own mission epoch, and the start at the end.
+  a point of the trail the vehicle flew, 10 m back (25 m until 2026-10-15,
+  when r1538's return was routed through the plume it had backed out of to
+  a point 28 m along the trail), moved on as it is neared, each in its own
+  mission epoch, and the start at the end.
 - **Flown and inspected on 6e7ea775** (the tables of item 17): the goal
   outside the location on the stereo set, given up by the battery after 122
   to 193 s and 204 to 347 m of exploration and returned in truth 0.33 to
