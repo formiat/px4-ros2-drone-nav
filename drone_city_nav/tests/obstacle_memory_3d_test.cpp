@@ -182,6 +182,21 @@ TEST(ObstacleMemory3D, AHitAtAFloorFaceMarksTheVoxelsOnBothSidesOfIt) {
   EXPECT_TRUE(memory.grid().isOccupied(*under));
   EXPECT_TRUE(memory.grid().isOccupied(GridIndex3D{under->x, under->y, under->z + 1}));
   EXPECT_FALSE(memory.grid().isOccupied(GridIndex3D{under->x, under->y, under->z + 2}));
+  // A wall on a column boundary, hit 0.01 m inside it: the column before it
+  // is the wall as well.
+  const double wall_x = kBounds.origin_x + 9.0 * kBounds.resolution_m;
+  const std::array along{LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                                     .range_m = wall_x + 0.01 - 1.5,
+                                     .hit = true,
+                                     .valid = true}};
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = along}));
+  const std::optional<GridIndex3D> inside =
+      memory.grid().worldToCell(Point3{wall_x + 0.01, 1.5, 2.5});
+  ASSERT_TRUE(inside.has_value());
+  EXPECT_TRUE(memory.grid().isOccupied(*inside));
+  EXPECT_TRUE(
+      memory.grid().isOccupied(GridIndex3D{inside->x - 1, inside->y, inside->z}));
 }
 
 TEST(ObstacleMemory3D, AnOccupancyNotConfirmedDecaysByHowOftenItWasSeen) {

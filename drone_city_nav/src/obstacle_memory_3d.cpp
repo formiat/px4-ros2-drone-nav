@@ -1,6 +1,7 @@
 #include "drone_city_nav/obstacle_memory_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -601,18 +602,30 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   });
   if (hit_cell.has_value()) {
     recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor);
-    // The hit within the range noise of the voxel's floor or ceiling face:
-    // the voxel across that face holds the surface as well, for all the
-    // sensor knows (surface_face_epsilon_m).
+    // The hit within the range noise of one of the voxel's faces: the voxel
+    // across that face holds the surface as well, for all the sensor knows
+    // (surface_face_epsilon_m). A floor on a layer boundary and a corridor
+    // wall on a column boundary, both grazed from afar, had their hits split
+    // and the layer or column the rays passed through carved free (r1553,
+    // r1555).
     const GridBounds3D& bounds = grid_.bounds();
-    const double within_voxel = (endpoint.z - bounds.origin_z) / bounds.resolution_m -
-                                static_cast<double>(hit_cell->z);
     const double epsilon = config_.surface_face_epsilon_m / bounds.resolution_m;
-    const int across = within_voxel < epsilon         ? -1
-                       : within_voxel > 1.0 - epsilon ? 1
-                                                      : 0;
-    if (across != 0) {
-      const GridIndex3D neighbour{hit_cell->x, hit_cell->y, hit_cell->z + across};
+    const std::array<double, 3> within{
+        (endpoint.x - bounds.origin_x) / bounds.resolution_m -
+            static_cast<double>(hit_cell->x),
+        (endpoint.y - bounds.origin_y) / bounds.resolution_m -
+            static_cast<double>(hit_cell->y),
+        (endpoint.z - bounds.origin_z) / bounds.resolution_m -
+            static_cast<double>(hit_cell->z)};
+    for (std::size_t axis = 0U; axis < 3U; ++axis) {
+      const int across = within[axis] < epsilon         ? -1
+                         : within[axis] > 1.0 - epsilon ? 1
+                                                        : 0;
+      if (across == 0) {
+        continue;
+      }
+      GridIndex3D neighbour = *hit_cell;
+      (axis == 0U ? neighbour.x : axis == 1U ? neighbour.y : neighbour.z) += across;
       if (grid_.contains(neighbour)) {
         recordScanEvidence(neighbour, true, true, scan_evidence, cursor);
       }
