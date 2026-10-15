@@ -11,8 +11,10 @@ namespace drone_city_nav {
 
 // The proof of roadmap item 19: whether the goal is provably unreachable on
 // the obstacle memory as it stands. A flood from the vehicle through every
-// voxel that is not occupied, unknown included, because unknown is
-// traversable at no penalty, within the space the planner flies in: the grid,
+// voxel the body fits in (none of its 26 neighbours occupied: evidence laid a
+// ray apart is a sieve a voxel passes and the body does not), unknown
+// included, because unknown is traversable at no penalty, within the space
+// the planner flies in: the grid,
 // whose edge its lattice does not cross, and the voxels the flight envelope's
 // band of heights touches (roadmap item 17 stage 8). Beyond them no route
 // exists for the vehicle, measured or not, so they bound the flood as walls

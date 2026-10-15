@@ -174,7 +174,14 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
       for (const std::array<int, 3>& step : kNeighbours) {
         const GridIndex3D neighbour{cell.x + step[0], cell.y + step[1],
                                     cell.z + step[2]};
-        if (!space.contains(neighbour) || grid.isOccupied(neighbour) ||
+        // Through the voxels the body fits in, as the goal's flood goes
+        // (specification K16): evidence laid a ray apart is a sieve a voxel
+        // passes and the body does not. The lidar marks a plume's face from
+        // 20 m a beam apart (0.35 m at a degree), and the plain flood ran
+        // through it to its budget while the start's side of the closed
+        // corridor is 3 665 m3 in truth (r1549, the north corridor closed by
+        // 3/m: budget exhausted every 10 s for 480 s).
+        if (!space.contains(neighbour) || !space.fitsBody(neighbour) ||
             !visited.markVisited(neighbour)) {
           continue;
         }
