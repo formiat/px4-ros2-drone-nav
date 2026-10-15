@@ -303,4 +303,4 @@ opened, so that the numbers above carry their history from the start.
 | 2026-10-14 | K35 | (new) | a lone stereo hit is no surface; speckle window 400 px | Agent | Roadmap item 29 under the pair's noise (A12): the matcher's strays in open air blocked routes for 159 to 258 s a flight and the camera flights fell under R3 (r1476 to r1481); with the rule and the window 1.464 m/s and no long block (r1482). | 5563787d |
 | 2026-10-14 | F13 | a matched nothing is absent depth, not a prohibition; nothing reads it | the silence on the heading bounds the speed by its rim's depth; never marked from one frame | Agent | Roadmap item 18 stage 0b: the stage's marking closed the dark location (r1496, r1497); the panel enters the memory by its hits (r1491, r1495); the bound flown (r1498). | 945efe09 |
 | 2026-10-14 | K36 | (new) | the silent patch's numbers | Agent | Roadmap item 18 stage 0b (F13). | 945efe09 |
-| 2026-10-15 | K37 | (new) | the lidar's failure patterns | Agent | Roadmap item 18 stage 0 built. | this commit |
+| 2026-10-15 | K37 | (new) | the lidar's failure patterns | Agent | Roadmap item 18 stage 0 built. | a51233b4 |
