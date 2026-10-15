@@ -544,8 +544,19 @@ no-return beams stays free to the maximum range. The smoke relay writes the
 intensity a lidar's driver reports, the echo over a matte surface's at the
 range (one for a surface, a thin fraction for smoke), where the cloud
 carries the field. The dropout by material stays designed and unverified:
-`gpu_lidar` returns geometry whatever the material. The acceptance series
-follow below.
+`gpu_lidar` returns geometry whatever the material.
+
+**Accepted on 2026-10-15** (2c223640): cameras r1517, r1518, r1519, r1522,
+r1523 at 1.467, 1.438, 1.451, 1.234, 1.419 m/s (mean 1.402; 1.429 before
+the stage, r1485), the goal 0.87 to 1.85 m by the truth, no contact; lidar
+r1524 to r1528 at 2.476, 2.577, 2.086, 2.357, 2.807 m/s (mean 2.461
+against the base's 2.333, two of five under 2.4 then as now: the clearance
+laws hold the lidar in the same places, the register's K27 entry), the goal
+0.42 to 0.95 m, no contact. Dropout bundles were read in 4 to 8 of some 165
+logged scans a lidar flight (135 to 608 beams), with the limiter profile
+unchanged against the base (route clearance 40 to 47 percent of the slow
+time, 40 to 44 before). Voids on the way: r1520, r1521 (watchdog at 0.68
+and 0.69).
 
 
 Item 17 stage 8 builds the memory's third kind of evidence, **fail**, and

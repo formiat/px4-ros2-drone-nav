@@ -312,7 +312,10 @@ gpu_lidar returns geometry whatever the material, so no simulated surface
 swallows a beam; the lidar's ordinary series are its only flight check (a
 bundle misread as a dropout would close a doorway). The aerosol's weak
 return is the driver's relative intensity, which a real lidar scales its
-own way; the simulator's relay writes the smoke model's.
+own way; the simulator's relay writes the smoke model's. In the ordinary
+lidar flights the rule read 4 to 8 dropout bundles a flight (r1524 to
+r1528); what they closed was not looked at, and the flights' speed and
+limiters matched the base.
 
 Roadmap item 18 stage 0b's silent-patch bound (F13, K36) was measured on
 panels and the ordinary route; a plume's silence (stage 1's smoke in the
