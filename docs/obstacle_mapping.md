@@ -167,6 +167,16 @@ goes down with the surface it came with and is added again as Gazebo adds it.
 A frame costs 20 to 70 ms on four threads, the most with smoke round the
 vehicle.
 
+**A surface on a voxel boundary** (specification K41). A hit within 0.03 m of
+a voxel's floor or ceiling face, the lidar's range noise, marks the voxel
+across that face as well: the surface lies in either for all the sensor
+knows. The staging area's floor lies at 7.5 m, a boundary of the 0.25 m
+grid: its hits were split between the layer above, which the rays grazing
+the floor from afar carved free, and the layer below, with holes where every
+hit had gone above; the planner routed under it (r1546) and item 19's proof
+leaked through it (r1553). Walls are hit head-on and sampled densely; a floor
+at grazing incidence is sampled in rings a row apart.
+
 **The time-of-flight ring and the lidar.** Each ray reports the strongest
 echo over the sensor's threshold, from the smoke or from the surface behind
 it, by the lidar equation: an echo is the backscatter met over the square of

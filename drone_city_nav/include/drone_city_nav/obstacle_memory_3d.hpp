@@ -52,6 +52,14 @@ struct ObstacleMemory3DConfig {
   // is gone in seconds, and a surface the vehicle comes back to is seen and
   // confirmed again. Zero keeps every occupancy for the flight.
   double decay_seconds_per_confirmation{0.0};
+  // A hit within this of a voxel's floor or ceiling face lies in either
+  // voxel for all the range noise of the sensor knows (a lidar's 0.02 m): it
+  // marks both. A floor lying on a voxel boundary (the staging area's, at
+  // 7.5 m) had its hits split between the layer above and the layer below,
+  // the layer above carved free by the rays grazing it, and holes in the
+  // layer below where every hit had gone above: a sieve the planner routed
+  // under (r1546) and item 19's proof leaked through (r1553).
+  double surface_face_epsilon_m{0.03};
 };
 
 struct ObstacleMemory3DStats {

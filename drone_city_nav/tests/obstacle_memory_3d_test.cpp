@@ -164,6 +164,26 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_GT(memory.revision(), 0U);
 }
 
+TEST(ObstacleMemory3D, AHitAtAFloorFaceMarksTheVoxelsOnBothSidesOfIt) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  // Straight down from 2.5 m onto a floor at the boundary of two layers, the
+  // hit 0.01 m under it (the range noise): both layers are the floor.
+  const double face_z = kBounds.origin_z + 2.0 * kBounds.resolution_m;
+  const std::array beams{LidarBeam3D{.direction_map = {0.0, 0.0, -1.0},
+                                     .range_m = 2.5 - (face_z - 0.01),
+                                     .hit = true,
+                                     .valid = true}};
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = beams}));
+  const std::optional<GridIndex3D> under =
+      memory.grid().worldToCell(Point3{1.5, 1.5, face_z - 0.01});
+  ASSERT_TRUE(under.has_value());
+  EXPECT_TRUE(memory.grid().isOccupied(*under));
+  EXPECT_TRUE(memory.grid().isOccupied(GridIndex3D{under->x, under->y, under->z + 1}));
+  EXPECT_FALSE(memory.grid().isOccupied(GridIndex3D{under->x, under->y, under->z + 2}));
+}
+
 TEST(ObstacleMemory3D, AnOccupancyNotConfirmedDecaysByHowOftenItWasSeen) {
   // Roadmap item 17 stage 8: a voxel seen occupied once and never again
   // returns to unknown a second later; one seen five times outlasts it by

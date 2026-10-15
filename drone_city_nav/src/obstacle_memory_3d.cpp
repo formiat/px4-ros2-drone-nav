@@ -601,6 +601,22 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   });
   if (hit_cell.has_value()) {
     recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor);
+    // The hit within the range noise of the voxel's floor or ceiling face:
+    // the voxel across that face holds the surface as well, for all the
+    // sensor knows (surface_face_epsilon_m).
+    const GridBounds3D& bounds = grid_.bounds();
+    const double within_voxel = (endpoint.z - bounds.origin_z) / bounds.resolution_m -
+                                static_cast<double>(hit_cell->z);
+    const double epsilon = config_.surface_face_epsilon_m / bounds.resolution_m;
+    const int across = within_voxel < epsilon         ? -1
+                       : within_voxel > 1.0 - epsilon ? 1
+                                                      : 0;
+    if (across != 0) {
+      const GridIndex3D neighbour{hit_cell->x, hit_cell->y, hit_cell->z + across};
+      if (grid_.contains(neighbour)) {
+        recordScanEvidence(neighbour, true, true, scan_evidence, cursor);
+      }
+    }
   }
 }
 
