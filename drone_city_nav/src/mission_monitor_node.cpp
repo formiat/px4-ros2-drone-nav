@@ -771,16 +771,13 @@ private:
     switch (action) {
       case SmokeLadderAction::kNone:
         return false;
-      case SmokeLadderAction::kRetreat:
-        publishObjective(*smoke_ladder_.seeingPlace(), nextObjectiveEpoch(), 1U, false);
-        publishMissionEvent("SMOKE_RETREAT");
-        RCLCPP_WARN(get_logger(), "SMOKE_RETREAT to=(%.3f,%.3f,%.3f) smoke_share=%.2f",
-                    smoke_ladder_.seeingPlace()->x, smoke_ladder_.seeingPlace()->y,
-                    smoke_ladder_.seeingPlace()->z, smoke_share_);
-        return false;
       case SmokeLadderAction::kHold:
+        publishObjective(latest_map_position_, nextObjectiveEpoch(), 1U, true);
         publishMissionEvent("SMOKE_HOLD");
-        RCLCPP_WARN(get_logger(), "SMOKE_HOLD at the last seeing place");
+        RCLCPP_WARN(
+            get_logger(), "SMOKE_HOLD out of plume %zu at (%.3f,%.3f,%.3f) for %.0f s",
+            smoke_ladder_.entries(), latest_map_position_.x, latest_map_position_.y,
+            latest_map_position_.z, SmokeLadder::kHoldS);
         return false;
       case SmokeLadderAction::kRestore:
         publishObjective(waypoints_[active_waypoint_index_], nextObjectiveEpoch(), 1U,

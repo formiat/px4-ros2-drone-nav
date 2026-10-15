@@ -907,10 +907,13 @@ scheduled, not as an input to the exploration:
 ### Stage 4: What The Vehicle Does (Built)
 
 **Built on 2026-10-15** (specification K40; flown in this item's
-acceptance): a vehicle blind to the contract with half the ring smoky for
-2 s retreats to the last place it saw from, holds 30 s, and gives the goal
-up for the start if its range has not come back; the range back restores
-the goal. A plume's marks are fail evidence lifted when seen through.
+acceptance): a vehicle inside a plume (blind, half the ring smoky) backs
+out on dead reckoning along its heading through K19's hold, holds 30 s
+where it sees again after the first plume and takes its goal back, and
+gives the goal up for the start after a second (r1532 landed in the smoke
+before any retreat; r1533 backed out twice and wandered 800 s, item 19's
+proof exhausting its budget through the unknown beyond the plume). A
+plume's marks are fail evidence lifted when seen through.
 
 The ladder of item 17 stage 5, with the rung that item added between holding
 and landing: **retreat along the flown path**. The path just flown is in
