@@ -126,6 +126,10 @@ def stereo_tof_topics(
         depth_parameters[f"{side}_image_topic"] = (
             f"{vehicle_prefix}/stereo/{side}/image"
         )
+    # The thermal core (roadmap item 18 stage 3), relayed as the pair is; the
+    # smoke model leaves it untouched, so it has no relay suffix.
+    depth_parameters["thermal_gazebo_image_topic"] = f"{sensor_prefix}/thermal/image"
+    depth_parameters["thermal_image_topic"] = f"{vehicle_prefix}/thermal/image"
     # The vehicle's barometer, relayed by the same process for the camera
     # estimator's hold through a dark stretch (roadmap item 17 stage 5).
     depth_parameters["gazebo_air_pressure_topic"] = (

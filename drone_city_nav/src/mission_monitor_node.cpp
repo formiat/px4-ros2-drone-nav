@@ -17,6 +17,7 @@
 #include "drone_city_nav/operator_command.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/return_trail.hpp"
+#include "drone_city_nav/smoke_ladder.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -211,6 +212,15 @@ public:
         rclcpp::QoS{1}.reliable(),
         [this](const std_msgs::msg::Float64::SharedPtr message) {
           light_reading_ = message->data;
+        });
+    // Roadmap item 18 stage 4: the share of the ring's zones returning smoke
+    // (K38); the ladder of K40 reads it with the frame's range.
+    smoke_share_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("smoke_share_topic",
+                                       "/stereo_depth/smoke_share"),
+        rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          smoke_share_ = message->data;
         });
     unlit_surface_sub_ = create_subscription<std_msgs::msg::Float64>(
         declare_parameter<std::string>("unlit_surface_share_topic",
@@ -614,6 +624,9 @@ private:
       static_cast<void>(substituteGoalWithStart("unreliable_light", now_ns));
       return;
     }
+    if (smokeLadder(progress, now_ns)) {
+      return;
+    }
     // The way to B is not known until it is flown, the way home is: the
     // vehicle flies on while its charge covers the way home with a margin,
     // and turns when it no longer does. A flight with no battery (no charge
@@ -741,6 +754,49 @@ private:
                 latest_proof_.component_voxels);
     return true;
   }
+
+  // Roadmap item 18 stage 4 (specification K40): the ladder in smoke; true
+  // when the goal was given up here.
+  [[nodiscard]] bool smokeLadder(const msg::NavigationProgress& progress,
+                                 const std::int64_t now_ns) {
+    const SmokeLadderAction action = smoke_ladder_.observe(SmokeLadderInput{
+        .blind = progress.sensor_guaranteed_range_m > 0.0 &&
+                 progress.sensor_measured_range_m / progress.sensor_guaranteed_range_m <
+                     LightReliabilityJudgment::kBlindSensorShare,
+        .smoke_share = smoke_share_,
+        .position_fresh = returnHomePositionSourceFresh(
+            latest_position_valid_, latest_position_stamp_ns_, now_ns),
+        .position = latest_map_position_,
+        .now_ns = now_ns});
+    switch (action) {
+      case SmokeLadderAction::kNone:
+        return false;
+      case SmokeLadderAction::kRetreat:
+        publishObjective(*smoke_ladder_.seeingPlace(), nextObjectiveEpoch(), 1U, false);
+        publishMissionEvent("SMOKE_RETREAT");
+        RCLCPP_WARN(get_logger(), "SMOKE_RETREAT to=(%.3f,%.3f,%.3f) smoke_share=%.2f",
+                    smoke_ladder_.seeingPlace()->x, smoke_ladder_.seeingPlace()->y,
+                    smoke_ladder_.seeingPlace()->z, smoke_share_);
+        return false;
+      case SmokeLadderAction::kHold:
+        publishMissionEvent("SMOKE_HOLD");
+        RCLCPP_WARN(get_logger(), "SMOKE_HOLD at the last seeing place");
+        return false;
+      case SmokeLadderAction::kRestore:
+        publishObjective(waypoints_[active_waypoint_index_], nextObjectiveEpoch(), 1U,
+                         false);
+        publishMissionEvent("SMOKE_CLEARED");
+        RCLCPP_WARN(get_logger(), "SMOKE_CLEARED goal restored");
+        return false;
+      case SmokeLadderAction::kGiveUp:
+        return substituteGoalWithStart("smoke", now_ns);
+    }
+    return false;
+  }
+
+  SmokeLadder smoke_ladder_;
+  double smoke_share_{0.0};
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr smoke_share_sub_;
 
   // The way home is the way the vehicle came (specification K20): the
   // objective is the trail point 25 m back from the one nearest the vehicle,

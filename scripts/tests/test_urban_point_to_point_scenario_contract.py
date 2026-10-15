@@ -102,6 +102,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "low-battery": "$(LOW_BATTERY_SCENARIO)",
             "long-failures": "$(LONG_FAILURES_SCENARIO)",
             "light-lost": "$(LIGHT_LOST_SCENARIO)",
+            "smoke": "$(SMOKE_SCENARIO)",
+            "smoke-blocked": "$(SMOKE_BLOCKED_SCENARIO)",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):

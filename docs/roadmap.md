@@ -706,7 +706,17 @@ light, scatters straight back into the cameras, and whether that helps or
 harms, and a light set apart from the pair as the remedy, were the first
 measurements.
 
-### Stage 2: Detecting Smoke
+### Stage 2: Detecting Smoke (Done)
+
+**Measured and built on 2026-10-15** (specification K38). On the rig the
+ring inside smoke of 1/m returns from every zone at 0.05 m with 0.012 of a
+surface's intensity, and nothing from a plume ahead until it is inside
+(the lidar returns from it at 0.3/m already); the pair matches nothing
+through 0.3/m and more. A zone returning under half a surface's intensity
+is smoke: its rays are fail evidence, and the share of smoky zones is
+published for the ladder. The pair-against-ring signature has nothing to
+read in the simulator; no particle counter is mounted.
+
 
 Free only where smoke fills the frame. Item 17 stage 0 already turns the
 contract's forward range into a measurement, and smoke all round is one more
@@ -720,7 +730,20 @@ particle counter of the Sensirion SPS30 class — about 25 USD, grams — is the
 independent channel, and it is compared against the free ones before it is
 mounted.
 
-### Stage 3: A Thermal Channel
+### Stage 3: A Thermal Channel (Done)
+
+**Measured and settled on 2026-10-15** (specification K39, the rig's
+thermal pair of the Boson+ 640 class): thermal stereo matched nothing with
+the wall 3.7 m away and 0.46 of the frame at 7.7 m, every match on the
+wall's edge against the floor and none within a voxel of the truth, clear or
+through 1/m of smoke alike. The world's surfaces carry one temperature each,
+so the band has no texture; the result is conditional on a texture the
+simulator does not model, as the stage foresaw. The vehicle carries one core
+of the Lepton 3.5 class as a detector (`models/stereo_tof_v1`, 160 x 120 at
+9 Hz, relayed as the pair's frames are), and the depth node reports the
+share of its pixels 5 K warmer than the frame. The ladder of cheapening is
+not flown: there is no stereo to cheapen.
+
 
 Longwave infrared (8 to 14 µm) is the one passive sensor that sees through
 smoke: the wavelength is far larger than the particles and there is little
@@ -881,7 +904,13 @@ scheduled, not as an input to the exploration:
 | Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
 | Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
 
-### Stage 4: What The Vehicle Does
+### Stage 4: What The Vehicle Does (Built)
+
+**Built on 2026-10-15** (specification K40; flown in this item's
+acceptance): a vehicle blind to the contract with half the ring smoky for
+2 s retreats to the last place it saw from, holds 30 s, and gives the goal
+up for the start if its range has not come back; the range back restores
+the goal. A plume's marks are fail evidence lifted when seen through.
 
 The ladder of item 17 stage 5, with the rung that item added between holding
 and landing: **retreat along the flown path**. The path just flown is in

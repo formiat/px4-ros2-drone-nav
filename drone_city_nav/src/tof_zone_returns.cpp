@@ -17,7 +17,8 @@ bool tofZoneReturnsConfigIsValid(const TofZoneReturnsConfig& config) noexcept {
 
 std::vector<StereoDepthReturn>
 tofZoneReturns(const std::span<const Point3> zone_points_sensor_flu,
-               const TofZoneReturnsConfig& config) {
+               const TofZoneReturnsConfig& config,
+               const std::span<const float> zone_intensities) {
   std::vector<StereoDepthReturn> returns;
   const std::size_t side = config.zones_per_side;
   if (!tofZoneReturnsConfigIsValid(config) ||
@@ -39,6 +40,10 @@ tofZoneReturns(const std::span<const Point3> zone_points_sensor_flu,
       }
       const bool hit = finite && measured_m <= config.maximum_range_m;
       const double range_m = hit ? measured_m : config.maximum_range_m;
+      const bool smoke = hit &&
+                         zone_intensities.size() == zone_points_sensor_flu.size() &&
+                         zone_intensities[row * side + column] > 0.0F &&
+                         zone_intensities[row * side + column] < kSmokeIntensityShare;
       // The zone's corner angle about the boresight, then its sub-rays' centres.
       const double zone_vertical_rad =
           -0.5 * config.field_of_view_rad + static_cast<double>(row) * zone_pitch_rad;
@@ -68,7 +73,8 @@ tofZoneReturns(const std::span<const Point3> zone_points_sensor_flu,
               .point = Point3{config.position_m.x + frame_x * range_m,
                               config.position_m.y + frame_y * range_m,
                               config.position_m.z + pitched_z * range_m},
-              .hit = hit});
+              .hit = hit,
+              .unobservable = smoke});
         }
       }
     }

@@ -186,3 +186,10 @@ flight controller link. Nothing here was run on an
 Orin: there is no arm64 build, and the only confirmation is a recorded
 flight on the device itself. The builds a vehicle could take, with
 their prices, are in [hardware_builds.md](hardware_builds.md).
+
+## The Thermal Core
+
+The detector core of roadmap item 18 stage 3 (specification K39), 160 x 120
+at 9 Hz, is 173 thousand pixels a second, one percent of the stereo pair's
+18.4 million; its reading is a median and a count over the frame, nothing
+the budget above notices.

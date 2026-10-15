@@ -41,8 +41,17 @@ tofZoneReturnsConfigIsValid(const TofZoneReturnsConfig& config) noexcept;
 // are returned as end points in the publishing frame. They leave the sensor,
 // not that frame's origin: `position_m` is part of every end point, and the
 // consumer that casts them from the origin bends each by that offset.
+// `zone_intensities`, one a zone in the same order or empty, is the return's
+// intensity as the driver reports it relative to a matte surface's: a zone
+// returning under kSmokeIntensityShare of it, and over nought (nought is no
+// reading), is smoke (roadmap item 18 stage 2, specification K38), its rays
+// observed unobservable. On the smoke rig the ring inside smoke of 1/m
+// returned from every zone at 0.012 of a surface's intensity; a wall returns
+// one.
+inline constexpr float kSmokeIntensityShare{0.5F};
 [[nodiscard]] std::vector<StereoDepthReturn>
 tofZoneReturns(std::span<const Point3> zone_points_sensor_flu,
-               const TofZoneReturnsConfig& config);
+               const TofZoneReturnsConfig& config,
+               std::span<const float> zone_intensities = {});
 
 } // namespace drone_city_nav

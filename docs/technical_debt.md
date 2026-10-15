@@ -317,6 +317,12 @@ lidar flights the rule read 4 to 8 dropout bundles a flight (r1524 to
 r1528); what they closed was not looked at, and the flights' speed and
 limiters matched the base.
 
+Thermal stereo (K39) is judged on a world whose surfaces carry one
+temperature each: the simulator cannot say how much thermal texture a real
+corridor has, and the detector core's reading (the warm share) has had
+nothing warm to see in the location. The smoke ladder (K40) is flown in
+item 18's acceptance only.
+
 Roadmap item 18 stage 0b's silent-patch bound (F13, K36) was measured on
 panels and the ordinary route; a plume's silence (stage 1's smoke in the
 pair) is stage 2's to measure against it.

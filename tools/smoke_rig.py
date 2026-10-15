@@ -60,6 +60,7 @@ SENSORS = {  # key: (topic tail, message)
     "right": ("stereo_tof_link/sensor/stereo_right/image", Image),
     "depth": ("stereo_tof_link/sensor/evaluation_depth_left/depth_image", Image),
     "thermal": ("thermal_link/sensor/thermal/image", Image),
+    "thermal_right": ("thermal_right_link/sensor/thermal_right/image", Image),
     "tof_front": ("stereo_tof_link/sensor/tof_front/scan/points", PointCloudPacked),
     "lidar": ("link/sensor/lidar_3d_v1/scan/points", PointCloudPacked),
 }
@@ -94,6 +95,13 @@ def carrier(models: Path, light: str, noise: str | None) -> None:
   <include merge="true"><uri>model://lidar_3d_v1</uri><pose>0 0 0.25 0 0 0</pose></include>
   <link name="thermal_link"><pose>0.32 0 0 0 0 0</pose>
     <sensor name="thermal" type="thermal_camera"><always_on>1</always_on><update_rate>5</update_rate>
+      <camera><horizontal_fov>1.658</horizontal_fov><image><width>640</width><height>512</height><format>L16</format>
+        </image><clip><near>0.1</near><far>100</far></clip></camera>
+      <plugin filename="gz-sim-thermal-sensor-system" name="gz::sim::systems::ThermalSensor">
+        <min_temp>250</min_temp><max_temp>350</max_temp><resolution>0.01</resolution></plugin>
+    </sensor></link>
+  <link name="thermal_right_link"><pose>0.32 -0.20 0 0 0 0</pose>
+    <sensor name="thermal_right" type="thermal_camera"><always_on>1</always_on><update_rate>5</update_rate>
       <camera><horizontal_fov>1.658</horizontal_fov><image><width>640</width><height>512</height><format>L16</format>
         </image><clip><near>0.1</near><far>100</far></clip></camera>
       <plugin filename="gz-sim-thermal-sensor-system" name="gz::sim::systems::ThermalSensor">
@@ -191,12 +199,16 @@ def decode(key: str, message) -> np.ndarray:
     if isinstance(message, Image):
         if key == "depth":
             return np.frombuffer(message.data, dtype=np.float32).reshape(message.height, message.width).copy()
-        if key == "thermal":
+        if key in ("thermal", "thermal_right"):
             return np.frombuffer(message.data, dtype=np.uint16).reshape(message.height, message.width).copy()
         return np.frombuffer(message.data, dtype=np.uint8).reshape(message.height, message.width, 3).copy()
     offsets = {field.name: field.offset for field in message.field}
     raw = np.frombuffer(message.data, dtype=np.uint8).reshape(-1, message.point_step)
     xyz = np.stack([raw[:, offsets[axis]:offsets[axis] + 4].copy().view(np.float32)[:, 0] for axis in "xyz"], axis=-1)
+    if "intensity" in offsets:
+        # The return's intensity as the relay writes it (roadmap item 18 stage 2's smoke signature).
+        intensity = raw[:, offsets["intensity"]:offsets["intensity"] + 4].copy().view(np.float32)[:, 0]
+        return np.concatenate([xyz, intensity[:, None]], axis=-1).reshape(message.height, message.width, 4)
     return xyz.reshape(message.height, message.width, 3)
 
 

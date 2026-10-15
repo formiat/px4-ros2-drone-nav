@@ -91,7 +91,9 @@ frame:
   weak returns are an aerosol, a miss to the return and fail evidence there;
   a small bundle of missing returns in a near, flat border of returns is a
   dropout, a miss to the border's range and fail evidence there; a missing
-  return among missing returns stays a free ray.
+  return among missing returns stays a free ray. A time-of-flight zone
+  returning under half a surface's intensity is smoke (K38): its rays are
+  fail evidence too, with the cloud's `intensity` of 2.
 
 The two time-of-flight sensors join the same cloud. A zone is a cone, not a
 ray: its evidence is spread over 3 x 3 rays, a surface filling the zone's

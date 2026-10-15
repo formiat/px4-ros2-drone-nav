@@ -45,6 +45,7 @@ public:
         rclcpp::SensorDataQoS{}.keep_last(1));
     subscribe("left");
     subscribe("right");
+    relayThermal();
     relayBarometer();
   }
 
@@ -66,6 +67,47 @@ private:
                                gazebo_topic + "'"};
     }
     RCLCPP_INFO(get_logger(), "Gazebo stereo image source: %s", gazebo_topic.c_str());
+  }
+
+  // The thermal core's frame (roadmap item 18 stage 3), 16 bits a pixel in
+  // hundredths of a kelvin, as its driver would publish it.
+  void relayThermal() {
+    const std::string gazebo_topic =
+        declare_parameter<std::string>("thermal_gazebo_image_topic", "");
+    if (gazebo_topic.empty()) {
+      return;
+    }
+    thermal_pub_ = create_publisher<sensor_msgs::msg::Image>(
+        declare_parameter<std::string>("thermal_image_topic", "/thermal/image"),
+        rclcpp::SensorDataQoS{}.keep_last(1));
+    const std::function<void(const gz::msgs::Image&)> callback =
+        [this](const gz::msgs::Image& image) {
+          const std::size_t pixels = static_cast<std::size_t>(image.width()) *
+                                     static_cast<std::size_t>(image.height());
+          if (pixels == 0U ||
+              image.pixel_format_type() != gz::msgs::PixelFormatType::L_INT16 ||
+              image.data().size() < pixels * 2U) {
+            return;
+          }
+          auto message = std::make_unique<sensor_msgs::msg::Image>();
+          message->header.stamp.sec =
+              static_cast<std::int32_t>(image.header().stamp().sec());
+          message->header.stamp.nanosec =
+              static_cast<std::uint32_t>(image.header().stamp().nsec());
+          message->header.frame_id = frame_id_;
+          message->width = image.width();
+          message->height = image.height();
+          message->encoding = "mono16";
+          message->step = 2U * image.width();
+          message->data.assign(image.data().begin(),
+                               image.data().begin() + pixels * 2U);
+          thermal_pub_->publish(std::move(message));
+        };
+    if (!gazebo_.Subscribe(gazebo_topic, callback)) {
+      throw std::runtime_error{"cannot subscribe to the Gazebo thermal topic '" +
+                               gazebo_topic + "'"};
+    }
+    RCLCPP_INFO(get_logger(), "Gazebo thermal image source: %s", gazebo_topic.c_str());
   }
 
   // The vehicle's barometer, relayed as its driver would publish it: the
@@ -200,6 +242,7 @@ private:
   std::atomic<double> gain_{1.0};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr gain_pub_;
   rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr thermal_pub_;
   std::string frame_id_;
   gz::transport::Node gazebo_;
 };

@@ -54,6 +54,23 @@ TEST(TofZoneReturns, TheRaysLeaveTheSensorAndADownwardSensorLooksDown) {
   EXPECT_NEAR(returns[0].point.y, -0.10, 1.0e-9);
   EXPECT_NEAR(returns[0].point.z, -0.12 - 1.5, 1.0e-9);
   EXPECT_TRUE(tofZoneReturns(std::vector<Point3>(3U), config).empty());
+  // A zone returning under half a surface's intensity is smoke, its rays
+  // observed unobservable; a zone with no reading (nought) is a surface.
+  std::vector<Point3> smoky(config.zones_per_side * config.zones_per_side,
+                            Point3{1.0, 0.0, 0.0});
+  std::vector<float> intensities(smoky.size(), 1.0F);
+  intensities[0] = 0.012F;
+  intensities[1] = 0.0F;
+  const std::vector<StereoDepthReturn> judged =
+      tofZoneReturns(smoky, config, intensities);
+  const std::size_t per_zone = config.sub_rays * config.sub_rays;
+  ASSERT_EQ(judged.size(), smoky.size() * per_zone);
+  for (std::size_t ray = 0U; ray < per_zone; ++ray) {
+    EXPECT_TRUE(judged[ray].unobservable);
+    EXPECT_TRUE(judged[ray].hit);
+    EXPECT_FALSE(judged[per_zone + ray].unobservable);
+    EXPECT_FALSE(judged[2U * per_zone + ray].unobservable);
+  }
 }
 
 TEST(TofZoneReturns, ASensorOfTheRingLooksAlongItsYawOnTheHorizontal) {

@@ -43,6 +43,10 @@ stereoConfidentDepthM(const StereoPairGeometry& geometry,
 struct StereoDepthReturn {
   Point3 point{};
   bool hit{false};
+  // A hit the sensor looked at and could not see through, smoke on a
+  // time-of-flight zone (roadmap item 18 stage 2): the memory's fail
+  // evidence, not a surface.
+  bool unobservable{false};
 };
 
 // The returns of a disparity image in the left camera's forward-left-up frame.

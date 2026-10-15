@@ -184,6 +184,17 @@ LOW_BATTERY_SCENARIO := LIGHT_BATTERY_S=240 \
 # from the forty-fifth second, which asks only that the vehicle stay whole.
 LONG_FAILURES_SCENARIO := STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
 	MISSION_GOALS_XYZ_M="63.009,23.857,12.593;0.749,21.247,9.6"
+# Roadmap item 18: smoke in the location (specification A13, F4). The ordinary
+# smoke flight carries four plumes beside the route where the location is
+# wide (the start hall at (8,27) and (12,22), the tunnel's mouth at (18,-10),
+# the east hall at (68,-20); 1/m, one on the route itself to fly round), none
+# closing the way; the blocked flight closes the north corridor at (4,43),
+# 4.4 m wide, with one plume of 3/m (item 24's proof is flown there).
+SMOKE_SCENARIO := SMOKE_ZONES="8,27,10.5,3,3,3,1.0;12,22,11,2,2,2,1.0;18,-10,4,3,3,3,1.0;68,-20,6.5,3,3,3,1.0" \
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
+SMOKE_BLOCKED_SCENARIO := SMOKE_ZONES="4,43,10,3,6,6,3.0" \
+	RETURN_HOME_EXPECTED=true RETURN_TRIGGERS_ALLOWED=topological \
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 LIGHT_LOST_SCENARIO := LIGHT_FAULTS=lost STREAM_FAULTS=moderate \
 	VEHICLE_INTACT_EXPECTED=true
 
@@ -255,3 +266,19 @@ sim-urban-light-lost-headless:
 .PHONY: sim-urban-light-lost-gui
 sim-urban-light-lost-gui:
 	$(LIGHT_LOST_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-smoke-headless
+sim-urban-smoke-headless:
+	$(SMOKE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-smoke-gui
+sim-urban-smoke-gui:
+	$(SMOKE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-smoke-blocked-headless
+sim-urban-smoke-blocked-headless:
+	$(SMOKE_BLOCKED_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-smoke-blocked-gui
+sim-urban-smoke-blocked-gui:
+	$(SMOKE_BLOCKED_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui

@@ -67,7 +67,7 @@ def forward_rays(cloud):
     elevation = np.linspace(-np.pi / 2, np.pi / 2, rows)
     a, e = np.meshgrid(azimuth, elevation)
     cone = (np.abs(a) < np.radians(20)) & (np.abs(e) < np.radians(10))
-    return np.linalg.norm(cloud, axis=-1)[:, cone]
+    return np.linalg.norm(cloud[..., :3], axis=-1)[:, cone]
 
 
 def report(out, names, baseline):
@@ -93,9 +93,14 @@ def report(out, names, baseline):
                          np.nanmedian(region) if np.isfinite(region).any() else np.nan,
                          0 if corners is None else len(corners)])
         camera = np.nanmean(np.array(rows, dtype=float), axis=0)
-        tof = np.linalg.norm(data["tof_front"], axis=-1)
+        tof_cloud = data["tof_front"]
+        tof = np.linalg.norm(tof_cloud[..., :3], axis=-1)
         tof_returns = np.isfinite(tof) & (tof < 2.8)
         tof_text = f"{tof_returns.mean():.2f}" + (f" at {np.median(tof[tof_returns]):.2f} m" if tof_returns.any() else "")
+        if tof_cloud.shape[-1] == 4 and tof_returns.any():
+            # The smoke signature (roadmap item 18 stage 2): returns of under half a surface's intensity.
+            weak = tof_cloud[..., 3][tof_returns] < 0.5
+            tof_text += f", weak {weak.mean():.2f} (intensity p50 {np.median(tof_cloud[..., 3][tof_returns]):.3f})"
         lidar = forward_rays(data["lidar"])[:, ~own]
         lidar_x = lidar + 0.0  # the lidar stands over the carrier's origin
         smoke = np.mean((lidar_x > x0 - 0.3) & (lidar_x < x0 + length + 0.3))
@@ -147,8 +152,38 @@ def vio(out, names):
               f"{path:.1f} m |")
 
 
+def thermal(out, names):
+    """Thermal stereo on the rig's pair of thermal cameras (roadmap item 18 stage 3): the pair's 16-bit frames
+    (0.01 K a level) stretched over 280 to 330 K to 8 bits, matched as the visible pair is, against the
+    wall's true distance from the thermal cameras (the wall's face less their 0.32 m)."""
+    import cv2
+    print("| level | sigma 1/m | wall m | matched share | matched within 0.25 m | depth p50 m | thermal spread K |")
+    print("|---|---|---|---|---|---|---|")
+    focal = 320.0 / np.tan(1.658 / 2.0)
+    for name in names:
+        data, meta = load(out, name)
+        sigma = float(meta.get("sigma", 0.0)); wall = float(meta.get("wall", 8.0)) - 0.32
+        matched, within, depths, spreads = [], [], [], []
+        to8 = lambda a: np.clip((0.01 * a.astype(np.float64) - 280.0) / 50.0 * 255.0, 0, 255).astype(np.uint8)
+        for left16, right16 in zip(data["thermal"], data["thermal_right"]):
+            kelvin = 0.01 * left16.astype(np.float64)
+            spreads.append(float(np.percentile(kelvin, 95) - np.percentile(kelvin, 5)))
+            matcher = cv2.StereoSGBM_create(0, 64, 5, 8 * 25, 32 * 25, 1, 31, 10, 100, 2, cv2.STEREO_SGBM_MODE_SGBM_3WAY)
+            disparity = matcher.compute(to8(left16), to8(right16)).astype(np.float64) / 16.0
+            valid = disparity[:, 64:] > 0
+            matched.append(valid.mean())
+            depth = focal * 0.20 / np.where(valid, disparity[:, 64:], np.nan)
+            depths.append(np.nanmedian(depth) if valid.any() else float("nan"))
+            within.append(float(np.mean(np.abs(depth[valid] - wall) <= 0.25)) if valid.any() else float("nan"))
+        print(f"| {name} | {sigma:g} | {wall:.2f} | {np.mean(matched):.3f} | {np.nanmean(within):.2f} | "
+              f"{np.nanmedian(depths):.2f} | {np.mean(spreads):.2f} |")
+
+
 def main():
     arguments = sys.argv[1:]
+    if arguments and arguments[0] == "--thermal":
+        thermal(arguments[1], arguments[2:])
+        return 0
     if arguments and arguments[0] == "--vio":
         vio(arguments[1], arguments[2:])
         return 0

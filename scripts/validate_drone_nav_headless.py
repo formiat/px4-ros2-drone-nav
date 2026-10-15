@@ -579,8 +579,13 @@ def main() -> int:
         if return_home_expected:
             # The lidar carries no light: its return from a goal outside the
             # location is the proof's (roadmap item 19).
+            # A scenario may name the triggers it allows (the smoke closing
+            # the way is item 24's proof: topological alone).
+            allowed = tuple(filter(None, overrides.get(
+                "RETURN_TRIGGERS_ALLOWED", "").split(",")))
             validate_return_home(
                 ros_log, True, errors,
+                allowed if allowed else
                 ("topological",) if unreachable_goal_injected and lidar_navigation
                 else RETURN_TRIGGERS)
         if unreachable_goal_injected:
