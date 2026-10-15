@@ -39,10 +39,13 @@ constexpr Point3 kGoalOutside{36.5, 36.5, 36.5};
 constexpr FlightEnvelopeConfig kEnvelope{.minimum_target_z_m = 0.0,
                                          .maximum_target_z_m = 40.0};
 constexpr double kCapture{2.0};
+// The body's radius in these 1 m voxels: the voxel and its 18 nearest
+// neighbours must be free; a sieve closes, an opening of three passes.
+constexpr double kBody{1.5};
 
 TEST(GoalReachabilityProof3D, AClosedBoxProvesTheGoalOutsideItUnreachable) {
   const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      closedBox(), kVehicle, kGoalOutside, kEnvelope, kCapture, 1'000'000U);
+      closedBox(), kVehicle, kGoalOutside, kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(proof.vehicle_inside_grid);
   EXPECT_FALSE(proof.goal_inside);
   EXPECT_FALSE(proof.budget_exhausted);
@@ -62,7 +65,7 @@ TEST(GoalReachabilityProof3D, AnOpeningTheBodyFitsLeavesTheProofOpen) {
   }
   // The goal just outside the opening: both floods pass it.
   const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      grid, kVehicle, Point3{27.5, 16.5, 16.5}, kEnvelope, kCapture, 1'000'000U);
+      grid, kVehicle, Point3{27.5, 16.5, 16.5}, kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(proof.goal_inside);
   EXPECT_FALSE(proof.goal_region_closed);
   EXPECT_FALSE(proof.provenUnreachable());
@@ -83,7 +86,7 @@ TEST(GoalReachabilityProof3D, ASieveAcrossTheWayClosesItForTheVehicleAsForTheBod
   }
   const GoalReachabilityProof3D proof =
       proveGoalUnreachable3D(grid, Point3{12.5, 16.5, 16.5}, Point3{20.5, 16.5, 16.5},
-                             kEnvelope, kCapture, 1'000'000U);
+                             kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_FALSE(proof.goal_inside);
   EXPECT_FALSE(proof.budget_exhausted);
   EXPECT_TRUE(proof.provenUnreachable());
@@ -96,7 +99,7 @@ TEST(GoalReachabilityProof3D, ASieveAcrossTheWayClosesItForTheVehicleAsForTheBod
   }
   const GoalReachabilityProof3D open =
       proveGoalUnreachable3D(grid, Point3{12.5, 16.5, 16.5}, Point3{20.5, 16.5, 16.5},
-                             kEnvelope, kCapture, 1'000'000U);
+                             kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(open.goal_inside);
   EXPECT_FALSE(open.provenUnreachable());
 }
@@ -121,7 +124,7 @@ TEST(GoalReachabilityProof3D, ASieveAroundTheGoalClosesItsRegion) {
   }
   const GoalReachabilityProof3D proof =
       proveGoalUnreachable3D(grid, Point3{5.5, 5.5, 5.5}, Point3{30.5, 30.5, 30.5},
-                             kEnvelope, kCapture, 1'000U);
+                             kEnvelope, kCapture, kBody, 1'000U);
   EXPECT_FALSE(proof.goal_inside);
   EXPECT_TRUE(proof.budget_exhausted);
   EXPECT_TRUE(proof.goal_region_closed);
@@ -144,8 +147,11 @@ TEST(GoalReachabilityProof3D, AGoalNoBodyFitsNearIsUnreachable) {
       }
     }
   }
-  const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      grid, Point3{5.5, 5.5, 5.5}, Point3{31.5, 31.5, 31.5}, kEnvelope, 1.5, 1'000U);
+  // A body of 1.8: the voxel between eight points two apart is 1.73 from
+  // each, and the body of 1.5 would fit there.
+  const GoalReachabilityProof3D proof =
+      proveGoalUnreachable3D(grid, Point3{5.5, 5.5, 5.5}, Point3{31.5, 31.5, 31.5},
+                             kEnvelope, 1.5, 1.8, 1'000U);
   EXPECT_FALSE(proof.goal_inside);
   EXPECT_TRUE(proof.budget_exhausted);
   EXPECT_EQ(0U, proof.goal_region_voxels);
@@ -156,9 +162,9 @@ TEST(GoalReachabilityProof3D, AGoalNoBodyFitsNearIsUnreachable) {
 TEST(GoalReachabilityProof3D, TheGridEdgeBoundsTheFloodAsAWallDoes) {
   // No shell at all: the unknown grid is one component, and a goal outside
   // it, where the planner's lattice does not reach, is not in it.
-  const GoalReachabilityProof3D proof =
-      proveGoalUnreachable3D(ObservedOccupancyGrid3D{kBounds}, kVehicle,
-                             Point3{80.0, 16.5, 16.5}, kEnvelope, kCapture, 1'000'000U);
+  const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
+      ObservedOccupancyGrid3D{kBounds}, kVehicle, Point3{80.0, 16.5, 16.5}, kEnvelope,
+      kCapture, kBody, 1'000'000U);
   EXPECT_EQ(40U * 40U * 40U, proof.component_voxels);
   EXPECT_TRUE(proof.provenUnreachable());
 }
@@ -175,14 +181,14 @@ TEST(GoalReachabilityProof3D, TheEnvelopeBandBoundsTheFloodAsAWallDoes) {
   }
   const FlightEnvelopeConfig band{.minimum_target_z_m = 9.0,
                                   .maximum_target_z_m = 23.5};
-  const GoalReachabilityProof3D closed =
-      proveGoalUnreachable3D(grid, kVehicle, kGoalOutside, band, kCapture, 1'000'000U);
+  const GoalReachabilityProof3D closed = proveGoalUnreachable3D(
+      grid, kVehicle, kGoalOutside, band, kCapture, kBody, 1'000'000U);
   // The body fits in 13 x 13 of each layer and, under the open roof, in
   // the band's top layer too.
   EXPECT_EQ(13U * 13U * 14U, closed.component_voxels);
   EXPECT_TRUE(closed.provenUnreachable());
   const GoalReachabilityProof3D open = proveGoalUnreachable3D(
-      grid, kVehicle, kGoalOutside, kEnvelope, kCapture, 1'000'000U);
+      grid, kVehicle, kGoalOutside, kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(open.goal_inside);
 }
 
@@ -200,29 +206,31 @@ TEST(GoalReachabilityProof3D, TheGoalIsFlownToAtItsHeightClampedIntoTheBand) {
   const FlightEnvelopeConfig band{.minimum_target_z_m = 9.0,
                                   .maximum_target_z_m = 24.5};
   const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      grid, kVehicle, Point3{16.5, 16.5, 36.5}, band, kCapture, 1'000'000U);
+      grid, kVehicle, Point3{16.5, 16.5, 36.5}, band, kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(proof.goal_inside);
 }
 
 TEST(GoalReachabilityProof3D, AStartShutOffWithTheGoalIsProvenUnreachableAsWell) {
   // After a return, the proof runs to the start: a vehicle shut in where
   // neither is reached holds (the monitor's START_UNREACHABLE).
-  const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      closedBox(), kVehicle, Point3{2.5, 2.5, 2.5}, kEnvelope, kCapture, 1'000'000U);
+  const GoalReachabilityProof3D proof =
+      proveGoalUnreachable3D(closedBox(), kVehicle, Point3{2.5, 2.5, 2.5}, kEnvelope,
+                             kCapture, kBody, 1'000'000U);
   EXPECT_FALSE(proof.goal_inside);
   EXPECT_TRUE(proof.provenUnreachable());
 }
 
 TEST(GoalReachabilityProof3D, AGoalInsideTheBoxIsReachable) {
-  const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      closedBox(), kVehicle, Point3{20.5, 20.5, 20.5}, kEnvelope, kCapture, 1'000'000U);
+  const GoalReachabilityProof3D proof =
+      proveGoalUnreachable3D(closedBox(), kVehicle, Point3{20.5, 20.5, 20.5}, kEnvelope,
+                             kCapture, kBody, 1'000'000U);
   EXPECT_TRUE(proof.goal_inside);
   EXPECT_FALSE(proof.provenUnreachable());
 }
 
 TEST(GoalReachabilityProof3D, TheBudgetEndsTheFloodUndecided) {
   const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      closedBox(), kVehicle, kGoalOutside, kEnvelope, kCapture, 100U);
+      closedBox(), kVehicle, kGoalOutside, kEnvelope, kCapture, kBody, 100U);
   EXPECT_TRUE(proof.budget_exhausted);
   EXPECT_FALSE(proof.provenUnreachable());
   EXPECT_STREQ("budget_exhausted", goalReachabilityProofVerdict(proof));
@@ -231,7 +239,7 @@ TEST(GoalReachabilityProof3D, TheBudgetEndsTheFloodUndecided) {
 TEST(GoalReachabilityProof3D, AVehicleOutsideTheGridProvesNothing) {
   const GoalReachabilityProof3D proof =
       proveGoalUnreachable3D(closedBox(), Point3{-5.0, 16.5, 16.5}, kGoalOutside,
-                             kEnvelope, kCapture, 1'000'000U);
+                             kEnvelope, kCapture, kBody, 1'000'000U);
   EXPECT_FALSE(proof.vehicle_inside_grid);
   EXPECT_FALSE(proof.provenUnreachable());
   EXPECT_STREQ("vehicle_outside_grid", goalReachabilityProofVerdict(proof));
@@ -241,7 +249,7 @@ TEST(GoalReachabilityProof3D, AVehicleOutsideTheBandProvesNothing) {
   const FlightEnvelopeConfig band{.minimum_target_z_m = 18.0,
                                   .maximum_target_z_m = 30.0};
   const GoalReachabilityProof3D proof = proveGoalUnreachable3D(
-      closedBox(), kVehicle, kGoalOutside, band, kCapture, 1'000'000U);
+      closedBox(), kVehicle, kGoalOutside, band, kCapture, kBody, 1'000'000U);
   EXPECT_FALSE(proof.vehicle_inside_grid);
   EXPECT_FALSE(proof.provenUnreachable());
 }

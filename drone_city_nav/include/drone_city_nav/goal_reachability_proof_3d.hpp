@@ -11,10 +11,11 @@ namespace drone_city_nav {
 
 // The proof of roadmap item 19: whether the goal is provably unreachable on
 // the obstacle memory as it stands. A flood from the vehicle through every
-// voxel the body fits in (none of its 26 neighbours occupied: evidence laid a
-// ray apart is a sieve a voxel passes and the body does not), unknown
-// included, because unknown is traversable at no penalty, within the space
-// the planner flies in: the grid,
+// voxel the body fits in (no voxel within the body's radius occupied:
+// evidence laid a ray apart is a sieve a voxel passes and the body does
+// not, and a hole the rays carve in a floor is a few voxels the body does
+// not pass either), unknown included, because unknown is traversable at no
+// penalty, within the space the planner flies in: the grid,
 // whose edge its lattice does not cross, and the voxels the flight envelope's
 // band of heights touches (roadmap item 17 stage 8). Beyond them no route
 // exists for the vehicle, measured or not, so they bound the flood as walls
@@ -27,7 +28,7 @@ namespace drone_city_nav {
 // caller a bounded time. A vehicle outside the band proves nothing.
 //
 // A second flood starts at the goal (roadmap item 17 stage 8): through the
-// voxels the body fits in, none of whose 26 neighbours is occupied, from every
+// voxels the body fits in, from every
 // such voxel within the capture radius of the goal. A goal in a dark the
 // carried light does not reach is surrounded by the unobservable
 // evidence of the frames that looked at it (specification K14), a sieve of
@@ -53,7 +54,8 @@ struct GoalReachabilityProof3D {
 [[nodiscard]] GoalReachabilityProof3D
 proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicle,
                        const Point3& goal, const FlightEnvelopeConfig& envelope,
-                       double capture_radius_m, std::size_t voxel_budget);
+                       double capture_radius_m, double body_radius_m,
+                       std::size_t voxel_budget);
 
 [[nodiscard]] const char*
 goalReachabilityProofVerdict(const GoalReachabilityProof3D& proof) noexcept;

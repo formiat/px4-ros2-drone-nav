@@ -55,6 +55,9 @@ struct FlightSpace {
   const ObservedOccupancyGrid3D& grid;
   int lowest_z;
   int highest_z;
+  // The body's radius in voxels: the body fits in a voxel when no voxel
+  // within it is occupied.
+  double fit_radius_voxels;
 
   [[nodiscard]] bool contains(const GridIndex3D cell) const noexcept {
     const GridBounds3D& bounds = grid.bounds();
@@ -63,11 +66,21 @@ struct FlightSpace {
            cell.z <= highest_z;
   }
 
-  // Free, and none of its 26 neighbours occupied: the body fits there.
+  // No voxel within the body's radius of it occupied: the body fits there.
+  // Evidence laid a ray apart is a sieve a voxel passes and the body does
+  // not; a hole carved in a floor or a wall by the rays that graze it is
+  // one voxel or a few wide, and the body does not pass it either (r1553:
+  // with the 26 neighbours alone the start's side of a closed corridor
+  // leaked under its floor).
   [[nodiscard]] bool fitsBody(const GridIndex3D cell) const noexcept {
-    for (int z = -1; z <= 1; ++z) {
-      for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
+    const int reach = static_cast<int>(std::ceil(fit_radius_voxels - 1.0e-9));
+    const double limit = fit_radius_voxels * fit_radius_voxels + 1.0e-9;
+    for (int z = -reach; z <= reach; ++z) {
+      for (int y = -reach; y <= reach; ++y) {
+        for (int x = -reach; x <= reach; ++x) {
+          if (static_cast<double>(x * x + y * y + z * z) > limit) {
+            continue;
+          }
           const GridIndex3D near{cell.x + x, cell.y + y, cell.z + z};
           if (grid.contains(near) && grid.isOccupied(near)) {
             return false;
@@ -138,7 +151,8 @@ void floodFromGoal(const FlightSpace& space, const Point3& vehicle, const Point3
 GoalReachabilityProof3D
 proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicle,
                        const Point3& goal, const FlightEnvelopeConfig& envelope,
-                       const double capture_radius_m, const std::size_t voxel_budget) {
+                       const double capture_radius_m, const double body_radius_m,
+                       const std::size_t voxel_budget) {
   GoalReachabilityProof3D proof;
   const GridBounds3D& bounds = grid.bounds();
   // The layers the envelope's band touches, its floor and ceiling included.
@@ -149,6 +163,7 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
       .grid = grid,
       .lowest_z = std::max(layer(envelope.minimum_target_z_m), 0),
       .highest_z = std::min(layer(envelope.maximum_target_z_m), bounds.depth_cells - 1),
+      .fit_radius_voxels = body_radius_m / bounds.resolution_m,
   };
   const std::optional<GridIndex3D> start = grid.worldToCell(vehicle);
   if (!start.has_value() || !space.contains(*start)) {
@@ -175,12 +190,11 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
         const GridIndex3D neighbour{cell.x + step[0], cell.y + step[1],
                                     cell.z + step[2]};
         // Through the voxels the body fits in, as the goal's flood goes
-        // (specification K16): evidence laid a ray apart is a sieve a voxel
-        // passes and the body does not. The lidar marks a plume's face from
-        // 20 m a beam apart (0.35 m at a degree), and the plain flood ran
-        // through it to its budget while the start's side of the closed
-        // corridor is 3 665 m3 in truth (r1549, the north corridor closed by
-        // 3/m: budget exhausted every 10 s for 480 s).
+        // (specification K16): the lidar marks a plume's face from 20 m a
+        // beam apart (0.35 m at a degree), and the plain flood ran through
+        // it to its budget while the start's side of the closed corridor is
+        // 6 730 m3 in truth (r1549, the north corridor closed by 3/m: budget
+        // exhausted every 10 s for 480 s).
         if (!space.contains(neighbour) || !space.fitsBody(neighbour) ||
             !visited.markVisited(neighbour)) {
           continue;

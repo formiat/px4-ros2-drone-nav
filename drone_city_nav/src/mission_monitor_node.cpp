@@ -2,6 +2,7 @@
 #include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/footprint_geometry_3d.hpp"
 #include "drone_city_nav/goal_reachability_proof_3d.hpp"
 #include "drone_city_nav/main_battery_estimate.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
@@ -589,7 +590,7 @@ private:
       proof_future_ = std::async(std::launch::async, [grid, vehicle, goal, envelope,
                                                       capture_radius_m, budget] {
         return proveGoalUnreachable3D(*grid, vehicle, goal, envelope, capture_radius_m,
-                                      budget);
+                                      SweptFootprintConfig{}.body_radius_m, budget);
       });
     }
   }
