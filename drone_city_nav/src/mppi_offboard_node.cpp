@@ -258,6 +258,14 @@ MppiOffboardNode::MppiOffboardNode()
               progress->sensor_measured_range_m / progress->sensor_guaranteed_range_m);
         }
       });
+  // Roadmap item 18 stage 4 (specification K40): the share of the ring's
+  // zones returning smoke; a vehicle dead reckoning inside a plume backs out
+  // the way it came before the descent is due.
+  smoke_share_sub_ = create_subscription<std_msgs::msg::Float64>(
+      declare_parameter<std::string>("smoke_share_topic", "/stereo_depth/smoke_share"),
+      rclcpp::SensorDataQoS{}, [this](const std_msgs::msg::Float64::SharedPtr message) {
+        smoke_share_ = std::make_pair(now(), message->data);
+      });
   // The ring's lateral units, as the stereo node reads them (the same
   // topics), and the down unit; the nearest return of each is the reflex of
   // the blind descent. A lateral unit counts its near-horizontal rows only

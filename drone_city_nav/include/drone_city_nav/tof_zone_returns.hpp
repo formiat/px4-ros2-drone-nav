@@ -47,8 +47,13 @@ tofZoneReturnsConfigIsValid(const TofZoneReturnsConfig& config) noexcept;
 // reading), is smoke (roadmap item 18 stage 2, specification K38), its rays
 // observed unobservable. On the smoke rig the ring inside smoke of 1/m
 // returned from every zone at 0.012 of a surface's intensity; a wall returns
-// one.
+// one. The ring returns from smoke at its aperture (the rig: 0.05 m), inside
+// the body the memory filters as the vehicle's own; the smoke's rays are
+// placed at the body's edge instead, kSmokeShellM, so that the plume the
+// vehicle is in enters the memory where it stands, and the way it came stays
+// open (the memory never marks the flown path).
 inline constexpr float kSmokeIntensityShare{0.5F};
+inline constexpr double kSmokeShellM{0.7};
 [[nodiscard]] std::vector<StereoDepthReturn>
 tofZoneReturns(std::span<const Point3> zone_points_sensor_flu,
                const TofZoneReturnsConfig& config,

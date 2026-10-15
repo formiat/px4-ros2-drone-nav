@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "mppi_offboard_node.hpp"
 
 namespace drone_city_nav {
@@ -164,11 +166,32 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
   // The ring keeps the surfaces it sees off the body (the reflex of K19);
   // without a heading the descent is vertical as before.
   const TofRingRanges ranges = freshTofRingRanges();
-  const Point2 reflex = heading_valid_
-                            ? blind_descent_reflex_.observe(
-                                  ranges, now().nanoseconds(),
-                                  px4_map_transform_.mapYawToPx4Heading(heading_rad_))
-                            : Point2{0.0, 0.0};
+  Point2 reflex = heading_valid_
+                      ? blind_descent_reflex_.observe(
+                            ranges, now().nanoseconds(),
+                            px4_map_transform_.mapYawToPx4Heading(heading_rad_))
+                      : Point2{0.0, 0.0};
+  // Inside a plume (roadmap item 18 stage 4, specification K40): the ring
+  // returns smoke from half its zones or more, and the pair matches nothing,
+  // so the estimator dead reckons within a second of the entry (r1532,
+  // blind at 78.7 s, dead reckoning at 79.4, landed in the smoke at 85.4).
+  // Through the hold before the descent is due the vehicle backs out along
+  // its heading, the way it came in (I3), at 0.8 m/s: the 3 s of the hold
+  // are 2.4 m, and the entry at the ordinary speed is about 1.5 m deep.
+  constexpr double kBackOutSpeedMps{0.8};
+  constexpr double kSmokeZoneShare{0.5};
+  constexpr double kSmokeFreshS{1.0};
+  const bool smoky = !descending && heading_valid_ && smoke_share_.has_value() &&
+                     smoke_share_->second >= kSmokeZoneShare &&
+                     (now() - smoke_share_->first).seconds() <= kSmokeFreshS;
+  if (smoky) {
+    const double heading = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
+    reflex = Point2{-kBackOutSpeedMps * std::cos(heading),
+                    -kBackOutSpeedMps * std::sin(heading)};
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "SMOKE_BACK_OUT smoke_share=%.2f speed_mps=%.1f",
+                         smoke_share_->second, kBackOutSpeedMps);
+  }
   setpoint_pub_->publish(buildMppiTrajectorySetpoint(
       nowMicros(), reflex, descending ? -kLandingSpeedMps : 0.0, Point2{0.0, 0.0}, nan,
       nan, 0.0));

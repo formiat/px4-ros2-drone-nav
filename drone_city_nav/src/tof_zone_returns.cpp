@@ -1,5 +1,6 @@
 #include "drone_city_nav/tof_zone_returns.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace drone_city_nav {
@@ -39,11 +40,13 @@ tofZoneReturns(const std::span<const Point3> zone_points_sensor_flu,
         continue;
       }
       const bool hit = finite && measured_m <= config.maximum_range_m;
-      const double range_m = hit ? measured_m : config.maximum_range_m;
+      const double range_m_measured = hit ? measured_m : config.maximum_range_m;
       const bool smoke = hit &&
                          zone_intensities.size() == zone_points_sensor_flu.size() &&
                          zone_intensities[row * side + column] > 0.0F &&
                          zone_intensities[row * side + column] < kSmokeIntensityShare;
+      const double range_m =
+          smoke ? std::max(measured_m, kSmokeShellM) : range_m_measured;
       // The zone's corner angle about the boresight, then its sub-rays' centres.
       const double zone_vertical_rad =
           -0.5 * config.field_of_view_rad + static_cast<double>(row) * zone_pitch_rad;

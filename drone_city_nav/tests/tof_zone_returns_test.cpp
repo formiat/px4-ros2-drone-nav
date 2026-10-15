@@ -56,8 +56,10 @@ TEST(TofZoneReturns, TheRaysLeaveTheSensorAndADownwardSensorLooksDown) {
   EXPECT_TRUE(tofZoneReturns(std::vector<Point3>(3U), config).empty());
   // A zone returning under half a surface's intensity is smoke, its rays
   // observed unobservable; a zone with no reading (nought) is a surface.
+  // The ring returns from smoke at its aperture (0.05 m on the rig).
   std::vector<Point3> smoky(config.zones_per_side * config.zones_per_side,
-                            Point3{1.0, 0.0, 0.0});
+                            Point3{0.05, 0.0, 0.0});
+  config.minimum_range_m = 0.02;
   std::vector<float> intensities(smoky.size(), 1.0F);
   intensities[0] = 0.012F;
   intensities[1] = 0.0F;
@@ -68,6 +70,11 @@ TEST(TofZoneReturns, TheRaysLeaveTheSensorAndADownwardSensorLooksDown) {
   for (std::size_t ray = 0U; ray < per_zone; ++ray) {
     EXPECT_TRUE(judged[ray].unobservable);
     EXPECT_TRUE(judged[ray].hit);
+    // Smoke at the aperture is placed at the body's edge.
+    EXPECT_NEAR(std::hypot(judged[ray].point.x - config.position_m.x,
+                           judged[ray].point.y - config.position_m.y,
+                           judged[ray].point.z - config.position_m.z),
+                kSmokeShellM, 1.0e-6);
     EXPECT_FALSE(judged[per_zone + ray].unobservable);
     EXPECT_FALSE(judged[2U * per_zone + ray].unobservable);
   }

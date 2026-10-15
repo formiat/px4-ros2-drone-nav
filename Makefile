@@ -189,7 +189,11 @@ LONG_FAILURES_SCENARIO := STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
 # wide (the start hall at (8,27) and (12,22), the tunnel's mouth at (18,-10),
 # the east hall at (68,-20); 1/m, one on the route itself to fly round), none
 # closing the way; the blocked flight closes the north corridor at (4,43),
-# 4.4 m wide, with one plume of 3/m (item 24's proof is flown there).
+# 4.4 m wide, with one plume of 3/m: item 24's proof gives the goal up where
+# the plume is in the memory (the lidar returns from it outside, K37), and
+# the ladder of K40 where only the ring inside it measures it (the stereo
+# set: the pair matches nothing in smoke and the ring returns from it at its
+# aperture alone, K38); both are causes the vehicle measures.
 SMOKE_SCENARIO := SMOKE_ZONES="8,27,10.5,3,3,3,1.0;12,22,11,2,2,2,1.0;18,-10,4,3,3,3,1.0;68,-20,6.5,3,3,3,1.0" \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 SMOKE_BLOCKED_SCENARIO := SMOKE_ZONES="4,43,10,3,6,6,3.0" \
