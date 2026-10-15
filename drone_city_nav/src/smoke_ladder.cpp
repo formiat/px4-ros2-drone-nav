@@ -4,7 +4,7 @@ namespace drone_city_nav {
 
 SmokeLadderAction SmokeLadder::observe(const SmokeLadderInput& input) {
   const bool in_smoke_now = input.blind && (input.smoke_share >= kZoneShare ||
-                                            (input.lit && !input.position_fresh));
+                                            (input.lit && input.dead_reckoning));
   if (!in_smoke_now) {
     in_smoke_since_ns_.reset();
   } else if (!in_smoke_since_ns_.has_value()) {

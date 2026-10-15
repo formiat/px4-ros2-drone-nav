@@ -36,6 +36,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "mission_monitor_node_internal.hpp"
@@ -251,6 +252,20 @@ public:
         declare_parameter<std::string>("mission_event_topic",
                                        "/drone_city_nav/mission_events"),
         rclcpp::QoS{50}.reliable().transient_local());
+    // The position source declares its dead reckoning and its end as events
+    // of the mission (K13, K26); the autopilot's own position stays valid
+    // through it for seconds (r1537: episodes of 1 to 4 s at a plume's edge
+    // never counted as entries by the position's freshness).
+    dead_reckoning_sub_ = create_subscription<std_msgs::msg::String>(
+        get_parameter("mission_event_topic").as_string(),
+        rclcpp::QoS{50}.reliable().transient_local(),
+        [this](const std_msgs::msg::String::SharedPtr event) {
+          constexpr std::string_view kDeclared{
+              "VISUAL_INERTIAL_ODOMETRY_DEAD_RECKONING started="};
+          if (event->data.starts_with(kDeclared)) {
+            dead_reckoning_ = event->data.substr(kDeclared.size()) == "true";
+          }
+        });
     memory_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         declare_parameter<std::string>("raw_obstacle_snapshot_3d_topic",
                                        "/drone_city_nav/raw_obstacle_snapshot_3d"),
@@ -768,6 +783,7 @@ private:
         .lit = std::isfinite(light_reading_) &&
                light_reading_ >= LightReliabilityJudgment::kLightReadingOutage &&
                !(unlit_surface_share_ >= LightReliabilityJudgment::kUnlitSurfaceShare),
+        .dead_reckoning = dead_reckoning_,
         .position_fresh = returnHomePositionSourceFresh(
             latest_position_valid_, latest_position_stamp_ns_, now_ns),
         .position = latest_map_position_,
@@ -796,6 +812,8 @@ private:
   }
 
   SmokeLadder smoke_ladder_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dead_reckoning_sub_;
+  bool dead_reckoning_{false};
   double smoke_share_{0.0};
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr smoke_share_sub_;
 

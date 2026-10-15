@@ -31,7 +31,10 @@ struct SmokeLadderInput {
   double smoke_share{0.0};
   // The light judged reliable by its reading and the ring's surfaces (K12).
   bool lit{false};
-  // A position source fresh: false while the estimator dead reckons.
+  // The position source's poses to the autopilot at quality 0 (K13).
+  bool dead_reckoning{false};
+  // The autopilot's position fresh and valid: the hold and the return need
+  // one (it outlives the estimator's dead reckoning by seconds).
   bool position_fresh{false};
   Point3 position{};
   std::int64_t now_ns{0};
