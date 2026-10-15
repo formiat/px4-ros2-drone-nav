@@ -10,6 +10,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_scan_3d.hpp"
+#include "drone_city_nav/lidar_scan_patterns_3d.hpp"
 #include "drone_city_nav/lidar_self_filter.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_sensor_obstacle_scan.hpp"
@@ -151,6 +152,17 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
                     .value_or(std::vector<float>{}),
                 scan_config_.minimum_range_m, scan_config_.maximum_range_m)
           : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
+  // Roadmap item 18 stage 0: the patterns in which the lidar fails, read
+  // from the organized scan; an aerosol's returns and a dropout bundle's
+  // rays become misses to their range with fail evidence there.
+  LidarScanPatternsResult patterns;
+  if (!hit_only_returns_ && decoded.organized_dimensions_match) {
+    patterns = classifyLidarScanPatterns3D(
+        decoded,
+        decodePointCloudFloatField(pending.cloud, "intensity")
+            .value_or(std::vector<float>{}),
+        scan_config_, lidar_patterns_config_);
+  }
   if (!decoded.organized_dimensions_match) {
     RCLCPP_ERROR_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -178,11 +190,15 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
   // A sensor that answers only where it measured interpolates nothing; what
   // it could not see enters the memory the same way (roadmap item 17 stage
   // 8).
-  const std::vector<LidarBeamSample3D> surface_samples =
+  std::vector<LidarBeamSample3D> surface_samples =
       hit_only_returns_
           ? decoded.unobservable
           : interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
                                                 surface_interpolation_config_);
+  if (!hit_only_returns_) {
+    surface_samples.insert(surface_samples.end(), decoded.unobservable.begin(),
+                           decoded.unobservable.end());
+  }
   std::vector<LidarBeam3D> memory_beams;
   std::vector<Point3> hit_points_map;
   std::vector<Point3> hit_points_body;
@@ -313,6 +329,8 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
         .self_filtered = self_filtered,
         .persistent_self_filtered = persistent_self_filtered,
         .unobservable_on_path = unobservable_on_path,
+        .aerosol_beams = patterns.aerosol_beams,
+        .dropout_beams = patterns.dropout_beams,
         .cooperative_filtered = cooperative_filtered,
         .altitude_valid = pose.altitude_valid,
         .publish_debug = publish_current_cloud,

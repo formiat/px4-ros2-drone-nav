@@ -307,6 +307,13 @@ acknowledged their goal past the 2 m capture radius by the truth (r1495
 2.44 m, r1514 2.32 m). The estimator's noise model and its tracker under
 the imager's noise are not re-tuned here.
 
+Roadmap item 18 stage 0's dropout (K37) is designed and not verified:
+gpu_lidar returns geometry whatever the material, so no simulated surface
+swallows a beam; the lidar's ordinary series are its only flight check (a
+bundle misread as a dropout would close a doorway). The aerosol's weak
+return is the driver's relative intensity, which a real lidar scales its
+own way; the simulator's relay writes the smoke model's.
+
 Roadmap item 18 stage 0b's silent-patch bound (F13, K36) was measured on
 panels and the ordinary route; a plume's silence (stage 1's smoke in the
 pair) is stage 2's to measure against it.

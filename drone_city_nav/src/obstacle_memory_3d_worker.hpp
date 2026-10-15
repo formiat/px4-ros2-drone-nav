@@ -32,6 +32,10 @@ struct PersistentLidarScan3D {
   std::size_t self_filtered{0U};
   std::size_t persistent_self_filtered{0U};
   std::size_t unobservable_on_path{0U};
+  // Roadmap item 18 stage 0: the scan's beams read as an aerosol's and as
+  // dropout bundles.
+  std::size_t aerosol_beams{0U};
+  std::size_t dropout_beams{0U};
   std::size_t cooperative_filtered{0U};
   bool altitude_valid{false};
   bool publish_debug{false};

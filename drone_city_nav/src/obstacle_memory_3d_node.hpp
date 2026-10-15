@@ -12,6 +12,7 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_scan_3d.hpp"
+#include "drone_city_nav/lidar_scan_patterns_3d.hpp"
 #include "drone_city_nav/lidar_self_filter.hpp"
 #include "drone_city_nav/msg/cooperative_flight_intent.hpp"
 #include "drone_city_nav/msg/latest_sensor_obstacle_scan.hpp"
@@ -141,6 +142,7 @@ private:
   static constexpr double kFlownPathClearanceM{0.7};
   std::deque<Point3> flown_path_;
   LidarSurfaceInterpolation3DConfig surface_interpolation_config_{};
+  LidarScanPatternsConfig lidar_patterns_config_{};
   LidarProjectionConfig projection_config_{};
   LidarSelfFilterConfig self_filter_config_{};
   std::unique_ptr<ObstacleMemory3DWorker> memory_worker_;

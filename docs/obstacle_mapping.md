@@ -85,7 +85,13 @@ frame:
   the ray is free up to that depth or the confident depth, whichever is
   nearer;
 - a pixel **without a match says nothing**, where an organized lidar scan
-  reads a missing return as a miss to the maximum range.
+  reads a missing return as a miss to the maximum range. Since roadmap item
+  18 stage 0 the lidar's scan is read for its failure patterns first
+  (`lidar_scan_patterns_3d.cpp`, specification K37): weak returns among
+  weak returns are an aerosol, a miss to the return and fail evidence there;
+  a small bundle of missing returns in a near, flat border of returns is a
+  dropout, a miss to the border's range and fail evidence there; a missing
+  return among missing returns stays a free ray.
 
 The two time-of-flight sensors join the same cloud. A zone is a cone, not a
 ray: its evidence is spread over 3 x 3 rays, a surface filling the zone's

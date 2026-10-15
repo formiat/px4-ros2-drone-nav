@@ -171,9 +171,14 @@ struct ActiveSensor {
 // strongest echo over its threshold, from the smoke or from the surface at
 // `clean_range_m` (+inf for none), or +inf. `jitter` in [0, 1) places a
 // smoke return inside its range bin. Without smoke it is `clean_range_m`.
+// `relative_echo` receives the echo over a matte surface's seen clear at
+// the reported range (one for a surface, a thin fraction for smoke: the
+// intensity a lidar's driver reports, roadmap item 18 stage 0), nought for
+// no return.
 [[nodiscard]] double activeRange(const SmokeField& field, const ActiveSensor& sensor,
                                  const Eigen::Vector3d& origin,
                                  const Eigen::Vector3d& direction, double clean_range_m,
-                                 double time_s, double jitter) noexcept;
+                                 double time_s, double jitter,
+                                 double* relative_echo = nullptr) noexcept;
 
 } // namespace drone_city_nav::simulation_smoke

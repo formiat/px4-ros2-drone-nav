@@ -243,6 +243,7 @@ add_drone_city_nav_layer(
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
+  src/lidar_scan_patterns_3d.cpp
   src/lidar_self_filter.cpp
   src/mapping_lifecycle.cpp
   src/obstacle_memory_3d.cpp
@@ -477,6 +478,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/lidar_pose_history.hpp
     include/drone_city_nav/lidar_projection.hpp
     include/drone_city_nav/lidar_scan_3d.hpp
+    include/drone_city_nav/lidar_scan_patterns_3d.hpp
     include/drone_city_nav/lidar_self_filter.hpp
     include/drone_city_nav/map_to_sdf_transform.hpp
     include/drone_city_nav/mapping_lifecycle.hpp
@@ -1852,6 +1854,9 @@ if(BUILD_TESTING)
   ament_add_gtest(stereo_depth_returns_test tests/stereo_depth_returns_test.cpp)
   target_compile_features(stereo_depth_returns_test PRIVATE cxx_std_20)
   target_link_libraries(stereo_depth_returns_test drone_city_nav_core)
+  ament_add_gtest(lidar_scan_patterns_3d_test tests/lidar_scan_patterns_3d_test.cpp)
+  target_compile_features(lidar_scan_patterns_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_scan_patterns_3d_test drone_city_nav_core)
   ament_add_gtest(stereo_silent_patches_test tests/stereo_silent_patches_test.cpp)
   target_compile_features(stereo_silent_patches_test PRIVATE cxx_std_20)
   target_link_libraries(stereo_silent_patches_test drone_city_nav_core)

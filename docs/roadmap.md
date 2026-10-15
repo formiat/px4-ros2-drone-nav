@@ -527,7 +527,26 @@ The navigation invariants hold in the form restated for this item, below.
 Vertical motion stays free, and nothing keyed on the vehicle's history is a
 rule.
 
-### Stage 0: Smoke And The Lidar In The Memory
+### Stage 0: Smoke And The Lidar In The Memory (Done)
+
+**Built on 2026-10-15** (`lidar_scan_patterns_3d.cpp`, specification K37):
+the organized scan is read for its patterns before the memory integrates
+it. An aerosol is a hit whose intensity is under half the scan's surface
+intensity (the median of its hits') with three or more of its eight
+neighbours weak hits within a metre of its range: the beam becomes a miss
+to the return and the return observed unobservable, a surface never
+measured. A dropout is a bundle of no-return beams of 400 or fewer whose
+border returns in three quarters of its beams at a median range of 8 m or
+less and a spread of 1 m or less from the first to the third quartile: the
+bundle's beams become misses to that range with fail evidence there; a
+bundle whose border recedes is an opening, and a no-return beam among
+no-return beams stays free to the maximum range. The smoke relay writes the
+intensity a lidar's driver reports, the echo over a matte surface's at the
+range (one for a surface, a thin fraction for smoke), where the cloud
+carries the field. The dropout by material stays designed and unverified:
+`gpu_lidar` returns geometry whatever the material. The acceptance series
+follow below.
+
 
 Item 17 stage 8 builds the memory's third kind of evidence, **fail**, and
 the invariant restated around it, for darkness. This stage applies them to

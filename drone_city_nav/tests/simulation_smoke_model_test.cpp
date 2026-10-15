@@ -129,6 +129,22 @@ TEST(SimulationSmokeModelTest, DenseSmokeReturnsTheBeamThinSmokeLetsItThrough) {
   const Eigen::Vector3d origin{0.0, 0.0, 2.0};
   const double dense =
       activeRange(cube(3.0), lidar, origin, Eigen::Vector3d::UnitX(), 9.5, 0.0, 0.5);
+  // The echo relative to a matte surface's at the reported range: one for
+  // the surface seen clear, a thin fraction for the smoke (its backscatter
+  // over the lidar ratio against the surface's reflectance).
+  const SmokeField clear{std::vector<SmokeZone>{}, 0U};
+  double relative = -1.0;
+  static_cast<void>(activeRange(clear, lidar, origin, Eigen::Vector3d::UnitX(), 9.5,
+                                0.0, 0.5, &relative));
+  EXPECT_DOUBLE_EQ(relative, 1.0);
+  static_cast<void>(activeRange(cube(3.0), lidar, origin, Eigen::Vector3d::UnitX(), 9.5,
+                                0.0, 0.5, &relative));
+  EXPECT_GT(relative, 0.0);
+  EXPECT_LT(relative, 0.5);
+  static_cast<void>(activeRange(clear, lidar, origin, Eigen::Vector3d::UnitX(),
+                                std::numeric_limits<double>::infinity(), 0.0, 0.5,
+                                &relative));
+  EXPECT_DOUBLE_EQ(relative, 0.0);
   EXPECT_GE(dense, 2.0);
   EXPECT_LT(dense, 3.0);
   const double open = activeRange(cube(3.0), lidar, origin, Eigen::Vector3d::UnitX(),

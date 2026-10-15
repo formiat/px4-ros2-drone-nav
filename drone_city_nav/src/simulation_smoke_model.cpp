@@ -639,14 +639,21 @@ void CameraSmoke::composite(const CameraPose& pose, const CarriedLight& light,
 
 double activeRange(const SmokeField& field, const ActiveSensor& sensor,
                    const Eigen::Vector3d& origin, const Eigen::Vector3d& direction,
-                   double clean_range_m, double time_s, double jitter) noexcept {
+                   double clean_range_m, double time_s, double jitter,
+                   double* relative_echo) noexcept {
   const bool surface = std::isfinite(clean_range_m) && clean_range_m > 0.0 &&
                        clean_range_m <= sensor.range_max_m;
+  const auto report = [&](const double range_m, const double relative) {
+    if (relative_echo != nullptr) {
+      *relative_echo = relative;
+    }
+    return range_m;
+  };
   thread_local std::vector<RaySegment> segments;
   field.segments(origin, direction, surface ? clean_range_m : sensor.range_max_m,
                  segments);
   if (segments.empty()) {
-    return clean_range_m;
+    return report(clean_range_m, surface ? 1.0 : 0.0);
   }
   // The lidar equation: an echo is the backscatter of what the pulse meets
   // over the square of its distance, both ways through the smoke; smoke's
@@ -700,11 +707,16 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
                         std::exp(-2.0 * optical_depth) * overlap(clean_range_m) /
                         (clean_range_m * clean_range_m);
     if (echo >= strongest && echo >= threshold) {
-      return clean_range_m;
+      return report(clean_range_m, 1.0);
     }
   }
-  return strongest >= threshold ? std::max(strongest_at, sensor.range_min_m)
-                                : std::numeric_limits<double>::infinity();
+  if (strongest < threshold) {
+    return report(std::numeric_limits<double>::infinity(), 0.0);
+  }
+  const double at = std::max(strongest_at, sensor.range_min_m);
+  // Over a matte surface seen clear at the same range.
+  return report(at, strongest / (kSurfaceReflectance / std::numbers::pi * overlap(at) /
+                                 (at * at)));
 }
 
 } // namespace drone_city_nav::simulation_smoke

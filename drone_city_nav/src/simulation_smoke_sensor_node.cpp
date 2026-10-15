@@ -112,6 +112,8 @@ struct FieldOffsets {
   std::size_t x{0U};
   std::size_t y{0U};
   std::size_t z{0U};
+  // The return's intensity, where the cloud carries one.
+  std::optional<std::size_t> intensity;
 };
 
 [[nodiscard]] std::optional<FieldOffsets>
@@ -119,6 +121,7 @@ xyzOffsets(const gz::msgs::PointCloudPacked& cloud) {
   std::optional<std::size_t> x;
   std::optional<std::size_t> y;
   std::optional<std::size_t> z;
+  std::optional<std::size_t> intensity;
   for (const auto& field : cloud.field()) {
     if (field.datatype() != gz::msgs::PointCloudPacked::Field::FLOAT32) {
       continue;
@@ -129,12 +132,14 @@ xyzOffsets(const gz::msgs::PointCloudPacked& cloud) {
       y = field.offset();
     } else if (field.name() == "z") {
       z = field.offset();
+    } else if (field.name() == "intensity") {
+      intensity = field.offset();
     }
   }
   if (!x || !y || !z) {
     return std::nullopt;
   }
-  return FieldOffsets{*x, *y, *z};
+  return FieldOffsets{*x, *y, *z, intensity};
 }
 
 // A point's x, y and z in the packed cloud, and written back.
@@ -615,9 +620,18 @@ private:
         clean_return ? clean_point.normalized() : gridDirection(sensor, width, index);
     const double clean_range =
         clean_return ? clean_point.norm() : std::numeric_limits<double>::infinity();
+    double relative_echo = 0.0;
     const double range = simulation_smoke::activeRange(
         *field_, sensor.active, origin.position, origin.rotation * local, clean_range,
-        stamp_s, jitter);
+        stamp_s, jitter, &relative_echo);
+    // The intensity a lidar's driver reports, relative to a matte surface's:
+    // one for a surface, a thin fraction for smoke, nought for no return
+    // (roadmap item 18 stage 0 reads an aerosol by it).
+    if (offsets.intensity.has_value()) {
+      const auto intensity = static_cast<float>(relative_echo);
+      std::memcpy(point.subspan(*offsets.intensity, sizeof(float)).data(), &intensity,
+                  sizeof(float));
+    }
     if (range == clean_range) {
       return 0U;
     }
