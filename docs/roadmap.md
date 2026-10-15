@@ -907,8 +907,10 @@ scheduled, not as an input to the exploration:
 ### Stage 4: What The Vehicle Does (Built)
 
 **Built on 2026-10-15** (specification K40; flown in this item's
-acceptance): a vehicle inside a plume (blind, half the ring smoky) backs
-out on dead reckoning along its heading through K19's hold, holds 30 s
+acceptance): a vehicle in a plume (blind with half the ring smoky, or
+blind and dead reckoning under a light it judges reliable: at a plume's
+edge the ring returns smoke from a few zones only, r1534) backs out on
+dead reckoning along its heading through K19's hold, holds 30 s
 where it sees again after the first plume and takes its goal back, and
 gives the goal up for the start after a second (r1532 landed in the smoke
 before any retreat; r1533 backed out twice and wandered 800 s, item 19's

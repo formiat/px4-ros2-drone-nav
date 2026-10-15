@@ -3,7 +3,16 @@
 namespace drone_city_nav {
 
 SmokeLadderAction SmokeLadder::observe(const SmokeLadderInput& input) {
-  const bool in_smoke = input.blind && input.smoke_share >= kZoneShare;
+  const bool in_smoke_now = input.blind && (input.smoke_share >= kZoneShare ||
+                                            (input.lit && !input.position_fresh));
+  if (!in_smoke_now) {
+    in_smoke_since_ns_.reset();
+  } else if (!in_smoke_since_ns_.has_value()) {
+    in_smoke_since_ns_ = input.now_ns;
+  }
+  const bool in_smoke =
+      in_smoke_since_ns_.has_value() &&
+      static_cast<double>(input.now_ns - *in_smoke_since_ns_) * 1.0e-9 >= kEntryS;
   const bool seeing = !input.blind && input.smoke_share < kClearShare;
   switch (state_) {
     case State::kNone:

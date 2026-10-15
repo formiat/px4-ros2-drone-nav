@@ -2,9 +2,13 @@
 
 // Roadmap item 18 stage 4, the ladder in smoke (specification K40): a vehicle
 // blind to the braking contract while the ring returns smoke from half its
-// zones or more is inside a plume. Its estimator dead reckons within a second
-// of the entry, so the way out is the offboard's back-out on dead reckoning
-// along the heading (I3); this ladder reads the entry and the exit. Out of
+// zones or more, or blind and dead reckoning under a light it judges
+// reliable (at a plume's edge the ring returns smoke from a few zones only,
+// r1534), is in a plume once that has lasted a second (the dark hall's
+// dead-reckoning glitches last 0.1 s, r1488, r1489). Its estimator dead
+// reckons within a second of the entry, so the way out is the offboard's
+// back-out on dead reckoning along the heading (I3); this ladder reads the
+// entry and the exit. Out of
 // the first plume it holds where it sees for the smoke to move or thin, then
 // takes its goal again; out of a second it gives the goal up for the start,
 // as any goal is given up (roadmap item 19): a camera vehicle cannot map a
@@ -25,6 +29,9 @@ struct SmokeLadderInput {
   bool blind{false};
   // The share of the ring's zones returning smoke (K38).
   double smoke_share{0.0};
+  // The light judged reliable by its reading and the ring's surfaces (K12).
+  bool lit{false};
+  // A position source fresh: false while the estimator dead reckons.
   bool position_fresh{false};
   Point3 position{};
   std::int64_t now_ns{0};
@@ -44,6 +51,7 @@ class SmokeLadder final {
 public:
   static constexpr double kZoneShare{0.5};
   static constexpr double kClearShare{0.1};
+  static constexpr double kEntryS{1.0};
   static constexpr double kHoldS{30.0};
 
   [[nodiscard]] SmokeLadderAction observe(const SmokeLadderInput& input);
@@ -66,6 +74,7 @@ private:
   };
   State state_{State::kNone};
   std::size_t entries_{0U};
+  std::optional<std::int64_t> in_smoke_since_ns_;
   std::int64_t hold_since_ns_{0};
 };
 

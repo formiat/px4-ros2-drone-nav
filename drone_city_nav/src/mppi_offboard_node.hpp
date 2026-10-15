@@ -154,8 +154,10 @@ private:
   std::uint64_t offboard_producer_instance_id_{0U};
   ExecutionHorizonAdmissionState horizon_admission_{};
   DeadReckoningLanding dead_reckoning_landing_;
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr smoke_share_sub_;
-  std::optional<std::pair<rclcpp::Time, double>> smoke_share_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr unlit_surface_sub_;
+  double light_reading_{std::numeric_limits<double>::quiet_NaN()};
+  double unlit_surface_share_{std::numeric_limits<double>::quiet_NaN()};
   BlindDescentReflex blind_descent_reflex_;
   // The time-of-flight ring's lateral units and the down unit, the nearest
   // return each saw last and when: the reflex of the blind descent (K19).

@@ -764,6 +764,9 @@ private:
                  progress.sensor_measured_range_m / progress.sensor_guaranteed_range_m <
                      LightReliabilityJudgment::kBlindSensorShare,
         .smoke_share = smoke_share_,
+        .lit = std::isfinite(light_reading_) &&
+               light_reading_ >= LightReliabilityJudgment::kLightReadingOutage &&
+               !(unlit_surface_share_ >= LightReliabilityJudgment::kUnlitSurfaceShare),
         .position_fresh = returnHomePositionSourceFresh(
             latest_position_valid_, latest_position_stamp_ns_, now_ns),
         .position = latest_map_position_,
