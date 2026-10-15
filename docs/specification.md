@@ -310,5 +310,5 @@ opened, so that the numbers above carry their history from the start.
 | 2026-10-15 | K38 | (new) | smoke on the ring: fail evidence, the smoke share published; no particle counter | Agent | Roadmap item 18 stage 2, measured on the rig. | f805e2d0 |
 | 2026-10-15 | K39 | (new) | thermal stereo no depth in the simulator; one Lepton-class core as a detector | Agent | Roadmap item 18 stage 3, measured on the rig. | f805e2d0 |
 | 2026-10-15 | K40 | (new) | the ladder in smoke | Agent | Roadmap item 18 stage 4; flown in the acceptance. | f805e2d0 |
-| 2026-10-15 | K38 | smoke's rays at the measured range | at the body's edge where nearer | Agent | The ring returns from smoke at its aperture, filtered as the vehicle's own; the plume it is in never entered the memory (r1532). | this commit |
-| 2026-10-15 | K40 | the retreat on the position source | a back-out on dead reckoning through K19's hold first | Agent | r1532: dead reckoning within a second of the entry, landed in the smoke at 85.4 s before any retreat. | this commit |
+| 2026-10-15 | K38 | smoke's rays at the measured range | at the body's edge where nearer | Agent | The ring returns from smoke at its aperture, filtered as the vehicle's own; the plume it is in never entered the memory (r1532). | 730b9b15 |
+| 2026-10-15 | K40 | the retreat on the position source | a back-out on dead reckoning through K19's hold first | Agent | r1532: dead reckoning within a second of the entry, landed in the smoke at 85.4 s before any retreat. | 730b9b15 |
