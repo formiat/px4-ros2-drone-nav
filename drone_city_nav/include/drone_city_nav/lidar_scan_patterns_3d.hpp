@@ -31,6 +31,16 @@
 namespace drone_city_nav {
 
 struct LidarScanPatternsConfig {
+  // The intensity the driver reports for a matte surface (the simulation's
+  // relay reports one): the aerosol's reference is the scan's own surfaces,
+  // never under it, so that a scan of smoke alone (every hit weak: r1546,
+  // inside the plume, aerosol 0 with 14 309 weak hits) still reads as one.
+  double matte_surface_intensity{1.0};
+  // An aerosol's evidence lies no nearer than this: the lidar returns from
+  // dense smoke round it at 0.25 to 0.5 m (tools/smoke_rig.py, 3/m), within
+  // the memory's self filter (0.9 m), where the evidence would be the
+  // vehicle's own and dropped (r1546: the scan read as open space).
+  double aerosol_least_range_m{1.2};
   // A hit is weak under this share of the scan's surface intensity (the
   // median of its hits' intensities: most hits are surfaces); an aerosol
   // needs this many of its eight neighbours weak hits within the range band.

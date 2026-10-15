@@ -59,7 +59,9 @@ classifyLidarScanPatterns3D(OrganizedLidarScan3DResult& scan,
       }
     }
     if (!surface.empty()) {
-      const double weak_under = config.weak_intensity_share * quantile(surface, 0.5);
+      const double weak_under =
+          config.weak_intensity_share *
+          std::max(quantile(surface, 0.5), config.matte_surface_intensity);
       std::vector<std::uint8_t> weak(scan.beams.size(), 0U);
       for (std::size_t index = 0U; index < scan.beams.size(); ++index) {
         weak[index] = scan.beams[index].hit && std::isfinite(intensities[index]) &&
@@ -88,6 +90,7 @@ classifyLidarScanPatterns3D(OrganizedLidarScan3DResult& scan,
           continue;
         }
         LidarBeamSample3D& beam = scan.beams[index];
+        beam.range_m = std::max(beam.range_m, config.aerosol_least_range_m);
         scan.unobservable.push_back(
             LidarBeamSample3D{.direction_lidar_flu = beam.direction_lidar_flu,
                               .range_m = beam.range_m,

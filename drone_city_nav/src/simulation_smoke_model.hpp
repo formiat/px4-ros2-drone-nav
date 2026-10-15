@@ -165,6 +165,19 @@ struct ActiveSensor {
   // Where the receiver's field takes the whole beam in; nearer, the echo
   // falls with the square of the distance's share of it.
   double full_overlap_m{0.0};
+  // The range the pulse spans (half its length in time by the speed of
+  // light): the smoke's backscatter arrives from the whole of it at once,
+  // where a surface's comes from one point. A 3D lidar's pulse of some
+  // nanoseconds spans a metre; a time-of-flight unit's histogram bin a
+  // decimetre. Read by 0.1 m bins, the lidar's echo from a 3/m plume fell
+  // under its threshold from 4 m (r1546, r1547: the vehicle entered the
+  // plume closing the corridor at 5.7 m/s and crashed under it).
+  double range_gate_m{0.1};
+  // The reflectance of the matte surface the sensor detects at its maximum
+  // range: its threshold. A 3D lidar's datasheet gives its range at 10
+  // percent reflectivity (the Livox Mid-360: 40 m at 10 percent); a
+  // time-of-flight unit's at a bright target.
+  double threshold_reflectance{0.5};
 };
 
 // The range a time-of-flight sensor or the lidar reports along one ray: the

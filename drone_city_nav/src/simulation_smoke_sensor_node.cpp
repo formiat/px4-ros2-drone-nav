@@ -319,6 +319,12 @@ private:
           // (0.7 per metre) and a haze does not (no measurement of a real
           // unit in smoke behind either; docs/obstacle_mapping.md).
           const double overlap_m = name == "lidar_3d_v1" ? 1.0 : 0.25;
+          // The pulse's range gate: a metre for the lidar, a time-of-flight
+          // unit's histogram bin otherwise (the model's bin).
+          const double range_gate_m = name == "lidar_3d_v1" ? 1.0 : 0.1;
+          // The lidar detects a 10 percent surface at its maximum range (the
+          // Mid-360's datasheet); a time-of-flight unit a matte one.
+          const double threshold_reflectance = name == "lidar_3d_v1" ? 0.1 : 0.5;
           scans_[name] =
               ScanSensor{link->Name(),
                          mountOf(sensor->SemanticPose(), name),
@@ -328,7 +334,8 @@ private:
                          lidar.VerticalScanSamples(),
                          lidar.VerticalScanMinAngle().Radian(),
                          lidar.VerticalScanMaxAngle().Radian(),
-                         ActiveSensor{lidar.RangeMin(), lidar.RangeMax(), overlap_m}};
+                         ActiveSensor{lidar.RangeMin(), lidar.RangeMax(), overlap_m,
+                                      range_gate_m, threshold_reflectance}};
         }
       }
     }

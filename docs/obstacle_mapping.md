@@ -172,13 +172,21 @@ echo over the sensor's threshold, from the smoke or from the surface behind
 it, by the lidar equation: an echo is the backscatter met over the square of
 its distance, both ways through the smoke; the smoke's backscatter is its
 extinction over a lidar ratio of 53 sr (the albedo and the phase above; 40 to
-70 sr is measured for smoke), the threshold that of a matte surface of 0.5 at
-the sensor's maximum range, and the receiver takes the whole beam in from 1 m
-for the lidar and from 0.25 m for a time-of-flight unit. A smoke return lies
+70 sr is measured for smoke), summed over the pulse's range gate (a metre for
+the lidar, a pulse of some nanoseconds; a decimetre for a time-of-flight
+unit's histogram bin), the threshold that of a surface of 0.1 at the lidar's
+maximum range (its datasheet's 10 percent reflectivity) and of 0.5 at a
+time-of-flight unit's, and the receiver takes the whole beam in from 1 m for
+the lidar and from 0.25 m for a time-of-flight unit. A smoke return lies
 somewhere in its 0.1 m bin and moves with the churn from scan to scan; the
-intensity is left as it was. The two overlap distances are chosen, not
-measured on a real unit: with them a time-of-flight unit is blinded by smoke
-round it once its visibility falls under about 4 m, not by a haze.
+intensity is the echo over a matte surface's at that range. The two overlap
+distances are chosen, not measured on a real unit: with them a time-of-flight
+unit is blinded by smoke round it once its visibility falls under about 4 m,
+not by a haze. Read by bins against a surface of 0.5, the lidar could not see
+a 3/m plume from 4 m and flew into the one closing a corridor at 5.7 m/s
+(r1546, r1547); with the gate it returns from such a plume from about 20 m,
+from 1/m from 15 m and from 0.3/m from 9 m, and inside dense smoke from
+0.35 m (log/tools/part6/lidar_range_gate1_r01).
 
 **What each sensor sees.** A wall 5 m ahead, a box of smoke 1 to 4 m ahead,
 the light at the pair, the noise of specification A12 (the clear wall at 7.7

@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -56,6 +57,21 @@ TEST(LidarScanPatterns, WeakReturnsAmongWeakReturnsAreAnAerosol) {
   EXPECT_NEAR(scan.beams[at(12U, 22U)].range_m, 4.0, 1.0e-9);
   EXPECT_TRUE(scan.beams[at(25U, 40U)].hit);
   EXPECT_EQ(scan.hit_beams, scan.beams.size() - 25U);
+}
+
+TEST(LidarScanPatterns, AScanOfSmokeAloneIsAnAerosolAtTheBodysEdge) {
+  std::vector<float> intensities;
+  // Inside a dense plume: every beam returns from the smoke at 0.3 m, at a
+  // thin fraction of a matte surface's intensity (tools/smoke_rig.py, 3/m).
+  OrganizedLidarScan3DResult scan = wallScan(0.3, intensities);
+  std::fill(intensities.begin(), intensities.end(), 0.018F);
+  const LidarScanPatternsResult result = classifyLidarScanPatterns3D(
+      scan, intensities, kConfig, LidarScanPatternsConfig{});
+  EXPECT_EQ(result.aerosol_beams, scan.beams.size());
+  EXPECT_EQ(scan.hit_beams, 0U);
+  ASSERT_EQ(scan.unobservable.size(), scan.beams.size());
+  EXPECT_NEAR(scan.unobservable.front().range_m, 1.2, 1.0e-9);
+  EXPECT_NEAR(scan.beams.front().range_m, 1.2, 1.0e-9);
 }
 
 TEST(LidarScanPatterns, ANoReturnBundleInAFlatNearWallIsADropout) {

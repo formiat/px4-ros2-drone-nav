@@ -664,11 +664,14 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
         std::min(1.0, distance / std::max(sensor.full_overlap_m, 1e-6));
     return share * share;
   };
-  const double threshold = kSurfaceReflectance / std::numbers::pi /
+  const double threshold = sensor.threshold_reflectance / std::numbers::pi /
                            (sensor.range_max_m * sensor.range_max_m);
   double optical_depth = 0.0;
   double strongest = 0.0;
   double strongest_at = std::numeric_limits<double>::infinity();
+  // The echo of one range gate is the sum of its bins' (the pulse's length):
+  // the window of the last `gate_bins` bins of a segment.
+  thread_local std::vector<double> window;
   // Nothing past a distance echoes more than a matte surface there seen
   // through the smoke so far: once that is under what the sensor already
   // has (or could detect), the rest of the ray cannot change the answer.
@@ -677,20 +680,32 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
     const double length = segment.exit_m - segment.entry_m;
     const auto bins = static_cast<std::size_t>(std::ceil(length / kRangeBinM));
     const double bin = length / static_cast<double>(std::max<std::size_t>(bins, 1U));
+    const auto gate_bins = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::lround(sensor.range_gate_m / bin)));
+    window.clear();
+    double window_sum = 0.0;
     for (std::size_t index = 0U; index < bins && !settled; ++index) {
       const double distance =
           segment.entry_m + (static_cast<double>(index) + 0.5) * bin;
       const double sigma = field.extinction(origin + direction * distance, time_s);
       const double middle_depth = optical_depth + 0.5 * sigma * bin;
       optical_depth += sigma * bin;
-      if (distance >= sensor.range_min_m && sigma > 0.0) {
-        const double echo = sigma / lidar_ratio_sr * bin *
-                            std::exp(-2.0 * middle_depth) * overlap(distance) /
-                            (distance * distance);
-        if (echo > strongest) {
-          strongest = echo;
-          strongest_at = distance + (std::clamp(jitter, 0.0, 1.0) - 0.5) * bin;
-        }
+      const double echo = distance >= sensor.range_min_m && sigma > 0.0
+                              ? sigma / lidar_ratio_sr * bin *
+                                    std::exp(-2.0 * middle_depth) * overlap(distance) /
+                                    (distance * distance)
+                              : 0.0;
+      window.push_back(echo);
+      window_sum += echo;
+      if (window.size() > gate_bins) {
+        window_sum -= window.front();
+        window.erase(window.begin());
+      }
+      if (window_sum > strongest) {
+        strongest = window_sum;
+        // The gate's middle, placed in its bin by the jitter.
+        strongest_at = distance - 0.5 * static_cast<double>(window.size() - 1U) * bin +
+                       (std::clamp(jitter, 0.0, 1.0) - 0.5) * bin;
       }
       const double beyond = distance + 0.5 * bin;
       settled = kSurfaceReflectance / std::numbers::pi *
