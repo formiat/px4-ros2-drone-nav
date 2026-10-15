@@ -307,6 +307,6 @@ opened, so that the numbers above carry their history from the start.
 | 2026-10-14 | F13 | a matched nothing is absent depth, not a prohibition; nothing reads it | the silence on the heading bounds the speed by its rim's depth; never marked from one frame | Agent | Roadmap item 18 stage 0b: the stage's marking closed the dark location (r1496, r1497); the panel enters the memory by its hits (r1491, r1495); the bound flown (r1498). | 945efe09 |
 | 2026-10-14 | K36 | (new) | the silent patch's numbers | Agent | Roadmap item 18 stage 0b (F13). | 945efe09 |
 | 2026-10-15 | K37 | (new) | the lidar's failure patterns | Agent | Roadmap item 18 stage 0 built. | a51233b4 |
-| 2026-10-15 | K38 | (new) | smoke on the ring: fail evidence, the smoke share published; no particle counter | Agent | Roadmap item 18 stage 2, measured on the rig. | this commit |
-| 2026-10-15 | K39 | (new) | thermal stereo no depth in the simulator; one Lepton-class core as a detector | Agent | Roadmap item 18 stage 3, measured on the rig. | this commit |
-| 2026-10-15 | K40 | (new) | the ladder in smoke | Agent | Roadmap item 18 stage 4; flown in the acceptance. | this commit |
+| 2026-10-15 | K38 | (new) | smoke on the ring: fail evidence, the smoke share published; no particle counter | Agent | Roadmap item 18 stage 2, measured on the rig. | f805e2d0 |
+| 2026-10-15 | K39 | (new) | thermal stereo no depth in the simulator; one Lepton-class core as a detector | Agent | Roadmap item 18 stage 3, measured on the rig. | f805e2d0 |
+| 2026-10-15 | K40 | (new) | the ladder in smoke | Agent | Roadmap item 18 stage 4; flown in the acceptance. | f805e2d0 |
