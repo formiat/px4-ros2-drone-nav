@@ -51,8 +51,8 @@ public:
     return since_ns_.has_value() && now_ns - *since_ns_ >= kDeadReckonedNs;
   }
 
-  // The share of its configured range the braking contract grants, the
-  // measure the light is judged by (K12), at `stamp_ns`.
+  // The share of its configured range the frame alone grants, the measure
+  // the light is judged by (K12), at `stamp_ns`.
   void observeSensorShare(const std::int64_t stamp_ns,
                           const double sensor_share) noexcept {
     share_stamp_ns_ = stamp_ns;

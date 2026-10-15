@@ -610,13 +610,14 @@ private:
       return;
     }
     const std::int64_t now_ns = now().nanoseconds();
-    // The share of its configured range the braking contract grants.
-    light_judgment_.observe(static_cast<double>(now_ns) * 1.0e-9,
-                            progress.sensor_guaranteed_range_m > 0.0
-                                ? progress.sensor_measured_range_m /
-                                      progress.sensor_guaranteed_range_m
-                                : -1.0,
-                            light_reading_, unlit_surface_share_);
+    // The share of its configured range the frame alone grants (K12), not
+    // the measured range over the guaranteed: the range has a floor at the
+    // margin, 2.001 m, which is 0.385 of the 5.2 m of K7, over the blind
+    // line; by the ratio no frame was blind from 2026-10-14 (r1533, r1536).
+    light_judgment_.observe(
+        static_cast<double>(now_ns) * 1.0e-9,
+        progress.sensor_guaranteed_range_m > 0.0 ? progress.sensor_frame_share : -1.0,
+        light_reading_, unlit_surface_share_);
     if (std::isfinite(progress.route_remaining_m)) {
       route_remaining_m_ = progress.route_remaining_m;
     }
@@ -760,9 +761,9 @@ private:
   [[nodiscard]] bool smokeLadder(const msg::NavigationProgress& progress,
                                  const std::int64_t now_ns) {
     const SmokeLadderAction action = smoke_ladder_.observe(SmokeLadderInput{
-        .blind = progress.sensor_guaranteed_range_m > 0.0 &&
-                 progress.sensor_measured_range_m / progress.sensor_guaranteed_range_m <
-                     LightReliabilityJudgment::kBlindSensorShare,
+        .blind =
+            progress.sensor_guaranteed_range_m > 0.0 &&
+            progress.sensor_frame_share < LightReliabilityJudgment::kBlindSensorShare,
         .smoke_share = smoke_share_,
         .lit = std::isfinite(light_reading_) &&
                light_reading_ >= LightReliabilityJudgment::kLightReadingOutage &&

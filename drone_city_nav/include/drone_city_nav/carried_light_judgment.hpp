@@ -37,9 +37,13 @@ namespace drone_city_nav {
 // stands once reached: it sends the vehicle home.
 class LightReliabilityJudgment final {
 public:
-  // The share of its range the braking contract grants under which it reads
-  // the forward sensor as blind, the line of the unobservable evidence too
-  // (specification K12, K14): the range within a quarter metre of the margin.
+  // The share of its configured range the frame alone grants under which it
+  // reads the forward sensor as blind, the line of the unobservable evidence
+  // too (specification K12, K14). The share itself, not the measured range
+  // over the guaranteed: the range has a floor at the margin, 2.001 m, which
+  // was within a quarter metre of the line at 6.4 m and is 0.385 of the
+  // 5.2 m of K7, over it, so that by the ratio no frame was blind from
+  // 2026-10-14 (r1533, r1536: dead reckoning in smoke, no hold).
   static constexpr double kBlindSensorShare{0.35};
   // Under it the light's reading is an outage, the light reaching half as
   // far: the moderate flicker every flight carries stays under it 2.93 s at

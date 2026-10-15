@@ -252,10 +252,12 @@ MppiOffboardNode::MppiOffboardNode()
                                      "/drone_city_nav/mppi/navigation_progress"),
       rclcpp::QoS{1}.reliable(),
       [this](const msg::NavigationProgress::SharedPtr progress) {
+        // The frame's share of its configured range (K12), as the mission
+        // monitor judges the light: the measured range's floor at the margin
+        // is over the blind line since K7's 5.2 m (r1536: no hold in smoke).
         if (progress->sensor_guaranteed_range_m > 0.0) {
-          dead_reckoning_landing_.observeSensorShare(
-              now().nanoseconds(),
-              progress->sensor_measured_range_m / progress->sensor_guaranteed_range_m);
+          dead_reckoning_landing_.observeSensorShare(now().nanoseconds(),
+                                                     progress->sensor_frame_share);
         }
       });
   // Roadmap item 18 stage 4 (specification K40): what the light's driver
