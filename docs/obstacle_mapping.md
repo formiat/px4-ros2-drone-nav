@@ -167,14 +167,12 @@ goes down with the surface it came with and is added again as Gazebo adds it.
 A frame costs 20 to 70 ms on four threads, the most with smoke round the
 vehicle.
 
-**A surface on a voxel boundary** (specification K41). A hit within 0.03 m of
-one of its voxel's faces, the lidar's range noise, marks the voxel across
-that face as well: the surface lies in either for all the sensor knows. The staging area's floor lies at 7.5 m, a boundary of the 0.25 m
-grid: its hits were split between the layer above, which the rays grazing
-the floor from afar carved free, and the layer below, with holes where every
-hit had gone above; the planner routed under it (r1546) and item 19's proof
-leaked through it (r1553); a corridor wall on a column boundary, grazed along
-the corridor, was carved the same way (r1555).
+**A surface on a voxel boundary** keeps both its layers: the sensor's range
+noise lands its hits on either side of the face, and once the rays grazing
+the surface carve neither layer (K42 below) each holds its hits. The rule
+that marked both voxels on every such hit (K41, 2026-10-15) thickened a
+quarter of the surfaces toward the air and cost the lidar's ordinary flights
+15 percent of their speed (r1601 to r1605); it is withdrawn.
 
 **A ray grazing a plane of the grid** (specification K42) carves no voxel
 that holds a surface: within 15 degrees of a plane it crosses such a voxel
@@ -182,7 +180,7 @@ without telling whether a surface parallel to that plane lies under or
 beside its path. From a hover the lidar's rays graze the floors and the
 corridor walls, hit them in rings a row apart and, before this rule, carved
 the voxels between the rings free within seconds; the proof of item 19 then
-leaked through the floor (r1564, r1566).
+leaked through the floor (r1564, r1566); with it, the lidar's blocked flights gave the goal up by the proof in five of five (r1576 to r1580).
 
 **The time-of-flight ring and the lidar.** Each ray reports the strongest
 echo over the sensor's threshold, from the smoke or from the surface behind
