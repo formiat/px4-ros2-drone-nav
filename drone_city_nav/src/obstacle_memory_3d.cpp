@@ -595,8 +595,58 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
     }
     return;
   }
+  // A ray within kGrazingSine of one of the grid's planes (15 degrees)
+  // crosses a voxel it does not end in without telling whether a surface
+  // parallel to that plane lies in the voxel under or beside its path: it
+  // carves no occupied voxel that lies in such a surface (specification
+  // K42), a surface being read from the voxel's neighbours (none occupied
+  // along the plane's normal, two or more occupied in the plane). From a
+  // hover the rays grazing a floor hit it in rings a row apart and carved
+  // the voxels between the rings in seconds, and the memory's floor became
+  // a sieve the planner routed under (r1546) and item 19's proof leaked
+  // through (r1564, r1566: the proof held one sample).
+  constexpr double kGrazingSine{0.259};
+  const std::array<double, 3> along{std::abs(direction.x), std::abs(direction.y),
+                                    std::abs(direction.z)};
+  const bool grazing = std::min({along[0], along[1], along[2]}) < kGrazingSine;
+  const auto occupiedAt = [this](const GridIndex3D cell, const int dx, const int dy,
+                                 const int dz) {
+    const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
+    return grid_.contains(near) && grid_.isOccupied(near);
+  };
+  const auto inGrazedSurface = [&](const GridIndex3D cell) {
+    for (std::size_t axis = 0U; axis < 3U; ++axis) {
+      if (along[axis] >= kGrazingSine) {
+        continue;
+      }
+      // The unit steps along the normal and along the two axes in the plane.
+      constexpr std::array<std::array<int, 3>, 3> kUnit{
+          {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+      const std::array<int, 3>& normal = kUnit[axis];
+      if (occupiedAt(cell, normal[0], normal[1], normal[2]) ||
+          occupiedAt(cell, -normal[0], -normal[1], -normal[2])) {
+        continue;
+      }
+      int in_plane{0};
+      for (std::size_t other = 0U; other < 3U; ++other) {
+        if (other == axis) {
+          continue;
+        }
+        const std::array<int, 3>& step = kUnit[other];
+        in_plane += occupiedAt(cell, step[0], step[1], step[2]) ? 1 : 0;
+        in_plane += occupiedAt(cell, -step[0], -step[1], -step[2]) ? 1 : 0;
+      }
+      if (in_plane >= 2) {
+        return true;
+      }
+    }
+    return false;
+  };
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
+      if (grazing && grid_.isOccupied(cell) && inGrazedSurface(cell)) {
+        return;
+      }
       recordScanEvidence(cell, false, false, scan_evidence, cursor);
     }
   });

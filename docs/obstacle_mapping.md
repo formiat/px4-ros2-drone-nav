@@ -176,6 +176,14 @@ hit had gone above; the planner routed under it (r1546) and item 19's proof
 leaked through it (r1553); a corridor wall on a column boundary, grazed along
 the corridor, was carved the same way (r1555).
 
+**A ray grazing a plane of the grid** (specification K42) carves no voxel
+that holds a surface: within 15 degrees of a plane it crosses such a voxel
+without telling whether a surface parallel to that plane lies under or
+beside its path. From a hover the lidar's rays graze the floors and the
+corridor walls, hit them in rings a row apart and, before this rule, carved
+the voxels between the rings free within seconds; the proof of item 19 then
+leaked through the floor (r1564, r1566).
+
 **The time-of-flight ring and the lidar.** Each ray reports the strongest
 echo over the sensor's threshold, from the smoke or from the surface behind
 it, by the lidar equation: an echo is the backscatter met over the square of

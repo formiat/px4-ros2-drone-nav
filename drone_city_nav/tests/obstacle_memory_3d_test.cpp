@@ -3,7 +3,9 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <numbers>
 
 namespace drone_city_nav {
 namespace {
@@ -197,6 +199,47 @@ TEST(ObstacleMemory3D, AHitAtAFloorFaceMarksTheVoxelsOnBothSidesOfIt) {
   EXPECT_TRUE(memory.grid().isOccupied(*inside));
   EXPECT_TRUE(
       memory.grid().isOccupied(GridIndex3D{inside->x - 1, inside->y, inside->z}));
+}
+
+TEST(ObstacleMemory3D, ARayGrazingAFloorCarvesNoVoxelOfIt) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  // A floor patch at z = 1, x 8 to 12 and y 0 to 2, hit from above.
+  for (int x = 8; x <= 12; ++x) {
+    for (int y = 0; y <= 2; ++y) {
+      const std::array hit{LidarBeam3D{.direction_map = {0.0, 0.0, -1.0},
+                                       .range_m = 2.5 - 1.5,
+                                       .hit = true,
+                                       .valid = true}};
+      static_cast<void>(
+          memory.integrateScan({.origin_map = {x + 0.5, y + 0.5, 2.5}, .beams = hit}));
+    }
+  }
+  const GridIndex3D floor{10, 1, 1};
+  ASSERT_TRUE(memory.grid().isOccupied(floor));
+  // Rays grazing the floor at 5 degrees from the west, passing through that
+  // voxel and ending 15 m on: the floor stays.
+  const double sine = std::sin(5.0 * std::numbers::pi / 180.0);
+  const double cosine = std::cos(5.0 * std::numbers::pi / 180.0);
+  for (int scan = 0; scan < 30; ++scan) {
+    const std::array grazing{LidarBeam3D{.direction_map = {cosine, 0.0, -sine},
+                                         .range_m = 18.0,
+                                         .hit = true,
+                                         .valid = true}};
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = {0.5, 1.5, 1.9 + 10.0 * sine}, .beams = grazing}));
+  }
+  EXPECT_TRUE(memory.grid().isOccupied(floor));
+  // Rays through it at 45 degrees carve it as before.
+  for (int scan = 0; scan < 30; ++scan) {
+    const std::array steep{LidarBeam3D{.direction_map = {0.7071, 0.0, -0.7071},
+                                       .range_m = 4.0,
+                                       .hit = false,
+                                       .valid = true}};
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {9.5, 1.5, 2.9}, .beams = steep}));
+  }
+  EXPECT_FALSE(memory.grid().isOccupied(floor));
 }
 
 TEST(ObstacleMemory3D, AnOccupancyNotConfirmedDecaysByHowOftenItWasSeen) {
