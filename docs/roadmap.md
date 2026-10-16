@@ -1298,7 +1298,7 @@ Complete when five flights of item 18's blocking scenario give the goal up
 with `trigger=topological`, the truth grid confirms no way existed, and the
 vehicle is home in truth, on either sensor set.
 
-**Completed on 2026-10-17.** On the lidar the blocking scenario gave the goal
+**Completed on 2026-10-16.** On the lidar the blocking scenario gave the goal
 up by the proof in ten of ten valid flights (r1576 to r1580 on e471157b,
 r1616 to r1620 on 76367bee; r1556 and r7 to r10 before them), within about
 110 s of the plume's face, and the vehicle came home 0.15 to 0.51 m from the
