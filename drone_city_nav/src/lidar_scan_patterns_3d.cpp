@@ -50,11 +50,16 @@ classifyLidarScanPatterns3D(OrganizedLidarScan3DResult& scan,
     return at(static_cast<std::size_t>(row), static_cast<std::size_t>(column));
   };
 
-  // Aerosol: weak hits among weak hits near the same range.
+  // Aerosol: weak hits among weak hits near the same range. An intensity of
+  // nought or under is no reading (a driver that reports none, the
+  // simulation's relay beyond the smoke's reach), never a weak hit: read as
+  // one, a whole scan became an aerosol (r18, the goal's hall far from any
+  // plume: 64 000 beams a scan, the goal held closed for 400 s).
   if (intensities.size() == scan.beams.size()) {
     std::vector<double> surface;
     for (std::size_t index = 0U; index < scan.beams.size(); ++index) {
-      if (scan.beams[index].hit && std::isfinite(intensities[index])) {
+      if (scan.beams[index].hit && std::isfinite(intensities[index]) &&
+          intensities[index] > 0.0F) {
         surface.push_back(intensities[index]);
       }
     }
@@ -65,6 +70,7 @@ classifyLidarScanPatterns3D(OrganizedLidarScan3DResult& scan,
       std::vector<std::uint8_t> weak(scan.beams.size(), 0U);
       for (std::size_t index = 0U; index < scan.beams.size(); ++index) {
         weak[index] = scan.beams[index].hit && std::isfinite(intensities[index]) &&
+                              intensities[index] > 0.0F &&
                               intensities[index] < weak_under
                           ? 1U
                           : 0U;

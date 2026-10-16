@@ -577,10 +577,25 @@ private:
     }
     const Mount origin = compose(*vehicle, sensor.mount);
     const double reach = sensor.active.range_max_m;
+    const std::span<char> bytes{*cloud.mutable_data()};
     if (!field_->within(origin.position, reach)) {
+      // No smoke within the sensor's reach: the ranges stand, and the
+      // driver's intensity is reported all the same, one for a surface,
+      // nought for no return (left at Gazebo's nought, the memory read a
+      // whole scan as an aerosol: r18).
+      if (offsets->intensity.has_value()) {
+        for (std::size_t index = 0U; index < points; ++index) {
+          const std::span<char> point =
+              bytes.subspan(index * cloud.point_step(), cloud.point_step());
+          const Eigen::Vector3d clean_point = readPoint(point, *offsets);
+          const float intensity =
+              clean_point.allFinite() && clean_point.norm() > 0.0 ? 1.0F : 0.0F;
+          std::memcpy(point.subspan(*offsets->intensity, sizeof(float)).data(),
+                      &intensity, sizeof(float));
+        }
+      }
       return 0U;
     }
-    const std::span<char> bytes{*cloud.mutable_data()};
     const double stamp_s = stampOf(cloud.header());
     // The lidar's tens of thousands of rays in bands, one thread each.
     const std::size_t bands =

@@ -74,6 +74,16 @@ TEST(LidarScanPatterns, AScanOfSmokeAloneIsAnAerosolAtTheBodysEdge) {
   EXPECT_NEAR(scan.beams.front().range_m, 1.2, 1.0e-9);
 }
 
+TEST(LidarScanPatterns, AScanWithoutIntensitiesIsNoAerosol) {
+  std::vector<float> intensities;
+  OrganizedLidarScan3DResult scan = wallScan(5.0, intensities);
+  std::fill(intensities.begin(), intensities.end(), 0.0F);
+  const LidarScanPatternsResult result = classifyLidarScanPatterns3D(
+      scan, intensities, kConfig, LidarScanPatternsConfig{});
+  EXPECT_EQ(result.aerosol_beams, 0U);
+  EXPECT_EQ(scan.hit_beams, scan.beams.size());
+}
+
 TEST(LidarScanPatterns, ANoReturnBundleInAFlatNearWallIsADropout) {
   std::vector<float> intensities;
   OrganizedLidarScan3DResult scan = wallScan(5.0, intensities);
