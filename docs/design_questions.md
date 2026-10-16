@@ -232,3 +232,32 @@ contract, so no speed into it, but no false "unreliable light, home". For
 truly large spaces the answer is another sensor: the lidar build (40 m and
 its own emitter) or, in the open at a height, GNSS; a camera under a
 carried light sees about 8 m at night.
+
+## Why Does Item 19's Proof Flood Through The Body's Radius, And Why Does A Grazing Ray Carve Nothing Of A Surface?
+
+The proof floods the memory from the vehicle through every voxel that is
+not occupied, unknown included, and calls the goal unreachable when the
+flood closes without it. A flood a voxel wide passes what the body does not:
+evidence laid a ray apart (a plume's face marked from 20 m is a beam apart,
+0.35 m against the 0.25 m voxel) and the holes a few voxels wide that the
+sensor leaves in a floor. In the blocked flights of 2026-10-15 the plain
+flood ran through such sieves to its budget every ten seconds (r1549), and
+with the 26 neighbours it leaked under the floor (r1553 replayed offline).
+A flood through the voxels no occupied voxel lies within the body's radius
+of (0.55 m, specification K16) closes on both, and it closes only where the
+body could not pass either: a gap of two voxels is under the body's width.
+
+The holes themselves were the memory's. From a hover the lidar's rays graze
+the floors and the corridor walls at a few degrees, hit them in rings a row
+apart and, between the rings, pass through the voxels that hold the surface
+without ending in them: eight such misses a scan against a score of 12
+carved a floor voxel free in seconds, and the start's side of a corridor
+closed by smoke opened again within a proof sample (r1564, r1566). A ray
+within 15 degrees of a plane of the grid cannot tell whether a surface
+parallel to that plane lies under or beside its path inside a voxel, so it
+carves no occupied voxel that lies in such a surface, read from the voxel's
+neighbours (specification K42); a lone voxel, a speckle or a dark mark, is
+carved as before. The rule that marked both voxels of a face a hit lay
+within the range noise of (K41) was tried the same day and withdrawn: it
+thickened a quarter of the surfaces toward the air and cost the lidar's
+ordinary flights 15 percent of their speed.

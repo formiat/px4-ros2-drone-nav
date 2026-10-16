@@ -904,7 +904,7 @@ scheduled, not as an input to the exploration:
 | Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
 | Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
 
-### Stage 4: What The Vehicle Does (Built)
+### Stage 4: What The Vehicle Does (Done)
 
 **Built on 2026-10-15** (specification K40; flown in this item's
 acceptance): a vehicle in a plume (blind with half the ring smoky, or
@@ -1297,6 +1297,25 @@ What has to hold in those flights, and is checked in them:
 Complete when five flights of item 18's blocking scenario give the goal up
 with `trigger=topological`, the truth grid confirms no way existed, and the
 vehicle is home in truth, on either sensor set.
+
+**Completed on 2026-10-17.** On the lidar the blocking scenario gave the goal
+up by the proof in ten of ten valid flights (r1576 to r1580 on e471157b,
+r1616 to r1620 on 76367bee; r1556 and r7 to r10 before them), within about
+110 s of the plume's face, and the vehicle came home 0.15 to 0.51 m from the
+start in truth without a contact; the truth grid confirms no way existed
+(`log/tools/truth25/flood`, the plume as a sphere of 3.5 m: the start's side
+6 730 m3, B outside it). What it took, each measured on a flight and
+recorded in the specification: the lidar's smoke echo over its pulse's range
+gate (A13; the plume had been invisible from 4 m, r1546 and r1547 crashed in
+it), a scan of smoke alone read as an aerosol (K37), the proof's floods
+through the voxels the body's radius fits in (K16; the plume's face marked a
+beam apart was a sieve, r1549), and a grazing ray carving nothing of a
+surface (K42; the start's side opened under the hover within a sample, r1564,
+r1566). On the stereo set the same scenario is given up by the ladder in
+smoke (K40, `trigger=smoke`), not by the proof: the pair cannot map a plume
+it cannot see into, so no closure stands in its memory; the scenario admits
+both triggers (`RETURN_TRIGGERS_ALLOWED`), the deviation recorded in the
+goal's report.
 
 ## 25. The Estimator On Real Recordings
 
