@@ -124,6 +124,28 @@ TEST(SimulationSmokeModelTest, AnActiveSensorReadsThroughNoSmokeAsBefore) {
       9.5);
 }
 
+TEST(SimulationSmokeModelTest, ALastReturnSensorReportsTheWallBehindThinSmoke) {
+  // The lidar's gate of a metre against a 10 percent surface at 35 m, inside
+  // thin smoke (0.1/m) with a wall 8 m on: the strongest echo is the smoke's
+  // near the sensor, the last the wall's.
+  const ActiveSensor strongest{0.2, 35.0, 1.0, 1.0, 0.1, false};
+  const ActiveSensor last{0.2, 35.0, 1.0, 1.0, 0.1, true};
+  const Eigen::Vector3d origin{0.0, 0.0, 2.0};
+  const SmokeField thin{
+      std::vector<SmokeZone>{SmokeZone{{5.0, 0.0, 2.0}, {12.0, 6.0, 3.0}, 0.1}}, 0U};
+  const double by_strongest =
+      activeRange(thin, strongest, origin, Eigen::Vector3d::UnitX(), 8.0, 0.0, 0.5);
+  const double by_last =
+      activeRange(thin, last, origin, Eigen::Vector3d::UnitX(), 8.0, 0.0, 0.5);
+  EXPECT_LT(by_strongest, 3.0);
+  EXPECT_DOUBLE_EQ(by_last, 8.0);
+  // Dense smoke (3/m) hides the wall from both.
+  const SmokeField dense{
+      std::vector<SmokeZone>{SmokeZone{{5.0, 0.0, 2.0}, {12.0, 6.0, 3.0}, 3.0}}, 0U};
+  EXPECT_LT(activeRange(dense, last, origin, Eigen::Vector3d::UnitX(), 8.0, 0.0, 0.5),
+            3.0);
+}
+
 TEST(SimulationSmokeModelTest, DenseSmokeReturnsTheBeamThinSmokeLetsItThrough) {
   const ActiveSensor lidar{0.2, 35.0, 1.0};
   const Eigen::Vector3d origin{0.0, 0.0, 2.0};

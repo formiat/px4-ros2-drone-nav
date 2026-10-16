@@ -104,6 +104,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "light-lost": "$(LIGHT_LOST_SCENARIO)",
             "smoke": "$(SMOKE_SCENARIO)",
             "smoke-blocked": "$(SMOKE_BLOCKED_SCENARIO)",
+            "smoke-rooms": "$(SMOKE_ROOMS_SCENARIO)",
         }
         for name, settings in scenarios.items():
             for mode in ("headless", "gui"):

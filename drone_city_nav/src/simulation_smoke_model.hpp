@@ -178,6 +178,12 @@ struct ActiveSensor {
   // percent reflectivity (the Livox Mid-360: 40 m at 10 percent); a
   // time-of-flight unit's at a bright target.
   double threshold_reflectance{0.5};
+  // The echo the driver reports when more than one passes the threshold:
+  // the strongest (a time-of-flight unit's histogram peak), or the last,
+  // the farthest, as a lidar driver set to last return (roadmap item 23):
+  // through thin smoke the last echo is the wall behind it, the strongest
+  // the smoke a metre off.
+  bool last_return{false};
 };
 
 // The range a time-of-flight sensor or the lidar reports along one ray: the

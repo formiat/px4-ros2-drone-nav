@@ -325,17 +325,20 @@ private:
           // The lidar detects a 10 percent surface at its maximum range (the
           // Mid-360's datasheet); a time-of-flight unit a matte one.
           const double threshold_reflectance = name == "lidar_3d_v1" ? 0.1 : 0.5;
-          scans_[name] =
-              ScanSensor{link->Name(),
-                         mountOf(sensor->SemanticPose(), name),
-                         lidar.HorizontalScanSamples(),
-                         lidar.HorizontalScanMinAngle().Radian(),
-                         lidar.HorizontalScanMaxAngle().Radian(),
-                         lidar.VerticalScanSamples(),
-                         lidar.VerticalScanMinAngle().Radian(),
-                         lidar.VerticalScanMaxAngle().Radian(),
-                         ActiveSensor{lidar.RangeMin(), lidar.RangeMax(), overlap_m,
-                                      range_gate_m, threshold_reflectance}};
+          // The lidar's driver set to last return (roadmap item 23: the wall
+          // behind thin smoke), a time-of-flight unit reporting its peak.
+          const bool last_return = name == "lidar_3d_v1";
+          scans_[name] = ScanSensor{link->Name(),
+                                    mountOf(sensor->SemanticPose(), name),
+                                    lidar.HorizontalScanSamples(),
+                                    lidar.HorizontalScanMinAngle().Radian(),
+                                    lidar.HorizontalScanMaxAngle().Radian(),
+                                    lidar.VerticalScanSamples(),
+                                    lidar.VerticalScanMinAngle().Radian(),
+                                    lidar.VerticalScanMaxAngle().Radian(),
+                                    ActiveSensor{lidar.RangeMin(), lidar.RangeMax(),
+                                                 overlap_m, range_gate_m,
+                                                 threshold_reflectance, last_return}};
         }
       }
     }

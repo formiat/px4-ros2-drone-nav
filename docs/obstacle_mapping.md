@@ -192,7 +192,10 @@ the lidar, a pulse of some nanoseconds; a decimetre for a time-of-flight
 unit's histogram bin), the threshold that of a surface of 0.1 at the lidar's
 maximum range (its datasheet's 10 percent reflectivity) and of 0.5 at a
 time-of-flight unit's, and the receiver takes the whole beam in from 1 m for
-the lidar and from 0.25 m for a time-of-flight unit. A smoke return lies
+the lidar and from 0.25 m for a time-of-flight unit. The lidar reports its last echo over the threshold, as a lidar
+driver set to last return (roadmap item 23: through smoke of 0.1 or 0.2/m
+it reads the wall 8 m on, which the strongest echo, the smoke a metre off,
+had hidden), a time-of-flight unit its strongest. A smoke return lies
 somewhere in its 0.1 m bin and moves with the churn from scan to scan; the
 intensity is the echo over a matte surface's at that range. The two overlap
 distances are chosen, not measured on a real unit: with them a time-of-flight

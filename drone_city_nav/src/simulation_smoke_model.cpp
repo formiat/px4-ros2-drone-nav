@@ -669,6 +669,10 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
   double optical_depth = 0.0;
   double strongest = 0.0;
   double strongest_at = std::numeric_limits<double>::infinity();
+  // The farthest gate over the threshold, for a sensor reporting its last
+  // return.
+  double last = 0.0;
+  double last_at = std::numeric_limits<double>::infinity();
   // The echo of one range gate is the sum of its bins' (the pulse's length):
   // the window of the last `gate_bins` bins of a segment.
   thread_local std::vector<double> window;
@@ -701,17 +705,28 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
         window_sum -= window.front();
         window.erase(window.begin());
       }
+      // The gate's middle, placed in its bin by the jitter.
+      const double gate_at = distance -
+                             0.5 * static_cast<double>(window.size() - 1U) * bin +
+                             (std::clamp(jitter, 0.0, 1.0) - 0.5) * bin;
       if (window_sum > strongest) {
         strongest = window_sum;
-        // The gate's middle, placed in its bin by the jitter.
-        strongest_at = distance - 0.5 * static_cast<double>(window.size() - 1U) * bin +
-                       (std::clamp(jitter, 0.0, 1.0) - 0.5) * bin;
+        strongest_at = gate_at;
+      }
+      if (window_sum >= threshold) {
+        last = window_sum;
+        last_at = gate_at;
       }
       const double beyond = distance + 0.5 * bin;
+      // Nothing past a distance echoes more than a matte surface there seen
+      // through the smoke so far: once that is under what the sensor already
+      // has (the strongest echo; a last-return sensor keeps looking while a
+      // surface could still pass its threshold), the rest of the ray cannot
+      // change the answer.
       settled = kSurfaceReflectance / std::numbers::pi *
                     std::exp(-2.0 * optical_depth) * overlap(beyond) /
                     (beyond * beyond) <
-                std::max(strongest, threshold);
+                (sensor.last_return ? threshold : std::max(strongest, threshold));
     }
     if (settled) {
       break;
@@ -721,17 +736,21 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
     const double echo = kSurfaceReflectance / std::numbers::pi *
                         std::exp(-2.0 * optical_depth) * overlap(clean_range_m) /
                         (clean_range_m * clean_range_m);
-    if (echo >= strongest && echo >= threshold) {
+    // The surface is the last echo; the strongest only where no smoke
+    // echoes more.
+    if (echo >= threshold && (sensor.last_return || echo >= strongest)) {
       return report(clean_range_m, 1.0);
     }
   }
-  if (strongest < threshold) {
+  const double chosen = sensor.last_return ? last : strongest;
+  const double chosen_at = sensor.last_return ? last_at : strongest_at;
+  if (chosen < threshold) {
     return report(std::numeric_limits<double>::infinity(), 0.0);
   }
-  const double at = std::max(strongest_at, sensor.range_min_m);
+  const double at = std::max(chosen_at, sensor.range_min_m);
   // Over a matte surface seen clear at the same range.
-  return report(at, strongest / (kSurfaceReflectance / std::numbers::pi * overlap(at) /
-                                 (at * at)));
+  return report(
+      at, chosen / (kSurfaceReflectance / std::numbers::pi * overlap(at) / (at * at)));
 }
 
 } // namespace drone_city_nav::simulation_smoke
