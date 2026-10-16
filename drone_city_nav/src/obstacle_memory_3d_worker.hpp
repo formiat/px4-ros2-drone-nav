@@ -35,6 +35,7 @@ struct PersistentLidarScan3D {
   // Roadmap item 18 stage 0: the scan's beams read as an aerosol's and as
   // dropout bundles.
   std::size_t aerosol_beams{0U};
+  std::size_t thin_aerosol_beams{0U};
   std::size_t dropout_beams{0U};
   std::size_t cooperative_filtered{0U};
   bool altitude_valid{false};

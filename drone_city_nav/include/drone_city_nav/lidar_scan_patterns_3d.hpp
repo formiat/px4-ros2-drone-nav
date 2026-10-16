@@ -41,6 +41,15 @@ struct LidarScanPatternsConfig {
   // the memory's self filter (0.9 m), where the evidence would be the
   // vehicle's own and dropped (r1546: the scan read as open space).
   double aerosol_least_range_m{1.2};
+  // An aerosol return under this intensity (over a matte surface's at its
+  // range) is thin smoke the vehicle flies through (roadmap item 23): the
+  // beam is a miss to the return and nothing is marked there; at or over
+  // it the smoke is dense and its return fail evidence (item 18). The
+  // relay's echo of a plume's face is 0.057 at 3/m and 0.019 at 1/m, of
+  // thin smoke 0.003 at 0.1/m and 0.006 at 0.3/m; the line falls at about
+  // 0.5/m, a visibility of 6 m. Read as dense, the room of 0.1/m closed in
+  // front of the lidar at the range its smoke returned from, 7 m (r1661).
+  double aerosol_dense_intensity{0.01};
   // A hit is weak under this share of the scan's surface intensity (the
   // median of its hits' intensities: most hits are surfaces); an aerosol
   // needs this many of its eight neighbours weak hits within the range band.
@@ -59,6 +68,8 @@ struct LidarScanPatternsConfig {
 
 struct LidarScanPatternsResult {
   std::size_t aerosol_beams{0U};
+  // Of them, the returns of thin smoke: misses to the return, no evidence.
+  std::size_t thin_aerosol_beams{0U};
   std::size_t dropout_bundles{0U};
   std::size_t dropout_beams{0U};
 };

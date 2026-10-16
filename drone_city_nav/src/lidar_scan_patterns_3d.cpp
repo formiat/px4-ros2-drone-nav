@@ -96,13 +96,17 @@ classifyLidarScanPatterns3D(OrganizedLidarScan3DResult& scan,
           continue;
         }
         LidarBeamSample3D& beam = scan.beams[index];
-        beam.range_m = std::max(beam.range_m, config.aerosol_least_range_m);
-        scan.unobservable.push_back(
-            LidarBeamSample3D{.direction_lidar_flu = beam.direction_lidar_flu,
-                              .range_m = beam.range_m,
-                              .hit = true,
-                              .valid = true,
-                              .interpolated = true});
+        if (intensities[index] >= config.aerosol_dense_intensity) {
+          beam.range_m = std::max(beam.range_m, config.aerosol_least_range_m);
+          scan.unobservable.push_back(
+              LidarBeamSample3D{.direction_lidar_flu = beam.direction_lidar_flu,
+                                .range_m = beam.range_m,
+                                .hit = true,
+                                .valid = true,
+                                .interpolated = true});
+        } else {
+          ++result.thin_aerosol_beams;
+        }
         beam.hit = false;
         --scan.hit_beams;
         ++scan.miss_beams;

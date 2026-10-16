@@ -59,6 +59,25 @@ TEST(LidarScanPatterns, WeakReturnsAmongWeakReturnsAreAnAerosol) {
   EXPECT_EQ(scan.hit_beams, scan.beams.size() - 25U);
 }
 
+TEST(LidarScanPatterns, ThinSmokeIsAMissToItsReturnAndNoEvidence) {
+  std::vector<float> intensities;
+  OrganizedLidarScan3DResult scan = wallScan(10.0, intensities);
+  // A 5 x 5 patch of thin smoke's returns at 7 m, 0.003 of a matte surface's.
+  for (std::size_t row = 10U; row < 15U; ++row) {
+    for (std::size_t column = 20U; column < 25U; ++column) {
+      scan.beams[at(row, column)].range_m = 7.0;
+      intensities[at(row, column)] = 0.003F;
+    }
+  }
+  const LidarScanPatternsResult result = classifyLidarScanPatterns3D(
+      scan, intensities, kConfig, LidarScanPatternsConfig{});
+  EXPECT_EQ(result.aerosol_beams, 25U);
+  EXPECT_EQ(result.thin_aerosol_beams, 25U);
+  EXPECT_TRUE(scan.unobservable.empty());
+  EXPECT_FALSE(scan.beams[at(12U, 22U)].hit);
+  EXPECT_NEAR(scan.beams[at(12U, 22U)].range_m, 7.0, 1.0e-9);
+}
+
 TEST(LidarScanPatterns, AScanOfSmokeAloneIsAnAerosolAtTheBodysEdge) {
   std::vector<float> intensities;
   // Inside a dense plume: every beam returns from the smoke at 0.3 m, at a

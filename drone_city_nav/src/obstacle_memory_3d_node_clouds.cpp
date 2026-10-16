@@ -330,6 +330,7 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
         .persistent_self_filtered = persistent_self_filtered,
         .unobservable_on_path = unobservable_on_path,
         .aerosol_beams = patterns.aerosol_beams,
+        .thin_aerosol_beams = patterns.thin_aerosol_beams,
         .dropout_beams = patterns.dropout_beams,
         .cooperative_filtered = cooperative_filtered,
         .altitude_valid = pose.altitude_valid,
