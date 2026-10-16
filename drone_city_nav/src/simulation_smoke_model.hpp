@@ -34,6 +34,9 @@ struct SmokeZone {
 struct RaySegment {
   double entry_m{0.0};
   double exit_m{0.0};
+  // The densest zone's extinction on the segment: the step the ray is read
+  // with follows it (an optical depth of 0.05 a step, 0.1 to 0.5 m).
+  double extinction_per_m{0.0};
 };
 
 class SmokeField {

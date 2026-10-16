@@ -40,7 +40,20 @@ constexpr std::size_t kNoiseSamples = std::size_t{1} << 20U;
 // The active sensors: a matte surface of this reflectance, and range bins of
 // this length (a short pulse's).
 constexpr double kSurfaceReflectance = 0.5;
+// The ray is read through a zone in steps of an optical depth of 0.05 at the
+// zone's extinction, between 0.1 m (dense smoke, 0.5/m and over) and 0.5 m
+// (a room of 0.1/m): read in 0.1 m steps, a room of 26 by 40 m cost the
+// lidar's 65 000 rays 400 steps each, the relay fell to 7 scans a second and
+// the estimator's poses lagged 2.7 s (r1659).
 constexpr double kRangeBinM = 0.1;
+constexpr double kRangeBinMaximumM = 0.5;
+constexpr double kRangeBinOpticalDepth = 0.05;
+
+[[nodiscard]] double rangeBinM(const double extinction_per_m) noexcept {
+  return extinction_per_m > 0.0 ? std::clamp(kRangeBinOpticalDepth / extinction_per_m,
+                                             kRangeBinM, kRangeBinMaximumM)
+                                : kRangeBinM;
+}
 
 [[nodiscard]] std::uint32_t hash(std::int64_t x, std::int64_t y, std::int64_t z,
                                  std::uint32_t seed) noexcept {
@@ -266,7 +279,7 @@ void SmokeField::segments(const Eigen::Vector3d& origin,
       crosses = entry < exit;
     }
     if (crosses) {
-      out.push_back({entry, exit});
+      out.push_back({entry, exit, zone.extinction_per_m});
     }
   }
   std::sort(out.begin(), out.end(), [](const RaySegment& a, const RaySegment& b) {
@@ -276,6 +289,8 @@ void SmokeField::segments(const Eigen::Vector3d& origin,
   for (const RaySegment& segment : out) {
     if (kept > 0U && segment.entry_m <= out[kept - 1U].exit_m) {
       out[kept - 1U].exit_m = std::max(out[kept - 1U].exit_m, segment.exit_m);
+      out[kept - 1U].extinction_per_m =
+          std::max(out[kept - 1U].extinction_per_m, segment.extinction_per_m);
     } else {
       out[kept++] = segment;
     }
@@ -682,7 +697,8 @@ double activeRange(const SmokeField& field, const ActiveSensor& sensor,
   bool settled = false;
   for (const RaySegment& segment : segments) {
     const double length = segment.exit_m - segment.entry_m;
-    const auto bins = static_cast<std::size_t>(std::ceil(length / kRangeBinM));
+    const auto bins = static_cast<std::size_t>(
+        std::ceil(length / rangeBinM(segment.extinction_per_m)));
     const double bin = length / static_cast<double>(std::max<std::size_t>(bins, 1U));
     const auto gate_bins = std::max<std::size_t>(
         1U, static_cast<std::size_t>(std::lround(sensor.range_gate_m / bin)));
