@@ -1004,6 +1004,43 @@ item 24. Accepting on one profile would prove the
 addition only on the set where it has the most to do and say nothing about
 the set where it should be least needed.
 
+**Accepted on 2026-10-16** (the vehicle's code of 76367bee, the documents
+on top of it; the series driver and its tables in `log/tools/part6/`, the
+journal in `log/tools/journal/goal_journal_smoke_light.md`). Every flight
+below is on both sensor sets, one at a time, each counted only at a
+real-time factor the host sustained (A7, A8; K25 where it says 0.8):
+
+- **The smoky location** (`sim-urban-smoke-headless`, four plumes of 1/m,
+  two of them in the start hall): the stereo set reached B in truth in
+  r1653, r1654, r1655 and r1657 (0.84 to 1.79 m, at a real-time factor of
+  0.8: 1.35 to 1.41 m/s of simulation) and in r1623 (1.22 m, at 1.0: 1.18
+  m/s, the host at its limit); r1630 reached it 2.51 m off in truth, the
+  estimator's drift of `technical_debt.md`. The lidar reached B in r1631 to
+  r1635 (0.44 to 0.75 m) at 2.72, 2.15, 2.10, 2.36 and 2.20 m/s. No contact
+  in any of them; the ring returns smoke only inside a plume (K38), the
+  lidar sees a plume's face from 20 m (A13) and marks it (K37), and the
+  plumes beside the route are flown round.
+- **The blocking scenario** (`sim-urban-smoke-blocked-headless`, 3/m across
+  the north corridor): the lidar gave the goal up by item 19's proof and
+  came home in r1616 to r1620 (0.19 to 0.51 m from the start in truth,
+  `trigger=topological`, within about 110 s of the plume's face); the
+  stereo set by the ladder in smoke (K40, `trigger=smoke`) in r1612 to
+  r1615 and r1656 (0.30 to 0.42 m, 2 to 10 dead-reckoning episodes each).
+  No contact. This closes item 24 (below).
+- **The ordinary flight, re-flown on the final code** (the memory's K42 and
+  the proof's K16 changed after part 4): the stereo set r1643 to r1647
+  (0.92 to 1.56 m, 1.21 to 1.31 m/s), the lidar r1648 to r1652 (0.18 to
+  0.55 m, 1.81 to 2.59 m/s, two of five under 2.4 as in part 4's base
+  r1524 to r1528). No contact.
+
+What the acceptance measured and what it did not: the speed in smoke is
+recorded, not required here (item 23 sets the requirement under smoke); the
+phantom occupancy inside a plume is the plume's own marks (K37, K38), lifted
+when seen through (K10), and the ordinary memory holds no occupancy the
+truth does not on the plain flights (`tools/phantom_blocks.py`: r1622 48
+cells named, no phantom); the depth coverage and the thermal channel were
+measured on the rig (stages 2 and 3), not per flight.
+
 ## 21. Moving Obstacles: Doors And Bodies That Move Slowly
 
 **Type:** perception and safety, general; not tied to a sensor.
