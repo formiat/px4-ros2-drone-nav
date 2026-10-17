@@ -1285,6 +1285,55 @@ with no contact, the mean flight speed is recorded as the requirement under
 smoke, and the memory of the smoky room holds no occupancy the truth does
 not.
 
+**Measured and flown on 2026-10-16 and 17** (`sim-urban-smoke-rooms-headless`:
+the west hall at (-20,22.5) filled wall to wall with 0.1/m, on the way, and
+the tunnel's mouth at (18,-6) beside it; the series in `log/tools/part7/`).
+The three hard places, measured before the flights:
+
+- **The vehicle's own light.** The pair through 0.1/m matches a wall 4 m
+  off whole and one 8 m off not at all (`tools/smoke_rig.py`,
+  log/tools/part7/rig_last); the light set apart lowered the veil and
+  gained nothing (item 18 stage 1). The estimator replayed over 11 m of
+  flight through 20 m of 0.1/m: 0.88 m off at the end (1.67 at most)
+  against 0.41 (0.62) clear; through 0.2/m 0.33 (2.93); the features held
+  (84 to 92).
+- **The lidar's false returns.** The relay's strongest echo returned the
+  smoke a metre off and hid the walls inside 0.3/m; the lidar reports its
+  last echo over the threshold (A13, a driver set to last return) and reads
+  a wall 8 m on through 0.1 and 0.2/m in every forward ray, 15 m on through
+  0.1/m in 93 percent; dense smoke, 3/m, still returns the smoke. In the
+  memory the smoke's own return is a miss to its range and nothing more
+  under 0.01 of a matte surface's intensity, about 0.5/m (K37): read as
+  dense, the room closed in front of the lidar at 7 m and the vehicle
+  turned back (r1661). The relay reads a ray in steps that follow the
+  zone's density, or a room of 26 by 40 m starved it to 7 scans a second
+  (r1659).
+- **The simulator**: settled by item 18 stage 1 (A13).
+
+The flights, each at a real-time factor the host sustained (0.8 on the
+stereo set, K25):
+
+- **The lidar reached B in five of five**: r1675 to r1679, 0.11 to 0.52 m
+  in truth, no contact, 2.16, 2.28, 2.33, 2.53 and 2.45 m/s (the clear
+  flights 1.81 to 2.59). The memory of the smoky hall holds 0.2 to 0.9
+  percent of its occupied voxels with no truth occupancy within 0.5 m,
+  against 0.2 percent in the clear flight r1667.
+- **The stereo set reached B in truth in three of five**: r1669 0.74 m,
+  r1672 1.36 m, r1674 1.19 m; r1670 and r1673 came 2.85 and 3.50 m off, the
+  estimator's drift (`technical_debt.md`: 2 of 17 clear flights miss the
+  radius; two rooms on the way carried it 6.3 m off, r1664). No contact.
+  1.11, 1.32, 1.35, 1.33 and 1.34 m/s (the clear flights 1.21 to 1.31). The
+  memory of the hall: 0.6 to 1.9 percent phantoms, 28.9 in r1673, whose
+  map had drifted with its estimate; the clear flight r1666 0.4.
+
+**The speed under moderate smoke is recorded as the requirement**
+(specification K43): the lidar 2.1 m/s, the stereo set 1.1. **The item is
+complete on the lidar and open on the stereo set**: its estimator drifts
+past the capture radius in two flights of five through one smoky room, the
+debt of the visual-inertial estimator on a first pass, which smoke worsens;
+the way through the room, the contract's speed in it and the memory of it
+are measured and hold.
+
 ## 24. Item 19's Proof, Flown
 
 **Type:** validation debt of item 19. Decided by the project owner on
