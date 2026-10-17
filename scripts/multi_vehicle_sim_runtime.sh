@@ -169,8 +169,9 @@ check_headless_run() {
   if bool_is_true "${require_observed_3d_route_volume_crossing}"; then
     validation_args+=(
       --require-observed-3d-route-volume-crossing
-      --observed-3d-route-volume-bounds-m
-      "${observed_3d_route_volume_bounds_m}"
+      # Joined with '=': a box west of the origin begins with a minus, which
+      # the parser would read as an option (the smoke-rooms scenario).
+      "--observed-3d-route-volume-bounds-m=${observed_3d_route_volume_bounds_m}"
     )
     if ! bool_is_true "${multi_vehicle_mission}" &&
       ! bool_is_true "${active_static_map}"; then
