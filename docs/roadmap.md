@@ -1081,6 +1081,87 @@ XL.
 Complete when the chosen airframe flies the camera and the lidar series and
 the light scenarios with no contact, its speeds measured against the x500's.
 
+## 31. Flight Through The Dark Void
+
+**Type:** new capability; decided by the project owner on 2026-10-17 after
+the dark hall's recording (r1488): "complete darkness" means an empty dark
+volume with nothing within the carried light's reach, not a floor lit a few
+metres below. The goal is written and queued behind the release of v0.6.0;
+the stages, the scenario and the numbers are written into this item when it
+starts.
+
+**Hard prerequisites:** items 17, 29 and 18 (the light judged by its driver,
+F18; the blind frame, K12; the ladder's hold and descent, K19; the rotors'
+drag as a velocity, K21).
+
+What is settled now: a black frame under a working light is a measurement
+of emptiness to the light's reach, not an absence of guarantee; in the void
+the safety rests on the light and the braking contract (K9) and the
+position on dead reckoning, whose drift is the physics of the IMU; so the
+2 m capture radius is not required in the void: a goal there is reached when
+the true error is within the estimator's own published uncertainty (two
+sigma) plus 2 m, and a goal with a surface within the light's reach at its
+end is reached within 2 m as always. No GNSS in any flight.
+
+## 32. Hot Smoke: A Heat Source In The Plume
+
+**Type:** new capability; proposed by the project owner on 2026-10-17, when
+the thermal core of item 18 stage 3 was taken off the vehicle (F4): a sensor
+earns its place with a decision that reads it, and this is the item that
+gives the core its decision.
+
+**Hard prerequisites:** items 18 and 23 (smoke in the simulator, A13; dense
+smoke avoided and backed out of, K38 to K40; moderate smoke crossed, K43);
+item 18 stage 3 as the measurement of what a thermal frame carries (K39).
+Item 27 (a real vehicle) comes after.
+
+**Validation environment:** the urban location with its smoky places (F4),
+some of them carrying a heat source.
+
+Smoke the vehicle meets is cold or hot: fog, dust and smoke that has cooled
+are crossed when moderate and avoided when dense (items 18 and 23); a plume
+with a fire or a smouldering source in it is not entered at any density,
+and the source is kept at a distance. Neither the stereo pair, the
+time-of-flight ring nor the lidar can tell the two apart: they read density.
+A thermal core does, through the smoke, which long-wave infrared crosses
+almost untouched (K39: through 1/m the thermal frames are identical to the
+clear ones).
+
+The order:
+
+1. **The simulator's heat.** A heat source as an object of the world with a
+   temperature (the thermal camera of the exploration already renders the
+   world's surfaces by temperature, `thermal_camera`); a smoke zone may carry
+   one (`SMOKE_ZONES` gains a temperature, or a separate `HEAT_SOURCES`
+   string, whichever is the smaller change), and the smoke relay passes the
+   thermal frame through the smoke untouched (K39).
+2. **The core back on the stereo set, with its reading.** The FLIR Lepton
+   3.5 class core (160 x 120, 9 Hz) on the camera link, as mounted in stage
+   3; its frame read for the share of pixels warmer than the frame's median
+   by a threshold measured on the rig, and for their direction in the frame;
+   the reading published with its direction, as the ring's smoke share is
+   (K38), and recorded in the memory as a heat mark with a radius.
+3. **The rule.** A heat mark is a prohibition with a standoff: the route
+   keeps a measured distance from the source, the plume that carries it is
+   not entered whatever its density (the moderate room's crossing of item 23
+   is refused when the room is hot), and the mission events say so ("HEAT
+   SOURCE", the overlay's words). The lidar vehicle, which carries no core,
+   either takes the same core or records that it cannot tell hot smoke from
+   cold: the owner's call, taken with the measurement of step 2.
+4. **Scenarios and acceptance.** A hot plume on the way (gone round at the
+   standoff), a hot moderate room on the way (not entered: round it, or home
+   when there is no way round), and the cold moderate room of item 23 as
+   the control (crossed as before); five flights each on the stereo set, and
+   on the lidar as step 3 decides; no contact, B in truth within 2 m where B
+   is reachable, home otherwise.
+
+Size: M for steps 1 and 2, M for step 3, L with the series.
+
+This item is complete when the hot plume and the hot room are kept out of
+in five of five flights on the stereo set with no contact, the cold room is
+still crossed, the standoff is a measured number in the specification, and
+the thermal core's reading is the decision's evidence in every flight.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
