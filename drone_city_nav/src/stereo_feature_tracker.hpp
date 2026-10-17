@@ -29,8 +29,8 @@ struct StereoFeatureTrackerConfig {
   // The rectified pair's pinhole (specification K33): its focal length and
   // principal point, from the stereo rectifier.
   double focal_px{369.5041722813605};
-  double principal_x_px{640.0};
-  double principal_y_px{480.0};
+  double principal_x_px{639.5};
+  double principal_y_px{479.5};
   // Corners kept alive, spread over a grid of cells so one textured wall does
   // not take them all.
   std::size_t maximum_features{200U};

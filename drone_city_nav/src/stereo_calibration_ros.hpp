@@ -26,8 +26,15 @@ namespace drone_city_nav {
     }
     return value;
   };
+  // The renderer's optical axis passes through the frame's centre, which in
+  // the pixel coordinates the tracker and the depth use (a pixel's centre at
+  // its integer index, OpenCV's) is half a pixel in from width / 2 and
+  // height / 2. At (640, 480) the estimate rose 0.10 to 0.24 percent of the
+  // path above the truth in every camera flight (r1682 to r1688), 0.08
+  // degrees of pitch; two recorded flights replayed at the pixel centres
+  // ended 0.07 m off vertically instead of 0.43 and 0.55 (2026-10-17).
   const double ideal_focal_px = 640.0 / std::tan(M_PI / 3.0);
-  const std::vector<double> ideal{ideal_focal_px, ideal_focal_px, 640.0, 480.0};
+  const std::vector<double> ideal{ideal_focal_px, ideal_focal_px, 639.5, 479.5};
   const auto camera = [&](const std::string& side) {
     const std::vector<double> intrinsics =
         values(side + "_camera_intrinsics", ideal, 4U);

@@ -30,10 +30,12 @@ StereoCalibration idealStereoCalibration(const std::size_t width,
                                          const double baseline_m) {
   const double focal_px =
       0.5 * static_cast<double>(width) / std::tan(0.5 * horizontal_fov_rad);
+  // The principal point at the frame's centre, in coordinates where a
+  // pixel's centre is its integer index: half a pixel in from width / 2.
   const PinholeCamera camera{.fx = focal_px,
                              .fy = focal_px,
-                             .cx = 0.5 * static_cast<double>(width),
-                             .cy = 0.5 * static_cast<double>(height)};
+                             .cx = 0.5 * static_cast<double>(width) - 0.5,
+                             .cy = 0.5 * static_cast<double>(height) - 0.5};
   return StereoCalibration{.width = width,
                            .height = height,
                            .left = camera,

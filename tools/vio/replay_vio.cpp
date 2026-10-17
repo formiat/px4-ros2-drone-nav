@@ -60,9 +60,10 @@ int main(int argc, char** argv) {
   config.maximum_clones = static_cast<std::size_t>(std::atoi(opt["clones"].c_str()));
   StereoFeatureTrackerConfig tracker_config;
   tracker_config.image_width = static_cast<std::size_t>(ordered.front().w / scale); tracker_config.image_height = static_cast<std::size_t>(ordered.front().h / scale);
-  // The simulated pair's pinhole: 120 degrees over the width, the principal point at the centre.
+  // The simulated pair's pinhole: 120 degrees over the width, the principal point at the centre, which in pixel
+  // coordinates (a pixel's centre at its index) is half a pixel in from width / 2 (K33, 2026-10-17).
   tracker_config.focal_px = 0.5 * tracker_config.image_width / std::tan(std::numbers::pi / 3.0);
-  tracker_config.principal_x_px = 0.5 * tracker_config.image_width; tracker_config.principal_y_px = 0.5 * tracker_config.image_height;
+  tracker_config.principal_x_px = 0.5 * tracker_config.image_width - 0.5; tracker_config.principal_y_px = 0.5 * tracker_config.image_height - 0.5;
   tracker_config.maximum_features = static_cast<std::size_t>(std::atoi(opt["features"].c_str()));
   if (scale > 1) { tracker_config.minimum_distance_px /= scale; tracker_config.maximum_disparity_px /= scale; tracker_config.minimum_disparity_px /= scale; }
   for (auto& [k, v] : opt) {

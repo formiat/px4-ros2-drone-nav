@@ -17,7 +17,7 @@ TEST(StereoRectifier, TheIdealPairPassesUntouched) {
   EXPECT_TRUE(rectifier.ideal());
   EXPECT_NEAR(rectifier.rectified().focal_px, 640.0 / std::tan(std::numbers::pi / 3.0),
               1.0e-9);
-  EXPECT_DOUBLE_EQ(rectifier.rectified().principal_x_px, 640.0);
+  EXPECT_DOUBLE_EQ(rectifier.rectified().principal_x_px, 639.5);
   EXPECT_DOUBLE_EQ(rectifier.rectified().baseline_m, 0.2);
   const cv::Mat left(960, 1280, CV_8UC1, cv::Scalar{7});
   const cv::Mat right(960, 1280, CV_8UC1, cv::Scalar{9});
