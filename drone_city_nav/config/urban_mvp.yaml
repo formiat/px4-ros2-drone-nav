@@ -793,11 +793,13 @@ visual_inertial_odometry_node:
     # one's (x_right = R x_left + t). The simulated pair of
     # models/stereo_tof_v1 is the ideal one: 120 degrees over 1280 pixels, no
     # distortion, the right camera 0.2 m along x; its frames are not remapped.
+    # The principal point is the frame's centre in pixel coordinates (a
+    # pixel's centre at its index): half a pixel in from 640 and 480.
     image_width: 1280
     image_height: 960
-    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
-    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
     right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     right_from_left_translation_m: [-0.2, 0.0, 0.0]
@@ -1379,11 +1381,13 @@ stereo_depth_node:
     # one's (x_right = R x_left + t). The simulated pair of
     # models/stereo_tof_v1 is the ideal one: 120 degrees over 1280 pixels, no
     # distortion, the right camera 0.2 m along x; its frames are not remapped.
+    # The principal point is the frame's centre in pixel coordinates (a
+    # pixel's centre at its index): half a pixel in from 640 and 480.
     image_width: 1280
     image_height: 960
-    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    left_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
-    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 640.0, 480.0]
+    right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
     right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     right_from_left_translation_m: [-0.2, 0.0, 0.0]
