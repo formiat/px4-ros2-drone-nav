@@ -1010,13 +1010,17 @@ journal in `log/tools/journal/goal_journal_smoke_light.md`). Every flight
 below is on both sensor sets, one at a time, each counted only at a
 real-time factor the host sustained (A7, A8; K25 where it says 0.8):
 
-**The stereo set's groups flown again on 2026-10-17 on e9d26309**, the
-estimator's heading repaired (K28): the clear flight r1688 to r1692 ended
-0.96 to 1.52 m from B at 1.31 to 1.49 m/s; the smoky location r1693 to
-r1697 0.67 to 1.82 m at 1.30 to 1.51 m/s; the blocked corridor r1698 to
-r1702 home within 0.32 to 0.52 m by the ladder (`trigger=smoke`), 2 to 15
-dead-reckoning episodes; no contact in any. The lidar's groups stand as
-flown on 76367bee: the repair touches the visual filter alone.
+**The stereo set's groups flown again on 2026-10-17**, twice: on e9d26309
+with the estimator's heading repaired (K28: clear r1688 to r1692 0.96 to
+1.52 m from B at 1.31 to 1.49 m/s; smoky location r1693 to r1697 0.67 to
+1.82 m; blocked corridor r1698 to r1702 home within 0.32 to 0.52 m) and on
+7bc3941b with the pair's principal point at the pixel centres as well (K33:
+the clear flight r1710 to r1714 ended 0.79 to 1.11 m from B at 1.38 to
+1.46 m/s; the smoky location r1715 to r1719 0.77 to 1.57 m at 1.35 to
+1.46 m/s; the blocked corridor r1720 and r1722 to r1725 home within 0.31 to
+0.38 m by the ladder (`trigger=smoke`), 2 to 6 dead-reckoning episodes;
+r1721 voided by the harness). No contact in any. The lidar's groups stand
+as flown on 76367bee: both repairs touch the stereo set alone.
 
 - **The smoky location** (`sim-urban-smoke-headless`, four plumes of 1/m,
   two of them in the start hall): the stereo set reached B in truth in
@@ -1349,15 +1353,27 @@ stereo set, K25):
   moves the scale through 1.000 near 2 ms and the error at B within its
   noise, so the offset stays at the calibrated 4 ms.
 
+- **The stereo set, third series (7bc3941b, the principal point at the
+  pixel centres): five of five in truth**: r1705 1.38 m, r1706 0.44 m,
+  r1707 1.16 m, r1708 1.01 m, r1709 1.07 m; 1.28, 1.37, 1.24, 1.28 and
+  1.28 m/s; no contact; the memory of the hall 0.5 to 1.0 percent
+  phantoms. The second series' systematic rise of the estimate (0.10 to
+  0.24 percent of the path, every flight) had a root cause of its own: the
+  pair's principal point stated at the frame's centre (640, 480) where the
+  pixel coordinates the tracker and the depth use put it half a pixel in,
+  at (639.5, 479.5): 0.08 degrees of pitch and yaw (specification K33,
+  repaired in 67e2489e and 73cf6867; the records of r1680 and r1682
+  replayed at the pixel centres end 0.07 m off vertically instead of 0.43
+  and 0.55). In flight the rise is gone (r1705: 0.08 m over 422 m).
+
 **The speed under moderate smoke is recorded as the requirement**
 (specification K43): the lidar 2.1 m/s, the stereo set 1.1. **The item is
-complete on the lidar and, on the stereo set, complete but for one flight
-of five**: the way through the room, the contract's speed in it and the
-memory of it are measured and hold; what stands between four and five of
-five is the visual-inertial estimator's first-pass drift (technical debt
-L1, class b), which the smoke does not worsen measurably (the clear
-flights r1688 to r1692 ended 0.96 to 1.52 m from B, the smoky-room ones
-0.93 to 2.65).
+complete on both sets**: five of five to B in truth on the lidar
+(r1675 to r1679) and on the stereo set (r1705 to r1709), no contact, the
+way through the room, the contract's speed in it and the memory of it
+measured. What the estimator still carries is the first-pass drift the
+register's L1 names, without its two systematic parts: the scale under-read
+of 0.3 to 0.6 percent stays, the rise does not.
 
 ## 24. Item 19's Proof, Flown
 
