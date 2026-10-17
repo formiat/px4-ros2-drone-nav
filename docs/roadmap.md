@@ -445,621 +445,6 @@ channel and frame figures counted and its timing figures recorded as not
 comparable. Before that flight's figures are taken, its per-vehicle tick in milliseconds
 of simulation decides whether the delay relay above is needed.
 
-## 18. Flight Through Transient And Scattering Obstacles
-
-**Type:** dependent realism stage, with one repair that does not wait for it.
-
-**Hard prerequisites:** item 17 stage 0 for stages 1 to 4 (smoke is detected
-through the measured range); item 17 stage 8 for stage 0 below, whose fail
-evidence and restated invariant it applies to smoke and the lidar. The
-memory's decay by time, which this item was first written on, is switched
-off since 2026-10-03 (specification K10): how a mark of unobservability
-fades is settled here with item 21's transient class, not assumed.
-
-**Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission, on both sensor profiles.
-
-Two readers of the v0.4.0 release found the same hole from opposite sides. One
-asked what the obstacle memory does with a person walking through the frame;
-another asked what smoke would do to the vision. The answer to both is the
-same, and it is not about the sensor: an obstacle that was there and is not
-any more stays in the map. Smoke adds two things of its own — it blinds the
-active sensors as well, and it looks like a surface — which is why it gets an
-item and not a paragraph.
-
-**What the memory already does, stated precisely, because this item was
-first described wrongly.** `obstacle_memory_3d.cpp` scores every voxel by
-hits and misses: a free ray through a voxel lowers its score by
-`miss_weight`, and a Schmitt trigger returns it to free at `free_score`
-([`obstacle_mapping.md`](obstacle_mapping.md)). A person who walks away is
-therefore cleared as soon as rays pass through where they stood.
-`forgetDynamicVolumes` erases the volumes of known dynamic agents, the
-cooperative vehicles whose positions arrive by intent. What is missing is
-narrower than "no forgetting": clearing needs re-observation, so a voxel
-never looked at again is occupied forever, and nothing distinguishes an
-occupancy confirmed by a thousand scans from one that collected two hits and
-vanished. The planner treats both as a wall — a person crossing the frame is
-a route replacement, and a trail left where the vehicle does not return is a
-wall for the rest of the flight. Smoke is the case that rays cannot clear at
-all while it lasts, because to a stereo pair it is a surface.
-
-Three independent axes, decided by the project owner on 2026-09-23, so
-that no one builds the item as a mode of one sensor. **Smoke is a switch of
-the scenario**: particle emitters in a variant of the location, over the
-ordinary point-to-point mission, which does not change. **The perception
-profile is the vehicle's**: the stereo set or the 3D lidar, either one flown
-into the same plume. **The thermal channel is an addition to the vehicle**,
-not a part of the smoke scenario: it belongs to the sensor set that the
-scenario tests, and a flight may carry it on either profile or on neither.
-The acceptance matrix is the product of the three, not a list of modes.
-
-**What the flights look like once the item lands.** Decided by the project
-owner on 2026-09-27, and where it differs from the paragraph above it
-replaces it:
-
-- **The smoke sensors are always on board**, on both profiles: whatever
-  stages 2 and 3 settle on — the thermal channel, the particle counter — is
-  part of the vehicle, not an option of a flight. As settled (F4, 2026-10-17):
-  each profile's smoke sensor is its own detection channel, the time-of-flight
-  ring on the stereo set and the echo's intensity on the lidar; no particle
-  counter; the thermal core is the stereo set's detector of a hot source,
-  without a role in any decision until a scenario carries one.
-- **Smoke is always in the location**: a number of smoky places in every
-  flight, so that every acceptance flight exercises the smoke handling, and
-  none of them blocks the way from A to B; the ordinary mission stays
-  reachable.
-- **A separate scenario blocks the way**: smoke closes the passage to B, no
-  route exists, and the vehicle flies home. It exercises the smoke handling
-  and item 19's return together, by a cause the vehicle measures.
-- **Smoke is drawn in RViz**: every smoky place of a flight is a marker in
-  the picture, published by an evaluation component the vehicle never
-  reads, so that a person watching sees what the location holds.
-  Decided by the project owner on 2026-10-03.
-- **Smoke is constant**: where it is and how much of it there is never change
-  during a flight, so that the difficulty of the location does not change
-  with time. Its shape does, as a smoke grenade's or a local source's plume
-  churns, because that is what smoke looks like and what the sensors have to
-  cope with. A mark of smoke in the memory is transient (item 21's class): it
-  lifts when the vehicle sees through the place again, and how it fades when
-  the vehicle does not come back is stage 4's question.
-
-The blocking scenario is where item 19's proof is flown: its flights must
-give the goal up by the proof (`trigger=topological`), not by the light's
-battery or the light's judgment, and they close item 24.
-
-The navigation invariants hold in the form restated for this item, below.
-Vertical motion stays free, and nothing keyed on the vehicle's history is a
-rule.
-
-### Stage 0: Smoke And The Lidar In The Memory (Done)
-
-**Built on 2026-10-15** (`lidar_scan_patterns_3d.cpp`, specification K37):
-the organized scan is read for its patterns before the memory integrates
-it. An aerosol is a hit whose intensity is under half the scan's surface
-intensity (the median of its hits') with three or more of its eight
-neighbours weak hits within a metre of its range: the beam becomes a miss
-to the return and the return observed unobservable, a surface never
-measured. A dropout is a bundle of no-return beams of 400 or fewer whose
-border returns in three quarters of its beams at a median range of 8 m or
-less and a spread of 1 m or less from the first to the third quartile: the
-bundle's beams become misses to that range with fail evidence there; a
-bundle whose border recedes is an opening, and a no-return beam among
-no-return beams stays free to the maximum range. The smoke relay writes the
-intensity a lidar's driver reports, the echo over a matte surface's at the
-range (one for a surface, a thin fraction for smoke), where the cloud
-carries the field. The dropout by material stays designed and unverified:
-`gpu_lidar` returns geometry whatever the material.
-
-**Accepted on 2026-10-15** (2c223640): cameras r1517, r1518, r1519, r1522,
-r1523 at 1.467, 1.438, 1.451, 1.234, 1.419 m/s (mean 1.402; 1.429 before
-the stage, r1485), the goal 0.87 to 1.85 m by the truth, no contact; lidar
-r1524 to r1528 at 2.476, 2.577, 2.086, 2.357, 2.807 m/s (mean 2.461
-against the base's 2.333, two of five under 2.4 then as now: the clearance
-laws hold the lidar in the same places, the register's K27 entry), the goal
-0.42 to 0.95 m, no contact. Dropout bundles were read in 4 to 8 of some 165
-logged scans a lidar flight (135 to 608 beams), with the limiter profile
-unchanged against the base (route clearance 40 to 47 percent of the slow
-time, 40 to 44 before). Voids on the way: r1520, r1521 (watchdog at 0.68
-and 0.69).
-
-
-Item 17 stage 8 builds the memory's third kind of evidence, **fail**, and
-the invariant restated around it, for darkness. This stage applies them to
-what this item adds: smoke on every sensor, and the patterns in which the
-lidar fails. A person crossing the frame is transient occupancy, item 21's
-class, cleared by the next look and not by its age.
-
-- **The lidar.** A single ray with no return is ambiguous: nothing within
-  range, or something that absorbed or deflected the beam — black smoke, a
-  matte black surface, glass at an angle, water, a grazing wall. One ray
-  cannot tell them apart and the sensor does not know what should have been
-  there; only the pattern of returns can. Two patterns are failure: an
-  **aerosol**, weak, near, scattered returns across neighbouring rays (the
-  `particle_scatter_ratio` model), with the space behind them unobservable;
-  and a **dropout**, a bundle of rays with no return surrounded by rays that
-  return at moderate range. A ray with no return whose neighbours have none
-  either is open space and stays a free ray to the maximum range, as now.
-
-That last line is a change to the lidar's free-ray logic and it belongs to
-this stage: a missing return is a miss to the maximum range only when it is
-not a dropout. It carries a bonus the simulator cannot check. A matte black
-wall that returns nothing is a classic hazard of lidar navigation — the
-memory as it stands would integrate it as free and the vehicle would fly
-into it — and under the restated rule it is unobservable and closed. But
-`gpu_lidar` returns geometry whatever the material, so the case never occurs
-in this simulator; the repair is recorded as designed and not verified until
-a dropout by material is modelled.
-
-### Stage 0b: Unobservable By Direction, On The Stereo Pair
-
-Added by the project owner on 2026-10-03, and built first: everything the
-stereo set does with a local plume depends on it.
-
-The stereo pair does not say "I looked and nothing is there". It gives a
-depth where it matched and is silent everywhere else, and its silence is one
-for every cause: too far for the light, no texture, smoke, a surface that
-swallows the light. Item 17 taught the stack to read that silence for the
-frame as a whole (specification K9, K14): a frame that observes too little
-is blind, and what it looks at is marked. A local plume fills a part of the
-frame. The frame as a whole stays healthy, the directions without depth are
-unknown, unknown is free (I1), and the vehicle flies into the plume. The
-same hole lets a uniform panel across the route into the memory as nothing
-(the register's textureless-surface entry, r783). The lidar's half of this
-is stage 0's dropout pattern; the pair has none.
-
-What tells a silent direction that is far from one that is closed, by
-measurement only:
-
-- **Its neighbours.** A patch without depth whose border returns surfaces at
-  two or three metres, with a sharp edge, is not a corridor: an opening
-  shows something of what lies behind it at its rim.
-- **The approach.** An opening opens as the vehicle nears it: the light
-  begins to reach, depth appears behind the rim. A patch that stays silent
-  while the range to its border falls under what the light carries is
-  closed. This is the strongest sign and it arrives late, so the speed
-  toward a silent patch is bounded by the range to its border, as the
-  contract bounds every other motion.
-- **A second sensor.** The time-of-flight ring is active and reads in the
-  dark to 4 m: a return behind a patch the pair is silent on says the pair
-  failed, not the world. An absorbing surface silences both.
-
-A direction judged closed is marked unobservable in the memory, the fail
-evidence of item 17, ray by ray and dense enough to close what it covers
-(the frustum marking of K14 leaks between its rays, r816).
-
-**The test object is a uniform matte panel** (`BLANK_PANELS`, already in the
-repository since item 17 stage 2): lit by the vehicle's own light it is an
-even bright patch with nothing to match, close to what a plume's veil looks
-like, and it has a collision, so a rule that fails is a contact and not a
-harmless pass through air. The rule is settled on it before smoke adds a
-shape that churns.
-
-Known and not attempted: a surface that returns no light at all, a matte
-black one, looks to the pair like the unlit far end of a corridor until the
-vehicle is close. One stereo pair cannot tell the two apart at range; the
-speed toward a silent patch, bounded by the range to its border, is what
-covers it.
-
-Complete when, on five flights with a panel across the route and five with
-one beside it, the vehicle does not fly into the panel, routes around it
-where a way exists, and the memory holds it closed from every side it was
-seen from.
-
-**Measured and settled on 2026-10-14** (specification F13 rewritten, K36;
-`stereo_silent_patches.cpp`, `tools/panel_memory.py`). On the code before
-the stage a 3 x 2 m panel across the route entered the memory by its hits
-as it is, 44 percent of its face 8 s after the vehicle came within 6 m and
-96 percent by the end, and was flown over 0.89 m clear; beside the route 79
-percent, passed 0.82 m clear (r1491, r1495): the light's falloff and the
-panel's edges give the matcher some structure, two hits make a voxel, and
-the ring sees it at 2.8 m. The marking this stage was written for, a silent
-patch closed ray by ray where its rim is matched within reach, flat and
-round it, closed the dark location when flown: the lamp's shadows, dark
-corners and the ceiling bounded by lit walls are such patches too, 417 of
-476 and 671 of 764 frames closed somewhere, five million marks, the mission
-lost to a loop and a hold (r1496, r1497). It is a prohibition from a wrong
-measurement and is not built. Kept is the stage's speed law: a closed patch
-holding the frame's centre within 15 degrees bounds the braking contract's
-range along the heading by its rim's depth, never under the margin
-(`/stereo_depth/silent_range`); past the panel 1.300 m/s with the bound in
-7 percent of the frames at 0.5 to 4.4 m (r1498).
-
-**Accepted on 2026-10-15** (944241d3; the memory read by `tools/panel_memory.py`
-from each flight's bag):
-
-| Flights | Runs | Result |
-|---|---|---|
-| Panel across the route, five | r1499, r1500, r1501, r1503, r1504 | no contact, the body 0.88 to 2.63 m clear of the panel, the route over or beside it; the memory held 45 to 72 percent of the face occupied 8 s after the vehicle came within 6 m and 44 to 75 by the end; 1.29 to 1.41 m/s, the goal 0.83 to 1.32 m by the truth |
-| Panel beside the route, five | r1505, r1506, r1509, r1510, r1511 | no contact, 0.58 to 3.88 m clear; the memory 77 to 106 percent of the face from the side seen; 1.38 to 1.53 m/s, the goal 0.83 to 1.44 m |
-| Ordinary, five | r1512, r1513, r1514, r1515, r1516 | 1.38 to 1.45 m/s (r1485 before the stage: 1.43); no contact; r1514 acknowledged its goal 2.32 m from it by the truth, over the 2 m capture radius: the estimate's drift with the pair's noise (A12), 1.2 to 2.0 m at the end of a flight against 0.7 to 0.9 before it, with the tracked features and the residuals unchanged (p50 170 features, 0.48 px against 0.41); r1495 missed by 2.44 m the same way. The register holds it. |
-
-Voids on the way: r1502 (watchdog), r1507 and r1508 (real-time factor
-0.80 and 0.82 under the bag's load); r1492 and r1493 not flown.
-
-### Stage 1: Smoke In The Simulator (Done)
-
-Done on 2026-10-14 (specification A12, A13; the measurements in
-[`obstacle_mapping.md`](obstacle_mapping.md), "Smoke In The Simulator", the
-tool `tools/smoke_rig.py`). Gazebo's `ParticleEmitter` did not serve: its
-particles are unlit, so a camera sees them in the dark and the light's place
-does not matter to them; a depth sensor stops on the first one by a fixed
-chance whatever the path, and `particle_scatter_ratio` does not set that
-chance; the evaluation's depth camera scatters too; `<scene><fog>` acts on no
-sensor; the thermal camera never sees them. Smoke is therefore a model, one
-field per smoky place that every sensor reads through a relay beside the
-flight: the pair by single scattering of the carried light, the time-of-flight
-ring and the lidar by the lidar equation (`SMOKE_ZONES`, RViz draws the
-places). On the way the cameras' noise was found a tenth of a level where
-item 17 stage 1 had meant 2.5, and set to a small sensor's shot noise, about
-one (A12).
-
-What the vehicle meets: a plume is silence to the pair, not a surface (a wall
-5 m away is lost behind about one optical depth, smoke is never matched);
-the lidar sees through 0.3 per metre and returns from the smoke's face from
-0.5; a time-of-flight unit sees smoke only round itself, from 1 per metre;
-the carried light set apart from the pair lowers the veil and does not give
-the wall back; the camera estimator tracks half its features in a plume and,
-flying 11 m through 3 m of smoke, ends 0.1 to 2.2 m off (3.6 m at the worst),
-through 7 m of it up to 4.6 m.
-
-The question as it stood: Gazebo already carries the tool, built for this
-purpose, the `ParticleEmitter` system of the DARPA SubT virtual track, and its
-`particle_scatter_ratio` sets how the particles reach each sensor; the
-vehicle's own light in smoke, which the location's darkness makes the only
-light, scatters straight back into the cameras, and whether that helps or
-harms, and a light set apart from the pair as the remedy, were the first
-measurements.
-
-### Stage 2: Detecting Smoke (Done)
-
-**Measured and built on 2026-10-15** (specification K38). On the rig the
-ring inside smoke of 1/m returns from every zone at 0.05 m with 0.012 of a
-surface's intensity, and nothing from a plume ahead until it is inside
-(the lidar returns from it at 0.3/m already); the pair matches nothing
-through 0.3/m and more. A zone returning under half a surface's intensity
-is smoke: its rays are fail evidence, and the share of smoky zones is
-published for the ladder. The pair-against-ring signature has nothing to
-read in the simulator; no particle counter is mounted.
-
-
-Free only where smoke fills the frame. Item 17 stage 0 already turns the
-contract's forward range into a measurement, and smoke all round is one more
-way that range collapses: the vehicle slows and stops without a classifier.
-A plume in a part of the frame does not collapse it, and is stage 0b's. Two signatures separate smoke from a
-wall where that matters: the time-of-flight zones report signal rate and
-ambient per zone, and smoke is a low signal spread over every zone at short
-range in every direction, which no wall is; and a surface the pair sees that
-the time-of-flight ring does not, or that moves, is not a surface. An optical
-particle counter of the Sensirion SPS30 class — about 25 USD, grams — is the
-independent channel, and it is compared against the free ones before it is
-mounted.
-
-### Stage 3: A Thermal Channel (Done)
-
-**Measured and settled on 2026-10-15** (specification K39, the rig's
-thermal pair of the Boson+ 640 class): thermal stereo matched nothing with
-the wall 3.7 m away and 0.46 of the frame at 7.7 m, every match on the
-wall's edge against the floor and none within a voxel of the truth, clear or
-through 1/m of smoke alike. The world's surfaces carry one temperature each,
-so the band has no texture; the result is conditional on a texture the
-simulator does not model, as the stage foresaw. The vehicle carries one core
-of the Lepton 3.5 class as a detector (`models/stereo_tof_v1`, 160 x 120 at
-9 Hz, relayed as the pair's frames are), and the depth node reports the
-share of its pixels 5 K warmer than the frame. The ladder of cheapening is
-not flown: there is no stereo to cheapen. The share is published and read by
-no decision: the location has no hot source for it to find, and the core
-waits for a scenario that has one (F4, 2026-10-17); the lidar build carries
-no thermal core until then.
-
-
-Longwave infrared (8 to 14 µm) is the one passive sensor that sees through
-smoke: the wavelength is far larger than the particles and there is little
-scattering. It is why firefighters carry it, and the simulator models it: the
-thermal camera is the sensor type the particle emitter does not touch.
-
-**Price is not a criterion of the exploration, and it is a criterion of the
-accepted build.** Both halves were decided by the project owner on
-2026-09-23. The first follows from the cost section below: the thermal
-channel is an addition to either sensor set and competes with nothing, so the
-comparison that made price matter in item 17 does not exist here, and the
-stage takes the best and most suitable core first to learn what the problem
-needs — if the best cannot make smoke workable, no cheaper core will, and a
-cheaper core is a harder problem taken up afterwards, not a simplification
-lost. In the simulator that costs nothing: a thermal camera is a resolution,
-a rate and a field, so the best core and the cheapest fly in the same series
-and the downgrade is measured beside the target rather than deferred.
-
-The second half is why the exploration is not the target. The simulated
-vehicle stands for an industrial prototype with a bill of materials, and a
-build nobody would assemble proves nothing about the product: a pair of
-Boson 640 cores is 7 100 USD on an airframe whose whole sensor set is 80 to
-170. The item therefore completes on a core of a class someone would mount,
-and every result records what in it rests on the resolution and the rate, so
-that the distance between the best core and the accepted one is a measured
-loss and not a redesign.
-
-The role, and it is the ambitious one because price no longer argues
-against it: **thermal stereo, a pair of the best cores, for metric depth
-through smoke.** That is the only role that returns flight through a plume
-rather than an informed stop, because it is the only one that gives the
-braking contract a measured range. It is its own hard problem — the band
-carries little texture, matchers built for visible light do poorly on it,
-and the cheap cores run at 9 Hz — and the stage measures whether it works
-before anything is built on it. The detector role is what remains if it does
-not: one core, no depth, answering whether there is a surface or a body
-behind the smoke and whether what the pair sees is smoke or a wall.
-
-**The core the exploration starts from: a synchronised pair of Teledyne
-FLIR Boson+ 640** — 640 x 512 at a 12 µm pitch, NETD under 20 mK, 60 Hz, an
-external frame-sync input, controllable flat-field correction, and the widest
-lens of the family, about 95 degrees horizontal, on the 0.20 m baseline the
-visible pair uses. About 7 000 to 8 000 USD the pair. Nothing above it is
-worth the exploration: a cooled mid-wave camera is better in noise and speed
-but carries a Stirling cooler — hundreds of grams, tens of watts, from
-20 000 USD — and is not a drone even for an experiment, and its advantage
-does not reproduce in the simulator; the 1280 x 1024 uncooled cores that
-exist add pixels where the bottleneck is not, since 640 x 512 is already
-forty times fewer pixels than the visible pair and the limit is the texture
-of the band. In the simulator the Boson+ 640 is a bound on the parameters,
-tied to a device that exists — 640 x 512, 60 Hz, 95 degrees, 20 mK of noise —
-so that the exploration does not drift into a sensor nobody makes.
-
-**Four properties of every microbolometer decide suitability more than the
-module does**, and three of them reach the braking contract:
-
-- **The shutter.** A microbolometer closes a shutter for its flat-field
-  correction, for hundreds of milliseconds every tens of seconds or on a
-  drift of its own temperature, and delivers no frame meanwhile. To this
-  stack that is a hole in the evidence age — the constant that item 17
-  stage 0 turns into a measurement — so any core in the speed path must
-  expose control of its correction, to schedule it into a hover, and the
-  measured age must cover the gap. The FLIR cores expose it; the Chinese
-  cores vary. This is a selection criterion, not a detail.
-- **Texture in the band**, the chief risk of the stereo role, and
-  independent of the module. Longwave infrared sees differences of
-  temperature and emissivity; a corridor of evenly warmed concrete is smooth
-  in the band however cracked and stained it is to the eye, and no
-  resolution repairs that. It has a consequence for the simulator that is
-  written here so that it is not forgotten: Gazebo's thermal camera renders
-  the temperature of visuals that carry one, the imported SubT world almost
-  certainly carries none, and so the materialization variant of stage 1 will
-  have to tag its surfaces with a temperature the way item 17's variants
-  change their materials. The thermal texture is then **ours to choose**, and
-  the answer "does thermal stereo work" is conditional on what we chose. The
-  simulator cannot say how much thermal texture a real corridor has; the
-  literature and a core in hand can. The first action of the stage is that
-  check of the world's thermal model, and every stereo result of the stage is
-  labelled as conditional on the assumed texture.
-- **Frame synchronisation.** Stereo on a moving vehicle needs synchronous
-  frames. Boson has a sync input, Lepton 3.x a VSYNC line, the Chinese OEM
-  cores usually one of the two, the Chinese consumer USB modules none. The
-  detector role does not care.
-- **Field of view.** The visible pair covers 120 degrees; a Lepton 57, the
-  Chinese cores about 56, a Boson with its widest lens about 95. A narrower
-  field shrinks the contract's faced zone, so more of the motion becomes
-  unfaced and answers to memory; the gaze policy compensates in part, and the
-  cost is measured.
-
-The thermal time constant of a bolometer, about 10 ms, is not a criterion:
-at 2.45 m/s and a yaw rate of 80 degrees a second it is two to four pixels of
-blur on a 640 core.
-
-**The modules, judged against the two roles and the two phases:**
-
-| Module | Detector | Stereo, exploration in the simulator | Accepted build | Verdict |
-|---|---|---|---|---|
-| FLIR Lepton 3.5 | the natural choice: 164 USD, a gram, 150 mW | the lowest point of the curve | yes, as a detector | fits, as a detector |
-| FLIR Boson 320 | more than the role needs | the middle point | no | simulator only |
-| FLIR Boson+ 640 | more than the role needs | the top point, the core above | no | simulator only |
-| FLIR Hadron 640R | no | no | no | excluded |
-| Chinese 256 x 192 (InfiRay class) | yes, and better than a Lepton: 2.6 times the pixels, 25 Hz | marginal | yes, as a detector | fits, as a detector |
-| Chinese 640 x 512 OEM | more than the role needs | yes | **the one stereo candidate**, on a quote and a sync line | fits, conditionally |
-
-The Lepton is not a stereo core: 160 x 120 is sixty-four times fewer pixels
-than the visible pair, and the depth would be sparse and noisy — though its
-9 Hz is not what disqualifies it, since the visible pair flies at 7.5. The
-Hadron is the Boson 640 with a 64-megapixel visible camera in the same
-housing: the visible half duplicates the pair, the pixels are useless to
-this pipeline, radiometry adds nothing to geometry, and two of them are
-8 000 USD. The Chinese 256 x 192 modules are consumer USB devices whose
-drivers and software are a lottery and which carry no sync between two of
-them, which the detector does not need and stereo does. The Chinese
-640 x 512 OEM cores are the only path to thermal stereo in a build someone
-would assemble — 1 000 to 1 600 USD the pair, the same order as a lidar, and
-nothing below that exists — on two conditions: a quote that lands in the
-lower half of the range, and a frame-sync line, which OEM cores usually
-carry.
-
-**The ladder of cheapening.** Each step changes one variable, so that the
-loss is attributed to it and not to "worse"; the ladder is also the ablation
-of the stereo role.
-
-| Step | Core | What it isolates | The pair, USD |
-|---|---|---|---|
-| 0 | Boson+ 640, 60 Hz, 95 degrees, synced | the reference | 7 000 to 8 000 |
-| 1 | the same core, the 9 Hz variant | frame rate | about 5 000 to 6 000 |
-| 2 | Boson 320, the same lens family | resolution | about 3 100 |
-| 3 | Chinese 640 x 512 OEM | the core itself: noise, sync, correction control, software | 1 000 to 1 600 |
-| 4 | Chinese 256 x 192 | resolution and synchronisation together | about 600 |
-| 5 | one core: Lepton 3.5 or Chinese 256 x 192 | the role: stereo becomes a detector | 164 to 300 |
-| 6 | no thermal core | the floor: stage 2 alone, the ladder without seeing behind the plume | 0 |
-
-Steps 1 and 2 answer what thermal stereo actually needs, rate or pixels.
-Step 3 is the accepted build's target point: on paper the same specification
-as step 0, in the hand a different noise, a different sync, a different
-correction control and different software, and it is where thermal stereo in
-a plausible build is decided. Step 4 is where stereo most likely dies. Step 5
-is the change of role, and still better than nothing. Step 6 is what the
-item gives without a thermal core at all.
-
-The simulator varies **resolution, rate, field and noise**, so steps 0, 1,
-2, 4 and 5 fly in one series as parameters. It does not vary the reliability
-of a sync line, the control of the correction or the quality of a driver —
-what actually separates step 3 from step 0 — and those are learned only with
-a core in hand. In the simulator step 3 is therefore step 0 with 40 to 50 mK
-of noise, and it is recorded as that assumption and not as a result.
-
-Prices, single units, 2026, for the record and for the day hardware is
-scheduled, not as an input to the exploration:
-
-| Module | Resolution | USD |
-|---|---|---|
-| FLIR Lepton 3.5 | 160 x 120, 57 degrees, about 9 Hz | 164 |
-| FLIR Boson 320 | 320 x 256 | 1 539 without a lens, up to 2 549 |
-| FLIR Boson 640 | 640 x 512 | 3 558 |
-| FLIR Hadron 640R, thermal beside visible | 640 x 512 | 3 992 to 4 330 |
-| Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
-| Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
-
-### Stage 4: What The Vehicle Does (Done)
-
-**Built on 2026-10-15** (specification K40; flown in this item's
-acceptance): a vehicle in a plume (blind with half the ring smoky, or
-blind and dead reckoning under a light it judges reliable: at a plume's
-edge the ring returns smoke from a few zones only, r1534) backs out on
-dead reckoning along its heading through K19's hold, holds 30 s
-where it sees again after the first plume and takes its goal back, and
-gives the goal up for the start after a second (r1532 landed in the smoke
-before any retreat; r1533 backed out twice and wandered 800 s, item 19's
-proof exhausting its budget through the unknown beyond the plume). A
-plume's marks are fail evidence lifted when seen through.
-
-The ladder of item 17 stage 5, with the rung that item added between holding
-and landing: **retreat along the flown path**. The path just flown is in
-memory as observed and free, and for smoke as for darkness a vehicle that
-backs out to where it could see is better placed than one that lands where it
-cannot. Through dense smoke the visible cameras do not fly, and this item does not
-try. What the thermal channel changes depends on which role stage 3
-delivers: thermal stereo hands the braking contract a measured range through
-the plume and the vehicle flies what that range admits, as it does in the
-dark on any other sensor; a detector alone makes the stop an informed one,
-with a retreat or a landing chosen on what is actually behind the plume.
-
-With the fail evidence (item 17 stage 8, stage 0 here) the plume is a measured prohibition, and routing
-around it is legitimate — not as a cost on free space, which stays
-forbidden, but as the planner's ordinary answer to a closed region. The
-sequence is then: the vehicle approaches, the range collapses at the plume's
-edge, the region behind the edge is written unobservable, and the planner
-replaces the route around it if one exists. If none exists the ladder runs,
-and when the ladder is spent and the goal has been proven unreachable in
-item 19's sense, the general return home of item 19 applies — a policy of
-the mission, not of this item.
-Two rules close the loop that the ladder alone leaves open. **After a
-retreat the vehicle holds where it can see for a stated time** — the plume
-is transient and expected to move — and if the range ahead has not returned
-by then, it gives the goal up and flies home while it still has a position
-source (when the way is proven closed, or on the camera profile when the
-light's battery holds only the way back, item 17 stage 5), and it lands there, in sight, only when the start too is
-proven unreachable; that is a rule of time on the vehicle's own state, not a
-prohibition of space, and it is the same time the light of item 17 stage 5
-is given to return. And the
-closed region must not close its corridor for the rest of the flight once
-the plume has drifted out of view. With the memory's decay by time switched
-off (specification K10) nothing fades by age, and a place the planner will
-not route into is a place the vehicle never looks at again. So a mark of
-unobservability is transient in item 21's sense and carries its own rule,
-settled in this stage by measurement: it lifts when the vehicle sees through
-the place, and a mark not confirmed for a stated time returns to unknown,
-which sends the vehicle to look again; the sensor then either sees through
-or restores the mark. That re-approach is a probe bounded by the stated
-time, not an oscillation, and the time applies to these marks alone, never
-to what is static.
-
-### What The Additions Cost, And Against What
-
-The rule of item 17 — the additions must not approach the price of a 3D
-lidar — does not apply here, and the reason is worth writing down. That rule
-compares a substitute against what it replaces: the stereo set with its
-flood and its ring against a lidar. Everything in this item is an addition on
-top of either set. Smoke scatters a lidar's 905 or 1550 nm as it scatters a
-time-of-flight pulse, and a thermal core costs the same 164 or 3 558 USD
-whichever sensor it sits beside. So there is no comparative bar: each
-addition is judged on whether it earns its place, charged once to both
-profiles. What remains is the bar every addition of this project answers to,
-that the vehicle stays a build someone would assemble; stage 3 explores at
-the best core and completes on a plausible one.
-
-One asymmetry keeps the separation from being perfectly clean. A lidar gets
-part of its smoke robustness for free: it is active, so it needs no contrast,
-and most 3D lidars carry multi-echo returns and per-return intensity, where
-the last return passes thin smoke and a weak return is an aerosol and not a
-wall. The stereo pair has none of that, and thin smoke that a lidar filters
-already kills its contrast. The camera set's smoke addition therefore does
-more work, and in the substitution comparison of item 17 it is the difference
-between the two additions that is charged, not the whole.
-
-### Measurement And Completion
-
-Measure, per flight and per profile: the particle density along the path;
-depth coverage and error against evaluation-only truth in and out of the
-plume; the time-of-flight signal rates; the contract's forward range and the
-speed it admits; the number and size of occupied voxels that were never true
-occupancy, and how long each survived; route replacements caused by them;
-the rung of the ladder reached and when; the minimum distance to true
-occupancy; and physical collisions.
-
-This item is complete when stage 0b's panel flights have passed;
-when stage 0 has landed and both acceptance series
-have been re-flown on it, with the route stability and the speed it costs
-stated; when, **on the camera profile and on the lidar profile alike**,
-five flights through the smoky location reach the goal in truth or retreat
-and land without a collision, with no phantom occupancy surviving the
-flight longer than the time stage 4 states for a mark of unobservability; and when, on both profiles, five flights of the
-blocking scenario return to the start in truth without a collision, the
-goal given up by item 19's proof (`trigger=topological`), which closes
-item 24. Accepting on one profile would prove the
-addition only on the set where it has the most to do and say nothing about
-the set where it should be least needed.
-
-**Accepted on 2026-10-16** (the vehicle's code of 76367bee, the documents
-on top of it; the series driver and its tables in `log/tools/part6/`, the
-journal in `log/tools/journal/goal_journal_smoke_light.md`). Every flight
-below is on both sensor sets, one at a time, each counted only at a
-real-time factor the host sustained (A7, A8; K25 where it says 0.8):
-
-**The stereo set's groups flown again on 2026-10-17**, twice: on e9d26309
-with the estimator's heading repaired (K28: clear r1688 to r1692 0.96 to
-1.52 m from B at 1.31 to 1.49 m/s; smoky location r1693 to r1697 0.67 to
-1.82 m; blocked corridor r1698 to r1702 home within 0.32 to 0.52 m) and on
-7bc3941b with the pair's principal point at the pixel centres as well (K33:
-the clear flight r1710 to r1714 ended 0.79 to 1.11 m from B at 1.38 to
-1.46 m/s; the smoky location r1715 to r1719 0.77 to 1.57 m at 1.35 to
-1.46 m/s; the blocked corridor r1720 and r1722 to r1725 home within 0.31 to
-0.38 m by the ladder (`trigger=smoke`), 2 to 6 dead-reckoning episodes;
-r1721 voided by the harness). No contact in any. The lidar's groups stand
-as flown on 76367bee: both repairs touch the stereo set alone.
-
-- **The smoky location** (`sim-urban-smoke-headless`, four plumes of 1/m,
-  two of them in the start hall): the stereo set reached B in truth in
-  r1653, r1654, r1655 and r1657 (0.84 to 1.79 m, at a real-time factor of
-  0.8: 1.35 to 1.41 m/s of simulation) and in r1623 (1.22 m, at 1.0: 1.18
-  m/s, the host at its limit); r1630 reached it 2.51 m off in truth, the
-  estimator's drift of `technical_debt.md`. The lidar reached B in r1631 to
-  r1635 (0.44 to 0.75 m) at 2.72, 2.15, 2.10, 2.36 and 2.20 m/s. No contact
-  in any of them; the ring returns smoke only inside a plume (K38), the
-  lidar sees a plume's face from 20 m (A13) and marks it (K37), and the
-  plumes beside the route are flown round.
-- **The blocking scenario** (`sim-urban-smoke-blocked-headless`, 3/m across
-  the north corridor): the lidar gave the goal up by item 19's proof and
-  came home in r1616 to r1620 (0.19 to 0.51 m from the start in truth,
-  `trigger=topological`, within about 110 s of the plume's face); the
-  stereo set by the ladder in smoke (K40, `trigger=smoke`) in r1612 to
-  r1615 and r1656 (0.30 to 0.42 m, 2 to 10 dead-reckoning episodes each).
-  No contact. This closes item 24 (below).
-- **The ordinary flight, re-flown on the final code** (the memory's K42 and
-  the proof's K16 changed after part 4): the stereo set r1643 to r1647
-  (0.92 to 1.56 m, 1.21 to 1.31 m/s), the lidar r1648 to r1652 (0.18 to
-  0.55 m, 1.81 to 2.59 m/s, two of five under 2.4 as in part 4's base
-  r1524 to r1528). No contact.
-
-What the acceptance measured and what it did not: the speed in smoke is
-recorded, not required here (item 23 sets the requirement under smoke); the
-phantom occupancy inside a plume is the plume's own marks (K37, K38), lifted
-when seen through (K10), and the ordinary memory holds no occupancy the
-truth does not on the plain flights (`tools/phantom_blocks.py`: r1622 48
-cells named, no phantom); the depth coverage and the thermal channel were
-measured on the rig (stages 2 and 3), not per flight.
-
 ## 21. Moving Obstacles: Doors And Bodies That Move Slowly
 
 **Type:** perception and safety, general; not tied to a sensor.
@@ -1237,219 +622,6 @@ occupancy; and collisions. Complete when five flights of the point-to-point
 mission in total darkness, with no illumination and the time-of-flight
 sensors the only emitters, reach the goal in truth without a collision; the
 mean speed they fly is recorded as this sensor set's figure.
-
-## 23. Flight Through Moderate Smoke
-
-**Type:** dependent realism stage. Decided by the project owner on
-2026-10-03.
-
-**Hard prerequisites:** item 18, whose stage 1 puts smoke into the simulator
-and whose stages 2 and 3 detect it; item 17 stage 0, the contract that reads
-the frame.
-
-**Validation environment:** Urban Circuit Practice 01, the point-to-point
-mission, on the stereo set and on the 3D lidar.
-
-Item 18 handles smoke the vehicle cannot see through: a local plume is a
-measured prohibition and the vehicle flies around it or home. This item is
-the other half: smoke the vehicle can see through, not in one place but
-filling whole rooms, which it has to fly **through**. It needs no new rule.
-The braking contract already ties the speed to the range the frame measures
-(specification K9): a range above the margin is a slower flight, a range
-below it is item 18's prohibition, and where one ends and the other begins is
-a measurement, not a setting.
-
-What the flights look like once the item lands:
-
-- **Rooms, not the location.** Several rooms are filled with moderate smoke
-  wall to wall; the rest of the location is clear. A location filled
-  throughout would only move every figure at once.
-- **One smoky room is always on the way**: in every ordinary flight the
-  route to B passes through a room of moderate smoke, as every ordinary
-  flight carries item 18's plumes off the way. Both sensor sets fly it.
-- **The smoke is drawn in RViz**, as every evaluation object is.
-
-Three hard places, each measured before anything is built:
-
-- **The vehicle's own light.** The light sits beside the cameras, and smoke
-  scatters it back into them: a veil that lowers the contrast the matcher
-  and the feature tracker live on, worst exactly where the light is
-  strongest. What the confident range and the estimator's tracked features
-  become in smoke lit from the camera's own position is the first
-  measurement; a light set apart from the pair, or polarized, is the remedy
-  to compare.
-- **The lidar's false returns.** Particles return the beam. The memory must
-  not write them as walls, or moderate smoke becomes item 18's prohibition
-  by accident; it must not ignore a wall behind them either. Last-return
-  selection, intensity and the returns' persistence between scans are what
-  there is to tell them apart with.
-- **The simulator.** Everything above depends on how Gazebo shows smoke to
-  a camera and to a lidar, which item 18 stage 1 settles; if its smoke is a
-  visual effect only, this item starts with the sensor models. Settled
-  (2026-10-14): smoke is a model the sensors read (specification A13), with
-  the lidar's single strongest echo; last-return selection needs the model
-  to report more than one echo a ray first.
-
-**Size:** L to XL.
-
-### Measurement And Completion
-
-Measure, per density of smoke and per sensor set: the contract's measured
-range, the speed it admits, the estimator's tracked features and drift, the
-false occupancy the memory holds inside the room and the walls it misses.
-
-This item is complete when, with one smoky room on the way in every flight,
-five flights on the stereo set and five on the 3D lidar reach B in truth
-with no contact, the mean flight speed is recorded as the requirement under
-smoke, and the memory of the smoky room holds no occupancy the truth does
-not.
-
-**Measured and flown on 2026-10-16 and 17** (`sim-urban-smoke-rooms-headless`:
-the west hall at (-20,22.5) filled wall to wall with 0.1/m, on the way, and
-the tunnel's mouth at (18,-6) beside it; the series in `log/tools/part7/`).
-The three hard places, measured before the flights:
-
-- **The vehicle's own light.** The pair through 0.1/m matches a wall 4 m
-  off whole and one 8 m off not at all (`tools/smoke_rig.py`,
-  log/tools/part7/rig_last); the light set apart lowered the veil and
-  gained nothing (item 18 stage 1). The estimator replayed over 11 m of
-  flight through 20 m of 0.1/m: 0.88 m off at the end (1.67 at most)
-  against 0.41 (0.62) clear; through 0.2/m 0.33 (2.93); the features held
-  (84 to 92).
-- **The lidar's false returns.** The relay's strongest echo returned the
-  smoke a metre off and hid the walls inside 0.3/m; the lidar reports its
-  last echo over the threshold (A13, a driver set to last return) and reads
-  a wall 8 m on through 0.1 and 0.2/m in every forward ray, 15 m on through
-  0.1/m in 93 percent; dense smoke, 3/m, still returns the smoke. In the
-  memory the smoke's own return is a miss to its range and nothing more
-  under 0.01 of a matte surface's intensity, about 0.5/m (K37): read as
-  dense, the room closed in front of the lidar at 7 m and the vehicle
-  turned back (r1661). The relay reads a ray in steps that follow the
-  zone's density, or a room of 26 by 40 m starved it to 7 scans a second
-  (r1659).
-- **The simulator**: settled by item 18 stage 1 (A13).
-
-The flights, each at a real-time factor the host sustained (0.8 on the
-stereo set, K25):
-
-- **The lidar reached B in five of five**: r1675 to r1679, 0.11 to 0.52 m
-  in truth, no contact, 2.16, 2.28, 2.33, 2.53 and 2.45 m/s (the clear
-  flights 1.81 to 2.59). The memory of the smoky hall holds 0.2 to 0.9
-  percent of its occupied voxels with no truth occupancy within 0.5 m,
-  against 0.2 percent in the clear flight r1667.
-- **The stereo set, first series (0455d22e): three of five in truth**:
-  r1669 0.74 m, r1672 1.36 m, r1674 1.19 m; r1670 and r1673 came 2.85 and
-  3.50 m off. No contact. 1.11, 1.32, 1.35, 1.33 and 1.34 m/s. The miss had
-  a root cause of its own, found on 2026-10-17 by a recorded flight replayed
-  offline (0.6 m of drift offline against 2.25 m in flight) and the heading
-  sigma logged: the filter's first step after the declared pose spans the
-  frame's latency and was read as a hole in the IMU stream, which gave the
-  heading, which no feature observes, 9.5 degrees of uncertainty for the
-  whole flight, and every update walked it (specification K28, repaired in
-  5d6443bd; two of seventeen clear flights since 2026-10-14 had missed the
-  radius by it too).
-- **The stereo set, second series (e9d26309, the estimator repaired): four
-  of five in truth**: r1683 1.23 m, r1684 0.93 m, r1685 1.14 m, r1687
-  1.37 m; r1686 came 2.65 m off (2.25 m horizontal, 0.72 m vertical), the
-  first-pass drift the register's L1 names: the estimate under-reads the
-  distance flown by 0.3 to 0.6 percent in every flight and rises 0.10 to
-  0.24 percent of the path above the truth, and r1686 added a random walk of
-  1.5 m across the east hall. No contact. 1.38, 1.28, 1.26, 1.29 and
-  1.21 m/s. The memory of the hall: 0.9 to 1.7 percent phantoms (the clear
-  flight r1666 0.4). The frame stamp offset swept on two records (0 to 6 ms)
-  moves the scale through 1.000 near 2 ms and the error at B within its
-  noise, so the offset stays at the calibrated 4 ms.
-
-- **The stereo set, third series (7bc3941b, the principal point at the
-  pixel centres): five of five in truth**: r1705 1.38 m, r1706 0.44 m,
-  r1707 1.16 m, r1708 1.01 m, r1709 1.07 m; 1.28, 1.37, 1.24, 1.28 and
-  1.28 m/s; no contact; the memory of the hall 0.5 to 1.0 percent
-  phantoms. The second series' systematic rise of the estimate (0.10 to
-  0.24 percent of the path, every flight) had a root cause of its own: the
-  pair's principal point stated at the frame's centre (640, 480) where the
-  pixel coordinates the tracker and the depth use put it half a pixel in,
-  at (639.5, 479.5): 0.08 degrees of pitch and yaw (specification K33,
-  repaired in 67e2489e and 73cf6867; the records of r1680 and r1682
-  replayed at the pixel centres end 0.07 m off vertically instead of 0.43
-  and 0.55). In flight the rise is gone (r1705: 0.08 m over 422 m).
-
-**The speed under moderate smoke is recorded as the requirement**
-(specification K43): the lidar 2.1 m/s, the stereo set 1.1. **The item is
-complete on both sets**: five of five to B in truth on the lidar
-(r1675 to r1679) and on the stereo set (r1705 to r1709), no contact, the
-way through the room, the contract's speed in it and the memory of it
-measured. What the estimator still carries is the first-pass drift the
-register's L1 names, without its two systematic parts: the scale under-read
-of 0.3 to 0.6 percent stays, the rise does not.
-
-## 24. Item 19's Proof, Flown
-
-**Type:** validation debt of item 19. Decided by the project owner on
-2026-10-03, restated the same day.
-
-**Hard prerequisites:** none of its own. It is closed by a flight series
-another item flies anyway (below).
-
-Item 19's topological proof that a goal is unreachable has never fired in a
-flight: it is held by twelve unit tests alone (specification F15). Every
-return flown was the light's battery or the light's judgment. What this item
-validates is the algorithm, the proof that point B is **physically**
-unreachable, and nothing else about the flight:
-
-- **The sensor set does not matter**, and neither does what closes the way.
-  The proof reads the memory, not a sensor: the 3D lidar serves, the stereo
-  set serves, smoke serves, a physical partition serves.
-- **The return is by the proof, not by the battery.** In these flights the
-  vehicle is not bounded by its light's charge: the goal is given up with
-  `trigger=topological`, and a flight that returns by `battery` or by
-  `unreliable_light` does not count. On the stereo set the charge is set so
-  that it cannot be what turns the vehicle home, or the lidar is flown,
-  which carries no light battery at all.
-- **The memory's decay stays off** (specification K10), so that what the
-  vehicle has seen stays seen.
-- **The reachable part of the location is small enough** to be explored in
-  minutes, not an hour.
-
-**What closes this item.** Item 18's blocking scenario, "smoke closes the
-passage to B, no route exists, the vehicle flies home", flown and inspected
-with the goal given up by the proof. When that series passes, this item is
-complete: no flight of its own is needed, and nothing is re-flown with
-another barrier.
-
-What has to hold in those flights, and is checked in them:
-
-- **The closure is marked densely enough to close.** Evidence laid rays
-  apart let the goal's region leak round it when B lay in the dark (r816).
-- **No other trigger speaks first.** A vehicle blind for 3.5 s judges its
-  light unreliable and turns home (K12) before any proof stands; the
-  scenario lets the proof speak, by the order of the triggers or by flying
-  the lidar.
-- **What else leaks.** Walls never looked at close by themselves, because
-  the planner flies to every opening it believes in; free voxels behind
-  true walls do not, and are measured on a memory snapshot of the flight.
-
-Complete when five flights of item 18's blocking scenario give the goal up
-with `trigger=topological`, the truth grid confirms no way existed, and the
-vehicle is home in truth, on either sensor set.
-
-**Completed on 2026-10-16.** On the lidar the blocking scenario gave the goal
-up by the proof in ten of ten valid flights (r1576 to r1580 on e471157b,
-r1616 to r1620 on 76367bee; r1556 and r7 to r10 before them), within about
-110 s of the plume's face, and the vehicle came home 0.15 to 0.51 m from the
-start in truth without a contact; the truth grid confirms no way existed
-(`log/tools/truth25/flood`, the plume as a sphere of 3.5 m: the start's side
-6 730 m3, B outside it). What it took, each measured on a flight and
-recorded in the specification: the lidar's smoke echo over its pulse's range
-gate (A13; the plume had been invisible from 4 m, r1546 and r1547 crashed in
-it), a scan of smoke alone read as an aerosol (K37), the proof's floods
-through the voxels the body's radius fits in (K16; the plume's face marked a
-beam apart was a sieve, r1549), and a grazing ray carving nothing of a
-surface (K42; the start's side opened under the hover within a sample, r1564,
-r1566). On the stereo set the same scenario is given up by the ladder in
-smoke (K40, `trigger=smoke`), not by the proof: the pair cannot map a plume
-it cannot see into, so no closure stands in its memory; the scenario admits
-both triggers (`RETURN_TRIGGERS_ALLOWED`), the deviation recorded in the
-goal's report.
 
 ## 25. The Estimator On Real Recordings
 
@@ -1858,102 +1030,6 @@ speed, the holds and the closest true clearance against 8192; (2) the engine
 built and its unit tests run on a machine without CUDA, the parity tests
 holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
 series on the board.
-
-## 29. Telling A Failing Light From A Dark Place
-
-**Type:** new capability; decided by the project owner on 2026-10-13
-(specification F18), after the question of a camera vehicle in a large dark
-space ([design_questions.md](design_questions.md)).
-
-**Hard prerequisites:** none in the simulator; a light driver that reports
-its state on a real vehicle ([hardware_builds.md](hardware_builds.md)).
-
-In empty darkness, a large hall or open ground at night at a height, the
-frames see nothing within the light's reach, and the vehicle cannot tell
-that from a light that failed (specification I7): after 3.5 s it judges the
-light unreliable (K12) and turns home. A mode that reads darkness as free is
-not built: the estimator still has nothing to track (dead reckoning after
-1 s, K13, the descent 3 s later, K19), a lit surface without texture gives
-the stereo pair no depth, and a light that really fails in such a mode flies
-the vehicle blind at speed.
-
-What is built:
-
-1. The light's own reading. On a vehicle, the driver's current or a
-   photodiode at the emitter; in the simulator, the light's state as such a
-   driver would read it, published on board (the injector's schedule never
-   reaches the navigation: only what a driver measures does). K12 judges a
-   failing light by it; the frames' judgment stays for what the reading
-   cannot see (a soiled lens, a lamp that dims while drawing its current).
-2. The time-of-flight ring as a second witness: a unit, with its own
-   emitter, reads a surface within its range inside the camera's field
-   where the frame is dark: the light has failed.
-3. Darkness with a sound light stays observed unobservable to the braking
-   contract (I2, F6, K14): no speed into it, the speed the ring confirms at
-   most; but no "unreliable light, home" for it.
-
-For a truly large space the answer stays another sensor: the lidar build
-(40 m, its own emitter) or GNSS in the open at a height; this item does not
-make the camera vehicle fast there, it stops it from aborting.
-
-The darkness this item meets is the cameras' noise's (item 18 stage 1): since
-2026-10-14 the simulated pair carries about a level of noise (specification
-A12), where the noise in effect before was a tenth of one and the edge of the
-light's reach matched as if noiseless. With it the frames alone judged a
-sound light unreliable in ordinary flights (r1464 at 2.6 levels, 13.6 s in;
-r1465 at 1.2, 50 s in, in a flicker's dip): the light's own reading is what
-answers that. The guaranteed range (K7) measured again with it is 5.2 m,
-not 6.4 (r1476), with the noise mask estimating the noise by brightness:
-the error grows with the depth as the light's falloff leaves far surfaces
-dim against the noise.
-
-Complete when, in the simulator: a large dark hall (a world of its own, its
-floor textured and lit by the carried light only) is flown to its goal by
-the truth without a false judgment of the light and without contact (three
-flights); the light's failure is still judged, by the reading, no later
-than K12 judges it today (light-failure and light-lost, a flight each);
-an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
-
-**The hall, built on 2026-10-14** (`environments/fixtures/dark_hall`,
-`./scripts/sim_dark_hall_headless.sh`, [`scenarios.md`](scenarios.md)): 80 x
-60 m and 20 m high, its floor and walls in a concrete texture of Urban's own
-statistics, the pad 4 m from the west wall and the goal 64 m east, flown at 6 m,
-where the pair's lowest rays meet the floor 7.6 m away. Urban's own largest
-room (the start's hall, about 25 m across, its walls 12.5 m from its centre:
-beyond the pair's confident depth but within the light's 25 m) is where every
-flight takes off, and with the pair's noise in effect it is already where the
-frames judged a sound light unreliable (r1464, r1465).
-
-**Done on 2026-10-14** (code 0d2141a4; the recording checker 4c2a967d).
-Built: the light's injector publishes what its driver would read of the
-output (`/carried_light/output_share`, never its schedule); the depth node
-publishes the share of the time-of-flight surfaces in the left frame the
-frame shows dark; the mission monitor counts an outage when the reading is
-under 0.25 of nominal, or when a blind frame shows half the ring's surfaces
-in its field dark, and with no reading as before (K12, I7, F3). Under a
-light read sound a blind frame is the place's darkness: it marks nothing in
-the memory (K14; marked, the hall closed every direction and the routes
-climbed to 17 m under the 20 m ceiling, r1473) and the memory's observed
-range answers for every motion (K15), so the hall is crossed at about
-0.5 m/s. Found on the way: the hall's grey background past the far clip
-took the tracker's budget and a never-aided estimator restarted on the
-autopilot's pose into a wall (r1466; the background black, K28); the pad
-moved 4 m from the west wall facing it, the concrete given an aggregate
-(r1468, r1469); every headless flight records its true pose, a snapshot
-volume or none (r1466, r1471); the pair's noise (A12) cost the camera
-flights their speed through the matcher's strays blocking routes by the
-latest scan (K35, K7 5.2 m, the noise mask by brightness; 5563787d).
-
-| Flight | Run | Result |
-|---|---|---|
-| Before, the rules of 8771edbe | r1475 | the light judged unreliable 41.8 s after readiness, home; video `log/videos/2026-10-14/dark-hall_r1475_*.mp4` (BAD by A11's minute alone: the flight lasts 50 s) |
-| The hall, three | r1488, r1489, r1490 | goal by the truth 0.44, 0.53, 0.38 m; no contact, no judgment of the light; estimate error 0.43, 0.39, 0.42 m at most; r1490 marked darkness in a flicker's dip under 0.25 and flew around it; videos `dark-hall_r1488/9/90_{follow,top}.mp4`, RECORDING ok |
-| The light fails | r1486 | judged 32.0 s after readiness (55.1 s of simulation; the reading's line says 55.0 after take-off; the frames judged r1445 at 76.9 / 100.6), home 0.29 m, landed |
-| The light lost | r1487 | judged 55.0 s after readiness, dead reckoning from 75.0 s, blind landing at 79.8 s, whole |
-| Ordinary camera | r1485 | 1.429 m/s, goal 1.09 m, no contact (R3 holds; the base's 1.714 was a noiseless pair's, the range 6.4 m against 5.2) |
-
-Diagnostic flights on the way, none acceptance: r1464 to r1474, r1476 to
-r1484.
 
 ## 30. The Airframe's Size
 
@@ -2684,6 +1760,630 @@ dead reckoning through the level descent, closed on the range it reads
 (K19); the ring's units carry the cameras' visibility mask. Accepted on
 the final commit: the light lost five times (r1384 to r1387, r1389: whole, 0.74 to 1.14 m of drift in 5.3 to 8.6 s of dead reckoning, the body's least true clearance 0.26 to 0.56 m), the loss beside a wall five times (r1390 to r1394: no contact, 0.60 to 1.23 m of drift, the least clearance 0.22 to 0.49 m), the light's failure five times (r1397, r1402 to r1405: home 0.77 to 1.28 m from the start by the truth). r1387 lay armed on the staging platform's edge after its blind landing: PX4's land detector, which a quarter of the thrust on an edge does not satisfy.
 
+### 18. Flight Through Transient And Scattering Obstacles (Completed)
+
+Closed on 2026-10-17, not yet in a release; accepted on 2026-10-16 (76367bee) on both
+sensor sets and flown again on the stereo set on 2026-10-17 (7bc3941b, the
+estimator's heading and the pair's principal point repaired). Smoke is a model
+the sensors read (A13); the lidar reads a plume by its echo and thin smoke
+through it (K37), the stereo set detects smoke on its time-of-flight ring
+(K38) and backs out of it by the ladder (K40); the blocked corridor sends
+both sets home, the smoky location is crossed without contact. What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+**Type:** dependent realism stage, with one repair that does not wait for it.
+
+**Hard prerequisites:** item 17 stage 0 for stages 1 to 4 (smoke is detected
+through the measured range); item 17 stage 8 for stage 0 below, whose fail
+evidence and restated invariant it applies to smoke and the lidar. The
+memory's decay by time, which this item was first written on, is switched
+off since 2026-10-03 (specification K10): how a mark of unobservability
+fades is settled here with item 21's transient class, not assumed.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission, on both sensor profiles.
+
+Two readers of the v0.4.0 release found the same hole from opposite sides. One
+asked what the obstacle memory does with a person walking through the frame;
+another asked what smoke would do to the vision. The answer to both is the
+same, and it is not about the sensor: an obstacle that was there and is not
+any more stays in the map. Smoke adds two things of its own — it blinds the
+active sensors as well, and it looks like a surface — which is why it gets an
+item and not a paragraph.
+
+**What the memory already does, stated precisely, because this item was
+first described wrongly.** `obstacle_memory_3d.cpp` scores every voxel by
+hits and misses: a free ray through a voxel lowers its score by
+`miss_weight`, and a Schmitt trigger returns it to free at `free_score`
+([`obstacle_mapping.md`](obstacle_mapping.md)). A person who walks away is
+therefore cleared as soon as rays pass through where they stood.
+`forgetDynamicVolumes` erases the volumes of known dynamic agents, the
+cooperative vehicles whose positions arrive by intent. What is missing is
+narrower than "no forgetting": clearing needs re-observation, so a voxel
+never looked at again is occupied forever, and nothing distinguishes an
+occupancy confirmed by a thousand scans from one that collected two hits and
+vanished. The planner treats both as a wall — a person crossing the frame is
+a route replacement, and a trail left where the vehicle does not return is a
+wall for the rest of the flight. Smoke is the case that rays cannot clear at
+all while it lasts, because to a stereo pair it is a surface.
+
+Three independent axes, decided by the project owner on 2026-09-23, so
+that no one builds the item as a mode of one sensor. **Smoke is a switch of
+the scenario**: particle emitters in a variant of the location, over the
+ordinary point-to-point mission, which does not change. **The perception
+profile is the vehicle's**: the stereo set or the 3D lidar, either one flown
+into the same plume. **The thermal channel is an addition to the vehicle**,
+not a part of the smoke scenario: it belongs to the sensor set that the
+scenario tests, and a flight may carry it on either profile or on neither.
+The acceptance matrix is the product of the three, not a list of modes.
+
+**What the flights look like once the item lands.** Decided by the project
+owner on 2026-09-27, and where it differs from the paragraph above it
+replaces it:
+
+- **The smoke sensors are always on board**, on both profiles: whatever
+  stages 2 and 3 settle on — the thermal channel, the particle counter — is
+  part of the vehicle, not an option of a flight. As settled (F4, 2026-10-17):
+  each profile's smoke sensor is its own detection channel, the time-of-flight
+  ring on the stereo set and the echo's intensity on the lidar; no particle
+  counter; the thermal core is the stereo set's detector of a hot source,
+  without a role in any decision until a scenario carries one.
+- **Smoke is always in the location**: a number of smoky places in every
+  flight, so that every acceptance flight exercises the smoke handling, and
+  none of them blocks the way from A to B; the ordinary mission stays
+  reachable.
+- **A separate scenario blocks the way**: smoke closes the passage to B, no
+  route exists, and the vehicle flies home. It exercises the smoke handling
+  and item 19's return together, by a cause the vehicle measures.
+- **Smoke is drawn in RViz**: every smoky place of a flight is a marker in
+  the picture, published by an evaluation component the vehicle never
+  reads, so that a person watching sees what the location holds.
+  Decided by the project owner on 2026-10-03.
+- **Smoke is constant**: where it is and how much of it there is never change
+  during a flight, so that the difficulty of the location does not change
+  with time. Its shape does, as a smoke grenade's or a local source's plume
+  churns, because that is what smoke looks like and what the sensors have to
+  cope with. A mark of smoke in the memory is transient (item 21's class): it
+  lifts when the vehicle sees through the place again, and how it fades when
+  the vehicle does not come back is stage 4's question.
+
+The blocking scenario is where item 19's proof is flown: its flights must
+give the goal up by the proof (`trigger=topological`), not by the light's
+battery or the light's judgment, and they close item 24.
+
+The navigation invariants hold in the form restated for this item, below.
+Vertical motion stays free, and nothing keyed on the vehicle's history is a
+rule.
+
+### Stage 0: Smoke And The Lidar In The Memory (Done)
+
+**Built on 2026-10-15** (`lidar_scan_patterns_3d.cpp`, specification K37):
+the organized scan is read for its patterns before the memory integrates
+it. An aerosol is a hit whose intensity is under half the scan's surface
+intensity (the median of its hits') with three or more of its eight
+neighbours weak hits within a metre of its range: the beam becomes a miss
+to the return and the return observed unobservable, a surface never
+measured. A dropout is a bundle of no-return beams of 400 or fewer whose
+border returns in three quarters of its beams at a median range of 8 m or
+less and a spread of 1 m or less from the first to the third quartile: the
+bundle's beams become misses to that range with fail evidence there; a
+bundle whose border recedes is an opening, and a no-return beam among
+no-return beams stays free to the maximum range. The smoke relay writes the
+intensity a lidar's driver reports, the echo over a matte surface's at the
+range (one for a surface, a thin fraction for smoke), where the cloud
+carries the field. The dropout by material stays designed and unverified:
+`gpu_lidar` returns geometry whatever the material.
+
+**Accepted on 2026-10-15** (2c223640): cameras r1517, r1518, r1519, r1522,
+r1523 at 1.467, 1.438, 1.451, 1.234, 1.419 m/s (mean 1.402; 1.429 before
+the stage, r1485), the goal 0.87 to 1.85 m by the truth, no contact; lidar
+r1524 to r1528 at 2.476, 2.577, 2.086, 2.357, 2.807 m/s (mean 2.461
+against the base's 2.333, two of five under 2.4 then as now: the clearance
+laws hold the lidar in the same places, the register's K27 entry), the goal
+0.42 to 0.95 m, no contact. Dropout bundles were read in 4 to 8 of some 165
+logged scans a lidar flight (135 to 608 beams), with the limiter profile
+unchanged against the base (route clearance 40 to 47 percent of the slow
+time, 40 to 44 before). Voids on the way: r1520, r1521 (watchdog at 0.68
+and 0.69).
+
+
+Item 17 stage 8 builds the memory's third kind of evidence, **fail**, and
+the invariant restated around it, for darkness. This stage applies them to
+what this item adds: smoke on every sensor, and the patterns in which the
+lidar fails. A person crossing the frame is transient occupancy, item 21's
+class, cleared by the next look and not by its age.
+
+- **The lidar.** A single ray with no return is ambiguous: nothing within
+  range, or something that absorbed or deflected the beam — black smoke, a
+  matte black surface, glass at an angle, water, a grazing wall. One ray
+  cannot tell them apart and the sensor does not know what should have been
+  there; only the pattern of returns can. Two patterns are failure: an
+  **aerosol**, weak, near, scattered returns across neighbouring rays (the
+  `particle_scatter_ratio` model), with the space behind them unobservable;
+  and a **dropout**, a bundle of rays with no return surrounded by rays that
+  return at moderate range. A ray with no return whose neighbours have none
+  either is open space and stays a free ray to the maximum range, as now.
+
+That last line is a change to the lidar's free-ray logic and it belongs to
+this stage: a missing return is a miss to the maximum range only when it is
+not a dropout. It carries a bonus the simulator cannot check. A matte black
+wall that returns nothing is a classic hazard of lidar navigation — the
+memory as it stands would integrate it as free and the vehicle would fly
+into it — and under the restated rule it is unobservable and closed. But
+`gpu_lidar` returns geometry whatever the material, so the case never occurs
+in this simulator; the repair is recorded as designed and not verified until
+a dropout by material is modelled.
+
+### Stage 0b: Unobservable By Direction, On The Stereo Pair
+
+Added by the project owner on 2026-10-03, and built first: everything the
+stereo set does with a local plume depends on it.
+
+The stereo pair does not say "I looked and nothing is there". It gives a
+depth where it matched and is silent everywhere else, and its silence is one
+for every cause: too far for the light, no texture, smoke, a surface that
+swallows the light. Item 17 taught the stack to read that silence for the
+frame as a whole (specification K9, K14): a frame that observes too little
+is blind, and what it looks at is marked. A local plume fills a part of the
+frame. The frame as a whole stays healthy, the directions without depth are
+unknown, unknown is free (I1), and the vehicle flies into the plume. The
+same hole lets a uniform panel across the route into the memory as nothing
+(the register's textureless-surface entry, r783). The lidar's half of this
+is stage 0's dropout pattern; the pair has none.
+
+What tells a silent direction that is far from one that is closed, by
+measurement only:
+
+- **Its neighbours.** A patch without depth whose border returns surfaces at
+  two or three metres, with a sharp edge, is not a corridor: an opening
+  shows something of what lies behind it at its rim.
+- **The approach.** An opening opens as the vehicle nears it: the light
+  begins to reach, depth appears behind the rim. A patch that stays silent
+  while the range to its border falls under what the light carries is
+  closed. This is the strongest sign and it arrives late, so the speed
+  toward a silent patch is bounded by the range to its border, as the
+  contract bounds every other motion.
+- **A second sensor.** The time-of-flight ring is active and reads in the
+  dark to 4 m: a return behind a patch the pair is silent on says the pair
+  failed, not the world. An absorbing surface silences both.
+
+A direction judged closed is marked unobservable in the memory, the fail
+evidence of item 17, ray by ray and dense enough to close what it covers
+(the frustum marking of K14 leaks between its rays, r816).
+
+**The test object is a uniform matte panel** (`BLANK_PANELS`, already in the
+repository since item 17 stage 2): lit by the vehicle's own light it is an
+even bright patch with nothing to match, close to what a plume's veil looks
+like, and it has a collision, so a rule that fails is a contact and not a
+harmless pass through air. The rule is settled on it before smoke adds a
+shape that churns.
+
+Known and not attempted: a surface that returns no light at all, a matte
+black one, looks to the pair like the unlit far end of a corridor until the
+vehicle is close. One stereo pair cannot tell the two apart at range; the
+speed toward a silent patch, bounded by the range to its border, is what
+covers it.
+
+Complete when, on five flights with a panel across the route and five with
+one beside it, the vehicle does not fly into the panel, routes around it
+where a way exists, and the memory holds it closed from every side it was
+seen from.
+
+**Measured and settled on 2026-10-14** (specification F13 rewritten, K36;
+`stereo_silent_patches.cpp`, `tools/panel_memory.py`). On the code before
+the stage a 3 x 2 m panel across the route entered the memory by its hits
+as it is, 44 percent of its face 8 s after the vehicle came within 6 m and
+96 percent by the end, and was flown over 0.89 m clear; beside the route 79
+percent, passed 0.82 m clear (r1491, r1495): the light's falloff and the
+panel's edges give the matcher some structure, two hits make a voxel, and
+the ring sees it at 2.8 m. The marking this stage was written for, a silent
+patch closed ray by ray where its rim is matched within reach, flat and
+round it, closed the dark location when flown: the lamp's shadows, dark
+corners and the ceiling bounded by lit walls are such patches too, 417 of
+476 and 671 of 764 frames closed somewhere, five million marks, the mission
+lost to a loop and a hold (r1496, r1497). It is a prohibition from a wrong
+measurement and is not built. Kept is the stage's speed law: a closed patch
+holding the frame's centre within 15 degrees bounds the braking contract's
+range along the heading by its rim's depth, never under the margin
+(`/stereo_depth/silent_range`); past the panel 1.300 m/s with the bound in
+7 percent of the frames at 0.5 to 4.4 m (r1498).
+
+**Accepted on 2026-10-15** (944241d3; the memory read by `tools/panel_memory.py`
+from each flight's bag):
+
+| Flights | Runs | Result |
+|---|---|---|
+| Panel across the route, five | r1499, r1500, r1501, r1503, r1504 | no contact, the body 0.88 to 2.63 m clear of the panel, the route over or beside it; the memory held 45 to 72 percent of the face occupied 8 s after the vehicle came within 6 m and 44 to 75 by the end; 1.29 to 1.41 m/s, the goal 0.83 to 1.32 m by the truth |
+| Panel beside the route, five | r1505, r1506, r1509, r1510, r1511 | no contact, 0.58 to 3.88 m clear; the memory 77 to 106 percent of the face from the side seen; 1.38 to 1.53 m/s, the goal 0.83 to 1.44 m |
+| Ordinary, five | r1512, r1513, r1514, r1515, r1516 | 1.38 to 1.45 m/s (r1485 before the stage: 1.43); no contact; r1514 acknowledged its goal 2.32 m from it by the truth, over the 2 m capture radius: the estimate's drift with the pair's noise (A12), 1.2 to 2.0 m at the end of a flight against 0.7 to 0.9 before it, with the tracked features and the residuals unchanged (p50 170 features, 0.48 px against 0.41); r1495 missed by 2.44 m the same way. The register holds it. |
+
+Voids on the way: r1502 (watchdog), r1507 and r1508 (real-time factor
+0.80 and 0.82 under the bag's load); r1492 and r1493 not flown.
+
+### Stage 1: Smoke In The Simulator (Done)
+
+Done on 2026-10-14 (specification A12, A13; the measurements in
+[`obstacle_mapping.md`](obstacle_mapping.md), "Smoke In The Simulator", the
+tool `tools/smoke_rig.py`). Gazebo's `ParticleEmitter` did not serve: its
+particles are unlit, so a camera sees them in the dark and the light's place
+does not matter to them; a depth sensor stops on the first one by a fixed
+chance whatever the path, and `particle_scatter_ratio` does not set that
+chance; the evaluation's depth camera scatters too; `<scene><fog>` acts on no
+sensor; the thermal camera never sees them. Smoke is therefore a model, one
+field per smoky place that every sensor reads through a relay beside the
+flight: the pair by single scattering of the carried light, the time-of-flight
+ring and the lidar by the lidar equation (`SMOKE_ZONES`, RViz draws the
+places). On the way the cameras' noise was found a tenth of a level where
+item 17 stage 1 had meant 2.5, and set to a small sensor's shot noise, about
+one (A12).
+
+What the vehicle meets: a plume is silence to the pair, not a surface (a wall
+5 m away is lost behind about one optical depth, smoke is never matched);
+the lidar sees through 0.3 per metre and returns from the smoke's face from
+0.5; a time-of-flight unit sees smoke only round itself, from 1 per metre;
+the carried light set apart from the pair lowers the veil and does not give
+the wall back; the camera estimator tracks half its features in a plume and,
+flying 11 m through 3 m of smoke, ends 0.1 to 2.2 m off (3.6 m at the worst),
+through 7 m of it up to 4.6 m.
+
+The question as it stood: Gazebo already carries the tool, built for this
+purpose, the `ParticleEmitter` system of the DARPA SubT virtual track, and its
+`particle_scatter_ratio` sets how the particles reach each sensor; the
+vehicle's own light in smoke, which the location's darkness makes the only
+light, scatters straight back into the cameras, and whether that helps or
+harms, and a light set apart from the pair as the remedy, were the first
+measurements.
+
+### Stage 2: Detecting Smoke (Done)
+
+**Measured and built on 2026-10-15** (specification K38). On the rig the
+ring inside smoke of 1/m returns from every zone at 0.05 m with 0.012 of a
+surface's intensity, and nothing from a plume ahead until it is inside
+(the lidar returns from it at 0.3/m already); the pair matches nothing
+through 0.3/m and more. A zone returning under half a surface's intensity
+is smoke: its rays are fail evidence, and the share of smoky zones is
+published for the ladder. The pair-against-ring signature has nothing to
+read in the simulator; no particle counter is mounted.
+
+
+Free only where smoke fills the frame. Item 17 stage 0 already turns the
+contract's forward range into a measurement, and smoke all round is one more
+way that range collapses: the vehicle slows and stops without a classifier.
+A plume in a part of the frame does not collapse it, and is stage 0b's. Two signatures separate smoke from a
+wall where that matters: the time-of-flight zones report signal rate and
+ambient per zone, and smoke is a low signal spread over every zone at short
+range in every direction, which no wall is; and a surface the pair sees that
+the time-of-flight ring does not, or that moves, is not a surface. An optical
+particle counter of the Sensirion SPS30 class — about 25 USD, grams — is the
+independent channel, and it is compared against the free ones before it is
+mounted.
+
+### Stage 3: A Thermal Channel (Done)
+
+**Measured and settled on 2026-10-15** (specification K39, the rig's
+thermal pair of the Boson+ 640 class): thermal stereo matched nothing with
+the wall 3.7 m away and 0.46 of the frame at 7.7 m, every match on the
+wall's edge against the floor and none within a voxel of the truth, clear or
+through 1/m of smoke alike. The world's surfaces carry one temperature each,
+so the band has no texture; the result is conditional on a texture the
+simulator does not model, as the stage foresaw. The vehicle carries one core
+of the Lepton 3.5 class as a detector (`models/stereo_tof_v1`, 160 x 120 at
+9 Hz, relayed as the pair's frames are), and the depth node reports the
+share of its pixels 5 K warmer than the frame. The ladder of cheapening is
+not flown: there is no stereo to cheapen. The share is published and read by
+no decision: the location has no hot source for it to find, and the core
+waits for a scenario that has one (F4, 2026-10-17); the lidar build carries
+no thermal core until then.
+
+
+Longwave infrared (8 to 14 µm) is the one passive sensor that sees through
+smoke: the wavelength is far larger than the particles and there is little
+scattering. It is why firefighters carry it, and the simulator models it: the
+thermal camera is the sensor type the particle emitter does not touch.
+
+**Price is not a criterion of the exploration, and it is a criterion of the
+accepted build.** Both halves were decided by the project owner on
+2026-09-23. The first follows from the cost section below: the thermal
+channel is an addition to either sensor set and competes with nothing, so the
+comparison that made price matter in item 17 does not exist here, and the
+stage takes the best and most suitable core first to learn what the problem
+needs — if the best cannot make smoke workable, no cheaper core will, and a
+cheaper core is a harder problem taken up afterwards, not a simplification
+lost. In the simulator that costs nothing: a thermal camera is a resolution,
+a rate and a field, so the best core and the cheapest fly in the same series
+and the downgrade is measured beside the target rather than deferred.
+
+The second half is why the exploration is not the target. The simulated
+vehicle stands for an industrial prototype with a bill of materials, and a
+build nobody would assemble proves nothing about the product: a pair of
+Boson 640 cores is 7 100 USD on an airframe whose whole sensor set is 80 to
+170. The item therefore completes on a core of a class someone would mount,
+and every result records what in it rests on the resolution and the rate, so
+that the distance between the best core and the accepted one is a measured
+loss and not a redesign.
+
+The role, and it is the ambitious one because price no longer argues
+against it: **thermal stereo, a pair of the best cores, for metric depth
+through smoke.** That is the only role that returns flight through a plume
+rather than an informed stop, because it is the only one that gives the
+braking contract a measured range. It is its own hard problem — the band
+carries little texture, matchers built for visible light do poorly on it,
+and the cheap cores run at 9 Hz — and the stage measures whether it works
+before anything is built on it. The detector role is what remains if it does
+not: one core, no depth, answering whether there is a surface or a body
+behind the smoke and whether what the pair sees is smoke or a wall.
+
+**The core the exploration starts from: a synchronised pair of Teledyne
+FLIR Boson+ 640** — 640 x 512 at a 12 µm pitch, NETD under 20 mK, 60 Hz, an
+external frame-sync input, controllable flat-field correction, and the widest
+lens of the family, about 95 degrees horizontal, on the 0.20 m baseline the
+visible pair uses. About 7 000 to 8 000 USD the pair. Nothing above it is
+worth the exploration: a cooled mid-wave camera is better in noise and speed
+but carries a Stirling cooler — hundreds of grams, tens of watts, from
+20 000 USD — and is not a drone even for an experiment, and its advantage
+does not reproduce in the simulator; the 1280 x 1024 uncooled cores that
+exist add pixels where the bottleneck is not, since 640 x 512 is already
+forty times fewer pixels than the visible pair and the limit is the texture
+of the band. In the simulator the Boson+ 640 is a bound on the parameters,
+tied to a device that exists — 640 x 512, 60 Hz, 95 degrees, 20 mK of noise —
+so that the exploration does not drift into a sensor nobody makes.
+
+**Four properties of every microbolometer decide suitability more than the
+module does**, and three of them reach the braking contract:
+
+- **The shutter.** A microbolometer closes a shutter for its flat-field
+  correction, for hundreds of milliseconds every tens of seconds or on a
+  drift of its own temperature, and delivers no frame meanwhile. To this
+  stack that is a hole in the evidence age — the constant that item 17
+  stage 0 turns into a measurement — so any core in the speed path must
+  expose control of its correction, to schedule it into a hover, and the
+  measured age must cover the gap. The FLIR cores expose it; the Chinese
+  cores vary. This is a selection criterion, not a detail.
+- **Texture in the band**, the chief risk of the stereo role, and
+  independent of the module. Longwave infrared sees differences of
+  temperature and emissivity; a corridor of evenly warmed concrete is smooth
+  in the band however cracked and stained it is to the eye, and no
+  resolution repairs that. It has a consequence for the simulator that is
+  written here so that it is not forgotten: Gazebo's thermal camera renders
+  the temperature of visuals that carry one, the imported SubT world almost
+  certainly carries none, and so the materialization variant of stage 1 will
+  have to tag its surfaces with a temperature the way item 17's variants
+  change their materials. The thermal texture is then **ours to choose**, and
+  the answer "does thermal stereo work" is conditional on what we chose. The
+  simulator cannot say how much thermal texture a real corridor has; the
+  literature and a core in hand can. The first action of the stage is that
+  check of the world's thermal model, and every stereo result of the stage is
+  labelled as conditional on the assumed texture.
+- **Frame synchronisation.** Stereo on a moving vehicle needs synchronous
+  frames. Boson has a sync input, Lepton 3.x a VSYNC line, the Chinese OEM
+  cores usually one of the two, the Chinese consumer USB modules none. The
+  detector role does not care.
+- **Field of view.** The visible pair covers 120 degrees; a Lepton 57, the
+  Chinese cores about 56, a Boson with its widest lens about 95. A narrower
+  field shrinks the contract's faced zone, so more of the motion becomes
+  unfaced and answers to memory; the gaze policy compensates in part, and the
+  cost is measured.
+
+The thermal time constant of a bolometer, about 10 ms, is not a criterion:
+at 2.45 m/s and a yaw rate of 80 degrees a second it is two to four pixels of
+blur on a 640 core.
+
+**The modules, judged against the two roles and the two phases:**
+
+| Module | Detector | Stereo, exploration in the simulator | Accepted build | Verdict |
+|---|---|---|---|---|
+| FLIR Lepton 3.5 | the natural choice: 164 USD, a gram, 150 mW | the lowest point of the curve | yes, as a detector | fits, as a detector |
+| FLIR Boson 320 | more than the role needs | the middle point | no | simulator only |
+| FLIR Boson+ 640 | more than the role needs | the top point, the core above | no | simulator only |
+| FLIR Hadron 640R | no | no | no | excluded |
+| Chinese 256 x 192 (InfiRay class) | yes, and better than a Lepton: 2.6 times the pixels, 25 Hz | marginal | yes, as a detector | fits, as a detector |
+| Chinese 640 x 512 OEM | more than the role needs | yes | **the one stereo candidate**, on a quote and a sync line | fits, conditionally |
+
+The Lepton is not a stereo core: 160 x 120 is sixty-four times fewer pixels
+than the visible pair, and the depth would be sparse and noisy — though its
+9 Hz is not what disqualifies it, since the visible pair flies at 7.5. The
+Hadron is the Boson 640 with a 64-megapixel visible camera in the same
+housing: the visible half duplicates the pair, the pixels are useless to
+this pipeline, radiometry adds nothing to geometry, and two of them are
+8 000 USD. The Chinese 256 x 192 modules are consumer USB devices whose
+drivers and software are a lottery and which carry no sync between two of
+them, which the detector does not need and stereo does. The Chinese
+640 x 512 OEM cores are the only path to thermal stereo in a build someone
+would assemble — 1 000 to 1 600 USD the pair, the same order as a lidar, and
+nothing below that exists — on two conditions: a quote that lands in the
+lower half of the range, and a frame-sync line, which OEM cores usually
+carry.
+
+**The ladder of cheapening.** Each step changes one variable, so that the
+loss is attributed to it and not to "worse"; the ladder is also the ablation
+of the stereo role.
+
+| Step | Core | What it isolates | The pair, USD |
+|---|---|---|---|
+| 0 | Boson+ 640, 60 Hz, 95 degrees, synced | the reference | 7 000 to 8 000 |
+| 1 | the same core, the 9 Hz variant | frame rate | about 5 000 to 6 000 |
+| 2 | Boson 320, the same lens family | resolution | about 3 100 |
+| 3 | Chinese 640 x 512 OEM | the core itself: noise, sync, correction control, software | 1 000 to 1 600 |
+| 4 | Chinese 256 x 192 | resolution and synchronisation together | about 600 |
+| 5 | one core: Lepton 3.5 or Chinese 256 x 192 | the role: stereo becomes a detector | 164 to 300 |
+| 6 | no thermal core | the floor: stage 2 alone, the ladder without seeing behind the plume | 0 |
+
+Steps 1 and 2 answer what thermal stereo actually needs, rate or pixels.
+Step 3 is the accepted build's target point: on paper the same specification
+as step 0, in the hand a different noise, a different sync, a different
+correction control and different software, and it is where thermal stereo in
+a plausible build is decided. Step 4 is where stereo most likely dies. Step 5
+is the change of role, and still better than nothing. Step 6 is what the
+item gives without a thermal core at all.
+
+The simulator varies **resolution, rate, field and noise**, so steps 0, 1,
+2, 4 and 5 fly in one series as parameters. It does not vary the reliability
+of a sync line, the control of the correction or the quality of a driver —
+what actually separates step 3 from step 0 — and those are learned only with
+a core in hand. In the simulator step 3 is therefore step 0 with 40 to 50 mK
+of noise, and it is recorded as that assumption and not as a result.
+
+Prices, single units, 2026, for the record and for the day hardware is
+scheduled, not as an input to the exploration:
+
+| Module | Resolution | USD |
+|---|---|---|
+| FLIR Lepton 3.5 | 160 x 120, 57 degrees, about 9 Hz | 164 |
+| FLIR Boson 320 | 320 x 256 | 1 539 without a lens, up to 2 549 |
+| FLIR Boson 640 | 640 x 512 | 3 558 |
+| FLIR Hadron 640R, thermal beside visible | 640 x 512 | 3 992 to 4 330 |
+| Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
+| Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
+
+### Stage 4: What The Vehicle Does (Done)
+
+**Built on 2026-10-15** (specification K40; flown in this item's
+acceptance): a vehicle in a plume (blind with half the ring smoky, or
+blind and dead reckoning under a light it judges reliable: at a plume's
+edge the ring returns smoke from a few zones only, r1534) backs out on
+dead reckoning along its heading through K19's hold, holds 30 s
+where it sees again after the first plume and takes its goal back, and
+gives the goal up for the start after a second (r1532 landed in the smoke
+before any retreat; r1533 backed out twice and wandered 800 s, item 19's
+proof exhausting its budget through the unknown beyond the plume). A
+plume's marks are fail evidence lifted when seen through.
+
+The ladder of item 17 stage 5, with the rung that item added between holding
+and landing: **retreat along the flown path**. The path just flown is in
+memory as observed and free, and for smoke as for darkness a vehicle that
+backs out to where it could see is better placed than one that lands where it
+cannot. Through dense smoke the visible cameras do not fly, and this item does not
+try. What the thermal channel changes depends on which role stage 3
+delivers: thermal stereo hands the braking contract a measured range through
+the plume and the vehicle flies what that range admits, as it does in the
+dark on any other sensor; a detector alone makes the stop an informed one,
+with a retreat or a landing chosen on what is actually behind the plume.
+
+With the fail evidence (item 17 stage 8, stage 0 here) the plume is a measured prohibition, and routing
+around it is legitimate — not as a cost on free space, which stays
+forbidden, but as the planner's ordinary answer to a closed region. The
+sequence is then: the vehicle approaches, the range collapses at the plume's
+edge, the region behind the edge is written unobservable, and the planner
+replaces the route around it if one exists. If none exists the ladder runs,
+and when the ladder is spent and the goal has been proven unreachable in
+item 19's sense, the general return home of item 19 applies — a policy of
+the mission, not of this item.
+Two rules close the loop that the ladder alone leaves open. **After a
+retreat the vehicle holds where it can see for a stated time** — the plume
+is transient and expected to move — and if the range ahead has not returned
+by then, it gives the goal up and flies home while it still has a position
+source (when the way is proven closed, or on the camera profile when the
+light's battery holds only the way back, item 17 stage 5), and it lands there, in sight, only when the start too is
+proven unreachable; that is a rule of time on the vehicle's own state, not a
+prohibition of space, and it is the same time the light of item 17 stage 5
+is given to return. And the
+closed region must not close its corridor for the rest of the flight once
+the plume has drifted out of view. With the memory's decay by time switched
+off (specification K10) nothing fades by age, and a place the planner will
+not route into is a place the vehicle never looks at again. So a mark of
+unobservability is transient in item 21's sense and carries its own rule,
+settled in this stage by measurement: it lifts when the vehicle sees through
+the place, and a mark not confirmed for a stated time returns to unknown,
+which sends the vehicle to look again; the sensor then either sees through
+or restores the mark. That re-approach is a probe bounded by the stated
+time, not an oscillation, and the time applies to these marks alone, never
+to what is static.
+
+### What The Additions Cost, And Against What
+
+The rule of item 17 — the additions must not approach the price of a 3D
+lidar — does not apply here, and the reason is worth writing down. That rule
+compares a substitute against what it replaces: the stereo set with its
+flood and its ring against a lidar. Everything in this item is an addition on
+top of either set. Smoke scatters a lidar's 905 or 1550 nm as it scatters a
+time-of-flight pulse, and a thermal core costs the same 164 or 3 558 USD
+whichever sensor it sits beside. So there is no comparative bar: each
+addition is judged on whether it earns its place, charged once to both
+profiles. What remains is the bar every addition of this project answers to,
+that the vehicle stays a build someone would assemble; stage 3 explores at
+the best core and completes on a plausible one.
+
+One asymmetry keeps the separation from being perfectly clean. A lidar gets
+part of its smoke robustness for free: it is active, so it needs no contrast,
+and most 3D lidars carry multi-echo returns and per-return intensity, where
+the last return passes thin smoke and a weak return is an aerosol and not a
+wall. The stereo pair has none of that, and thin smoke that a lidar filters
+already kills its contrast. The camera set's smoke addition therefore does
+more work, and in the substitution comparison of item 17 it is the difference
+between the two additions that is charged, not the whole.
+
+### Measurement And Completion
+
+Measure, per flight and per profile: the particle density along the path;
+depth coverage and error against evaluation-only truth in and out of the
+plume; the time-of-flight signal rates; the contract's forward range and the
+speed it admits; the number and size of occupied voxels that were never true
+occupancy, and how long each survived; route replacements caused by them;
+the rung of the ladder reached and when; the minimum distance to true
+occupancy; and physical collisions.
+
+This item is complete when stage 0b's panel flights have passed;
+when stage 0 has landed and both acceptance series
+have been re-flown on it, with the route stability and the speed it costs
+stated; when, **on the camera profile and on the lidar profile alike**,
+five flights through the smoky location reach the goal in truth or retreat
+and land without a collision, with no phantom occupancy surviving the
+flight longer than the time stage 4 states for a mark of unobservability; and when, on both profiles, five flights of the
+blocking scenario return to the start in truth without a collision, the
+goal given up by item 19's proof (`trigger=topological`), which closes
+item 24. Accepting on one profile would prove the
+addition only on the set where it has the most to do and say nothing about
+the set where it should be least needed.
+
+**Accepted on 2026-10-16** (the vehicle's code of 76367bee, the documents
+on top of it; the series driver and its tables in `log/tools/part6/`, the
+journal in `log/tools/journal/goal_journal_smoke_light.md`). Every flight
+below is on both sensor sets, one at a time, each counted only at a
+real-time factor the host sustained (A7, A8; K25 where it says 0.8):
+
+**The stereo set's groups flown again on 2026-10-17**, twice: on e9d26309
+with the estimator's heading repaired (K28: clear r1688 to r1692 0.96 to
+1.52 m from B at 1.31 to 1.49 m/s; smoky location r1693 to r1697 0.67 to
+1.82 m; blocked corridor r1698 to r1702 home within 0.32 to 0.52 m) and on
+7bc3941b with the pair's principal point at the pixel centres as well (K33:
+the clear flight r1710 to r1714 ended 0.79 to 1.11 m from B at 1.38 to
+1.46 m/s; the smoky location r1715 to r1719 0.77 to 1.57 m at 1.35 to
+1.46 m/s; the blocked corridor r1720 and r1722 to r1725 home within 0.31 to
+0.38 m by the ladder (`trigger=smoke`), 2 to 6 dead-reckoning episodes;
+r1721 voided by the harness). No contact in any. The lidar's groups stand
+as flown on 76367bee: both repairs touch the stereo set alone.
+
+- **The smoky location** (`sim-urban-smoke-headless`, four plumes of 1/m,
+  two of them in the start hall): the stereo set reached B in truth in
+  r1653, r1654, r1655 and r1657 (0.84 to 1.79 m, at a real-time factor of
+  0.8: 1.35 to 1.41 m/s of simulation) and in r1623 (1.22 m, at 1.0: 1.18
+  m/s, the host at its limit); r1630 reached it 2.51 m off in truth, the
+  estimator's drift of `technical_debt.md`. The lidar reached B in r1631 to
+  r1635 (0.44 to 0.75 m) at 2.72, 2.15, 2.10, 2.36 and 2.20 m/s. No contact
+  in any of them; the ring returns smoke only inside a plume (K38), the
+  lidar sees a plume's face from 20 m (A13) and marks it (K37), and the
+  plumes beside the route are flown round.
+- **The blocking scenario** (`sim-urban-smoke-blocked-headless`, 3/m across
+  the north corridor): the lidar gave the goal up by item 19's proof and
+  came home in r1616 to r1620 (0.19 to 0.51 m from the start in truth,
+  `trigger=topological`, within about 110 s of the plume's face); the
+  stereo set by the ladder in smoke (K40, `trigger=smoke`) in r1612 to
+  r1615 and r1656 (0.30 to 0.42 m, 2 to 10 dead-reckoning episodes each).
+  No contact. This closes item 24 (below).
+- **The ordinary flight, re-flown on the final code** (the memory's K42 and
+  the proof's K16 changed after part 4): the stereo set r1643 to r1647
+  (0.92 to 1.56 m, 1.21 to 1.31 m/s), the lidar r1648 to r1652 (0.18 to
+  0.55 m, 1.81 to 2.59 m/s, two of five under 2.4 as in part 4's base
+  r1524 to r1528). No contact.
+
+What the acceptance measured and what it did not: the speed in smoke is
+recorded, not required here (item 23 sets the requirement under smoke); the
+phantom occupancy inside a plume is the plume's own marks (K37, K38), lifted
+when seen through (K10), and the ordinary memory holds no occupancy the
+truth does not on the plain flights (`tools/phantom_blocks.py`: r1622 48
+cells named, no phantom); the depth coverage and the thermal channel were
+measured on the rig (stages 2 and 3), not per flight.
+
 ### 19. A Goal Proven Unreachable: Return Home (Completed)
 
 Shipped in [v0.5.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.5.0) on 2026-10-10; closed on 2026-09-27 on bf92e952. When its goal is
@@ -3249,3 +2949,329 @@ record, and the heaviest configuration (S3) has been flown at 0.5; the
 four-vehicle cooperative flight at 0.5 is item 15's.
 
 **Repaired after** (the technical-debt goal, 2026-10-12): the long flight under failures stood near B below real time (P10). r1110 stood in a component its planner believed closed, the retreat along its trail refused; r1365 (fba5bead) stood with its way home open on the map while the feasibility search found, swept and rejected the same edges beside a wall on every update, because every change of the world cleared the edges it had rejected. Repaired (3223df80): a rejected edge stays withheld until the world changes within one lattice step of it; the planner reports the trail retreat's attempt and the withheld edges. B and back on the goal's final commit (bc7c16a9): three of three at 0.6 (r1369 to r1371) and two of two at 1.0 (r1372, r1373), home, landed and disarmed at the start. What a recorded flight cost is repaired as well (the goal's part 6, A11): a flight is rendered after it, flown at real time with no window (`tools/render_flight.sh`; r1409: 0.88 of real time at the median, the recording ok).
+### 23. Flight Through Moderate Smoke (Completed)
+
+Closed on 2026-10-17 (d56f0f85 on 7bc3941b), not yet in a release; five of five to
+B in truth through a room of moderate smoke on the lidar (r1675 to r1679) and
+on the stereo set (r1705 to r1709), the speed under smoke the requirement K43. What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+**Type:** dependent realism stage. Decided by the project owner on
+2026-10-03.
+
+**Hard prerequisites:** item 18, whose stage 1 puts smoke into the simulator
+and whose stages 2 and 3 detect it; item 17 stage 0, the contract that reads
+the frame.
+
+**Validation environment:** Urban Circuit Practice 01, the point-to-point
+mission, on the stereo set and on the 3D lidar.
+
+Item 18 handles smoke the vehicle cannot see through: a local plume is a
+measured prohibition and the vehicle flies around it or home. This item is
+the other half: smoke the vehicle can see through, not in one place but
+filling whole rooms, which it has to fly **through**. It needs no new rule.
+The braking contract already ties the speed to the range the frame measures
+(specification K9): a range above the margin is a slower flight, a range
+below it is item 18's prohibition, and where one ends and the other begins is
+a measurement, not a setting.
+
+What the flights look like once the item lands:
+
+- **Rooms, not the location.** Several rooms are filled with moderate smoke
+  wall to wall; the rest of the location is clear. A location filled
+  throughout would only move every figure at once.
+- **One smoky room is always on the way**: in every ordinary flight the
+  route to B passes through a room of moderate smoke, as every ordinary
+  flight carries item 18's plumes off the way. Both sensor sets fly it.
+- **The smoke is drawn in RViz**, as every evaluation object is.
+
+Three hard places, each measured before anything is built:
+
+- **The vehicle's own light.** The light sits beside the cameras, and smoke
+  scatters it back into them: a veil that lowers the contrast the matcher
+  and the feature tracker live on, worst exactly where the light is
+  strongest. What the confident range and the estimator's tracked features
+  become in smoke lit from the camera's own position is the first
+  measurement; a light set apart from the pair, or polarized, is the remedy
+  to compare.
+- **The lidar's false returns.** Particles return the beam. The memory must
+  not write them as walls, or moderate smoke becomes item 18's prohibition
+  by accident; it must not ignore a wall behind them either. Last-return
+  selection, intensity and the returns' persistence between scans are what
+  there is to tell them apart with.
+- **The simulator.** Everything above depends on how Gazebo shows smoke to
+  a camera and to a lidar, which item 18 stage 1 settles; if its smoke is a
+  visual effect only, this item starts with the sensor models. Settled
+  (2026-10-14): smoke is a model the sensors read (specification A13), with
+  the lidar's single strongest echo; last-return selection needs the model
+  to report more than one echo a ray first.
+
+**Size:** L to XL.
+
+### Measurement And Completion
+
+Measure, per density of smoke and per sensor set: the contract's measured
+range, the speed it admits, the estimator's tracked features and drift, the
+false occupancy the memory holds inside the room and the walls it misses.
+
+This item is complete when, with one smoky room on the way in every flight,
+five flights on the stereo set and five on the 3D lidar reach B in truth
+with no contact, the mean flight speed is recorded as the requirement under
+smoke, and the memory of the smoky room holds no occupancy the truth does
+not.
+
+**Measured and flown on 2026-10-16 and 17** (`sim-urban-smoke-rooms-headless`:
+the west hall at (-20,22.5) filled wall to wall with 0.1/m, on the way, and
+the tunnel's mouth at (18,-6) beside it; the series in `log/tools/part7/`).
+The three hard places, measured before the flights:
+
+- **The vehicle's own light.** The pair through 0.1/m matches a wall 4 m
+  off whole and one 8 m off not at all (`tools/smoke_rig.py`,
+  log/tools/part7/rig_last); the light set apart lowered the veil and
+  gained nothing (item 18 stage 1). The estimator replayed over 11 m of
+  flight through 20 m of 0.1/m: 0.88 m off at the end (1.67 at most)
+  against 0.41 (0.62) clear; through 0.2/m 0.33 (2.93); the features held
+  (84 to 92).
+- **The lidar's false returns.** The relay's strongest echo returned the
+  smoke a metre off and hid the walls inside 0.3/m; the lidar reports its
+  last echo over the threshold (A13, a driver set to last return) and reads
+  a wall 8 m on through 0.1 and 0.2/m in every forward ray, 15 m on through
+  0.1/m in 93 percent; dense smoke, 3/m, still returns the smoke. In the
+  memory the smoke's own return is a miss to its range and nothing more
+  under 0.01 of a matte surface's intensity, about 0.5/m (K37): read as
+  dense, the room closed in front of the lidar at 7 m and the vehicle
+  turned back (r1661). The relay reads a ray in steps that follow the
+  zone's density, or a room of 26 by 40 m starved it to 7 scans a second
+  (r1659).
+- **The simulator**: settled by item 18 stage 1 (A13).
+
+The flights, each at a real-time factor the host sustained (0.8 on the
+stereo set, K25):
+
+- **The lidar reached B in five of five**: r1675 to r1679, 0.11 to 0.52 m
+  in truth, no contact, 2.16, 2.28, 2.33, 2.53 and 2.45 m/s (the clear
+  flights 1.81 to 2.59). The memory of the smoky hall holds 0.2 to 0.9
+  percent of its occupied voxels with no truth occupancy within 0.5 m,
+  against 0.2 percent in the clear flight r1667.
+- **The stereo set, first series (0455d22e): three of five in truth**:
+  r1669 0.74 m, r1672 1.36 m, r1674 1.19 m; r1670 and r1673 came 2.85 and
+  3.50 m off. No contact. 1.11, 1.32, 1.35, 1.33 and 1.34 m/s. The miss had
+  a root cause of its own, found on 2026-10-17 by a recorded flight replayed
+  offline (0.6 m of drift offline against 2.25 m in flight) and the heading
+  sigma logged: the filter's first step after the declared pose spans the
+  frame's latency and was read as a hole in the IMU stream, which gave the
+  heading, which no feature observes, 9.5 degrees of uncertainty for the
+  whole flight, and every update walked it (specification K28, repaired in
+  5d6443bd; two of seventeen clear flights since 2026-10-14 had missed the
+  radius by it too).
+- **The stereo set, second series (e9d26309, the estimator repaired): four
+  of five in truth**: r1683 1.23 m, r1684 0.93 m, r1685 1.14 m, r1687
+  1.37 m; r1686 came 2.65 m off (2.25 m horizontal, 0.72 m vertical), the
+  first-pass drift the register's L1 names: the estimate under-reads the
+  distance flown by 0.3 to 0.6 percent in every flight and rises 0.10 to
+  0.24 percent of the path above the truth, and r1686 added a random walk of
+  1.5 m across the east hall. No contact. 1.38, 1.28, 1.26, 1.29 and
+  1.21 m/s. The memory of the hall: 0.9 to 1.7 percent phantoms (the clear
+  flight r1666 0.4). The frame stamp offset swept on two records (0 to 6 ms)
+  moves the scale through 1.000 near 2 ms and the error at B within its
+  noise, so the offset stays at the calibrated 4 ms.
+
+- **The stereo set, third series (7bc3941b, the principal point at the
+  pixel centres): five of five in truth**: r1705 1.38 m, r1706 0.44 m,
+  r1707 1.16 m, r1708 1.01 m, r1709 1.07 m; 1.28, 1.37, 1.24, 1.28 and
+  1.28 m/s; no contact; the memory of the hall 0.5 to 1.0 percent
+  phantoms. The second series' systematic rise of the estimate (0.10 to
+  0.24 percent of the path, every flight) had a root cause of its own: the
+  pair's principal point stated at the frame's centre (640, 480) where the
+  pixel coordinates the tracker and the depth use put it half a pixel in,
+  at (639.5, 479.5): 0.08 degrees of pitch and yaw (specification K33,
+  repaired in 67e2489e and 73cf6867; the records of r1680 and r1682
+  replayed at the pixel centres end 0.07 m off vertically instead of 0.43
+  and 0.55). In flight the rise is gone (r1705: 0.08 m over 422 m).
+
+**The speed under moderate smoke is recorded as the requirement**
+(specification K43): the lidar 2.1 m/s, the stereo set 1.1. **The item is
+complete on both sets**: five of five to B in truth on the lidar
+(r1675 to r1679) and on the stereo set (r1705 to r1709), no contact, the
+way through the room, the contract's speed in it and the memory of it
+measured. What the estimator still carries is the first-pass drift the
+register's L1 names, without its two systematic parts: the scale under-read
+of 0.3 to 0.6 percent stays, the rise does not.
+
+### 24. Item 19's Proof, Flown (Completed)
+
+Closed on 2026-10-16 (06d44c27 on 76367bee), not yet in a release; item 19's proof
+flown on the lidar five of five in the blocked corridor (r1616 to r1620, the
+flood through voxels the body fits in, K16, the grazing ray K42), the stereo
+set home by the ladder since the pair cannot map a plume from outside (F15). What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+**Type:** validation debt of item 19. Decided by the project owner on
+2026-10-03, restated the same day.
+
+**Hard prerequisites:** none of its own. It is closed by a flight series
+another item flies anyway (below).
+
+Item 19's topological proof that a goal is unreachable has never fired in a
+flight: it is held by twelve unit tests alone (specification F15). Every
+return flown was the light's battery or the light's judgment. What this item
+validates is the algorithm, the proof that point B is **physically**
+unreachable, and nothing else about the flight:
+
+- **The sensor set does not matter**, and neither does what closes the way.
+  The proof reads the memory, not a sensor: the 3D lidar serves, the stereo
+  set serves, smoke serves, a physical partition serves.
+- **The return is by the proof, not by the battery.** In these flights the
+  vehicle is not bounded by its light's charge: the goal is given up with
+  `trigger=topological`, and a flight that returns by `battery` or by
+  `unreliable_light` does not count. On the stereo set the charge is set so
+  that it cannot be what turns the vehicle home, or the lidar is flown,
+  which carries no light battery at all.
+- **The memory's decay stays off** (specification K10), so that what the
+  vehicle has seen stays seen.
+- **The reachable part of the location is small enough** to be explored in
+  minutes, not an hour.
+
+**What closes this item.** Item 18's blocking scenario, "smoke closes the
+passage to B, no route exists, the vehicle flies home", flown and inspected
+with the goal given up by the proof. When that series passes, this item is
+complete: no flight of its own is needed, and nothing is re-flown with
+another barrier.
+
+What has to hold in those flights, and is checked in them:
+
+- **The closure is marked densely enough to close.** Evidence laid rays
+  apart let the goal's region leak round it when B lay in the dark (r816).
+- **No other trigger speaks first.** A vehicle blind for 3.5 s judges its
+  light unreliable and turns home (K12) before any proof stands; the
+  scenario lets the proof speak, by the order of the triggers or by flying
+  the lidar.
+- **What else leaks.** Walls never looked at close by themselves, because
+  the planner flies to every opening it believes in; free voxels behind
+  true walls do not, and are measured on a memory snapshot of the flight.
+
+Complete when five flights of item 18's blocking scenario give the goal up
+with `trigger=topological`, the truth grid confirms no way existed, and the
+vehicle is home in truth, on either sensor set.
+
+**Completed on 2026-10-16.** On the lidar the blocking scenario gave the goal
+up by the proof in ten of ten valid flights (r1576 to r1580 on e471157b,
+r1616 to r1620 on 76367bee; r1556 and r7 to r10 before them), within about
+110 s of the plume's face, and the vehicle came home 0.15 to 0.51 m from the
+start in truth without a contact; the truth grid confirms no way existed
+(`log/tools/truth25/flood`, the plume as a sphere of 3.5 m: the start's side
+6 730 m3, B outside it). What it took, each measured on a flight and
+recorded in the specification: the lidar's smoke echo over its pulse's range
+gate (A13; the plume had been invisible from 4 m, r1546 and r1547 crashed in
+it), a scan of smoke alone read as an aerosol (K37), the proof's floods
+through the voxels the body's radius fits in (K16; the plume's face marked a
+beam apart was a sieve, r1549), and a grazing ray carving nothing of a
+surface (K42; the start's side opened under the hover within a sample, r1564,
+r1566). On the stereo set the same scenario is given up by the ladder in
+smoke (K40, `trigger=smoke`), not by the proof: the pair cannot map a plume
+it cannot see into, so no closure stands in its memory; the scenario admits
+both triggers (`RETURN_TRIGGERS_ALLOWED`), the deviation recorded in the
+goal's report.
+
+### 29. Telling A Failing Light From A Dark Place (Completed)
+
+Closed on 2026-10-14 (0d2141a4), not yet in a release; the carried light judged by
+its driver's reading and the time-of-flight ring (F18, K12), a dark place
+under a working light left unmarked (K14, K15), the large dark hall crossed
+(r1488 to r1490) and the failing and lost light flown home or landed. What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+**Type:** new capability; decided by the project owner on 2026-10-13
+(specification F18), after the question of a camera vehicle in a large dark
+space ([design_questions.md](design_questions.md)).
+
+**Hard prerequisites:** none in the simulator; a light driver that reports
+its state on a real vehicle ([hardware_builds.md](hardware_builds.md)).
+
+In empty darkness, a large hall or open ground at night at a height, the
+frames see nothing within the light's reach, and the vehicle cannot tell
+that from a light that failed (specification I7): after 3.5 s it judges the
+light unreliable (K12) and turns home. A mode that reads darkness as free is
+not built: the estimator still has nothing to track (dead reckoning after
+1 s, K13, the descent 3 s later, K19), a lit surface without texture gives
+the stereo pair no depth, and a light that really fails in such a mode flies
+the vehicle blind at speed.
+
+What is built:
+
+1. The light's own reading. On a vehicle, the driver's current or a
+   photodiode at the emitter; in the simulator, the light's state as such a
+   driver would read it, published on board (the injector's schedule never
+   reaches the navigation: only what a driver measures does). K12 judges a
+   failing light by it; the frames' judgment stays for what the reading
+   cannot see (a soiled lens, a lamp that dims while drawing its current).
+2. The time-of-flight ring as a second witness: a unit, with its own
+   emitter, reads a surface within its range inside the camera's field
+   where the frame is dark: the light has failed.
+3. Darkness with a sound light stays observed unobservable to the braking
+   contract (I2, F6, K14): no speed into it, the speed the ring confirms at
+   most; but no "unreliable light, home" for it.
+
+For a truly large space the answer stays another sensor: the lidar build
+(40 m, its own emitter) or GNSS in the open at a height; this item does not
+make the camera vehicle fast there, it stops it from aborting.
+
+The darkness this item meets is the cameras' noise's (item 18 stage 1): since
+2026-10-14 the simulated pair carries about a level of noise (specification
+A12), where the noise in effect before was a tenth of one and the edge of the
+light's reach matched as if noiseless. With it the frames alone judged a
+sound light unreliable in ordinary flights (r1464 at 2.6 levels, 13.6 s in;
+r1465 at 1.2, 50 s in, in a flicker's dip): the light's own reading is what
+answers that. The guaranteed range (K7) measured again with it is 5.2 m,
+not 6.4 (r1476), with the noise mask estimating the noise by brightness:
+the error grows with the depth as the light's falloff leaves far surfaces
+dim against the noise.
+
+Complete when, in the simulator: a large dark hall (a world of its own, its
+floor textured and lit by the carried light only) is flown to its goal by
+the truth without a false judgment of the light and without contact (three
+flights); the light's failure is still judged, by the reading, no later
+than K12 judges it today (light-failure and light-lost, a flight each);
+an ordinary camera flight unchanged in speed (one flight); I7 rewritten.
+
+**The hall, built on 2026-10-14** (`environments/fixtures/dark_hall`,
+`./scripts/sim_dark_hall_headless.sh`, [`scenarios.md`](scenarios.md)): 80 x
+60 m and 20 m high, its floor and walls in a concrete texture of Urban's own
+statistics, the pad 4 m from the west wall and the goal 64 m east, flown at 6 m,
+where the pair's lowest rays meet the floor 7.6 m away. Urban's own largest
+room (the start's hall, about 25 m across, its walls 12.5 m from its centre:
+beyond the pair's confident depth but within the light's 25 m) is where every
+flight takes off, and with the pair's noise in effect it is already where the
+frames judged a sound light unreliable (r1464, r1465).
+
+**Done on 2026-10-14** (code 0d2141a4; the recording checker 4c2a967d).
+Built: the light's injector publishes what its driver would read of the
+output (`/carried_light/output_share`, never its schedule); the depth node
+publishes the share of the time-of-flight surfaces in the left frame the
+frame shows dark; the mission monitor counts an outage when the reading is
+under 0.25 of nominal, or when a blind frame shows half the ring's surfaces
+in its field dark, and with no reading as before (K12, I7, F3). Under a
+light read sound a blind frame is the place's darkness: it marks nothing in
+the memory (K14; marked, the hall closed every direction and the routes
+climbed to 17 m under the 20 m ceiling, r1473) and the memory's observed
+range answers for every motion (K15), so the hall is crossed at about
+0.5 m/s. Found on the way: the hall's grey background past the far clip
+took the tracker's budget and a never-aided estimator restarted on the
+autopilot's pose into a wall (r1466; the background black, K28); the pad
+moved 4 m from the west wall facing it, the concrete given an aggregate
+(r1468, r1469); every headless flight records its true pose, a snapshot
+volume or none (r1466, r1471); the pair's noise (A12) cost the camera
+flights their speed through the matcher's strays blocking routes by the
+latest scan (K35, K7 5.2 m, the noise mask by brightness; 5563787d).
+
+| Flight | Run | Result |
+|---|---|---|
+| Before, the rules of 8771edbe | r1475 | the light judged unreliable 41.8 s after readiness, home; video `log/videos/2026-10-14/dark-hall_r1475_*.mp4` (BAD by A11's minute alone: the flight lasts 50 s) |
+| The hall, three | r1488, r1489, r1490 | goal by the truth 0.44, 0.53, 0.38 m; no contact, no judgment of the light; estimate error 0.43, 0.39, 0.42 m at most; r1490 marked darkness in a flicker's dip under 0.25 and flew around it; videos `dark-hall_r1488/9/90_{follow,top}.mp4`, RECORDING ok |
+| The light fails | r1486 | judged 32.0 s after readiness (55.1 s of simulation; the reading's line says 55.0 after take-off; the frames judged r1445 at 76.9 / 100.6), home 0.29 m, landed |
+| The light lost | r1487 | judged 55.0 s after readiness, dead reckoning from 75.0 s, blind landing at 79.8 s, whole |
+| Ordinary camera | r1485 | 1.429 m/s, goal 1.09 m, no contact (R3 holds; the base's 1.714 was a noiseless pair's, the range 6.4 m against 5.2) |
+
+Diagnostic flights on the way, none acceptance: r1464 to r1474, r1476 to
+r1484.
+
