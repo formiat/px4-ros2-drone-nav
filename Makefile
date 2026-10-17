@@ -200,13 +200,17 @@ SMOKE_BLOCKED_SCENARIO := SMOKE_ZONES="4,43,10,3,6,6,3.0" \
 	RETURN_HOME_EXPECTED=true RETURN_TRIGGERS_ALLOWED=topological,smoke \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 # Roadmap item 23: moderate smoke wall to wall in whole rooms, the rest of the
-# location clear; the route to B passes through both (the west hall and the
-# east hall, the circuit's way), at 0.1/m (a visibility of about 30 m; the
-# pair matches a third of a wall 5 m off through it, the lidar reads the walls
-# through it as its last return, A13). The rooms' boxes are the evaluation's
-# route volume and its memory snapshot too, so that the memory of a smoky
-# room is read against the truth (tools/room_memory_truth.py).
-SMOKE_ROOMS_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;66,-14,9,28,32,18,0.1" \
+# location clear, one room always on the way: the west hall, which the
+# circuit's way to B crosses, and the tunnel's mouth at (18,-6), which the
+# way passes by; at 0.1/m (a visibility of about 30 m; the pair matches a
+# wall 4 m off through it whole and 8 m off not at all, the lidar reads the
+# walls through it as its last return, A13). Two rooms on the way (the east
+# hall as well) carried the stereo set's estimator 6 to 7 m off by B
+# (r1658, r1664): 77 features tracked there against 158 in the clear. The
+# west hall's box is the evaluation's route volume and its memory snapshot
+# too, so that the memory of a smoky room is read against the truth
+# (tools/room_memory_truth.py).
+SMOKE_ROOMS_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.1" \
 	OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
 	RAW_SNAPSHOT_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
