@@ -499,7 +499,11 @@ replaces it:
 
 - **The smoke sensors are always on board**, on both profiles: whatever
   stages 2 and 3 settle on — the thermal channel, the particle counter — is
-  part of the vehicle, not an option of a flight.
+  part of the vehicle, not an option of a flight. As settled (F4, 2026-10-17):
+  each profile's smoke sensor is its own detection channel, the time-of-flight
+  ring on the stereo set and the echo's intensity on the lidar; no particle
+  counter; the thermal core is the stereo set's detector of a hot source,
+  without a role in any decision until a scenario carries one.
 - **Smoke is always in the location**: a number of smoky places in every
   flight, so that every acceptance flight exercises the smoke handling, and
   none of them blocks the way from A to B; the ordinary mission stays
@@ -742,7 +746,10 @@ simulator does not model, as the stage foresaw. The vehicle carries one core
 of the Lepton 3.5 class as a detector (`models/stereo_tof_v1`, 160 x 120 at
 9 Hz, relayed as the pair's frames are), and the depth node reports the
 share of its pixels 5 K warmer than the frame. The ladder of cheapening is
-not flown: there is no stereo to cheapen.
+not flown: there is no stereo to cheapen. The share is published and read by
+no decision: the location has no hot source for it to find, and the core
+waits for a scenario that has one (F4, 2026-10-17); the lidar build carries
+no thermal core until then.
 
 
 Longwave infrared (8 to 14 µm) is the one passive sensor that sees through
