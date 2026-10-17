@@ -386,6 +386,31 @@ TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
             0.999 * config.initial_position_sigma_m * config.initial_position_sigma_m);
 }
 
+// The node declares the pose on a frame older than the stream's last sample
+// by the frame's latency: the step from the frame's stamp to the sample after
+// the ones read at rest is no hole, nothing in it went unobserved. Read as one
+// it gave the heading, which no feature observes, 9.5 degrees of uncertainty
+// for the whole flight (r1681), and every update walked it.
+TEST(VisualInertialOdometry, TheFirstStepAfterTheDeclaredPoseIsNoHole) {
+  const VisualInertialOdometryConfig config = testConfig();
+  VisualInertialOdometry odometry{config};
+  constexpr std::int64_t kLatencyNs{70'000'000};
+  std::int64_t imu_stamp = 0;
+  for (; imu_stamp <= kFramePeriodNs + kLatencyNs; imu_stamp += kImuPeriodNs) {
+    odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+  }
+  odometry.initialize(kFramePeriodNs, Motion::position(0.0), 0.0);
+  for (; imu_stamp <= 2 * kFramePeriodNs; imu_stamp += kImuPeriodNs) {
+    odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+  }
+  const VisualInertialEstimate estimate = odometry.addFrame(2 * kFramePeriodNs, {});
+  const double declared =
+      config.initial_heading_sigma_rad * config.initial_heading_sigma_rad;
+  EXPECT_LT(estimate.orientation_variance_rad2.z(), 1.01 * declared);
+  EXPECT_LT(estimate.weakest_velocity_sigma_mps,
+            2.0 * config.initial_velocity_sigma_mps);
+}
+
 TEST(VisualInertialOdometry, ThePoseBetweenFramesFollowsTheImu) {
   const VisualInertialOdometryConfig config = testConfig();
   std::mt19937 generator{7U};

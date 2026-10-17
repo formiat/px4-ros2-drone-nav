@@ -284,7 +284,17 @@ std::int64_t VisualInertialOdometry::Impl::propagateTo(const std::int64_t target
       drag_reading_sum_mps +=
           0.5 * dt * (from.accelerometer_mps2 + to.accelerometer_mps2).head<2>();
       drag_reading_s += dt;
-      if (dt > config.maximum_imu_period_s) {
+      // Samples were lost when the two that bracket the step are further
+      // apart than the stream's period, not when the step itself is long:
+      // the first step after the initialisation runs from the frame's stamp
+      // to the sample after the last one read at rest, the frame's latency
+      // and more, with no sample missing. Read as a hole, that step gave the
+      // heading, which no feature observes, 9 degrees of uncertainty for the
+      // whole flight, and every update walked it (r1670, r1673, r1674,
+      // r1681: 2.3 to 3.5 m from B in truth; r1681's heading sigma 9.5
+      // degrees at the first healthy frame, 7 at the end).
+      if (static_cast<double>(to.stamp_ns - from.stamp_ns) * 1.0e-9 >
+          config.maximum_imu_period_s) {
         // Samples were lost: what the vehicle did over the hole is unknown up
         // to what it can do, not up to the sensor's noise.
         const double turned = config.unobserved_turn_rate_radps * dt;
@@ -926,6 +936,8 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
           .diagonal();
   estimate.velocity_variance_m2ps2 =
       state.covariance.block<3, 3>(kVelocity, kVelocity).diagonal();
+  estimate.accelerometer_bias_variance_m2ps4 =
+      state.covariance.block<3, 3>(kAccelerometerBias, kAccelerometerBias).diagonal();
   estimate.weakest_velocity_sigma_mps =
       std::sqrt(std::max(0.0,
                          Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d>{

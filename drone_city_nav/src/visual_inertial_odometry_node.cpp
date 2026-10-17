@@ -526,7 +526,9 @@ private:
         "pose_age_max_ms=%.1f "
         "imu_samples=%" PRIu64 " frames=%" PRIu64 " frames_without_estimate=%" PRIu64
         " unmapped_imu=%" PRIu64 " published_poses=%" PRIu64
-        " position=(%.2f,%.2f,%.2f) yaw=%.3f",
+        " position=(%.2f,%.2f,%.2f) yaw=%.3f velocity_sigma_ned=(%.3f,%.3f,%.3f)"
+        " accelerometer_bias=(%.3f,%.3f,%.3f) accelerometer_bias_sigma=(%.3f,%.3f,%.3f)"
+        " heading_sigma_deg=%.2f",
         estimate.healthy ? "true" : "false", estimate.tracked_features,
         estimate.candidate_features, estimate.used_features, estimate.gated_features,
         estimate.untriangulated_features, estimate.residual_rms_sigma,
@@ -537,7 +539,15 @@ private:
         1.0e-6 * static_cast<double>(pose_age_max_ns_), imu_samples_, frames_,
         frames_without_estimate_, unmapped_imu_samples_, published_poses_, map_xy.x,
         map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
-        mapYaw(estimate));
+        mapYaw(estimate), std::sqrt(estimate.velocity_variance_m2ps2.x()),
+        std::sqrt(estimate.velocity_variance_m2ps2.y()),
+        std::sqrt(estimate.velocity_variance_m2ps2.z()),
+        estimate.accelerometer_bias_mps2.x(), estimate.accelerometer_bias_mps2.y(),
+        estimate.accelerometer_bias_mps2.z(),
+        std::sqrt(estimate.accelerometer_bias_variance_m2ps4.x()),
+        std::sqrt(estimate.accelerometer_bias_variance_m2ps4.y()),
+        std::sqrt(estimate.accelerometer_bias_variance_m2ps4.z()),
+        180.0 / M_PI * std::sqrt(estimate.orientation_variance_rad2.z()));
     if (frames_ % 8U == 0U) {
       imu_gap_max_ns_ = 0;
       pose_age_max_ns_ = 0;

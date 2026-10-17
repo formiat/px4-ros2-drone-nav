@@ -172,6 +172,9 @@ struct VisualInertialEstimate {
   // About the NED axes: the third is the heading.
   Eigen::Vector3d orientation_variance_rad2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity_variance_m2ps2{Eigen::Vector3d::Zero()};
+  // What the filter still allows the accelerometer bias: a bias held wide
+  // keeps the velocity wide with it over the clone window.
+  Eigen::Vector3d accelerometer_bias_variance_m2ps4{Eigen::Vector3d::Zero()};
   bool healthy{false};
   // Past the unaided timeout and inside the dead reckoning that follows it.
   bool dead_reckoning{false};
