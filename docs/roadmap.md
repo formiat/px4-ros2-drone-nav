@@ -1010,6 +1010,14 @@ journal in `log/tools/journal/goal_journal_smoke_light.md`). Every flight
 below is on both sensor sets, one at a time, each counted only at a
 real-time factor the host sustained (A7, A8; K25 where it says 0.8):
 
+**The stereo set's groups flown again on 2026-10-17 on e9d26309**, the
+estimator's heading repaired (K28): the clear flight r1688 to r1692 ended
+0.96 to 1.52 m from B at 1.31 to 1.49 m/s; the smoky location r1693 to
+r1697 0.67 to 1.82 m at 1.30 to 1.51 m/s; the blocked corridor r1698 to
+r1702 home within 0.32 to 0.52 m by the ladder (`trigger=smoke`), 2 to 15
+dead-reckoning episodes; no contact in any. The lidar's groups stand as
+flown on 76367bee: the repair touches the visual filter alone.
+
 - **The smoky location** (`sim-urban-smoke-headless`, four plumes of 1/m,
   two of them in the start hall): the stereo set reached B in truth in
   r1653, r1654, r1655 and r1657 (0.84 to 1.79 m, at a real-time factor of
@@ -1318,21 +1326,38 @@ stereo set, K25):
   flights 1.81 to 2.59). The memory of the smoky hall holds 0.2 to 0.9
   percent of its occupied voxels with no truth occupancy within 0.5 m,
   against 0.2 percent in the clear flight r1667.
-- **The stereo set reached B in truth in three of five**: r1669 0.74 m,
-  r1672 1.36 m, r1674 1.19 m; r1670 and r1673 came 2.85 and 3.50 m off, the
-  estimator's drift (`technical_debt.md`: 2 of 17 clear flights miss the
-  radius; two rooms on the way carried it 6.3 m off, r1664). No contact.
-  1.11, 1.32, 1.35, 1.33 and 1.34 m/s (the clear flights 1.21 to 1.31). The
-  memory of the hall: 0.6 to 1.9 percent phantoms, 28.9 in r1673, whose
-  map had drifted with its estimate; the clear flight r1666 0.4.
+- **The stereo set, first series (0455d22e): three of five in truth**:
+  r1669 0.74 m, r1672 1.36 m, r1674 1.19 m; r1670 and r1673 came 2.85 and
+  3.50 m off. No contact. 1.11, 1.32, 1.35, 1.33 and 1.34 m/s. The miss had
+  a root cause of its own, found on 2026-10-17 by a recorded flight replayed
+  offline (0.6 m of drift offline against 2.25 m in flight) and the heading
+  sigma logged: the filter's first step after the declared pose spans the
+  frame's latency and was read as a hole in the IMU stream, which gave the
+  heading, which no feature observes, 9.5 degrees of uncertainty for the
+  whole flight, and every update walked it (specification K28, repaired in
+  5d6443bd; two of seventeen clear flights since 2026-10-14 had missed the
+  radius by it too).
+- **The stereo set, second series (e9d26309, the estimator repaired): four
+  of five in truth**: r1683 1.23 m, r1684 0.93 m, r1685 1.14 m, r1687
+  1.37 m; r1686 came 2.65 m off (2.25 m horizontal, 0.72 m vertical), the
+  first-pass drift the register's L1 names: the estimate under-reads the
+  distance flown by 0.3 to 0.6 percent in every flight and rises 0.10 to
+  0.24 percent of the path above the truth, and r1686 added a random walk of
+  1.5 m across the east hall. No contact. 1.38, 1.28, 1.26, 1.29 and
+  1.21 m/s. The memory of the hall: 0.9 to 1.7 percent phantoms (the clear
+  flight r1666 0.4). The frame stamp offset swept on two records (0 to 6 ms)
+  moves the scale through 1.000 near 2 ms and the error at B within its
+  noise, so the offset stays at the calibrated 4 ms.
 
 **The speed under moderate smoke is recorded as the requirement**
 (specification K43): the lidar 2.1 m/s, the stereo set 1.1. **The item is
-complete on the lidar and open on the stereo set**: its estimator drifts
-past the capture radius in two flights of five through one smoky room, the
-debt of the visual-inertial estimator on a first pass, which smoke worsens;
-the way through the room, the contract's speed in it and the memory of it
-are measured and hold.
+complete on the lidar and, on the stereo set, complete but for one flight
+of five**: the way through the room, the contract's speed in it and the
+memory of it are measured and hold; what stands between four and five of
+five is the visual-inertial estimator's first-pass drift (technical debt
+L1, class b), which the smoke does not worsen measurably (the clear
+flights r1688 to r1692 ended 0.96 to 1.52 m from B, the smoky-room ones
+0.93 to 2.65).
 
 ## 24. Item 19's Proof, Flown
 
