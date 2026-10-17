@@ -24,6 +24,11 @@ Before committing after file changes:
 2. Run `make quality`.
 3. Commit the completed file changes.
 
+The whole gate is `./tools/gates.sh` (format, build, unit tests, script
+tests, quality; `X=0` in `log/tools/gate_flag.txt`). A commit that changes
+Markdown files alone needs only `./tools/gates.sh --docs` (the script tests,
+which read the documents).
+
 Keep code comments and repository documentation in English.
 
 Logs are pruned after a week (`scripts/prune_sim_logs.sh`: `log/`,
