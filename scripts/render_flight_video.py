@@ -31,7 +31,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from record_flight_video import (  # noqa: E402
     CAPTURE_RATES, MINIMUM_DISTINCT_FRAMES_PER_SECOND, MINIMUM_REDRAWS_PER_SECOND,
-    MAXIMUM_WINDOWS_LOOKED_AT, SOURCES, VIEWS, capture_command, capture_sizes, compose,
+    MAXIMUM_WINDOWS_LOOKED_AT, SOURCES, VIEWS, camera_frames, capture_command, capture_sizes,
+    compose,
     distinct_frames_per_second, flight_clock, flight_end_wall_s, frame_table, moving_windows,
     picture_statistics, probe, redraws, simulation_time_at, verdict)
 
@@ -157,8 +158,12 @@ def main() -> int:
     failed = False
     for view in VIEWS:
         final = args.output_directory / f"{args.name}_{view}.mp4"
+        # The vehicle's own frame in the follow view's world half (K26); the
+        # top view keeps the whole picture for the route.
         compose(raw["world"], raw[view], {"world": tables["world"], "view": tables[view]},
-                max(probe(raw["world"])["duration_s"], probe(raw[view])["duration_s"]), final)
+                max(probe(raw["world"])["duration_s"], probe(raw[view])["duration_s"]), final,
+                camera_frames(run_directory / "render_camera") if view == "follow" else None,
+                begin_sim_s)
         offset_s = max(offsets["world"], offsets[view])
         info = probe(final)
         picture = picture_statistics(final, info["duration_s"]) if info["duration_s"] else {}

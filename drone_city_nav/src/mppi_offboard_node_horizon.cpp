@@ -197,10 +197,18 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
     const double heading = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
     reflex.x -= kBackOutSpeedMps * std::cos(heading);
     reflex.y -= kBackOutSpeedMps * std::sin(heading);
+    // The ladder's rung as the mission's event (K26, K40), once an episode.
+    if (!back_out_reported_) {
+      publishMissionEvent("SMOKE_BACK_OUT");
+      back_out_reported_ = true;
+    }
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "DEAD_RECKONING_BACK_OUT light_reading=%.2f unlit_share=%.2f "
                          "speed_mps=%.1f",
                          light_reading_, unlit_surface_share_, kBackOutSpeedMps);
+  }
+  if (!back_out) {
+    back_out_reported_ = false;
   }
   setpoint_pub_->publish(buildMppiTrajectorySetpoint(
       nowMicros(), reflex, descending ? -kLandingSpeedMps : 0.0, Point2{0.0, 0.0}, nan,

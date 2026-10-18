@@ -133,6 +133,7 @@ start_runtime_evidence_capture() {
       /drone_city_nav/static_building_markers /drone_city_nav/static_map_points \
       /drone_city_nav/vehicle_directions /drone_city_nav/current_lidar_returns_3d \
       /drone_city_nav/raw_lidar_hit_points_3d /evaluation/markers_follow /evaluation/markers_top \
+      /stereo/left/image \
       > "${runtime_artifact_dir}/render_bag.log" 2>&1 &
   fi
   if bool_is_true "${multi_vehicle_mission}" ||

@@ -13,7 +13,8 @@ not large).
 
 - the state of the mission as the vehicle decided it, in words in the top
   left corner of the view: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
-  GOAL UNREACHABLE -> HOME, DEAD RECKONING, LEVEL DESCENT, LANDED, CRASH.
+  GOAL UNREACHABLE -> HOME, SMOKE -> BACK OUT, SMOKE -> HOLD, SMOKE -> HOME, DEAD RECKONING,
+  LEVEL DESCENT, LANDED, CRASH.
   Its sources are the stack's own events (/drone_city_nav/mission_events,
   specification K26, the destruction among them), the navigation's
   readiness and the offboard control mode the vehicle asks of the autopilot
@@ -125,6 +126,13 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     # has no motion to see; it reads as the flight's only once it is under way.
     if descending and ready:
         return "LEVEL DESCENT", RED
+    # The ladder in smoke (K40): backing out of a plume on dead reckoning
+    # under a working light, the hold after the first plume, and home after
+    # the second (the goal given up with the smoke's trigger, below).
+    smoke = next((event for event in reversed(events)
+                  if event.startswith("SMOKE_")), "")
+    if dead_reckoning and ready and smoke.startswith("SMOKE_BACK_OUT"):
+        return "SMOKE -> BACK OUT", RED
     if dead_reckoning and ready:
         return "DEAD RECKONING", RED
     operator = next((event for event in reversed(events)
@@ -136,8 +144,10 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     if home is not None:
         trigger = home.split("trigger=", 1)[-1].split()[0]
         words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
-                 "main_battery": "MAIN BATTERY", "operator": "OPERATOR"}
+                 "main_battery": "MAIN BATTERY", "operator": "OPERATOR", "smoke": "SMOKE"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
+    if smoke.startswith("SMOKE_HOLD"):
+        return "SMOKE -> HOLD", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN
     return ("TAKEOFF" if airborne else "ON THE PAD"), GREY

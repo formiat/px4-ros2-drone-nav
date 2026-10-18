@@ -155,14 +155,67 @@ def frame_table(clock: list[tuple[float, float, float, float, float]], started: 
     return table, offset
 
 
+INSET_WIDTH = HALF_WIDTH // 4
+INSET_MARGIN = 12
+INSET_BORDER = 2
+
+
+def camera_frames(directory: Path) -> list[tuple[float, Path, int, int]]:
+    """The vehicle's own frames the replay kept (render_camera_frames.py):
+    stamp in seconds of simulation, file, width, height, in stamp order."""
+    table = directory / "frames.csv"
+    if not table.is_file():
+        return []
+    frames = []
+    for row in csv.reader(table.open()):
+        if len(row) < 4:
+            continue
+        frames.append((float(row[1]), directory / f"{int(row[0]):06d}.raw", int(row[2]),
+                       int(row[3])))
+    frames.sort()
+    return frames
+
+
+def camera_frame_at(frames: list[tuple[float, Path, int, int]], cursor: int,
+                    moment_s: float) -> int:
+    """The index of the latest frame taken at or before the moment, from the
+    cursor on; -1 while none has been."""
+    while cursor + 1 < len(frames) and frames[cursor + 1][0] <= moment_s:
+        cursor += 1
+    return cursor
+
+
+def paste_inset(picture, frame: bytes, width: int, height: int) -> None:
+    """The vehicle's own frame, a quarter of the half's width with a white
+    border, in the lower right corner of the world half: what the pair sees
+    through the smoke and by its light (K26)."""
+    import numpy
+    grey = numpy.frombuffer(frame, dtype=numpy.uint8)[: width * height].reshape(height, width)
+    inset_height = INSET_WIDTH * height // width
+    rows = (numpy.arange(inset_height) * height // inset_height)
+    columns = (numpy.arange(INSET_WIDTH) * width // INSET_WIDTH)
+    small = grey[rows][:, columns]
+    bottom = HEIGHT - INSET_MARGIN
+    right = HALF_WIDTH - INSET_MARGIN
+    top = bottom - inset_height
+    left = right - INSET_WIDTH
+    picture[top - INSET_BORDER:bottom + INSET_BORDER, left - INSET_BORDER:right + INSET_BORDER] = 255
+    picture[top:bottom, left:right] = small[:, :, numpy.newaxis]
+
+
 def compose(world: Path, view: Path, tables: dict[str, list[int]], flight_wall_s: float,
-            output: Path) -> int:
+            output: Path, camera: list[tuple[float, Path, int, int]] | None = None,
+            begin_sim_s: float = 0.0) -> int:
     """The split picture of one view, after the flight: the world on the
     left, the view on the right, frame by frame as the tables say, until
-    either window's frames run out. Returns the frames written."""
+    either window's frames run out; the vehicle's own frame, where kept, in
+    the world half's corner at the moment each frame shows. Returns the
+    frames written."""
     import numpy
 
     half_bytes = HALF_WIDTH * HEIGHT * 3
+    camera = camera or []
+    camera_cursor = -1
     sources = {"world": world, "view": view}
     decoders = {name: subprocess.Popen(decode_command(path, flight_wall_s),
                                        stdout=subprocess.PIPE)
@@ -183,6 +236,12 @@ def compose(world: Path, view: Path, tables: dict[str, list[int]], flight_wall_s
             picture = numpy.hstack([
                 numpy.frombuffer(held[name], dtype=numpy.uint8).reshape(HEIGHT, HALF_WIDTH, 3)
                 for name in ("world", "view")])
+            if camera:
+                camera_cursor = camera_frame_at(camera, camera_cursor,
+                                                begin_sim_s + frame / FRAME_RATE)
+                if camera_cursor >= 0:
+                    _, path, width, height = camera[camera_cursor]
+                    paste_inset(picture, path.read_bytes(), width, height)
             encoder.stdin.write(picture.tobytes())
             written += 1
         return written

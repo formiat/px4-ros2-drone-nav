@@ -202,7 +202,7 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
-      Name: Observed Darkness
+      Name: Observed Darkness Or Smoke
       Position Transformer: XYZ
       Size (Pixels): 3
       Size (m): 0.20

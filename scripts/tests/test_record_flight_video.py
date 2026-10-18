@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -245,6 +246,54 @@ class RenderedFlightTest(unittest.TestCase):
         runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
         self.assertIn('if bool_is_true "${RENDER_BAG:-false}"; then', runtime)
         self.assertIn("ros2 bag record --use-sim-time", runtime)
+
+    def test_the_vehicle_s_own_frame_is_kept_and_pasted_into_the_world_half(self) -> None:
+        # The bag records the pair's left frame after the smoke relay, the
+        # replay keeps it a quarter scale beside the windows, and the follow
+        # view's world half carries the latest frame at each moment, a quarter
+        # of the half's width in the lower right corner with a white border.
+        import numpy
+        runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
+        self.assertIn("/stereo/left/image", runtime)
+        render = (REPOSITORY / "scripts/render_flight_runtime.sh").read_text()
+        self.assertIn("render_camera_frames.py", render)
+        self.assertIn('camera_frames(run_directory / "render_camera") if view == "follow" else None',
+                      (REPOSITORY / "scripts/render_flight_video.py").read_text())
+        frames = [(10.0, Path("a"), 4, 3), (10.5, Path("b"), 4, 3), (11.0, Path("c"), 4, 3)]
+        self.assertEqual(-1, recorder.camera_frame_at(frames, -1, 9.9))
+        self.assertEqual(1, recorder.camera_frame_at(frames, -1, 10.7))
+        self.assertEqual(2, recorder.camera_frame_at(frames, 1, 12.0))
+        picture = numpy.zeros((recorder.HEIGHT, 2 * recorder.HALF_WIDTH, 3), dtype=numpy.uint8)
+        frame = bytes(range(0, 256, 256 // 12))[:12]
+        recorder.paste_inset(picture, frame, 4, 3)
+        right = recorder.HALF_WIDTH - recorder.INSET_MARGIN
+        bottom = recorder.HEIGHT - recorder.INSET_MARGIN
+        height = recorder.INSET_WIDTH * 3 // 4
+        self.assertEqual(255, picture[bottom, right, 0])  # the border
+        self.assertEqual(frame[-1], picture[bottom - 1, right - 1, 0])  # the last pixel
+        self.assertEqual(frame[0], picture[bottom - height, right - recorder.INSET_WIDTH, 0])
+        self.assertEqual(0, picture[bottom - height - 10, right - recorder.INSET_WIDTH - 10, 0])
+        self.assertEqual(0, picture[:, recorder.HALF_WIDTH:].max())  # the view half untouched
+        import render_camera_frames as dumper
+        data, width, height = dumper.quarter(bytes(range(64)) * 4, 16, 16)
+        self.assertEqual((4, 4), (width, height))
+        self.assertEqual(bytes([0, 4, 8, 12]), data[:4])
+
+    def test_the_replayed_world_draws_the_smoke_the_vehicle_cannot_see(self) -> None:
+        import render_world_replay as replay
+
+        sdf = replay.smoke_box_sdf(2, ((1.0, 2.0, 3.0), (4.0, 5.0, 6.0), 1.0))
+        self.assertIn('<model name="smoke_zone_2">', sdf)
+        self.assertIn("<pose>1.0 2.0 3.0 0 0 0</pose>", sdf)
+        self.assertIn("<size>4.0 5.0 6.0</size>", sdf)
+        self.assertNotIn("<collision", sdf)
+        self.assertIn(f"<visibility_flags>{replay.SMOKE_VISIBILITY_FLAGS}</visibility_flags>", sdf)
+        # The vehicle's cameras and lidar render no visual on that layer.
+        for model in ("stereo_tof_v1", "lidar_3d_v1"):
+            text = (REPOSITORY / "drone_city_nav/models" / model / "model.sdf").read_text()
+            for mask in re.findall(r"<visibility_mask>(\d+)</visibility_mask>", text):
+                self.assertEqual(0, int(mask) & replay.SMOKE_VISIBILITY_FLAGS, model)
+        self.assertIn("<transparency>0.61</transparency>", sdf)  # 1/m: 0.39 opaque
 
     def test_the_world_is_replayed_through_the_true_poses_and_the_light(self) -> None:
         import render_world_replay as replay

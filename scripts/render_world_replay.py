@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import csv
+import json
 import sys
 import time
 from pathlib import Path
@@ -65,6 +66,40 @@ def pose_at(poses: list[tuple[float, ...]], times: list[float], t_s: float) -> t
 def share_at(shares: list[tuple[float, float]], t_s: float) -> float:
     index = bisect.bisect_right([s for s, _ in shares], t_s) - 1
     return shares[index][1] if index >= 0 else 1.0
+
+
+# Smoke in the world half of the recording (K26): the model's zones as boxes
+# a viewer sees through, the denser the greyer (the overlay's rule), drawn on
+# a visibility layer no sensor of the vehicle renders (the lidar's own
+# visuals' layer, bit 25), so that the picture shows the smoke and the
+# vehicle still sees it only through the smoke model.
+SMOKE_VISIBILITY_FLAGS = 33554432
+
+
+def run_smoke_zones(run_directory: Path) -> list[tuple[tuple[float, ...], tuple[float, ...], float]]:
+    """The run's SMOKE_ZONES as the manifest recorded them, or none."""
+    manifest = json.loads((run_directory / "manifest.json").read_text())
+    text = manifest.get("effective_overrides", {}).get("SMOKE_ZONES", "")
+    if not text.strip():
+        return []
+    from evaluation_overlay import smoke_zones
+    return smoke_zones(text)
+
+
+def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], float]) -> str:
+    """A static model of one visual box, no collision, the zone's place and
+    size, grey at the overlay's opacity for its density."""
+    from evaluation_overlay import SMOKE, smoke_alpha
+    (x, y, z), (sx, sy, sz), sigma = zone
+    alpha = smoke_alpha(sigma)
+    colour = " ".join(f"{channel:.2f}" for channel in SMOKE)
+    return (f'<?xml version="1.0"?><sdf version="1.9"><model name="smoke_zone_{index}">'
+            f"<static>true</static><pose>{x} {y} {z} 0 0 0</pose><link name=\"link\">"
+            f'<visual name="smoke"><geometry><box><size>{sx} {sy} {sz}</size></box></geometry>'
+            f"<material><ambient>{colour} {alpha:.2f}</ambient><diffuse>{colour} {alpha:.2f}</diffuse>"
+            f"<specular>0 0 0 1</specular></material><transparency>{1.0 - alpha:.2f}</transparency>"
+            f"<visibility_flags>{SMOKE_VISIBILITY_FLAGS}</visibility_flags><cast_shadows>false</cast_shadows>"
+            f"</visual></link></model></sdf>")
 
 
 def main() -> int:
@@ -124,6 +159,17 @@ def main() -> int:
         print("RENDER_WORLD none: the model could not be created", flush=True)
         return 1
     print(f"RENDER_WORLD model {args.model} at the flight's {args.begin_s:.2f} s", flush=True)
+    zones = run_smoke_zones(args.run_directory)
+    for index, zone in enumerate(zones):
+        box = EntityFactory()
+        box.sdf = smoke_box_sdf(index, zone)
+        box.name = f"smoke_zone_{index}"
+        box.allow_renaming = False
+        ok, reply = node.request(f"/world/{args.world}/create", box, EntityFactory, Boolean, 5000)
+        if not (ok and reply.data):
+            print(f"RENDER_WORLD smoke zone {index} could not be created", flush=True)
+    if zones:
+        print(f"RENDER_WORLD {len(zones)} smoke zones drawn", flush=True)
     set_pose(first)
     applied = share_at(shares, args.begin_s)
     set_light(applied)

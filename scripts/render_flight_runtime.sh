@@ -60,6 +60,11 @@ while [ ! -f "${go_file}" ]; do sleep 0.05; done
 python3 "${repo_root}/scripts/render_rviz_clock.py" "${run_directory}/render_rviz_clock.csv" \
   > "${run_directory}/render_rviz_clock.log" 2>&1 &
 pids+=($!)
+# The vehicle's own frame, for the inset of the follow view (K26).
+rm -rf "${run_directory}/render_camera"
+python3 "${repo_root}/scripts/render_camera_frames.py" "${run_directory}/render_camera" \
+  > "${run_directory}/render_camera.log" 2>&1 &
+pids+=($!)
 # A bag the end of the flight cut off has no metadata; its database holds the messages.
 [ -f "${run_directory}/render_bag/metadata.yaml" ] ||
   ros2 bag reindex "${run_directory}/render_bag" -s sqlite3 > "${run_directory}/render_bag_reindex.log" 2>&1

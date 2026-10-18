@@ -54,6 +54,19 @@ class StateWordsTest(unittest.TestCase):
                          text(["MISSION_RESULT success=true reason=goal"], False, False,
                               True, True)[0])
         self.assertEqual("CRASH", text(["VEHICLE_LANDED", "VEHICLE_DESTROYED"], False, False, False, True)[0])
+        # The ladder in smoke (K40): backing out on dead reckoning under a
+        # working light, the hold after the first plume, home after the second.
+        ready = ["MISSION_READINESS ready=true"]
+        self.assertEqual("SMOKE -> BACK OUT",
+                         text(ready + ["SMOKE_BACK_OUT"], True, False, True, True)[0])
+        self.assertEqual("DEAD RECKONING",
+                         text(ready + ["SMOKE_BACK_OUT", "SMOKE_HOLD"], True, False, True, True)[0])
+        self.assertEqual("SMOKE -> HOLD", text(ready + ["SMOKE_HOLD"], False, False, True, True)[0])
+        self.assertEqual("TO GOAL",
+                         text(ready + ["SMOKE_HOLD", "SMOKE_CLEARED"], False, False, True, True)[0])
+        self.assertEqual("SMOKE -> HOME",
+                         text(ready + ["SMOKE_HOLD", "GOAL_UNREACHABLE trigger=smoke"], False,
+                              False, True, True)[0])
 
     def test_the_words_sit_in_the_top_left_corner_of_each_view(self) -> None:
         # Straight down with yaw 0, RViz's camera has +Y to its right and -X up.
@@ -135,6 +148,9 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         self.assertIn('"/drone_city_nav/mission_events"', offboard)
         self.assertIn('"AUTOPILOT_CONTROL state=', offboard)
         self.assertIn('"MISSION_LANDING started=true"', offboard)
+        self.assertIn('"SMOKE_BACK_OUT"', offboard)
+        self.assertIn('"SMOKE_HOLD"', sources["mission_monitor_node.cpp"])
+        self.assertIn('"SMOKE_CLEARED"', sources["mission_monitor_node.cpp"])
         self.assertIn('"MISSION_LANDED disarmed="', sources["mission_monitor_node.cpp"])
         self.assertIn('"OPERATOR_COMMAND "', sources["mission_monitor_node.cpp"])
 

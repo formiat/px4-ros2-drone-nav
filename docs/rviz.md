@@ -41,7 +41,7 @@ means the parameter and the transform disagree, not a planner coordinate error.
 | Remembered Lidar Hits | `/drone_city_nav/remembered_lidar_points` |
 | Raw Memory Cells | `/drone_city_nav/raw_memory_obstacle_points` |
 | Accumulated 3D Obstacle Memory | `/drone_city_nav/raw_memory_obstacle_points_3d` (the surfaces, pink) |
-| Observed Darkness | `/drone_city_nav/raw_memory_darkness_points_3d` (occupied without a measured hit, grey: the dark the camera looked into, K14) |
+| Observed Darkness Or Smoke | `/drone_city_nav/raw_memory_darkness_points_3d` (occupied without a measured hit, grey: the dark the camera looked into, K14, and the smoke the ring or the lidar returned from, K37, K38; in the ordinary flight, whose light works, the grey is smoke) |
 | Raw Occupied Cells | `/drone_city_nav/raw_occupied_cells` |
 
 In the cooperative traffic mission, the lightweight planner paths are also
