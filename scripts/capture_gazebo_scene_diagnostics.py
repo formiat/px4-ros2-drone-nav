@@ -59,8 +59,6 @@ EXPECTED_X500_VISUAL_TOKENS = (
 )
 EXPECTED_YELLOW_VISUAL_TOKENS = (
     "yellow_body_plate",
-    "yellow_arm_x",
-    "yellow_arm_y",
     "yellow_rotor_front_left",
     "yellow_rotor_front_right",
     "yellow_rotor_back_left",

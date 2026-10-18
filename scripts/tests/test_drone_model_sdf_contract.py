@@ -59,8 +59,10 @@ class DroneModelSdfContractTest(unittest.TestCase):
         visuals = element_names(root, "visual")
 
         self.assertIn("yellow_body_plate", visuals)
-        self.assertIn("yellow_arm_x", visuals)
-        self.assertIn("yellow_arm_y", visuals)
+        # No arms (the owner, 2026-10-18): the front one stood in the pair's
+        # view and showed through the smoke's veil as a pin.
+        self.assertNotIn("yellow_arm_x", visuals)
+        self.assertNotIn("yellow_arm_y", visuals)
         self.assertIn("yellow_ground_projection_beam", visuals)
         self.assertIn("yellow_ground_projection_disc", visuals)
 

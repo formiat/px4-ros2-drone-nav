@@ -44,38 +44,11 @@
           <emissive>0.55 0.42 0.0 1</emissive>
         </material>
       </visual>
-      <visual name="yellow_arm_x">
-        <pose>0 0 0.08 0 1.57079632679 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.045</radius>
-            <length>1.25</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.45 0.34 0.0 1</emissive>
-        </material>
-      </visual>
-      <visual name="yellow_arm_y">
-        <pose>0 0 0.08 1.57079632679 0 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.045</radius>
-            <length>1.25</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.45 0.34 0.0 1</emissive>
-        </material>
-      </visual>
+      <!-- No arms: the front arm's end stood 0.3 m ahead of and under the
+           pair, and the evaluation depth cameras, which the smoke relay reads
+           the veil's depth from, rendered it although the pair's mask hides
+           this layer, so that every frame in smoke showed a pin-shaped hole in
+           the veil (r1745; the owner, 2026-10-18). -->
       <visual name="yellow_rotor_front_left">
         <pose>0.48 0.48 0.10 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
