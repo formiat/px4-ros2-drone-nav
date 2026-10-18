@@ -296,7 +296,7 @@ class RenderedFlightTest(unittest.TestCase):
             for mask in re.findall(r"<visibility_mask>(\d+)</visibility_mask>", text):
                 self.assertEqual(0, int(mask) & replay.SMOKE_VISIBILITY_FLAGS, model)
         self.assertIn("<transparency>0.61</transparency>", sdf)  # 1/m: 0.39 opaque
-        self.assertIn("<emissive>", sdf)  # the location has no light to show a box by
+        self.assertIn("<emissive>0.22 0.22 0.23 1</emissive>", sdf)  # 1/m: a glow of 0.1 + 0.3 x 0.39
 
     def test_the_world_is_replayed_through_the_true_poses_and_the_light(self) -> None:
         import render_world_replay as replay

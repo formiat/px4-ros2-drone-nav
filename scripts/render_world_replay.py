@@ -70,7 +70,8 @@ def share_at(shares: list[tuple[float, float]], t_s: float) -> float:
 
 # Smoke in the world half of the recording (K26): the model's zones as boxes
 # a viewer sees through, the denser the greyer (the overlay's rule), lit by
-# themselves (the location has no light, and an unlit box is black), drawn on
+# a glow of their own in proportion (the location has no light, and a lit
+# box is black), drawn on
 # a visibility layer no sensor of the vehicle renders (the lidar's own
 # visuals' layer, bit 25), so that the picture shows the smoke and the
 # vehicle still sees it only through the smoke model.
@@ -94,11 +95,17 @@ def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], 
     (x, y, z), (sx, sy, sz), sigma = zone
     alpha = smoke_alpha(sigma)
     colour = " ".join(f"{channel:.2f}" for channel in SMOKE)
+    # Measured on a bench (log/tools/release/v0.6.0/box_bench): under the
+    # vehicle's own light an emissive of 0.2 with the transparency of 1/m
+    # smoke is a grey veil the wall shows through, 0.62 all but a wall, a
+    # material without emissive or lighting invisible in the dark.
+    glow = 0.1 + 0.3 * alpha
+    emissive = " ".join(f"{glow * channel / SMOKE[0]:.2f}" for channel in SMOKE)
     return (f'<?xml version="1.0"?><sdf version="1.9"><model name="smoke_zone_{index}">'
             f"<static>true</static><pose>{x} {y} {z} 0 0 0</pose><link name=\"link\">"
             f'<visual name="smoke"><geometry><box><size>{sx} {sy} {sz}</size></box></geometry>'
             f"<material><ambient>{colour} {alpha:.2f}</ambient><diffuse>{colour} {alpha:.2f}</diffuse>"
-            f"<specular>0 0 0 1</specular><emissive>{colour} 1</emissive></material>"
+            f"<specular>0 0 0 1</specular><emissive>{emissive} 1</emissive></material>"
             f"<transparency>{1.0 - alpha:.2f}</transparency>"
             f"<visibility_flags>{SMOKE_VISIBILITY_FLAGS}</visibility_flags><cast_shadows>false</cast_shadows>"
             f"</visual></link></model></sdf>")
