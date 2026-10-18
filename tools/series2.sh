@@ -19,7 +19,7 @@ for id in "$@"; do
   done
   ./scripts/stop_sim.sh > /dev/null 2>&1
   echo "== $id start $(date -u +%H:%M:%S) load $(cut -d' ' -f1-3 /proc/loadavg) io $(awk '/some/{print $2}' /proc/pressure/io) commit $(git rev-parse --short HEAD) dirty=$(git status --short | wc -l) profile=$profile target=${TARGET:-sim-urban-point-to-point-headless}" >> "$out"
-  env "${envs[@]}" DRONE_GAZEBO_RUN_ID=$id SMOKE_DURATION_S=${SMOKE_DURATION_S:-600} ./scripts/dev_shell.sh make ${TARGET:-sim-urban-point-to-point-headless} > "log/tools/run_$id.log" 2>&1
+  env "${envs[@]}" DRONE_GAZEBO_RUN_ID=$id SMOKE_DURATION_S=${SMOKE_DURATION_S:-900} ./scripts/dev_shell.sh make ${TARGET:-sim-urban-point-to-point-headless} > "log/tools/run_$id.log" 2>&1
   ./scripts/stop_sim.sh > /dev/null 2>&1
   grep -E '^FAIL|^(OK|NOTE): (mean flight|crash|no crash|post-bootstrap|persistent planner p95|mission monitor|execution ownership|the true position|real-time factor|the goal was given up|the vehicle returned|the vehicle is whole|production tick wall time|no vehicle collided)' "log/tools/run_$id.log" >> "$out"
   # whether the flight counts, by the host it was flown on (specification A7)

@@ -97,11 +97,13 @@ sim-urban-point-to-point-headless: build
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
 		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
+		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
+		SMOKE_ZONES="$${SMOKE_ZONES-$(LOCATION_SMOKE_ZONES)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
-		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-urban-point-to-point-gui
@@ -114,6 +116,7 @@ sim-urban-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		SMOKE_ZONES="$${SMOKE_ZONES-$(LOCATION_SMOKE_ZONES)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
@@ -214,6 +217,18 @@ SMOKE_ROOMS_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.
 	OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
 	RAW_SNAPSHOT_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
+# Specification F4 (the owner, 2026-09-27, confirmed 2026-10-17): smoke is the
+# location's property, not a scenario's. Every ordinary flight carries the
+# moderate rooms of item 23 (the west hall on the way, the tunnel's mouth
+# beside it, 0.1/m) and the four dense plumes of item 18 beside the route
+# (1/m; overlapping zones read as the denser), their place and amount
+# constant and their form seeded; the memory snapshot of the ordinary flight
+# is the west hall's, read against the truth by tools/room_memory_truth.py.
+# Only the blocked corridor is a scenario of its own; the clear location is a
+# reference (sim-urban-clear-*), and the plumes alone and the rooms alone
+# stay as the measurements of items 18 and 23.
+LOCATION_SMOKE_ZONES := -20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.1;8,27,10.5,3,3,3,1.0;12,22,11,2,2,2,1.0;18,-10,4,3,3,3,1.0;68,-20,6.5,3,3,3,1.0
+CLEAR_SCENARIO := SMOKE_ZONES=""
 LIGHT_LOST_SCENARIO := LIGHT_FAULTS=lost STREAM_FAULTS=moderate \
 	VEHICLE_INTACT_EXPECTED=true
 
@@ -285,6 +300,14 @@ sim-urban-light-lost-headless:
 .PHONY: sim-urban-light-lost-gui
 sim-urban-light-lost-gui:
 	$(LIGHT_LOST_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-clear-headless
+sim-urban-clear-headless:
+	$(CLEAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-clear-gui
+sim-urban-clear-gui:
+	$(CLEAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
 
 .PHONY: sim-urban-smoke-headless
 sim-urban-smoke-headless:

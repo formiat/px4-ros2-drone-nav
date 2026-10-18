@@ -112,7 +112,9 @@ simulated GNSS, the magnetometer and the simulation heading source
 estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
 multi-vehicle missions fly until the vehicles share a frame (roadmap item 15). The ordinary flight is dark since roadmap item 17: the location has no light
 of its own, the cameras carry noise, and the vehicle flies by a light it
-carries, which flickers in every flight; when that light fails, or its battery
+carries, which flickers in every flight; and smoky since roadmap items 18 and
+23: every flight crosses a hall of moderate smoke and passes dense plumes
+beside its route (specification F4); when that light fails, or its battery
 will not last to the goal, the vehicle comes home, and with the light gone it
 descends and stays whole ([docs/scenarios.md](docs/scenarios.md)). A blank
 surface the matcher cannot match returns no depth, measured and without a
