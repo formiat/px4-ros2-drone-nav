@@ -95,7 +95,7 @@ def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], 
     (x, y, z), (sx, sy, sz), sigma = zone
     alpha = smoke_alpha(sigma)
     colour = " ".join(f"{channel:.2f}" for channel in SMOKE)
-    # Measured on a bench (log/tools/release/v0.6.0/box_bench): under the
+    # Measured on a bench (tools/smoke_box_bench.py): under the
     # vehicle's own light an emissive of 0.2 with the transparency of 1/m
     # smoke is a grey veil the wall shows through, 0.62 all but a wall, a
     # material without emissive or lighting invisible in the dark.
