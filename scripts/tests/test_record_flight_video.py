@@ -275,9 +275,11 @@ class RenderedFlightTest(unittest.TestCase):
         self.assertEqual(0, picture[bottom - height - 10, right - recorder.INSET_WIDTH - 10, 0])
         self.assertEqual(0, picture[:, recorder.HALF_WIDTH:].max())  # the view half untouched
         import render_camera_frames as dumper
-        data, width, height = dumper.quarter(bytes(range(64)) * 4, 16, 16)
+        frame = bytes([10] * 64 + [50] * 64 + [90] * 64 + [130] * 64)  # four bands of 4 rows
+        data, width, height = dumper.quarter(frame, 16, 16)
         self.assertEqual((4, 4), (width, height))
-        self.assertEqual(bytes([0, 4, 8, 12]), data[:4])
+        self.assertEqual(bytes([10, 10, 10, 10, 50, 50, 50, 50]), data[:8])  # each block's mean
+        self.assertIn('--smoke-zones="${SMOKE_ZONES:-}"', runtime)
 
     def test_the_replayed_world_draws_the_smoke_the_vehicle_cannot_see(self) -> None:
         import render_world_replay as replay
@@ -294,6 +296,7 @@ class RenderedFlightTest(unittest.TestCase):
             for mask in re.findall(r"<visibility_mask>(\d+)</visibility_mask>", text):
                 self.assertEqual(0, int(mask) & replay.SMOKE_VISIBILITY_FLAGS, model)
         self.assertIn("<transparency>0.61</transparency>", sdf)  # 1/m: 0.39 opaque
+        self.assertIn("<emissive>", sdf)  # the location has no light to show a box by
 
     def test_the_world_is_replayed_through_the_true_poses_and_the_light(self) -> None:
         import render_world_replay as replay

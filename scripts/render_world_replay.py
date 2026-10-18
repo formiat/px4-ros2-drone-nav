@@ -69,7 +69,8 @@ def share_at(shares: list[tuple[float, float]], t_s: float) -> float:
 
 
 # Smoke in the world half of the recording (K26): the model's zones as boxes
-# a viewer sees through, the denser the greyer (the overlay's rule), drawn on
+# a viewer sees through, the denser the greyer (the overlay's rule), lit by
+# themselves (the location has no light, and an unlit box is black), drawn on
 # a visibility layer no sensor of the vehicle renders (the lidar's own
 # visuals' layer, bit 25), so that the picture shows the smoke and the
 # vehicle still sees it only through the smoke model.
@@ -97,7 +98,8 @@ def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], 
             f"<static>true</static><pose>{x} {y} {z} 0 0 0</pose><link name=\"link\">"
             f'<visual name="smoke"><geometry><box><size>{sx} {sy} {sz}</size></box></geometry>'
             f"<material><ambient>{colour} {alpha:.2f}</ambient><diffuse>{colour} {alpha:.2f}</diffuse>"
-            f"<specular>0 0 0 1</specular></material><transparency>{1.0 - alpha:.2f}</transparency>"
+            f"<specular>0 0 0 1</specular><emissive>{colour} 1</emissive></material>"
+            f"<transparency>{1.0 - alpha:.2f}</transparency>"
             f"<visibility_flags>{SMOKE_VISIBILITY_FLAGS}</visibility_flags><cast_shadows>false</cast_shadows>"
             f"</visual></link></model></sdf>")
 

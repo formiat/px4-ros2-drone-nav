@@ -14,11 +14,14 @@ SCALE = 4
 
 
 def quarter(data: bytes, width: int, height: int) -> tuple[bytes, int, int]:
-    """Every SCALE-th row and column of a mono8 frame."""
+    """A mono8 frame at a quarter scale, each pixel the mean of a SCALE x SCALE
+    block (the pair's noise, A12, averaged rather than sampled)."""
     import numpy
     frame = numpy.frombuffer(data, dtype=numpy.uint8)[: width * height].reshape(height, width)
-    small = numpy.ascontiguousarray(frame[::SCALE, ::SCALE])
-    return small.tobytes(), small.shape[1], small.shape[0]
+    rows, columns = height // SCALE, width // SCALE
+    blocks = frame[: rows * SCALE, : columns * SCALE].reshape(rows, SCALE, columns, SCALE)
+    small = blocks.mean(axis=(1, 3)).astype(numpy.uint8)
+    return small.tobytes(), columns, rows
 
 
 def main() -> int:
