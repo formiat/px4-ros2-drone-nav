@@ -124,15 +124,21 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         return "GOAL REACHED", GREEN
     # The camera estimator declares dead reckoning on the pad too, where it
     # has no motion to see; it reads as the flight's only once it is under way.
-    if descending and ready:
-        return "LEVEL DESCENT", RED
     # The ladder in smoke (K40): backing out of a plume on dead reckoning
     # under a working light, the hold after the first plume, and home after
-    # the second (the goal given up with the smoke's trigger, below).
+    # the second (the goal given up with the smoke's trigger, below). Both
+    # rungs ask the autopilot's velocity mode, as the level descent does, so
+    # they are read before it: a light that fails inside a smoke hold would
+    # read as the hold.
     smoke = next((event for event in reversed(events)
                   if event.startswith("SMOKE_")), "")
-    if dead_reckoning and ready and smoke.startswith("SMOKE_BACK_OUT"):
+    if ready and smoke.startswith("SMOKE_BACK_OUT") and (dead_reckoning or descending):
         return "SMOKE -> BACK OUT", RED
+    if ready and smoke.startswith("SMOKE_HOLD") and not any(
+            event.startswith("GOAL_UNREACHABLE") for event in events):
+        return "SMOKE -> HOLD", AMBER
+    if descending and ready:
+        return "LEVEL DESCENT", RED
     if dead_reckoning and ready:
         return "DEAD RECKONING", RED
     operator = next((event for event in reversed(events)
@@ -146,8 +152,6 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
                  "main_battery": "MAIN BATTERY", "operator": "OPERATOR", "smoke": "SMOKE"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
-    if smoke.startswith("SMOKE_HOLD"):
-        return "SMOKE -> HOLD", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN
     return ("TAKEOFF" if airborne else "ON THE PAD"), GREY

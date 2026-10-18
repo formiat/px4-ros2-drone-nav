@@ -59,9 +59,14 @@ class StateWordsTest(unittest.TestCase):
         ready = ["MISSION_READINESS ready=true"]
         self.assertEqual("SMOKE -> BACK OUT",
                          text(ready + ["SMOKE_BACK_OUT"], True, False, True, True)[0])
-        self.assertEqual("DEAD RECKONING",
+        # The hold hovers on dead reckoning by the ring's reflex: the hold is the word.
+        self.assertEqual("SMOKE -> HOLD",
                          text(ready + ["SMOKE_BACK_OUT", "SMOKE_HOLD"], True, False, True, True)[0])
         self.assertEqual("SMOKE -> HOLD", text(ready + ["SMOKE_HOLD"], False, False, True, True)[0])
+        # Both rungs ask the velocity mode the level descent asks (r1744 read
+        # the back-out and the hold as LEVEL DESCENT).
+        self.assertEqual("SMOKE -> BACK OUT", text(ready + ["SMOKE_BACK_OUT"], True, True, True, True)[0])
+        self.assertEqual("SMOKE -> HOLD", text(ready + ["SMOKE_HOLD"], True, True, True, True)[0])
         self.assertEqual("TO GOAL",
                          text(ready + ["SMOKE_HOLD", "SMOKE_CLEARED"], False, False, True, True)[0])
         self.assertEqual("SMOKE -> HOME",
