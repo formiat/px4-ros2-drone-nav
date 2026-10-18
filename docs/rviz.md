@@ -89,9 +89,12 @@ reads `/evaluation`.
   vehicle really is. Where the light is lost the two part: what the trails
   show is the dead reckoning's drift, and that the vehicle was down before
   the drift carried it to a wall.
-- **The smoky places** of a flight with smoke (`SMOKE_ZONES`, roadmap item 18
-  stage 1): each a grey box, the denser the less transparent. The vehicle
-  meets the smoke only as its sensors show it.
+
+No obstacle of the truth is drawn in RViz (the owner, 2026-10-18): the
+obstacles it shows are the vehicle's own memory, the smoke among them only as
+the grey cloud its ring or lidar returned from. The location's smoke zones are
+drawn in the world half of a recording alone (`scripts/render_world_replay.py`,
+K26), where the truth belongs.
 
 ## MPPI Markers
 

@@ -114,13 +114,10 @@ start_runtime_evidence_capture() {
   fi
   # The evaluation overlay of RViz: the vehicle's decisions in words, its
   # estimate against the truth, and the carried light. Only where RViz is
-  # open; a headless acceptance flight carries nothing of it. The zones are
-  # joined to their option with '=': a location whose first zone lies west of
-  # the origin begins with a minus, which the parser read as an option.
+  # open; a headless acceptance flight carries nothing of it.
   if bool_is_true "${enable_rviz}" && ! bool_is_true "${multi_vehicle_mission}"; then
     python3 "${repo_root}/scripts/evaluation_overlay.py" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
-      --smoke-zones="${SMOKE_ZONES:-}" \
       > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
   fi
   # A flight rendered afterwards (RENDER_BAG=1, scripts/render_flight_video.py):

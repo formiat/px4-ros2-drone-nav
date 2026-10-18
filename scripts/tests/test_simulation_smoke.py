@@ -60,16 +60,23 @@ class SimulationSmokeContractTest(unittest.TestCase):
         runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
         self.assertIn('smoke_zones:="${SMOKE_ZONES}"', runtime)
 
-    def test_the_overlay_reads_the_zones_as_the_model_does(self) -> None:
-        zones = OVERLAY.smoke_zones("1,2,3,4,5,6,0.5; 7,8,9,1,1,1,2")
+    def test_the_replayed_world_reads_the_zones_as_the_model_does(self) -> None:
+        # The zones are drawn in a recording's world half alone: RViz shows no
+        # obstacle of the truth (the owner, 2026-10-18), so the overlay reads
+        # no zones and draws no box.
+        sys.path.insert(0, str(REPOSITORY / "scripts"))
+        import render_world_replay as replay
+        self.assertFalse(hasattr(OVERLAY, "smoke_zones"))
+        self.assertNotIn("smoke_alpha", OVERLAY_PATH.read_text())
+        zones = replay.smoke_zones("1,2,3,4,5,6,0.5; 7,8,9,1,1,1,2")
         self.assertEqual(
             [((1.0, 2.0, 3.0), (4.0, 5.0, 6.0), 0.5), ((7.0, 8.0, 9.0), (1.0, 1.0, 1.0), 2.0)],
             zones)
-        self.assertEqual([], OVERLAY.smoke_zones(""))
+        self.assertEqual([], replay.smoke_zones(""))
         with self.assertRaises(ValueError):
-            OVERLAY.smoke_zones("1,2,3,4,5,6")
-        thin = OVERLAY.smoke_alpha(0.05)
-        dense = OVERLAY.smoke_alpha(4.0)
+            replay.smoke_zones("1,2,3,4,5,6")
+        thin = replay.smoke_alpha(0.05)
+        dense = replay.smoke_alpha(4.0)
         self.assertLess(thin, dense)
         self.assertGreaterEqual(thin, 0.12)
         self.assertLessEqual(dense, 0.55)

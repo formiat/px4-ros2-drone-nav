@@ -17,6 +17,7 @@ import argparse
 import bisect
 import csv
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -76,6 +77,27 @@ def share_at(shares: list[tuple[float, float]], t_s: float) -> float:
 # visuals' layer, bit 25), so that the picture shows the smoke and the
 # vehicle still sees it only through the smoke model.
 SMOKE_VISIBILITY_FLAGS = 33554432
+SMOKE = (0.62, 0.62, 0.66)
+
+
+def smoke_zones(text: str) -> list[tuple[tuple[float, ...], tuple[float, ...], float]]:
+    """SMOKE_ZONES as the smoke model reads it: "x,y,z,sx,sy,sz,sigma" in the
+    world frame, several separated by ";"."""
+    zones = []
+    for item in text.split(";"):
+        if not item.strip():
+            continue
+        values = [float(value) for value in item.split(",")]
+        if len(values) != 7:
+            raise ValueError(f"smoke zone '{item}': x,y,z,sx,sy,sz,sigma expected")
+        zones.append((tuple(values[:3]), tuple(values[3:6]), values[6]))
+    return zones
+
+
+def smoke_alpha(sigma_per_m: float) -> float:
+    """How opaque a zone is drawn: what a metre of it leaves of the light,
+    within a range a viewer still sees through."""
+    return min(0.55, 0.12 + 0.43 * (1.0 - math.exp(-sigma_per_m)))
 
 
 def run_smoke_zones(run_directory: Path) -> list[tuple[tuple[float, ...], tuple[float, ...], float]]:
@@ -84,14 +106,12 @@ def run_smoke_zones(run_directory: Path) -> list[tuple[tuple[float, ...], tuple[
     text = manifest.get("effective_overrides", {}).get("SMOKE_ZONES", "")
     if not text.strip():
         return []
-    from evaluation_overlay import smoke_zones
     return smoke_zones(text)
 
 
 def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], float]) -> str:
     """A static model of one visual box, no collision, the zone's place and
     size, grey at the overlay's opacity for its density."""
-    from evaluation_overlay import SMOKE, smoke_alpha
     (x, y, z), (sx, sy, sz), sigma = zone
     alpha = smoke_alpha(sigma)
     colour = " ".join(f"{channel:.2f}" for channel in SMOKE)

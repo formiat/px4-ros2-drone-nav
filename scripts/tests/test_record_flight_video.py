@@ -279,7 +279,7 @@ class RenderedFlightTest(unittest.TestCase):
         data, width, height = dumper.quarter(frame, 16, 16)
         self.assertEqual((4, 4), (width, height))
         self.assertEqual(bytes([10, 10, 10, 10, 50, 50, 50, 50]), data[:8])  # each block's mean
-        self.assertIn('--smoke-zones="${SMOKE_ZONES:-}"', runtime)
+        self.assertNotIn("--smoke-zones", runtime)  # RViz shows no obstacle of the truth
 
     def test_the_replayed_world_draws_the_smoke_the_vehicle_cannot_see(self) -> None:
         import render_world_replay as replay

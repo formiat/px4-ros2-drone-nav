@@ -2096,8 +2096,8 @@ chance; the evaluation's depth camera scatters too; `<scene><fog>` acts on no
 sensor; the thermal camera never sees them. Smoke is therefore a model, one
 field per smoky place that every sensor reads through a relay beside the
 flight: the pair by single scattering of the carried light, the time-of-flight
-ring and the lidar by the lidar equation (`SMOKE_ZONES`, RViz draws the
-places). On the way the cameras' noise was found a tenth of a level where
+ring and the lidar by the lidar equation (`SMOKE_ZONES`; the places are
+drawn in a recording's world half, never in RViz, since 2026-10-18). On the way the cameras' noise was found a tenth of a level where
 item 17 stage 1 had meant 2.5, and set to a small sensor's shot noise, about
 one (A12).
 
