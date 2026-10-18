@@ -96,7 +96,7 @@ sim-urban-point-to-point-headless: build
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
-		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
+		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
 		SMOKE_ZONES="$${SMOKE_ZONES-$(LOCATION_SMOKE_ZONES)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
@@ -222,8 +222,9 @@ SMOKE_ROOMS_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.
 # moderate rooms of item 23 (the west hall on the way, the tunnel's mouth
 # beside it, 0.1/m) and the four dense plumes of item 18 beside the route
 # (1/m; overlapping zones read as the denser), their place and amount
-# constant and their form seeded; the memory snapshot of the ordinary flight
-# is the west hall's, read against the truth by tools/room_memory_truth.py.
+# constant and their form seeded; the ordinary flight's route volume and its
+# memory snapshot are the west hall's (the validator asks the two to agree),
+# the memory read against the truth by tools/room_memory_truth.py.
 # Only the blocked corridor is a scenario of its own; the clear location is a
 # reference (sim-urban-clear-*), and the plumes alone and the rooms alone
 # stay as the measurements of items 18 and 23.
