@@ -260,24 +260,6 @@ MppiOffboardNode::MppiOffboardNode()
                                                      progress->sensor_frame_share);
         }
       });
-  // Roadmap item 18 stage 4 (specification K40): what the light's driver
-  // reads of its output and the share of the ring's surfaces in the camera's
-  // field the frame shows dark (K12, as the mission monitor reads them); a
-  // vehicle dead reckoning blind under a light it judges reliable backs out
-  // the way it came before the descent is due.
-  light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
-      declare_parameter<std::string>("carried_light_output_topic",
-                                     "/carried_light/output_share"),
-      rclcpp::QoS{1}.reliable(),
-      [this](const std_msgs::msg::Float64::SharedPtr message) {
-        light_reading_ = message->data;
-      });
-  unlit_surface_sub_ = create_subscription<std_msgs::msg::Float64>(
-      declare_parameter<std::string>("unlit_surface_share_topic",
-                                     "/stereo_depth/unlit_surface_share"),
-      rclcpp::SensorDataQoS{}, [this](const std_msgs::msg::Float64::SharedPtr message) {
-        unlit_surface_share_ = message->data;
-      });
   // The ring's lateral units, as the stereo node reads them (the same
   // topics), and the down unit; the nearest return of each is the reflex of
   // the blind descent. A lateral unit counts its near-horizontal rows only

@@ -1111,7 +1111,7 @@ earns its place with a decision that reads it, and this is the item that
 gives the core its decision.
 
 **Hard prerequisites:** items 18 and 23 (smoke in the simulator, A13; dense
-smoke avoided and backed out of, K38 to K40; moderate smoke crossed, K43);
+dense smoke detected, K37, K38; moderate smoke crossed, K43);
 item 18 stage 3 as the measurement of what a thermal frame carries (K39).
 Item 27 (a real vehicle) comes after.
 
@@ -1848,8 +1848,10 @@ sensor sets and flown again on the stereo set on 2026-10-17 (7bc3941b, the
 estimator's heading and the pair's principal point repaired). Smoke is a model
 the sensors read (A13); the lidar reads a plume by its echo and thin smoke
 through it (K37), the stereo set detects smoke on its time-of-flight ring
-(K38) and backs out of it by the ladder (K40); the blocked corridor sends
-both sets home, the smoky location is crossed without contact. What was asked for and how it was built is kept below as it was
+(K38); the blocked corridor sends the lidar set home by the proof (the
+ladder that sent the stereo set home, K40, was withdrawn by the owner on
+2026-10-18: smoke is what makes space not free, nothing more), the smoky
+location is crossed without contact. What was asked for and how it was built is kept below as it was
 written; this is what came of it.
 
 **Type:** dependent realism stage, with one repair that does not wait for it.
@@ -2320,7 +2322,17 @@ scheduled, not as an input to the exploration:
 | Chinese cores (InfiRay class), 256 x 192 | | about 300 as finished goods |
 | Chinese cores, 640 x 512 | | roughly 400 to 1 700, OEM quotes not published |
 
-### Stage 4: What The Vehicle Does (Done)
+### Stage 4: What The Vehicle Does (Withdrawn)
+
+**Withdrawn on 2026-10-18** (the owner; specification K40): the vehicle has
+no rung, hold or return of its own for smoke. It has no notion of a closed
+way, only of free space, in which it lays its route; smoke is a measurement
+that makes space not free (K37, K38), the way round a plume is the planner's,
+and a goal is given up by the proof of item 19 alone, never for the smoke
+itself. A count of plumes was a latch on the vehicle's history (I3). On the
+stereo set the proof cannot close a corridor a plume fills, so the blocked
+scenario is met on the lidar alone; a stereo vehicle in a plume is a blind one
+(K12, K19). What was built is kept below as it was written.
 
 **Built on 2026-10-15** (specification K40; flown in this item's
 acceptance): a vehicle in a plume (blind with half the ring smoky, or
@@ -2452,7 +2464,8 @@ as flown on 76367bee: both repairs touch the stereo set alone.
   the north corridor): the lidar gave the goal up by item 19's proof and
   came home in r1616 to r1620 (0.19 to 0.51 m from the start in truth,
   `trigger=topological`, within about 110 s of the plume's face); the
-  stereo set by the ladder in smoke (K40, `trigger=smoke`) in r1612 to
+  stereo set by the ladder in smoke (K40, `trigger=smoke`; withdrawn on
+  2026-10-18) in r1612 to
   r1615 and r1656 (0.30 to 0.42 m, 2 to 10 dead-reckoning episodes each).
   No contact. This closes item 24 (below).
 - **The ordinary flight, re-flown on the final code** (the memory's K42 and
@@ -3257,9 +3270,9 @@ beam apart was a sieve, r1549), and a grazing ray carving nothing of a
 surface (K42; the start's side opened under the hover within a sample, r1564,
 r1566). On the stereo set the same scenario is given up by the ladder in
 smoke (K40, `trigger=smoke`), not by the proof: the pair cannot map a plume
-it cannot see into, so no closure stands in its memory; the scenario admits
-both triggers (`RETURN_TRIGGERS_ALLOWED`), the deviation recorded in the
-goal's report.
+it cannot see into, so no closure stands in its memory. The ladder was
+withdrawn on 2026-10-18 (the owner), the scenario admits the proof's trigger
+alone, and on the stereo set it is open.
 
 ### 29. Telling A Failing Light From A Dark Place (Completed)
 

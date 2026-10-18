@@ -13,7 +13,7 @@ not large).
 
 - the state of the mission as the vehicle decided it, in words in the top
   left corner of the view: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
-  GOAL UNREACHABLE -> HOME, SMOKE -> BACK OUT, SMOKE -> HOLD, SMOKE -> HOME, DEAD RECKONING,
+  GOAL UNREACHABLE -> HOME, DEAD RECKONING,
   LEVEL DESCENT, LANDED, CRASH.
   Its sources are the stack's own events (/drone_city_nav/mission_events,
   specification K26, the destruction among them), the navigation's
@@ -103,19 +103,6 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         return "GOAL REACHED", GREEN
     # The camera estimator declares dead reckoning on the pad too, where it
     # has no motion to see; it reads as the flight's only once it is under way.
-    # The ladder in smoke (K40): backing out of a plume on dead reckoning
-    # under a working light, the hold after the first plume, and home after
-    # the second (the goal given up with the smoke's trigger, below). Both
-    # rungs ask the autopilot's velocity mode, as the level descent does, so
-    # they are read before it: a light that fails inside a smoke hold would
-    # read as the hold.
-    smoke = next((event for event in reversed(events)
-                  if event.startswith("SMOKE_")), "")
-    if ready and smoke.startswith("SMOKE_BACK_OUT") and (dead_reckoning or descending):
-        return "SMOKE -> BACK OUT", RED
-    if ready and smoke.startswith("SMOKE_HOLD") and not any(
-            event.startswith("GOAL_UNREACHABLE") for event in events):
-        return "SMOKE -> HOLD", AMBER
     if descending and ready:
         return "LEVEL DESCENT", RED
     if dead_reckoning and ready:
@@ -129,7 +116,7 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     if home is not None:
         trigger = home.split("trigger=", 1)[-1].split()[0]
         words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
-                 "main_battery": "MAIN BATTERY", "operator": "OPERATOR", "smoke": "SMOKE"}
+                 "main_battery": "MAIN BATTERY", "operator": "OPERATOR"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN
