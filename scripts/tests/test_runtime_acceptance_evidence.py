@@ -312,9 +312,10 @@ class RuntimeManifestTest(unittest.TestCase):
     def test_mean_flight_speed_has_to_exceed_the_requirement_on_either_profile(
         self,
     ) -> None:
-        # The owner's requirement: above 2.4 m/s on the lidar, above 1.2 m/s on
-        # the stereo sensor set. The figure itself is not enough.
-        for path_m, profile, passes in ((723.0, "lidar", True), (720.0, "lidar", False),
+        # The owner's requirement (R3): above 2.1 m/s on the lidar (K43's figure
+        # since the location's smoke is the ordinary flight's default), above
+        # 1.2 m/s on the stereo sensor set. The figure itself is not enough.
+        for path_m, profile, passes in ((633.0, "lidar", True), (630.0, "lidar", False),
                                         (363.0, "stereo_tof", True),
                                         (360.0, "stereo_tof", False)):
             with self.subTest(path_m=path_m, profile=profile):

@@ -92,7 +92,7 @@ project has two requirements, and the mission check fails on nothing else:
   autopilot's estimate, and an odometry drifts by metres over a flight:
   without this line a vehicle arrives in its own coordinates only. The truth
   is read by the check and nowhere in the control loop;
-- the mean flight speed exceeds the figure of the sensor set: 2.4 m/s on the
+- the mean flight speed exceeds the figure of the sensor set: 2.1 m/s on the
   lidar, 1.2 m/s on the stereo set. The path is the vehicle's positions
   between mission readiness and the successful result, the time is the
   simulation clock between the two, read from the true pose record
@@ -262,7 +262,7 @@ simulation clock, which both of its records share.
 
 The mean flight speed is the only speed the programme targets, and it is
 gated by the navigation sensor profile the manifest records, whatever
-localizes the vehicle: it has to exceed 2.4 m/s on the lidar and 1.2 m/s on
+localizes the vehicle: it has to exceed 2.1 m/s on the lidar and 1.2 m/s on
 the stereo sensor set. These are the project owner's requirements of
 2026-09-19; they replaced 2.5 m/s and the 1.226 m/s derived for the stereo
 profile as half of what its braking contract admits forward (6.4 m of

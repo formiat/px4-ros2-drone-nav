@@ -57,8 +57,14 @@ MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 # r470 to r474, r511 to r515 and r528 on code it does not distinguish), and
 # the 1.226 m/s derived for the stereo profile as half of what its braking
 # contract admits forward (6.4 m of confident depth admit 2.452 m/s); the
-# stereo profile flew 1.17 to 1.57 m/s over r523 to r527.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.4
+# stereo profile flew 1.17 to 1.57 m/s over r523 to r527. Since the
+# location's smoke became the ordinary flight's default (F4, 2026-10-18) the
+# lidar's figure is K43's 2.1 m/s, by the owner's rule for that change: the
+# series on the smoky default flew 1.92 to 2.48 m/s (r1735 to r1739), one of
+# five above 2.4 and two above 2.1, the slow stretches the clear halls under
+# the route clearance law (the register's lidar speed row); the stereo set
+# flew 1.26 to 1.40 and keeps 1.2.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.1
 MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.2
 
 MISSION_READINESS_PATTERN = (
