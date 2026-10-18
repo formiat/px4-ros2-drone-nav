@@ -89,7 +89,6 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
             {
                 "stereo_left": "camera",
                 "stereo_right": "camera",
-                "thermal": "thermal_camera",
                 "evaluation_depth_left": "depth_camera",
                 "evaluation_depth_right": "depth_camera",
                 "tof_up": "gpu_lidar",

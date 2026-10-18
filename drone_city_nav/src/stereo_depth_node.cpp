@@ -20,7 +20,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <deque>
 #include <limits>
 #include <memory>
@@ -160,19 +159,6 @@ public:
     silent_range_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("silent_range_topic",
                                        "/stereo_depth/silent_range"),
-        rclcpp::SensorDataQoS{});
-    // Roadmap item 18 stage 3: the thermal core's frame, a detector: the
-    // share of its pixels at least 5 K warmer than the frame's median, a
-    // body or a warm surface behind whatever the pair sees (K39).
-    thermal_sub_ = create_subscription<sensor_msgs::msg::Image>(
-        declare_parameter<std::string>("thermal_image_topic", "/thermal/image"),
-        rclcpp::SensorDataQoS{}.keep_last(1),
-        [this](const sensor_msgs::msg::Image::ConstSharedPtr image) {
-          onThermal(*image);
-        });
-    thermal_body_pub_ = create_publisher<std_msgs::msg::Float64>(
-        declare_parameter<std::string>("thermal_body_share_topic",
-                                       "/stereo_depth/thermal_body_share"),
         rclcpp::SensorDataQoS{});
     // Roadmap item 18 stage 2: the share of the ring's zones returning smoke.
     smoke_share_pub_ = create_publisher<std_msgs::msg::Float64>(
@@ -598,14 +584,13 @@ private:
                          "observed_share=%.3f blind_dropped=%zu noise=%.1f "
                          "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
                          "silent_patches=%zu closed=%zu silent_range_m=%.1f "
-                         "tof_smoky_zones=%zu thermal_body=%.3f",
+                         "tof_smoky_zones=%zu",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightnessByMetreText(brightness_by_metre).c_str(), headroom,
                          lit_range_m, light_share, raw_brightness, observed_share,
                          blind ? stereo_returns : 0U, noise, unobservable_total_,
                          surfaces_in_view, unlit_surfaces, patches.size(),
-                         closed_patches, silent_range_m, smoky_zones,
-                         thermal_body_share_.load(std::memory_order_relaxed));
+                         closed_patches, silent_range_m, smoky_zones);
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -874,31 +859,6 @@ private:
   static constexpr double kLoneHitVoxelM{0.25};
   static constexpr std::uint32_t kLoneHitVoxelLeastHits{2U};
 
-  void onThermal(const sensor_msgs::msg::Image& image) {
-    const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
-    if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
-      return;
-    }
-    std::vector<std::uint16_t> kelvin_hundredths(pixels);
-    std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
-    std::vector<std::uint16_t> sorted = kelvin_hundredths;
-    std::nth_element(sorted.begin(),
-                     sorted.begin() + static_cast<std::ptrdiff_t>(pixels / 2U),
-                     sorted.end());
-    const std::uint16_t median = sorted[pixels / 2U];
-    const std::size_t warm = static_cast<std::size_t>(
-        std::ranges::count_if(kelvin_hundredths, [median](const std::uint16_t value) {
-          return value >= median + kThermalBodyAboveMedian;
-        }));
-    std_msgs::msg::Float64 message;
-    message.data = static_cast<double>(warm) / static_cast<double>(pixels);
-    thermal_body_share_.store(message.data, std::memory_order_relaxed);
-    thermal_body_pub_->publish(message);
-  }
-
-  // Five kelvin in hundredths.
-  static constexpr std::uint16_t kThermalBodyAboveMedian{500U};
-
   [[nodiscard]] static std::size_t brightnessBin(const float mean) noexcept {
     return std::min(
         kBrightnessBins - 1U,
@@ -966,9 +926,6 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr unlit_surface_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr silent_range_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr smoke_share_pub_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_body_pub_;
-  std::atomic<double> thermal_body_share_{0.0};
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
   std::atomic<double> light_reading_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;

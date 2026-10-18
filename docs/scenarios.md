@@ -143,9 +143,10 @@ So that nobody searches for a script that does not exist. The roadmap
 - **item 15** — cooperative traffic over a channel that behaves like radio,
   and a shared frame without GNSS; until then the cooperative scenario above
   is a test bench for the separation algorithm, not a model of the air;
-- **item 18** — smoke, transient obstacles such as a person crossing the
-  frame, and a thermal channel; today a moving body leaves a trail in the map
-  until it decays or the sensor looks there again;
+- **item 18** — smoke and transient obstacles such as a person crossing the
+  frame (its thermal channel was measured and set aside: the core returns with
+  item 32); today a moving body leaves a trail in the map until the sensor
+  looks there again (the memory forgets nothing by time, K10);
 - **item 23** — rooms filled with moderate smoke the vehicle flies through,
   one of them on the way in every flight;
 - **item 24** — item 19's proof flown: B physically unreachable and given
