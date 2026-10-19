@@ -24,6 +24,9 @@ A LEVEL is NAME[,key=value...]:
                4.4 m wide): the smoke box, 6 m wide, then fills the corridor wall to wall, and the walls give the
                pair's silence a rim at the smoke's face as the location does (the smoke face detector's measurement)
   ceiling=H    a textured ceiling H m over the floor (with corridor)
+  height=Z     the carrier Z m over the floor instead of 1.5 (from 8 m up the floor is out of the lamp's reach, as a
+               vehicle 9 m over a hall's floor has it); smokez=Z the smoke box's centre height (the carrier's by
+               default), for a plume floating above the horizon; the mover's flight keeps 1.5
   record=S     also S seconds of the pair, as the camera driver passes them on (its automatic gain, grey), for the
                visual-inertial replay (tools/vio/replay_vio.cpp) in OUT_DIR/NAME_vio/: the carrier stands still, so
                the IMU reads gravity alone and whatever the estimate moves is the frames' doing
@@ -118,13 +121,15 @@ def carrier(models: Path, light: str, noise: str | None) -> None:
 def world_sdf(spec: dict[str, str], textures: Path) -> str:
     x0 = float(spec.get("x0", 1.0))
     length = float(spec.get("len", 3.0))
+    height = float(spec.get("height", 1.5))
+    smoke_z = float(spec.get("smokez", height))
     if spec.get("inside") == "1":
         length += x0 + 3.0
         x0 = -3.0
     extra = ""
     if "particles" in spec:
         extra += f"""
-  <model name="smoke"><static>true</static><pose>{x0 + length / 2} 0 1.5 0 0 0</pose><link name="link">
+  <model name="smoke"><static>true</static><pose>{x0 + length / 2} 0 {smoke_z} 0 0 0</pose><link name="link">
     <particle_emitter name="smoke" type="box">
       <emitting>true</emitting><size>{length} 6 3</size><particle_size>1 1 1</particle_size>
       <lifetime>12</lifetime><min_velocity>0.02</min_velocity><max_velocity>0.15</max_velocity>
@@ -157,7 +162,7 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
         albedo = float(spec.get("albedo", 1.0))
         wall_x = 60.0
         extra += f"""
-  <model name="panel"><static>true</static><pose>{0.32 + float(spec['panel']) + 0.05} 0 1.5 0 0 0</pose><link name="l">
+  <model name="panel"><static>true</static><pose>{0.32 + float(spec['panel']) + 0.05} 0 {height} 0 0 0</pose><link name="l">
     <visual name="v"><geometry><box><size>0.1 4 4</size></box></geometry>
       <material><ambient>0 0 0 1</ambient><diffuse>{albedo} {albedo} {albedo} 1</diffuse><specular>0 0 0 1</specular>
         <pbr><metal><metalness>0</metalness><roughness>1</roughness></metal></pbr></material>
@@ -187,7 +192,7 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
       <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
       <plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal"><temperature>310</temperature></plugin>
     </visual></link></model>{extra}
-  <include><uri>model://carrier</uri><pose>0 0 1.5 0 0 0</pose></include>
+  <include><uri>model://carrier</uri><pose>0 0 {height} 0 0 0</pose></include>
 </world></sdf>
 """
 
@@ -417,7 +422,8 @@ def run_level(out: Path, level: str) -> None:
     modelled = "particles" not in spec and "panel" not in spec and "fog" not in spec
     try:
         if modelled:
-            zones = ["-p", f"zones:={x0 + length / 2},0,1.5,{length},6,3,{sigma}"] if sigma > 0 else []
+            smoke_z = float(spec.get("smokez", spec.get("height", 1.5)))
+            zones = ["-p", f"zones:={x0 + length / 2},0,{smoke_z},{length},6,3,{sigma}"] if sigma > 0 else []
             processes.append(subprocess.Popen(
                 [str(NODE), "--ros-args", "-p", "world_name:=smoke_rig", "-p", "model_name:=carrier",
                  "-p", "model_uri:=model://carrier", *zones, "-p", "seed:=18"],

@@ -2137,7 +2137,9 @@ enters). The pair's own frame carries the signature: a dense plume under the
 carried light is a region of lit silence (raw grey 35 to 58 within 4 m
 against 0 to 10 for shadow and the dark) with a rim of matches at one depth
 round it (the floor and the walls ending at the face; the veil of a thin
-hall, rimmed by the floor's fade alone, is none) which the pair does not see
+hall, rimmed by the floor's fade alone, is none), or a lit body in the dark
+with a sharp edge (a plume floating above the horizon, placed by its
+brightness), which the pair does not see
 through (free rays under 0.5 percent of its cells, against 1.6 to 3.8
 percent for thin smoke of 0.1/m, which is flown through). The face enters
 the memory observed unobservable from its rim over 1.5 m, bounds the motion

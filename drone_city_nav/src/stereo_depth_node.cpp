@@ -423,20 +423,17 @@ private:
     // at one depth and which the pair does not see through. A cell is lit by
     // its raw grey, the frame's over the driver's gain, as the light is read
     // (K15); a cell is seen where the pair returned a hit or a free ray.
-    const double face_gain =
-        std::max(1.0, camera_gain_.load(std::memory_order_relaxed));
-    const std::vector<std::uint8_t> lit_cells = litCells(
+    const std::vector<std::uint8_t> raw_cells = rawCells(
         std::span<const std::uint8_t>{left_grey.data,
                                       left_grey.step[0] * left_grey.rows},
         left_grey.step[0], image_width_, image_height_, returns_config_.pixel_stride,
-        static_cast<std::uint8_t>(
-            std::min(255L, std::lround(smoke_face_config_.lit_raw_grey * face_gain))));
+        camera_gain_.load(std::memory_order_relaxed));
     const std::vector<std::uint8_t> seen_cells =
         seenCells(std::span<const StereoDepthReturn>{returns}, geometry_,
                   returns_config_.pixel_stride, image_width_, image_height_);
     const std::vector<SilentPatch> lit_regions =
         smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
-                   returns_config_, image_width_, image_height_, lit_cells,
+                   returns_config_, image_width_, image_height_, raw_cells,
                    silent_patch_config_, smoke_face_config_);
     std::vector<const SilentPatch*> faces;
     double face_range_m = std::numeric_limits<double>::quiet_NaN();
@@ -509,7 +506,9 @@ private:
           const std::optional<std::size_t> cell = strideCellOf(
               Point3{rectified.x(), rectified.y(), rectified.z()}, geometry_,
               returns_config_.pixel_stride, image_width_, image_height_);
-          return cell.has_value() && seen_cells[*cell] == 0U && lit_cells[*cell] != 0U;
+          return cell.has_value() && seen_cells[*cell] == 0U &&
+                 static_cast<double>(raw_cells[*cell]) >=
+                     smoke_face_config_.lit_raw_grey;
         });
       }
       tof_rays += rays.size();
