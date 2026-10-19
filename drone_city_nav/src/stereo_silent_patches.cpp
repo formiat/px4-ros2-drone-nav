@@ -384,7 +384,8 @@ std::string silentPatchSummary(const SilentPatch& patch) {
   return std::to_string(patch.cells) + ":" + patch.reason + ":rim" +
          std::to_string(patch.rim_hits) + "@" +
          std::to_string(patch.rim_depth_m).substr(0, 4) + "+" +
-         std::to_string(patch.rim_spread_m).substr(0, 4) + ":free" +
+         std::to_string(patch.rim_spread_m).substr(0, 4) + ":trend" +
+         std::to_string(patch.rim_trend).substr(0, 4) + ":free" +
          std::to_string(patch.free_neighbours);
 }
 
@@ -520,6 +521,7 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       const auto rim_sectors =
           static_cast<std::size_t>(std::ranges::count(sectors, true));
       const double trend = rimTrendShare(rim_cells, rim_depths, grid.columns);
+      face.rim_trend = trend;
       face.rim_depth_m = quantile(rim_depths, 0.25);
       face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
       if (rim_sectors < face_config.least_rim_sectors) {

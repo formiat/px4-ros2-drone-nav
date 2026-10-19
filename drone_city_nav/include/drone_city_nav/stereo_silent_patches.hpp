@@ -68,6 +68,9 @@ struct SilentPatch {
   std::size_t free_neighbours{0U};
   double rim_depth_m{0.0};
   double rim_spread_m{0.0};
+  // The share of the rim depths' variance a plane over the rim explains (a
+  // face's judgment, K44): nought for a scatter, one for a recession.
+  double rim_trend{0.0};
   // Whether the patch may be a surface at its rim's depth.
   bool closed{false};
   // Why not: rim beyond reach, rim recedes, too few rim hits, the rim not
