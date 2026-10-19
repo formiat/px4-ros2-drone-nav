@@ -92,6 +92,12 @@ project has two requirements, and the mission check fails on nothing else:
   autopilot's estimate, and an odometry drifts by metres over a flight:
   without this line a vehicle arrives in its own coordinates only. The truth
   is read by the check and nowhere in the control loop;
+- the true position never enters dense smoke: a flight whose manifest
+  carries smoke zones (`SMOKE_ZONES`) fails at the first true-pose sample
+  inside a box of 0.5/m or more, with the time and the depth of the entry
+  (`validate_no_entry_into_dense_smoke`, specification R7, the owner's rule
+  of 2026-10-18); a room of 0.1/m is crossed by design (F4) and is not
+  judged;
 - the mean flight speed exceeds the figure of the sensor set: 2.1 m/s on the
   lidar, 1.2 m/s on the stereo set. The path is the vehicle's positions
   between mission readiness and the successful result, the time is the

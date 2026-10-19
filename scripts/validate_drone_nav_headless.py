@@ -26,6 +26,7 @@ from headless_runtime_evidence import (
     validate_injected_goal_unreachable_in_truth,
     validate_localization_profile,
     validate_mean_flight_speed,
+    validate_no_entry_into_dense_smoke,
     validate_persistent_3d_acceptance_metrics,
     validate_runtime_manifest,
 )
@@ -509,6 +510,9 @@ def main() -> int:
         validate_goal_reached_in_truth(args.runtime_manifest.parent / "gz_pose.csv",
                                        ros_log,
                                        notes if vehicle_intact_expected else errors)
+        # Dense smoke is never entered, whatever the flight was asked (R7).
+        validate_no_entry_into_dense_smoke(args.runtime_manifest.parent / "gz_pose.csv",
+                                           manifest_overrides, errors)
     require(
         "production offboard is ready",
         ros_log,

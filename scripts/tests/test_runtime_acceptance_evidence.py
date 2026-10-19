@@ -449,6 +449,38 @@ class RuntimeManifestTest(unittest.TestCase):
             validator.validate_goal_reached_in_truth(truth, "", errors)
         self.assertTrue(any("names its goal" in error for error in errors))
 
+    def test_the_true_position_never_enters_dense_smoke(self) -> None:
+        # A zone west of the origin (its x negative: the option is joined with
+        # '=' by the runtime, the check reads the manifest's string), dense
+        # at 1/m; a thin room of 0.1/m is crossed by design (F4).
+        directory = Path(tempfile.mkdtemp())
+        truth = directory / "gz_pose.csv"
+        truth.write_text("".join(
+            f"{0.1 * index:.1f},{-12.0 + 0.1 * index:.3f},40.0,8.0,1,0,0,0,{1000.0 + 0.1 * index:.1f}\n"
+            for index in range(100)), encoding="utf-8")  # x from -12 to -2.1
+        overrides = {"SMOKE_ZONES": "-20,40,8,10,6,6,0.1;-6,40,8,2,4,4,1.0"}
+        errors: list[str] = []
+        with redirect_stdout(io.StringIO()):
+            evidence.validate_no_entry_into_dense_smoke(truth, overrides, errors)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("zone 1 of 1/m entered at 5.0 s", errors[0])
+        self.assertIn("1.00 m deep", errors[0])
+        # The same flight with the dense zone beside the path, and with none.
+        for zones, note in (("-20,40,8,10,6,6,0.1;-6,44.1,8,2,4,4,1.0", "never entered"),
+                            ("-20,40,8,10,6,6,0.1", "no dense smoke")):
+            errors = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                evidence.validate_no_entry_into_dense_smoke(truth, {"SMOKE_ZONES": zones},
+                                                            errors)
+            self.assertEqual(errors, [])
+            self.assertIn(note, output.getvalue())
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            evidence.validate_no_entry_into_dense_smoke(directory / "none.csv", overrides,
+                                                        errors)
+        self.assertTrue(any("recorded the true pose" in error for error in errors))
+
     def test_the_gnss_profiles_report_and_gate_nothing(self) -> None:
         for profile in ("gnss", "gnss_shadow"):
             errors: list[str] = []
