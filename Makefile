@@ -197,11 +197,18 @@ LONG_FAILURES_SCENARIO := STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
 # stereo set's smoke face, K44). The vehicle has no rung, hold or return of
 # its own for smoke (the owner, 2026-10-18: smoke is what makes space not
 # free, nothing more; K40 withdrawn), and never enters dense smoke in truth
-# (R7, the mission check).
+# (R7, the mission check). The stereo set cannot prove the way closed: its
+# lamp reaches 5 m and the proof's flood runs through the halls it has not
+# seen (r1753: budget exhausted every 27 s for 500 s), so, as the
+# goal-outside flight does (A8, the owner's rule of 2026-09-30), the blocked
+# flight launches with 720 s of light and the stereo set comes home on its
+# charge (K11) after searching for a way; the lidar needs no light and
+# comes home by the proof.
 SMOKE_SCENARIO := SMOKE_ZONES="8,27,10.5,3,3,3,1.0;12,22,11,2,2,2,1.0;18,-10,4,3,3,3,1.0;68,-20,6.5,3,3,3,1.0" \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 SMOKE_BLOCKED_SCENARIO := SMOKE_ZONES="4,43,10,3,6,6,3.0" \
-	RETURN_HOME_EXPECTED=true RETURN_TRIGGERS_ALLOWED=topological \
+	RETURN_HOME_EXPECTED=true RETURN_TRIGGERS_ALLOWED=topological,battery \
+	LIGHT_BATTERY_S=720 \
 	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 # Roadmap item 23: moderate smoke wall to wall in whole rooms, the rest of the
 # location clear, one room always on the way: the west hall, which the
