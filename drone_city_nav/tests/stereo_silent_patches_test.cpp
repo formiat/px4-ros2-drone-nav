@@ -32,10 +32,9 @@ StereoDepthReturn returnAt(const std::size_t column_cell, const std::size_t row_
 // Every cell a hit at `background_m`, except a silent square of `side` cells
 // at the centre whose rim sits at `rim_m` (one cell wide), the rest of the
 // frame a free ray where `free_frame` says so.
-std::vector<StereoDepthReturn> frameWithSquare(const std::size_t side,
-                                               const double rim_m,
-                                               const double background_m,
-                                               const bool recede = false) {
+std::vector<StereoDepthReturn>
+frameWithSquare(const std::size_t side, const double rim_m, const double background_m,
+                const bool recede = false, const double recede_m = 2.0) {
   std::vector<StereoDepthReturn> returns;
   const std::size_t columns = kWidth / 4U;
   const std::size_t rows = kHeight / 4U;
@@ -53,7 +52,7 @@ std::vector<StereoDepthReturn> frameWithSquare(const std::size_t side,
       double depth_m = rim ? rim_m : background_m;
       if (rim && recede) {
         // A corridor's walls: the rim's depth runs from near to far round it.
-        depth_m = rim_m + 2.0 * static_cast<double>(column - c0 + 1U) /
+        depth_m = rim_m + recede_m * static_cast<double>(column - c0 + 1U) /
                               static_cast<double>(side + 2U);
       }
       returns.push_back(returnAt(column, row, depth_m, true));
@@ -187,8 +186,16 @@ TEST(SmokeFace, LitSilenceWithAFlatRimThePairDoesNotSeeThroughIsAFace) {
   ASSERT_EQ(far.size(), 1U);
   EXPECT_FALSE(far[0].closed);
   EXPECT_STREQ(far[0].reason, "rim_beyond_reach");
+  // A plume's rim spreads by up to a metre (its soft edge); a corridor's
+  // walls running on recede by more.
+  const std::vector<SilentPatch> soft =
+      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true, 0.8), kGeometry, kReturns, kWidth,
+                 kHeight, rawEverywhere(36U), SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(soft.size(), 1U);
+  EXPECT_TRUE(soft[0].closed);
+  EXPECT_LT(soft[0].rim_depth_m, 2.6); // the nearest quartile of the rim
   const std::vector<SilentPatch> corridor =
-      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true), kGeometry, kReturns, kWidth,
+      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true, 4.0), kGeometry, kReturns, kWidth,
                  kHeight, rawEverywhere(36U), SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(corridor.size(), 1U);
   EXPECT_STREQ(corridor[0].reason, "rim_recedes");

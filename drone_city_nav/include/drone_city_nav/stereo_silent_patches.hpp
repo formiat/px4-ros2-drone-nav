@@ -142,9 +142,17 @@ silentPatches(std::span<const StereoDepthReturn> returns,
 // sees into the face's soft edge).
 struct SmokeFaceConfig {
   double lit_raw_grey{20.0};
-  double see_through_share{0.005};
+  // The enclosed free rays a face may hold: thin smoke of 0.1 per metre
+  // leaves 1.6 to 3.8 percent on the rig; a dense plume 4 to 6 m off, dim,
+  // leaves 0.5 to 4 percent of spurious far matches on its own churning
+  // texture (r1806), 0 to 0.1 percent nearer.
+  double see_through_share{0.01};
   double face_slab_m{1.5};
   std::size_t least_rim_sectors{5U};
+  // A plume's edge is soft: the pair sees 0.6 to 1.3 m into it, and the rim's
+  // depths spread by up to 1 m across the face (r1806: 0.56 at 1.8 m, no face
+  // under K36's 0.5 m). The face is at the rim's nearest quartile.
+  double rim_flat_m{1.0};
   double dark_ring_share{0.7};
   double shell_ratio{0.35};
   double near_grey{45.0};

@@ -479,13 +479,13 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       }
       const auto rim_sectors =
           static_cast<std::size_t>(std::ranges::count(sectors, true));
-      face.rim_depth_m = quantile(rim_depths, 0.5);
+      face.rim_depth_m = quantile(rim_depths, 0.25);
       face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
       if (rim_sectors < face_config.least_rim_sectors) {
         face.reason = "rim_not_round";
-      } else if (face.rim_depth_m > config.confident_depth_m) {
+      } else if (quantile(rim_depths, 0.5) > config.confident_depth_m) {
         face.reason = "rim_beyond_reach";
-      } else if (face.rim_spread_m > config.rim_flat_m) {
+      } else if (face.rim_spread_m > face_config.rim_flat_m) {
         face.reason = "rim_recedes";
       } else {
         face.closed = true;
