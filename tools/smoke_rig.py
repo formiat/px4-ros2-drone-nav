@@ -20,6 +20,10 @@ A LEVEL is NAME[,key=value...]:
                ratio=P its particle_scatter_ratio (0.65)
   fog=D        Gazebo's scene fog of density D (exponential), no model
   panel=D,albedo=A  calibration: a matte panel of albedo A, D m in front of the pair, no wall, no smoke
+  corridor=W   two textured side walls W m apart along the whole floor, 6 m tall (the location's north corridor is
+               4.4 m wide): the smoke box, 6 m wide, then fills the corridor wall to wall, and the walls give the
+               pair's silence a rim at the smoke's face as the location does (the smoke face detector's measurement)
+  ceiling=H    a textured ceiling H m over the floor (with corridor)
   record=S     also S seconds of the pair, as the camera driver passes them on (its automatic gain, grey), for the
                visual-inertial replay (tools/vio/replay_vio.cpp) in OUT_DIR/NAME_vio/: the carrier stands still, so
                the IMU reads gravity alone and whatever the estimate moves is the frames' doing
@@ -132,6 +136,23 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
     wall_x = float(spec.get("wall", 8.0)) + 0.05
     fog = (f"<fog><color>0.6 0.6 0.6 1</color><type>exp</type><density>{spec['fog']}</density></fog>"
            if "fog" in spec else "")
+    corridor = ""
+    if "corridor" in spec:
+        half = float(spec["corridor"]) / 2.0
+        for side, y in (("left", half + 0.05), ("right", -half - 0.05)):
+            corridor += f"""
+  <model name="side_{side}"><static>true</static><pose>{(wall_x - 6.0) / 2.0} {y} 3 0 0 0</pose><link name="l">
+    <collision name="c"><geometry><box><size>{wall_x + 6.0} 0.1 6</size></box></geometry></collision>
+    <visual name="v"><geometry><box><size>{wall_x + 6.0} 0.1 6</size></box></geometry>
+      <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
+    </visual></link></model>"""
+        if "ceiling" in spec:
+            corridor += f"""
+  <model name="ceiling"><static>true</static><pose>{(wall_x - 6.0) / 2.0} 0 {float(spec['ceiling']) + 0.05} 0 0 0</pose><link name="l">
+    <collision name="c"><geometry><box><size>{wall_x + 6.0} {2 * half} 0.1</size></box></geometry></collision>
+    <visual name="v"><geometry><box><size>{wall_x + 6.0} {2 * half} 0.1</size></box></geometry>
+      <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/floor.png</albedo_map></metal></pbr></material>
+    </visual></link></model>"""
     if "panel" in spec:
         albedo = float(spec.get("albedo", 1.0))
         wall_x = 60.0
@@ -159,6 +180,7 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
     <visual name="v"><geometry><box><size>40 12 0.1</size></box></geometry>
       <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/floor.png</albedo_map></metal></pbr></material>
     </visual></link></model>
+  {corridor}
   <model name="wall"><static>true</static><pose>{wall_x} 0 3 0 0 0</pose><link name="l">
     <collision name="c"><geometry><box><size>0.1 12 6</size></box></geometry></collision>
     <visual name="v"><geometry><box><size>0.1 12 6</size></box></geometry>

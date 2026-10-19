@@ -154,5 +154,59 @@ TEST(SilentPatches, ASmallPatchOrOneAnotherSensorReadsFreeThroughIsNotJudgedClos
   EXPECT_TRUE(closed[0].closed);
 }
 
+TEST(SmokeFace, ALitClosedPatchThePairDoesNotSeeThroughIsAFace) {
+  // The corridor rig: a dense face within 4 m is a closed patch whose cells
+  // read 35 to 58 raw grey, with nothing matched through it.
+  const std::vector<SilentPatch> patches =
+      silentPatches(frameWithSquare(40U, 3.0, 6.0), kGeometry, kReturns, kWidth,
+                    kHeight, SilentPatchConfig{}, {}, 0.0);
+  ASSERT_EQ(patches.size(), 1U);
+  EXPECT_EQ(patches[0].free_neighbours, 0U);
+  EXPECT_TRUE(smokeFace(patches[0], 35.0, SmokeFaceConfig{}));
+  // The dark beyond the lamp reads 0 to 10: a shadow, not a face (F13).
+  EXPECT_FALSE(smokeFace(patches[0], 10.0, SmokeFaceConfig{}));
+  // An open patch is never a face, however lit.
+  const std::vector<SilentPatch> open =
+      silentPatches(frameWithSquare(40U, 6.0, 8.0), kGeometry, kReturns, kWidth,
+                    kHeight, SilentPatchConfig{}, {}, 0.0);
+  ASSERT_EQ(open.size(), 1U);
+  EXPECT_FALSE(smokeFace(open[0], 50.0, SmokeFaceConfig{}));
+}
+
+TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {
+  // The far end of a corridor of 0.1 per metre: a closed patch at the rim
+  // where the veil kills the texture, with sparse matches deeper than the
+  // confident depth scattered through it (1.6 to 3.8 percent of its cells
+  // on the rig). Free rays inside the silence, one in every 20 cells.
+  std::vector<StereoDepthReturn> frame = frameWithSquare(40U, 4.8, 6.0);
+  const std::size_t columns = kWidth / 4U;
+  const std::size_t rows = kHeight / 4U;
+  const std::size_t c0 = columns / 2U - 20U;
+  const std::size_t r0 = rows / 2U - 20U;
+  std::size_t holes{0U};
+  for (std::size_t row = r0 + 2U; row + 2U < r0 + 40U; row += 5U) {
+    for (std::size_t column = c0 + 2U; column + 2U < c0 + 40U; column += 4U) {
+      frame.push_back(returnAt(column, row, 5.2, false));
+      ++holes;
+    }
+  }
+  const std::vector<SilentPatch> patches = silentPatches(
+      frame, kGeometry, kReturns, kWidth, kHeight, SilentPatchConfig{}, {}, 0.0);
+  ASSERT_EQ(patches.size(), 1U);
+  ASSERT_TRUE(patches[0].closed);
+  EXPECT_EQ(patches[0].free_neighbours, holes);
+  EXPECT_EQ(patches[0].cells, 1600U - holes);
+  EXPECT_GT(static_cast<double>(holes) / static_cast<double>(patches[0].cells), 0.02);
+  EXPECT_FALSE(smokeFace(patches[0], 38.0, SmokeFaceConfig{}));
+  // One hole in a thousand cells, as 0.5 per metre leaves, is a face still.
+  std::vector<StereoDepthReturn> dense = frameWithSquare(40U, 3.0, 6.0);
+  dense.push_back(returnAt(columns / 2U, rows / 2U, 5.2, false));
+  const std::vector<SilentPatch> one = silentPatches(
+      dense, kGeometry, kReturns, kWidth, kHeight, SilentPatchConfig{}, {}, 0.0);
+  ASSERT_EQ(one.size(), 1U);
+  EXPECT_EQ(one[0].free_neighbours, 1U);
+  EXPECT_TRUE(smokeFace(one[0], 38.0, SmokeFaceConfig{}));
+}
+
 } // namespace
 } // namespace drone_city_nav

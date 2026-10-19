@@ -59,6 +59,10 @@ struct SilentPatch {
   // The patch's cells on the stride grid, row-major indices.
   std::vector<std::size_t> cell_indices;
   std::size_t rim_hits{0U};
+  // Free rays beside the patch's cells: matches deeper than the confident
+  // depth the silence encloses or borders. A closed patch the pair still
+  // matches through is thin smoke, not a face (the smoke face, below).
+  std::size_t free_neighbours{0U};
   double rim_depth_m{0.0};
   double rim_spread_m{0.0};
   // Whether the patch may be a surface at its rim's depth.
@@ -90,5 +94,33 @@ silentPatches(std::span<const StereoDepthReturn> returns,
                                        std::size_t stride, std::size_t stride_columns,
                                        std::size_t stride_rows,
                                        double cone_half_angle_rad);
+
+// A face of dense smoke, or a surface the pair cannot texture, in the frame
+// (roadmap item 18, the smoke face detector; the owner, 2026-10-18: dense
+// smoke is an obstacle the vehicle sees and never enters). A closed patch
+// (above) whose cells are lit, and which the pair does not see through, is
+// a face at its rim's depth and enters the memory as observed unobservable
+// from there to the confident depth, as the dark frustum does (K14); a
+// closed patch that is dark is a shadow or the dark beyond the lamp (F13),
+// one the pair matches through is thin smoke the vehicle flies through
+// (F4). Measured on the smoke rig in a 4.4 m corridor (tools/smoke_rig.py,
+// tools/smoke_signature_report.py, log/tools/smoke_detector/part0): the
+// face of 3, 1 and 0.5 per metre within 4 m is a closed patch whose cells
+// read 35 to 58 raw grey (before the driver's gain), the dark beyond the
+// lamp 0 to 10; the far end of a corridor of 0.1 per metre closes a patch
+// too (rim 4.8 m, raw 37 to 39), but the pair matches through it, 1.6 to
+// 3.8 percent of the patch's cells deeper than the rim, against 0 to 0.1
+// percent for 0.5 per metre and more. The rim's median overshoots the true
+// face by 0.6 to 1.3 m (the pair sees into the face's soft edge).
+struct SmokeFaceConfig {
+  double lit_raw_grey{20.0};
+  double see_through_share{0.005};
+  double face_before_rim_m{1.0};
+};
+
+// Whether `patch`, closed, with its cells' raw grey median `raw_grey`, is a
+// face.
+[[nodiscard]] bool smokeFace(const SilentPatch& patch, double raw_grey,
+                             const SmokeFaceConfig& config);
 
 } // namespace drone_city_nav

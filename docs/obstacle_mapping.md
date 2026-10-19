@@ -259,6 +259,24 @@ m at 1 m/s through the 3 m box:
 Smoke the vehicle flies through costs the camera estimator metres over a few
 metres of path: what item 23 has to measure and answer first.
 
+**The smoke face** (specification K44, 2026-10-19): dense smoke ahead of the
+stereo set is an obstacle the vehicle sees before it is inside. The pair is
+silent on a plume; what makes the silence a face is the silent patch's
+judgment of F13 and K36 (a rim of matches at one depth round it, within the
+lamp's reach) with two more witnesses: the patch's cells are lit (raw grey 20
+or more; a shadow or the dark beyond the lamp reads 0 to 10) and the pair does
+not match through it (free rays under 0.5 percent of its cells; thin smoke
+of 0.1 per metre leaves 1.6 to 3.8 percent and is flown through). The face's
+rays enter the memory observed unobservable from a metre before the rim to
+the confident depth, as the dark frustum's do (K14), and the braking contract
+reads the rim as a closed patch's. The way round a plume is the planner's; a
+corridor a plume fills is closed in the memory, and item 19's proof gives
+the goal up. Measured on the smoke rig's corridor
+(`tools/smoke_rig.py corridor=4.4,ceiling=3`,
+`tools/smoke_signature_report.py`). A plume standing free in a dark hall,
+whose top has no lit rim, is not judged (K36) and stays with the braking
+contract and the ring.
+
 ## Obstacle Memory
 
 `obstacle_memory_3d_node` accumulates scan evidence into its sparse

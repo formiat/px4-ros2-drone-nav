@@ -115,6 +115,7 @@ std::vector<SilentPatch> silentPatches(
     std::vector<double> rim_depths;
     std::vector<std::size_t> rim_cells;
     std::vector<std::uint8_t> rim_seen(label.size(), 0U);
+    std::size_t free_neighbours{0U};
     bool free_through_it{false};
     bool at_border{false};
     stack.assign(1U, seed);
@@ -148,6 +149,9 @@ std::vector<SilentPatch> silentPatches(
           rim_seen[neighbour] = 1U;
           rim_depths.push_back(grid.depth_m[neighbour]);
           rim_cells.push_back(neighbour);
+        } else if (grid.kind[neighbour] == kFree && rim_seen[neighbour] == 0U) {
+          rim_seen[neighbour] = 1U;
+          ++free_neighbours;
         }
       }
     }
@@ -155,7 +159,9 @@ std::vector<SilentPatch> silentPatches(
     if (cells.size() < config.least_cells) {
       continue;
     }
-    SilentPatch patch{.cells = cells.size(), .rim_hits = rim_depths.size()};
+    SilentPatch patch{.cells = cells.size(),
+                      .rim_hits = rim_depths.size(),
+                      .free_neighbours = free_neighbours};
     // The sectors round the patch's centre the rim reaches into.
     double centre_row{0.0};
     double centre_column{0.0};
@@ -228,6 +234,16 @@ double silentRangeAheadM(const std::span<const SilentPatch> patches,
     }
   }
   return range_m;
+}
+
+bool smokeFace(const SilentPatch& patch, const double raw_grey,
+               const SmokeFaceConfig& config) {
+  if (!patch.closed || patch.cells == 0U) {
+    return false;
+  }
+  const double see_through =
+      static_cast<double>(patch.free_neighbours) / static_cast<double>(patch.cells);
+  return raw_grey >= config.lit_raw_grey && see_through < config.see_through_share;
 }
 
 } // namespace drone_city_nav

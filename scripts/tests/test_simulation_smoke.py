@@ -60,6 +60,19 @@ class SimulationSmokeContractTest(unittest.TestCase):
         runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
         self.assertIn('smoke_zones:="${SMOKE_ZONES}"', runtime)
 
+    def test_the_smoke_face_detector_reads_the_frame_alone(self) -> None:
+        # The smoke face detector (K44) is the vehicle's: it reads the pair's
+        # frame, never the location's zones or the run's manifest, and the
+        # depth node reports its faces.
+        node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
+        patches = (REPOSITORY / "drone_city_nav" / "src" / "stereo_silent_patches.cpp").read_text()
+        for text in (node, patches):
+            self.assertNotIn("SMOKE_ZONES", text)
+            self.assertNotIn("smoke_zones", text)
+            self.assertNotIn("manifest", text)
+        self.assertIn("smokeFace(", node)
+        self.assertIn("smoke_faces=%zu face_range_m=%.1f", node)
+
     def test_the_replayed_world_reads_the_zones_as_the_model_does(self) -> None:
         # The zones are drawn in a recording's world half alone: RViz shows no
         # obstacle of the truth (the owner, 2026-10-18), so the overlay reads

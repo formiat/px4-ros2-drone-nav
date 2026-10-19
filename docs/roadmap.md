@@ -2128,8 +2128,21 @@ surface's intensity, and nothing from a plume ahead until it is inside
 (the lidar returns from it at 0.3/m already); the pair matches nothing
 through 0.3/m and more. A zone returning under half a surface's intensity
 is smoke: its rays are fail evidence, and the share of smoky zones is
-published for the ladder. The pair-against-ring signature has nothing to
+published. The pair-against-ring signature has nothing to
 read in the simulator; no particle counter is mounted.
+
+**The smoke face, built on 2026-10-19** (specification K44; the owner's
+model of 2026-10-18: dense smoke is an obstacle the vehicle sees and never
+enters). The pair's own frame carries the signature: a dense plume under the
+carried light is a closed silent patch (K36) whose cells are lit (raw grey
+35 to 58 within 4 m against 0 to 10 for shadow and the dark) and which the
+pair does not see through (free rays under 0.5 percent of its cells, against
+1.6 to 3.8 percent for thin smoke of 0.1/m, which is flown through). The face
+enters the memory observed unobservable from a metre before its rim to the
+confident depth; the way round is the planner's, the closed corridor item
+19's proof. Measured on the rig's new corridor (`corridor=4.4,ceiling=3`,
+log/tools/smoke_detector/part0/signature.txt); its reach is the lamp's, and
+a plume free in a dark hall, with no lit rim at its top, is not judged.
 
 
 Free only where smoke fills the frame. Item 17 stage 0 already turns the
