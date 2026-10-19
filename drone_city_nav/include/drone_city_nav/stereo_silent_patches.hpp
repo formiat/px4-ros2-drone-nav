@@ -145,6 +145,13 @@ silentPatches(std::span<const StereoDepthReturn> returns,
 // sees into the face's soft edge).
 struct SmokeFaceConfig {
   double lit_raw_grey{20.0};
+  // Lit silence brighter than this is a surface under the lamp at close
+  // range, saturated past its texture, not smoke: a plume reads 49 to 58
+  // raw grey at 2 m and 43 to 71 inside (the rig), the rig's floor blocks
+  // 70 to 110 at 1.4 m, a matte panel 171 to 231 at 3 m. r1837 and r1822:
+  // such a surface 1.2 m ahead was a face every frame, its marks closed the
+  // way, and the vehicle hovered 400 to 545 s.
+  double surface_raw_grey{80.0};
   // The enclosed free rays a face may hold: thin smoke of 0.1 per metre
   // leaves 1.6 to 3.8 percent on the rig; a dense plume 4 to 6 m off, dim,
   // leaves 0.5 to 4 percent of spurious far matches on its own churning
@@ -195,11 +202,13 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
 
 // The faces' rays for the memory: through the cells of each face (the closed
 // regions of `regions`) every `pitch_cells` cells each way, from the face's
-// depth (never nearer than `nearest_m`) over `slab_m` in steps of `step_m`;
-// the rectified forward-left-up frame, as every return. The slab starts at
-// the face, not before it: a lit surface the pair cannot texture is a face
-// too, and marks before its rim would stand in free air (r1746: 48 670
-// marks over a flight, a metre before every such surface).
+// depth over `slab_m` in steps of `step_m`; the rectified forward-left-up
+// frame, as every return. The slab starts at the face, not before it: a lit
+// surface the pair cannot texture is a face too, and marks before its rim
+// would stand in free air (r1746: 48 670 marks over a flight, a metre before
+// every such surface). A face nearer than `nearest_m` gives no rays: that
+// is the ring's reach and the frustum's own nearest (K14), and a slab pushed
+// out to it from a surface 1.2 m off boxed the vehicle in (r1837).
 [[nodiscard]] std::vector<Point3> smokeFaceRays(std::span<const SilentPatch> regions,
                                                 const StereoPairGeometry& geometry,
                                                 std::size_t stride, std::size_t width,

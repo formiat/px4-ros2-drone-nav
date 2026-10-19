@@ -354,10 +354,10 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
   }
   const std::size_t columns = width / stride;
   for (const SilentPatch& face : regions) {
-    if (!face.closed) {
+    if (!face.closed || face.rim_depth_m < nearest_m) {
       continue;
     }
-    const double from_m = std::max(nearest_m, face.rim_depth_m);
+    const double from_m = face.rim_depth_m;
     for (const std::size_t index : face.cell_indices) {
       const std::size_t row_cell = index / columns;
       const std::size_t column_cell = index % columns;
@@ -496,7 +496,15 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
                      .free_neighbours = free_neighbours};
     const double see_through =
         static_cast<double>(free_neighbours) / static_cast<double>(cells.size());
-    if (see_through >= face_config.see_through_share) {
+    std::vector<double> own;
+    own.reserve(cells.size());
+    for (const std::size_t index : cells) {
+      own.push_back(static_cast<double>(raw_cells[index]));
+    }
+    const double brightness = quantile(own, 0.5);
+    if (brightness >= face_config.surface_raw_grey) {
+      face.reason = "surface";
+    } else if (see_through >= face_config.see_through_share) {
       face.reason = "seen_through";
     } else if (rim_depths.size() >= config.least_rim_hits) {
       // The sectors round the region's centre the rim reaches into, as a
@@ -576,12 +584,6 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
           shell.push_back(static_cast<double>(raw_cells[index]));
         }
       }
-      std::vector<double> own;
-      own.reserve(cells.size());
-      for (const std::size_t index : cells) {
-        own.push_back(static_cast<double>(raw_cells[index]));
-      }
-      const double brightness = quantile(own, 0.5);
       if (shell.empty() ||
           quantile(shell, 0.5) > face_config.shell_ratio * brightness) {
         face.reason = "soft_edge";

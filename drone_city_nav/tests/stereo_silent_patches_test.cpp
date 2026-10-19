@@ -334,6 +334,31 @@ TEST(SmokeFace, ALitBodyWithASharpEdgeInTheDarkIsAFaceAtItsBrightnessDepth) {
   EXPECT_STREQ(border[0].reason, "rim_unmatched");
 }
 
+TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
+  // A lit surface under the lamp at close range, past its texture: raw 90.
+  const std::vector<StereoDepthReturn> frame = frameWithSquare(40U, 1.2, 6.0);
+  const std::vector<SilentPatch> bright =
+      smokeFaces(frame, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(90U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(bright.size(), 1U);
+  EXPECT_FALSE(bright[0].closed);
+  EXPECT_STREQ(bright[0].reason, "surface");
+  // The same silence at a plume's brightness is a face at 1.2 m, which
+  // bounds the motion but gives the memory no rays: nearer than the ring's
+  // reach nothing is marked.
+  const std::vector<SilentPatch> close =
+      smokeFaces(frame, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(40U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(close.size(), 1U);
+  EXPECT_TRUE(close[0].closed);
+  EXPECT_TRUE(smokeFaceRays(close, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+  const std::vector<SilentPatch> far =
+      smokeFaces(frameWithSquare(40U, 3.0, 6.0), kGeometry, kReturns, kWidth, kHeight,
+                 rawEverywhere(40U), SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(far.size(), 1U);
+  EXPECT_FALSE(smokeFaceRays(far, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+}
+
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {
   // The far end of a corridor of 0.1 per metre: lit silence at the rim
   // where the veil kills the texture, with sparse matches deeper than the
