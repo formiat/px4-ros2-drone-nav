@@ -8,6 +8,7 @@
 #include <limits>
 #include <numbers>
 #include <numeric>
+#include <string>
 #include <utility>
 
 namespace drone_city_nav {
@@ -337,6 +338,14 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
     }
   }
   return points;
+}
+
+std::string silentPatchSummary(const SilentPatch& patch) {
+  return std::to_string(patch.cells) + ":" + patch.reason + ":rim" +
+         std::to_string(patch.rim_hits) + "@" +
+         std::to_string(patch.rim_depth_m).substr(0, 4) + "+" +
+         std::to_string(patch.rim_spread_m).substr(0, 4) + ":free" +
+         std::to_string(patch.free_neighbours);
 }
 
 std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> returns,

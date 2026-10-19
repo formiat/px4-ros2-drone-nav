@@ -437,7 +437,11 @@ private:
                    silent_patch_config_, smoke_face_config_);
     std::vector<const SilentPatch*> faces;
     double face_range_m = std::numeric_limits<double>::quiet_NaN();
+    const SilentPatch* largest_region{nullptr};
     for (const SilentPatch& region : lit_regions) {
+      if (largest_region == nullptr || region.cells > largest_region->cells) {
+        largest_region = &region;
+      }
       if (region.closed) {
         faces.push_back(&region);
         face_range_m = std::isfinite(face_range_m)
@@ -445,7 +449,8 @@ private:
                            : region.rim_depth_m;
       }
     }
-    // A face bounds the motion into it as a closed patch does (F13).
+    const std::string largest_text =
+        largest_region == nullptr ? "none" : silentPatchSummary(*largest_region);
     const double face_ahead_m = silentRangeAheadM(
         lit_regions, geometry_, returns_config_.pixel_stride,
         image_width_ / returns_config_.pixel_stride,
@@ -589,10 +594,8 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
-    // The smoke faces, held over four frames (0.5 s at the pair's rate; the
-    // dark's 2.5 s would carry a vehicle at 2 m/s 5 m toward a face) and
-    // emitted twice a second: rays through each face's cells at the frustum's
-    // pitch, observed unobservable from the rim over the slab (K44).
+    // The smoke faces (K44), held over four frames (0.5 s: the dark's 2.5 s
+    // would carry a vehicle at 2 m/s 5 m toward a face), emitted twice a second.
     if (face_frames_ >= kFaceFrames &&
         (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_)) {
       face_emitted_s_ = stamp_s;
@@ -662,14 +665,14 @@ private:
                          "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
                          "silent_patches=%zu closed=%zu silent_range_m=%.1f "
                          "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
-                         "face_marks_total=%zu",
+                         "face_marks_total=%zu largest_lit=%s",
                          pairs_, hits, returns.size() - hits, tof_rays, match_ms,
                          brightnessByMetreText(brightness_by_metre).c_str(), headroom,
                          lit_range_m, light_share, raw_brightness, observed_share,
                          blind ? stereo_returns : 0U, noise, unobservable_total_,
                          surfaces_in_view, unlit_surfaces, patches.size(),
                          closed_patches, silent_range_m, smoky_zones, faces.size(),
-                         face_range_m, face_marks_total_);
+                         face_range_m, face_marks_total_, largest_text.c_str());
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain

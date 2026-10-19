@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -185,6 +186,9 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
                                                 std::size_t stride, std::size_t width,
                                                 double nearest_m, double slab_m,
                                                 double step_m, std::size_t pitch_cells);
+
+// A patch or a face in a log line: cells:reason:rimN@depth+spread:freeN.
+[[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);
 
 // The faces of the frame: `raw_cells` is the frame's raw grey a stride cell
 // (rawCells); the rest as silentPatches. Each face is a SilentPatch with
