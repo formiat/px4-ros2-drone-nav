@@ -362,6 +362,7 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
     // beside it is neither.
     std::vector<std::size_t> cells;
     std::vector<double> rim_depths;
+    std::vector<std::size_t> rim_cells;
     std::vector<std::uint8_t> seen(label.size(), 0U);
     std::size_t free_neighbours{0U};
     stack.assign(1U, seed);
@@ -393,6 +394,7 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
           seen[neighbour] = 1U;
           if (grid.kind[neighbour] == kHit) {
             rim_depths.push_back(grid.depth_m[neighbour]);
+            rim_cells.push_back(neighbour);
           } else {
             ++free_neighbours;
           }
@@ -408,8 +410,31 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
                      .free_neighbours = free_neighbours};
     const double see_through =
         static_cast<double>(free_neighbours) / static_cast<double>(cells.size());
+    // The sectors round the region's centre the rim reaches into, as a
+    // patch's.
+    double centre_row{0.0};
+    double centre_column{0.0};
+    for (const std::size_t index : cells) {
+      centre_row += static_cast<double>(index / grid.columns);
+      centre_column += static_cast<double>(index % grid.columns);
+    }
+    centre_row /= static_cast<double>(cells.size());
+    centre_column /= static_cast<double>(cells.size());
+    std::array<bool, 8> sectors{};
+    for (const std::size_t index : rim_cells) {
+      const double angle =
+          std::atan2(static_cast<double>(index / grid.columns) - centre_row,
+                     static_cast<double>(index % grid.columns) - centre_column);
+      sectors[static_cast<std::size_t>(
+                  std::floor((angle + std::numbers::pi) / (std::numbers::pi / 4.0))) %
+              8U] = true;
+    }
+    const auto rim_sectors =
+        static_cast<std::size_t>(std::ranges::count(sectors, true));
     if (rim_depths.size() < config.least_rim_hits) {
       face.reason = "rim_unmatched";
+    } else if (rim_sectors < face_config.least_rim_sectors) {
+      face.reason = "rim_not_round";
     } else {
       face.rim_depth_m = quantile(rim_depths, 0.5);
       face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);

@@ -264,8 +264,10 @@ stereo set is an obstacle the vehicle sees before it is inside. The pair is
 silent on a plume; what makes the silence a face is that it is LIT (raw grey
 20 or more under the vehicle's own lamp; a shadow or the dark beyond the lamp
 reads 0 to 10, F13), that its rim of matches lies at one depth within the
-lamp's reach (K36's rim, without K36's sectors or border: a plume fills a
-corridor to the frame's top, and the dark above it gives no rim), and that
+lamp's reach and goes round it from five of eight sectors (K36's rim; the
+top may be missing, since a plume fills a corridor to the frame's top and
+the dark above it gives no rim; the veil of thin smoke in a hall, rimmed by
+the floor's fade alone, is no face, r1769), and that
 the pair does not match through it (free rays under 0.5 percent of its
 cells; thin smoke of 0.1 per metre leaves 1.6 to 3.8 percent and is flown
 through). The face's rays enter the memory observed unobservable from the

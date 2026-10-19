@@ -105,10 +105,13 @@ silentPatches(std::span<const StereoDepthReturn> returns,
 // reaches: a plume, or a surface the pair cannot texture; the dark silence
 // is shadow or the dark beyond the lamp (F13) and is left alone. A
 // connected region of lit silence is a face when its rim of hits lies at one
-// depth within the lamp's reach (as a closed patch's, above; its sectors and
-// the frame's border are not asked: a plume fills a corridor to the frame's
-// top, r1745, and the dark above it gives no rim) and the pair does not see
-// through it (free rays, matches deeper than the confident depth, under
+// depth within the lamp's reach and reaches round it from `least_rim_sectors`
+// of the eight sectors (as a closed patch's, above, with the top allowed
+// missing: a plume fills a corridor to the frame's top, r1745, and the dark
+// above it gives no rim; the veil of thin smoke in a hall is lit silence
+// rimmed by the floor's fade below alone, r1769, as the dark beyond the lamp
+// is), the frame's border not asked, and the pair does not see through it
+// (free rays, matches deeper than the confident depth, under
 // `see_through_share` of its cells). The face enters the memory as observed
 // unobservable from its rim's depth over `face_slab_m` (K14's frustum rays),
 // and bounds the motion into it as a closed patch does. Measured on the
@@ -124,6 +127,7 @@ struct SmokeFaceConfig {
   double lit_raw_grey{20.0};
   double see_through_share{0.005};
   double face_slab_m{1.5};
+  std::size_t least_rim_sectors{5U};
 };
 
 // The frame's cells on the stride grid, one byte each, row-major: lit where

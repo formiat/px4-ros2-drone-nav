@@ -225,6 +225,28 @@ TEST(SmokeFace, APlumeFillingTheCorridorToTheFrameTopIsAFaceOnItsFloorAndWalls) 
   EXPECT_STREQ(patches[0].reason, "at_border");
 }
 
+TEST(SmokeFace, TheVeilOfThinSmokeInAHallRimmedByTheFloorAloneIsNoFace) {
+  // r1769: in the hall of 0.1 per metre the veil beyond the lamp's reach is
+  // lit silence whose only rim is the floor's fade below it, flat across the
+  // frame at one depth, and nothing lies beyond it within the matcher's
+  // range to see through: the rim does not go round it, as the dark beyond
+  // the lamp's does not (K36).
+  std::vector<StereoDepthReturn> returns;
+  const std::size_t columns = kWidth / 4U;
+  const std::size_t rows = kHeight / 4U;
+  for (std::size_t row = 2U * rows / 3U; row < rows; ++row) {
+    for (std::size_t column = 0U; column < columns; ++column) {
+      returns.push_back(returnAt(column, row, 4.8, true));
+    }
+  }
+  const std::vector<SilentPatch> veil =
+      smokeFaces(returns, kGeometry, kReturns, kWidth, kHeight, litEverywhere(true),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(veil.size(), 1U);
+  EXPECT_FALSE(veil[0].closed);
+  EXPECT_STREQ(veil[0].reason, "rim_not_round");
+}
+
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {
   // The far end of a corridor of 0.1 per metre: lit silence at the rim
   // where the veil kills the texture, with sparse matches deeper than the
