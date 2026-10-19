@@ -150,9 +150,17 @@ struct SmokeFaceConfig {
   double face_slab_m{1.5};
   std::size_t least_rim_sectors{5U};
   // A plume's edge is soft: the pair sees 0.6 to 1.3 m into it, and the rim's
-  // depths spread by up to 1 m across the face (r1806: 0.56 at 1.8 m, no face
-  // under K36's 0.5 m). The face is at the rim's nearest quartile.
-  double rim_flat_m{1.0};
+  // depths SCATTER by up to 1 m across the face (r1806: 0.56 at 1.8 m, r1807:
+  // 0.57 to 0.91 on the approach, no face under K36's 0.5 m), with no trend
+  // along the rim: a plane fitted to the rim's depths over the cells'
+  // rows and columns explains 0.00 to 0.16 of their variance on the rig. A
+  // hall's walls running on RECEDE along the rim, the plane explaining 0.46
+  // to 0.95 (r1822: lit silences in the halls with spreads of 0.6 to 0.8
+  // judged faces, the routes closed, B not reached). A spread over K36's
+  // 0.5 m and up to `rim_scatter_m` is a face while the trend explains less
+  // than `rim_trend_share` of it. The face is at the rim's nearest quartile.
+  double rim_scatter_m{1.0};
+  double rim_trend_share{0.3};
   double dark_ring_share{0.7};
   double shell_ratio{0.35};
   double near_grey{45.0};

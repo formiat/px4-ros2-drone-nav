@@ -66,6 +66,46 @@ StrideGrid strideGrid(const std::span<const StereoDepthReturn> returns,
   return grid;
 }
 
+// The share of the rim depths' variance a plane over the cells' rows and
+// columns explains: nought for a scatter, one for a rim that recedes along
+// itself. Least squares on the three normal equations.
+double rimTrendShare(const std::vector<std::size_t>& rim_cells,
+                     const std::vector<double>& rim_depths, const std::size_t columns) {
+  const std::size_t n = rim_cells.size();
+  if (n < 3U || rim_depths.size() != n) {
+    return 0.0;
+  }
+  double sr{0.0}, sc{0.0}, sd{0.0};
+  for (std::size_t i = 0U; i < n; ++i) {
+    sr += static_cast<double>(rim_cells[i] / columns);
+    sc += static_cast<double>(rim_cells[i] % columns);
+    sd += rim_depths[i];
+  }
+  const double mr = sr / static_cast<double>(n);
+  const double mc = sc / static_cast<double>(n);
+  const double md = sd / static_cast<double>(n);
+  double srr{0.0}, scc{0.0}, src{0.0}, srd{0.0}, scd{0.0}, sdd{0.0};
+  for (std::size_t i = 0U; i < n; ++i) {
+    const double r = static_cast<double>(rim_cells[i] / columns) - mr;
+    const double col = static_cast<double>(rim_cells[i] % columns) - mc;
+    const double d = rim_depths[i] - md;
+    srr += r * r;
+    scc += col * col;
+    src += r * col;
+    srd += r * d;
+    scd += col * d;
+    sdd += d * d;
+  }
+  const double det = srr * scc - src * src;
+  if (!(sdd > 1.0e-9) || std::abs(det) < 1.0e-9) {
+    return 0.0;
+  }
+  const double a = (srd * scc - scd * src) / det;
+  const double b = (scd * srr - srd * src) / det;
+  const double explained = a * srd + b * scd;
+  return std::clamp(explained / sdd, 0.0, 1.0);
+}
+
 double quantile(std::vector<double>& values, const double share) {
   std::ranges::sort(values);
   return values[static_cast<std::size_t>(share *
@@ -479,13 +519,16 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       }
       const auto rim_sectors =
           static_cast<std::size_t>(std::ranges::count(sectors, true));
+      const double trend = rimTrendShare(rim_cells, rim_depths, grid.columns);
       face.rim_depth_m = quantile(rim_depths, 0.25);
       face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
       if (rim_sectors < face_config.least_rim_sectors) {
         face.reason = "rim_not_round";
       } else if (quantile(rim_depths, 0.5) > config.confident_depth_m) {
         face.reason = "rim_beyond_reach";
-      } else if (face.rim_spread_m > face_config.rim_flat_m) {
+      } else if (face.rim_spread_m > face_config.rim_scatter_m ||
+                 (face.rim_spread_m > config.rim_flat_m &&
+                  trend >= face_config.rim_trend_share)) {
         face.reason = "rim_recedes";
       } else {
         face.closed = true;

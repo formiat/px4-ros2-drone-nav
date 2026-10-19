@@ -186,16 +186,29 @@ TEST(SmokeFace, LitSilenceWithAFlatRimThePairDoesNotSeeThroughIsAFace) {
   ASSERT_EQ(far.size(), 1U);
   EXPECT_FALSE(far[0].closed);
   EXPECT_STREQ(far[0].reason, "rim_beyond_reach");
-  // A plume's rim spreads by up to a metre (its soft edge); a corridor's
-  // walls running on recede by more.
+  // A plume's rim scatters by up to a metre (its soft edge: no trend along
+  // the rim); a corridor's walls running on recede along it, by as little.
+  std::vector<StereoDepthReturn> scattered = frameWithSquare(40U, 2.0, 6.0);
+  for (StereoDepthReturn& stereo_return : scattered) {
+    if (std::abs(stereo_return.point.x - 2.0) < 1.0e-6) {
+      const auto column = static_cast<long>(std::lround(
+          kGeometry.principal_x_px - stereo_return.point.y / 2.0 * kGeometry.focal_px));
+      const auto row = static_cast<long>(std::lround(
+          kGeometry.principal_y_px - stereo_return.point.z / 2.0 * kGeometry.focal_px));
+      const double depth_m = ((column / 4 + row / 4) % 2 == 0) ? 2.0 : 2.8;
+      stereo_return.point = Point3{depth_m, stereo_return.point.y / 2.0 * depth_m,
+                                   stereo_return.point.z / 2.0 * depth_m};
+    }
+  }
   const std::vector<SilentPatch> soft =
-      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true, 0.8), kGeometry, kReturns, kWidth,
-                 kHeight, rawEverywhere(36U), SilentPatchConfig{}, SmokeFaceConfig{});
+      smokeFaces(scattered, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(36U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(soft.size(), 1U);
   EXPECT_TRUE(soft[0].closed);
-  EXPECT_LT(soft[0].rim_depth_m, 2.6); // the nearest quartile of the rim
+  EXPECT_GT(soft[0].rim_spread_m, 0.5);
+  EXPECT_NEAR(soft[0].rim_depth_m, 2.0, 1.0e-6); // the nearest quartile of the rim
   const std::vector<SilentPatch> corridor =
-      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true, 4.0), kGeometry, kReturns, kWidth,
+      smokeFaces(frameWithSquare(40U, 2.0, 6.0, true, 0.8), kGeometry, kReturns, kWidth,
                  kHeight, rawEverywhere(36U), SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(corridor.size(), 1U);
   EXPECT_STREQ(corridor[0].reason, "rim_recedes");
