@@ -66,6 +66,8 @@ struct SilentPatch {
   // depth the silence encloses or borders. A closed patch the pair still
   // matches through is thin smoke, not a face (the smoke face, below).
   std::size_t free_neighbours{0U};
+  // The cells of the free rays a region of lit silence encloses (smokeFaces).
+  std::vector<std::size_t> enclosed_free_cells;
   double rim_depth_m{0.0};
   double rim_spread_m{0.0};
   // The share of the rim depths' variance a plane over the rim explains (a
@@ -145,6 +147,15 @@ silentPatches(std::span<const StereoDepthReturn> returns,
 // sees into the face's soft edge).
 struct SmokeFaceConfig {
   double lit_raw_grey{20.0};
+  // The free rays a region encloses are dropped before the memory while the
+  // region is a face or near one, its see-through under this share: a
+  // plume's region flickers between face and seen_through as its chance far
+  // matches cross the 1 percent (r1847), and each such ray carved the
+  // memory along its 5.2 m and lifted the slab. The halls' open regions
+  // carry 10 to 17 percent, real far surfaces, and keep theirs (r1866: every
+  // enclosed ray dropped, 215 000 a flight, the stale marks never lifted,
+  // the routes closed, B not reached).
+  double carve_share{0.03};
   // Lit silence brighter than this is a surface under the lamp at close
   // range, saturated past its texture, not smoke: a plume reads 49 to 58
   // raw grey at 2 m and 43 to 71 inside (the rig), the rig's floor blocks
@@ -215,19 +226,17 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
                                                 double nearest_m, double slab_m,
                                                 double step_m, std::size_t pitch_cells);
 
-// Drops the pair's free rays that lit silence encloses: a match far beyond
-// the lamp's reach with `least_neighbours` of its eight neighbours lit silent
-// cells is the smoke's own texture matched at a chance disparity, and
-// published it carved the memory along its 5.2 m and lifted the face's
-// marks (r1847: the slab laid twice a second after four frames, the carving
-// 7.5 times a second, the vehicle entered on its second approach). The
-// judgment of the faces reads them first: they are its see-through measure.
-// Returns how many were dropped.
-[[nodiscard]] std::size_t dropFreeRaysInLitSilence(
-    std::vector<StereoDepthReturn>& returns, const StereoPairGeometry& geometry,
-    std::size_t stride, std::size_t width, std::size_t height,
-    std::span<const std::uint8_t> seen_cells, std::span<const std::uint8_t> raw_cells,
-    double lit_raw_grey, std::size_t least_neighbours);
+// Drops the pair's free rays the regions of lit silence enclose where the
+// region's see-through is under `carve_share` (a face or near one): a match
+// far beyond the lamp's reach inside a plume's silence is the smoke's own
+// texture matched at a chance disparity, and published it carved the memory
+// along its 5.2 m and lifted the face's marks (r1847). Returns how many were
+// dropped.
+[[nodiscard]] std::size_t dropEnclosedFreeRays(std::vector<StereoDepthReturn>& returns,
+                                               std::span<const SilentPatch> regions,
+                                               const StereoPairGeometry& geometry,
+                                               std::size_t stride, std::size_t width,
+                                               std::size_t height, double carve_share);
 
 // A patch or a face in a log line: cells:reason:rimN@depth+spread:freeN.
 [[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);

@@ -360,25 +360,44 @@ TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
   EXPECT_FALSE(smokeFaceRays(far, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
 }
 
-TEST(SmokeFace, AFreeRayLitSilenceEnclosesIsDroppedBeforeTheMemory) {
+TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
   // r1847: the pair's chance far matches on a plume's own texture, read as
   // free rays, carved the face's marks from the memory. One free ray inside
-  // a lit silent square is dropped; one on the matched floor is kept.
+  // a lit silent square (a face: under 3 percent of its cells) is dropped;
+  // one on the matched floor is kept; the rays of an open region the pair
+  // sees through (17 percent on the rig's halls) are kept too.
   std::vector<StereoDepthReturn> frame = frameWithSquare(40U, 3.0, 6.0);
   const std::size_t columns = kWidth / 4U;
   const std::size_t rows = kHeight / 4U;
   frame.push_back(returnAt(columns / 2U, rows / 2U, 5.2, false));
   frame.push_back(returnAt(10U, rows - 10U, 5.2, false));
-  const std::vector<std::uint8_t> seen =
-      seenCells(frame, kGeometry, 4U, kWidth, kHeight);
+  const std::vector<SilentPatch> regions =
+      smokeFaces(frame, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(36U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(regions.size(), 1U);
+  EXPECT_EQ(regions[0].enclosed_free_cells.size(), 1U);
   const std::size_t before = frame.size();
-  const std::size_t dropped = dropFreeRaysInLitSilence(
-      frame, kGeometry, 4U, kWidth, kHeight, seen, rawEverywhere(36U), 20.0, 6U);
-  EXPECT_EQ(dropped, 1U);
+  EXPECT_EQ(dropEnclosedFreeRays(frame, regions, kGeometry, 4U, kWidth, kHeight, 0.03),
+            1U);
   EXPECT_EQ(frame.size(), before - 1U);
   EXPECT_TRUE(std::ranges::any_of(frame, [](const StereoDepthReturn& ray) {
     return !ray.hit && std::abs(ray.point.x - 5.2) < 1.0e-6;
   }));
+  // The same square with one free ray in every twentieth cell is seen
+  // through (5 percent): its rays stay.
+  std::vector<StereoDepthReturn> open = frameWithSquare(40U, 3.0, 6.0);
+  const std::size_t c0 = columns / 2U - 20U;
+  const std::size_t r0 = rows / 2U - 20U;
+  for (std::size_t row = r0 + 2U; row + 2U < r0 + 40U; row += 5U) {
+    for (std::size_t column = c0 + 2U; column + 2U < c0 + 40U; column += 4U) {
+      open.push_back(returnAt(column, row, 5.2, false));
+    }
+  }
+  const std::vector<SilentPatch> seen =
+      smokeFaces(open, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(36U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(seen.size(), 1U);
+  EXPECT_EQ(dropEnclosedFreeRays(open, seen, kGeometry, 4U, kWidth, kHeight, 0.03), 0U);
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {

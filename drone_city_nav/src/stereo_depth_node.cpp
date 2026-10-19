@@ -460,10 +460,10 @@ private:
       silent_range_pub_->publish(silent_message);
     }
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
-    // The pair's free rays lit silence encloses are the smoke's texture (K44).
-    face_rays_dropped_ += dropFreeRaysInLitSilence(
-        returns, geometry_, returns_config_.pixel_stride, image_width_, image_height_,
-        seen_cells, raw_cells, smoke_face_config_.lit_raw_grey, kEnclosingNeighbours);
+    // A face's chance far matches are the smoke's texture (K44).
+    face_rays_dropped_ += dropEnclosedFreeRays(
+        returns, lit_regions, geometry_, returns_config_.pixel_stride, image_width_,
+        image_height_, smoke_face_config_.carve_share);
     if (!rectifier_->ideal()) {
       for (StereoDepthReturn& stereo_return : returns) {
         stereo_return.point = toPhysicalFlu(stereo_return.point);
@@ -956,7 +956,6 @@ private:
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
   std::size_t face_rays_dropped_{0U};
-  static constexpr std::size_t kEnclosingNeighbours{6U};
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};
   static constexpr int kNoiseSampleStride{4};
