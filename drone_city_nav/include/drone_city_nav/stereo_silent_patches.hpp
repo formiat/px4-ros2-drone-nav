@@ -215,6 +215,20 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
                                                 double nearest_m, double slab_m,
                                                 double step_m, std::size_t pitch_cells);
 
+// Drops the pair's free rays that lit silence encloses: a match far beyond
+// the lamp's reach with `least_neighbours` of its eight neighbours lit silent
+// cells is the smoke's own texture matched at a chance disparity, and
+// published it carved the memory along its 5.2 m and lifted the face's
+// marks (r1847: the slab laid twice a second after four frames, the carving
+// 7.5 times a second, the vehicle entered on its second approach). The
+// judgment of the faces reads them first: they are its see-through measure.
+// Returns how many were dropped.
+[[nodiscard]] std::size_t dropFreeRaysInLitSilence(
+    std::vector<StereoDepthReturn>& returns, const StereoPairGeometry& geometry,
+    std::size_t stride, std::size_t width, std::size_t height,
+    std::span<const std::uint8_t> seen_cells, std::span<const std::uint8_t> raw_cells,
+    double lit_raw_grey, std::size_t least_neighbours);
+
 // A patch or a face in a log line: cells:reason:rimN@depth+spread:freeN.
 [[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);
 

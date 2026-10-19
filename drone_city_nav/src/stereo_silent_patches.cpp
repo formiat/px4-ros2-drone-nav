@@ -380,6 +380,59 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
   return points;
 }
 
+std::size_t dropFreeRaysInLitSilence(std::vector<StereoDepthReturn>& returns,
+                                     const StereoPairGeometry& geometry,
+                                     const std::size_t stride, const std::size_t width,
+                                     const std::size_t height,
+                                     const std::span<const std::uint8_t> seen_cells,
+                                     const std::span<const std::uint8_t> raw_cells,
+                                     const double lit_raw_grey,
+                                     const std::size_t least_neighbours) {
+  if (stride == 0U || width < stride || height < stride) {
+    return 0U;
+  }
+  const std::size_t columns = width / stride;
+  const std::size_t rows = height / stride;
+  if (seen_cells.size() != columns * rows || raw_cells.size() != columns * rows) {
+    return 0U;
+  }
+  const std::size_t before = returns.size();
+  std::erase_if(returns, [&](const StereoDepthReturn& ray) {
+    if (ray.hit || ray.unobservable) {
+      return false;
+    }
+    const std::optional<std::size_t> cell =
+        strideCellOf(ray.point, geometry, stride, width, height);
+    if (!cell.has_value()) {
+      return false;
+    }
+    const long row = static_cast<long>(*cell / columns);
+    const long column = static_cast<long>(*cell % columns);
+    std::size_t enclosing{0U};
+    for (long d_row = -1; d_row <= 1; ++d_row) {
+      for (long d_column = -1; d_column <= 1; ++d_column) {
+        if (d_row == 0 && d_column == 0) {
+          continue;
+        }
+        const long n_row = row + d_row;
+        const long n_column = column + d_column;
+        if (n_row < 0 || n_column < 0 || n_row >= static_cast<long>(rows) ||
+            n_column >= static_cast<long>(columns)) {
+          continue;
+        }
+        const std::size_t neighbour = static_cast<std::size_t>(n_row) * columns +
+                                      static_cast<std::size_t>(n_column);
+        enclosing += seen_cells[neighbour] == 0U &&
+                             static_cast<double>(raw_cells[neighbour]) >= lit_raw_grey
+                         ? 1U
+                         : 0U;
+      }
+    }
+    return enclosing >= least_neighbours;
+  });
+  return before - returns.size();
+}
+
 std::string silentPatchSummary(const SilentPatch& patch) {
   return std::to_string(patch.cells) + ":" + patch.reason + ":rim" +
          std::to_string(patch.rim_hits) + "@" +

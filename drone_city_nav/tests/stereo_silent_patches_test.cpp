@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -357,6 +358,27 @@ TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
                  rawEverywhere(40U), SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(far.size(), 1U);
   EXPECT_FALSE(smokeFaceRays(far, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+}
+
+TEST(SmokeFace, AFreeRayLitSilenceEnclosesIsDroppedBeforeTheMemory) {
+  // r1847: the pair's chance far matches on a plume's own texture, read as
+  // free rays, carved the face's marks from the memory. One free ray inside
+  // a lit silent square is dropped; one on the matched floor is kept.
+  std::vector<StereoDepthReturn> frame = frameWithSquare(40U, 3.0, 6.0);
+  const std::size_t columns = kWidth / 4U;
+  const std::size_t rows = kHeight / 4U;
+  frame.push_back(returnAt(columns / 2U, rows / 2U, 5.2, false));
+  frame.push_back(returnAt(10U, rows - 10U, 5.2, false));
+  const std::vector<std::uint8_t> seen =
+      seenCells(frame, kGeometry, 4U, kWidth, kHeight);
+  const std::size_t before = frame.size();
+  const std::size_t dropped = dropFreeRaysInLitSilence(
+      frame, kGeometry, 4U, kWidth, kHeight, seen, rawEverywhere(36U), 20.0, 6U);
+  EXPECT_EQ(dropped, 1U);
+  EXPECT_EQ(frame.size(), before - 1U);
+  EXPECT_TRUE(std::ranges::any_of(frame, [](const StereoDepthReturn& ray) {
+    return !ray.hit && std::abs(ray.point.x - 5.2) < 1.0e-6;
+  }));
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {

@@ -418,11 +418,8 @@ private:
     std_msgs::msg::Float64 silent_message;
     silent_message.data = silent_range_m;
     silent_range_pub_->publish(silent_message);
-    // The faces of dense smoke in the frame (the smoke face detector, roadmap
-    // item 18; specification K44): the regions of lit silence whose rim lies
-    // at one depth and which the pair does not see through. A cell is lit by
-    // its raw grey, the frame's over the driver's gain, as the light is read
-    // (K15); a cell is seen where the pair returned a hit or a free ray.
+    // The smoke faces (K44): regions of lit silence the pair does not see
+    // through; a cell's raw grey is the frame's over the gain (K15).
     const std::vector<std::uint8_t> raw_cells = rawCells(
         std::span<const std::uint8_t>{left_grey.data,
                                       left_grey.step[0] * left_grey.rows},
@@ -463,6 +460,10 @@ private:
       silent_range_pub_->publish(silent_message);
     }
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
+    // The pair's free rays lit silence encloses are the smoke's texture (K44).
+    face_rays_dropped_ += dropFreeRaysInLitSilence(
+        returns, geometry_, returns_config_.pixel_stride, image_width_, image_height_,
+        seen_cells, raw_cells, smoke_face_config_.lit_raw_grey, kEnclosingNeighbours);
     if (!rectifier_->ideal()) {
       for (StereoDepthReturn& stereo_return : returns) {
         stereo_return.point = toPhysicalFlu(stereo_return.point);
@@ -495,11 +496,7 @@ private:
           decodePointCloudFloatField(*scan, "intensity").value_or(std::vector<float>{});
       std::vector<StereoDepthReturn> rays =
           tofZoneReturns(*zones, sensor.config, intensities);
-      // The front unit's silence through the pair's lit silence is not free
-      // (K44, K38): a plume ahead returns nothing to the ring until the
-      // vehicle is inside, and a ray read free there lifted the face's marks
-      // from the memory (r1746: the vehicle held 1.4 m before the plume,
-      // the marks went, it entered). A zone that returned a surface stands.
+      // The ring's silence through lit silence is not free (K44, K38; r1746).
       if (&sensor == &tof_sensors_[kFrontTofSlot]) {
         std::erase_if(rays, [&](const StereoDepthReturn& ray) {
           if (ray.hit) {
@@ -657,22 +654,22 @@ private:
     const double match_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - started)
                                 .count();
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
-                         "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
-                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
-                         "silent_patches=%zu closed=%zu silent_range_m=%.1f "
-                         "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
-                         "face_marks_total=%zu largest_lit=%s",
-                         pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightnessByMetreText(brightness_by_metre).c_str(), headroom,
-                         lit_range_m, light_share, raw_brightness, observed_share,
-                         blind ? stereo_returns : 0U, noise, unobservable_total_,
-                         surfaces_in_view, unlit_surfaces, patches.size(),
-                         closed_patches, silent_range_m, smoky_zones, faces.size(),
-                         face_range_m, face_marks_total_, largest_text.c_str());
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
+        "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
+        "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
+        "observed_share=%.3f blind_dropped=%zu noise=%.1f "
+        "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
+        "silent_patches=%zu closed=%zu silent_range_m=%.1f "
+        "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
+        "face_marks_total=%zu free_dropped=%zu largest_lit=%s",
+        pairs_, hits, returns.size() - hits, tof_rays, match_ms,
+        brightnessByMetreText(brightness_by_metre).c_str(), headroom, lit_range_m,
+        light_share, raw_brightness, observed_share, blind ? stereo_returns : 0U, noise,
+        unobservable_total_, surfaces_in_view, unlit_surfaces, patches.size(),
+        closed_patches, silent_range_m, smoky_zones, faces.size(), face_range_m,
+        face_marks_total_, face_rays_dropped_, largest_text.c_str());
   }
 
   // The frame's 95th percentile of brightness over the 200 the camera's gain
@@ -958,6 +955,8 @@ private:
   std::size_t face_frames_{0U};
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
+  std::size_t face_rays_dropped_{0U};
+  static constexpr std::size_t kEnclosingNeighbours{6U};
   static constexpr int kSignalWindowPx{9};
   static constexpr std::size_t kLaplacianBins{1024U};
   static constexpr int kNoiseSampleStride{4};
