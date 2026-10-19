@@ -236,14 +236,198 @@ double silentRangeAheadM(const std::span<const SilentPatch> patches,
   return range_m;
 }
 
-bool smokeFace(const SilentPatch& patch, const double raw_grey,
-               const SmokeFaceConfig& config) {
-  if (!patch.closed || patch.cells == 0U) {
-    return false;
+std::vector<std::uint8_t> litCells(const std::span<const std::uint8_t> grey,
+                                   const std::size_t row_step, const std::size_t width,
+                                   const std::size_t height, const std::size_t stride,
+                                   const std::uint8_t lit_grey) {
+  std::vector<std::uint8_t> lit;
+  if (stride == 0U || width < stride || height < stride) {
+    return lit;
   }
-  const double see_through =
-      static_cast<double>(patch.free_neighbours) / static_cast<double>(patch.cells);
-  return raw_grey >= config.lit_raw_grey && see_through < config.see_through_share;
+  const std::size_t columns = width / stride;
+  const std::size_t rows = height / stride;
+  lit.assign(columns * rows, 0U);
+  for (std::size_t row = 0U; row < rows; ++row) {
+    for (std::size_t column = 0U; column < columns; ++column) {
+      const std::size_t at = row * stride * row_step + column * stride;
+      lit[row * columns + column] = at < grey.size() && grey[at] >= lit_grey ? 1U : 0U;
+    }
+  }
+  return lit;
+}
+
+std::vector<std::uint8_t> seenCells(const std::span<const StereoDepthReturn> returns,
+                                    const StereoPairGeometry& geometry,
+                                    const std::size_t stride, const std::size_t width,
+                                    const std::size_t height) {
+  std::vector<std::uint8_t> seen;
+  if (stride == 0U || width < stride || height < stride) {
+    return seen;
+  }
+  const StrideGrid grid = strideGrid(returns, geometry, stride, width, height);
+  seen.assign(grid.kind.size(), 0U);
+  for (std::size_t index = 0U; index < grid.kind.size(); ++index) {
+    seen[index] = grid.kind[index] == kSilent ? 0U : 1U;
+  }
+  return seen;
+}
+
+std::optional<std::size_t> strideCellOf(const Point3& direction,
+                                        const StereoPairGeometry& geometry,
+                                        const std::size_t stride,
+                                        const std::size_t width,
+                                        const std::size_t height) {
+  if (stride == 0U || !(direction.x > 0.0)) {
+    return std::nullopt;
+  }
+  const double column_px =
+      geometry.principal_x_px - geometry.focal_px * direction.y / direction.x;
+  const double row_px =
+      geometry.principal_y_px - geometry.focal_px * direction.z / direction.x;
+  if (column_px < 0.0 || row_px < 0.0) {
+    return std::nullopt;
+  }
+  const auto column =
+      static_cast<std::size_t>(std::lround(column_px / static_cast<double>(stride)));
+  const auto row =
+      static_cast<std::size_t>(std::lround(row_px / static_cast<double>(stride)));
+  if (column >= width / stride || row >= height / stride) {
+    return std::nullopt;
+  }
+  return row * (width / stride) + column;
+}
+
+std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
+                                  const StereoPairGeometry& geometry,
+                                  const std::size_t stride, const std::size_t width,
+                                  const double nearest_m, const double slab_m,
+                                  const double step_m, const std::size_t pitch_cells) {
+  std::vector<Point3> points;
+  if (stride == 0U || width < stride || pitch_cells == 0U || !(step_m > 0.0)) {
+    return points;
+  }
+  const std::size_t columns = width / stride;
+  for (const SilentPatch& face : regions) {
+    if (!face.closed) {
+      continue;
+    }
+    const double from_m = std::max(nearest_m, face.rim_depth_m);
+    for (const std::size_t index : face.cell_indices) {
+      const std::size_t row_cell = index / columns;
+      const std::size_t column_cell = index % columns;
+      if (row_cell % pitch_cells != 0U || column_cell % pitch_cells != 0U) {
+        continue;
+      }
+      const double column_px =
+          static_cast<double>(column_cell * stride) + 0.5 * static_cast<double>(stride);
+      const double row_px =
+          static_cast<double>(row_cell * stride) + 0.5 * static_cast<double>(stride);
+      const double left = -(column_px - geometry.principal_x_px) / geometry.focal_px;
+      const double up = -(row_px - geometry.principal_y_px) / geometry.focal_px;
+      const double norm = std::sqrt(1.0 + left * left + up * up);
+      for (double range_m = from_m; range_m <= from_m + slab_m; range_m += step_m) {
+        const double along = range_m / norm;
+        points.push_back(Point3{along, along * left, along * up});
+      }
+    }
+  }
+  return points;
+}
+
+std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> returns,
+                                    const StereoPairGeometry& geometry,
+                                    const StereoDepthReturnsConfig& returns_config,
+                                    const std::size_t width, const std::size_t height,
+                                    const std::span<const std::uint8_t> lit_cells,
+                                    const SilentPatchConfig& config,
+                                    const SmokeFaceConfig& face_config) {
+  std::vector<SilentPatch> faces;
+  const std::size_t stride = returns_config.pixel_stride;
+  if (stride == 0U || width < stride || height < stride) {
+    return faces;
+  }
+  const StrideGrid grid = strideGrid(returns, geometry, stride, width, height);
+  if (lit_cells.size() != grid.kind.size()) {
+    return faces;
+  }
+  std::vector<std::uint32_t> label(grid.kind.size(), 0U);
+  std::vector<std::size_t> stack;
+  std::uint32_t next_label{1U};
+  for (std::size_t seed = 0U; seed < label.size(); ++seed) {
+    if (grid.kind[seed] != kSilent || lit_cells[seed] == 0U || label[seed] != 0U) {
+      continue;
+    }
+    // One region of lit silence by four-connectivity; its rim the hits
+    // beside it, its see-through the free rays beside it; the dark silence
+    // beside it is neither.
+    std::vector<std::size_t> cells;
+    std::vector<double> rim_depths;
+    std::vector<std::uint8_t> seen(label.size(), 0U);
+    std::size_t free_neighbours{0U};
+    stack.assign(1U, seed);
+    label[seed] = next_label;
+    while (!stack.empty()) {
+      const std::size_t index = stack.back();
+      stack.pop_back();
+      cells.push_back(index);
+      const std::size_t row = index / grid.columns;
+      const std::size_t column = index % grid.columns;
+      const std::array<std::pair<long, long>, 8> around{
+          {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}};
+      for (const auto& [d_row, d_column] : around) {
+        const long n_row = static_cast<long>(row) + d_row;
+        const long n_column = static_cast<long>(column) + d_column;
+        if (n_row < 0 || n_column < 0 || n_row >= static_cast<long>(grid.rows) ||
+            n_column >= static_cast<long>(grid.columns)) {
+          continue;
+        }
+        const std::size_t neighbour = grid.at(static_cast<std::size_t>(n_row),
+                                              static_cast<std::size_t>(n_column));
+        if (grid.kind[neighbour] == kSilent) {
+          if (lit_cells[neighbour] != 0U && (d_row == 0 || d_column == 0) &&
+              label[neighbour] == 0U) {
+            label[neighbour] = next_label;
+            stack.push_back(neighbour);
+          }
+        } else if (seen[neighbour] == 0U) {
+          seen[neighbour] = 1U;
+          if (grid.kind[neighbour] == kHit) {
+            rim_depths.push_back(grid.depth_m[neighbour]);
+          } else {
+            ++free_neighbours;
+          }
+        }
+      }
+    }
+    ++next_label;
+    if (cells.size() < config.least_cells) {
+      continue;
+    }
+    SilentPatch face{.cells = cells.size(),
+                     .rim_hits = rim_depths.size(),
+                     .free_neighbours = free_neighbours};
+    const double see_through =
+        static_cast<double>(free_neighbours) / static_cast<double>(cells.size());
+    if (rim_depths.size() < config.least_rim_hits) {
+      face.reason = "rim_unmatched";
+    } else {
+      face.rim_depth_m = quantile(rim_depths, 0.5);
+      face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
+      if (face.rim_depth_m > config.confident_depth_m) {
+        face.reason = "rim_beyond_reach";
+      } else if (face.rim_spread_m > config.rim_flat_m) {
+        face.reason = "rim_recedes";
+      } else if (see_through >= face_config.see_through_share) {
+        face.reason = "seen_through";
+      } else {
+        face.closed = true;
+        face.reason = "face";
+      }
+    }
+    face.cell_indices = std::move(cells);
+    faces.push_back(face);
+  }
+  return faces;
 }
 
 } // namespace drone_city_nav

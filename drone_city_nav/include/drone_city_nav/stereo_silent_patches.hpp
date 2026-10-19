@@ -33,6 +33,8 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -96,31 +98,75 @@ silentPatches(std::span<const StereoDepthReturn> returns,
                                        double cone_half_angle_rad);
 
 // A face of dense smoke, or a surface the pair cannot texture, in the frame
-// (roadmap item 18, the smoke face detector; the owner, 2026-10-18: dense
-// smoke is an obstacle the vehicle sees and never enters). A closed patch
-// (above) whose cells are lit, and which the pair does not see through, is
-// a face at its rim's depth and enters the memory as observed unobservable
-// from there to the confident depth, as the dark frustum does (K14); a
-// closed patch that is dark is a shadow or the dark beyond the lamp (F13),
-// one the pair matches through is thin smoke the vehicle flies through
-// (F4). Measured on the smoke rig in a 4.4 m corridor (tools/smoke_rig.py,
-// tools/smoke_signature_report.py, log/tools/smoke_detector/part0): the
-// face of 3, 1 and 0.5 per metre within 4 m is a closed patch whose cells
-// read 35 to 58 raw grey (before the driver's gain), the dark beyond the
-// lamp 0 to 10; the far end of a corridor of 0.1 per metre closes a patch
-// too (rim 4.8 m, raw 37 to 39), but the pair matches through it, 1.6 to
-// 3.8 percent of the patch's cells deeper than the rim, against 0 to 0.1
-// percent for 0.5 per metre and more. The rim's median overshoots the true
-// face by 0.6 to 1.3 m (the pair sees into the face's soft edge).
+// (roadmap item 18, the smoke face detector, specification K44; the owner,
+// 2026-10-18: dense smoke is an obstacle the vehicle sees and never enters).
+// The silent cells that are LIT (raw grey, before the driver's gain, at
+// `lit_raw_grey` or more) are the pair's silence on something the lamp
+// reaches: a plume, or a surface the pair cannot texture; the dark silence
+// is shadow or the dark beyond the lamp (F13) and is left alone. A
+// connected region of lit silence is a face when its rim of hits lies at one
+// depth within the lamp's reach (as a closed patch's, above; its sectors and
+// the frame's border are not asked: a plume fills a corridor to the frame's
+// top, r1745, and the dark above it gives no rim) and the pair does not see
+// through it (free rays, matches deeper than the confident depth, under
+// `see_through_share` of its cells). The face enters the memory as observed
+// unobservable from its rim's depth over `face_slab_m` (K14's frustum rays),
+// and bounds the motion into it as a closed patch does. Measured on the
+// smoke rig in a 4.4 m corridor (tools/smoke_rig.py, tools/
+// smoke_signature_report.py, log/tools/smoke_detector/part0): the face of 3,
+// 1 and 0.5 per metre within 4 m reads 35 to 58 raw grey, the dark beyond
+// the lamp 0 to 10; the far end of a corridor of 0.1 per metre is lit silence
+// too (rim 4.8 m, raw 37 to 39) but the pair matches through it, 1.6 to 3.8
+// percent of its cells deeper than the rim, against 0 to 0.1 percent for 0.5
+// per metre and more. The rim's median overshoots the true face by 0.6 to
+// 1.3 m (the pair sees into the face's soft edge).
 struct SmokeFaceConfig {
   double lit_raw_grey{20.0};
   double see_through_share{0.005};
-  double face_before_rim_m{1.0};
+  double face_slab_m{1.5};
 };
 
-// Whether `patch`, closed, with its cells' raw grey median `raw_grey`, is a
-// face.
-[[nodiscard]] bool smokeFace(const SilentPatch& patch, double raw_grey,
-                             const SmokeFaceConfig& config);
+// The frame's cells on the stride grid, one byte each, row-major: lit where
+// the grey at the cell's pixel (the frame's rows `row_step` bytes apart) is
+// `lit_grey` or more.
+[[nodiscard]] std::vector<std::uint8_t>
+litCells(std::span<const std::uint8_t> grey, std::size_t row_step, std::size_t width,
+         std::size_t height, std::size_t stride, std::uint8_t lit_grey);
+
+// Seen where a return, a hit or a free ray, fell in the cell.
+[[nodiscard]] std::vector<std::uint8_t>
+seenCells(std::span<const StereoDepthReturn> returns,
+          const StereoPairGeometry& geometry, std::size_t stride, std::size_t width,
+          std::size_t height);
+
+// The stride cell a direction (the rectified forward-left-up frame) falls
+// in, or none outside the frame.
+[[nodiscard]] std::optional<std::size_t>
+strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
+             std::size_t stride, std::size_t width, std::size_t height);
+
+// The faces' rays for the memory: through the cells of each face (the closed
+// regions of `regions`) every `pitch_cells` cells each way, from the rim
+// (never nearer than `nearest_m`) over `slab_m` in steps of `step_m`; the
+// rectified forward-left-up frame, as every return. The slab starts at the
+// rim, not before it: a lit surface the pair cannot texture is a face too,
+// and marks before its rim would stand in free air (r1746: 48 670 marks
+// over a flight, a metre before every such surface).
+[[nodiscard]] std::vector<Point3> smokeFaceRays(std::span<const SilentPatch> regions,
+                                                const StereoPairGeometry& geometry,
+                                                std::size_t stride, std::size_t width,
+                                                double nearest_m, double slab_m,
+                                                double step_m, std::size_t pitch_cells);
+
+// The faces of the frame: `lit_cells` is one byte a stride cell, row-major,
+// nonzero where the cell's raw grey is lit; the rest as silentPatches. Each
+// face is a SilentPatch with `closed` true and the reason "face"; regions
+// of lit silence that are not faces are returned too, with their reason.
+[[nodiscard]] std::vector<SilentPatch>
+smokeFaces(std::span<const StereoDepthReturn> returns,
+           const StereoPairGeometry& geometry,
+           const StereoDepthReturnsConfig& returns_config, std::size_t width,
+           std::size_t height, std::span<const std::uint8_t> lit_cells,
+           const SilentPatchConfig& config, const SmokeFaceConfig& face_config);
 
 } // namespace drone_city_nav

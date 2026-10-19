@@ -70,7 +70,7 @@ class SimulationSmokeContractTest(unittest.TestCase):
             self.assertNotIn("SMOKE_ZONES", text)
             self.assertNotIn("smoke_zones", text)
             self.assertNotIn("manifest", text)
-        self.assertIn("smokeFace(", node)
+        self.assertIn("smokeFaces(", node)
         self.assertIn("smoke_faces=%zu face_range_m=%.1f", node)
 
     def test_the_replayed_world_reads_the_zones_as_the_model_does(self) -> None:

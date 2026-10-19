@@ -411,7 +411,7 @@ private:
         patches, [](const SilentPatch& patch) { return patch.closed; }));
     // The range a motion along the heading is bounded by (specification F13):
     // the rim's depth of a closed patch holding the frame's centre.
-    const double silent_range_m = silentRangeAheadM(
+    double silent_range_m = silentRangeAheadM(
         patches, geometry_, returns_config_.pixel_stride,
         image_width_ / returns_config_.pixel_stride,
         image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
@@ -419,37 +419,46 @@ private:
     silent_message.data = silent_range_m;
     silent_range_pub_->publish(silent_message);
     // The faces of dense smoke in the frame (the smoke face detector, roadmap
-    // item 18; specification K44): the closed patches whose cells are lit and
-    // which the pair does not see through. A cell's raw grey is the frame's
-    // over the driver's gain, as the light is read (K15).
+    // item 18; specification K44): the regions of lit silence whose rim lies
+    // at one depth and which the pair does not see through. A cell is lit by
+    // its raw grey, the frame's over the driver's gain, as the light is read
+    // (K15); a cell is seen where the pair returned a hit or a free ray.
+    const double face_gain =
+        std::max(1.0, camera_gain_.load(std::memory_order_relaxed));
+    const std::vector<std::uint8_t> lit_cells = litCells(
+        std::span<const std::uint8_t>{left_grey.data,
+                                      left_grey.step[0] * left_grey.rows},
+        left_grey.step[0], image_width_, image_height_, returns_config_.pixel_stride,
+        static_cast<std::uint8_t>(
+            std::min(255L, std::lround(smoke_face_config_.lit_raw_grey * face_gain))));
+    const std::vector<std::uint8_t> seen_cells =
+        seenCells(std::span<const StereoDepthReturn>{returns}, geometry_,
+                  returns_config_.pixel_stride, image_width_, image_height_);
+    const std::vector<SilentPatch> lit_regions =
+        smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
+                   returns_config_, image_width_, image_height_, lit_cells,
+                   silent_patch_config_, smoke_face_config_);
     std::vector<const SilentPatch*> faces;
     double face_range_m = std::numeric_limits<double>::quiet_NaN();
-    {
-      const double gain = std::max(1.0, camera_gain_.load(std::memory_order_relaxed));
-      const auto stride = static_cast<int>(returns_config_.pixel_stride);
-      const auto grid_columns =
-          static_cast<int>(image_width_ / returns_config_.pixel_stride);
-      std::vector<std::uint8_t> greys;
-      for (const SilentPatch& patch : patches) {
-        if (!patch.closed) {
-          continue;
-        }
-        greys.clear();
-        for (const std::size_t index : patch.cell_indices) {
-          const int row = static_cast<int>(index) / grid_columns * stride;
-          const int column = static_cast<int>(index) % grid_columns * stride;
-          greys.push_back(left_grey.at<std::uint8_t>(row, column));
-        }
-        const auto middle =
-            greys.begin() + static_cast<std::ptrdiff_t>(greys.size() / 2U);
-        std::ranges::nth_element(greys, middle);
-        if (smokeFace(patch, static_cast<double>(*middle) / gain, smoke_face_config_)) {
-          faces.push_back(&patch);
-          face_range_m = std::isfinite(face_range_m)
-                             ? std::min(face_range_m, patch.rim_depth_m)
-                             : patch.rim_depth_m;
-        }
+    for (const SilentPatch& region : lit_regions) {
+      if (region.closed) {
+        faces.push_back(&region);
+        face_range_m = std::isfinite(face_range_m)
+                           ? std::min(face_range_m, region.rim_depth_m)
+                           : region.rim_depth_m;
       }
+    }
+    // A face bounds the motion into it as a closed patch does (F13).
+    const double face_ahead_m = silentRangeAheadM(
+        lit_regions, geometry_, returns_config_.pixel_stride,
+        image_width_ / returns_config_.pixel_stride,
+        image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
+    if (std::isfinite(face_ahead_m)) {
+      silent_range_m = std::isfinite(silent_range_m)
+                           ? std::min(silent_range_m, face_ahead_m)
+                           : face_ahead_m;
+      silent_message.data = silent_range_m;
+      silent_range_pub_->publish(silent_message);
     }
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
     if (!rectifier_->ideal()) {
@@ -482,8 +491,27 @@ private:
       }
       const std::vector<float> intensities =
           decodePointCloudFloatField(*scan, "intensity").value_or(std::vector<float>{});
-      const std::vector<StereoDepthReturn> rays =
+      std::vector<StereoDepthReturn> rays =
           tofZoneReturns(*zones, sensor.config, intensities);
+      // The front unit's silence through the pair's lit silence is not free
+      // (K44, K38): a plume ahead returns nothing to the ring until the
+      // vehicle is inside, and a ray read free there lifted the face's marks
+      // from the memory (r1746: the vehicle held 1.4 m before the plume,
+      // the marks went, it entered). A zone that returned a surface stands.
+      if (&sensor == &tof_sensors_[kFrontTofSlot]) {
+        std::erase_if(rays, [&](const StereoDepthReturn& ray) {
+          if (ray.hit) {
+            return false;
+          }
+          const Eigen::Vector3d rectified =
+              rectified_to_physical_flu_.transpose() *
+              Eigen::Vector3d{ray.point.x, ray.point.y, ray.point.z};
+          const std::optional<std::size_t> cell = strideCellOf(
+              Point3{rectified.x(), rectified.y(), rectified.z()}, geometry_,
+              returns_config_.pixel_stride, image_width_, image_height_);
+          return cell.has_value() && seen_cells[*cell] == 0U && lit_cells[*cell] != 0U;
+        });
+      }
       tof_rays += rays.size();
       tof_zones += zones->size();
       for (std::size_t zone = 0U;
@@ -565,14 +593,17 @@ private:
     // The smoke faces, held over four frames (0.5 s at the pair's rate; the
     // dark's 2.5 s would carry a vehicle at 2 m/s 5 m toward a face) and
     // emitted twice a second: rays through each face's cells at the frustum's
-    // pitch, observed unobservable from before the rim (the rim overshoots
-    // the face, K44) to the confident depth.
+    // pitch, observed unobservable from the rim over the slab (K44).
     if (face_frames_ >= kFaceFrames &&
         (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_)) {
       face_emitted_s_ = stamp_s;
-      const std::size_t before = unobservable.size();
-      appendFaceRays(faces, unobservable);
-      face_marks_total_ += unobservable.size() - before;
+      const std::vector<Point3> rays = smokeFaceRays(
+          lit_regions, geometry_, returns_config_.pixel_stride, image_width_, kNearestM,
+          smoke_face_config_.face_slab_m, kStepM,
+          std::max<std::size_t>(1U, static_cast<std::size_t>(kRayPitchPx) /
+                                        returns_config_.pixel_stride));
+      unobservable.insert(unobservable.end(), rays.begin(), rays.end());
+      face_marks_total_ += rays.size();
     }
     if (!rectifier_->ideal()) {
       for (Point3& point : unobservable) {
@@ -732,42 +763,6 @@ private:
       }
     }
     return points;
-  }
-
-  // The rays of the smoke faces (K44): through the cells of each face at the
-  // frustum's pitch, from `face_before_rim_m` before the rim (never nearer
-  // than the frustum's nearest) to the confident depth, in the frustum's
-  // steps; the rectified forward-left-up frame, as every return.
-  void appendFaceRays(const std::vector<const SilentPatch*>& faces,
-                      std::vector<Point3>& points) const {
-    const std::size_t stride = returns_config_.pixel_stride;
-    const std::size_t grid_columns = image_width_ / stride;
-    const std::size_t pitch_cells =
-        std::max<std::size_t>(1U, static_cast<std::size_t>(kRayPitchPx) / stride);
-    const double far_m = stereoConfidentDepthM(geometry_, returns_config_);
-    for (const SilentPatch* face : faces) {
-      const double nearest_m =
-          std::max(kNearestM, face->rim_depth_m - smoke_face_config_.face_before_rim_m);
-      for (const std::size_t index : face->cell_indices) {
-        const std::size_t row_cell = index / grid_columns;
-        const std::size_t column_cell = index % grid_columns;
-        if (row_cell % pitch_cells != 0U || column_cell % pitch_cells != 0U) {
-          continue;
-        }
-        const double column_px = static_cast<double>(column_cell * stride) +
-                                 0.5 * static_cast<double>(stride);
-        const double row_px =
-            static_cast<double>(row_cell * stride) + 0.5 * static_cast<double>(stride);
-        const double left =
-            -(column_px - geometry_.principal_x_px) / geometry_.focal_px;
-        const double up = -(row_px - geometry_.principal_y_px) / geometry_.focal_px;
-        const double norm = std::sqrt(1.0 + left * left + up * up);
-        for (double range_m = nearest_m; range_m <= far_m; range_m += kStepM) {
-          const double along = range_m / norm;
-          points.push_back(Point3{along, along * left, along * up});
-        }
-      }
-    }
   }
 
   // Roadmap item 17 stage 3: the mean grey level of the matched pixels in
