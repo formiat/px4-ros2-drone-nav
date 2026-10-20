@@ -196,12 +196,15 @@ struct SmokeFaceConfig {
   // read a face at 2.1 m frame after frame, and its marks held the vehicle
   // high and blind). A rimmed face is confirmed once the vehicle has
   // travelled `least_travel_m` along the camera's axis since the face was
-  // first seen, with the rim nearer by `shrink_share` of that travel (the
-  // rim's quartile scatters by up to a metre, so a metre of travel and half
-  // of it). A lit body in the dark, whose depth is a brightness step, is
-  // confirmed by frames instead.
-  double least_travel_m{1.0};
-  double shrink_share{0.5};
+  // first seen and the rim's depth, regressed on the travel over every
+  // frame since, falls by `shrink_slope` or steeper per metre of it (a
+  // plume's by one; a veil's by nought: its rim's quartile scatters by up to
+  // 0.8 m from frame to frame, and the first depth against the least seen
+  // confirmed the veil of the west hall, r1871, 70 000 marks in 13 s). A lit
+  // body in the dark, whose depth is a brightness step, is confirmed by
+  // frames instead.
+  double least_travel_m{1.2};
+  double shrink_slope{0.5};
 };
 
 // The confirmation of a rimmed face by the vehicle's travel toward it
@@ -219,9 +222,14 @@ public:
   }
 
 private:
-  std::optional<double> first_depth_m_;
-  double first_along_m_{0.0};
-  double least_depth_m_{0.0};
+  // The regression of the rim's depth on the travel: the sums of the frames
+  // since the face was first seen.
+  std::optional<double> first_along_m_;
+  double count_{0.0};
+  double sum_a_{0.0};
+  double sum_d_{0.0};
+  double sum_aa_{0.0};
+  double sum_ad_{0.0};
   bool confirmed_{false};
 };
 

@@ -403,33 +403,32 @@ TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
 }
 
 TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
-  // r1867: the veil of a thin hall keeps its rim at the lamp's reach
-  // however the vehicle moves; a plume's face comes nearer by the travel.
+  // r1867, r1871: the veil of a thin hall keeps its rim at the lamp's reach
+  // however the vehicle moves, the rim's quartile scattering by up to 0.8 m
+  // from frame to frame; a plume's face comes nearer by the travel.
   const SmokeFaceConfig config{};
+  const double jitter[] = {0.3, -0.4, 0.1, 0.4, -0.3, -0.1, 0.2, -0.2};
   FaceApproach veil;
-  for (int step = 0; step <= 20; ++step) {
-    veil.observe(true, 2.1, 0.1 * step, config);
+  for (int step = 0; step <= 24; ++step) {
+    veil.observe(true, 2.3 + jitter[step % 8], 0.1 * step, config);
+    EXPECT_FALSE(veil.confirmed()) << step;
   }
-  EXPECT_FALSE(veil.confirmed());
   FaceApproach plume;
-  for (int step = 0; step <= 20; ++step) {
-    plume.observe(true, 4.6 - 0.1 * step, 0.1 * step, config);
-    if (step < 10) {
+  bool confirmed_at_travel{false};
+  for (int step = 0; step <= 24; ++step) {
+    plume.observe(true, 4.6 - 0.1 * step + jitter[step % 8], 0.1 * step, config);
+    if (step < 12) {
       EXPECT_FALSE(plume.confirmed()) << step;
     }
+    confirmed_at_travel = confirmed_at_travel || (step <= 16 && plume.confirmed());
   }
   EXPECT_TRUE(plume.confirmed());
-  // The rim's scatter: a metre of travel with the rim nearer by half of it
-  // confirms; a frame without a rimmed face starts over.
-  FaceApproach scattered;
-  scattered.observe(true, 4.0, 0.0, config);
-  scattered.observe(true, 4.3, 0.5, config);
-  scattered.observe(true, 3.4, 1.0, config);
-  EXPECT_TRUE(scattered.confirmed());
-  scattered.observe(false, 0.0, 1.2, config);
-  EXPECT_FALSE(scattered.confirmed());
-  scattered.observe(true, 3.0, 1.3, config);
-  EXPECT_FALSE(scattered.confirmed());
+  EXPECT_TRUE(confirmed_at_travel);
+  // A frame without a rimmed face starts over.
+  plume.observe(false, 0.0, 2.6, config);
+  EXPECT_FALSE(plume.confirmed());
+  plume.observe(true, 2.0, 2.7, config);
+  EXPECT_FALSE(plume.confirmed());
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {

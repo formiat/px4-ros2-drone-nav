@@ -347,22 +347,27 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 void FaceApproach::observe(const bool face, const double rim_depth_m,
                            const double along_m, const SmokeFaceConfig& config) {
   if (!face || !std::isfinite(rim_depth_m)) {
-    first_depth_m_.reset();
+    first_along_m_.reset();
     confirmed_ = false;
     return;
   }
-  if (!first_depth_m_.has_value()) {
-    first_depth_m_ = rim_depth_m;
+  if (!first_along_m_.has_value()) {
     first_along_m_ = along_m;
-    least_depth_m_ = rim_depth_m;
+    count_ = sum_a_ = sum_d_ = sum_aa_ = sum_ad_ = 0.0;
     confirmed_ = false;
-    return;
   }
-  least_depth_m_ = std::min(least_depth_m_, rim_depth_m);
-  const double travel_m = along_m - first_along_m_;
-  if (travel_m >= config.least_travel_m &&
-      *first_depth_m_ - least_depth_m_ >= config.shrink_share * travel_m) {
-    confirmed_ = true;
+  const double travel_m = along_m - *first_along_m_;
+  count_ += 1.0;
+  sum_a_ += travel_m;
+  sum_d_ += rim_depth_m;
+  sum_aa_ += travel_m * travel_m;
+  sum_ad_ += travel_m * rim_depth_m;
+  const double spread = count_ * sum_aa_ - sum_a_ * sum_a_;
+  if (travel_m >= config.least_travel_m && spread > 1.0e-9) {
+    const double slope = (count_ * sum_ad_ - sum_a_ * sum_d_) / spread;
+    if (slope <= -config.shrink_slope) {
+      confirmed_ = true;
+    }
   }
 }
 
