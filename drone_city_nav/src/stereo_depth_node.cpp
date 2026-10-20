@@ -450,8 +450,7 @@ private:
     if (candidate != nullptr && std::isfinite(candidate->centre_rim_depth_m)) {
       candidate->rim_depth_m = candidate->centre_rim_depth_m;
     }
-    face_approach_.observe(candidate, along_m_.load(), smoke_face_config_);
-    if (candidate != nullptr && face_approach_.confirmed()) {
+    if (face_approach_.observe(candidate, along_m_.load(), smoke_face_config_)) {
       candidate->closed = true;
       candidate->reason = "plume";
     }

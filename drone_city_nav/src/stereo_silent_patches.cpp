@@ -344,59 +344,67 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
   return row * (width / stride) + column;
 }
 
-void FaceApproach::observe(const SilentPatch* candidate, const double along_m,
+bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
                            const SmokeFaceConfig& config) {
   halo_m_ = config.halo_m;
-  const bool front = candidate != nullptr && std::isfinite(candidate->rim_depth_m) &&
-                     candidate->cells >= config.front_cells &&
+  const bool seen = candidate != nullptr && std::isfinite(candidate->rim_depth_m);
+  const bool plume_like =
+      seen && candidate->cells >= config.lay_cells &&
+      static_cast<double>(candidate->free_neighbours) <=
+          config.lay_see_through_share * static_cast<double>(candidate->cells);
+  const bool front = plume_like &&
                      candidate->rim_spread_m <= config.front_rim_spread_m &&
                      candidate->rim_trend < config.front_rim_trend_share;
   front_frames_ = front ? front_frames_ + 1U : 0U;
-  front_confirmed_ = front_frames_ >= config.front_frames;
-  if (candidate != nullptr && std::isfinite(candidate->rim_depth_m)) {
-    last_depth_m_ = candidate->rim_depth_m;
-    last_along_m_ = along_m;
-  }
-  if (candidate == nullptr || !std::isfinite(candidate->rim_depth_m) ||
+  bool approach{false};
+  if (!seen ||
       (!window_.empty() &&
        std::hypot(candidate->centre_row - centre_row_,
                   candidate->centre_column - centre_column_) > config.drift_cells)) {
     if (++lost_ > config.lost_frames) {
       window_.clear();
-      confirmed_ = false;
     }
-    return;
-  }
-  lost_ = 0U;
-  centre_row_ = candidate->centre_row;
-  centre_column_ = candidate->centre_column;
-  window_.emplace_back(along_m, candidate->rim_depth_m);
-  while (window_.size() > config.window_frames ||
-         window_.front().first < along_m - 2.0 * config.least_travel_m) {
-    window_.pop_front();
-  }
-  double count{0.0};
-  double sum_a{0.0};
-  double sum_d{0.0};
-  double sum_aa{0.0};
-  double sum_ad{0.0};
-  for (const auto& [travel_m, depth_m] : window_) {
-    count += 1.0;
-    sum_a += travel_m;
-    sum_d += depth_m;
-    sum_aa += travel_m * travel_m;
-    sum_ad += travel_m * depth_m;
-  }
-  const double spread = count * sum_aa - sum_a * sum_a;
-  const double span_m = along_m - window_.front().first;
-  confirmed_ = span_m >= config.least_travel_m && spread > 1.0e-9 &&
+  } else {
+    lost_ = 0U;
+    centre_row_ = candidate->centre_row;
+    centre_column_ = candidate->centre_column;
+    window_.emplace_back(along_m, candidate->rim_depth_m);
+    while (window_.size() > config.window_frames ||
+           window_.front().first < along_m - 2.0 * config.least_travel_m) {
+      window_.pop_front();
+    }
+    double count{0.0};
+    double sum_a{0.0};
+    double sum_d{0.0};
+    double sum_aa{0.0};
+    double sum_ad{0.0};
+    for (const auto& [travel_m, depth_m] : window_) {
+      count += 1.0;
+      sum_a += travel_m;
+      sum_d += depth_m;
+      sum_aa += travel_m * travel_m;
+      sum_ad += travel_m * depth_m;
+    }
+    const double spread = count * sum_aa - sum_a * sum_a;
+    const double span_m = along_m - window_.front().first;
+    approach = span_m >= config.least_travel_m && spread > 1.0e-9 &&
                (count * sum_ad - sum_a * sum_d) / spread <= -config.shrink_slope;
+  }
+  const bool lay = plume_like && (approach || front_frames_ >= config.front_frames);
+  if (lay) {
+    laid_ = true;
+    laid_lost_ = 0U;
+    last_depth_m_ = candidate->rim_depth_m;
+    last_along_m_ = along_m;
+  } else if (laid_ && ++laid_lost_ > config.lost_frames) {
+    laid_ = false;
+  }
+  return lay;
 }
 
 double FaceApproach::boundM(const double along_m) const noexcept {
-  return confirmed()
-             ? std::max(0.0, last_depth_m_ - (along_m - last_along_m_) - halo_m_)
-             : std::numeric_limits<double>::quiet_NaN();
+  return laid_ ? std::max(0.0, last_depth_m_ - (along_m - last_along_m_) - halo_m_)
+               : std::numeric_limits<double>::quiet_NaN();
 }
 
 std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,

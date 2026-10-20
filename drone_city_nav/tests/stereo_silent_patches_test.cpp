@@ -412,7 +412,9 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   const auto sample = [](const double depth_m, const double row = 120.0,
                          const double column = 160.0) {
     SilentPatch candidate;
+    candidate.cells = 20000U;
     candidate.rim_depth_m = depth_m;
+    candidate.rim_spread_m = 0.8;
     candidate.centre_row = row;
     candidate.centre_column = column;
     return candidate;
@@ -493,6 +495,22 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     floor.rim_trend = 0.9;
     expanse.observe(&floor, 0.0, config);
     EXPECT_FALSE(expanse.confirmed()) << frame;
+  }
+  // A candidate that comes nearer like a plume lays nothing while it is
+  // under the plume's size or the pair matches through it (r1937: the thin
+  // hall's veil at 1.2 to 1.3 percent).
+  for (const bool small : {true, false}) {
+    FaceApproach unlaid;
+    for (int step = 0; step <= 24; ++step) {
+      SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
+      if (small) {
+        frame.cells = 12000U;
+      } else {
+        frame.free_neighbours = 260U;
+      }
+      EXPECT_FALSE(unlaid.observe(&frame, 0.1 * step, config)) << step;
+      EXPECT_FALSE(unlaid.confirmed()) << step;
+    }
   }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
