@@ -69,10 +69,9 @@ constexpr std::array<TofMount, kTofSensorCount> kTofMounts = {{
 } // namespace
 
 // Depth from a rectified stereo pair by semi-global matching, published as the
-// returns of a sensor that answers only where it measured: one ray per
-// matched pixel in the left camera's forward-left-up frame, stamped with the
-// frame, a surface within the confident depth and free space alone beyond it.
-// A pixel without a match is no observation.
+// returns of a sensor that answers only where it measured: one ray a matched
+// pixel in the left camera's forward-left-up frame, a surface within the
+// confident depth and free space beyond it; an unmatched pixel is no observation.
 class StereoDepthNode final : public rclcpp::Node {
 public:
   explicit StereoDepthNode(const rclcpp::NodeOptions& options)
@@ -114,9 +113,8 @@ public:
     // resolution; 108 ms on two threads against 187 for one search of 256
     // disparities, the same depth recovered (r476, 0.97/0.84/0.66 of the
     // pixels within a voxel of the truth at 4 to 6, 6 to 8, 8 to 10 m).
-    // The threads are capped because the matcher otherwise takes every core:
-    // on the shadow flight r478 the lidar-inertial estimator's scans grew from
-    // 80 to 200 ms beside it, the estimate diverged, and the vehicle crashed.
+    // The threads are capped: the matcher otherwise takes every core (r478:
+    // the lidar-inertial scans grew from 80 to 200 ms, the vehicle crashed).
     cv::setNumThreads(declare_parameter<int>("matcher_threads", 2));
     far_disparities_ = declare_parameter<int>("far_disparity_px", 64);
     const int near_disparities =
@@ -186,8 +184,8 @@ public:
         image_qos, [this](const std_msgs::msg::Float64::ConstSharedPtr gain) {
           camera_gain_.store(std::max(1.0, gain->data), std::memory_order_relaxed);
         });
-    // The travel along the camera's axis (K44): the camera estimator's pose on its
-    // heading.
+    // The travel along the camera's axis and the heading (K44), by the camera
+    // estimator.
     along_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         declare_parameter<std::string>("visual_inertial_pose_topic",
                                        "/drone_city_nav/visual_inertial_odometry/pose"),
@@ -203,6 +201,7 @@ public:
                            (t.y - along_last_->second) * std::sin(yaw));
           }
           along_last_ = std::pair{t.x, t.y};
+          heading_rad_.store(yaw);
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -441,8 +440,7 @@ private:
         smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
                    returns_config_, image_width_, image_height_, raw_cells,
                    silent_patch_config_, smoke_face_config_);
-    // The plume (K44): the largest lit rimmed region of a plume's size,
-    // confirmed by the travel toward it whatever its look.
+    // The plume (K44): the largest lit rimmed region of a plume's size.
     SilentPatch* candidate =
         plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_,
                        image_width_ / returns_config_.pixel_stride,
@@ -450,7 +448,10 @@ private:
     if (candidate != nullptr && std::isfinite(candidate->centre_rim_depth_m)) {
       candidate->rim_depth_m = candidate->centre_rim_depth_m;
     }
-    if (face_approach_.observe(candidate, along_m_.load(), smoke_face_config_)) {
+    if (face_approach_.observe(candidate, along_m_.load(), heading_rad_.load(),
+                               geometry_.focal_px /
+                                   static_cast<double>(returns_config_.pixel_stride),
+                               smoke_face_config_)) {
       candidate->closed = true;
       candidate->reason = "plume";
     }
@@ -839,10 +840,8 @@ private:
     cv::boxFilter(grey_float, mean, CV_32F, window);
     cv::boxFilter(grey_float.mul(grey_float), mean_square, CV_32F, window);
     // The operator's response is six noise deviations on a flat patch and
-    // far more on an edge; its median is the flat patches', and the edges of
-    // a textured scene do not move it the way they moved the mean (r765: the
-    // mean read texture as noise and discarded two thirds of a lit frame's
-    // matches).
+    // far more on an edge; its median is the flat patches' (r765: the mean read
+    // texture as noise and discarded two thirds of a lit frame's matches).
     std::vector<std::size_t> histograms(kBrightnessBins * kLaplacianBins, 0U);
     std::array<std::size_t, kBrightnessBins> samples{};
     for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
@@ -956,6 +955,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr along_sub_;
   std::optional<std::pair<double, double>> along_last_;
   std::atomic<double> along_m_{0.0};
+  std::atomic<double> heading_rad_{0.0};
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
   std::size_t face_rays_dropped_{0U};

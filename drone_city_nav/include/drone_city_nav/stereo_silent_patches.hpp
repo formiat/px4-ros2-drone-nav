@@ -237,7 +237,12 @@ struct SmokeFaceConfig {
   // largest lit region switched between patches of the floor, the ceiling
   // and the near wall at different depths, and the switches alone made
   // the window's slope, 100 emissions of marks along a route with one
-  // plume). A candidate stands in the central band of the frame, the
+  // plume). The heading's turn between the frames moves the centroid by
+  // the turn's share of the frame and is no drift (r1941: the heading swung
+  // by 15 degrees either way on the approach, the plume's centroid by 40 to
+  // 80 cells, every swing reset the window and the plume was never
+  // confirmed; the vehicle flew to 0.2 m from the dense box, went blind and
+  // landed). A candidate stands in the central band of the frame, the
   // middle three quarters across and from a sixth to two thirds down: a
   // plume ahead fills the centre, the floor the bottom, the near wall the
   // side (r1902, the false candidates' centroids).
@@ -300,8 +305,10 @@ struct SmokeFaceConfig {
 // The confirmation of the plume candidate by the vehicle's travel toward it
 // (SmokeFaceConfig). `observe` takes each frame: the candidate (null when
 // the frame has none; one whose centroid drifted by more than `drift_cells`
-// is another region, a loss) and the vehicle's travel along the camera's
-// axis so far (the estimator's position projected on its heading, summed);
+// beyond what the turn of the heading since the last accepted frame moves it
+// by is another region, a loss), the vehicle's travel along the camera's
+// axis so far (the estimator's position projected on its heading, summed),
+// the heading and the grid's cells a radian of it spans;
 // a candidate lost for more than `lost_frames` frames starts over; a
 // candidate with a front's signature over `front_frames` frames running is
 // confirmed without the travel. It returns whether the candidate's marks are
@@ -312,8 +319,8 @@ struct SmokeFaceConfig {
 // unless laid.
 class FaceApproach {
 public:
-  bool observe(const SilentPatch* candidate, double along_m,
-               const SmokeFaceConfig& config);
+  bool observe(const SilentPatch* candidate, double along_m, double heading_rad,
+               double cells_per_rad, const SmokeFaceConfig& config);
 
   [[nodiscard]] bool confirmed() const noexcept {
     return laid_;
@@ -329,6 +336,7 @@ private:
   std::deque<std::pair<double, double>> window_;
   double centre_row_{0.0};
   double centre_column_{0.0};
+  double centre_heading_rad_{0.0};
   std::size_t lost_{0U};
   std::size_t front_frames_{0U};
   double last_depth_m_{0.0};

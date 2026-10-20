@@ -345,6 +345,7 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 }
 
 bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
+                           const double heading_rad, const double cells_per_rad,
                            const SmokeFaceConfig& config) {
   halo_m_ = config.halo_m;
   const bool seen = candidate != nullptr && std::isfinite(candidate->rim_depth_m);
@@ -357,10 +358,13 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
                      candidate->rim_trend < config.front_rim_trend_share;
   front_frames_ = front ? front_frames_ + 1U : 0U;
   bool approach{false};
+  const double turn_rad =
+      std::remainder(heading_rad - centre_heading_rad_, 2.0 * std::numbers::pi);
   if (!seen ||
-      (!window_.empty() &&
-       std::hypot(candidate->centre_row - centre_row_,
-                  candidate->centre_column - centre_column_) > config.drift_cells)) {
+      (!window_.empty() && std::hypot(candidate->centre_row - centre_row_,
+                                      candidate->centre_column -
+                                          (centre_column_ + turn_rad * cells_per_rad)) >
+                               config.drift_cells)) {
     if (++lost_ > config.lost_frames) {
       window_.clear();
     }
@@ -368,6 +372,7 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     lost_ = 0U;
     centre_row_ = candidate->centre_row;
     centre_column_ = candidate->centre_column;
+    centre_heading_rad_ = heading_rad;
     window_.emplace_back(along_m, candidate->rim_depth_m);
     while (window_.size() > config.window_frames ||
            window_.front().first < along_m - 2.0 * config.least_travel_m) {

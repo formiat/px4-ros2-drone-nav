@@ -403,6 +403,10 @@ TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
   EXPECT_EQ(dropEnclosedFreeRays(open, seen, kGeometry, 4U, kWidth, kHeight, 0.03), 0U);
 }
 
+// The stride grid's cells a radian of heading spans (a focal length of
+// 369.5 px at the stride of 4).
+constexpr double kCellsPerRad{92.4};
+
 TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // r1867, r1871: the veil of a thin hall keeps its rim at the lamp's reach
   // however the vehicle moves, the rim's quartile scattering by up to 0.8 m
@@ -422,14 +426,14 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   FaceApproach veil;
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(2.3 + jitter[step % 8]);
-    veil.observe(&frame, 0.1 * step, config);
+    veil.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
     EXPECT_FALSE(veil.confirmed()) << step;
   }
   FaceApproach plume;
   bool confirmed_at_travel{false};
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
-    plume.observe(&frame, 0.1 * step, config);
+    plume.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
     if (step < 12) {
       EXPECT_FALSE(plume.confirmed()) << step;
     }
@@ -440,25 +444,26 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // A candidate lost for a few frames (the verdict flickers close to a
   // plume) keeps its confirmation and bounds the motion by its last rim less
   // the travel since; lost for longer, it starts over.
-  plume.observe(nullptr, 2.6, config);
+  plume.observe(nullptr, 2.6, 0.0, kCellsPerRad, config);
   EXPECT_TRUE(plume.confirmed());
   EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3 - config.halo_m, 1e-9);
   for (std::size_t lost = 1U; lost < config.lost_frames; ++lost) {
-    plume.observe(nullptr, 2.6 + 0.1 * static_cast<double>(lost), config);
+    plume.observe(nullptr, 2.6 + 0.1 * static_cast<double>(lost), 0.0, kCellsPerRad,
+                  config);
   }
   EXPECT_TRUE(plume.confirmed());
-  plume.observe(nullptr, 3.5, config);
+  plume.observe(nullptr, 3.5, 0.0, kCellsPerRad, config);
   EXPECT_FALSE(plume.confirmed());
   EXPECT_TRUE(std::isnan(plume.boundM(3.5)));
   const SilentPatch again = sample(2.0);
-  plume.observe(&again, 3.6, config);
+  plume.observe(&again, 3.6, 0.0, kCellsPerRad, config);
   EXPECT_FALSE(plume.confirmed());
   // A plume's front read from the rim's nearest quartile comes nearer by
   // half the travel (r1890).
   FaceApproach soft;
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(3.0 - 0.05 * step + jitter[step % 8]);
-    soft.observe(&frame, 0.1 * step, config);
+    soft.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
   }
   EXPECT_TRUE(soft.confirmed());
   // The confirmation holds only while the window's slope does: a hover
@@ -466,12 +471,12 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // recedes is none (r1898).
   for (std::size_t frame = 0U; frame < config.window_frames; ++frame) {
     const SilentPatch hover = sample(1.8 + jitter[frame % 8]);
-    soft.observe(&hover, 2.4, config);
+    soft.observe(&hover, 2.4, 0.0, kCellsPerRad, config);
   }
   EXPECT_FALSE(soft.confirmed());
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(1.8 + 0.1 * step + jitter[step % 8]);
-    soft.observe(&frame, 2.4 + 0.1 * step, config);
+    soft.observe(&frame, 2.4 + 0.1 * step, 0.0, kCellsPerRad, config);
   }
   EXPECT_FALSE(soft.confirmed());
   // A front's signature (a large region, a flat rim without a trend) over
@@ -483,7 +488,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     face.cells = 22000U;
     face.rim_spread_m = 0.12;
     face.rim_trend = 0.03;
-    front.observe(&face, 0.0, config);
+    front.observe(&face, 0.0, 0.0, kCellsPerRad, config);
     EXPECT_EQ(front.confirmed(), frame == 2) << frame;
   }
   EXPECT_NEAR(front.boundM(0.5), 2.96 - 0.5 - config.halo_m, 1e-9);
@@ -493,7 +498,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     floor.cells = 24000U;
     floor.rim_spread_m = 0.3;
     floor.rim_trend = 0.9;
-    expanse.observe(&floor, 0.0, config);
+    expanse.observe(&floor, 0.0, 0.0, kCellsPerRad, config);
     EXPECT_FALSE(expanse.confirmed()) << frame;
   }
   // A candidate that comes nearer like a plume lays nothing while it is
@@ -508,10 +513,21 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
       } else {
         frame.free_neighbours = 260U;
       }
-      EXPECT_FALSE(unlaid.observe(&frame, 0.1 * step, config)) << step;
+      EXPECT_FALSE(unlaid.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config))
+          << step;
       EXPECT_FALSE(unlaid.confirmed()) << step;
     }
   }
+  // The heading swinging by 15 degrees either way moves the plume's
+  // centroid with it, and is no drift (r1941).
+  FaceApproach swinging;
+  for (int step = 0; step <= 24; ++step) {
+    const double heading = (step % 2 == 0 ? 0.26 : -0.26);
+    const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8], 120.0,
+                                     160.0 + heading * kCellsPerRad);
+    swinging.observe(&frame, 0.1 * step, heading, kCellsPerRad, config);
+  }
+  EXPECT_TRUE(swinging.confirmed());
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
   // taking over from a farther one makes no approach (r1902).
@@ -520,7 +536,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     const SilentPatch frame =
         step < 12 ? sample(4.6 - 0.1 * step + jitter[step % 8], 100.0)
                   : sample(2.0 - 0.1 * (step - 12) + jitter[step % 8], 160.0);
-    switching.observe(&frame, 0.1 * step, config);
+    switching.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
     EXPECT_FALSE(switching.confirmed()) << step;
   }
 }
