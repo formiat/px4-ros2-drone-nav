@@ -74,6 +74,9 @@ struct SilentPatch {
   // The share of the rim depths' variance a plane over the rim explains (a
   // face's judgment, K44): nought for a scatter, one for a recession.
   double rim_trend{0.0};
+  // The region's centroid on the stride grid (smokeFaces).
+  double centre_row{0.0};
+  double centre_column{0.0};
   // Whether the patch may be a surface at its rim's depth.
   bool closed{false};
   // Why not: rim beyond reach, rim recedes, too few rim hits, the rim not
@@ -225,6 +228,17 @@ struct SmokeFaceConfig {
   double shrink_slope{0.3};
   std::size_t lost_frames{8U};
   std::size_t window_frames{64U};
+  // The candidate is one region from frame to frame: a candidate whose
+  // centroid has moved more than `drift_cells` on the stride grid since the
+  // last accepted is another region and counts as a loss (r1902: the
+  // largest lit region switched between patches of the floor, the ceiling
+  // and the near wall at different depths, and the switches alone made
+  // the window's slope, 100 emissions of marks along a route with one
+  // plume). A candidate stands in the central band of the frame, the
+  // middle three quarters across and from a sixth to two thirds down: a
+  // plume ahead fills the centre, the floor the bottom, the near wall the
+  // side (r1902, the false candidates' centroids).
+  double drift_cells{40.0};
   // The plume candidate the travel confirms: the largest lit rimmed region
   // of this many cells or more (a fortieth of the frame at the stride of 4)
   // within the confident depth, whatever its look. The rim's look alone
@@ -237,17 +251,18 @@ struct SmokeFaceConfig {
   std::size_t plume_cells{2000U};
 };
 
-// The confirmation of a rimmed face by the vehicle's travel toward it
-// (SmokeFaceConfig). `observe` takes each frame: whether a rimmed face
-// stands in it, the nearest rim's depth, and the vehicle's travel along the
-// camera's axis so far (the autopilot's position projected on its heading,
-// summed); a face lost for more than `lost_frames` frames starts over.
+// The confirmation of the plume candidate by the vehicle's travel toward it
+// (SmokeFaceConfig). `observe` takes each frame: the candidate (null when
+// the frame has none; one whose centroid drifted by more than `drift_cells`
+// is another region, a loss) and the vehicle's travel along the camera's
+// axis so far (the estimator's position projected on its heading, summed);
+// a candidate lost for more than `lost_frames` frames starts over.
 // `boundM` is the depth a confirmed face bounds the motion by while the
 // frame's verdict flickers: its rim at its last sighting less the travel
 // since, NaN unless confirmed.
 class FaceApproach {
 public:
-  void observe(bool face, double rim_depth_m, double along_m,
+  void observe(const SilentPatch* candidate, double along_m,
                const SmokeFaceConfig& config);
 
   [[nodiscard]] bool confirmed() const noexcept {
@@ -260,6 +275,8 @@ private:
   // The window's frames (the travel and the rim's depth), oldest first, and
   // the frames lost since the last.
   std::deque<std::pair<double, double>> window_;
+  double centre_row_{0.0};
+  double centre_column_{0.0};
   std::size_t lost_{0U};
   bool confirmed_{false};
 };
@@ -316,10 +333,13 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
 
 // The plume candidate among the frame's lit regions (SmokeFaceConfig
 // `plume_cells`), or null: the largest of the regions of that size with a
-// rim within the confident depth that is neither a surface nor a body.
+// rim within the confident depth that is neither a surface nor a body,
+// whose centroid lies in the frame's central band (`columns` by `rows` is
+// the stride grid).
 [[nodiscard]] SilentPatch* plumeCandidate(std::span<SilentPatch> regions,
                                           const SilentPatchConfig& config,
-                                          const SmokeFaceConfig& face_config);
+                                          const SmokeFaceConfig& face_config,
+                                          std::size_t columns, std::size_t rows);
 
 // The depth a motion along the camera's axis is bounded by among the faces
 // whose marks are due (the plume while `rimmed_due`, the bodies while

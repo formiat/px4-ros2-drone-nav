@@ -444,12 +444,10 @@ private:
     // The plume (K44): the largest lit rimmed region of a plume's size,
     // confirmed by the travel toward it whatever its look.
     SilentPatch* candidate =
-        plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_);
-    face_approach_.observe(candidate != nullptr,
-                           candidate == nullptr
-                               ? std::numeric_limits<double>::quiet_NaN()
-                               : candidate->rim_depth_m,
-                           along_m_.load(), smoke_face_config_);
+        plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_,
+                       image_width_ / returns_config_.pixel_stride,
+                       image_height_ / returns_config_.pixel_stride);
+    face_approach_.observe(candidate, along_m_.load(), smoke_face_config_);
     if (candidate != nullptr && face_approach_.confirmed()) {
       candidate->closed = true;
       candidate->reason = "plume";

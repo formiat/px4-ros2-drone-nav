@@ -408,15 +408,25 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // from frame to frame; a plume's face comes nearer by the travel.
   const SmokeFaceConfig config{};
   const double jitter[] = {0.3, -0.4, 0.1, 0.4, -0.3, -0.1, 0.2, -0.2};
+  const auto sample = [](const double depth_m, const double row = 120.0,
+                         const double column = 160.0) {
+    SilentPatch candidate;
+    candidate.rim_depth_m = depth_m;
+    candidate.centre_row = row;
+    candidate.centre_column = column;
+    return candidate;
+  };
   FaceApproach veil;
   for (int step = 0; step <= 24; ++step) {
-    veil.observe(true, 2.3 + jitter[step % 8], 0.1 * step, config);
+    const SilentPatch frame = sample(2.3 + jitter[step % 8]);
+    veil.observe(&frame, 0.1 * step, config);
     EXPECT_FALSE(veil.confirmed()) << step;
   }
   FaceApproach plume;
   bool confirmed_at_travel{false};
   for (int step = 0; step <= 24; ++step) {
-    plume.observe(true, 4.6 - 0.1 * step + jitter[step % 8], 0.1 * step, config);
+    const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
+    plume.observe(&frame, 0.1 * step, config);
     if (step < 12) {
       EXPECT_FALSE(plume.confirmed()) << step;
     }
@@ -424,73 +434,92 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   }
   EXPECT_TRUE(plume.confirmed());
   EXPECT_TRUE(confirmed_at_travel);
-  // A face lost for a few frames (the verdict flickers close to a plume)
-  // keeps its confirmation and bounds the motion by its last rim less the
-  // travel since; lost for longer, it starts over.
-  plume.observe(false, 0.0, 2.6, config);
+  // A candidate lost for a few frames (the verdict flickers close to a
+  // plume) keeps its confirmation and bounds the motion by its last rim less
+  // the travel since; lost for longer, it starts over.
+  plume.observe(nullptr, 2.6, config);
   EXPECT_TRUE(plume.confirmed());
   EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3, 1e-9);
   for (std::size_t lost = 1U; lost < config.lost_frames; ++lost) {
-    plume.observe(false, 0.0, 2.6 + 0.1 * static_cast<double>(lost), config);
+    plume.observe(nullptr, 2.6 + 0.1 * static_cast<double>(lost), config);
   }
   EXPECT_TRUE(plume.confirmed());
-  plume.observe(false, 0.0, 3.5, config);
+  plume.observe(nullptr, 3.5, config);
   EXPECT_FALSE(plume.confirmed());
   EXPECT_TRUE(std::isnan(plume.boundM(3.5)));
-  plume.observe(true, 2.0, 3.6, config);
+  const SilentPatch again = sample(2.0);
+  plume.observe(&again, 3.6, config);
   EXPECT_FALSE(plume.confirmed());
   // A plume's front read from the rim's nearest quartile comes nearer by
   // half the travel (r1890).
   FaceApproach soft;
   for (int step = 0; step <= 24; ++step) {
-    soft.observe(true, 3.0 - 0.05 * step + jitter[step % 8], 0.1 * step, config);
+    const SilentPatch frame = sample(3.0 - 0.05 * step + jitter[step % 8]);
+    soft.observe(&frame, 0.1 * step, config);
   }
   EXPECT_TRUE(soft.confirmed());
   // The confirmation holds only while the window's slope does: a hover
   // before the candidate outlasts the window, and a candidate that then
   // recedes is none (r1898).
   for (std::size_t frame = 0U; frame < config.window_frames; ++frame) {
-    soft.observe(true, 1.8 + jitter[frame % 8], 2.4, config);
+    const SilentPatch hover = sample(1.8 + jitter[frame % 8]);
+    soft.observe(&hover, 2.4, config);
   }
   EXPECT_FALSE(soft.confirmed());
   for (int step = 0; step <= 24; ++step) {
-    soft.observe(true, 1.8 + 0.1 * step + jitter[step % 8], 2.4 + 0.1 * step, config);
+    const SilentPatch frame = sample(1.8 + 0.1 * step + jitter[step % 8]);
+    soft.observe(&frame, 2.4 + 0.1 * step, config);
   }
   EXPECT_FALSE(soft.confirmed());
+  // Another region in the candidate's place (the centroid drifted by more
+  // than the allowance) is a loss, not a nearer sighting: a nearer region
+  // taking over from a farther one makes no approach (r1902).
+  FaceApproach switching;
+  for (int step = 0; step <= 24; ++step) {
+    const SilentPatch frame =
+        step < 12 ? sample(4.6 - 0.1 * step + jitter[step % 8], 100.0)
+                  : sample(2.0 - 0.1 * (step - 12) + jitter[step % 8], 160.0);
+    switching.observe(&frame, 0.1 * step, config);
+    EXPECT_FALSE(switching.confirmed()) << step;
+  }
 }
 
 TEST(SmokeFace, ThePlumeCandidateIsTheLargestRimmedRegionOfAPlumesSizeWhateverItsLook) {
   const SilentPatchConfig config{};
   const SmokeFaceConfig face_config{};
-  std::vector<SilentPatch> regions;
-  regions.push_back({.cells = 900U,
-                     .rim_hits = 120U,
-                     .rim_depth_m = 1.8,
-                     .closed = true,
-                     .reason = "face"});
-  regions.push_back({.cells = 5800U,
-                     .rim_hits = 2277U,
-                     .rim_depth_m = 4.6,
-                     .reason = "seen_through"});
-  regions.push_back(
-      {.cells = 14000U, .rim_hits = 965U, .rim_depth_m = 3.3, .reason = "rim_recedes"});
-  regions.push_back(
-      {.cells = 30000U, .rim_hits = 400U, .rim_depth_m = 2.0, .reason = "surface"});
-  regions.push_back({.cells = 20000U,
-                     .rim_hits = 300U,
-                     .rim_depth_m = 6.0,
-                     .reason = "rim_beyond_reach"});
-  regions.push_back(
-      {.cells = 9000U, .rim_hits = 10U, .rim_depth_m = 0.0, .reason = "rim_unmatched"});
-  const SilentPatch* candidate = plumeCandidate(regions, config, face_config);
+  const auto region = [](const std::size_t cells, const std::size_t rim_hits,
+                         const double rim_depth_m, const char* reason,
+                         const double row = 120.0, const double column = 160.0) {
+    SilentPatch found;
+    found.cells = cells;
+    found.rim_hits = rim_hits;
+    found.rim_depth_m = rim_depth_m;
+    found.reason = reason;
+    found.centre_row = row;
+    found.centre_column = column;
+    return found;
+  };
+  std::vector<SilentPatch> regions{
+      region(900U, 120U, 1.8, "face"),
+      region(5800U, 2277U, 4.6, "seen_through"),
+      region(14000U, 965U, 3.3, "rim_recedes"),
+      region(30000U, 400U, 2.0, "surface"),
+      region(20000U, 300U, 6.0, "rim_beyond_reach"),
+      region(9000U, 10U, 0.0, "rim_unmatched"),
+      // The floor at the frame's bottom, the near wall at its side.
+      region(18000U, 2000U, 1.9, "rim_recedes", 185.0, 150.0),
+      region(16000U, 1500U, 1.6, "face", 110.0, 14.0),
+  };
+  const SilentPatch* candidate =
+      plumeCandidate(regions, config, face_config, 320U, 240U);
   ASSERT_NE(candidate, nullptr);
   EXPECT_EQ(candidate->cells, 14000U);
   regions.erase(regions.begin() + 2);
-  candidate = plumeCandidate(regions, config, face_config);
+  candidate = plumeCandidate(regions, config, face_config, 320U, 240U);
   ASSERT_NE(candidate, nullptr);
   EXPECT_EQ(candidate->cells, 5800U);
   regions.erase(regions.begin() + 1);
-  EXPECT_EQ(plumeCandidate(regions, config, face_config), nullptr);
+  EXPECT_EQ(plumeCandidate(regions, config, face_config, 320U, 240U), nullptr);
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {

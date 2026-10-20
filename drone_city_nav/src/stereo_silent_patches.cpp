@@ -344,9 +344,12 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
   return row * (width / stride) + column;
 }
 
-void FaceApproach::observe(const bool face, const double rim_depth_m,
-                           const double along_m, const SmokeFaceConfig& config) {
-  if (!face || !std::isfinite(rim_depth_m)) {
+void FaceApproach::observe(const SilentPatch* candidate, const double along_m,
+                           const SmokeFaceConfig& config) {
+  if (candidate == nullptr || !std::isfinite(candidate->rim_depth_m) ||
+      (!window_.empty() &&
+       std::hypot(candidate->centre_row - centre_row_,
+                  candidate->centre_column - centre_column_) > config.drift_cells)) {
     if (++lost_ > config.lost_frames) {
       window_.clear();
       confirmed_ = false;
@@ -354,7 +357,9 @@ void FaceApproach::observe(const bool face, const double rim_depth_m,
     return;
   }
   lost_ = 0U;
-  window_.emplace_back(along_m, rim_depth_m);
+  centre_row_ = candidate->centre_row;
+  centre_column_ = candidate->centre_column;
+  window_.emplace_back(along_m, candidate->rim_depth_m);
   while (window_.size() > config.window_frames ||
          window_.front().first < along_m - 2.0 * config.least_travel_m) {
     window_.pop_front();
@@ -481,11 +486,18 @@ std::string silentPatchSummary(const SilentPatch& patch) {
 
 SilentPatch* plumeCandidate(const std::span<SilentPatch> regions,
                             const SilentPatchConfig& config,
-                            const SmokeFaceConfig& face_config) {
+                            const SmokeFaceConfig& face_config,
+                            const std::size_t columns, const std::size_t rows) {
   SilentPatch* candidate{nullptr};
+  const auto width = static_cast<double>(columns);
+  const auto height = static_cast<double>(rows);
   for (SilentPatch& region : regions) {
     const std::string_view reason{region.reason};
-    if (region.cells >= face_config.plume_cells &&
+    const bool central = region.centre_column >= width / 8.0 &&
+                         region.centre_column < 7.0 * width / 8.0 &&
+                         region.centre_row >= height / 6.0 &&
+                         region.centre_row < 2.0 * height / 3.0;
+    if (central && region.cells >= face_config.plume_cells &&
         region.rim_hits >= config.least_rim_hits && region.rim_depth_m > 0.0 &&
         region.rim_depth_m <= config.confident_depth_m && reason != "surface" &&
         reason != "body" && (candidate == nullptr || region.cells > candidate->cells)) {
@@ -633,6 +645,12 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
     SilentPatch face{.cells = cells.size(),
                      .rim_hits = rim_depths.size(),
                      .free_neighbours = free_neighbours};
+    for (const std::size_t index : cells) {
+      face.centre_row += static_cast<double>(index / grid.columns);
+      face.centre_column += static_cast<double>(index % grid.columns);
+    }
+    face.centre_row /= static_cast<double>(cells.size());
+    face.centre_column /= static_cast<double>(cells.size());
     const double see_through =
         static_cast<double>(free_neighbours) / static_cast<double>(cells.size());
     std::vector<double> own;
@@ -653,19 +671,11 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
     } else if (rim_depths.size() >= config.least_rim_hits) {
       // The sectors round the region's centre the rim reaches into, as a
       // patch's.
-      double centre_row{0.0};
-      double centre_column{0.0};
-      for (const std::size_t index : cells) {
-        centre_row += static_cast<double>(index / grid.columns);
-        centre_column += static_cast<double>(index % grid.columns);
-      }
-      centre_row /= static_cast<double>(cells.size());
-      centre_column /= static_cast<double>(cells.size());
       std::array<bool, 8> sectors{};
       for (const std::size_t index : rim_cells) {
         const double angle =
-            std::atan2(static_cast<double>(index / grid.columns) - centre_row,
-                       static_cast<double>(index % grid.columns) - centre_column);
+            std::atan2(static_cast<double>(index / grid.columns) - face.centre_row,
+                       static_cast<double>(index % grid.columns) - face.centre_column);
         sectors[static_cast<std::size_t>(
                     std::floor((angle + std::numbers::pi) / (std::numbers::pi / 4.0))) %
                 8U] = true;
