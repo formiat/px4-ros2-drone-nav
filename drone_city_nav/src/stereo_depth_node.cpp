@@ -370,10 +370,8 @@ private:
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
     rejectLoneHits(returns);
-    // The light the frame has left (K15): its brightness headroom, its lit range
-    // over the confident depth, and the light share, the brightness over the gain
-    // against half its lit baseline (r1227), floored at the blind line while the
-    // frame still sees.
+    // The light the frame has left (K15): the brightness headroom, the lit range over
+    // the confident depth, the light share over half its lit baseline (r1227).
     const double brightness_p95 = brightnessPercentile(left_grey);
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
@@ -493,19 +491,17 @@ private:
       }
     }
     std::size_t tof_rays{0U};
-    // Roadmap item 18 stage 2: the ring's zones that return smoke, K38.
+    // The ring's zones returning smoke (K38).
     std::size_t tof_zones{0U};
     std::size_t smoky_zones{0U};
-    // Roadmap item 29: the time-of-flight surfaces in the left camera's field
-    // and how many of them the frame shows dark, a failure of the light its
-    // driver's reading cannot see (specification K12).
+    // Roadmap item 29 (K12): the ring's surfaces in the camera's field the frame shows
+    // dark.
     std::size_t surfaces_in_view{0U};
     std::size_t unlit_surfaces{0U};
     const double gain = camera_gain_.load(std::memory_order_relaxed);
     for (const TofSensor& sensor : tof_sensors_) {
-      // The scan nearest the pair's moment; one of another moment is another
-      // observation. A pair takes longer to match than a scan to arrive, so
-      // the newest scan is rarely the pair's.
+      // The scan nearest the pair's moment (a pair takes longer to match than a scan to
+      // arrive).
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan =
           nearest(sensor.scans, rclcpp::Time{left->header.stamp});
       if (scan == nullptr) {
@@ -584,22 +580,21 @@ private:
                                    static_cast<double>(surfaces_in_view)
                              : std::numeric_limits<double>::quiet_NaN();
     unlit_surface_pub_->publish(unlit_message);
-    // The share of the frame observed as the braking contract reads it: every
-    // return, the time-of-flight rays included, over the pair's samples.
+    // The frame's observed share as the braking contract reads it.
     const double observed_share =
         static_cast<double>(returns.size()) /
         static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                             (image_height_ / returns_config_.pixel_stride));
-    // A blind frame's stereo returns never reach the memory (r1175: hits in open
-    // air); the time-of-flight rays and the dark frustum (K14) do.
+    // A blind frame's stereo returns never reach the memory (r1175); the ring's rays
+    // and K14's frustum do.
     const bool blind =
         sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
     if (blind) {
       returns.erase(returns.begin(),
                     returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
     }
-    // Under a sound light the dark is the place's (roadmap item 29): the memory
-    // marks nothing for it (r1473: a dark hall closed every direction).
+    // Under a sound light the dark is the place's (roadmap item 29, r1473): nothing
+    // marked.
     const double light_reading = light_reading_.load(std::memory_order_relaxed);
     const bool light_sound =
         std::isfinite(light_reading) &&
@@ -627,6 +622,14 @@ private:
         face_emitted_s_ = stamp_s;
         unobservable.insert(unobservable.end(), rays.begin(), rays.end());
         face_marks_total_ += rays.size();
+        const std::string laid =
+            (face_approach_.confirmed() ? smokeFacesLaid(lit_regions, "face", kNearestM)
+                                        : "") +
+            (face_frames_ >= kFaceFrames
+                 ? smokeFacesLaid(lit_regions, "body", kNearestM)
+                 : "");
+        RCLCPP_WARN(get_logger(), "SMOKE_FACE_MARKS rays=%zu%s", rays.size(),
+                    laid.c_str());
       }
     }
     if (!rectifier_->ideal()) {

@@ -448,12 +448,35 @@ std::size_t dropEnclosedFreeRays(std::vector<StereoDepthReturn>& returns,
 }
 
 std::string silentPatchSummary(const SilentPatch& patch) {
-  return std::to_string(patch.cells) + ":" + patch.reason + ":rim" +
+  // The centroid on the stride grid, as column,row over 320 columns of a
+  // 1280 px frame at the stride of 4: where in the frame the region stands.
+  double row{0.0};
+  double column{0.0};
+  for (const std::size_t index : patch.cell_indices) {
+    row += static_cast<double>(index / 320U);
+    column += static_cast<double>(index % 320U);
+  }
+  const double n =
+      std::max<double>(1.0, static_cast<double>(patch.cell_indices.size()));
+  return std::to_string(patch.cells) + "@" + std::to_string(std::lround(column / n)) +
+         "," + std::to_string(std::lround(row / n)) + ":" + patch.reason + ":rim" +
          std::to_string(patch.rim_hits) + "@" +
          std::to_string(patch.rim_depth_m).substr(0, 4) + "+" +
          std::to_string(patch.rim_spread_m).substr(0, 4) + ":trend" +
          std::to_string(patch.rim_trend).substr(0, 4) + ":free" +
          std::to_string(patch.free_neighbours);
+}
+
+std::string smokeFacesLaid(const std::span<const SilentPatch> regions,
+                           const char* reason, const double nearest_m) {
+  std::string laid;
+  for (const SilentPatch& region : regions) {
+    if (region.closed && region.rim_depth_m >= nearest_m &&
+        std::string_view{region.reason} == std::string_view{reason}) {
+      laid += " " + silentPatchSummary(region);
+    }
+  }
+  return laid;
 }
 
 std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> returns,

@@ -279,8 +279,14 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
                                                std::size_t stride, std::size_t width,
                                                std::size_t height, double carve_share);
 
-// A patch or a face in a log line: cells:reason:rimN@depth+spread:freeN.
+// A patch or a face in a log line:
+// cells@column,row:reason:rimN@depth+spread:trend:freeN.
 [[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);
+
+// The summaries of the closed regions of `reason` at `nearest_m` or beyond,
+// one space before each: the faces whose rays are laid (smokeFaceRays).
+[[nodiscard]] std::string smokeFacesLaid(std::span<const SilentPatch> regions,
+                                         const char* reason, double nearest_m);
 
 // The faces of the frame: `raw_cells` is the frame's raw grey a stride cell
 // (rawCells); the rest as silentPatches. Each face is a SilentPatch with
