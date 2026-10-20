@@ -77,6 +77,9 @@ struct SilentPatch {
   // The region's centroid on the stride grid (smokeFaces).
   double centre_row{0.0};
   double centre_column{0.0};
+  // The rim's depth in the frame's central rows (SmokeFaceConfig
+  // `centre_rim_hits`), NaN when they hold too few hits.
+  double centre_rim_depth_m{std::numeric_limits<double>::quiet_NaN()};
   // Whether the patch may be a surface at its rim's depth.
   bool closed{false};
   // Why not: rim beyond reach, rim recedes, too few rim hits, the rim not
@@ -249,16 +252,19 @@ struct SmokeFaceConfig {
   // the way in, the vehicle unbounded into the plume), while the untextured
   // floor's patches hold 200 to 1000 cells (r1873).
   std::size_t plume_cells{2000U};
-  // A plume's front within the lamp's reach has a flat rim, the floor and
-  // the walls ending at one depth: the rig's corridor 0.28 to 0.50 m from
-  // 2.3 to 4.9 m, the flights' 0.07 to 0.49 at 6 to 9 m from the dense box;
-  // the lit untextured floor and walls of a dark hall, silent to the pair
-  // and the frame's largest region when the vehicle flies low, have a rim
-  // from the near floor to the far walls, 0.6 to 2.4 m (r1921: 19 such
-  // candidates confirmed by a shallow descent, 31 s of holds, 1.167 m/s).
+  // The candidate's depth is its rim's depth in the frame's central rows
+  // (within a twelfth of the height of the centre row, `centre_rim_hits` or
+  // more hits), the overall rim's nearest quartile when those are fewer: a
+  // plume's region merges with the lit untextured floor before it, and the
+  // rim's nearest quartile is then the near floor's edge (r1925: spreads of
+  // 1.1 to 1.2 m at 2.4 to 2.9 m); the lit floor and walls of a dark hall,
+  // the frame's largest region when the vehicle flies low, have their near
+  // floor's edge for a quartile too, which a shallow descent brings nearer at
+  // the slope of a plume (r1921: 19 such confirmed, 31 s of holds, 1.167
+  // m/s), while their central rows' rim, the walls beside, stands still.
   // A region the pair matches through at a tenth of its cells or more is
   // open space, whatever chance matches a dense front shows (1 to 6 percent).
-  double plume_rim_spread_m{0.6};
+  std::size_t centre_rim_hits{10U};
   double plume_see_through_share{0.1};
 };
 
@@ -344,9 +350,9 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
 
 // The plume candidate among the frame's lit regions (SmokeFaceConfig
 // `plume_cells`), or null: the largest of the regions of that size with a
-// flat rim within the confident depth that the pair does not match
-// through, neither a surface nor a body, whose centroid lies in the frame's
-// central band (`columns` by `rows` is the stride grid).
+// rim within the confident depth that the pair does not match through,
+// neither a surface nor a body, whose centroid lies in the frame's central
+// band (`columns` by `rows` is the stride grid).
 [[nodiscard]] SilentPatch* plumeCandidate(std::span<SilentPatch> regions,
                                           const SilentPatchConfig& config,
                                           const SmokeFaceConfig& face_config,

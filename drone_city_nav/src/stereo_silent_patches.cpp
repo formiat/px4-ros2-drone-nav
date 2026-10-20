@@ -497,11 +497,10 @@ SilentPatch* plumeCandidate(const std::span<SilentPatch> regions,
                          region.centre_column < 7.0 * width / 8.0 &&
                          region.centre_row >= height / 6.0 &&
                          region.centre_row < 2.0 * height / 3.0;
-    const bool flat = region.rim_spread_m <= face_config.plume_rim_spread_m;
     const bool opaque =
         static_cast<double>(region.free_neighbours) <
         face_config.plume_see_through_share * static_cast<double>(region.cells);
-    if (central && flat && opaque && region.cells >= face_config.plume_cells &&
+    if (central && opaque && region.cells >= face_config.plume_cells &&
         region.rim_hits >= config.least_rim_hits && region.rim_depth_m > 0.0 &&
         region.rim_depth_m <= config.confident_depth_m && reason != "surface" &&
         reason != "body" && (candidate == nullptr || region.cells > candidate->cells)) {
@@ -667,6 +666,17 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       face.rim_trend = rimTrendShare(rim_cells, rim_depths, grid.columns);
       face.rim_depth_m = quantile(rim_depths, 0.25);
       face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
+      std::vector<double> centre_depths;
+      for (std::size_t i = 0U; i < rim_cells.size(); ++i) {
+        const auto row = static_cast<double>(rim_cells[i] / grid.columns);
+        if (std::abs(row - static_cast<double>(grid.rows) / 2.0) <=
+            static_cast<double>(grid.rows) / 12.0) {
+          centre_depths.push_back(rim_depths[i]);
+        }
+      }
+      if (centre_depths.size() >= face_config.centre_rim_hits) {
+        face.centre_rim_depth_m = quantile(centre_depths, 0.25);
+      }
     }
     if (brightness >= face_config.surface_raw_grey) {
       face.reason = "surface";

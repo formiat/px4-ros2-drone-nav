@@ -174,6 +174,7 @@ TEST(SmokeFace, LitSilenceWithAFlatRimThePairDoesNotSeeThroughIsAFace) {
   EXPECT_EQ(faces[0].cells, 1600U);
   EXPECT_EQ(faces[0].free_neighbours, 0U);
   EXPECT_NEAR(faces[0].rim_depth_m, 3.0, 1.0e-6);
+  EXPECT_NEAR(faces[0].centre_rim_depth_m, 3.0, 1.0e-6);
   // A face bounds the motion into it as a closed patch does.
   EXPECT_NEAR(silentRangeAheadM(faces, kGeometry, 4U, kWidth / 4U, kHeight / 4U, 0.26),
               3.0, 1.0e-6);
@@ -510,11 +511,7 @@ TEST(SmokeFace, ThePlumeCandidateIsTheLargestRimmedRegionOfAPlumesSizeWhateverIt
       region(18000U, 2000U, 1.9, "rim_recedes", 185.0, 150.0),
       region(16000U, 1500U, 1.6, "face", 110.0, 14.0),
   };
-  // The lit floor and walls of a dark hall, their rim from the near floor
-  // to the far walls; and open space the pair matches through.
-  SilentPatch expanse = region(22000U, 3000U, 2.1, "rim_recedes");
-  expanse.rim_spread_m = 1.3;
-  regions.push_back(expanse);
+  // Open space the pair matches through.
   SilentPatch open = region(24000U, 2500U, 1.9, "seen_through");
   open.free_neighbours = 3000U;
   regions.push_back(open);

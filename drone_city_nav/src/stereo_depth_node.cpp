@@ -447,6 +447,9 @@ private:
         plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_,
                        image_width_ / returns_config_.pixel_stride,
                        image_height_ / returns_config_.pixel_stride);
+    if (candidate != nullptr && std::isfinite(candidate->centre_rim_depth_m)) {
+      candidate->rim_depth_m = candidate->centre_rim_depth_m;
+    }
     face_approach_.observe(candidate, along_m_.load(), smoke_face_config_);
     if (candidate != nullptr && face_approach_.confirmed()) {
       candidate->closed = true;
