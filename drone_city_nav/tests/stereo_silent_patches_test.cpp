@@ -448,6 +448,40 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   EXPECT_TRUE(soft.confirmed());
 }
 
+TEST(SmokeFace, ThePlumeCandidateIsTheLargestRimmedRegionOfAPlumesSizeWhateverItsLook) {
+  const SilentPatchConfig config{};
+  const SmokeFaceConfig face_config{};
+  std::vector<SilentPatch> regions;
+  regions.push_back({.cells = 900U,
+                     .rim_hits = 120U,
+                     .rim_depth_m = 1.8,
+                     .closed = true,
+                     .reason = "face"});
+  regions.push_back({.cells = 5800U,
+                     .rim_hits = 2277U,
+                     .rim_depth_m = 4.6,
+                     .reason = "seen_through"});
+  regions.push_back(
+      {.cells = 14000U, .rim_hits = 965U, .rim_depth_m = 3.3, .reason = "rim_recedes"});
+  regions.push_back(
+      {.cells = 30000U, .rim_hits = 400U, .rim_depth_m = 2.0, .reason = "surface"});
+  regions.push_back({.cells = 20000U,
+                     .rim_hits = 300U,
+                     .rim_depth_m = 6.0,
+                     .reason = "rim_beyond_reach"});
+  regions.push_back(
+      {.cells = 9000U, .rim_hits = 10U, .rim_depth_m = 0.0, .reason = "rim_unmatched"});
+  const SilentPatch* candidate = plumeCandidate(regions, config, face_config);
+  ASSERT_NE(candidate, nullptr);
+  EXPECT_EQ(candidate->cells, 14000U);
+  regions.erase(regions.begin() + 2);
+  candidate = plumeCandidate(regions, config, face_config);
+  ASSERT_NE(candidate, nullptr);
+  EXPECT_EQ(candidate->cells, 5800U);
+  regions.erase(regions.begin() + 1);
+  EXPECT_EQ(plumeCandidate(regions, config, face_config), nullptr);
+}
+
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {
   // The far end of a corridor of 0.1 per metre: lit silence at the rim
   // where the veil kills the texture, with sparse matches deeper than the

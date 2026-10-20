@@ -477,6 +477,22 @@ std::string silentPatchSummary(const SilentPatch& patch) {
          std::to_string(patch.free_neighbours);
 }
 
+SilentPatch* plumeCandidate(const std::span<SilentPatch> regions,
+                            const SilentPatchConfig& config,
+                            const SmokeFaceConfig& face_config) {
+  SilentPatch* candidate{nullptr};
+  for (SilentPatch& region : regions) {
+    const std::string_view reason{region.reason};
+    if (region.cells >= face_config.plume_cells &&
+        region.rim_hits >= config.least_rim_hits && region.rim_depth_m > 0.0 &&
+        region.rim_depth_m <= config.confident_depth_m && reason != "surface" &&
+        reason != "body" && (candidate == nullptr || region.cells > candidate->cells)) {
+      candidate = &region;
+    }
+  }
+  return candidate;
+}
+
 double smokeFacesAheadM(const std::span<const SilentPatch> regions,
                         const bool rimmed_due, const bool body_due,
                         const StereoPairGeometry& geometry, const std::size_t stride,
@@ -486,7 +502,7 @@ double smokeFacesAheadM(const std::span<const SilentPatch> regions,
   for (const SilentPatch& region : regions) {
     const std::string_view reason{region.reason};
     if (region.closed &&
-        ((rimmed_due && reason == "face") || (body_due && reason == "body"))) {
+        ((rimmed_due && reason == "plume") || (body_due && reason == "body"))) {
       chosen.push_back(region);
     }
   }
@@ -623,6 +639,11 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       own.push_back(static_cast<double>(raw_cells[index]));
     }
     const double brightness = quantile(own, 0.5);
+    if (rim_depths.size() >= config.least_rim_hits) {
+      face.rim_trend = rimTrendShare(rim_cells, rim_depths, grid.columns);
+      face.rim_depth_m = quantile(rim_depths, 0.25);
+      face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
+    }
     if (brightness >= face_config.surface_raw_grey) {
       face.reason = "surface";
     } else if (see_through >= face_config.see_through_share) {
@@ -649,10 +670,7 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       }
       const auto rim_sectors =
           static_cast<std::size_t>(std::ranges::count(sectors, true));
-      const double trend = rimTrendShare(rim_cells, rim_depths, grid.columns);
-      face.rim_trend = trend;
-      face.rim_depth_m = quantile(rim_depths, 0.25);
-      face.rim_spread_m = quantile(rim_depths, 0.75) - quantile(rim_depths, 0.25);
+      const double trend = face.rim_trend;
       if (rim_sectors < face_config.least_rim_sectors) {
         face.reason = "rim_not_round";
       } else if (quantile(rim_depths, 0.5) > config.confident_depth_m) {

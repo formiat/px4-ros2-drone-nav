@@ -216,6 +216,16 @@ struct SmokeFaceConfig {
   double least_travel_m{1.2};
   double shrink_slope{0.3};
   std::size_t lost_frames{8U};
+  // The plume candidate the travel confirms: the largest lit rimmed region
+  // of this many cells or more (a fortieth of the frame at the stride of 4)
+  // within the confident depth, whatever its look. The rim's look alone
+  // (its scatter, its trend, the see-through) tells a plume's front from
+  // the veil and the floor no better than chance: on the approach the front
+  // shows chance far matches of 1 to 6 percent of its cells and its rim
+  // takes the floor's trend as the vehicle nears (r1894: never a face on
+  // the way in, the vehicle unbounded into the plume), while the untextured
+  // floor's patches hold 200 to 1000 cells (r1873).
+  std::size_t plume_cells{2000U};
 };
 
 // The confirmation of a rimmed face by the vehicle's travel toward it
@@ -302,8 +312,15 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
 // cells@column,row:reason:rimN@depth+spread:trend:freeN.
 [[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);
 
+// The plume candidate among the frame's lit regions (SmokeFaceConfig
+// `plume_cells`), or null: the largest of the regions of that size with a
+// rim within the confident depth that is neither a surface nor a body.
+[[nodiscard]] SilentPatch* plumeCandidate(std::span<SilentPatch> regions,
+                                          const SilentPatchConfig& config,
+                                          const SmokeFaceConfig& face_config);
+
 // The depth a motion along the camera's axis is bounded by among the faces
-// whose marks are due (the rimmed ones while `rimmed_due`, the bodies while
+// whose marks are due (the plume while `rimmed_due`, the bodies while
 // `body_due`; silentRangeAheadM over them), or NaN: a face bounds the
 // heading from the moment its marks are laid, not from its first sighting
 // (r1874: every judged face bounded it, 18 percent of the frames against 7

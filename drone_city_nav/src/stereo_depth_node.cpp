@@ -212,10 +212,9 @@ public:
         });
     // The time-of-flight sensors cover straight up and straight down, where
     // the pair cannot look, and the ring on the horizontal (roadmap item 17
-    // stage 4) a bumper all round. Their zones join the pair's returns as rays
-    // in the same frame and cloud, so one obstacle memory integrates the whole
-    // sensor set from one stamped observation; the simulated sensors run at
-    // the pair's rate and fire on the same simulation step.
+    // stage 4) a bumper all round. Their zones join the pair's returns in the
+    // same frame and cloud (one stamped observation); the simulated sensors
+    // run at the pair's rate and fire on the same simulation step.
     TofZoneReturnsConfig tof;
     tof.zones_per_side =
         static_cast<std::size_t>(declare_parameter<int>("tof_zones_per_side", 8));
@@ -438,10 +437,23 @@ private:
     const std::vector<std::uint8_t> seen_cells =
         seenCells(std::span<const StereoDepthReturn>{returns}, geometry_,
                   returns_config_.pixel_stride, image_width_, image_height_);
-    const std::vector<SilentPatch> lit_regions =
+    std::vector<SilentPatch> lit_regions =
         smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
                    returns_config_, image_width_, image_height_, raw_cells,
                    silent_patch_config_, smoke_face_config_);
+    // The plume (K44): the largest lit rimmed region of a plume's size,
+    // confirmed by the travel toward it whatever its look.
+    SilentPatch* candidate =
+        plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_);
+    face_approach_.observe(candidate != nullptr,
+                           candidate == nullptr
+                               ? std::numeric_limits<double>::quiet_NaN()
+                               : candidate->rim_depth_m,
+                           along_m_.load(), smoke_face_config_);
+    if (candidate != nullptr && face_approach_.confirmed()) {
+      candidate->closed = true;
+      candidate->reason = "plume";
+    }
     std::vector<const SilentPatch*> faces;
     double face_range_m = std::numeric_limits<double>::quiet_NaN();
     const SilentPatch* largest_region{nullptr};
@@ -459,15 +471,6 @@ private:
     const std::string largest_text =
         largest_region == nullptr ? "none" : silentPatchSummary(*largest_region);
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
-    double rimmed_m = std::numeric_limits<double>::quiet_NaN();
-    for (const SilentPatch* face : faces) {
-      if (std::string_view{face->reason} == "face") {
-        rimmed_m = std::isfinite(rimmed_m) ? std::min(rimmed_m, face->rim_depth_m)
-                                           : face->rim_depth_m;
-      }
-    }
-    face_approach_.observe(std::isfinite(rimmed_m), rimmed_m, along_m_.load(),
-                           smoke_face_config_);
     // A face bounds the motion into it (F13) from the moment its marks are laid.
     double face_ahead_m = smokeFacesAheadM(
         lit_regions, face_approach_.confirmed(), face_frames_ >= kFaceFrames, geometry_,
@@ -604,13 +607,13 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
-    // The faces' rays (K44), twice a second: a rimmed face once the travel confirms it.
+    // The faces' rays (K44), twice a second: the plume once the travel confirms it.
     if (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_) {
       const std::size_t pitch_cells = std::max<std::size_t>(
           1U, static_cast<std::size_t>(kRayPitchPx) / returns_config_.pixel_stride);
       std::vector<Point3> rays;
       if (face_approach_.confirmed()) {
-        rays = smokeFaceRays(lit_regions, "face", geometry_,
+        rays = smokeFaceRays(lit_regions, "plume", geometry_,
                              returns_config_.pixel_stride, image_width_, kNearestM,
                              smoke_face_config_.face_slab_m, kStepM, pitch_cells);
       }
@@ -624,12 +627,12 @@ private:
         face_emitted_s_ = stamp_s;
         unobservable.insert(unobservable.end(), rays.begin(), rays.end());
         face_marks_total_ += rays.size();
-        const std::string laid =
-            (face_approach_.confirmed() ? smokeFacesLaid(lit_regions, "face", kNearestM)
-                                        : "") +
-            (face_frames_ >= kFaceFrames
-                 ? smokeFacesLaid(lit_regions, "body", kNearestM)
-                 : "");
+        const std::string laid = (face_approach_.confirmed()
+                                      ? smokeFacesLaid(lit_regions, "plume", kNearestM)
+                                      : "") +
+                                 (face_frames_ >= kFaceFrames
+                                      ? smokeFacesLaid(lit_regions, "body", kNearestM)
+                                      : "");
         RCLCPP_WARN(get_logger(), "SMOKE_FACE_MARKS rays=%zu%s", rays.size(),
                     laid.c_str());
       }
@@ -731,15 +734,14 @@ private:
     return 255.0;
   }
 
-  // Roadmap item 17 stage 8, specification K14: a frame the braking contract
-  // reads as blind for longer than the moderate flicker's dark means the pair
-  // looked and could not see: the frustum from 1.5 m to the confident depth
-  // is observed unobservable, confirmed once a second, its rays 30 px apart
-  // (under 0.45 m at 5.5 m, closer than the three free voxels the body needs).
+  // K14 (item 17 stage 8): a frame blind for longer than the moderate
+  // flicker's dark means the pair looked and could not see: the frustum from
+  // 1.5 m to the confident depth is observed unobservable once a second, its
+  // rays 30 px apart (under 0.45 m at 5.5 m, closer than the body's voxels).
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const bool blind) {
-    // Dark is what the braking contract reads as blind (I2): the frame's share
-    // under the contract's blind line (r815: read by the light alone, nothing marked).
+    // Dark is what the braking contract reads as blind (I2; r815: read by the
+    // light alone, nothing was marked).
     constexpr double kDarknessS{2.5};
     constexpr double kConfirmationPeriodS{1.0};
     // The dark ends after half a second without a dark frame (r812: a frame a
@@ -898,17 +900,14 @@ private:
   }
 
   // A hit alone in its voxel is no surface. The memory makes a voxel
-  // occupied on two hits, never one; the latest scan, which bounds the route
-  // ahead as it is, carried every hit, and with the pair's noise (A12) a few
-  // of the matcher's strays a frame stood in open air inside the route's
-  // tube: 98 percent of the latest scan's hits blocking a route were such
-  // strays, each holding the vehicle under the blocked route's law for 5 to
-  // 14 s (r1481, 159 s of a 380 s flight; the noiseless base had none); this
-  // rule brings the strays of the dark location from 33 a frame to 9, the
-  // noiseless count, keeping 99 percent of the hits within a voxel of the
-  // truth (tools/stereo_depth_accuracy.sh on r1476 and r782). A surface
-  // within the confident depth puts several of the stride's rays in a voxel
-  // (at 5.2 m, 19 on a facing patch); free rays are untouched.
+  // occupied on two hits, never one, but the latest scan, which bounds the
+  // route ahead, carried every hit, and the matcher's strays (A12) in open
+  // air inside the route's tube were 98 percent of the hits blocking a
+  // route, each holding the vehicle for 5 to 14 s (r1481, 159 s of 380); this
+  // rule brings the strays from 33 a frame to the noiseless 9, keeping 99
+  // percent of the hits within a voxel of the truth (stereo_depth_accuracy.sh
+  // on r1476, r782). A surface within the confident depth puts several of
+  // the stride's rays in a voxel (19 at 5.2 m); free rays are untouched.
   static void rejectLoneHits(std::vector<StereoDepthReturn>& returns) {
     std::unordered_map<std::uint64_t, std::uint32_t> hits_by_voxel;
     const auto voxel = [](const Point3& point) {
