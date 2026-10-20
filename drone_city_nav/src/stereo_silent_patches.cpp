@@ -348,37 +348,39 @@ void FaceApproach::observe(const bool face, const double rim_depth_m,
                            const double along_m, const SmokeFaceConfig& config) {
   if (!face || !std::isfinite(rim_depth_m)) {
     if (++lost_ > config.lost_frames) {
-      first_along_m_.reset();
+      window_.clear();
       confirmed_ = false;
     }
     return;
   }
   lost_ = 0U;
-  last_rim_depth_m_ = rim_depth_m;
-  last_along_m_ = along_m;
-  if (!first_along_m_.has_value()) {
-    first_along_m_ = along_m;
-    count_ = sum_a_ = sum_d_ = sum_aa_ = sum_ad_ = 0.0;
-    confirmed_ = false;
+  window_.emplace_back(along_m, rim_depth_m);
+  while (window_.size() > config.window_frames ||
+         window_.front().first < along_m - 2.0 * config.least_travel_m) {
+    window_.pop_front();
   }
-  const double travel_m = along_m - *first_along_m_;
-  count_ += 1.0;
-  sum_a_ += travel_m;
-  sum_d_ += rim_depth_m;
-  sum_aa_ += travel_m * travel_m;
-  sum_ad_ += travel_m * rim_depth_m;
-  const double spread = count_ * sum_aa_ - sum_a_ * sum_a_;
-  if (travel_m >= config.least_travel_m && spread > 1.0e-9) {
-    const double slope = (count_ * sum_ad_ - sum_a_ * sum_d_) / spread;
-    if (slope <= -config.shrink_slope) {
-      confirmed_ = true;
-    }
+  double count{0.0};
+  double sum_a{0.0};
+  double sum_d{0.0};
+  double sum_aa{0.0};
+  double sum_ad{0.0};
+  for (const auto& [travel_m, depth_m] : window_) {
+    count += 1.0;
+    sum_a += travel_m;
+    sum_d += depth_m;
+    sum_aa += travel_m * travel_m;
+    sum_ad += travel_m * depth_m;
   }
+  const double spread = count * sum_aa - sum_a * sum_a;
+  const double span_m = along_m - window_.front().first;
+  confirmed_ = span_m >= config.least_travel_m && spread > 1.0e-9 &&
+               (count * sum_ad - sum_a * sum_d) / spread <= -config.shrink_slope;
 }
 
 double FaceApproach::boundM(const double along_m) const noexcept {
-  return confirmed_ ? last_rim_depth_m_ - (along_m - last_along_m_)
-                    : std::numeric_limits<double>::quiet_NaN();
+  return confirmed_ && !window_.empty()
+             ? window_.back().second - (along_m - window_.back().first)
+             : std::numeric_limits<double>::quiet_NaN();
 }
 
 std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,

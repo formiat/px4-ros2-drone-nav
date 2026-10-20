@@ -34,6 +34,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <span>
 #include <string>
@@ -213,9 +214,17 @@ struct SmokeFaceConfig {
   // that started over left the vehicle unbounded into the plume. A lit body
   // in the dark, whose depth is a brightness step, is confirmed by frames
   // instead.
+  // The regression runs over a window: the frames of the last twice
+  // `least_travel_m` of travel and at most `window_frames` of them, and the
+  // confirmation holds only while the window's slope does (r1898: a
+  // confirmation that held once made, the candidate never lost since some
+  // lit region of the floor is always in the frame, carpeted the whole route
+  // with 245 000 marks, and the blocked flight "passed" 11 m before the
+  // plume on them).
   double least_travel_m{1.2};
   double shrink_slope{0.3};
   std::size_t lost_frames{8U};
+  std::size_t window_frames{64U};
   // The plume candidate the travel confirms: the largest lit rimmed region
   // of this many cells or more (a fortieth of the frame at the stride of 4)
   // within the confident depth, whatever its look. The rim's look alone
@@ -248,17 +257,10 @@ public:
   [[nodiscard]] double boundM(double along_m) const noexcept;
 
 private:
-  // The regression of the rim's depth on the travel: the sums of the frames
-  // since the face was first seen; the last sighting and the frames lost since.
-  std::optional<double> first_along_m_;
-  double last_rim_depth_m_{0.0};
-  double last_along_m_{0.0};
+  // The window's frames (the travel and the rim's depth), oldest first, and
+  // the frames lost since the last.
+  std::deque<std::pair<double, double>> window_;
   std::size_t lost_{0U};
-  double count_{0.0};
-  double sum_a_{0.0};
-  double sum_d_{0.0};
-  double sum_aa_{0.0};
-  double sum_ad_{0.0};
   bool confirmed_{false};
 };
 

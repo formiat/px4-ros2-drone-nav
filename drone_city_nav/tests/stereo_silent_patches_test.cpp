@@ -446,6 +446,17 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     soft.observe(true, 3.0 - 0.05 * step + jitter[step % 8], 0.1 * step, config);
   }
   EXPECT_TRUE(soft.confirmed());
+  // The confirmation holds only while the window's slope does: a hover
+  // before the candidate outlasts the window, and a candidate that then
+  // recedes is none (r1898).
+  for (std::size_t frame = 0U; frame < config.window_frames; ++frame) {
+    soft.observe(true, 1.8 + jitter[frame % 8], 2.4, config);
+  }
+  EXPECT_FALSE(soft.confirmed());
+  for (int step = 0; step <= 24; ++step) {
+    soft.observe(true, 1.8 + 0.1 * step + jitter[step % 8], 2.4 + 0.1 * step, config);
+  }
+  EXPECT_FALSE(soft.confirmed());
 }
 
 TEST(SmokeFace, ThePlumeCandidateIsTheLargestRimmedRegionOfAPlumesSizeWhateverItsLook) {
