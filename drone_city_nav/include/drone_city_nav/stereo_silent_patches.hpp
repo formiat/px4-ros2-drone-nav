@@ -249,6 +249,17 @@ struct SmokeFaceConfig {
   // the way in, the vehicle unbounded into the plume), while the untextured
   // floor's patches hold 200 to 1000 cells (r1873).
   std::size_t plume_cells{2000U};
+  // A plume's front within the lamp's reach has a flat rim, the floor and
+  // the walls ending at one depth: the rig's corridor 0.28 to 0.50 m from
+  // 2.3 to 4.9 m, the flights' 0.07 to 0.49 at 6 to 9 m from the dense box;
+  // the lit untextured floor and walls of a dark hall, silent to the pair
+  // and the frame's largest region when the vehicle flies low, have a rim
+  // from the near floor to the far walls, 0.6 to 2.4 m (r1921: 19 such
+  // candidates confirmed by a shallow descent, 31 s of holds, 1.167 m/s).
+  // A region the pair matches through at a tenth of its cells or more is
+  // open space, whatever chance matches a dense front shows (1 to 6 percent).
+  double plume_rim_spread_m{0.6};
+  double plume_see_through_share{0.1};
 };
 
 // The confirmation of the plume candidate by the vehicle's travel toward it
@@ -333,9 +344,9 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
 
 // The plume candidate among the frame's lit regions (SmokeFaceConfig
 // `plume_cells`), or null: the largest of the regions of that size with a
-// rim within the confident depth that is neither a surface nor a body,
-// whose centroid lies in the frame's central band (`columns` by `rows` is
-// the stride grid).
+// flat rim within the confident depth that the pair does not match
+// through, neither a surface nor a body, whose centroid lies in the frame's
+// central band (`columns` by `rows` is the stride grid).
 [[nodiscard]] SilentPatch* plumeCandidate(std::span<SilentPatch> regions,
                                           const SilentPatchConfig& config,
                                           const SmokeFaceConfig& face_config,

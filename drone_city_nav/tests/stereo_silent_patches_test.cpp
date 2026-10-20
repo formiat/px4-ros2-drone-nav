@@ -510,6 +510,14 @@ TEST(SmokeFace, ThePlumeCandidateIsTheLargestRimmedRegionOfAPlumesSizeWhateverIt
       region(18000U, 2000U, 1.9, "rim_recedes", 185.0, 150.0),
       region(16000U, 1500U, 1.6, "face", 110.0, 14.0),
   };
+  // The lit floor and walls of a dark hall, their rim from the near floor
+  // to the far walls; and open space the pair matches through.
+  SilentPatch expanse = region(22000U, 3000U, 2.1, "rim_recedes");
+  expanse.rim_spread_m = 1.3;
+  regions.push_back(expanse);
+  SilentPatch open = region(24000U, 2500U, 1.9, "seen_through");
+  open.free_neighbours = 3000U;
+  regions.push_back(open);
   const SilentPatch* candidate =
       plumeCandidate(regions, config, face_config, 320U, 240U);
   ASSERT_NE(candidate, nullptr);

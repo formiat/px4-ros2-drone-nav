@@ -497,7 +497,11 @@ SilentPatch* plumeCandidate(const std::span<SilentPatch> regions,
                          region.centre_column < 7.0 * width / 8.0 &&
                          region.centre_row >= height / 6.0 &&
                          region.centre_row < 2.0 * height / 3.0;
-    if (central && region.cells >= face_config.plume_cells &&
+    const bool flat = region.rim_spread_m <= face_config.plume_rim_spread_m;
+    const bool opaque =
+        static_cast<double>(region.free_neighbours) <
+        face_config.plume_see_through_share * static_cast<double>(region.cells);
+    if (central && flat && opaque && region.cells >= face_config.plume_cells &&
         region.rim_hits >= config.least_rim_hits && region.rim_depth_m > 0.0 &&
         region.rim_depth_m <= config.confident_depth_m && reason != "surface" &&
         reason != "body" && (candidate == nullptr || region.cells > candidate->cells)) {
