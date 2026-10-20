@@ -209,11 +209,8 @@ public:
           right_ = image;
           matchIfPaired();
         });
-    // The time-of-flight sensors cover straight up and straight down, where
-    // the pair cannot look, and the ring on the horizontal (roadmap item 17
-    // stage 4) a bumper all round. Their zones join the pair's returns in the
-    // same frame and cloud (one stamped observation); the simulated sensors
-    // run at the pair's rate and fire on the same simulation step.
+    // The time-of-flight sensors (up, down and the ring, item 17 stage 4) join the
+    // pair's returns in the same frame and cloud, fired on the same simulation step.
     TofZoneReturnsConfig tof;
     tof.zones_per_side =
         static_cast<std::size_t>(declare_parameter<int>("tof_zones_per_side", 8));
@@ -342,10 +339,9 @@ private:
     cv::resize(right_grey, right_half, {}, 0.5, 0.5, cv::INTER_AREA);
     cv::Mat near_disparity;
     near_matcher_->compute(left_half, right_half, near_disparity);
-    // Where the near search sees a surface the far search cannot reach (its
-    // disparity, doubled, within eight pixels of the far search's end), and
-    // where the far search found nothing, the near answer stands. Only the
-    // pixels that become returns are merged.
+    // Where the near search sees a surface the far search cannot reach (its doubled
+    // disparity within 8 px of the far search's end) or the far search found nothing,
+    // the near answer stands; only the pixels that become returns are merged.
     const int near_threshold_16 = 16 * (far_disparities_ - 8) / 2;
     const auto stride = static_cast<int>(returns_config_.pixel_stride);
     for (int row = 0; row < disparity.rows; row += stride) {
@@ -445,13 +441,22 @@ private:
         plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_,
                        image_width_ / returns_config_.pixel_stride,
                        image_height_ / returns_config_.pixel_stride);
+    const double quartile_m = candidate != nullptr ? candidate->rim_depth_m : 0.0;
     if (candidate != nullptr && std::isfinite(candidate->centre_rim_depth_m)) {
       candidate->rim_depth_m = candidate->centre_rim_depth_m;
     }
-    if (face_approach_.observe(candidate, along_m_.load(), heading_rad_.load(),
-                               geometry_.focal_px /
-                                   static_cast<double>(returns_config_.pixel_stride),
-                               smoke_face_config_)) {
+    const double along_m = along_m_.load();
+    const double heading_rad = heading_rad_.load();
+    const bool lay = face_approach_.observe(
+        candidate, along_m, heading_rad,
+        geometry_.focal_px / static_cast<double>(returns_config_.pixel_stride),
+        smoke_face_config_);
+    // Every frame's candidate, for replaying the confirmation offline.
+    RCLCPP_INFO(get_logger(),
+                "PLUME_CANDIDATE along=%.3f heading=%.4f quartile=%.2f lay=%d %s",
+                along_m, heading_rad, quartile_m, lay ? 1 : 0,
+                candidate != nullptr ? silentPatchSummary(*candidate).c_str() : "none");
+    if (lay) {
       candidate->closed = true;
       candidate->reason = "plume";
     }
@@ -898,15 +903,11 @@ private:
     return noise;
   }
 
-  // A hit alone in its voxel is no surface. The memory makes a voxel
-  // occupied on two hits, never one, but the latest scan, which bounds the
-  // route ahead, carried every hit, and the matcher's strays (A12) in open
-  // air inside the route's tube were 98 percent of the hits blocking a
-  // route, each holding the vehicle for 5 to 14 s (r1481, 159 s of 380); this
-  // rule brings the strays from 33 a frame to the noiseless 9, keeping 99
-  // percent of the hits within a voxel of the truth (stereo_depth_accuracy.sh
-  // on r1476, r782). A surface within the confident depth puts several of
-  // the stride's rays in a voxel (19 at 5.2 m); free rays are untouched.
+  // A hit alone in its voxel is no surface: the latest scan carried every hit, and
+  // the matcher's strays (A12) were 98 percent of the hits blocking a route (r1481,
+  // 159 s of holds in 380); this rule brings them from 33 a frame to the noiseless 9,
+  // keeping 99 percent of the hits within a voxel of the truth (r1476, r782). A
+  // surface within the confident depth puts 19 rays in a voxel at 5.2 m.
   static void rejectLoneHits(std::vector<StereoDepthReturn>& returns) {
     std::unordered_map<std::uint64_t, std::uint32_t> hits_by_voxel;
     const auto voxel = [](const Point3& point) {
