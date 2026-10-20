@@ -631,8 +631,7 @@ std::vector<SilentPatch> smokeFaces(const std::span<const StereoDepthReturn> ret
       } else if (quantile(rim_depths, 0.5) > config.confident_depth_m) {
         face.reason = "rim_beyond_reach";
       } else if (face.rim_spread_m > face_config.rim_scatter_m ||
-                 (face.rim_spread_m > config.rim_flat_m &&
-                  trend >= face_config.rim_trend_share)) {
+                 trend >= face_config.rim_trend_share) {
         face.reason = "rim_recedes";
       } else {
         face.closed = true;

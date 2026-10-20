@@ -177,9 +177,12 @@ struct SmokeFaceConfig {
   // rows and columns explains 0.00 to 0.16 of their variance on the rig. A
   // hall's walls running on RECEDE along the rim, the plane explaining 0.46
   // to 0.95 (r1822: lit silences in the halls with spreads of 0.6 to 0.8
-  // judged faces, the routes closed, B not reached). A spread over K36's
-  // 0.5 m and up to `rim_scatter_m` is a face while the trend explains less
-  // than `rim_trend_share` of it. The face is at the rim's nearest quartile.
+  // judged faces, the routes closed, B not reached; r1873: hundreds of
+  // untextured patches of floor and wall under the lamp, seen obliquely,
+  // with flat rims of 0.01 to 0.48 m and trends of 0.90 to 0.99, their slabs
+  // narrowing every way). A face's rim spreads by up to `rim_scatter_m` and
+  // the trend explains less than `rim_trend_share` of it, whatever the
+  // spread. The face is at the rim's nearest quartile.
   double rim_scatter_m{1.0};
   double rim_trend_share{0.3};
   double dark_ring_share{0.7};
