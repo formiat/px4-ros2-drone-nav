@@ -346,6 +346,17 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 
 void FaceApproach::observe(const SilentPatch* candidate, const double along_m,
                            const SmokeFaceConfig& config) {
+  halo_m_ = config.halo_m;
+  const bool front = candidate != nullptr && std::isfinite(candidate->rim_depth_m) &&
+                     candidate->cells >= config.front_cells &&
+                     candidate->rim_spread_m <= config.front_rim_spread_m &&
+                     candidate->rim_trend < config.front_rim_trend_share;
+  front_frames_ = front ? front_frames_ + 1U : 0U;
+  front_confirmed_ = front_frames_ >= config.front_frames;
+  if (candidate != nullptr && std::isfinite(candidate->rim_depth_m)) {
+    last_depth_m_ = candidate->rim_depth_m;
+    last_along_m_ = along_m;
+  }
   if (candidate == nullptr || !std::isfinite(candidate->rim_depth_m) ||
       (!window_.empty() &&
        std::hypot(candidate->centre_row - centre_row_,
@@ -383,8 +394,8 @@ void FaceApproach::observe(const SilentPatch* candidate, const double along_m,
 }
 
 double FaceApproach::boundM(const double along_m) const noexcept {
-  return confirmed_ && !window_.empty()
-             ? window_.back().second - (along_m - window_.back().first)
+  return confirmed()
+             ? std::max(0.0, last_depth_m_ - (along_m - last_along_m_) - halo_m_)
              : std::numeric_limits<double>::quiet_NaN();
 }
 

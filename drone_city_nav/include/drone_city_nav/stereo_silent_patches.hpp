@@ -265,6 +265,24 @@ struct SmokeFaceConfig {
   // A region the pair matches through at a tenth of its cells or more is
   // open space, whatever chance matches a dense front shows (1 to 6 percent).
   std::size_t centre_rim_hits{10U};
+  // A dense plume's front is a face the moment the lamp reaches it, and
+  // the lamp reaches it late: the face is read from 3 m (r1932: 22 000
+  // cells, the rim 2.96 m with a spread of 0.12 and a trend of 0.03, at
+  // 8.3 m from the box, the box's edge at 5.5), the halo before the box
+  // blinds the pair from 1.5 m before it (the observed share 0.59 at 8.3,
+  // 0.10 at 6.8), and the travel's 1.2 m of confirmation ended inside the
+  // halo (r1929, r1932: the marks at 7.9 and 7.2, the vehicle blind at 6.3
+  // and landed). A candidate of `front_cells` or more whose rim spreads by
+  // `front_rim_spread_m` at most with a trend under `front_rim_trend_share`
+  // over `front_frames` frames running is the plume without the travel
+  // (the lit floor and walls of a hall spread 0.6 to 2.4 m with trends of
+  // 0.8 to 0.97; the thin hall's veil 0.6 to 0.8 with 0.46 to 0.95); and
+  // the plume bounds the motion `halo_m` before its face.
+  std::size_t front_cells{10000U};
+  double front_rim_spread_m{0.4};
+  double front_rim_trend_share{0.2};
+  std::size_t front_frames{3U};
+  double halo_m{1.5};
   double plume_see_through_share{0.1};
 };
 
@@ -273,29 +291,36 @@ struct SmokeFaceConfig {
 // the frame has none; one whose centroid drifted by more than `drift_cells`
 // is another region, a loss) and the vehicle's travel along the camera's
 // axis so far (the estimator's position projected on its heading, summed);
-// a candidate lost for more than `lost_frames` frames starts over.
-// `boundM` is the depth a confirmed face bounds the motion by while the
-// frame's verdict flickers: its rim at its last sighting less the travel
-// since, NaN unless confirmed.
+// a candidate lost for more than `lost_frames` frames starts over; a
+// candidate with a front's signature over `front_frames` frames running is
+// confirmed without the travel. `boundM` is the depth a confirmed plume
+// bounds the motion by: its rim at its last sighting less the travel since
+// and less the halo, NaN unless confirmed.
 class FaceApproach {
 public:
   void observe(const SilentPatch* candidate, double along_m,
                const SmokeFaceConfig& config);
 
   [[nodiscard]] bool confirmed() const noexcept {
-    return confirmed_;
+    return confirmed_ || front_confirmed_;
   }
 
   [[nodiscard]] double boundM(double along_m) const noexcept;
 
 private:
-  // The window's frames (the travel and the rim's depth), oldest first, and
-  // the frames lost since the last.
+  // The window's frames (the travel and the rim's depth), oldest first; the
+  // last candidate's depth and travel; the frames lost since the last
+  // accepted; the frames running with a front's signature; the halo.
   std::deque<std::pair<double, double>> window_;
   double centre_row_{0.0};
   double centre_column_{0.0};
+  double last_depth_m_{0.0};
+  double last_along_m_{0.0};
   std::size_t lost_{0U};
+  std::size_t front_frames_{0U};
+  double halo_m_{0.0};
   bool confirmed_{false};
+  bool front_confirmed_{false};
 };
 
 // The frame's raw grey on the stride grid, one byte a cell, row-major: the

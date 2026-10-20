@@ -440,7 +440,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // the travel since; lost for longer, it starts over.
   plume.observe(nullptr, 2.6, config);
   EXPECT_TRUE(plume.confirmed());
-  EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3, 1e-9);
+  EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3 - config.halo_m, 1e-9);
   for (std::size_t lost = 1U; lost < config.lost_frames; ++lost) {
     plume.observe(nullptr, 2.6 + 0.1 * static_cast<double>(lost), config);
   }
@@ -472,6 +472,28 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     soft.observe(&frame, 2.4 + 0.1 * step, config);
   }
   EXPECT_FALSE(soft.confirmed());
+  // A front's signature (a large region, a flat rim without a trend) over
+  // three frames running is the plume without any travel (r1932); a rim
+  // with a trend is not.
+  FaceApproach front;
+  for (int frame = 0; frame < 3; ++frame) {
+    SilentPatch face = sample(2.96);
+    face.cells = 22000U;
+    face.rim_spread_m = 0.12;
+    face.rim_trend = 0.03;
+    front.observe(&face, 0.0, config);
+    EXPECT_EQ(front.confirmed(), frame == 2) << frame;
+  }
+  EXPECT_NEAR(front.boundM(0.5), 2.96 - 0.5 - config.halo_m, 1e-9);
+  FaceApproach expanse;
+  for (int frame = 0; frame < 8; ++frame) {
+    SilentPatch floor = sample(1.9);
+    floor.cells = 24000U;
+    floor.rim_spread_m = 0.3;
+    floor.rim_trend = 0.9;
+    expanse.observe(&floor, 0.0, config);
+    EXPECT_FALSE(expanse.confirmed()) << frame;
+  }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
   // taking over from a farther one makes no approach (r1902).
