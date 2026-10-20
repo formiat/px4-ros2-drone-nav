@@ -467,6 +467,23 @@ std::string silentPatchSummary(const SilentPatch& patch) {
          std::to_string(patch.free_neighbours);
 }
 
+double smokeFacesAheadM(const std::span<const SilentPatch> regions,
+                        const bool rimmed_due, const bool body_due,
+                        const StereoPairGeometry& geometry, const std::size_t stride,
+                        const std::size_t stride_columns, const std::size_t stride_rows,
+                        const double cone_half_angle_rad) {
+  std::vector<SilentPatch> chosen;
+  for (const SilentPatch& region : regions) {
+    const std::string_view reason{region.reason};
+    if (region.closed &&
+        ((rimmed_due && reason == "face") || (body_due && reason == "body"))) {
+      chosen.push_back(region);
+    }
+  }
+  return silentRangeAheadM(chosen, geometry, stride, stride_columns, stride_rows,
+                           cone_half_angle_rad);
+}
+
 std::string smokeFacesLaid(const std::span<const SilentPatch> regions,
                            const char* reason, const double nearest_m) {
   std::string laid;

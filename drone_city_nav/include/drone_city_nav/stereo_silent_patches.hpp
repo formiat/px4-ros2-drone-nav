@@ -286,6 +286,19 @@ smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
 // cells@column,row:reason:rimN@depth+spread:trend:freeN.
 [[nodiscard]] std::string silentPatchSummary(const SilentPatch& patch);
 
+// The depth a motion along the camera's axis is bounded by among the faces
+// whose marks are due (the rimmed ones while `rimmed_due`, the bodies while
+// `body_due`; silentRangeAheadM over them), or NaN: a face bounds the
+// heading from the moment its marks are laid, not from its first sighting
+// (r1874: every judged face bounded it, 18 percent of the frames against 7
+// before the detector, and the ordinary flight fell under R3's 1.2 m/s).
+[[nodiscard]] double smokeFacesAheadM(std::span<const SilentPatch> regions,
+                                      bool rimmed_due, bool body_due,
+                                      const StereoPairGeometry& geometry,
+                                      std::size_t stride, std::size_t stride_columns,
+                                      std::size_t stride_rows,
+                                      double cone_half_angle_rad);
+
 // The summaries of the closed regions of `reason` at `nearest_m` or beyond,
 // one space before each: the faces whose rays are laid (smokeFaceRays).
 [[nodiscard]] std::string smokeFacesLaid(std::span<const SilentPatch> regions,

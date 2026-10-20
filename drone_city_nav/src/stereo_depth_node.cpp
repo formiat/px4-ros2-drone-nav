@@ -460,17 +460,6 @@ private:
     }
     const std::string largest_text =
         largest_region == nullptr ? "none" : silentPatchSummary(*largest_region);
-    const double face_ahead_m = silentRangeAheadM(
-        lit_regions, geometry_, returns_config_.pixel_stride,
-        image_width_ / returns_config_.pixel_stride,
-        image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
-    if (std::isfinite(face_ahead_m)) {
-      silent_range_m = std::isfinite(silent_range_m)
-                           ? std::min(silent_range_m, face_ahead_m)
-                           : face_ahead_m;
-      silent_message.data = silent_range_m;
-      silent_range_pub_->publish(silent_message);
-    }
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
     double rimmed_m = std::numeric_limits<double>::quiet_NaN();
     for (const SilentPatch* face : faces) {
@@ -481,6 +470,18 @@ private:
     }
     face_approach_.observe(std::isfinite(rimmed_m), rimmed_m, along_m_.load(),
                            smoke_face_config_);
+    // A face bounds the motion into it (F13) from the moment its marks are laid.
+    const double face_ahead_m = smokeFacesAheadM(
+        lit_regions, face_approach_.confirmed(), face_frames_ >= kFaceFrames, geometry_,
+        returns_config_.pixel_stride, image_width_ / returns_config_.pixel_stride,
+        image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
+    if (std::isfinite(face_ahead_m)) {
+      silent_range_m = std::isfinite(silent_range_m)
+                           ? std::min(silent_range_m, face_ahead_m)
+                           : face_ahead_m;
+      silent_message.data = silent_range_m;
+      silent_range_pub_->publish(silent_message);
+    }
     // A face's chance far matches are the smoke's texture (K44).
     face_rays_dropped_ += dropEnclosedFreeRays(
         returns, lit_regions, geometry_, returns_config_.pixel_stride, image_width_,
@@ -515,7 +516,6 @@ private:
           decodePointCloudFloatField(*scan, "intensity").value_or(std::vector<float>{});
       std::vector<StereoDepthReturn> rays =
           tofZoneReturns(*zones, sensor.config, intensities);
-      // The ring's silence through lit silence is not free (K44, K38; r1746).
       if (&sensor == &tof_sensors_[kFrontTofSlot]) {
         std::erase_if(rays, [&](const StereoDepthReturn& ray) {
           if (ray.hit) {
