@@ -189,6 +189,40 @@ struct SmokeFaceConfig {
   double mid_grey{30.0};
   double mid_m{2.5};
   double far_m{3.5};
+  // A rimmed face stands in the world, not with the lamp: as the vehicle
+  // travels toward it, its rim comes nearer by the travel. The veil of thin
+  // smoke keeps its rim at the lamp's reach however the vehicle moves
+  // (r1867: in the west hall of 0.1 per metre, 5 m over its floor, the veil
+  // read a face at 2.1 m frame after frame, and its marks held the vehicle
+  // high and blind). A rimmed face is confirmed once the vehicle has
+  // travelled `least_travel_m` along the camera's axis since the face was
+  // first seen, with the rim nearer by `shrink_share` of that travel (the
+  // rim's quartile scatters by up to a metre, so a metre of travel and half
+  // of it). A lit body in the dark, whose depth is a brightness step, is
+  // confirmed by frames instead.
+  double least_travel_m{1.0};
+  double shrink_share{0.5};
+};
+
+// The confirmation of a rimmed face by the vehicle's travel toward it
+// (SmokeFaceConfig). `observe` takes each frame: whether a rimmed face
+// stands in it, the nearest rim's depth, and the vehicle's travel along the
+// camera's axis so far (the autopilot's position projected on its heading,
+// summed); a frame without a rimmed face starts over.
+class FaceApproach {
+public:
+  void observe(bool face, double rim_depth_m, double along_m,
+               const SmokeFaceConfig& config);
+
+  [[nodiscard]] bool confirmed() const noexcept {
+    return confirmed_;
+  }
+
+private:
+  std::optional<double> first_depth_m_;
+  double first_along_m_{0.0};
+  double least_depth_m_{0.0};
+  bool confirmed_{false};
 };
 
 // The frame's raw grey on the stride grid, one byte a cell, row-major: the
@@ -212,19 +246,18 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
              std::size_t stride, std::size_t width, std::size_t height);
 
 // The faces' rays for the memory: through the cells of each face (the closed
-// regions of `regions`) every `pitch_cells` cells each way, from the face's
-// depth over `slab_m` in steps of `step_m`; the rectified forward-left-up
-// frame, as every return. The slab starts at the face, not before it: a lit
-// surface the pair cannot texture is a face too, and marks before its rim
-// would stand in free air (r1746: 48 670 marks over a flight, a metre before
-// every such surface). A face nearer than `nearest_m` gives no rays: that
-// is the ring's reach and the frustum's own nearest (K14), and a slab pushed
-// out to it from a surface 1.2 m off boxed the vehicle in (r1837).
-[[nodiscard]] std::vector<Point3> smokeFaceRays(std::span<const SilentPatch> regions,
-                                                const StereoPairGeometry& geometry,
-                                                std::size_t stride, std::size_t width,
-                                                double nearest_m, double slab_m,
-                                                double step_m, std::size_t pitch_cells);
+// regions of `regions` whose reason is `reason`) every `pitch_cells` cells each way,
+// from the face's depth over `slab_m` in steps of `step_m`; the rectified
+// forward-left-up frame, as every return. The slab starts at the face, not before it: a
+// lit surface the pair cannot texture is a face too, and marks before its rim would
+// stand in free air (r1746: 48 670 marks over a flight, a metre before every such
+// surface). A face nearer than `nearest_m` gives no rays: that is the ring's reach and
+// the frustum's own nearest (K14), and a slab pushed out to it from a surface 1.2 m off
+// boxed the vehicle in (r1837).
+[[nodiscard]] std::vector<Point3>
+smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
+              const StereoPairGeometry& geometry, std::size_t stride, std::size_t width,
+              double nearest_m, double slab_m, double step_m, std::size_t pitch_cells);
 
 // Drops the pair's free rays the regions of lit silence enclose where the
 // region's see-through is under `carve_share` (a face or near one): a match

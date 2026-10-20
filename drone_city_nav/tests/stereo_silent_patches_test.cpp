@@ -352,12 +352,14 @@ TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
                  SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(close.size(), 1U);
   EXPECT_TRUE(close[0].closed);
-  EXPECT_TRUE(smokeFaceRays(close, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+  EXPECT_TRUE(
+      smokeFaceRays(close, "face", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
   const std::vector<SilentPatch> far =
       smokeFaces(frameWithSquare(40U, 3.0, 6.0), kGeometry, kReturns, kWidth, kHeight,
                  rawEverywhere(40U), SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(far.size(), 1U);
-  EXPECT_FALSE(smokeFaceRays(far, kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+  EXPECT_FALSE(
+      smokeFaceRays(far, "face", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
 }
 
 TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
@@ -398,6 +400,36 @@ TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
                  SilentPatchConfig{}, SmokeFaceConfig{});
   ASSERT_EQ(seen.size(), 1U);
   EXPECT_EQ(dropEnclosedFreeRays(open, seen, kGeometry, 4U, kWidth, kHeight, 0.03), 0U);
+}
+
+TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
+  // r1867: the veil of a thin hall keeps its rim at the lamp's reach
+  // however the vehicle moves; a plume's face comes nearer by the travel.
+  const SmokeFaceConfig config{};
+  FaceApproach veil;
+  for (int step = 0; step <= 20; ++step) {
+    veil.observe(true, 2.1, 0.1 * step, config);
+  }
+  EXPECT_FALSE(veil.confirmed());
+  FaceApproach plume;
+  for (int step = 0; step <= 20; ++step) {
+    plume.observe(true, 4.6 - 0.1 * step, 0.1 * step, config);
+    if (step < 10) {
+      EXPECT_FALSE(plume.confirmed()) << step;
+    }
+  }
+  EXPECT_TRUE(plume.confirmed());
+  // The rim's scatter: a metre of travel with the rim nearer by half of it
+  // confirms; a frame without a rimmed face starts over.
+  FaceApproach scattered;
+  scattered.observe(true, 4.0, 0.0, config);
+  scattered.observe(true, 4.3, 0.5, config);
+  scattered.observe(true, 3.4, 1.0, config);
+  EXPECT_TRUE(scattered.confirmed());
+  scattered.observe(false, 0.0, 1.2, config);
+  EXPECT_FALSE(scattered.confirmed());
+  scattered.observe(true, 3.0, 1.3, config);
+  EXPECT_FALSE(scattered.confirmed());
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {

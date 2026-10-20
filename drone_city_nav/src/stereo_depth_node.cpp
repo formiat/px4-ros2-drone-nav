@@ -8,6 +8,7 @@
 #include "drone_city_nav/stereo_silent_patches.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -31,6 +32,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -185,6 +187,24 @@ public:
         declare_parameter<std::string>("left_gain_topic", "/stereo/left/gain"),
         image_qos, [this](const std_msgs::msg::Float64::ConstSharedPtr gain) {
           camera_gain_.store(std::max(1.0, gain->data), std::memory_order_relaxed);
+        });
+    // The travel along the camera's axis (K44): the camera estimator's pose on its
+    // heading.
+    along_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+        declare_parameter<std::string>("visual_inertial_pose_topic",
+                                       "/drone_city_nav/visual_inertial_odometry/pose"),
+        rclcpp::QoS{20},
+        [this](const geometry_msgs::msg::PoseStamped::SharedPtr message) {
+          const auto& q = message->pose.orientation;
+          const double yaw = std::atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                        1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+          const auto& t = message->pose.position;
+          if (along_last_.has_value()) {
+            along_m_.store(along_m_.load() +
+                           (t.x - along_last_->first) * std::cos(yaw) +
+                           (t.y - along_last_->second) * std::sin(yaw));
+          }
+          along_last_ = std::pair{t.x, t.y};
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -350,15 +370,10 @@ private:
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
     rejectLoneHits(returns);
-    // The light the frame has left (specification K15): its brightness
-    // headroom; no more than the range its brightness follows the carried
-    // light's falloff to, over the depth the pair is confident of; and no
-    // more than the light share, the brightness over the gain against half
-    // its lit baseline (a lit frame's brightness varies with the scene from
-    // 54 to 142 over a flight, median 96, r1227; a light at least twofold
-    // dimmer than its lit value is the lamp's doing), floored at the blind
-    // line while the frame still sees, so a dimmed light bounds the range and
-    // only a frame that cannot see holds.
+    // The light the frame has left (K15): its brightness headroom, its lit range
+    // over the confident depth, and the light share, the brightness over the gain
+    // against half its lit baseline (r1227), floored at the blind line while the
+    // frame still sees.
     const double brightness_p95 = brightnessPercentile(left_grey);
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
@@ -418,8 +433,7 @@ private:
     std_msgs::msg::Float64 silent_message;
     silent_message.data = silent_range_m;
     silent_range_pub_->publish(silent_message);
-    // The smoke faces (K44): regions of lit silence the pair does not see
-    // through; a cell's raw grey is the frame's over the gain (K15).
+    // The smoke faces (K44): lit silence the pair does not see through.
     const std::vector<std::uint8_t> raw_cells = rawCells(
         std::span<const std::uint8_t>{left_grey.data,
                                       left_grey.step[0] * left_grey.rows},
@@ -460,6 +474,15 @@ private:
       silent_range_pub_->publish(silent_message);
     }
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
+    double rimmed_m = std::numeric_limits<double>::quiet_NaN();
+    for (const SilentPatch* face : faces) {
+      if (std::string_view{face->reason} == "face") {
+        rimmed_m = std::isfinite(rimmed_m) ? std::min(rimmed_m, face->rim_depth_m)
+                                           : face->rim_depth_m;
+      }
+    }
+    face_approach_.observe(std::isfinite(rimmed_m), rimmed_m, along_m_.load(),
+                           smoke_face_config_);
     // A face's chance far matches are the smoke's texture (K44).
     face_rays_dropped_ += dropEnclosedFreeRays(
         returns, lit_regions, geometry_, returns_config_.pixel_stride, image_width_,
@@ -567,23 +590,16 @@ private:
         static_cast<double>(returns.size()) /
         static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                             (image_height_ / returns_config_.pixel_stride));
-    // A frame the braking contract reads as blind matches noise: in the dark
-    // of r1175 the pair still answered some hundred pixels a frame, hits in
-    // open air and free rays through the dark the vehicle had to treat as
-    // prohibited. Its stereo returns never reach the memory; the
-    // time-of-flight rays and the dark frustum (K14) do. The share is read
-    // from the whole frame first, as the contract reads it.
+    // A blind frame's stereo returns never reach the memory (r1175: hits in open
+    // air); the time-of-flight rays and the dark frustum (K14) do.
     const bool blind =
         sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
     if (blind) {
       returns.erase(returns.begin(),
                     returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
     }
-    // Under a light its driver reads sound the dark is the place's, not
-    // the light's (roadmap item 29): the braking contract holds the vehicle
-    // to what it has observed, and the memory marks nothing for it. Marked,
-    // a large dark hall closed every direction the vehicle looked in, and its
-    // routes climbed to the ceiling around the marks (r1473).
+    // Under a sound light the dark is the place's (roadmap item 29): the memory
+    // marks nothing for it (r1473: a dark hall closed every direction).
     const double light_reading = light_reading_.load(std::memory_order_relaxed);
     const bool light_sound =
         std::isfinite(light_reading) &&
@@ -591,26 +607,33 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
-    // The smoke faces (K44), held over four frames (0.5 s: the dark's 2.5 s
-    // would carry a vehicle at 2 m/s 5 m toward a face), emitted twice a second.
-    if (face_frames_ >= kFaceFrames &&
-        (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_)) {
-      face_emitted_s_ = stamp_s;
-      const std::vector<Point3> rays = smokeFaceRays(
-          lit_regions, geometry_, returns_config_.pixel_stride, image_width_, kNearestM,
-          smoke_face_config_.face_slab_m, kStepM,
-          std::max<std::size_t>(1U, static_cast<std::size_t>(kRayPitchPx) /
-                                        returns_config_.pixel_stride));
-      unobservable.insert(unobservable.end(), rays.begin(), rays.end());
-      face_marks_total_ += rays.size();
+    // The faces' rays (K44), twice a second: a rimmed face once the travel confirms it.
+    if (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_) {
+      const std::size_t pitch_cells = std::max<std::size_t>(
+          1U, static_cast<std::size_t>(kRayPitchPx) / returns_config_.pixel_stride);
+      std::vector<Point3> rays;
+      if (face_approach_.confirmed()) {
+        rays = smokeFaceRays(lit_regions, "face", geometry_,
+                             returns_config_.pixel_stride, image_width_, kNearestM,
+                             smoke_face_config_.face_slab_m, kStepM, pitch_cells);
+      }
+      if (face_frames_ >= kFaceFrames) {
+        const std::vector<Point3> body = smokeFaceRays(
+            lit_regions, "body", geometry_, returns_config_.pixel_stride, image_width_,
+            kNearestM, smoke_face_config_.face_slab_m, kStepM, pitch_cells);
+        rays.insert(rays.end(), body.begin(), body.end());
+      }
+      if (!rays.empty()) {
+        face_emitted_s_ = stamp_s;
+        unobservable.insert(unobservable.end(), rays.begin(), rays.end());
+        face_marks_total_ += rays.size();
+      }
     }
     if (!rectifier_->ideal()) {
       for (Point3& point : unobservable) {
         point = toPhysicalFlu(point);
       }
     }
-    // A running count: the line is printed once a second and the frustum is
-    // emitted once a second, and the two kept missing each other (r813).
     unobservable_total_ += unobservable.size();
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = left->header.stamp;
@@ -672,11 +695,8 @@ private:
         face_marks_total_, face_rays_dropped_, largest_text.c_str());
   }
 
-  // The frame's 95th percentile of brightness over the 200 the camera's gain
-  // aims it at: one while the gain can make up the light, less once it
-  // cannot. The pair's depth does not show a fading light: its matches held
-  // until the light was under a hundredth of itself, and the vehicle flew at
-  // 2.4 m/s into a dark that had put it out (r800).
+  // The frame's 95th percentile of brightness over the gain's 200: one while
+  // the gain can make up the light, less once it cannot (r800).
   static constexpr double kGainTargetGrey{200.0};
   // A time-of-flight surface's patch of the frame, and the brightness before
   // the gain under which the frame shows it dark: the carried light at full
@@ -706,29 +726,19 @@ private:
     return 255.0;
   }
 
-  // Roadmap item 17 stage 8: darkness is not unknown. A frame the braking
-  // contract reads as blind, for longer than the moderate flicker's dark
-  // lasts, means the pair looked and could not see:
-  // the frustum from 1.5 m to the confident depth is observed unobservable,
-  // a prohibition as a surface is, confirmed once a second while it lasts.
-  // The vehicle's own cell and the way it came are never in it (the memory
-  // keeps it off the flown path). Its rays are 30 px apart, 4.7 degrees at the
-  // centre of the 120-degree field: under 0.45 m at 5.5 m, closer than the
-  // three free voxels the body needs, so the dark around a goal it looked at
-  // closes the goal's region for item 19's proof (specification K16).
+  // Roadmap item 17 stage 8, specification K14: a frame the braking contract
+  // reads as blind for longer than the moderate flicker's dark means the pair
+  // looked and could not see: the frustum from 1.5 m to the confident depth
+  // is observed unobservable, confirmed once a second, its rays 30 px apart
+  // (under 0.45 m at 5.5 m, closer than the three free voxels the body needs).
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const bool blind) {
-    // Dark is what the braking contract reads as blind (specification I2:
-    // the sensor looked and its range stayed below the margin): the frame's
-    // share (sensorFrameShare) under the contract's blind line. Read by the
-    // light alone, r815 held blind at the dark's edge with the headroom at
-    // 0.64 and the frame matching 3 percent, and marked nothing.
+    // Dark is what the braking contract reads as blind (I2): the frame's share
+    // under the contract's blind line (r815: read by the light alone, nothing marked).
     constexpr double kDarknessS{2.5};
     constexpr double kConfirmationPeriodS{1.0};
-    // The frame's 95th percentile moves in steps of 8 grey levels, 0.04 of
-    // headroom, and a frame a step above the line every second or so reset a
-    // darkness that had lasted a minute (r812): the dark ends after half a
-    // second without a dark frame.
+    // The dark ends after half a second without a dark frame (r812: a frame a
+    // step above the line every second reset a minute's darkness).
     constexpr double kDarknessGapS{0.5};
     std::vector<Point3> points;
     if (!blind) {
@@ -764,10 +774,8 @@ private:
     return points;
   }
 
-  // Roadmap item 17 stage 3: the mean grey level of the matched pixels in
-  // each metre of depth, from 0 to 8 m (-1 where none matched), which is
-  // what the carried light gives a surface at each distance in the dark
-  // world; the image source logs the gain it applied.
+  // The mean grey of the matched pixels in each metre of depth, 0 to 8 m (-1
+  // where none matched): what the carried light gives a surface at each distance.
   [[nodiscard]] std::array<double, LitRangeTracker::kMetres>
   matchedBrightnessByMetre(const cv::Mat& grey, const cv::Mat& disparity) const {
     constexpr std::size_t kMetres{LitRangeTracker::kMetres};
@@ -808,21 +816,9 @@ private:
     return text;
   }
 
-  // A pixel whose neighbourhood varies no more than the image's own noise
-  // carries no signal to match, and the matcher answers it anyway: in the
-  // dark world, lit by the vehicle's light and raised by the camera's gain,
-  // those answers were surfaces in open air, and the vehicle spent 47
-  // percent of a flight braking for routes they blocked (r764). The noise is
-  // estimated from the frame itself (Immerkaer's operator, robustly), for
-  // each sixteenth of the brightness range: the camera's noise is added to
-  // the linear light and the frame is sRGB, so a dark patch carries more
-  // levels of it than a bright one (specification A12: 1.9 levels in shadow,
-  // 0.5 in the light). One estimate for the whole frame let noise through in
-  // the dark and refused texture in the light: on the record of r1476 it
-  // matched 0.25 of the pixels at 2 to 4 m, and 1.5 percent of its matches
-  // within 4.8 m were surfaces a metre before the truth; by brightness, 0.55
-  // and 0.8 percent (tools/stereo_depth_accuracy.sh). A match stands where
-  // the local standard deviation clears its brightness's noise twofold.
+  // A match stands where the local standard deviation clears its brightness's
+  // noise twofold (Immerkaer's operator, by sixteenths of the brightness range:
+  // a dark patch carries more levels of noise than a bright one, A12; r764, r1476).
   static double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
     cv::Mat laplacian;
     const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
@@ -953,6 +949,10 @@ private:
   static constexpr double kFaceEmitPeriodS{0.5};
   SmokeFaceConfig smoke_face_config_{};
   std::size_t face_frames_{0U};
+  FaceApproach face_approach_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr along_sub_;
+  std::optional<std::pair<double, double>> along_last_;
+  std::atomic<double> along_m_{0.0};
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
   std::size_t face_rays_dropped_{0U};

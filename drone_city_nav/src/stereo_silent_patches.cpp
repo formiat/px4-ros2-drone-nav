@@ -9,6 +9,7 @@
 #include <numbers>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace drone_city_nav {
@@ -343,7 +344,30 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
   return row * (width / stride) + column;
 }
 
+void FaceApproach::observe(const bool face, const double rim_depth_m,
+                           const double along_m, const SmokeFaceConfig& config) {
+  if (!face || !std::isfinite(rim_depth_m)) {
+    first_depth_m_.reset();
+    confirmed_ = false;
+    return;
+  }
+  if (!first_depth_m_.has_value()) {
+    first_depth_m_ = rim_depth_m;
+    first_along_m_ = along_m;
+    least_depth_m_ = rim_depth_m;
+    confirmed_ = false;
+    return;
+  }
+  least_depth_m_ = std::min(least_depth_m_, rim_depth_m);
+  const double travel_m = along_m - first_along_m_;
+  if (travel_m >= config.least_travel_m &&
+      *first_depth_m_ - least_depth_m_ >= config.shrink_share * travel_m) {
+    confirmed_ = true;
+  }
+}
+
 std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
+                                  const char* reason,
                                   const StereoPairGeometry& geometry,
                                   const std::size_t stride, const std::size_t width,
                                   const double nearest_m, const double slab_m,
@@ -354,7 +378,8 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
   }
   const std::size_t columns = width / stride;
   for (const SilentPatch& face : regions) {
-    if (!face.closed || face.rim_depth_m < nearest_m) {
+    if (!face.closed || face.rim_depth_m < nearest_m ||
+        std::string_view{face.reason} != std::string_view{reason}) {
       continue;
     }
     const double from_m = face.rim_depth_m;
