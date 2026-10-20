@@ -347,10 +347,15 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 void FaceApproach::observe(const bool face, const double rim_depth_m,
                            const double along_m, const SmokeFaceConfig& config) {
   if (!face || !std::isfinite(rim_depth_m)) {
-    first_along_m_.reset();
-    confirmed_ = false;
+    if (++lost_ > config.lost_frames) {
+      first_along_m_.reset();
+      confirmed_ = false;
+    }
     return;
   }
+  lost_ = 0U;
+  last_rim_depth_m_ = rim_depth_m;
+  last_along_m_ = along_m;
   if (!first_along_m_.has_value()) {
     first_along_m_ = along_m;
     count_ = sum_a_ = sum_d_ = sum_aa_ = sum_ad_ = 0.0;
@@ -369,6 +374,11 @@ void FaceApproach::observe(const bool face, const double rim_depth_m,
       confirmed_ = true;
     }
   }
+}
+
+double FaceApproach::boundM(const double along_m) const noexcept {
+  return confirmed_ ? last_rim_depth_m_ - (along_m - last_along_m_)
+                    : std::numeric_limits<double>::quiet_NaN();
 }
 
 std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,

@@ -203,18 +203,29 @@ struct SmokeFaceConfig {
   // frame since, falls by `shrink_slope` or steeper per metre of it (a
   // plume's by one; a veil's by nought: its rim's quartile scatters by up to
   // 0.8 m from frame to frame, and the first depth against the least seen
-  // confirmed the veil of the west hall, r1871, 70 000 marks in 13 s). A lit
-  // body in the dark, whose depth is a brightness step, is confirmed by
-  // frames instead.
+  // confirmed the veil of the west hall, r1871, 70 000 marks in 13 s). A
+  // plume's front read from the rim's nearest quartile comes nearer by half
+  // the travel, the floor before it being the quartile until the vehicle is
+  // close (r1890: 3.0 m at 9.9, 2.6 at 8.3, 1.3 at 6.4). A face lost from
+  // the frame for up to `lost_frames` frames keeps its regression and its
+  // confirmation: close to a plume the verdict flickers from frame to frame
+  // (the whole frame silent, the rim a handful of hits; r1890), and a loss
+  // that started over left the vehicle unbounded into the plume. A lit body
+  // in the dark, whose depth is a brightness step, is confirmed by frames
+  // instead.
   double least_travel_m{1.2};
-  double shrink_slope{0.5};
+  double shrink_slope{0.3};
+  std::size_t lost_frames{8U};
 };
 
 // The confirmation of a rimmed face by the vehicle's travel toward it
 // (SmokeFaceConfig). `observe` takes each frame: whether a rimmed face
 // stands in it, the nearest rim's depth, and the vehicle's travel along the
 // camera's axis so far (the autopilot's position projected on its heading,
-// summed); a frame without a rimmed face starts over.
+// summed); a face lost for more than `lost_frames` frames starts over.
+// `boundM` is the depth a confirmed face bounds the motion by while the
+// frame's verdict flickers: its rim at its last sighting less the travel
+// since, NaN unless confirmed.
 class FaceApproach {
 public:
   void observe(bool face, double rim_depth_m, double along_m,
@@ -224,10 +235,15 @@ public:
     return confirmed_;
   }
 
+  [[nodiscard]] double boundM(double along_m) const noexcept;
+
 private:
   // The regression of the rim's depth on the travel: the sums of the frames
-  // since the face was first seen.
+  // since the face was first seen; the last sighting and the frames lost since.
   std::optional<double> first_along_m_;
+  double last_rim_depth_m_{0.0};
+  double last_along_m_{0.0};
+  std::size_t lost_{0U};
   double count_{0.0};
   double sum_a_{0.0};
   double sum_d_{0.0};

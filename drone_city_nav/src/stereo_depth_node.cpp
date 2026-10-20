@@ -109,13 +109,11 @@ public:
     }
     silent_patch_config_.confident_depth_m =
         stereoConfidentDepthM(geometry_, returns_config_);
-    // Far and near are matched apart. A search of 256 disparities at full
-    // resolution costs 187 ms on two threads; the far surfaces need the full
-    // resolution and only a short search, the near ones a long search and
-    // only half the resolution. Together they cost 108 ms on two threads and
-    // recover the same depth: on the recording flight r476 the share of
-    // pixels within one 0.25 m voxel of the simulator's depth is 0.97 at 4 to
-    // 6 m, 0.84 at 6 to 8 m and 0.66 at 8 to 10 m against 0.98, 0.85 and 0.66.
+    // Far and near are matched apart: the far surfaces need the full
+    // resolution and a short search, the near ones a long search at half the
+    // resolution; 108 ms on two threads against 187 for one search of 256
+    // disparities, the same depth recovered (r476, 0.97/0.84/0.66 of the
+    // pixels within a voxel of the truth at 4 to 6, 6 to 8, 8 to 10 m).
     // The threads are capped because the matcher otherwise takes every core:
     // on the shadow flight r478 the lidar-inertial estimator's scans grew from
     // 80 to 200 ms beside it, the estimate diverged, and the vehicle crashed.
@@ -471,10 +469,14 @@ private:
     face_approach_.observe(std::isfinite(rimmed_m), rimmed_m, along_m_.load(),
                            smoke_face_config_);
     // A face bounds the motion into it (F13) from the moment its marks are laid.
-    const double face_ahead_m = smokeFacesAheadM(
+    double face_ahead_m = smokeFacesAheadM(
         lit_regions, face_approach_.confirmed(), face_frames_ >= kFaceFrames, geometry_,
         returns_config_.pixel_stride, image_width_ / returns_config_.pixel_stride,
         image_height_ / returns_config_.pixel_stride, kSilentConeHalfAngleRad);
+    const double held_m = face_approach_.boundM(along_m_.load());
+    if (std::isfinite(held_m) && !(face_ahead_m <= held_m)) {
+      face_ahead_m = held_m;
+    }
     if (std::isfinite(face_ahead_m)) {
       silent_range_m = std::isfinite(silent_range_m)
                            ? std::min(silent_range_m, face_ahead_m)
@@ -901,11 +903,10 @@ private:
   // of the matcher's strays a frame stood in open air inside the route's
   // tube: 98 percent of the latest scan's hits blocking a route were such
   // strays, each holding the vehicle under the blocked route's law for 5 to
-  // 14 s (r1481, 159 s of a 380 s flight; the noiseless base had none). On a
-  // frame of the dark location 33 hits a frame have no truth within 0.5 m of
-  // them against 9 without the noise; the speckle window halves them and this
-  // rule brings them to 9, keeping 99 percent of the hits within a voxel of
-  // the truth (tools/stereo_depth_accuracy.sh on r1476 and r782). A surface
+  // 14 s (r1481, 159 s of a 380 s flight; the noiseless base had none); this
+  // rule brings the strays of the dark location from 33 a frame to 9, the
+  // noiseless count, keeping 99 percent of the hits within a voxel of the
+  // truth (tools/stereo_depth_accuracy.sh on r1476 and r782). A surface
   // within the confident depth puts several of the stride's rays in a voxel
   // (at 5.2 m, 19 on a facing patch); free rays are untouched.
   static void rejectLoneHits(std::vector<StereoDepthReturn>& returns) {

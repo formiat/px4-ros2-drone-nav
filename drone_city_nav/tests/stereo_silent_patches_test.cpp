@@ -424,11 +424,28 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   }
   EXPECT_TRUE(plume.confirmed());
   EXPECT_TRUE(confirmed_at_travel);
-  // A frame without a rimmed face starts over.
+  // A face lost for a few frames (the verdict flickers close to a plume)
+  // keeps its confirmation and bounds the motion by its last rim less the
+  // travel since; lost for longer, it starts over.
   plume.observe(false, 0.0, 2.6, config);
+  EXPECT_TRUE(plume.confirmed());
+  EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3, 1e-9);
+  for (std::size_t lost = 1U; lost < config.lost_frames; ++lost) {
+    plume.observe(false, 0.0, 2.6 + 0.1 * static_cast<double>(lost), config);
+  }
+  EXPECT_TRUE(plume.confirmed());
+  plume.observe(false, 0.0, 3.5, config);
   EXPECT_FALSE(plume.confirmed());
-  plume.observe(true, 2.0, 2.7, config);
+  EXPECT_TRUE(std::isnan(plume.boundM(3.5)));
+  plume.observe(true, 2.0, 3.6, config);
   EXPECT_FALSE(plume.confirmed());
+  // A plume's front read from the rim's nearest quartile comes nearer by
+  // half the travel (r1890).
+  FaceApproach soft;
+  for (int step = 0; step <= 24; ++step) {
+    soft.observe(true, 3.0 - 0.05 * step + jitter[step % 8], 0.1 * step, config);
+  }
+  EXPECT_TRUE(soft.confirmed());
 }
 
 TEST(SmokeFace, ThinSmokeThePairMatchesThroughIsNoFace) {
