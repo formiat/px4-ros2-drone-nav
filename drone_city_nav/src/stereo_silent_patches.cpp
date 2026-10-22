@@ -430,7 +430,8 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
                                   const StereoPairGeometry& geometry,
                                   const std::size_t stride, const std::size_t width,
                                   const double nearest_m, const double slab_m,
-                                  const double step_m, const std::size_t pitch_cells) {
+                                  const double step_m, const std::size_t pitch_cells,
+                                  const double before_m) {
   std::vector<Point3> points;
   if (stride == 0U || width < stride || pitch_cells == 0U || !(step_m > 0.0)) {
     return points;
@@ -441,7 +442,8 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
         std::string_view{face.reason} != std::string_view{reason}) {
       continue;
     }
-    const double from_m = face.rim_depth_m;
+    const double from_m = std::max(nearest_m, face.rim_depth_m - before_m);
+    const double to_m = face.rim_depth_m + slab_m;
     for (const std::size_t index : face.cell_indices) {
       const std::size_t row_cell = index / columns;
       const std::size_t column_cell = index % columns;
@@ -455,7 +457,7 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
       const double left = -(column_px - geometry.principal_x_px) / geometry.focal_px;
       const double up = -(row_px - geometry.principal_y_px) / geometry.focal_px;
       const double norm = std::sqrt(1.0 + left * left + up * up);
-      for (double range_m = from_m; range_m <= from_m + slab_m; range_m += step_m) {
+      for (double range_m = from_m; range_m <= to_m; range_m += step_m) {
         const double along = range_m / norm;
         points.push_back(Point3{along, along * left, along * up});
       }

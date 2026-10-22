@@ -399,11 +399,17 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
 // stand in free air (r1746: 48 670 marks over a flight, a metre before every such
 // surface). A face nearer than `nearest_m` gives no rays: that is the ring's reach and
 // the frustum's own nearest (K14), and a slab pushed out to it from a surface 1.2 m off
-// boxed the vehicle in (r1837).
+// boxed the vehicle in (r1837). The plume's rays start `before_m` before its
+// rim, never nearer than `nearest_m`: its halo blinds the pair, and the
+// motion's bound alone, which lapses with the lay, let the vehicle creep to
+// the marks' edge inside it (r1989: laid at x 7.3 as the passing flights, the
+// vehicle parked at 5.8 to 6.3 in a frame 76 000 cells silent, dead-reckoned
+// and landed); marks in the halo keep the planner's route out of it.
 [[nodiscard]] std::vector<Point3>
 smokeFaceRays(std::span<const SilentPatch> regions, const char* reason,
               const StereoPairGeometry& geometry, std::size_t stride, std::size_t width,
-              double nearest_m, double slab_m, double step_m, std::size_t pitch_cells);
+              double nearest_m, double slab_m, double step_m, std::size_t pitch_cells,
+              double before_m = 0.0);
 
 // Drops the pair's free rays the regions of lit silence enclose where the
 // region's see-through is under `carve_share` (a face or near one): a match

@@ -361,6 +361,15 @@ TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
   ASSERT_EQ(far.size(), 1U);
   EXPECT_FALSE(
       smokeFaceRays(far, "face", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+  // The plume's rays start before its rim, its halo marked too (r1989),
+  // never nearer than the ring's reach.
+  double nearest_m = 99.0;
+  for (const Point3& ray :
+       smokeFaceRays(far, "face", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U, 1.5)) {
+    nearest_m =
+        std::min(nearest_m, std::sqrt(ray.x * ray.x + ray.y * ray.y + ray.z * ray.z));
+  }
+  EXPECT_NEAR(nearest_m, std::max(1.5, far[0].rim_depth_m - 1.5), 0.05);
 }
 
 TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {

@@ -619,9 +619,10 @@ private:
           1U, static_cast<std::size_t>(kRayPitchPx) / returns_config_.pixel_stride);
       std::vector<Point3> rays;
       if (face_approach_.confirmed()) {
-        rays = smokeFaceRays(lit_regions, "plume", geometry_,
-                             returns_config_.pixel_stride, image_width_, kNearestM,
-                             smoke_face_config_.face_slab_m, kStepM, pitch_cells);
+        rays =
+            smokeFaceRays(lit_regions, "plume", geometry_, returns_config_.pixel_stride,
+                          image_width_, kNearestM, smoke_face_config_.face_slab_m,
+                          kStepM, pitch_cells, smoke_face_config_.halo_m);
       }
       if (face_frames_ >= kFaceFrames) {
         const std::vector<Point3> body = smokeFaceRays(
@@ -712,10 +713,9 @@ private:
   // The frame's 95th percentile of brightness over the gain's 200: one while
   // the gain can make up the light, less once it cannot (r800).
   static constexpr double kGainTargetGrey{200.0};
-  // A time-of-flight surface's patch of the frame, and the brightness before
-  // the gain under which the frame shows it dark: the carried light at full
-  // shows the darkest surface it is likely to meet (an albedo of 0.03 at 60
-  // degrees) at the ring's 2.8 m at 36 levels and the light at a tenth of
+  // A time-of-flight surface's patch of the frame, and the raw brightness under
+  // which the frame shows it dark: the light at full shows the darkest likely
+  // surface (albedo 0.03 at 60 degrees) at 2.8 m at 36 levels, at a tenth of
   // itself at 6; the camera's own noise is 1.2 to 1.9 levels (A12).
   static constexpr int kSurfaceWindowPx{9};
   static constexpr double kUnlitRawGrey{6.0};
