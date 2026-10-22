@@ -295,7 +295,7 @@ struct SmokeFaceConfig {
   // and the thin hall's veil at 1.2 to 1.3 percent, r1937) to 88 000 rays
   // under the same limits.
   std::size_t lay_cells{15000U};
-  double lay_see_through_share{0.001};
+  double lay_see_through_share{0.0025};
   // A face approached grows in the frame as it comes nearer; the veil of
   // thin smoke, which keeps its distance, does not. The travel confirms a
   // candidate only while its size, regressed on the travel over the window
@@ -304,8 +304,11 @@ struct SmokeFaceConfig {
   // r1959; the thin hall's veil, which the depth's slope alone confirmed
   // by its noise over a long stay in the hall, flat: r1954 and r1955 replayed
   // offline, tools/plume_replay.py, 12 and 24 false laid frames to 5 and 1,
-  // with the see-through at a tenth of a percent; the blocked flights' first
-  // true frames unmoved or 0.6 m later).
+  // with the see-through at a quarter of a percent; the blocked flights'
+  // first true frames unmoved or 0.6 m later). A tenth of a percent held
+  // back a plume of 1/m, which the pair matches through at 1.5 to 5 percent
+  // from 2 to 3 m and at 0.25 to 0.5 from 1.2 m (r1966: the vehicle crept
+  // into it 0.3 m deep at 0.2 m/s, nothing laid).
   double grow_share_per_m{0.15};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
