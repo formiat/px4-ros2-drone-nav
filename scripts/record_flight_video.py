@@ -155,7 +155,7 @@ def frame_table(clock: list[tuple[float, float, float, float, float]], started: 
     return table, offset
 
 
-INSET_WIDTH = HALF_WIDTH // 4
+INSET_WIDTH = HALF_WIDTH // 2
 INSET_MARGIN = 12
 INSET_BORDER = 2
 
@@ -186,7 +186,7 @@ def camera_frame_at(frames: list[tuple[float, Path, int, int]], cursor: int,
 
 
 def paste_inset(picture, frame: bytes, width: int, height: int) -> None:
-    """The vehicle's own frame, a quarter of the half's width with a white
+    """The vehicle's own frame, half the half's width with a white
     border, in the lower right corner of the world half: what the pair sees
     through the smoke and by its light (K26)."""
     import numpy

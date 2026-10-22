@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """render_camera_frames.py OUTPUT_DIRECTORY [--topic T]: the vehicle's own left frame, as the bag
-replays it after the smoke relay, kept for the recording's inset: every frame a quarter
-scale (every fourth row and column of the mono8 frame) as raw bytes, OUTPUT_DIRECTORY/NNNNNN.raw,
+replays it after the smoke relay, kept for the recording's inset: every frame at half
+scale (each pixel the mean of a 2 x 2 block of the mono8 frame) as raw bytes, OUTPUT_DIRECTORY/NNNNNN.raw,
 and a line of OUTPUT_DIRECTORY/frames.csv: index, the frame's stamp in seconds of simulation,
 width, height. The recorder (record_flight_video.py) pastes the latest frame at or before each
 moment of the flight into the world half of the follow view."""
@@ -10,11 +10,11 @@ import csv
 import sys
 from pathlib import Path
 
-SCALE = 4
+SCALE = 2
 
 
-def quarter(data: bytes, width: int, height: int) -> tuple[bytes, int, int]:
-    """A mono8 frame at a quarter scale, each pixel the mean of a SCALE x SCALE
+def reduced(data: bytes, width: int, height: int) -> tuple[bytes, int, int]:
+    """A mono8 frame at 1/SCALE scale, each pixel the mean of a SCALE x SCALE
     block (the pair's noise, A12, averaged rather than sampled)."""
     import numpy
     frame = numpy.frombuffer(data, dtype=numpy.uint8)[: width * height].reshape(height, width)
@@ -45,7 +45,7 @@ def main() -> int:
         nonlocal count
         if message.encoding != "mono8":
             return
-        data, width, height = quarter(bytes(message.data), message.width, message.height)
+        data, width, height = reduced(bytes(message.data), message.width, message.height)
         (args.output_directory / f"{count:06d}.raw").write_bytes(data)
         stamp_s = message.header.stamp.sec + message.header.stamp.nanosec * 1.0e-9
         writer.writerow([count, f"{stamp_s:.4f}", width, height])

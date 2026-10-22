@@ -249,9 +249,10 @@ class RenderedFlightTest(unittest.TestCase):
 
     def test_the_vehicle_s_own_frame_is_kept_and_pasted_into_the_world_half(self) -> None:
         # The bag records the pair's left frame after the smoke relay, the
-        # replay keeps it a quarter scale beside the windows, and the follow
-        # view's world half carries the latest frame at each moment, a quarter
-        # of the half's width in the lower right corner with a white border.
+        # replay keeps it at half scale beside the windows, and the follow
+        # view's world half carries the latest frame at each moment, half the
+        # half's width in the lower right corner with a white border (the
+        # owner, 2026-10-18: twice the earlier quarter).
         import numpy
         runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
         self.assertIn("/stereo/left/image", runtime)
@@ -275,10 +276,11 @@ class RenderedFlightTest(unittest.TestCase):
         self.assertEqual(0, picture[bottom - height - 10, right - recorder.INSET_WIDTH - 10, 0])
         self.assertEqual(0, picture[:, recorder.HALF_WIDTH:].max())  # the view half untouched
         import render_camera_frames as dumper
-        frame = bytes([10] * 64 + [50] * 64 + [90] * 64 + [130] * 64)  # four bands of 4 rows
-        data, width, height = dumper.quarter(frame, 16, 16)
-        self.assertEqual((4, 4), (width, height))
-        self.assertEqual(bytes([10, 10, 10, 10, 50, 50, 50, 50]), data[:8])  # each block's mean
+        self.assertEqual(recorder.HALF_WIDTH // 2, recorder.INSET_WIDTH)
+        frame = bytes([10] * 16 + [30] * 16 + [50] * 32 + [90] * 64 + [130] * 128)
+        data, width, height = dumper.reduced(frame, 16, 16)
+        self.assertEqual((8, 8), (width, height))
+        self.assertEqual(bytes([20] * 8 + [50] * 8), data[:16])  # each 2 x 2 block's mean
         self.assertNotIn("--smoke-zones", runtime)  # RViz shows no obstacle of the truth
 
     def test_the_replayed_world_draws_the_smoke_the_vehicle_cannot_see(self) -> None:
