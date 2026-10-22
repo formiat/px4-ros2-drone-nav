@@ -413,10 +413,16 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // from frame to frame; a plume's face comes nearer by the travel.
   const SmokeFaceConfig config{};
   const double jitter[] = {0.3, -0.4, 0.1, 0.4, -0.3, -0.1, 0.2, -0.2};
+  // A sample's size follows its depth as a face's does, 60 000 cells at
+  // 2.3 m, 15 000 at 4.6 (`size_depth_m`, the depth without the rim's jitter).
   const auto sample = [](const double depth_m, const double row = 120.0,
-                         const double column = 160.0) {
+                         const double column = 160.0, double size_depth_m = 0.0) {
+    if (size_depth_m <= 0.0) {
+      size_depth_m = depth_m;
+    }
     SilentPatch candidate;
-    candidate.cells = 20000U;
+    candidate.cells =
+        static_cast<std::size_t>(60000.0 * 2.3 * 2.3 / (size_depth_m * size_depth_m));
     candidate.rim_depth_m = depth_m;
     candidate.rim_spread_m = 0.8;
     candidate.centre_row = row;
@@ -432,7 +438,8 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   FaceApproach plume;
   bool confirmed_at_travel{false};
   for (int step = 0; step <= 24; ++step) {
-    const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
+    const SilentPatch frame =
+        sample(4.6 - 0.1 * step + jitter[step % 8], 120.0, 160.0, 4.6 - 0.1 * step);
     plume.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
     if (step < 12) {
       EXPECT_FALSE(plume.confirmed()) << step;
@@ -524,10 +531,19 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   for (int step = 0; step <= 24; ++step) {
     const double heading = (step % 2 == 0 ? 0.26 : -0.26);
     const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8], 120.0,
-                                     160.0 + heading * kCellsPerRad);
+                                     160.0 + heading * kCellsPerRad, 4.6 - 0.1 * step);
     swinging.observe(&frame, 0.1 * step, heading, kCellsPerRad, config);
   }
   EXPECT_TRUE(swinging.confirmed());
+  // A candidate whose depth comes nearer but whose size does not grow is the
+  // veil read by its noise, not a face (r1954, r1955).
+  FaceApproach flat;
+  for (int step = 0; step <= 24; ++step) {
+    SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
+    frame.cells = 30000U;
+    flat.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
+    EXPECT_FALSE(flat.confirmed()) << step;
+  }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
   // taking over from a farther one makes no approach (r1902).

@@ -373,27 +373,35 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     centre_row_ = candidate->centre_row;
     centre_column_ = candidate->centre_column;
     centre_heading_rad_ = heading_rad;
-    window_.emplace_back(along_m, candidate->rim_depth_m);
+    window_.emplace_back(
+        along_m, candidate->rim_depth_m,
+        std::log(static_cast<double>(std::max<std::size_t>(1U, candidate->cells))));
     while (window_.size() > config.window_frames ||
-           window_.front().first < along_m - 2.0 * config.least_travel_m) {
+           std::get<0>(window_.front()) < along_m - 2.0 * config.least_travel_m) {
       window_.pop_front();
     }
+    // The depth's and the size's slopes on the travel over the window.
     double count{0.0};
     double sum_a{0.0};
-    double sum_d{0.0};
     double sum_aa{0.0};
+    double sum_d{0.0};
     double sum_ad{0.0};
-    for (const auto& [travel_m, depth_m] : window_) {
+    double sum_g{0.0};
+    double sum_ag{0.0};
+    for (const auto& [travel_m, depth_m, log_cells] : window_) {
       count += 1.0;
       sum_a += travel_m;
-      sum_d += depth_m;
       sum_aa += travel_m * travel_m;
+      sum_d += depth_m;
       sum_ad += travel_m * depth_m;
+      sum_g += log_cells;
+      sum_ag += travel_m * log_cells;
     }
     const double spread = count * sum_aa - sum_a * sum_a;
-    const double span_m = along_m - window_.front().first;
+    const double span_m = along_m - std::get<0>(window_.front());
     approach = span_m >= config.least_travel_m && spread > 1.0e-9 &&
-               (count * sum_ad - sum_a * sum_d) / spread <= -config.shrink_slope;
+               (count * sum_ad - sum_a * sum_d) / spread <= -config.shrink_slope &&
+               (count * sum_ag - sum_a * sum_g) / spread >= config.grow_share_per_m;
   }
   const bool lay = plume_like && (approach || front_frames_ >= config.front_frames);
   if (lay) {
