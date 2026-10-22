@@ -108,11 +108,10 @@ public:
     }
     silent_patch_config_.confident_depth_m =
         stereoConfidentDepthM(geometry_, returns_config_);
-    // Far and near are matched apart: the far surfaces need the full
-    // resolution and a short search, the near ones a long search at half the
-    // resolution; 108 ms on two threads against 187 for one search of 256
-    // disparities, the same depth recovered (r476, 0.97/0.84/0.66 of the
-    // pixels within a voxel of the truth at 4 to 6, 6 to 8, 8 to 10 m).
+    // Far and near are matched apart: the far surfaces at full resolution with a
+    // short search, the near ones at half with a long one; 108 ms on two threads
+    // against 187 for one search of 256 disparities, the same depth recovered
+    // (r476: 0.97/0.84/0.66 of the pixels within a voxel at 4-6, 6-8, 8-10 m).
     // The threads are capped: the matcher otherwise takes every core (r478:
     // the lidar-inertial scans grew from 80 to 200 ms, the vehicle crashed).
     cv::setNumThreads(declare_parameter<int>("matcher_threads", 2));
@@ -202,6 +201,7 @@ public:
           }
           along_last_ = std::pair{t.x, t.y};
           heading_rad_.store(yaw);
+          height_m_.store(t.z);
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -209,8 +209,8 @@ public:
           right_ = image;
           matchIfPaired();
         });
-    // The time-of-flight sensors (up, down and the ring, item 17 stage 4) join the
-    // pair's returns in the same frame and cloud, fired on the same simulation step.
+    // The time-of-flight sensors (up, down, the ring; item 17 stage 4) join the
+    // pair's returns in one frame and cloud, fired on the same simulation step.
     TofZoneReturnsConfig tof;
     tof.zones_per_side =
         static_cast<std::size_t>(declare_parameter<int>("tof_zones_per_side", 8));
@@ -340,8 +340,8 @@ private:
     cv::Mat near_disparity;
     near_matcher_->compute(left_half, right_half, near_disparity);
     // Where the near search sees a surface the far search cannot reach (its doubled
-    // disparity within 8 px of the far search's end) or the far search found nothing,
-    // the near answer stands; only the pixels that become returns are merged.
+    // disparity within 8 px of its end) or the far search found nothing, the near
+    // answer stands; only the pixels that become returns are merged.
     const int near_threshold_16 = 16 * (far_disparities_ - 8) / 2;
     const auto stride = static_cast<int>(returns_config_.pixel_stride);
     for (int row = 0; row < disparity.rows; row += stride) {
@@ -450,7 +450,7 @@ private:
     const bool lay = face_approach_.observe(
         candidate, along_m, heading_rad,
         geometry_.focal_px / static_cast<double>(returns_config_.pixel_stride),
-        smoke_face_config_);
+        height_m_.load(), smoke_face_config_);
     // Every frame's candidate, for replaying the confirmation offline.
     RCLCPP_INFO(get_logger(),
                 "PLUME_CANDIDATE along=%.3f heading=%.4f quartile=%.2f lay=%d %s",
@@ -740,10 +740,9 @@ private:
     return 255.0;
   }
 
-  // K14 (item 17 stage 8): a frame blind for longer than the moderate
-  // flicker's dark means the pair looked and could not see: the frustum from
-  // 1.5 m to the confident depth is observed unobservable once a second, its
-  // rays 30 px apart (under 0.45 m at 5.5 m, closer than the body's voxels).
+  // K14 (item 17 stage 8): a frame blind for longer than the moderate flicker's
+  // dark means the pair looked and could not see: the frustum from 1.5 m to the
+  // confident depth is observed unobservable once a second, rays 30 px apart.
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const bool blind) {
     // Dark is what the braking contract reads as blind (I2; r815: read by the
@@ -957,6 +956,7 @@ private:
   std::optional<std::pair<double, double>> along_last_;
   std::atomic<double> along_m_{0.0};
   std::atomic<double> heading_rad_{0.0};
+  std::atomic<double> height_m_{0.0};
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
   std::size_t face_rays_dropped_{0U};

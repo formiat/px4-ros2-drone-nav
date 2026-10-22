@@ -346,7 +346,7 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 
 bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
                            const double heading_rad, const double cells_per_rad,
-                           const SmokeFaceConfig& config) {
+                           const double height_m, const SmokeFaceConfig& config) {
   halo_m_ = config.halo_m;
   const bool seen = candidate != nullptr && std::isfinite(candidate->rim_depth_m);
   const bool plume_like =
@@ -375,7 +375,8 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     centre_heading_rad_ = heading_rad;
     window_.emplace_back(
         along_m, candidate->rim_depth_m,
-        std::log(static_cast<double>(std::max<std::size_t>(1U, candidate->cells))));
+        std::log(static_cast<double>(std::max<std::size_t>(1U, candidate->cells))),
+        height_m);
     while (window_.size() > config.window_frames ||
            std::get<0>(window_.front()) < along_m - 2.0 * config.least_travel_m) {
       window_.pop_front();
@@ -388,7 +389,8 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     double sum_ad{0.0};
     double sum_g{0.0};
     double sum_ag{0.0};
-    for (const auto& [travel_m, depth_m, log_cells] : window_) {
+    for (const auto& [travel_m, depth_m, log_cells, height] : window_) {
+      (void)height;
       count += 1.0;
       sum_a += travel_m;
       sum_aa += travel_m * travel_m;
@@ -402,8 +404,9 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     if (span_m >= config.least_travel_m && spread > 1.0e-9) {
       const double shrink = -(count * sum_ad - sum_a * sum_d) / spread;
       const double growth = (count * sum_ag - sum_a * sum_g) / spread;
+      const double climb_m = std::abs(height_m - std::get<3>(window_.front()));
       approach =
-          shrink >= config.shrink_slope &&
+          shrink >= config.shrink_slope && climb_m <= config.climb_share * span_m &&
           (growth >= config.grow_share_high_per_m ||
            (growth >= config.grow_share_per_m && shrink >= config.shrink_slope_steep));
     }

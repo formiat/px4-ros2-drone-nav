@@ -67,7 +67,7 @@ def truth(dense, pose, c):
 
 DEFAULT = dict(lay_cells=15000, lay_see=0.0025, front_spread=0.4, front_trend=0.2, front_frames=3, drift=40.0,
                lost=8, window=64, least_travel=1.2, shrink=0.3, t_max=None, grow_min=0.1, grow_alone=None,
-               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8)
+               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8, climb_max=0.2)
 
 
 def slope_of(points):
@@ -97,21 +97,22 @@ def replay(frames, cfg):
                 window = []
         else:
             lost = 0; crow, ccol, chead = c["row"], c["col"], f["heading"]
-            window.append((f["along"], c["depth"], math.log(max(c["cells"], 1))))
+            window.append((f["along"], c["depth"], math.log(max(c["cells"], 1)), f["pose"][3]))
             while len(window) > cfg["window"] or window[0][0] < f["along"] - 2 * cfg["least_travel"]:
                 window.pop(0)
             n = len(window)
             span = f["along"] - window[0][0]
-            slope = slope_of([(a, d) for a, d, _ in window])
-            growth = slope_of([(a, g) for a, _, g in window])
+            slope = slope_of([(a, d) for a, d, _, _ in window])
+            growth = slope_of([(a, g) for a, _, g, _ in window])
+            climb = abs(f["pose"][3] - window[0][3])
             if span >= cfg["least_travel"] and slope is not None:
                 approach = slope <= -cfg["shrink"]
                 if approach and cfg["t_max"] is not None and n > 2:
-                    sa = sum(a for a, _, _ in window); sd = sum(d for _, d, _ in window)
-                    saa = sum(a * a for a, _, _ in window)
+                    sa = sum(a for a, _, _, _ in window); sd = sum(d for _, d, _, _ in window)
+                    saa = sum(a * a for a, _, _, _ in window)
                     spread = n * saa - sa * sa
                     intercept = (sd - slope * sa) / n
-                    rss = sum((d - (intercept + slope * a)) ** 2 for a, d, _ in window)
+                    rss = sum((d - (intercept + slope * a)) ** 2 for a, d, _, _ in window)
                     se = math.sqrt(rss / (n - 2) / (spread / n)) if spread > 0 else 1e9
                     approach = slope / max(se, 1e-9) <= cfg["t_max"]
                 if approach and cfg["grow_min"] is not None:
@@ -119,6 +120,9 @@ def replay(frames, cfg):
                 if approach and cfg["grow_high"] is not None:
                     # A weak growth needs a steep approach of the depth, a strong one not.
                     approach = growth >= cfg["grow_high"] or slope <= -cfg["shrink_high"]
+                if approach and cfg["climb_max"] is not None and climb > cfg["climb_max"] * span:
+                    # The window climbed or sank too steeply for the depth's fall to be the face's.
+                    approach = False
                 if not approach and cfg["grow_alone"] is not None and growth is not None:
                     approach = growth >= cfg["grow_alone"] and slope <= cfg["grow_depth_max"]
         lay = plume_like and (approach or front_n >= cfg["front_frames"])

@@ -320,6 +320,13 @@ struct SmokeFaceConfig {
   double grow_share_per_m{0.1};
   double grow_share_high_per_m{0.3};
   double shrink_slope_steep{0.8};
+  // The travel confirms nothing while the vehicle climbs or sinks by more
+  // than `climb_share` of the window's travel: the lit floor of a hall in
+  // thin smoke comes nearer and grows as the vehicle sinks toward it (r2002:
+  // 0.4 m down over 1.3 m along, 61 000 cells at 1.5 m, the marks closing
+  // the west hall's south way; r1971 the same on a climb), a front ahead
+  // does not care for the height (the blocked flights level at 10 m).
+  double climb_share{0.2};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
   std::size_t front_frames{3U};
@@ -333,7 +340,7 @@ struct SmokeFaceConfig {
 // beyond what the turn of the heading since the last accepted frame moves it
 // by is another region, a loss), the vehicle's travel along the camera's
 // axis so far (the estimator's position projected on its heading, summed),
-// the heading and the grid's cells a radian of it spans;
+// the heading and the grid's cells a radian of it spans, and the height;
 // a candidate lost for more than `lost_frames` frames starts over; a
 // candidate with a front's signature over `front_frames` frames running is
 // confirmed without the travel. It returns whether the candidate's marks are
@@ -345,7 +352,7 @@ struct SmokeFaceConfig {
 class FaceApproach {
 public:
   bool observe(const SilentPatch* candidate, double along_m, double heading_rad,
-               double cells_per_rad, const SmokeFaceConfig& config);
+               double cells_per_rad, double height_m, const SmokeFaceConfig& config);
 
   [[nodiscard]] bool confirmed() const noexcept {
     return laid_;
@@ -354,11 +361,11 @@ public:
   [[nodiscard]] double boundM(double along_m) const noexcept;
 
 private:
-  // The window's frames (the travel, the rim's depth, the log of the size), oldest
-  // first; the candidate's centroid; the frames the candidate was lost since the last
-  // accepted; the frames running with a front's signature; the last laid
+  // The window's frames (the travel, the rim's depth, the log of the size, the
+  // height), oldest first; the candidate's centroid; the frames the candidate was lost
+  // since the last accepted; the frames running with a front's signature; the last laid
   // sighting's depth and travel and the frames since; the halo.
-  std::deque<std::tuple<double, double, double>> window_;
+  std::deque<std::tuple<double, double, double, double>> window_;
   double centre_row_{0.0};
   double centre_column_{0.0};
   double centre_heading_rad_{0.0};
