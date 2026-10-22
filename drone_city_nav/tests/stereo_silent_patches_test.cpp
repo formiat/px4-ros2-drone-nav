@@ -565,9 +565,10 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     }
     EXPECT_EQ(weak.confirmed(), shrink > 0.5) << shrink;
   }
-  // A face coming nearer while the vehicle sinks by more than a fifth of
-  // the travel is the floor, not a front (r2002).
-  for (const double sink_per_m : {0.0, 0.3}) {
+  // A face coming nearer while the vehicle sinks by more than three tenths
+  // of the travel is the floor, not a front (r2002); the approach's own
+  // gentle climb is allowed (r2015).
+  for (const double sink_per_m : {0.2, 0.5}) {
     FaceApproach sinking;
     for (int step = 0; step <= 24; ++step) {
       const SilentPatch frame =
@@ -575,7 +576,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
       sinking.observe(&frame, 0.1 * step, 0.0, kCellsPerRad,
                       10.0 - sink_per_m * 0.1 * step, config);
     }
-    EXPECT_EQ(sinking.confirmed(), sink_per_m < 0.2) << sink_per_m;
+    EXPECT_EQ(sinking.confirmed(), sink_per_m < 0.3) << sink_per_m;
   }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region

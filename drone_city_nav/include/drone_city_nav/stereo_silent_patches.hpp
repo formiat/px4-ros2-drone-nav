@@ -325,8 +325,11 @@ struct SmokeFaceConfig {
   // thin smoke comes nearer and grows as the vehicle sinks toward it (r2002:
   // 0.4 m down over 1.3 m along, 61 000 cells at 1.5 m, the marks closing
   // the west hall's south way; r1971 the same on a climb), a front ahead
-  // does not care for the height (the blocked flights level at 10 m).
-  double climb_share{0.2};
+  // does not care for the height, but the approach itself climbs a little
+  // (r2015: 0.7 m over the window's 2.4 m, a fifth refused it and the plume
+  // was laid from 1.3 m, the vehicle blind at 5.7; three tenths lays it from
+  // 2.5 m and still refuses r2002's floor).
+  double climb_share{0.3};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
   std::size_t front_frames{3U};
