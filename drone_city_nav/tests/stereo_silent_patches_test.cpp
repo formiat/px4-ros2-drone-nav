@@ -544,6 +544,18 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     flat.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
     EXPECT_FALSE(flat.confirmed()) << step;
   }
+  // A candidate growing weakly while its depth falls gently is the veil too
+  // (r1971: 0.4 of itself a metre, the depth by 0.3); the same growth with
+  // the depth falling steeply is a face approached head-on.
+  for (const double shrink : {0.3, 1.0}) {
+    FaceApproach weak;
+    for (int step = 0; step <= 24; ++step) {
+      SilentPatch frame = sample(4.6 - shrink * 0.1 * step + jitter[step % 8]);
+      frame.cells = static_cast<std::size_t>(20000.0 * std::exp(0.2 * 0.1 * step));
+      weak.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, config);
+    }
+    EXPECT_EQ(weak.confirmed(), shrink > 0.5) << shrink;
+  }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
   // taking over from a farther one makes no approach (r1902).

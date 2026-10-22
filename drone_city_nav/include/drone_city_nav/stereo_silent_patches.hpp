@@ -309,7 +309,17 @@ struct SmokeFaceConfig {
   // back a plume of 1/m, which the pair matches through at 1.5 to 5 percent
   // from 2 to 3 m and at 0.25 to 0.5 from 1.2 m (r1966: the vehicle crept
   // into it 0.3 m deep at 0.2 m/s, nothing laid).
-  double grow_share_per_m{0.15};
+  // A growth of `grow_share_high_per_m` confirms on its own; a weaker one,
+  // of `grow_share_per_m` at least, only while the depth falls steeply, by
+  // `shrink_slope_steep` per metre, as a face approached head-on does
+  // (r1971: the veil of the west hall's corner grew by 0.4 of itself a
+  // metre while its depth fell by 0.3, and its marks closed the hall's only
+  // way; replayed, the rule lays nothing false in r1971 and r1954, 3 frames
+  // in r1955, and the blocked flights' first true frames stay at x 7.3 to
+  // 7.4).
+  double grow_share_per_m{0.1};
+  double grow_share_high_per_m{0.3};
+  double shrink_slope_steep{0.8};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
   std::size_t front_frames{3U};

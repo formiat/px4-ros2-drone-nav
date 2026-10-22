@@ -399,9 +399,14 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
     }
     const double spread = count * sum_aa - sum_a * sum_a;
     const double span_m = along_m - std::get<0>(window_.front());
-    approach = span_m >= config.least_travel_m && spread > 1.0e-9 &&
-               (count * sum_ad - sum_a * sum_d) / spread <= -config.shrink_slope &&
-               (count * sum_ag - sum_a * sum_g) / spread >= config.grow_share_per_m;
+    if (span_m >= config.least_travel_m && spread > 1.0e-9) {
+      const double shrink = -(count * sum_ad - sum_a * sum_d) / spread;
+      const double growth = (count * sum_ag - sum_a * sum_g) / spread;
+      approach =
+          shrink >= config.shrink_slope &&
+          (growth >= config.grow_share_high_per_m ||
+           (growth >= config.grow_share_per_m && shrink >= config.shrink_slope_steep));
+    }
   }
   const bool lay = plume_like && (approach || front_frames_ >= config.front_frames);
   if (lay) {

@@ -66,8 +66,8 @@ def truth(dense, pose, c):
 
 
 DEFAULT = dict(lay_cells=15000, lay_see=0.0025, front_spread=0.4, front_trend=0.2, front_frames=3, drift=40.0,
-               lost=8, window=64, least_travel=1.2, shrink=0.3, t_max=None, grow_min=0.15, grow_alone=None,
-               grow_depth_max=0.1)
+               lost=8, window=64, least_travel=1.2, shrink=0.3, t_max=None, grow_min=0.1, grow_alone=None,
+               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8)
 
 
 def slope_of(points):
@@ -116,6 +116,9 @@ def replay(frames, cfg):
                     approach = slope / max(se, 1e-9) <= cfg["t_max"]
                 if approach and cfg["grow_min"] is not None:
                     approach = growth is not None and growth >= cfg["grow_min"]
+                if approach and cfg["grow_high"] is not None:
+                    # A weak growth needs a steep approach of the depth, a strong one not.
+                    approach = growth >= cfg["grow_high"] or slope <= -cfg["shrink_high"]
                 if not approach and cfg["grow_alone"] is not None and growth is not None:
                     approach = growth >= cfg["grow_alone"] and slope <= cfg["grow_depth_max"]
         lay = plume_like and (approach or front_n >= cfg["front_frames"])
