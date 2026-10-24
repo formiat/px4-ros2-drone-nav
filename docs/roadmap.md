@@ -2183,7 +2183,9 @@ vehicle creeping back into a laid plume has the halo's reach alone to lay
 by, from 1.8 m before the face; the rules of the motion that keep the thin
 hall's veil and the lit floor out (the growth, the climb) refuse some
 approaches to the real plume (r2015, r2031, r2045), which the reach then
-lays with 1.2 m to spare at 1.8 m/s.
+lays with 1.2 m to spare at 1.8 m/s. Since 2026-10-24 the face is off unless
+asked for (`smoke_face`, `SMOKE_FACE=true`; the owner's rule): the clear
+ordinary flight carries no smoke detection.
 Its limits: a plume of 2 to 3 m at
 1/m (optical depth 2 to 3) the pair matches through at 2 to 6 percent is
 laid only from 1.2 m, and the vehicle grazed one by 0.3 m creeping (r1966)

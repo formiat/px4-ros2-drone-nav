@@ -161,10 +161,9 @@ if [[ -n "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-}" ]]; then
   fi
 fi
 # Where the raw Occupancy3D bits are persisted from. The acceptance volume sits
-# near the start, because that is the geometry the crossing check is about; a
-# pocket the vehicle gets stuck in is somewhere else entirely, and the snapshots
-# taken at the start cannot reproduce it offline. Setting this points the
-# capture at the volume under investigation instead.
+# near the start (the geometry the crossing check is about); a pocket the vehicle
+# gets stuck in is elsewhere and the start's snapshots cannot reproduce it
+# offline: setting this points the capture at the volume under investigation.
 raw_snapshot_bounds_m="${observed_3d_route_volume_bounds_m}"
 if [[ -n "${RAW_SNAPSHOT_BOUNDS_M:-}" ]]; then
   if ! raw_snapshot_bounds_m="$(
@@ -236,8 +235,7 @@ if bool_is_true "${multi_vehicle_mission}"; then
     exit 1
   fi
 elif [[ "${navigation_sensor_profile}" == "stereo_tof" ]]; then
-  # Without the lidar the lidar-inertial estimator has nothing to register;
-  # the pair that perceives also localizes.
+  # Without the lidar the lidar-inertial estimator has nothing to register; the pair localizes.
   localization_profile="${LOCALIZATION_PROFILE:-visual_inertial}"
   if [[ "${localization_profile}" == "lidar_inertial" ]]; then
     echo "LOCALIZATION_PROFILE=lidar_inertial needs the lidar, which NAVIGATION_SENSOR_PROFILE=stereo_tof leaves out of the vehicle" >&2
@@ -972,6 +970,7 @@ else
   [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]] && ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
   # Roadmap item 18 stage 1: smoke in the location, every sensor read through it (the launch starts its relay).
   [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")
+  [[ -n "${SMOKE_FACE:-}" ]] && ros_launch_args+=(smoke_face:="${SMOKE_FACE}")  # K44's face, off unless asked for (the owner, 2026-10-24)
   # K28: the IMU stream failing, injected by a relay the camera estimator reads from.
   [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]] && ros_launch_args+=(imu_topic_suffix:=/relayed)
 fi

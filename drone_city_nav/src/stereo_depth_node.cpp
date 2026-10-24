@@ -98,6 +98,7 @@ public:
                                  optical_to_flu.transpose();
     returns_config_.pixel_stride =
         static_cast<std::size_t>(declare_parameter<int>("pixel_stride", 4));
+    smoke_face_ = declare_parameter<bool>("smoke_face", false);
     returns_config_.minimum_range_m = declare_parameter<double>("minimum_range_m", 0.3);
     returns_config_.disparity_error_px =
         declare_parameter<double>("disparity_error_px", 0.45);
@@ -435,10 +436,12 @@ private:
     const std::vector<std::uint8_t> seen_cells =
         seenCells(std::span<const StereoDepthReturn>{returns}, geometry_,
                   returns_config_.pixel_stride, image_width_, image_height_);
+    // The smoke face (K44) is off unless asked for (the owner, 2026-10-24).
     std::vector<SilentPatch> lit_regions =
-        smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
-                   returns_config_, image_width_, image_height_, raw_cells,
-                   silent_patch_config_, smoke_face_config_);
+        smoke_face_ ? smokeFaces(std::span<const StereoDepthReturn>{returns}, geometry_,
+                                 returns_config_, image_width_, image_height_,
+                                 raw_cells, silent_patch_config_, smoke_face_config_)
+                    : std::vector<SilentPatch>{};
     // The plume (K44): the largest lit rimmed region of a plume's size.
     SilentPatch* candidate =
         plumeCandidate(lit_regions, silent_patch_config_, smoke_face_config_,
@@ -455,8 +458,8 @@ private:
         geometry_.focal_px / static_cast<double>(returns_config_.pixel_stride),
         height_m_.load(), reach_m, smoke_face_config_);
     // Every frame's candidate, for replaying the confirmation offline.
-    RCLCPP_INFO(
-        get_logger(),
+    RCLCPP_INFO_EXPRESSION(
+        get_logger(), smoke_face_,
         "PLUME_CANDIDATE along=%.3f heading=%.4f quartile=%.2f reach=%.0f lay=%d %s",
         along_m, heading_rad, quartile_m, reach_m, lay ? 1 : 0,
         candidate != nullptr ? silentPatchSummary(*candidate).c_str() : "none");
@@ -509,8 +512,7 @@ private:
     // The ring's zones returning smoke (K38).
     std::size_t tof_zones{0U};
     std::size_t smoky_zones{0U};
-    // Roadmap item 29 (K12): the ring's surfaces in the camera's field the frame shows
-    // dark.
+    // Item 29 (K12): the ring's surfaces in the camera's field the frame shows dark.
     std::size_t surfaces_in_view{0U};
     std::size_t unlit_surfaces{0U};
     const double gain = camera_gain_.load(std::memory_order_relaxed);
@@ -599,16 +601,14 @@ private:
         static_cast<double>(returns.size()) /
         static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                             (image_height_ / returns_config_.pixel_stride));
-    // A blind frame's stereo returns never reach the memory (r1175); the ring's rays
-    // and K14's frustum do.
+    // A blind frame's stereo returns never reach the memory (r1175), the ring's do.
     const bool blind =
         sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
     if (blind) {
       returns.erase(returns.begin(),
                     returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns));
     }
-    // Under a sound light the dark is the place's (roadmap item 29, r1473): nothing
-    // marked.
+    // Under a sound light the dark is the place's: nothing marked (item 29, r1473).
     const double light_reading = light_reading_.load(std::memory_order_relaxed);
     const bool light_sound =
         std::isfinite(light_reading) &&
@@ -656,8 +656,7 @@ private:
     cloud.header.stamp = left->header.stamp;
     cloud.header.frame_id = frame_id_;
     sensor_msgs::PointCloud2Modifier modifier{cloud};
-    // `intensity` is 1 for a surface, 0 for a ray that is only free and 2 for
-    // a point the pair looked at and could not see (roadmap item 17 stage 8).
+    // intensity: 1 a surface, 0 a free ray, 2 looked at, not seen (item 17 stage 8).
     modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y",
                                   1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
                                   sensor_msgs::msg::PointField::FLOAT32, "intensity", 1,
@@ -949,6 +948,7 @@ private:
   static constexpr std::size_t kFaceFrames{4U};
   static constexpr double kFaceEmitPeriodS{0.5};
   SmokeFaceConfig smoke_face_config_{};
+  bool smoke_face_{false};
   std::size_t face_frames_{0U};
   FaceApproach face_approach_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr along_sub_;

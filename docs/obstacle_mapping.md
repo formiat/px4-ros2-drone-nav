@@ -281,7 +281,9 @@ carry the halo 9 m out, where the depth reads 1.4 to 2 m from 10 m on,
 r2045): the candidate is laid at once when the pair's reach, the farthest
 metre of the frame with matched hits in it and the one before, has fallen
 to 4 m or under while a lit silence of 40 000 cells, half the frame, fills
-it; the thin hall's dark frames keep hits at 5 to 8 m. A lit body
+it; the thin hall's dark frames keep hits at 5 to 8 m. The face is off unless
+the depth node's `smoke_face` parameter is true (`SMOKE_FACE=true` in the
+flight's environment; the owner's rule of 2026-10-24, specification K44). A lit body
 in the dark with a sharp edge, placed by its brightness, is confirmed by
 four frames. The rays enter the memory observed unobservable from 1.5 m
 before the face to 1.5 m beyond, as the dark frustum's do (K14), never

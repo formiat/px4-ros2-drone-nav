@@ -59,6 +59,11 @@ class SimulationSmokeContractTest(unittest.TestCase):
         self.assertIn('executable="simulation_smoke_sensor_node"', launch)
         runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
         self.assertIn('smoke_zones:="${SMOKE_ZONES}"', runtime)
+        # The smoke face (K44) is off unless a flight asks for it (the owner,
+        # 2026-10-24): SMOKE_FACE reaches the depth node's parameter.
+        self.assertIn('smoke_face:="${SMOKE_FACE}"', runtime)
+        launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
+        self.assertIn('"smoke_face": smoke_face', launch)
 
     def test_the_smoke_face_detector_reads_the_frame_alone(self) -> None:
         # The smoke face detector (K44) is the vehicle's: it reads the pair's
@@ -71,6 +76,7 @@ class SimulationSmokeContractTest(unittest.TestCase):
             self.assertNotIn("smoke_zones", text)
             self.assertNotIn("manifest", text)
         self.assertIn("smokeFaces(", node)
+        self.assertIn('declare_parameter<bool>("smoke_face", false)', node)
         self.assertIn("rawCells(", node)
         self.assertIn("smoke_faces=%zu face_range_m=%.1f", node)
 

@@ -396,7 +396,7 @@ default), `LIGHT_BATTERY_S` (seconds of light at launch, only in the scenarios t
 `STREAM_FAULTS=none|moderate` with
 `STREAM_FAULT_SEED` (frames dropped or delayed by a relay the camera driver
 then reads), `SMOKE_ZONES` with `SMOKE_SEED` (boxes of smoke every sensor is
-read through, roadmap item 18 stage 1, specification A13), and the four that tell the mission check what a named
+read through, roadmap item 18 stage 1, specification A13), `SMOKE_FACE=true` (the stereo set's smoke face detector on, K44; off by default since 2026-10-24), and the four that tell the mission check what a named
 scenario asks for, `RETURN_HOME_EXPECTED`, `RETURN_HOME_ALLOWED`,
 `RETURN_TRIGGERS_ALLOWED` and `VEHICLE_INTACT_EXPECTED`
 ([testing.md](testing.md)). None of them reaches

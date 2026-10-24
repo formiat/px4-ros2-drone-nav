@@ -109,6 +109,7 @@ def stereo_vision_nodes(
     visual_inertial_overrides,
     image_topic_suffix,
     tof_topic_suffix,
+    smoke_face,
 ):
     """The vision path of roadmap item 14: the pair's images and the
     time-of-flight scans bridged to ROS and depth recovered from them. In
@@ -149,7 +150,7 @@ def stereo_vision_nodes(
             parameters=[
                 params_path,
                 depth_topics,
-                {"use_sim_time": True},
+                {"use_sim_time": True, "smoke_face": smoke_face},
                 visual_inertial_overrides or {},
             ],
         ),
@@ -237,6 +238,7 @@ def generate_launch_description():
     stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
     smoke_zones = LaunchConfiguration("smoke_zones")
     smoke_seed = LaunchConfiguration("smoke_seed")
+    smoke_face = LaunchConfiguration("smoke_face")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
@@ -595,6 +597,8 @@ def generate_launch_description():
                     visual_inertial_overrides=visual_inertial_overrides,
                     image_topic_suffix=image_suffix,
                     tof_topic_suffix=sensor_suffix,
+                    smoke_face=optional_bool_override(context, smoke_face, "smoke_face")
+                    is True,
                 )
             )
         nodes.append(
@@ -859,6 +863,14 @@ def generate_launch_description():
                 "smoke_seed",
                 default_value="0",
                 description="Seed of the smoke's churn (roadmap item 18 stage 1).",
+            ),
+            DeclareLaunchArgument(
+                "smoke_face",
+                default_value="false",
+                description=(
+                    "The stereo set's smoke face detector on (specification K44); off "
+                    "by default, the owner's rule of 2026-10-24."
+                ),
             ),
             DeclareLaunchArgument(
                 "stereo_image_topic_suffix",

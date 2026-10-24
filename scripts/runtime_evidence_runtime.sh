@@ -52,7 +52,7 @@ prepare_runtime_evidence() {
     BLANK_PANELS REAL_TIME_FACTOR LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
-    SMOKE_ZONES SMOKE_SEED; do
+    SMOKE_ZONES SMOKE_SEED SMOKE_FACE; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
         --effective-override "${override_name}=${!override_name}"
