@@ -1371,6 +1371,83 @@ with its seed in the manifest, every effect's magnitude has its source in
 the specification, and both sensor sets pass the urban series five of five
 under it.
 
+## 36. The Simulator Waits For The Onboard Loop: Deterministic Flights
+
+**Type:** infrastructure of the simulation, deferred; weighed on 2026-10-24
+at the project owner's question (why a host load of 15 to 20 percent voids
+a flight, and whether the stack can live with a loaded host) and recorded
+as an item at the owner's word. Not proposed for now: an L-sized work that
+also removes what the acceptance measures today, unless the budget is
+modelled (below).
+
+**Hard prerequisites:** item 20 stage 0 (every period of the stack on the
+simulation clock, K24; the autopilot in lockstep); K25 (a slowed flight
+flatters the onboard budget, and what a relay would have to delay). Item
+28's emulation of the onboard budget and the reserved core set of the
+flights (A4) are the near answers to the same question and come first.
+
+**Validation environment:** any; the point of the item is that the
+environment of the host stops mattering.
+
+Today the simulator runs at the wall clock's pace and the onboard nodes run
+beside it: whatever the host does to the nodes, the world does not wait. So
+a flight is a measurement of the host as much as of the stack, and the
+verdict A7 (the real-time factor at the median, the sampler's gaps, the
+poses' age) decides whether it counted. A host that slows the simulator
+hands the stack a faster computer than the vehicle has (K25); a host that
+stalls the loop crashes a vehicle that was not at fault (r720, r723). The
+reserved core set (A4) narrows the host's share of the measurement; this
+item would remove it: the simulator advances a step only when the onboard
+loop has finished with the previous one, as the autopilot already does in
+lockstep. Two flights with the same seeds then fly the same metres on any
+host, under any load, as slowly as the host needs, several at once on one
+machine, and in continuous integration.
+
+What it costs, and why it is not proposed now:
+
+- **The budget's honesty.** With the simulator waiting, the tick's 20 ms,
+  the planner's 150 ms and the estimators' scan periods stop being
+  deadlines: a slow computer flies as well as a fast one, which is exactly
+  the flattery K25 names. The item is only acceptable with a model of the
+  onboard computer in the loop: every node's measured wall duration on the
+  reference host (or on the target board, item 27) becomes a configured
+  age in simulated time, so that an estimate, a memory update or a horizon
+  reaches its consumer as late as it would on board (the relay K25
+  describes for item 15's four vehicles). The model's numbers are measured
+  figures of the specification, kept against the host of record, not a
+  parameter one turns down; and the acceptance's compute checks (the tick's
+  and the planner's wall-clock figures, A7's justification) become checks
+  of the model's inputs instead.
+- **The mechanism.** A step controller over the world's control service
+  (`/world/<name>/control`, which the GUI controller already speaks,
+  `scripts/gazebo_gui_control.py`) advancing the world by the loop's step;
+  an acknowledgement from every onboard node per step (the planning tick,
+  the obstacle memory, the estimators, the mission monitor), ordered so
+  that each step's sensor data is delivered before the nodes run; the
+  sensors' rates (the lidar at 10 Hz, the pair at 7.5 Hz) and the
+  autopilot's lockstep kept consistent with the step; the recorded flights
+  of A11 unaffected (a recording is flown at real time by its own rule).
+- **Size.** L: the controller, the hooks in five nodes, the budget model
+  and its measurement, the acceptance rules rewritten (A1, A4, A6, A7, K25,
+  the host's verdict), the series flown again on the new footing against
+  the old. It is justified when the flights have to run where the host
+  cannot be kept quiet (continuous integration, several flights at once, a
+  weaker machine), or when item 28's budget emulation needs the computer's
+  model anyway.
+
+The order, if it is taken up: (1) the budget model alone, measured on the
+reference host (the per-node wall durations as the specification's
+figures) and applied as a relay at a real-time factor of 1.0, where it must
+change nothing (the control that the model is honest); (2) the step
+controller and the acknowledgements, flown at 1.0 and at 0.5 with the same
+seeds, the flights compared metre by metre; (3) the series on both sensor
+sets and the acceptance rules moved to the new footing.
+
+This item is complete when two flights with the same seeds reproduce each
+other on a quiet and on a loaded host, the onboard budget is a measured
+model in the loop whose removal is visible in the flight, and A7's verdict
+is no longer needed for a flight to count.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
