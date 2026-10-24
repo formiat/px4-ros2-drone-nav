@@ -173,6 +173,12 @@ TEST(MppiSpeedPolicyTest, ASilentPatchOnTheHeadingBoundsTheMotionByItsRim) {
   // Never under the margin, whatever the rim says.
   input.sensor_silent_range_m = 1.0;
   EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 2.0);
+  // A smoke face's bound fallen to nought is the face at hand: the margin,
+  // the limit nought, not the open frame's (K44, r2047).
+  input.sensor_silent_range_m = 0.0;
+  const MppiSpeedPolicyResult at_hand = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(at_hand.sensor_measured_range_m, 2.01);
+  EXPECT_LT(at_hand.sensor_braking_limit_mps, 0.3);
 }
 
 TEST(MppiSpeedPolicyTest, UnderASoundLightTheMemoryAnswersADarkFrameAnywhere) {

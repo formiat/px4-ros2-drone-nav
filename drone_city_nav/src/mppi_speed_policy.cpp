@@ -303,10 +303,12 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
                              share * contract.guaranteed_detection_range_m);
     // A patch the pair is silent in on the heading, with a matched rim
     // within reach, bounds the motion into it by the rim's depth, as a
-    // surface seen there would (specification F13).
+    // surface seen there would (specification F13); a smoke face's bound
+    // fallen to nought is the face at hand, a stop, not an absent bound
+    // (K44: r2047 read the nought as none and flew on into the box).
     if (input.sensor_silent_range_m.has_value() &&
         std::isfinite(*input.sensor_silent_range_m) &&
-        *input.sensor_silent_range_m > 0.0) {
+        *input.sensor_silent_range_m >= 0.0) {
       frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
                                std::min(frame_range_m, *input.sensor_silent_range_m));
     }
