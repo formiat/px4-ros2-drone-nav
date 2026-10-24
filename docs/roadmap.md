@@ -2185,7 +2185,11 @@ hall's veil and the lit floor out (the growth, the climb) refuse some
 approaches to the real plume (r2015, r2031, r2045), which the reach then
 lays with 1.2 m to spare at 1.8 m/s. Since 2026-10-24 the face is off unless
 asked for (`smoke_face`, `SMOKE_FACE=true`; the owner's rule): the clear
-ordinary flight carries no smoke detection.
+ordinary flight carries no smoke detection. Its cost there, measured on
+d979c92d: five clear flights with it off 1.343 to 1.456 m/s (mean 1.417, B
+0.58 to 1.30 m; r2066 to r2070), five with it on 1.330 to 1.522 (mean 1.432, B
+0.73 to 1.64 m; r2071 to r2073, r2076, r2079), no false lay in either group and
+the depth node at 2.2 to 2.4 cores in both: nothing measurable.
 Its limits: a plume of 2 to 3 m at
 1/m (optical depth 2 to 3) the pair matches through at 2 to 6 percent is
 laid only from 1.2 m, and the vehicle grazed one by 0.3 m creeping (r1966)
