@@ -2131,24 +2131,50 @@ is smoke: its rays are fail evidence, and the share of smoky zones is
 published. The pair-against-ring signature has nothing to
 read in the simulator; no particle counter is mounted.
 
-**The smoke face, built on 2026-10-19** (specification K44; the owner's
-model of 2026-10-18: dense smoke is an obstacle the vehicle sees and never
-enters). The pair's own frame carries the signature: a dense plume under the
-carried light is a region of lit silence (raw grey 35 to 58 within 4 m
-against 0 to 10 for shadow and the dark) with a rim of matches at one depth
-round it (the floor and the walls ending at the face; the veil of a thin
-hall, rimmed by the floor's fade alone, is none), or a lit body in the dark
-with a sharp edge (a plume floating above the horizon, placed by its
-brightness), which the pair does not see
-through (free rays under 0.5 percent of its cells, against 1.6 to 3.8
-percent for thin smoke of 0.1/m, which is flown through). The face enters
-the memory observed unobservable from its rim over 1.5 m, bounds the motion
-into it, and the ring's silence through it is not read as free; the way
-round is the planner's, the closed corridor item 19's proof. Measured on the
-rig's new corridor (`corridor=4.4,ceiling=3`,
-log/tools/smoke_detector/part0/signature.txt); its reach is the lamp's, and
-a plume free in a hall, whose rim recedes into the hall's walls, is not
-judged.
+**The smoke face, built on 2026-10-19 and flown to 2026-10-24**
+(specification K44, F19; the owner's model of 2026-10-18: dense smoke is an
+obstacle the vehicle sees and never enters). The pair is silent on a dense
+plume under the carried light, and that silence is lit (raw grey 20 or more
+against 0 to 10 for shadow and the dark, F13); but so is the lit untextured
+floor of a hall and the veil of thin smoke, and no look of the region (its
+rim's scatter or trend, the chance matches through it) tells them apart
+(r1822 to r1937, 1 472 laid regions judged against the truth). What tells
+them apart is the motion: the plume is the frame's largest lit rimmed region
+of 15 000 cells or more in its central band, matched through at a quarter
+percent at most, whose rim depth in the central rows falls by 0.3 m or more
+per metre of the vehicle's travel while its size grows by 0.3 of itself (or
+0.1 with the depth falling 0.8) over 1.2 m, the vehicle neither climbing
+nor sinking by more than four tenths of that travel; the veil keeps its
+distance and its size, the floor comes nearer only as the vehicle sinks.
+Its rays enter the memory observed unobservable from 1.5 m before the face
+(the halo that blinds the pair) to 1.5 m beyond, and the motion is bounded
+1.5 m before it; the ring's silence through lit silence is not read as
+free. The lamp reaches a dense face from 3 m only, so the face is laid 1.5
+to 2.5 m before it and the vehicle stops 0.5 to 1.9 m outside the dense
+box. The acceptance: the blocked corridor 5 of 5 on e549fd41 (r1961 to
+r1965) and on 02dd2679 (r1996 to r2000), and 7 of 10 on the final rules,
+18fff7af (r2034 to r2037, r2041 to r2043 passed; r2033 came home late and
+the light ran out with the planner at no route; r2044 and r2045 had the
+plume laid once or not at all on the approach and crept into its halo at
+the end of the search, blind, and K19 landed them); the ordinary flight 5
+of 5 (r2003 to r2010, 1.28 to 1.44 m/s, phantoms 0.4 to 0.8 percent, no
+entry into the halls' plumes; r2040 on the final rules the same), the clear
+location 5 of 5 (r1978 to r1982, no marks in four, one false emission in
+one) and the lidar 5 of 5 (r1983 to r1987, 2.23 to 2.38 m/s). What stays
+open: the rules of the motion that keep the thin hall's veil and the lit
+floor out (the growth, the climb) also refuse some approaches to the real
+plume (r2015, r2031, r2045), and the first sighting is not reliable enough
+for five of five; a plume's marks are lifted by the chance matches through
+its halo (I2) and the vehicle, searching, creeps back into it at 0.2 m/s
+with no travel to confirm by (r2044). Its limits: a plume of 2 to 3 m at
+1/m (optical depth 2 to 3) the pair matches through at 2 to 6 percent is
+laid only from 1.2 m, and the vehicle grazed one by 0.3 m creeping (r1966)
+and one by 0.12 m spinning in place (r2002); a false laid region in a thin
+hall's narrow place still closes the way (r1953, r1971, r2002, each
+repaired by a rule of the motion). The confirmation is replayed offline on
+every frame's logged candidate (`tools/plume_replay.py`), the laid regions
+judged against the truth (`tools/smoke_marks_truth.py`), the acceptance
+flown by `tools/smoke_series.sh`.
 
 
 Free only where smoke fills the frame. Item 17 stage 0 already turns the

@@ -259,31 +259,36 @@ m at 1 m/s through the 3 m box:
 Smoke the vehicle flies through costs the camera estimator metres over a few
 metres of path: what item 23 has to measure and answer first.
 
-**The smoke face** (specification K44, 2026-10-19): dense smoke ahead of the
-stereo set is an obstacle the vehicle sees before it is inside. The pair is
-silent on a plume; what makes the silence a face is that it is LIT (raw grey
-20 or more under the vehicle's own lamp; a shadow or the dark beyond the lamp
-reads 0 to 10, F13), that its rim of matches lies at one depth within the
-lamp's reach and goes round it from five of eight sectors (K36's rim; the
-top may be missing, since a plume fills a corridor to the frame's top and
-the dark above it gives no rim; the veil of thin smoke in a hall, rimmed by
-the floor's fade alone, is no face, r1769), or, with no rim at all, that it
-is a lit body in the dark with a sharp edge (a plume floating above the
-horizon, r1788; the lamp's cone on a veil is soft), placed by its brightness
-nearer than it can be, and that
-the pair does not match through it (free rays under 0.5 percent of its
-cells; thin smoke of 0.1 per metre leaves 1.6 to 3.8 percent and is flown
-through). The face's rays enter the memory observed unobservable from the
-rim over 1.5 m, as the dark frustum's do (K14), and the braking contract
-reads the rim as a closed patch's. The front time-of-flight unit's silence
-through lit silence is not read as free: a plume returns nothing to the ring
-from outside (K38), and a free ray there lifts the face's marks. The way
-round a plume is the planner's; a corridor a plume fills is closed in the
-memory, and item 19's proof gives the goal up. Measured on the smoke rig's
+**The smoke face** (specification K44, 2026-10-19 to 24): dense smoke ahead
+of the stereo set is an obstacle the vehicle sees before it is inside. The
+pair is silent on a plume, and the silence is lit (raw grey 20 or more
+under the vehicle's own lamp; a shadow or the dark beyond the lamp reads 0
+to 10, F13). The look of such a region (its rim's scatter and trend, the
+chance matches through it) is kept as its label in the log and tells a
+plume from the lit untextured floor of a hall or the veil of thin smoke no
+better than chance; the motion does. The plume candidate is the frame's
+largest lit rimmed region of 15 000 cells or more in the central band
+(the middle three quarters across, a sixth to two thirds down), matched
+through at a quarter percent of its cells at most, its depth the rim's in
+the central rows. It is confirmed, and its marks laid, while over a window
+of the last 2.4 m of travel its depth falls by 0.3 m or more per metre and
+its size grows by 0.3 of itself per metre (or by 0.1 with the depth falling
+by 0.8), over 1.2 m at least, the vehicle neither climbing nor sinking by
+more than four tenths of that travel, the candidate one region from frame
+to frame (its centroid's drift judged after the heading's turn). A lit body
+in the dark with a sharp edge, placed by its brightness, is confirmed by
+four frames. The rays enter the memory observed unobservable from 1.5 m
+before the face to 1.5 m beyond, as the dark frustum's do (K14), never
+nearer than 1.5 m; the motion is bounded 1.5 m before the face while the
+plume is laid; the front time-of-flight unit's silence through lit silence
+is not read as free (K38). The way round a plume is the planner's; a
+corridor a plume fills is closed in the memory, and item 19's proof, or the
+light's charge on the stereo set (A8), gives the goal up. The rig's
 corridor (`tools/smoke_rig.py corridor=4.4,ceiling=3`,
-`tools/smoke_signature_report.py`). A plume standing free in a hall, whose
-rim recedes into the hall's walls, is not judged and stays with the braking
-contract and the ring.
+`tools/smoke_signature_report.py`) gave the lit silence; the rules of the
+motion were set on the flights' logged candidates replayed offline
+(`tools/plume_replay.py`) and judged against the truth
+(`tools/smoke_marks_truth.py`).
 
 ## Obstacle Memory
 
