@@ -275,12 +275,19 @@ of the last 2.4 m of travel its depth falls by 0.3 m or more per metre and
 its size grows by 0.3 of itself per metre (or by 0.1 with the depth falling
 by 0.8), over 1.2 m at least, the vehicle neither climbing nor sinking by
 more than four tenths of that travel, the candidate one region from frame
-to frame (its centroid's drift judged after the heading's turn). A lit body
+to frame (its centroid's drift judged after the heading's turn). From
+inside the halo's edge the travel confirms nothing (the smoke's churn can
+carry the halo 9 m out, where the depth reads 1.4 to 2 m from 10 m on,
+r2045): the candidate is laid at once when the pair's reach, the farthest
+metre of the frame with matched hits in it and the one before, has fallen
+to 4 m or under while a lit silence of 40 000 cells, half the frame, fills
+it; the thin hall's dark frames keep hits at 5 to 8 m. A lit body
 in the dark with a sharp edge, placed by its brightness, is confirmed by
 four frames. The rays enter the memory observed unobservable from 1.5 m
 before the face to 1.5 m beyond, as the dark frustum's do (K14), never
 nearer than 1.5 m; the motion is bounded 1.5 m before the face while the
-plume is laid; the front time-of-flight unit's silence through lit silence
+plume is laid, a bound fallen to nought being a stop, not an absent bound
+(r2047); the front time-of-flight unit's silence through lit silence
 is not read as free (K38). The way round a plume is the planner's; a
 corridor a plume fills is closed in the memory, and item 19's proof, or the
 light's charge on the stereo set (A8), gives the goal up. The rig's

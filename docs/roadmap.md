@@ -2148,25 +2148,41 @@ nor sinking by more than four tenths of that travel; the veil keeps its
 distance and its size, the floor comes nearer only as the vehicle sinks.
 Its rays enter the memory observed unobservable from 1.5 m before the face
 (the halo that blinds the pair) to 1.5 m beyond, and the motion is bounded
-1.5 m before it; the ring's silence through lit silence is not read as
-free. The lamp reaches a dense face from 3 m only, so the face is laid 1.5
-to 2.5 m before it and the vehicle stops 0.5 to 1.9 m outside the dense
-box. The acceptance: the blocked corridor 5 of 5 on e549fd41 (r1961 to
-r1965) and on 02dd2679 (r1996 to r2000), and 7 of 10 on the final rules,
-18fff7af (r2034 to r2037, r2041 to r2043 passed; r2033 came home late and
-the light ran out with the planner at no route; r2044 and r2045 had the
-plume laid once or not at all on the approach and crept into its halo at
-the end of the search, blind, and K19 landed them); the ordinary flight 5
-of 5 (r2003 to r2010, 1.28 to 1.44 m/s, phantoms 0.4 to 0.8 percent, no
-entry into the halls' plumes; r2040 on the final rules the same), the clear
-location 5 of 5 (r1978 to r1982, no marks in four, one false emission in
-one) and the lidar 5 of 5 (r1983 to r1987, 2.23 to 2.38 m/s). What stays
-open: the rules of the motion that keep the thin hall's veil and the lit
-floor out (the growth, the climb) also refuse some approaches to the real
-plume (r2015, r2031, r2045), and the first sighting is not reliable enough
-for five of five; a plume's marks are lifted by the chance matches through
-its halo (I2) and the vehicle, searching, creeps back into it at 0.2 m/s
-with no travel to confirm by (r2044). Its limits: a plume of 2 to 3 m at
+1.5 m before it, a bound fallen to nought being a stop (r2047 read it as
+none and flew 0.9 m into the box); the ring's silence through lit silence
+is not read as free. The lamp reaches a dense face from 3 m only, and the
+smoke's churn can carry the halo 9 m out, where the candidate's depth
+reads 1.4 to 2 m from 10 m on and never falls (r2045): so the plume is
+laid as well, at once, when the pair's reach (the farthest metre of the
+frame with hits in it and the one before) has fallen to 4 m or under while
+a lit silence of half the frame fills it; the thin hall's dark frames keep
+hits at 5 to 8 m, the plume's halo none beyond 2 to 4 (on no status line
+of nine ordinary flights, on every blocked approach at 6.2 to 7.9 m from
+the box). The acceptance on the final rules, 71d03da5: the blocked
+corridor 5 of 5 (r2049 to r2053: the plume laid 1.8 to 3.9 m before the
+face, the vehicle turned 1.2 to 3.2 m before it, came home on the light's
+charge 0.3 to 0.5 m from the start, phantoms 0.3 to 0.7 percent of the
+hall's occupied), the ordinary flight 5 of 5 (r2054 to r2058, 1.23 to 1.37
+m/s, B 0.4 to 1.6 m, no entry into the halls' plumes, phantoms 0.3 to 1.9
+percent; one to four false lays of a frame each in the thin halls, 0.4 to
+4.8 s of hover a flight), the clear location 5 of 5 (r2061 to r2065, 1.40
+to 1.51 m/s, B 0.5 to 1.5 m; a lit wall laid for a frame or a second in
+two flights at no cost in hover, nothing in three) and the lidar 5 of 5
+(r1983 to r1987, 2.23 to 2.38 m/s; the stereo node does not run on the
+lidar set, which the last two rules do not touch). Before those two rules
+the blocked corridor was 5 of 5 on e549fd41 (r1961 to r1965) and on
+02dd2679 (r1996 to r2000) and 7 of 10 on 18fff7af (r2033 came home late
+and the light ran out with the planner at no route; r2044 and r2045 had
+the plume laid once or not at all on the approach and crept into its halo
+at the end of the search, blind, and K19 landed them), the ordinary flight
+5 of 5 on 09f68f22 (r2003 to r2010, 1.28 to 1.44 m/s). What stays open: a
+plume's marks are lifted by the chance matches through its halo (I2), so a
+vehicle creeping back into a laid plume has the halo's reach alone to lay
+by, from 1.8 m before the face; the rules of the motion that keep the thin
+hall's veil and the lit floor out (the growth, the climb) refuse some
+approaches to the real plume (r2015, r2031, r2045), which the reach then
+lays with 1.2 m to spare at 1.8 m/s.
+Its limits: a plume of 2 to 3 m at
 1/m (optical depth 2 to 3) the pair matches through at 2 to 6 percent is
 laid only from 1.2 m, and the vehicle grazed one by 0.3 m creeping (r1966)
 and one by 0.12 m spinning in place (r2002); a false laid region in a thin
