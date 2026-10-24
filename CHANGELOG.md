@@ -4,9 +4,55 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
-## Unreleased
+## v0.6.0 (2026-10-24)
 
-The smoke-and-light goal (roadmap items 18, 29, 24 and 23; from 2026-10-13), in progress:
+Smoke in the simulator, and what each sensor set makes of it. Smoke is a
+model every sensor reads (A13): the stereo pair sees through moderate smoke
+to a few metres and nothing through a dense plume, the time-of-flight ring
+returns from the smoke around the body, and the 3D lidar reads a dense plume
+as a surface from 20 m and the walls through thin smoke as its last echo. On
+the lidar the detection is the sensor's own and holds anywhere: an echo weak
+against the scan's own surfaces, with weak neighbours, is an aerosol and the
+memory's fail evidence (K37); a plume beside the route is flown round, a
+hall of moderate smoke is crossed at the speed the visibility allows (K43),
+and a plume that closes the only way sends the vehicle home on the proof
+that the goal is unreachable (item 19's proof, flown in item 24). On the
+stereo set a detector of smoke itself was not reached: the scattered light
+of a dense face under the carried lamp does not separate from a lit blank
+surface or the veil of thin smoke in the pair's frame, so what stands is a
+detector of the pair's lit silence near the vehicle, confirmed by the travel
+toward it or by the pair's reach collapsed in the plume's halo (K44). It
+passes the blocked corridor five of five on this location (r2049 to r2053,
+the plume laid 1.8 to 3.9 m before the face) and lays no false plume on the
+clear flights, but it reads a close lit wall as a plume now and then, its
+reach is the lamp's 3 m and its thresholds are this location's: it is not a
+smoke sensor and is off by default (`smoke_face`, `SMOKE_FACE=true` turns it
+on; measured to cost the clear flight nothing). By the owner's rule of
+2026-10-24 the ordinary flight is the clear location and no smoke flight is
+flown; the smoke stays in the simulator and in the vehicle, and the smoke
+scenarios stay as the record of their measurements. A dark place is told
+from a failing light by the light's own reading and the time-of-flight ring
+(item 29). Validated on Urban Circuit Practice 01
+(`environment-assets-urban-v1`) without GNSS and no static map, on the clear
+location: the stereo set ten point-to-point flights on d979c92d, every one
+complete and collision-free with no failing line, 1.330 to 1.522 m/s with
+the true position 0.58 to 1.64 m from the goal (r2066 to r2073, r2076,
+r2079; five with the smoke face off, five with it on); the 3D lidar five on
+0c299c17, every one complete and collision-free, 2.058 to 2.417 m/s (mean
+2.270) with the true position 0.06 to 0.91 m from the goal, four of five
+above R3's 2.1 m/s and two above 2.4, r2083 short at 2.058 with 23 s under 1
+m/s at the tunnel's mouth, the lidar's known shortfall under the route
+clearance law in the clear halls (K27, the register's rows on the lidar's
+speed), so R3 keeps 2.1 (r2080 to r2084). The smoke flights that accepted
+the detectors: on the stereo set the blocked corridor r2049 to r2053 and the
+ordinary smoke flight r2054 to r2058 on 71d03da5; on the lidar the ordinary
+smoke flight r1983 to r1987, the smoky rooms r1675 to r1679 and the blocked
+corridor by the proof r1616 to r1620. Roadmap items 18, 23, 24 and 29 close
+with it. The camera estimator lost two defects on the way (K28, K33) and the
+pair's noise is in effect (A12). No recording and no post go with this
+release.
+
+The smoke-and-light goal (roadmap items 18, 29, 24 and 23; 2026-10-13 to 24):
 
 - **Smoke in the simulator** (roadmap item 18 stage 1, specification A13): `SMOKE_ZONES` puts boxes of white smoke in the location, and every sensor is read through a smoke model (`simulation_smoke_sensor_node`): the pair by the carried light scattered in the smoke and the scene seen through it, the time-of-flight ring and the lidar by the lidar equation; the places are drawn in a recording's world half, not in RViz (2026-10-18: RViz shows no obstacle of the truth, only the vehicle's memory). Gazebo's particles were measured and set aside (unlit, their scatter ratio inert, their scene fog acting on nothing). A plume is silence to the pair, the lidar returns from its face from 0.5 per metre, the camera estimator loses metres flying through it (`tools/smoke_rig.py`).
 - **A failing light told from a dark place** (roadmap item 29, F18, K12, K14, K15): the light judged by its driver's reading of its output and by the time-of-flight surfaces its frame shows dark, the frames alone only without a reading; under a light read sound a dark place marks nothing and is crossed at the speed the memory's observed range admits. The large dark hall (`./scripts/sim_dark_hall_headless.sh`, `tools/render_flight.sh dark-hall`): crossed three times to its goal by the truth with videos; the light's failure judged 45 s sooner than by the frames. A never-aided camera estimator starts afresh at the declared pose instead of on the autopilot (K28); a dark world's background is black; every headless flight records its true pose.

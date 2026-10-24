@@ -1843,7 +1843,7 @@ the final commit: the light lost five times (r1384 to r1387, r1389: whole, 0.74 
 
 ### 18. Flight Through Transient And Scattering Obstacles (Completed)
 
-Closed on 2026-10-17, not yet in a release; accepted on 2026-10-16 (76367bee) on both
+Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-17; accepted on 2026-10-16 (76367bee) on both
 sensor sets and flown again on the stereo set on 2026-10-17 (7bc3941b, the
 estimator's heading and the pair's principal point repaired). Smoke is a model
 the sensors read (A13); the lidar reads a plume by its echo and thin smoke
@@ -2189,7 +2189,14 @@ ordinary flight carries no smoke detection. Its cost there, measured on
 d979c92d: five clear flights with it off 1.343 to 1.456 m/s (mean 1.417, B
 0.58 to 1.30 m; r2066 to r2070), five with it on 1.330 to 1.522 (mean 1.432, B
 0.73 to 1.64 m; r2071 to r2073, r2076, r2079), no false lay in either group and
-the depth node at 2.2 to 2.4 cores in both: nothing measurable.
+the depth node at 2.2 to 2.4 cores in both: nothing measurable. The standing
+of the stereo detector, as v0.6.0 states it: a detector of smoke itself was
+not reached on the pair (the scattered light of a dense face under the lamp
+does not separate from a lit blank surface or the thin veil in the frame);
+what stands detects the pair's lit silence near the vehicle, passes this
+location's acceptance, reads a close lit wall as a plume now and then, has
+the lamp's 3 m of reach and this location's thresholds, and is not a smoke
+sensor. The lidar's detection (K37) is the sensor's own and holds anywhere.
 Its limits: a plume of 2 to 3 m at
 1/m (optical depth 2 to 3) the pair matches through at 2 to 6 percent is
 laid only from 1.2 m, and the vehicle grazed one by 0.3 m creeping (r1966)
@@ -3118,7 +3125,7 @@ four-vehicle cooperative flight at 0.5 is item 15's.
 **Repaired after** (the technical-debt goal, 2026-10-12): the long flight under failures stood near B below real time (P10). r1110 stood in a component its planner believed closed, the retreat along its trail refused; r1365 (fba5bead) stood with its way home open on the map while the feasibility search found, swept and rejected the same edges beside a wall on every update, because every change of the world cleared the edges it had rejected. Repaired (3223df80): a rejected edge stays withheld until the world changes within one lattice step of it; the planner reports the trail retreat's attempt and the withheld edges. B and back on the goal's final commit (bc7c16a9): three of three at 0.6 (r1369 to r1371) and two of two at 1.0 (r1372, r1373), home, landed and disarmed at the start. What a recorded flight cost is repaired as well (the goal's part 6, A11): a flight is rendered after it, flown at real time with no window (`tools/render_flight.sh`; r1409: 0.88 of real time at the median, the recording ok).
 ### 23. Flight Through Moderate Smoke (Completed)
 
-Closed on 2026-10-17 (d56f0f85 on 7bc3941b), not yet in a release; five of five to
+Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-17 (d56f0f85 on 7bc3941b); five of five to
 B in truth through a room of moderate smoke on the lidar (r1675 to r1679) and
 on the stereo set (r1705 to r1709), the speed under smoke the requirement K43. What was asked for and how it was built is kept below as it was
 written; this is what came of it.
@@ -3271,7 +3278,7 @@ of 0.3 to 0.6 percent stays, the rise does not.
 
 ### 24. Item 19's Proof, Flown (Completed)
 
-Closed on 2026-10-16 (06d44c27 on 76367bee), not yet in a release; item 19's proof
+Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-16 (06d44c27 on 76367bee); item 19's proof
 flown on the lidar five of five in the blocked corridor (r1616 to r1620, the
 flood through voxels the body fits in, K16, the grazing ray K42), the stereo
 set home by the ladder since the pair cannot map a plume from outside (F15). What was asked for and how it was built is kept below as it was
@@ -3346,7 +3353,7 @@ alone, and on the stereo set it is open.
 
 ### 29. Telling A Failing Light From A Dark Place (Completed)
 
-Closed on 2026-10-14 (0d2141a4), not yet in a release; the carried light judged by
+Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-14 (0d2141a4); the carried light judged by
 its driver's reading and the time-of-flight ring (F18, K12), a dark place
 under a working light left unmarked (K14, K15), the large dark hall crossed
 (r1488 to r1490) and the failing and lost light flown home or landed. What was asked for and how it was built is kept below as it was
