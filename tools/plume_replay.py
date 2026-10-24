@@ -67,7 +67,7 @@ def truth(dense, pose, c):
 
 DEFAULT = dict(lay_cells=15000, lay_see=0.0025, front_spread=0.4, front_trend=0.2, front_frames=3, drift=40.0,
                lost=8, window=64, least_travel=1.2, shrink=0.3, t_max=None, grow_min=0.1, grow_alone=None,
-               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8, climb_max=0.3, climb_explains=None)
+               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8, climb_max=0.4, climb_explains=None)
 
 
 def slope_of(points):

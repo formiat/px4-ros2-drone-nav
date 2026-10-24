@@ -328,8 +328,10 @@ struct SmokeFaceConfig {
   // does not care for the height, but the approach itself climbs a little
   // (r2015: 0.7 m over the window's 2.4 m, a fifth refused it and the plume
   // was laid from 1.3 m, the vehicle blind at 5.7; three tenths lays it from
-  // 2.5 m and still refuses r2002's floor).
-  double climb_share{0.3};
+  // 2.5 m and still refuses r2002's floor; r2031 sank 0.9 m over 3.4 m on
+  // its approach and three tenths refused it too, four tenths lay it from
+  // 2.4 m and still refuse r2002's floor, which sank 0.4 m over 1.3 m).
+  double climb_share{0.4};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
   std::size_t front_frames{3U};
@@ -410,9 +412,11 @@ strideCellOf(const Point3& direction, const StereoPairGeometry& geometry,
 // surface). A face nearer than `nearest_m` gives no rays: that is the ring's reach and
 // the frustum's own nearest (K14), and a slab pushed out to it from a surface 1.2 m off
 // boxed the vehicle in (r1837). The plume's rays start `before_m` before its
-// rim, never nearer than `nearest_m`: its halo blinds the pair, and the
-// motion's bound alone, which lapses with the lay, let the vehicle creep to
-// the marks' edge inside it (r1989: laid at x 7.3 as the passing flights, the
+// rim, never nearer than `nearest_m` (a plume laid late, from under
+// `nearest_m`, still lays its rays from `nearest_m` on: r2031, laid from
+// 1.36 m, laid nothing and the vehicle sat blind in the halo); its halo blinds the
+// pair, and the motion's bound alone, which lapses with the lay, let the vehicle creep
+// to the marks' edge inside it (r1989: laid at x 7.3 as the passing flights, the
 // vehicle parked at 5.8 to 6.3 in a frame 76 000 cells silent, dead-reckoned
 // and landed); marks in the halo keep the planner's route out of it.
 [[nodiscard]] std::vector<Point3>

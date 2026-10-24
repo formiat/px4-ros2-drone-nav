@@ -441,7 +441,8 @@ std::vector<Point3> smokeFaceRays(const std::span<const SilentPatch> regions,
   }
   const std::size_t columns = width / stride;
   for (const SilentPatch& face : regions) {
-    if (!face.closed || face.rim_depth_m < nearest_m ||
+    const double skip_under_m = before_m > 0.0 ? nearest_m - slab_m : nearest_m;
+    if (!face.closed || face.rim_depth_m < skip_under_m ||
         std::string_view{face.reason} != std::string_view{reason}) {
       continue;
     }

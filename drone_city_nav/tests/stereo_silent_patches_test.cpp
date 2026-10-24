@@ -370,6 +370,20 @@ TEST(SmokeFace, ASaturatedSurfaceIsNoFaceAndACloseFaceGivesNoRays) {
         std::min(nearest_m, std::sqrt(ray.x * ray.x + ray.y * ray.y + ray.z * ray.z));
   }
   EXPECT_NEAR(nearest_m, std::max(1.5, far[0].rim_depth_m - 1.5), 0.05);
+  // A plume laid late, from under the ring's reach, still lays its halo
+  // from the reach on (r2031); a face laid without a halo does not.
+  const std::vector<StereoDepthReturn> near_frame = frameWithSquare(40U, 1.2, 6.0);
+  std::vector<SilentPatch> near =
+      smokeFaces(near_frame, kGeometry, kReturns, kWidth, kHeight, rawEverywhere(36U),
+                 SilentPatchConfig{}, SmokeFaceConfig{});
+  ASSERT_EQ(near.size(), 1U);
+  near[0].closed = true;
+  near[0].reason = "plume";
+  EXPECT_TRUE(
+      smokeFaceRays(near, "plume", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U).empty());
+  EXPECT_FALSE(
+      smokeFaceRays(near, "plume", kGeometry, 4U, kWidth, 1.5, 1.5, 0.25, 7U, 1.5)
+          .empty());
 }
 
 TEST(SmokeFace, AFaceRegionsChanceFarMatchesAreDroppedBeforeTheMemory) {
@@ -565,9 +579,9 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     }
     EXPECT_EQ(weak.confirmed(), shrink > 0.5) << shrink;
   }
-  // A face coming nearer while the vehicle sinks by more than three tenths
+  // A face coming nearer while the vehicle sinks by more than four tenths
   // of the travel is the floor, not a front (r2002); the approach's own
-  // gentle climb is allowed (r2015).
+  // climb or sink is allowed (r2015, r2031).
   for (const double sink_per_m : {0.2, 0.5}) {
     FaceApproach sinking;
     for (int step = 0; step <= 24; ++step) {
@@ -576,7 +590,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
       sinking.observe(&frame, 0.1 * step, 0.0, kCellsPerRad,
                       10.0 - sink_per_m * 0.1 * step, config);
     }
-    EXPECT_EQ(sinking.confirmed(), sink_per_m < 0.3) << sink_per_m;
+    EXPECT_EQ(sinking.confirmed(), sink_per_m < 0.4) << sink_per_m;
   }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
