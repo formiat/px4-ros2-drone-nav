@@ -89,8 +89,10 @@ repository container workflow.
 
 - Offline `FreeSpaceTopology3D` is optional static passage evidence; it is not a
   competing route producer or a source of hard occupancy.
-- There is no 2D lidar path, online frontier planner,
-  direct-versus-topology arbitration, or location-specific opening logic.
+- There is no 2D lidar path, no online frontier planner as a competing route
+  producer (a survey mission that hands the single planner its next goal is
+  roadmap item 34, under specification F20), no direct-versus-topology
+  arbitration, and no location-specific opening logic.
 - The persistent graph uses a complete minimum-resolution 26-connected lattice
   plus world-aligned multiresolution overlays. Lazy exact raw validation admits
   long open-volume edges and automatically leaves the fine lattice in control

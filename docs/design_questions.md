@@ -261,3 +261,57 @@ carved as before. The rule that marked both voxels of a face a hit lay
 within the range noise of (K41) was tried the same day and withdrawn: it
 thickened a quarter of the surfaces toward the air and cost the lidar's
 ordinary flights 15 percent of their speed.
+
+## Why Is There No Frontier Planner, And Is Exploration Forbidden?
+
+Asked in the discussion of 2026-10-19, recorded on 2026-10-24. In short:
+the frontier planner was removed as a competing producer of routes with a
+blacklist of frontiers tried, two things the invariants forbid; a survey
+mission that hands the single planner its next goal was never forbidden,
+and since 2026-10-24 it is allowed in so many words (specification F20,
+roadmap item 34).
+
+The chronology, from the history:
+
+- 2026-07-30 to 08-03: frontiers in the code; `0ead8354` "Disable frontier
+  blacklist by default" (the blacklist: 15 s and a 6 m radius around a
+  frontier already tried).
+- 2026-08-17 to 08-22: item 12 as "Incremental Topological Exploration":
+  the route to the goal first; the topology and the frontiers as the
+  fallback when the route is blocked, for the choice of a branch, and for
+  an exploration asked for explicitly.
+- 2026-08-20 to 08-26: the frontiers over the topology; on 08-26 five fixes
+  of the frontiers in a row and `da961b9b` "make observation frontier
+  stops opt-in".
+- 2026-08-27, `30438eaf`: item 12 rewritten as "Persistent Full-3D
+  Strategic Navigation", one D* Lite; the observation-frontier stop
+  policy, the information-gain transit preference and the frontier rank
+  forbidden; the topology never a competing route pipeline and unknown or
+  unvisited space never rewarded in transit.
+- 2026-08-28: the removals, `6a8f483b` (the online topology), `2bcec916`
+  (the route arbitration), `8b53e983` (the retired route producers,
+  `observation_frontier.cpp` among them); the line of overview.md's
+  non-capabilities came with the last.
+
+The reasons, as the texts give them: a stop at the boundary of the
+observed space prohibited unknown space and a preference for the unseen
+paid for it, against I1 (unknown is free at no cost); several producers of
+routes with an arbitration changed the route at every update, against one
+owner of the route; and for a flight from A to B frontiers are not needed,
+the planner flies through unknown as through free and repairs the route
+when the walls appear. The blacklist was the owner's decision and is now
+I3 (no prohibition by history); I1 is the owner's; the removal of the
+frontier planner whole was the agent's wording when item 12 was rewritten,
+before the specification marked its entries as the owner's or the agent's
+(2026-09-27).
+
+What was inconsistent until 2026-10-24: item 11 still named "item 12's
+incremental exploration backend" as its acquisition path, a mechanism gone
+since 2026-08-28. It names item 34's survey now.
+
+The rule now (F20): the survey chooses goals for the one planner; in
+transit nothing prefers unknown or a frontier; a frontier disappears by
+measurement alone (seen, or outside the reachable component by K16's
+flood), never by a list of attempts; the volume a survey covers is the
+mission's order, as a goal point is, and its wording is the owner's when
+item 34 starts.

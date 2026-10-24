@@ -75,7 +75,7 @@ bind it.
 | R3 sources near the cap, a flat `src/` | no | medium: maintenance | medium: moves, the gates | low | mechanical | L | the structure |
 | R4 the 2D memory core class still in the core library | no | low: dead weight | low: two diagnostics headers | none | the two headers freed of the class, then the class and its ingestion helpers removed | S | the core library only; no series (no node changes) |
 | N1 multi-vehicle missions on the camera defaults | no | high for item 15 | none | medium: item 15 may uncover defects | roadmap item 15 flies two vehicles on the lidar profile by its own decision; the camera defaults for several vehicles stay unflown, by design | series | the cooperative missions |
-| N2 the cave and the finals locations | no | medium | none | medium: location-independent code unproved | roadmap item 11: the survey acquisition path flies every reachable part of a new environment | series | none |
+| N2 the cave and the finals locations | no | medium | none | medium: location-independent code unproved | roadmap item 33: point-to-point flights on both worlds with nothing adapted to them (the held-out test, 2026-10-19); then item 11's survey acquisition flies every reachable part | series | none |
 | N3 one start, one goal | no | medium | none | medium | roadmap item 19 flew the mission back (a second goal, the other direction) and to a goal outside the location, r721 to r731 on 2026-09-27; other starts and goals stay a series of their own | series | none |
 
 Repaired since, on the owner's "all together" of the same day: L3, S2, R2

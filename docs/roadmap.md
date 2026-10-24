@@ -23,8 +23,10 @@ renumbered or reused; a new item takes the next free number.
 
 **Type:** dependent implementation and validation stage.
 
-**Hard prerequisites:** items 8 and 12 for the primary autonomous-survey
-acquisition path.
+**Hard prerequisites:** items 8 and 34 for the primary autonomous-survey
+acquisition path (item 12's incremental exploration backend, which this
+item named until 2026-10-24, left the repository on 2026-08-28, 8b53e983;
+the survey is item 34's mission under specification F20).
 
 Create a valid static map for every new complex environment. Here, quality
 means geometrically correct, physically valid, and aligned with the real
@@ -36,8 +38,8 @@ Every new-environment static map must be three-dimensional. Two-dimensional
 maps are insufficient for multi-level geometry, tunnels, shafts, windows,
 doors, and other traversable 3D passages.
 
-The primary acquisition path uses item 8's production 3D lidar and item 12's
-incremental exploration backend to survey every reachable part of an
+The primary acquisition path uses item 8's production 3D lidar and item 34's
+survey mission to survey every reachable part of an
 environment, then persists the resulting validated obstacle memory as the
 environment's static-map artifact. Direct generation from collision geometry
 may remain as a secondary generation or cross-validation tool. Every artifact
@@ -49,9 +51,10 @@ This stage is complete when every supported new environment has a reproducible
 alignment, and raw-collision validation against its physical world.
 
 One entry of the debt register lands here, attached on 2026-09-26: the cave
-and the finals locations, imported and never flown (N2), are flown by the
-survey acquisition itself, which covers every reachable part of an
-environment before it persists the map. The 2D lidar path (R1) was to go
+and the finals locations, imported and never flown (N2), are flown first
+by item 33's held-out point-to-point flights, with nothing adapted to
+them, and then by the survey acquisition itself, which covers every
+reachable part of an environment before it persists the map. The 2D lidar path (R1) was to go
 with the first 3D static map and went before it, on 2026-09-26 (59f55e1f):
 a static-map request now refuses to start while the environment has no 3D
 static occupancy, which is what this item delivers.
@@ -447,7 +450,10 @@ of simulation decides whether the delay relay above is needed.
 
 ## 21. Moving Obstacles: Doors And Bodies That Move Slowly
 
-**Type:** perception and safety, general; not tied to a sensor.
+**Type:** perception and safety, general; not tied to a sensor. In the
+discussion of 2026-10-19 (recorded 2026-10-24) the item stands behind items
+33 to 35, and for a product the bodies that move (people) matter more than
+the doors: when it comes back, the people first.
 
 **Hard prerequisites:** item 17 stage 8, for the confidence of an occupancy
 (its count of confirmations); items 17 and 18 are not otherwise needed.
@@ -1019,7 +1025,18 @@ The order:
 1. Fly the controller at 8192, 4096, 2048 and 1024 rollouts in the
    simulator (the parameter exists; camera and lidar series): the number the
    Jetson needs anyway (item 27) and the one that decides whether a GPU of
-   the Iris Xe or Adreno class is enough.
+   the Iris Xe or Adreno class is enough. With it, the onboard budget
+   emulated on this host before any board (the discussion of 2026-10-19):
+   the onboard processes confined to a core set of the Orin's class (four
+   to six logical cores, `taskset` or a cgroup), the simulator and the
+   autopilot on the rest; the launcher's subsystem masks of today
+   (`ENABLE_SUBSYSTEM_CPU_AFFINITY`, control 0 to 7, planning 4 to 15,
+   diagnostics 12 to 15 of 16) overlap and exclude nothing. The same
+   confinement is what would let a flight share the host with the owner's
+   other work (A4, A7): on the 8 physical cores the camera flight takes
+   7.6 cores of load at the median (r2070) and keeps a real-time factor of
+   0.85 to 1.00, 3 to 18 percent above A7's floor, so a browser's two or
+   three threads void it today (r2074, r2075, r2078 at 0.78 to 0.81).
 2. Way A when continuous integration or development without NVIDIA is
    wanted; not a way to flight.
 3. Way B only for a chosen board without NVIDIA, the VOXL 2 most likely,
@@ -1161,6 +1178,198 @@ This item is complete when the hot plume and the hot room are kept out of
 in five of five flights on the stereo set with no contact, the cold room is
 still crossed, the standoff is a measured number in the specification, and
 the thermal core's reading is the decision's evidence in every flight.
+
+## 33. Held-Out Worlds: Point-To-Point Flights On The Cave Circuit And The Finals World
+
+**Type:** validation without a vehicle, general; the first of the directions
+of the discussion of 2026-10-19 with the project owner (recorded 2026-10-24
+at the owner's word, with items 34 and 35).
+
+**Hard prerequisites:** none. The two worlds are versioned release artifacts
+and load as they are ([environment_candidates.md](environment_candidates.md),
+[scenarios.md](scenarios.md)); the flights need no static map (the no-static
+ESDF of item 12), so item 11 is not needed for them.
+
+**Validation environment:** `cave_circuit_practice_01` and
+`finals_prize_round_world_07`, never flown. `urban_circuit_practice_01` is
+the learning set; the dark hall is the only other world flown, and it is
+small.
+
+The risk this item answers: every flight of the project has been flown on
+one location, and the specification's forty K rules are each justified by
+flights there. Whether they generalise or fit the location cannot be told
+from the location itself; the register has carried this as N2 since
+2026-09-26. The held-out test is the plain one: fly the other worlds with
+nothing changed for them, and read what breaks.
+
+The rules of the test:
+
+1. **Nothing adapted.** No parameter, threshold or scenario constant is
+   changed for a held-out world before its flights; the urban scenario's
+   location constants that exist today are named and kept out of these
+   scenarios (the route volume and the snapshot bounds of the Makefile's
+   urban targets, the smoke zones of F4, the urban start and goal). What a
+   held-out world then needs is a finding, not a tuning.
+2. **The scenarios.** Point-to-point scenarios in the v2 schema (as
+   `dark_hall_point_to_point_scenario.json`), the start and the goal drawn
+   with a recorded seed from the reachable free component of each world's
+   truth voxelization (the flood of K16 on the truth grid with the body's
+   radius), the route's length in the urban mission's band (300 to 600 m),
+   the goal where the light's reach makes sense for the camera set; the
+   pairs are written into the scenario files, so a flight is reproducible.
+   A Makefile target a world, headless, both sensor sets.
+3. **The series.** Five single flights a world and a sensor set, through
+   `tools/fly_until_valid.sh` (A4, A7): twenty flights. R1 and R2 are the
+   gates (no contact; B in truth within 2 m); the mean speed is measured and
+   written, not gated: R3's numbers are the urban mission's, and a number a
+   held-out world cannot reach is a finding about the rule that holds it.
+4. **Every failure read to its rule.** A flight that fails names the K rule
+   or the law that failed it, and the rule is classified: a defect that
+   would fail anywhere is repaired, on all worlds, and the urban series flown
+   again (the acceptance rule); a rule that is the urban location's goes to
+   the register with its class and the owner's call. No rule is relaxed on
+   the held-out world to make the flight pass.
+5. **The truth grids.** The 0.5 m Occupancy3D of each world exists
+   (environment_candidates.md's table); the body's true clearance
+   (`tools/body_truth_clearance.py`) wants 0.25 m, built as
+   `log/tools/truth25` was, if a flight's contact or crawl needs it.
+
+Size: S for the scenarios and the truth grids; the flights about three
+hours a sensor set with the voids; M with the reading of the failures.
+
+This item is complete when the twenty flights are flown and tabulated (the
+world, the sensor set, the result by R1 and R2, the speed, the true position
+at B, the closest true clearance), every failure has its rule named and
+either repaired or in the register, and N2 is closed.
+
+## 34. The Survey Mission: Explore And Come Back With The Map
+
+**Type:** new capability, a mission layer over the single planner; the rule
+it obeys is specification F20 (the owner's, 2026-10-19, recorded
+2026-10-24). The second of the directions of 2026-10-19.
+
+**Hard prerequisites:** item 33 (the held-out worlds, which the survey then
+covers whole); item 19's proof (K16) for the end of the survey; K10 (the
+memory does not forget) for the map. Item 15's shared memory is needed only
+when several vehicles divide a survey, later.
+
+**Validation environment:** Urban Circuit Practice 01 first, surveyed from
+the start without a goal; then one held-out world of item 33.
+
+What it is. A frontier is the boundary between the free space the sensor has
+observed and the unknown. The survey flies to a worthwhile frontier, looks,
+chooses the next, until the reachable space has no frontier left within the
+mission's volume, and comes home along its own track with the map. It is a
+layer that chooses goals for the planner that exists (`NavigationObjective`,
+the way the return home of item 19 hands the planner its goal); it is not a
+second planner and not a second producer of routes (item 12).
+
+What it gives: the product's mission in a building nobody has a map of
+(the operator does not know B's coordinates; "fly in and bring the 3D map
+back" is the work of the indoor vehicles without GNSS), the map as the
+result of the work (the obstacle memory already builds it; item 11 persists
+it), a test of generalisation on a whole world instead of one 400 m route
+(the coverage counted against the truth grid), long flights that exercise
+the drift of a first pass (L1) and the relocalization against the vehicle's
+own map, and the ground for several vehicles (item 15). What it does not
+give: a better flight from A to B.
+
+What exists: the planner and its route repair, the goal handed through
+`NavigationObjective`, the return along the own track (item 19), the flood
+of K16 that says what is reachable, the obstacle memory with no forgetting.
+What is to be written: the frontiers out of the voxel memory, the choice of
+the next one (by the planner's own route cost, for instance), the coverage
+metric, the end condition, the mission's state.
+
+The rules (F20): nothing in transit to any goal prefers unknown or
+unvisited space or a frontier (I1 unchanged); a frontier disappears only by
+measurement, when the sensor has looked at it or when it lies outside the
+reachable component by the flood of K16, never because it was "tried"
+(I3); no second producer of routes beside the planner.
+
+The open questions, to be settled when the item starts, the wording the
+owner's:
+
+- **The survey's volume.** Unknown space is free (I1), so frontiers exist
+  everywhere, above the ceiling's height and beyond the walls. The volume a
+  survey covers is the mission's order, as a goal point is, not a
+  prohibition of the configuration: the vehicle may route outside it and
+  seeks frontiers inside it. The agent's reading; the owner words it.
+- **The end on a whole location.** Item 24 proved the flood on a corridor
+  closed by smoke; on a whole location it did not close before, when the
+  memory still forgot; the forgetting is off (K10) and the closure on the
+  location's scale is unmeasured.
+- **The value of a frontier.** The route's cost from the planner, the
+  size of the unknown behind it, or the plainest rule that surveys the
+  urban location whole in the fewest metres: measured, not chosen.
+
+The order:
+
+1. **Frontiers and coverage, offline.** The frontiers out of a raw snapshot
+   of the memory (`raw_snapshot_3d_*.json` of any flight) and the coverage
+   against the truth grid, as a tool under `tools/`, read on the recorded
+   urban flights first.
+2. **The mission.** The frontier chosen, handed as the goal, the next one
+   when it is observed or unreachable, the end by the flood, home by the
+   own track; a scenario (`sim-urban-survey-headless`) with no B.
+3. **Acceptance.** Five flights a sensor set on the urban location: no
+   contact, home within 2 m in truth, the coverage of the reachable truth
+   within the sensor's reach above a figure measured in step 1 and written
+   into the specification, the mean speed recorded; then the same on one
+   held-out world. The map persisted as item 11 asks.
+
+Size: M for steps 1 and 2, L with the series.
+
+This item is complete when the urban location is surveyed whole in five of
+five flights a sensor set with no contact and the vehicle home, the
+coverage figure stands in the specification, one held-out world is
+surveyed, and the survey's rules are in force as F20 says.
+
+## 35. The Real Vehicle's Imperfections In The Loop
+
+**Type:** realism stage, general; the third of the directions of
+2026-10-19. As the carried light's flicker runs in every acceptance flight
+(F1), a profile of the real vehicle's imperfections with a recorded seed is
+to run in every acceptance flight once it lands.
+
+**Hard prerequisites:** item 25 for the magnitudes (the IMU's noise and
+the camera-to-IMU time offset come from a real recording's calibration
+already; the lidar's from the lidar recording of item 25's second half);
+the pair's noise (A12) and the rotors' drag (K21) are the two imperfections
+already in force. Items 33 and 34 before it, by the discussion's order.
+
+**Validation environment:** Urban Circuit Practice 01, the acceptance
+series under the profile; the held-out worlds once item 33 has flown them.
+
+The imperfections, each a measurement the stack reads today in its perfect
+form:
+
+- the rotors' vibration on the IMU (K21 fuses the rotors' drag straight
+  from the accelerometer, so the vibration tests that fusion first);
+- errors of the extrinsics: the mount error of 0.24 m lived through many
+  series unnoticed (K22); a flight's extrinsics perturbed within the
+  tolerance a real mount has, millimetres and tenths of a degree, the stack
+  reading the nominal values;
+- the camera-to-IMU time offset and its jitter, and the drift of the IMU's
+  biases (a random walk on the biases the estimators carry);
+- the aerodynamics near walls and the ceiling (half of a flight is within
+  2 m of a wall, item 30) and the spread of thrust and mass between
+  vehicles.
+
+The magnitudes come from measurements (item 25's recordings, the sensors'
+data sheets), never from a guess; each is written into the specification
+with its source before it runs, and the mean speed of R3 is measured under
+the profile, as under the flicker. An imperfection that fails the
+acceptance is a finding about the stack, repaired or registered as the
+acceptance rule says, not a reason to soften the profile.
+
+Size: M an effect family (the model in the simulator or the sensor relay,
+its magnitude, its test), the series after each.
+
+This item is complete when the profile runs in every acceptance flight
+with its seed in the manifest, every effect's magnitude has its source in
+the specification, and both sensor sets pass the urban series five of five
+under it.
 
 ## Completed
 
