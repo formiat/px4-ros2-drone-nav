@@ -455,7 +455,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   FaceApproach veil;
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(2.3 + jitter[step % 8]);
-    veil.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    veil.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
     EXPECT_FALSE(veil.confirmed()) << step;
   }
   FaceApproach plume;
@@ -463,7 +463,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame =
         sample(4.6 - 0.1 * step + jitter[step % 8], 120.0, 160.0, 4.6 - 0.1 * step);
-    plume.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    plume.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
     if (step < 12) {
       EXPECT_FALSE(plume.confirmed()) << step;
     }
@@ -474,26 +474,26 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // A candidate lost for a few frames (the verdict flickers close to a
   // plume) keeps its confirmation and bounds the motion by its last rim less
   // the travel since; lost for longer, it starts over.
-  plume.observe(nullptr, 2.6, 0.0, kCellsPerRad, 0.0, config);
+  plume.observe(nullptr, 2.6, 0.0, kCellsPerRad, 0.0, 8.0, config);
   EXPECT_TRUE(plume.confirmed());
   EXPECT_NEAR(plume.boundM(2.7), (4.6 - 2.4 + jitter[0]) - 0.3 - config.halo_m, 1e-9);
   for (std::size_t lost = 1U; lost < config.lost_frames; ++lost) {
     plume.observe(nullptr, 2.6 + 0.1 * static_cast<double>(lost), 0.0, kCellsPerRad,
-                  0.0, config);
+                  0.0, 8.0, config);
   }
   EXPECT_TRUE(plume.confirmed());
-  plume.observe(nullptr, 3.5, 0.0, kCellsPerRad, 0.0, config);
+  plume.observe(nullptr, 3.5, 0.0, kCellsPerRad, 0.0, 8.0, config);
   EXPECT_FALSE(plume.confirmed());
   EXPECT_TRUE(std::isnan(plume.boundM(3.5)));
   const SilentPatch again = sample(2.0);
-  plume.observe(&again, 3.6, 0.0, kCellsPerRad, 0.0, config);
+  plume.observe(&again, 3.6, 0.0, kCellsPerRad, 0.0, 8.0, config);
   EXPECT_FALSE(plume.confirmed());
   // A plume's front read from the rim's nearest quartile comes nearer by
   // half the travel (r1890).
   FaceApproach soft;
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(3.0 - 0.05 * step + jitter[step % 8]);
-    soft.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    soft.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
   }
   EXPECT_TRUE(soft.confirmed());
   // The confirmation holds only while the window's slope does: a hover
@@ -501,12 +501,12 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   // recedes is none (r1898).
   for (std::size_t frame = 0U; frame < config.window_frames; ++frame) {
     const SilentPatch hover = sample(1.8 + jitter[frame % 8]);
-    soft.observe(&hover, 2.4, 0.0, kCellsPerRad, 0.0, config);
+    soft.observe(&hover, 2.4, 0.0, kCellsPerRad, 0.0, 8.0, config);
   }
   EXPECT_FALSE(soft.confirmed());
   for (int step = 0; step <= 24; ++step) {
     const SilentPatch frame = sample(1.8 + 0.1 * step + jitter[step % 8]);
-    soft.observe(&frame, 2.4 + 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    soft.observe(&frame, 2.4 + 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
   }
   EXPECT_FALSE(soft.confirmed());
   // A front's signature (a large region, a flat rim without a trend) over
@@ -518,7 +518,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     face.cells = 22000U;
     face.rim_spread_m = 0.12;
     face.rim_trend = 0.03;
-    front.observe(&face, 0.0, 0.0, kCellsPerRad, 0.0, config);
+    front.observe(&face, 0.0, 0.0, kCellsPerRad, 0.0, 8.0, config);
     EXPECT_EQ(front.confirmed(), frame == 2) << frame;
   }
   EXPECT_NEAR(front.boundM(0.5), 2.96 - 0.5 - config.halo_m, 1e-9);
@@ -528,7 +528,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     floor.cells = 24000U;
     floor.rim_spread_m = 0.3;
     floor.rim_trend = 0.9;
-    expanse.observe(&floor, 0.0, 0.0, kCellsPerRad, 0.0, config);
+    expanse.observe(&floor, 0.0, 0.0, kCellsPerRad, 0.0, 8.0, config);
     EXPECT_FALSE(expanse.confirmed()) << frame;
   }
   // A candidate that comes nearer like a plume lays nothing while it is
@@ -543,7 +543,8 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
       } else {
         frame.free_neighbours = 260U;
       }
-      EXPECT_FALSE(unlaid.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config))
+      EXPECT_FALSE(
+          unlaid.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config))
           << step;
       EXPECT_FALSE(unlaid.confirmed()) << step;
     }
@@ -555,7 +556,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     const double heading = (step % 2 == 0 ? 0.26 : -0.26);
     const SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8], 120.0,
                                      160.0 + heading * kCellsPerRad, 4.6 - 0.1 * step);
-    swinging.observe(&frame, 0.1 * step, heading, kCellsPerRad, 0.0, config);
+    swinging.observe(&frame, 0.1 * step, heading, kCellsPerRad, 0.0, 8.0, config);
   }
   EXPECT_TRUE(swinging.confirmed());
   // A candidate whose depth comes nearer but whose size does not grow is the
@@ -564,7 +565,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
   for (int step = 0; step <= 24; ++step) {
     SilentPatch frame = sample(4.6 - 0.1 * step + jitter[step % 8]);
     frame.cells = 30000U;
-    flat.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    flat.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
     EXPECT_FALSE(flat.confirmed()) << step;
   }
   // A candidate growing weakly while its depth falls gently is the veil too
@@ -575,7 +576,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     for (int step = 0; step <= 24; ++step) {
       SilentPatch frame = sample(4.6 - shrink * 0.1 * step + jitter[step % 8]);
       frame.cells = static_cast<std::size_t>(20000.0 * std::exp(0.2 * 0.1 * step));
-      weak.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+      weak.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
     }
     EXPECT_EQ(weak.confirmed(), shrink > 0.5) << shrink;
   }
@@ -588,9 +589,20 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
       const SilentPatch frame =
           sample(4.6 - 0.1 * step + jitter[step % 8], 120.0, 160.0, 4.6 - 0.1 * step);
       sinking.observe(&frame, 0.1 * step, 0.0, kCellsPerRad,
-                      10.0 - sink_per_m * 0.1 * step, config);
+                      10.0 - sink_per_m * 0.1 * step, 8.0, config);
     }
     EXPECT_EQ(sinking.confirmed(), sink_per_m < 0.4) << sink_per_m;
+  }
+  // Inside the halo of dense smoke the pair's reach falls to 4 m or under
+  // while a lit silence of half the frame fills it: laid at once, no travel
+  // (r2045); the thin hall's dark frames keep hits at 5 to 8 m.
+  for (const double reach_m : {3.0, 6.0}) {
+    FaceApproach halo;
+    SilentPatch frame = sample(1.6);
+    frame.cells = 45000U;
+    EXPECT_EQ(halo.observe(&frame, 0.0, 0.0, kCellsPerRad, 10.0, reach_m, config),
+              reach_m < 4.5)
+        << reach_m;
   }
   // Another region in the candidate's place (the centroid drifted by more
   // than the allowance) is a loss, not a nearer sighting: a nearer region
@@ -600,7 +612,7 @@ TEST(SmokeFace, ARimmedFaceIsConfirmedByTheTravelTowardItAndAVeilIsNot) {
     const SilentPatch frame =
         step < 12 ? sample(4.6 - 0.1 * step + jitter[step % 8], 100.0)
                   : sample(2.0 - 0.1 * (step - 12) + jitter[step % 8], 160.0);
-    switching.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, config);
+    switching.observe(&frame, 0.1 * step, 0.0, kCellsPerRad, 0.0, 8.0, config);
     EXPECT_FALSE(switching.confirmed()) << step;
   }
 }

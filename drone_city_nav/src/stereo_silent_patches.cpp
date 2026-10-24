@@ -346,7 +346,8 @@ std::optional<std::size_t> strideCellOf(const Point3& direction,
 
 bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
                            const double heading_rad, const double cells_per_rad,
-                           const double height_m, const SmokeFaceConfig& config) {
+                           const double height_m, const double reach_m,
+                           const SmokeFaceConfig& config) {
   halo_m_ = config.halo_m;
   const bool seen = candidate != nullptr && std::isfinite(candidate->rim_depth_m);
   const bool plume_like =
@@ -411,7 +412,10 @@ bool FaceApproach::observe(const SilentPatch* candidate, const double along_m,
            (growth >= config.grow_share_per_m && shrink >= config.shrink_slope_steep));
     }
   }
-  const bool lay = plume_like && (approach || front_frames_ >= config.front_frames);
+  const bool halo = plume_like && candidate->cells >= config.halo_cells &&
+                    reach_m <= config.halo_reach_m;
+  const bool lay =
+      plume_like && (approach || front_frames_ >= config.front_frames || halo);
   if (lay) {
     laid_ = true;
     laid_lost_ = 0U;

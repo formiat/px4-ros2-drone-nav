@@ -15,7 +15,7 @@ FX = 640.0 / math.tan(math.radians(60.0))
 CPR = FX / 4.0
 CX, CY = 639.5, 479.5
 LINE = re.compile(r"\[(\d+\.\d+)\] \[stereo_depth_node\]: PLUME_CANDIDATE along=([-0-9.]+) heading=([-0-9.]+) "
-                  r"quartile=([-0-9.na]+) lay=(\d) (.*)$")
+                  r"quartile=([-0-9.na]+) (?:reach=([-0-9.]+) )?lay=(\d) (.*)$")
 SUMMARY = re.compile(r"(\d+)@(\d+),(\d+):(\w+):rim(\d+)@([0-9.na]+)\+([0-9.na]+):trend([0-9.na]+):free(\d+)")
 
 
@@ -33,7 +33,7 @@ def load(run):
         g = LINE.search(line)
         if not g:
             continue
-        w, along, heading, quartile, lay, rest = g.groups()
+        w, along, heading, quartile, reach, lay, rest = g.groups()
         k = min(bisect.bisect_left(walls, float(w)), len(rows) - 1)
         pose = rows[k]
         s = SUMMARY.match(rest)
@@ -42,7 +42,8 @@ def load(run):
             cells, col, row, reason, rim, depth, spread, trend, free = s.groups()
             c = dict(cells=int(cells), col=float(col), row=float(row), rim=int(rim), depth=float(depth),
                      spread=float(spread), trend=float(trend), free=int(free), quartile=float(quartile))
-        frames.append(dict(t=pose[0], pose=pose, along=float(along), heading=float(heading), lay=int(lay), c=c))
+        frames.append(dict(t=pose[0], pose=pose, along=float(along), heading=float(heading), lay=int(lay), c=c,
+                           reach=float(reach) if reach is not None else 99.0))
     return dense, frames
 
 
@@ -67,7 +68,7 @@ def truth(dense, pose, c):
 
 DEFAULT = dict(lay_cells=15000, lay_see=0.0025, front_spread=0.4, front_trend=0.2, front_frames=3, drift=40.0,
                lost=8, window=64, least_travel=1.2, shrink=0.3, t_max=None, grow_min=0.1, grow_alone=None,
-               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8, climb_max=0.4, climb_explains=None)
+               grow_depth_max=0.1, grow_high=0.3, shrink_high=0.8, climb_max=0.4, climb_explains=None, halo_cells=40000, halo_reach=4.0)
 
 
 def slope_of(points):
@@ -128,7 +129,8 @@ def replay(frames, cfg):
                     approach = (-slope * span - cfg["climb_explains"] * climb) >= cfg["shrink"] * span
                 if not approach and cfg["grow_alone"] is not None and growth is not None:
                     approach = growth >= cfg["grow_alone"] and slope <= cfg["grow_depth_max"]
-        lay = plume_like and (approach or front_n >= cfg["front_frames"])
+        halo = plume_like and c["cells"] >= cfg["halo_cells"] and f["reach"] <= cfg["halo_reach"]
+        lay = plume_like and (approach or front_n >= cfg["front_frames"] or halo)
         if lay:
             laid = True; laid_lost = 0
         elif laid:

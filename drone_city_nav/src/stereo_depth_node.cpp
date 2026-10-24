@@ -68,10 +68,10 @@ constexpr std::array<TofMount, kTofSensorCount> kTofMounts = {{
 
 } // namespace
 
-// Depth from a rectified stereo pair by semi-global matching, published as the
-// returns of a sensor that answers only where it measured: one ray a matched
-// pixel in the left camera's forward-left-up frame, a surface within the
-// confident depth and free space beyond it; an unmatched pixel is no observation.
+// Depth from a rectified stereo pair by semi-global matching, published as the returns
+// of a sensor that answers only where it measured: one ray a matched pixel in the left
+// camera's forward-left-up frame, a surface within the confident depth and free space
+// beyond it; an unmatched pixel is no observation.
 class StereoDepthNode final : public rclcpp::Node {
 public:
   explicit StereoDepthNode(const rclcpp::NodeOptions& options)
@@ -122,9 +122,9 @@ public:
     const int left_right_difference =
         declare_parameter<int>("left_right_maximum_difference_px", 1);
     const int uniqueness = declare_parameter<int>("uniqueness_ratio_percent", 10);
-    // A disparity island smaller than the speckle window is dropped by the
-    // matcher: 400 px, a patch 0.1 m across at 2 m and 0.27 m at 5 m, where
-    // 100 px left islands of a few pixels at a wrong depth (kLoneHitVoxelM).
+    // A disparity island under the speckle window is dropped: 400 px, a patch 0.1 m
+    // across at 2 m and 0.27 at 5; 100 px left islands at a wrong depth
+    // (kLoneHitVoxelM).
     constexpr int kSpeckleWindowPx{400};
     const auto matcher = [&](const int disparities) {
       return cv::StereoSGBM::create(
@@ -136,9 +136,8 @@ public:
     near_matcher_ = matcher(near_disparities);
     const int disparities = 2 * near_disparities;
     frame_id_ = declare_parameter<std::string>("frame_id", "stereo_left");
-    // The light the frame has left (roadmap item 17 stage 7): the camera's
-    // gain lifts the frame's 95th percentile of brightness to 200 of 255,
-    // and once the gain is at its limit that percentile falls with the light.
+    // The light the frame has left (item 17 stage 7): the gain lifts the frame's 95th
+    // percentile to 200 of 255, and at the gain's limit that percentile falls with it.
     light_headroom_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("light_headroom_topic",
                                        "/stereo_depth/light_headroom"),
@@ -219,9 +218,8 @@ public:
     tof.maximum_range_m = declare_parameter<double>("tof_maximum_range_m", 2.8);
     tof.sub_rays =
         static_cast<std::size_t>(declare_parameter<int>("tof_sub_rays_per_zone", 3));
-    // A pair holds its callback for the 120 ms the matching takes. The scans
-    // are taken on a thread of their own, or the one scan that survives the
-    // wait is never the pair's.
+    // A pair holds its callback for the 120 ms of matching; the scans are taken on a
+    // thread of their own, or the one scan that survives the wait is never the pair's.
     tof_callbacks_ =
         create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     rclcpp::SubscriptionOptions tof_options;
@@ -339,9 +337,9 @@ private:
     cv::resize(right_grey, right_half, {}, 0.5, 0.5, cv::INTER_AREA);
     cv::Mat near_disparity;
     near_matcher_->compute(left_half, right_half, near_disparity);
-    // Where the near search sees a surface the far search cannot reach (its doubled
-    // disparity within 8 px of its end) or the far search found nothing, the near
-    // answer stands; only the pixels that become returns are merged.
+    // Where the near search sees a surface beyond the far search's reach (its doubled
+    // disparity within 8 px of its end) or the far found nothing, the near answer
+    // stands.
     const int near_threshold_16 = 16 * (far_disparities_ - 8) / 2;
     const auto stride = static_cast<int>(returns_config_.pixel_stride);
     for (int row = 0; row < disparity.rows; row += stride) {
@@ -368,6 +366,12 @@ private:
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
     const double lit_range_m = lit_range_tracker_.observe(brightness_by_metre, lit);
+    double reach_m{0.0};
+    for (std::size_t metre = 1U; metre < brightness_by_metre.size(); ++metre) {
+      if (brightness_by_metre[metre] >= 0.0 && brightness_by_metre[metre - 1U] >= 0.0) {
+        reach_m = static_cast<double>(metre + 1U);
+      }
+    }
     const double raw_brightness =
         brightness_p95 / camera_gain_.load(std::memory_order_relaxed);
     const std::optional<double> lit_brightness = raw_brightness_baseline_.median();
@@ -389,9 +393,8 @@ private:
     headroom_message.data = headroom;
     light_headroom_pub_->publish(headroom_message);
     const std::size_t stereo_returns = returns.size();
-    // Roadmap item 18 stage 0b: the frame's silent patches, judged on the
-    // rectified returns before they turn to the physical frame; the front
-    // time-of-flight sensor's free zones are the second witness.
+    // Item 18 stage 0b: the frame's silent patches, judged on the rectified returns
+    // before they turn to the physical frame; the front unit's free zones the witness.
     std::vector<Point3> free_through;
     {
       const TofSensor& front = tof_sensors_[kFrontTofSlot];
@@ -450,12 +453,13 @@ private:
     const bool lay = face_approach_.observe(
         candidate, along_m, heading_rad,
         geometry_.focal_px / static_cast<double>(returns_config_.pixel_stride),
-        height_m_.load(), smoke_face_config_);
+        height_m_.load(), reach_m, smoke_face_config_);
     // Every frame's candidate, for replaying the confirmation offline.
-    RCLCPP_INFO(get_logger(),
-                "PLUME_CANDIDATE along=%.3f heading=%.4f quartile=%.2f lay=%d %s",
-                along_m, heading_rad, quartile_m, lay ? 1 : 0,
-                candidate != nullptr ? silentPatchSummary(*candidate).c_str() : "none");
+    RCLCPP_INFO(
+        get_logger(),
+        "PLUME_CANDIDATE along=%.3f heading=%.4f quartile=%.2f reach=%.0f lay=%d %s",
+        along_m, heading_rad, quartile_m, reach_m, lay ? 1 : 0,
+        candidate != nullptr ? silentPatchSummary(*candidate).c_str() : "none");
     if (lay) {
       candidate->closed = true;
       candidate->reason = "plume";
@@ -477,7 +481,6 @@ private:
     const std::string largest_text =
         largest_region == nullptr ? "none" : silentPatchSummary(*largest_region);
     face_frames_ = faces.empty() ? 0U : face_frames_ + 1U;
-    // A face bounds the motion into it (F13) from the moment its marks are laid.
     double face_ahead_m = smokeFacesAheadM(
         lit_regions, face_approach_.confirmed(), face_frames_ >= kFaceFrames, geometry_,
         returns_config_.pixel_stride, image_width_ / returns_config_.pixel_stride,
@@ -613,7 +616,6 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
-    // The faces' rays (K44), twice a second: the plume once the travel confirms it.
     if (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_) {
       const std::size_t pitch_cells = std::max<std::size_t>(
           1U, static_cast<std::size_t>(kRayPitchPx) / returns_config_.pixel_stride);
@@ -740,9 +742,8 @@ private:
     return 255.0;
   }
 
-  // K14 (item 17 stage 8): a frame blind for longer than the moderate flicker's
-  // dark means the pair looked and could not see: the frustum from 1.5 m to the
-  // confident depth is observed unobservable once a second, rays 30 px apart.
+  // K14 (item 17 stage 8): a frame blind for longer than the moderate flicker's dark is
+  // a pair that looked and could not see: the frustum 1.5 m to the confident depth.
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const bool blind) {
     // Dark is what the braking contract reads as blind (I2; r815: read by the
@@ -828,9 +829,8 @@ private:
     return text;
   }
 
-  // A match stands where the local standard deviation clears its brightness's
-  // noise twofold (Immerkaer's operator, by sixteenths of the brightness range:
-  // a dark patch carries more levels of noise than a bright one, A12; r764, r1476).
+  // A match stands where the local standard deviation clears its brightness's noise
+  // twofold (Immerkaer's operator by sixteenths of the range, A12; r764, r1476).
   static double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
     cv::Mat laplacian;
     const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
@@ -843,9 +843,8 @@ private:
     const cv::Size window{kSignalWindowPx, kSignalWindowPx};
     cv::boxFilter(grey_float, mean, CV_32F, window);
     cv::boxFilter(grey_float.mul(grey_float), mean_square, CV_32F, window);
-    // The operator's response is six noise deviations on a flat patch and
-    // far more on an edge; its median is the flat patches' (r765: the mean read
-    // texture as noise and discarded two thirds of a lit frame's matches).
+    // The operator's response is six noise deviations on a flat patch and far more on
+    // an edge; its median is the flat patches' (r765: the mean read texture as noise).
     std::vector<std::size_t> histograms(kBrightnessBins * kLaplacianBins, 0U);
     std::array<std::size_t, kBrightnessBins> samples{};
     for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {

@@ -332,6 +332,17 @@ struct SmokeFaceConfig {
   // its approach and three tenths refused it too, four tenths lay it from
   // 2.4 m and still refuse r2002's floor, which sank 0.4 m over 1.3 m).
   double climb_share{0.4};
+  // The halo of dense smoke, seen from inside its edge: the pair's reach, the
+  // farthest metre of the frame with matched hits in it and the one before,
+  // falls to `halo_reach_m` or under while a lit silent region of
+  // `halo_cells` or more (half the frame) fills it; the thin hall's dark
+  // frames keep hits at 5 to 8 m (the walls, dim), the plume's halo none
+  // beyond 2 to 4 m. On the status lines of nine ordinary flights the pair
+  // never read so, on every blocked approach it did at 6.2 to 7.9 m from the
+  // box (r2045, which the travel never confirmed, at 7.3). Such a frame lays
+  // the candidate at once, the last line behind the travel and the front.
+  std::size_t halo_cells{40000U};
+  double halo_reach_m{4.0};
   double front_rim_spread_m{0.4};
   double front_rim_trend_share{0.2};
   std::size_t front_frames{3U};
@@ -345,7 +356,8 @@ struct SmokeFaceConfig {
 // beyond what the turn of the heading since the last accepted frame moves it
 // by is another region, a loss), the vehicle's travel along the camera's
 // axis so far (the estimator's position projected on its heading, summed),
-// the heading and the grid's cells a radian of it spans, and the height;
+// the heading and the grid's cells a radian of it spans, the height and the
+// pair's reach (the farthest metre with hits, `halo_reach_m`);
 // a candidate lost for more than `lost_frames` frames starts over; a
 // candidate with a front's signature over `front_frames` frames running is
 // confirmed without the travel. It returns whether the candidate's marks are
@@ -357,7 +369,8 @@ struct SmokeFaceConfig {
 class FaceApproach {
 public:
   bool observe(const SilentPatch* candidate, double along_m, double heading_rad,
-               double cells_per_rad, double height_m, const SmokeFaceConfig& config);
+               double cells_per_rad, double height_m, double reach_m,
+               const SmokeFaceConfig& config);
 
   [[nodiscard]] bool confirmed() const noexcept {
     return laid_;
