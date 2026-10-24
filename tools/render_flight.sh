@@ -2,7 +2,8 @@
 # render_flight.sh SCENARIO FIRST_RUN DIRECTORY [RATE]: one flight of a named scenario (point-to-point, light-lost,
 # light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall;
 # the stereo set only) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
-# passes through to the flight: the stereo set's smoke flights hold 0.8, K25)
+# passes through to the flight: the stereo set's smoke flights held 0.8, K25; the smoke scenarios are not flown since
+# 2026-10-24, specification F4)
 # with no window open, through fly_until_valid.sh (two attempts), recording what RViz shows (RENDER_BAG=1); then its
 # pictures rendered afterwards into two split files in DIRECTORY, the world on the left and RViz on the right, one per
 # view (scripts/render_flight_video.py, at RATE of the wall clock, 1.0 unless given). The flight is judged as any

@@ -4,7 +4,8 @@
 # after the last run. GROUP: blocked (the corridor closed by a plume, REAL_TIME_FACTOR 0.8) | ordinary (the location's
 # smoke, 0.8) | clear (no smoke) | lidar (the lidar set, the ordinary smoke). Every flight's verdict lines land in
 # log/tools/smoke_detector/part3/series.txt; the flights' own lines in log/tools/journal/series_<commit>_<profile>.txt
-# (series2.sh) and log/tools/fly_until_valid.txt.
+# (series2.sh) and log/tools/fly_until_valid.txt. Not run since 2026-10-24: no smoke flight is flown (the owner's rule,
+# specification F4); kept as the record of roadmap item 18's acceptance (r2049 to r2065).
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 group=$1; number=$2

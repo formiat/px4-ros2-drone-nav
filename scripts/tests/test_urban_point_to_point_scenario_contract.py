@@ -125,10 +125,12 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", makefile)
         self.assertNotIn("WORLD_ILLUMINATION", makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
-        # Specification F4 (the owner, 2026-10-17): smoke is the location's
-        # property, so the ordinary flight carries the location's smoke
-        # unless a scenario sets its own (the clear one sets none).
-        self.assertEqual(makefile.count('SMOKE_ZONES="$${SMOKE_ZONES-$(LOCATION_SMOKE_ZONES)}"'), 2)
+        # The owner's rule of 2026-10-24 (specification F4): the ordinary
+        # flight is the clear location and no smoke flight is flown; the
+        # ordinary targets set no smoke of their own (a smoke scenario's
+        # SMOKE_ZONES reaches the run through the environment alone).
+        self.assertNotIn("LOCATION_SMOKE_ZONES", makefile)
+        self.assertNotIn('SMOKE_ZONES="$${SMOKE_ZONES-', makefile)
         self.assertIn('CLEAR_SCENARIO := SMOKE_ZONES=""', makefile)
         # The return home is roadmap item 19's injected flight: the goal
         # outside the location, recorded as injected, and the truth grid the

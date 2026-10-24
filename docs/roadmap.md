@@ -1917,7 +1917,9 @@ replaces it:
   flight's default carries the dense plumes and item 23's moderate rooms,
   `LOCATION_SMOKE_ZONES`; before that smoke was a scenario's switch, which
   the owner's rule of 2026-09-27 overrides); the ordinary mission stays
-  reachable.
+  reachable. Withdrawn from flight on 2026-10-24 by the owner's rule (F4):
+  the ordinary flight is the clear location and no smoke flight is flown;
+  the smoke targets stay as the record.
 - **A separate scenario blocks the way**: smoke closes the passage to B, no
   route exists, and the vehicle flies home. It exercises the smoke handling
   and item 19's return together, by a cause the vehicle measures.
@@ -3249,10 +3251,11 @@ stereo set, K25):
   and 0.55). In flight the rise is gone (r1705: 0.08 m over 422 m).
 
 **The speed under moderate smoke is recorded as the requirement**
-(specification K43): the lidar 2.1 m/s, the stereo set 1.1. Since 2026-10-17
-the moderate rooms are part of the ordinary flight (F4: the location's smoke
-is its default, `LOCATION_SMOKE_ZONES`), so every acceptance flight crosses
-the west hall. **The item is
+(specification K43): the lidar 2.1 m/s, the stereo set 1.1. From 2026-10-17
+to 2026-10-24 the moderate rooms were part of the ordinary flight (F4: the
+location's smoke its default), so every acceptance flight crossed the west
+hall; since 2026-10-24 the ordinary flight is clear and no smoke flight is
+flown (the owner's rule). **The item is
 complete on both sets**: five of five to B in truth on the lidar
 (r1675 to r1679) and on the stereo set (r1705 to r1709), no contact, the
 way through the room, the contract's speed in it and the memory of it
