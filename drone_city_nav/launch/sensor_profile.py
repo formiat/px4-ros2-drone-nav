@@ -10,17 +10,6 @@ from __future__ import annotations
 CAMERA_PROFILES = ("none", "stereo_tof")
 NAVIGATION_SENSOR_PROFILES = ("lidar", "stereo_tof")
 
-# The lidar-inertial estimate's vertical error, which the body's clearance is
-# measured with (specification K27): held level by the autopilot's attitude
-# (the registration's tilt prior) and levelled on half a second of rest, it
-# ran within -0.11 to +0.05 m over r2128 (2026-10-25); by the rule of the root
-# goal of 2026-10-24 (the largest error plus 0.10 m, to whole cells of the
-# 0.25 m grid) its allowance is one cell both ways, where the camera estimate's
-# is half a metre (0.3 to 0.6 m, r1183, r1184). Before the level, the estimate
-# ran -0.85 to +0.77 m over 22 flights, and the half metre was short of it.
-LIDAR_INERTIAL_VERTICAL_ERROR = {"physical_footprint_vertical_error_below_m": 0.25,
-                                 "physical_footprint_vertical_error_above_m": 0.25}
-
 
 def lidar_barometer_bridge(world_name, model_name):
     """The vehicle's barometer bridged on the lidar profile for the lidar-inertial
@@ -31,6 +20,8 @@ def lidar_barometer_bridge(world_name, model_name):
                 "air_pressure_sensor/air_pressure")
     return (f"{gz_topic}@sensor_msgs/msg/FluidPressure[gz.msgs.FluidPressure",
             f"{gz_topic}:=/barometer/air_pressure")
+
+
 DEFAULT_CAMERA_PROFILE = "stereo_tof"
 # Roadmap item 18 stage 1: the topics the smoke model's relay republishes
 # every sensor on (simulation_smoke_sensor_node), the drivers' input then.

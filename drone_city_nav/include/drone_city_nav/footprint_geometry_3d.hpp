@@ -25,16 +25,6 @@ struct SweptFootprintConfig {
   double body_radius_m{0.55};
   double body_lower_extent_m{0.23};
   double body_upper_extent_m{0.35};
-  // The estimate's vertical error the body's clearance is measured with
-  // (specification K27): the body is measured this much lower and this much
-  // higher than the estimate puts it, the least clearance of the three. The
-  // camera estimator's height runs 0.3 to 0.6 m from the truth (r1183,
-  // r1184: a horizon 0.3 m above a floor by the estimate put the feet on
-  // it); the lidar-inertial estimate, held level by the autopilot's attitude
-  // since 2026-10-25, runs within 0.11 m (r2128) and takes one cell
-  // (sensor_profile.py).
-  double body_vertical_error_below_m{0.5};
-  double body_vertical_error_above_m{0.5};
   std::size_t perimeter_samples{12U};
   std::size_t radial_rings{2U};
   std::size_t axial_samples{3U};

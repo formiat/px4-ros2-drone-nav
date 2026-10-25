@@ -44,21 +44,6 @@ class SensorProfileTest(unittest.TestCase):
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_CAMERA_PROFILE"])
         self.assertEqual("stereo_tof", SUPPORT["DEFAULT_NAVIGATION_SENSOR_PROFILE"])
 
-    def test_the_lidar_estimate_has_its_own_vertical_allowance(self) -> None:
-        # Specification K27: the lidar-inertial estimate, held level by the
-        # autopilot's attitude, takes one cell both ways; the camera's half metre
-        # stays the parameters' default.
-        self.assertEqual({"physical_footprint_vertical_error_below_m": 0.25,
-                          "physical_footprint_vertical_error_above_m": 0.25},
-                         SUPPORT["LIDAR_INERTIAL_VERTICAL_ERROR"])
-        single = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text()
-        self.assertIn('if localization == "lidar_inertial":\n'
-                      "            production_mppi_parameters.append("
-                      "LIDAR_INERTIAL_VERTICAL_ERROR)", single)
-        yaml = (REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml").read_text()
-        self.assertIn("physical_footprint_vertical_error_below_m: 0.5", yaml)
-        self.assertIn("physical_footprint_vertical_error_above_m: 0.5", yaml)
-
     def test_cameras_are_the_default_of_the_scripts(self) -> None:
         result = self.resolve()
         self.assertEqual(result.returncode, 0, result.stderr)
