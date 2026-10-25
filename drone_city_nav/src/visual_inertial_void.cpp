@@ -5,11 +5,10 @@ namespace drone_city_nav {
 bool VisualInertialVoid::frame(const std::int64_t stamp_ns,
                                const std::int64_t previous_frame_stamp_ns,
                                const std::int64_t last_update_stamp_ns,
-                               const bool few_features,
-                               const bool past_unaided) noexcept {
+                               const bool few_features) noexcept {
   const bool void_frame =
       few_features && witness_ && stamp_ns - witness_stamp_ns_ <= kWitnessFreshNs;
-  if (void_frame && past_unaided) {
+  if (void_frame) {
     if (in_void_ && previous_frame_stamp_ns > last_update_stamp_ns) {
       seconds_ += static_cast<double>(stamp_ns - previous_frame_stamp_ns) * 1.0e-9;
     }

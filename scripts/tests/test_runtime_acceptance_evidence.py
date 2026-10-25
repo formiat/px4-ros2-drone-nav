@@ -449,6 +449,33 @@ class RuntimeManifestTest(unittest.TestCase):
             validator.validate_goal_reached_in_truth(truth, "", errors)
         self.assertTrue(any("names its goal" in error for error in errors))
 
+    def test_a_goal_in_the_void_is_reached_within_the_published_uncertainty(self) -> None:
+        # Roadmap item 31: the true position 3.9 m from the goal at 1000.1 s;
+        # with a horizontal sigma of 1.0 m published before it (two sigma plus
+        # 2 m = 4 m) the goal in the void is reached, with 0.5 m (3 m) it is
+        # not, and without a published sigma the flight fails; a goal not in
+        # the void is judged within the 2 m as always.
+        directory = Path(tempfile.mkdtemp())
+        truth = directory / "gz_pose.csv"
+        truth.write_text("".join(
+            f"{0.02 * index:.3f},{58.0 + 0.025 * index:.3f},24.0,12.3,1,0,0,0,"
+            f"{1000.0 + 0.02 * index:.3f}\n" for index in range(200)), encoding="utf-8")
+        acknowledged = ("[1000.100] [production_mppi_node]: MISSION_WAYPOINT_ACKNOWLEDGED "
+                        "completed_index=1 waypoint_count=2 terminal=true horizon=7 "
+                        "offboard=9 goal=(61.900,24.000,12.300)\n")
+        status = ("[{at:.3f}] [visual_inertial_odometry_node]: VISUAL_INERTIAL_ODOMETRY "
+                  "healthy=false void=true tracked=0 heading_sigma_deg=0.10 "
+                  "position_sigma_m=({sx:.2f},{sy:.2f},0.30)\n")
+        for log, void_goal, passes in (
+                (status.format(at=999.5, sx=0.8, sy=0.6) + acknowledged, True, True),
+                (status.format(at=999.5, sx=0.4, sy=0.3) + acknowledged, True, False),
+                (status.format(at=1000.5, sx=0.8, sy=0.6) + acknowledged, True, False),
+                (status.format(at=999.5, sx=0.8, sy=0.6) + acknowledged, False, False)):
+            errors: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                validator.validate_goal_reached_in_truth(truth, log, errors, void_goal)
+            self.assertEqual(errors == [], passes, (log, void_goal, errors))
+
     def test_the_true_position_never_enters_dense_smoke(self) -> None:
         # A zone west of the origin (its x negative: the option is joined with
         # '=' by the runtime, the check reads the manifest's string), dense

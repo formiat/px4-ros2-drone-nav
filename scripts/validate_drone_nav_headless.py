@@ -23,6 +23,7 @@ from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from headless_runtime_evidence import (
     planner_flight_space_m,
     validate_goal_reached_in_truth,
+    VOID_GOAL_SCENARIOS,
     validate_injected_goal_unreachable_in_truth,
     validate_localization_profile,
     validate_mean_flight_speed,
@@ -506,10 +507,14 @@ def main() -> int:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
         validate_localization_profile(args.runtime_manifest, ros_log, px4_log, errors,
                                       notes)
-        # A vehicle that landed whole reached no goal to be judged at.
-        validate_goal_reached_in_truth(args.runtime_manifest.parent / "gz_pose.csv",
-                                       ros_log,
-                                       notes if vehicle_intact_expected else errors)
+        # A vehicle that landed whole reached no goal to be judged at. A goal
+        # in the void (roadmap item 31) is judged within the estimator's
+        # published uncertainty plus the 2 m.
+        validate_goal_reached_in_truth(
+            args.runtime_manifest.parent / "gz_pose.csv", ros_log,
+            notes if vehicle_intact_expected else errors,
+            void_goal=Path(str(manifest_mission.get("scenario", {}).get("path", ""))).name
+            in VOID_GOAL_SCENARIOS)
         # Dense smoke is never entered, whatever the flight was asked (R7).
         validate_no_entry_into_dense_smoke(args.runtime_manifest.parent / "gz_pose.csv",
                                            manifest_overrides, errors)

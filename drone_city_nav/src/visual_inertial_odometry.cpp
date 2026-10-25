@@ -832,11 +832,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   const std::uint64_t clone_id = state.clones.back().id;
   // The void (K46), kept by VisualInertialVoid.
   state.in_void.frame(stamp_ns, previous_frame_stamp_ns, state.last_update_stamp_ns,
-                      observations.size() < state.config.minimum_frame_features,
-                      state.last_update_stamp_ns > 0 && !state.lost &&
-                          static_cast<double>(stamp_ns - state.last_update_stamp_ns) *
-                                  1.0e-9 >
-                              state.config.maximum_unaided_s);
+                      observations.size() < state.config.minimum_frame_features);
   if (observations.size() >= state.config.minimum_frame_features) {
     for (const StereoFeatureObservation& observation : observations) {
       state.tracks[observation.id].push_back(TrackObservation{

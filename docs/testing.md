@@ -99,7 +99,11 @@ project has two requirements, and the mission check fails on nothing else:
   of 2026-10-18); a room of 0.1/m is crossed by design (F4) and is not
   judged;
 - the mean flight speed exceeds the figure of the sensor set: 2.0 m/s on the
-  lidar, 1.2 m/s on the stereo set. The path is the vehicle's positions
+  lidar, 1.2 m/s on the stereo set;
+- a goal in the void (roadmap item 31, the scenario `dark_void_mid`) is reached
+  when the true position at its acknowledgement is within the estimator's
+  published horizontal uncertainty (two sigma, from its status line) plus 2 m;
+  every other goal within the 2 m by the truth. The path is the vehicle's positions
   between mission readiness and the successful result, the time is the
   simulation clock between the two, read from the true pose record
   (`gz_pose.csv` carries both clocks); the wall-clock figure is printed

@@ -760,10 +760,32 @@ GOAL_ACKNOWLEDGED_PATTERN = re.compile(
     r"\[(\d+\.\d+)\] \[production_mppi_node\]: MISSION_WAYPOINT_ACKNOWLEDGED "
     r"[^\n]*? goal=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)")
 GOAL_CAPTURE_RADIUS_M = 2.0
+# Roadmap item 31 (the owner's rule of 2026-10-17): a goal in the void, with no
+# surface within the light's reach at its end, is reached on dead reckoning
+# alone, and the 2 m are not required there: the true error at the
+# acknowledgement is within the estimator's own published uncertainty (two
+# sigma of its horizontal position, read off its latest status line) plus 2 m.
+# The scenario names such a goal; every other goal is judged within the 2 m.
+VOID_GOAL_SCENARIOS = ("dark_void_mid_point_to_point_scenario.json",)
+POSITION_SIGMA_PATTERN = re.compile(
+    r"\[(\d+\.\d+)\] \[visual_inertial_odometry_node\]: VISUAL_INERTIAL_ODOMETRY "
+    r"[^\n]*? position_sigma_m=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)")
+
+
+def published_position_sigma_m(ros_log: str, at_s: float) -> float | None:
+    """The estimator's horizontal position sigma from its latest status line
+    at or before `at_s` (the lines come once a second)."""
+    sigma = None
+    for match in POSITION_SIGMA_PATTERN.finditer(ros_log):
+        if float(match.group(1)) > at_s:
+            break
+        sigma = math.hypot(float(match.group(2)), float(match.group(3)))
+    return sigma
 
 
 def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
-                                   errors: list[str]) -> None:
+                                   errors: list[str],
+                                   void_goal: bool = False) -> None:
     acknowledgements = list(GOAL_ACKNOWLEDGED_PATTERN.finditer(ros_log))
     if not acknowledgements:
         errors.append("FAIL: a goal acknowledgement names its goal")
@@ -788,6 +810,24 @@ def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                           f"({abs(nearest[0] - at_s):.1f} s apart)")
             continue
         distance_m = math.dist(goal, nearest[1:])
+        if void_goal and acknowledgement is acknowledgements[-1]:
+            sigma_m = published_position_sigma_m(ros_log, at_s)
+            if sigma_m is None:
+                errors.append("FAIL: the estimator published its position sigma before "
+                              "the goal in the void was acknowledged")
+                continue
+            allowed_m = 2.0 * sigma_m + GOAL_CAPTURE_RADIUS_M
+            if distance_m > allowed_m:
+                errors.append(
+                    "FAIL: the true position is within the published uncertainty of "
+                    f"the goal in the void ({distance_m:.2f} m from the goal, allowed "
+                    f"two sigma {sigma_m:.2f} plus {GOAL_CAPTURE_RADIUS_M:.1f} m = "
+                    f"{allowed_m:.2f} m)")
+            else:
+                print(f"OK: the true position is {distance_m:.2f} m from the goal in "
+                      f"the void at its acknowledgement (allowed two sigma "
+                      f"{sigma_m:.2f} plus {GOAL_CAPTURE_RADIUS_M:.1f} m = {allowed_m:.2f} m)")
+            continue
         if distance_m > GOAL_CAPTURE_RADIUS_M:
             errors.append(
                 "FAIL: the true position is inside the goal's capture radius at the "

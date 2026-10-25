@@ -559,7 +559,7 @@ private:
         " unmapped_imu=%" PRIu64 " published_poses=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f velocity_sigma_ned=(%.3f,%.3f,%.3f)"
         " accelerometer_bias=(%.3f,%.3f,%.3f) accelerometer_bias_sigma=(%.3f,%.3f,%.3f)"
-        " heading_sigma_deg=%.2f",
+        " heading_sigma_deg=%.2f position_sigma_m=(%.2f,%.2f,%.2f)",
         estimate.healthy ? "true" : "false", estimate.in_void ? "true" : "false",
         estimate.tracked_features, estimate.candidate_features, estimate.used_features,
         estimate.gated_features, estimate.untriangulated_features,
@@ -578,7 +578,10 @@ private:
         std::sqrt(estimate.accelerometer_bias_variance_m2ps4.x()),
         std::sqrt(estimate.accelerometer_bias_variance_m2ps4.y()),
         std::sqrt(estimate.accelerometer_bias_variance_m2ps4.z()),
-        180.0 / M_PI * std::sqrt(estimate.orientation_variance_rad2.z()));
+        180.0 / M_PI * std::sqrt(estimate.orientation_variance_rad2.z()),
+        std::sqrt(estimate.position_variance_m2.x()),
+        std::sqrt(estimate.position_variance_m2.y()),
+        std::sqrt(estimate.position_variance_m2.z()));
     if (frames_ % 8U == 0U) {
       imu_gap_max_ns_ = 0;
       pose_age_max_ns_ = 0;
