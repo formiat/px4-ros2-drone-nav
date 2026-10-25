@@ -306,6 +306,13 @@ The questions that move the choice most, and the owner's answers of
   rules on parts made in China (NDAA, the Blue UAS lists) would exclude much
   of this registry (Livox, Unitree, Rockchip, many hobby autopilots) and
   favour the VOXL 2, which ModalAI places in the Blue UAS Framework [23].
+  The Jetson itself is not excluded (NVIDIA is a United States company and a
+  compute module is none of the restricted categories); a Jetson build for
+  that market replaces its autopilot (Holybro) and its cameras (Arducam). The
+  owner's emphasis of 2026-10-24: the VOXL 2 is the board the backend without
+  CUDA (roadmap item 28, way B) would be built for, as the support of a
+  possible entry into that market; the lists and the rules of 2026 are to be
+  checked against the buyer when the market is chosen.
 - **The target price: not set.** The hardware is made cheaper by adapting
   the software, never at the cost of the product's quality, the flight speed
   included.

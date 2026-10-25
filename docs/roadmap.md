@@ -1040,7 +1040,19 @@ The order:
 2. Way A when continuous integration or development without NVIDIA is
    wanted; not a way to flight.
 3. Way B only for a chosen board without NVIDIA, the VOXL 2 most likely,
-   inside item 27; CUDA stays the backend of the Jetson.
+   inside item 27; CUDA stays the backend of the Jetson. **The owner's
+   emphasis of 2026-10-24:** the board way B is built for is the VOXL 2, as
+   the support of a possible entry into the United States government
+   market, where the rules on parts (NDAA section 848, the Blue UAS lists)
+   exclude Chinese-made flight controllers, cameras, radios and lidars
+   (Holybro's Pixhawk, Arducam's pair, Livox, Unitree, Rockchip) and the
+   VOXL 2 covers the computer, the autopilot and the cameras in one listed
+   board. The Jetson itself is not excluded (a compute module of a United
+   States company); what a Jetson build would have to replace for that
+   market is its autopilot and its cameras. The market is still not set
+   (specification R6); this is an emphasis, not a decision to build way B
+   now, and the lists are to be checked against the buyer's rules when the
+   market is chosen.
 
 Complete, step by step: (1) the series at the four counts with the mean
 speed, the holds and the closest true clearance against 8192; (2) the engine
