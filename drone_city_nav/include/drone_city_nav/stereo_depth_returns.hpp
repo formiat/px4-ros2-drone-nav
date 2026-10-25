@@ -61,4 +61,32 @@ stereoDepthReturns(std::span<const std::int16_t> disparity_16, std::size_t width
                    std::size_t height, const StereoPairGeometry& geometry,
                    const StereoDepthReturnsConfig& config);
 
+// K14 (roadmap item 17 stage 8): a frame blind for longer than the moderate
+// flicker's dark is a pair that looked and could not see. Dark is what the
+// braking contract reads as blind (I2; r815: read by the light alone, nothing
+// was marked); the dark ends after half a second without a dark frame (r812:
+// a frame a step above the line every second reset a minute's darkness); the
+// frustum is laid once a second while the dark goes on.
+class DarknessWatch final {
+public:
+  static constexpr double kDarknessS{2.5};
+  static constexpr double kConfirmationPeriodS{1.0};
+  static constexpr double kDarknessGapS{0.5};
+  // Whether this frame, blind or not, at `stamp_s`, lays the frustum.
+  [[nodiscard]] bool observe(double stamp_s, bool blind) noexcept;
+
+private:
+  double collapse_started_s_{-1.0};
+  double last_dark_s_{-1.0};
+  double unobservable_confirmed_s_{-1.0};
+};
+
+// The frustum the pair looked into and could not see: points along the rays
+// of every `pitch_px`-th pixel from `nearest_m` to `far_m` at `step_m`, in the
+// left camera's forward-left-up frame, as every return.
+[[nodiscard]] std::vector<Point3>
+unobservableFrustumRays(const StereoPairGeometry& geometry, std::size_t width,
+                        std::size_t height, int pitch_px, double nearest_m,
+                        double step_m, double far_m);
+
 } // namespace drone_city_nav

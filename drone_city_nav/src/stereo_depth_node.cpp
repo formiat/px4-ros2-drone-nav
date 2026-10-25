@@ -608,6 +608,17 @@ private:
         static_cast<double>(returns.size()) /
         static_cast<double>((image_width_ / returns_config_.pixel_stride) *
                             (image_height_ / returns_config_.pixel_stride));
+    // The void's witness (K46): the pair's matches within the confident depth.
+    const double confident_depth_m = stereoConfidentDepthM(geometry_, returns_config_);
+    const double matched_within_reach_share =
+        static_cast<double>(
+            std::count_if(returns.begin(),
+                          returns.begin() + static_cast<std::ptrdiff_t>(stereo_returns),
+                          [confident_depth_m](const StereoDepthReturn& ray) {
+                            return ray.hit && ray.point.x <= confident_depth_m;
+                          })) /
+        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
+                            (image_height_ / returns_config_.pixel_stride));
     // A blind frame's stereo returns never reach the memory (r1175), the ring's do.
     const bool blind =
         sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
@@ -623,13 +634,14 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
-    const bool void_frame = isVoidFrame({.light_sound = light_sound,
-                                         .raw_brightness_p95 = raw_brightness,
-                                         .observed_share = observed_share,
-                                         .ring_surfaces_in_view = surfaces_in_view});
+    const bool void_frame =
+        isVoidFrame({.light_sound = light_sound,
+                     .raw_brightness_p95 = raw_brightness,
+                     .matched_within_reach_share = matched_within_reach_share,
+                     .ring_surfaces_in_view = surfaces_in_view});
     std_msgs::msg::Float64 void_message;
-    void_message.data = void_frame ? stereoConfidentDepthM(geometry_, returns_config_)
-                                   : std::numeric_limits<double>::quiet_NaN();
+    void_message.data =
+        void_frame ? confident_depth_m : std::numeric_limits<double>::quiet_NaN();
     void_range_pub_->publish(void_message);
     if (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_) {
       const std::size_t pitch_cells = std::max<std::size_t>(
@@ -708,23 +720,24 @@ private:
     const double match_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - started)
                                 .count();
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
-                         "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-                         "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
-                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
-                         "silent_patches=%zu closed=%zu silent_range_m=%.1f "
-                         "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
-                         "face_marks_total=%zu free_dropped=%zu largest_lit=%s void=%s",
-                         pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-                         brightnessByMetreText(brightness_by_metre).c_str(), headroom,
-                         lit_range_m, light_share, raw_brightness, observed_share,
-                         blind ? stereo_returns : 0U, noise, unobservable_total_,
-                         surfaces_in_view, unlit_surfaces, patches.size(),
-                         closed_patches, silent_range_m, smoky_zones, faces.size(),
-                         face_range_m, face_marks_total_, face_rays_dropped_,
-                         largest_text.c_str(), void_frame ? "true" : "false");
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
+        "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
+        "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
+        "observed_share=%.3f blind_dropped=%zu noise=%.1f "
+        "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
+        "silent_patches=%zu closed=%zu silent_range_m=%.1f "
+        "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
+        "face_marks_total=%zu free_dropped=%zu largest_lit=%s void=%s "
+        "within_reach=%.3f",
+        pairs_, hits, returns.size() - hits, tof_rays, match_ms,
+        brightnessByMetreText(brightness_by_metre).c_str(), headroom, lit_range_m,
+        light_share, raw_brightness, observed_share, blind ? stereo_returns : 0U, noise,
+        unobservable_total_, surfaces_in_view, unlit_surfaces, patches.size(),
+        closed_patches, silent_range_m, smoky_zones, faces.size(), face_range_m,
+        face_marks_total_, face_rays_dropped_, largest_text.c_str(),
+        void_frame ? "true" : "false", matched_within_reach_share);
   }
 
   // The frame's 95th percentile of brightness over the gain's 200: one while
@@ -741,45 +754,12 @@ private:
   // a pair that looked and could not see: the frustum 1.5 m to the confident depth.
   [[nodiscard]] std::vector<Point3> unobservableFrustum(const double stamp_s,
                                                         const bool blind) {
-    // Dark is what the braking contract reads as blind (I2; r815: read by the
-    // light alone, nothing was marked).
-    constexpr double kDarknessS{2.5};
-    constexpr double kConfirmationPeriodS{1.0};
-    // The dark ends after half a second without a dark frame (r812: a frame a
-    // step above the line every second reset a minute's darkness).
-    constexpr double kDarknessGapS{0.5};
-    std::vector<Point3> points;
-    if (!blind) {
-      if (stamp_s - last_dark_s_ > kDarknessGapS || stamp_s < last_dark_s_) {
-        collapse_started_s_ = -1.0;
-      }
-      return points;
+    if (!darkness_.observe(stamp_s, blind)) {
+      return {};
     }
-    last_dark_s_ = stamp_s;
-    if (collapse_started_s_ < 0.0 || stamp_s < collapse_started_s_) {
-      collapse_started_s_ = stamp_s;
-    }
-    if (stamp_s - collapse_started_s_ < kDarknessS ||
-        stamp_s - unobservable_confirmed_s_ < kConfirmationPeriodS) {
-      return points;
-    }
-    unobservable_confirmed_s_ = stamp_s;
-    const double far_m = stereoConfidentDepthM(geometry_, returns_config_);
-    for (int row = kRayPitchPx / 2; row < static_cast<int>(image_height_);
-         row += kRayPitchPx) {
-      for (int column = kRayPitchPx / 2; column < static_cast<int>(image_width_);
-           column += kRayPitchPx) {
-        // The left camera's forward-left-up frame, as every return.
-        const double left = -(column - geometry_.principal_x_px) / geometry_.focal_px;
-        const double up = -(row - geometry_.principal_y_px) / geometry_.focal_px;
-        const double norm = std::sqrt(1.0 + left * left + up * up);
-        for (double range_m = kNearestM; range_m <= far_m; range_m += kStepM) {
-          const double along = range_m / norm;
-          points.push_back(Point3{along, along * left, along * up});
-        }
-      }
-    }
-    return points;
+    return unobservableFrustumRays(geometry_, image_width_, image_height_, kRayPitchPx,
+                                   kNearestM, kStepM,
+                                   stereoConfidentDepthM(geometry_, returns_config_));
   }
 
   // The mean grey of the matched pixels in each metre of depth, 0 to 8 m (-1
@@ -933,10 +913,8 @@ private:
         static_cast<std::size_t>(std::max(0.0F, mean) / kBrightnessBinLevels));
   }
 
-  double collapse_started_s_{-1.0};
-  double last_dark_s_{-1.0};
+  DarknessWatch darkness_;
   std::size_t unobservable_total_{0U};
-  double unobservable_confirmed_s_{-1.0};
   // The dark frustum's and the smoke faces' rays (K14, K44).
   static constexpr double kNearestM{1.5};
   static constexpr double kStepM{0.25};

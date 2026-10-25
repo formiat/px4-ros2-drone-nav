@@ -68,5 +68,39 @@ TEST(StereoDepthReturns, TheStrideThinsTheReturns) {
   EXPECT_TRUE(stereoDepthReturns(disparity, 16U, 7U, kGeometry, config).empty());
 }
 
+// K14: the frustum is laid once the frames have been blind 2.5 s, then once a
+// second while they stay blind; a gap of half a second without a blind frame
+// ends the dark; the rays run from the nearest range to the far one.
+TEST(StereoDepthReturns, TheDarknessWatchLaysTheFrustumAfterTheDarkAndOnceASecond) {
+  DarknessWatch watch;
+  EXPECT_FALSE(watch.observe(0.0, true));
+  EXPECT_FALSE(watch.observe(2.0, true));
+  EXPECT_TRUE(watch.observe(2.6, true));
+  EXPECT_FALSE(watch.observe(3.0, true));
+  EXPECT_TRUE(watch.observe(3.7, true));
+  // A lit frame within half a second keeps the dark; one later ends it.
+  EXPECT_FALSE(watch.observe(3.9, false));
+  EXPECT_TRUE(watch.observe(4.8, true));
+  EXPECT_FALSE(watch.observe(5.5, false));
+  EXPECT_FALSE(watch.observe(6.0, true));
+  EXPECT_FALSE(watch.observe(8.0, true));
+  EXPECT_TRUE(watch.observe(8.6, true));
+  const StereoPairGeometry geometry{.focal_px = 100.0,
+                                    .principal_x_px = 50.0,
+                                    .principal_y_px = 50.0,
+                                    .baseline_m = 0.2};
+  const std::vector<Point3> rays =
+      unobservableFrustumRays(geometry, 100U, 100U, 50, 1.5, 0.5, 2.5);
+  // Four pixels (at 25 and 75 on each axis), three ranges each.
+  EXPECT_EQ(rays.size(), 12U);
+  for (const Point3& point : rays) {
+    const double range =
+        std::sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+    EXPECT_GE(range, 1.5 - 1.0e-9);
+    EXPECT_LE(range, 2.5 + 1.0e-9);
+    EXPECT_GT(point.x, 0.0);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav
