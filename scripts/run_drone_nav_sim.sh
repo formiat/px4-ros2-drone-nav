@@ -969,6 +969,7 @@ else
   # Roadmap item 18 stage 1: smoke in the location, every sensor read through it (the launch starts its relay).
   [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")
   [[ -n "${SMOKE_FACE:-}" ]] && ros_launch_args+=(smoke_face:="${SMOKE_FACE}")  # K44's face, off unless asked for (the owner, 2026-10-24)
+  [[ -n "${MPPI_ROLLOUTS:-}" ]] && ros_launch_args+=(mppi_rollouts:="${MPPI_ROLLOUTS}")  # item 28 step 1: the rollouts the flight needs
   # K28: the IMU stream failing, injected by a relay the camera estimator reads from.
   [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]] && ros_launch_args+=(imu_topic_suffix:=/relayed)
 fi

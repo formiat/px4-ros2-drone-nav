@@ -1,4 +1,3 @@
-import math
 from pathlib import Path
 import sys
 
@@ -18,6 +17,12 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from launch_overrides import (
+    optional_bool_override,
+    optional_nonnegative_float_override,
+    optional_waypoint_sequence_override,
+    rollouts_overrides,
+)
 from point_to_point_scenario import load_point_to_point_scenario
 from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
@@ -32,73 +37,6 @@ from sensor_profile import (
     stereo_tof_topics,
     validate_sensor_profiles,
 )
-
-
-def optional_bool_override(context, launch_config, argument_name):
-    value = launch_config.perform(context).strip()
-    if not value:
-        return None
-
-    normalized = value.lower()
-    if normalized in ("1", "true", "yes", "on"):
-        return True
-    if normalized in ("0", "false", "no", "off"):
-        return False
-
-    raise RuntimeError(
-        f"Launch argument '{argument_name}' must be a boolean or empty, got '{value}'"
-    )
-
-
-def optional_nonnegative_float_override(context, launch_config, argument_name):
-    value = launch_config.perform(context).strip()
-    if not value:
-        return None
-    try:
-        result = float(value)
-    except ValueError as error:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must be numeric, got '{value}'"
-        ) from error
-    if result < 0.0:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must be non-negative, got '{value}'"
-        )
-    return result
-
-
-def optional_waypoint_sequence_override(context, launch_config, argument_name):
-    value = launch_config.perform(context).strip()
-    if not value:
-        return None
-    try:
-        parsed = yaml.safe_load(value)
-    except yaml.YAMLError as error:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must be a YAML numeric list"
-        ) from error
-    if not isinstance(parsed, list) or len(parsed) == 0 or len(parsed) % 3 != 0:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must contain one or more x,y,z triples"
-        )
-    result = []
-    for component in parsed:
-        if isinstance(component, bool):
-            raise RuntimeError(
-                f"Launch argument '{argument_name}' must contain numeric components"
-            )
-        try:
-            numeric = float(component)
-        except (TypeError, ValueError) as error:
-            raise RuntimeError(
-                f"Launch argument '{argument_name}' must contain numeric components"
-            ) from error
-        if not math.isfinite(numeric):
-            raise RuntimeError(
-                f"Launch argument '{argument_name}' must contain finite components"
-            )
-        result.append(numeric)
-    return result
 
 
 def stereo_vision_nodes(
@@ -240,6 +178,7 @@ def generate_launch_description():
     smoke_zones = LaunchConfiguration("smoke_zones")
     smoke_seed = LaunchConfiguration("smoke_seed")
     smoke_face = LaunchConfiguration("smoke_face")
+    mppi_rollouts = LaunchConfiguration("mppi_rollouts")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
@@ -458,6 +397,9 @@ def generate_launch_description():
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
+        # Roadmap item 28 step 1: the rollouts the flight is asked to fly with.
+        if rollouts_overrides(mppi_rollouts.perform(context)):
+            production_mppi_parameters.append(rollouts_overrides(mppi_rollouts.perform(context)))
         diagnostics_dir_override = mppi_diagnostics_output_dir.perform(context).strip()
         if diagnostics_dir_override:
             # The per-tick records go with the run they describe.
@@ -866,6 +808,14 @@ def generate_launch_description():
                 "smoke_seed",
                 default_value="0",
                 description="Seed of the smoke's churn (roadmap item 18 stage 1).",
+            ),
+            DeclareLaunchArgument(
+                "mppi_rollouts",
+                default_value="",
+                description=(
+                    "The MPPI controller's rollouts (roadmap item 28 step 1); empty leaves "
+                    "the configuration's 8192, with the open-space count at three quarters."
+                ),
             ),
             DeclareLaunchArgument(
                 "smoke_face",
