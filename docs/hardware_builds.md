@@ -254,6 +254,23 @@ own pair, costs about what the builds without NVIDIA cost.
   the saving is $15 000 to $45 000, and the VOXL 2's 16 g and integration
   make a smaller, lighter vehicle possible. The larger lever is below.
 
+Read again on 2026-10-24 against the measured gap ("The Compute Gap,
+Measured" above): the arm64 build opens no board by itself, since every
+Jetson is arm64 already; it is the prerequisite of every board but an x86
+one, not a lever. A backend without CUDA opens the VOXL 2 and the x86 boards
+with an integrated GPU, and nothing cheaper: the RK3588 and the Raspberry Pi
+stay out on both the CPU and the GPU. On the CPU side the VOXL 2's four
+large cores (one Cortex-A77 at 3.09 GHz, three at 2.42) come to roughly 2.5
+to 3 Zen 3 cores by the per-clock rule above, against the onboard set's 3.4
+to 3.8 on the lidar and 4.3 to 4.6 on the stereo set at p50: a quarter to
+two fifths short before the matcher is moved to its own accelerators and the
+rollouts cut, so the VOXL 2 needs levers 1 and 2 of the gap as the Orin NX
+does, and the saving it brings ($140 to $270 a vehicle, 5 to 10 percent)
+buys mass and integration more than money. The x86 board fits the CPU
+outright and saves $350 to $450 (15 to 20 percent) at 0.3 to 0.4 kg more.
+Neither saving approaches the $600 to $1 300 a vehicle that a stack fitting
+an Orin Nano or an RK3588 would save, which is the appetite's lever below.
+
 ## For A Product Made In Numbers
 
 The vehicle is meant to be a product made in numbers (specification R6), so
