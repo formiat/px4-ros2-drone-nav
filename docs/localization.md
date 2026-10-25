@@ -53,8 +53,9 @@ Inputs: `/lidar_3d/points` (the 360 x 181 scan at 10 Hz, stamped on the
 simulation clock) and `/fmu/out/sensor_combined` (the IMU at 110 Hz on the
 transport's clock), with `/fmu/out/timesync_status` for the clock mapping
 (`Px4RosTimeMapper`, the same resolution the obstacle memory applies to the
-autopilot's position stamps). The lidar extrinsic is the mounting the
-obstacle memory projects with.
+autopilot's position stamps), and `/fmu/out/vehicle_attitude`, the autopilot's
+attitude, as the outside level of the registration (K45, below). The lidar
+extrinsic is the mounting the obstacle memory projects with.
 
 Per scan:
 
@@ -117,6 +118,46 @@ the published estimate and treats a shift within 0.33 m as the same frame.
 A larger shift, which a restart of the external-vision fusion produces
 (0.8 to 2.3 m on r389, r393 and r398, before the queues were deepened),
 closes the navigation for the flight.
+
+## The Level (K45)
+
+The registration gives the state its whole rotation, and the submap is built
+at the registered poses: nothing after the levelling at rest tied roll and
+pitch to gravity, so a registration's rotational error entered the next
+keyframe, every later scan registered level to the tilted map, and the
+estimate's height slid with the horizontal travel (the error grows as a
+tilted plane: `dz = a dx + b dy` with R2 0.71 to 0.75 in the worst flights of
+2026-10, tilts of 0.4 degrees, heights 0.75 to 0.85 m off over a flight;
+`tools/vertical_error.py`). The flight's level itself came from the two to
+nine IMU samples that happened to precede the first scan. Since 2026-10-25
+(the root goal of 2026-10-24, part 1): the autopilot's attitude is priced in
+every point-to-plane solve as a prior on roll and pitch, at one times the
+points' own information about each horizontal axis (`tilt_prior_share`; the
+heading stays the registration's); the estimator levels itself on half a
+second of rest (`minimum_rest_samples`, 50) before its first scan; and the
+gravity it propagates with is the IMU's own at rest (the world's 9.8 against
+the constant's 9.80665). On the replays an IMU mount error of 0.4 degrees
+seeded a height 0.35 to 0.53 m off without the prior and within 0.17 m with
+it (`tools/lio/replay_lio.cpp`: `tiltshare=`, `truth=`, `attitude=`,
+`misalign=`); in flight r2128 ran within -0.11 to +0.05 m over 392 m and
+its replay with the recorded attitude agreed. The autopilot's attitude is
+within 0.13 degrees of the truth with no time offset (r2127).
+
+Level, the map still walked in height: +0.18 to +0.57 m over the ten flights
+r2130 to r2144, a centimetre a keyframe with no tilt (the odometry's random
+walk in z, which nothing in the registration observes). The vehicle's
+barometer anchors it: on the lidar profile the launch bridges the simulated
+barometer beside the lidar cloud (`sensor_profile.lidar_barometer_bridge`;
+with cameras the image source relays it), the node reads
+`/barometer/air_pressure` as the camera estimator does (12.013 Pa a metre),
+and the estimator smooths it (0.04 a sample, half a second), takes the rest's
+mean as the datum and prices the height in every point-to-plane solve at a
+fiftieth of the points' own information about z (`height_prior_share`): the
+map relaxes to the barometer over some five seconds and takes a fiftieth of
+its smoothed noise a keyframe. The two priors go together: without the level
+the solve meets a height by tilting the body (3 to 9 degrees in the unit
+test). The replay takes the record's `baro=` and `heightshare=`. within -0.21 to +0.22 m over the ten lidar flights of the acceptance (r2156 to r2160 and r2168 to r2172: a standard deviation of 0.046 m, the 99th percentile +0.13 m, no sample beyond 0.25 m); r2145, the first flight with the height prior, ran -0.09 to +0.15 m, and its record replayed at shares 0, 0.02 and 0.05 of the height prior gives -0.18 to +0.12, -0.12 to +0.13 and -0.08 to +0.15 m
+The cost is three diagonal and three gradient entries an iteration.
 
 ## Health
 
@@ -259,7 +300,8 @@ the filter; reports by manoeuvre):
   feature for the rest of a flight;
 - the time-of-flight ranges are not fused: climbing a shaft a metre from its
   wall the estimate loses 0.09 m over 3.4 m (0.28 m over 3.9 m on the record
-  with IMU holes), the vertical being the best-held axis.
+  with IMU holes); the vertical was the worst-held axis until 2026-10-25
+  (the map's level drifted, K45; below).
 
 Over four seconds, the time a surface stays in view, the estimate loses
 0.11 to 0.18 m at the median and 0.25 to 0.45 m at p95, and 0.2 to 0.3

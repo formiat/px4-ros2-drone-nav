@@ -39,7 +39,7 @@ exist there.
 |---|---|---|---|---|---|---|---|
 | `production_mppi_node` | 1.81 | 2.38 | 2.57 | 592 MiB | +128 MiB | 33 | 206 MiB |
 | `obstacle_memory_3d_node` | 0.83 | 1.08 | 1.10 | 135 MiB | +53 MiB | 19 | |
-| `lidar_inertial_odometry_node` (lidar-inertial profile only, r405 and r418) | 0.52 to 0.54 | 0.80 to 0.84 | 0.92 to 1.01 | 59 MiB | +2 to +3 MiB | 16 | |
+| `lidar_inertial_odometry_node` (lidar-inertial profile only, r405 and r418) | 0.52 to 0.54 | 0.80 to 0.84 | 0.92 to 1.01 | 59 MiB | +2 to +3 MiB | 16 | On the flight's core set (A4) and with the level and the height priors of K45 (2026-10-25): 0.21 to 0.26 cores p50 and 0.32 to 0.42 p95 over the ten acceptance flights r2156 to r2172 (mean p50 0.230) against 0.21 to 0.25 and 0.34 to 0.40 over the five base flights r2080 to r2084 (mean 0.224) before them; the registration 17.4 to 21.5 ms p50 (mean 19.3) against 17.1 to 21.9 (mean 19.1), `tools/lio/lio_cost.py` and `tools/process_cores.py`. |
 | `mppi_offboard_node` | 0.04 | 0.05 | 0.05 | 44 MiB | 0 | 16 | |
 | `MicroXRCEAgent` | 0.03 | 0.04 | 0.05 | 28 MiB | 0 | 53 | |
 | **Onboard together** | **2.73** | **3.36** | | **798 MiB** | | | **206 MiB** |

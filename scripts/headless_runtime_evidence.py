@@ -63,8 +63,12 @@ MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 # series on the smoky default flew 1.92 to 2.48 m/s (r1735 to r1739), one of
 # five above 2.4 and two above 2.1, the slow stretches the clear halls under
 # the route clearance law (the register's lidar speed row); the stereo set
-# flew 1.26 to 1.40 and keeps 1.2.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.1
+# flew 1.26 to 1.40 and keeps 1.2. Since 2026-10-25 (the root goal's part 1)
+# the lidar's figure is 2.0 m/s, set by the owner's rule "the expected speed is
+# the real one": the largest tenth every one of the ten clear lidar flights on
+# the final code exceeded by 0.1 m/s or more (2.18 to 2.83 m/s: r2156 2.743, r2157 2.375, r2158 2.825, r2159 2.426, r2160 2.209, r2168 2.329, r2169 2.181, r2170 2.188, r2171 2.593, r2172 2.459), with the estimate's
+# vertical drift repaired (K45).
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.0
 MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.2
 
 MISSION_READINESS_PATTERN = (

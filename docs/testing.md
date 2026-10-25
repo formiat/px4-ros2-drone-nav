@@ -98,7 +98,7 @@ project has two requirements, and the mission check fails on nothing else:
   (`validate_no_entry_into_dense_smoke`, specification R7, the owner's rule
   of 2026-10-18); a room of 0.1/m is crossed by design (F4) and is not
   judged;
-- the mean flight speed exceeds the figure of the sensor set: 2.1 m/s on the
+- the mean flight speed exceeds the figure of the sensor set: 2.0 m/s on the
   lidar, 1.2 m/s on the stereo set. The path is the vehicle's positions
   between mission readiness and the successful result, the time is the
   simulation clock between the two, read from the true pose record
@@ -268,8 +268,8 @@ simulation clock, which both of its records share.
 
 The mean flight speed is the only speed the programme targets, and it is
 gated by the navigation sensor profile the manifest records, whatever
-localizes the vehicle: it has to exceed 2.1 m/s on the lidar and 1.2 m/s on
-the stereo sensor set. These are the project owner's requirements of
+localizes the vehicle: it has to exceed 2.0 m/s on the lidar and 1.2 m/s on
+the stereo sensor set (the lidar's 2.0 since 2026-10-25, by measurement: specification R3). These are the project owner's requirements of
 2026-09-19; they replaced 2.5 m/s and the 1.226 m/s derived for the stereo
 profile as half of what its braking contract admits forward (6.4 m of
 confident depth admit 2.452 m/s).
