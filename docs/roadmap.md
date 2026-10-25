@@ -1052,7 +1052,7 @@ The order:
    market is its autopilot and its cameras. The market is still not set
    (specification R6); this is an emphasis, not a decision to build way B
    now, and the lists are to be checked against the buyer's rules when the
-   market is chosen.
+   market is chosen. What the board would take in full is item 37.
 
 Complete, step by step: (1) the series at the four counts with the mean
 speed, the holds and the closest true clearance against 8192; (2) the engine
@@ -1459,6 +1459,105 @@ This item is complete when two flights with the same seeds reproduce each
 other on a quiet and on a loaded host, the onboard budget is a measured
 model in the loop whose removal is visible in the flight, and A7's verdict
 is no longer needed for a flight to count.
+
+## 37. Full Support Of The ModalAI VOXL 2
+
+**Type:** new capability, deferred; recorded on 2026-10-24 at the project
+owner's word after the reading of the compute gap and the builds without
+CUDA (item 28, [hardware_builds.md](hardware_builds.md)): the VOXL 2 is the
+board a backend without CUDA would be built for, as the support of a
+possible entry into the United States government market (NDAA section 848,
+the Blue UAS lists), where it covers the computer, the autopilot and the
+cameras in one listed board of 16 g. The market is not set (specification
+R6); this item says what the board would take, in full, so that the
+decision is taken on a list and not on the backend alone.
+
+**Hard prerequisites:** item 28 way B (the MPPI engine on Vulkan or OpenCL)
+and its step 1 (how many rollouts the flight needs); item 27 blocks 2 to 6
+(the build without Gazebo and for arm64, the sensor drivers, time and
+frames, the vehicle model, the checks before a flight), which every real
+vehicle needs and this board does not spare; item 26 or the camera's own
+depth for the stereo matcher off the CPU. A VOXL 2 board ($1 250) for
+everything past the host.
+
+**Validation environment:** none in the simulator beyond what items 27 and
+28 use; the board on a bench with recorded data first, then a vehicle of
+its class (the Starling 2 Max's: 322 mm, 500 g, 500 g of payload).
+
+What the board is, by the registry: a Qualcomm QRB5165 (one Cortex-A77 at
+3.09 GHz, three at 2.42, four Cortex-A55; an Adreno 650 with OpenCL 2.0 and
+Vulkan 1.1, its FP32 rate not found, about 1 TFLOPS a guess; 8 GiB shared),
+PX4 on the board, ModalAI's own camera family on MIPI, 16 g. What the stack
+is: ROS 2 Jazzy nodes, the autopilot over uXRCE-DDS on UDP with `px4_msgs`,
+a pair of 1280 x 960 at 0.20 m configured by its calibration (K33), six
+VL53L5CX on I2C, a carried light with a driver that reports, CUDA in the
+controller alone.
+
+The work, in three layers; what is checked and what is not is marked:
+
+1. **The controller without CUDA** (item 28 way B, L to XL): the twelve
+   kernels on Vulkan compute or OpenCL, parity tests against the CUDA
+   engine on the same noise, built and tested on the host's GPU first (the
+   RTX 3060 speaks Vulkan); then the rollout count the Adreno carries in
+   the 20 ms tick (about 1 000 or fewer by the guess above) and the
+   controller tuned at it, which item 28 step 1 prepares.
+2. **The CPU**: four large cores come to roughly 2.5 to 3 Zen 3 cores
+   against the onboard set's 3.4 to 3.8 (lidar) and 4.3 to 4.6 (stereo
+   set) at p50 (hardware_builds.md, "The Compute Gap, Measured"): the
+   stereo matcher off the CPU (the board's own depth server on its
+   accelerators, if its depth is taken, or item 26), the controller's CPU
+   share and the planner's budget revisited, the heavy threads pinned to
+   the A77 cores (big.LITTLE scheduling, which the launcher's affinity
+   masks do not know), the thermal behaviour of a 16 g board under four
+   busy cores measured.
+3. **The platform**, each point to be checked on ModalAI's documentation
+   and then on the board, none checked yet (2026-10-24, from memory of the
+   platform, not from the project's documents):
+   - the operating system and middleware: voxl-suite with its modal pipe
+     architecture (MPA); ROS 2 runs on it in ModalAI's containers; which
+     ROS 2 distribution is supported, and whether Jazzy's `rclcpp` and the
+     stack's messages build there, decides whether the nodes run as they
+     are or inside a container of ours;
+   - the autopilot link: PX4 runs on the board (voxl-px4) and talks to the
+     applications through MPA; whether it carries the uXRCE-DDS client the
+     stack uses over UDP to the same board is unchecked
+     (hardware_builds.md); if not, an adapter from MPA to the stack's
+     topics (the offboard setpoints, `sensor_combined`, the status and
+     failure flags, the external odometry in);
+   - the cameras: ModalAI's pairs come through voxl-camera-server as MPA
+     frames, not `sensor_msgs/Image`, at about 8 cm of baseline against the
+     0.20 m the speeds rest on (about 0.6 of the confident range,
+     camera_perception.md): an adapter and a calibration, and either a
+     slower vehicle by the braking contract or the stack's own 0.20 m pair
+     on the board's MIPI connectors with sensors its drivers support;
+   - the time-of-flight ring: six VL53L5CX on I2C need the board's I2C
+     lines and a driver, or ModalAI's single PMD time-of-flight camera
+     through an adapter with K19's reflex and K30's landing read against one
+     unit instead of six;
+   - the IMU (the board's own and PX4's `sensor_combined`, which the stack
+     reads), the light's driver on the board's GPIO, the power budget.
+4. **The parts around the board for that market**: the frame, motors,
+   ESCs, radios and batteries checked against the buyer's rules; the lidar
+   profile most likely not offered (Livox and Unitree excluded, an Ouster
+   heavy and dear), so the VOXL 2 vehicle is the camera build.
+
+What the board gives back: the autopilot, the computer and the cameras in
+one listed board; a vehicle of a few hundred grams flying two to three times
+as long as the x500; and, if its depth server is taken, the stereo matcher
+off the CPU for nothing.
+
+Size: the backend L to XL (item 28); the platform layer M to L; the drivers
+and the identification M (item 27); months in all, against a Jetson, which
+spares the backend and the adapters and needs item 27's blocks the same.
+Without the board: the backend and its parity tests on the host's GPU, the
+rollout series (item 28 step 1), the arm64 build (item 27 block 2); the
+rest needs the board and ModalAI's documentation read.
+
+This item is complete when the stack flies a point-to-point mission on a
+VOXL 2 vehicle of its class with the camera profile, through the pilot's
+authority and the mission's end as item 27 block 1 asks, the acceptance of
+A1 flown on the vehicle itself, and every point of layer 3 is written as
+checked, with what was adapted and what was taken from the board.
 
 ## Completed
 
