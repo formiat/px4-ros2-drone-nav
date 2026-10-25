@@ -7,8 +7,10 @@
 # project owner's rule of 2026-09-25 is that such a flight is never flown.
 # Foreign processes are never touched: the gate waits for them to end.
 # On the flight's core set (FLIGHT_CPUSET, specification A4) the load that
-# counts is the set's own: each of its CPUs at most 10 percent busy over the
-# 10 s sample, read from /proc/stat, whatever the other CPUs do.
+# counts is the set's own: its CPUs at most 15 percent busy on average over
+# the 10 s sample, read from /proc/stat, whatever the other CPUs do (a
+# one-minute load under 3 on 16 CPUs is the same share; the busiest CPU alone
+# would reset on every one-second burst of a browser or of this terminal).
 set -euo pipefail
 
 cpuset_cpus() {
@@ -22,18 +24,18 @@ cpuset_cpus() {
   done
 }
 
-# The busiest CPU of the set, in percent, between two /proc/stat snapshots.
+# The set's mean busy share, in percent, between two /proc/stat snapshots.
 set_busy_percent() {
   awk -v cpus="$(cpuset_cpus | tr '\n' ' ')" '
-    BEGIN { split(cpus, want, " "); for (k in want) wanted["cpu" want[k]] = 1; worst = 0 }
+    BEGIN { split(cpus, want, " "); for (k in want) wanted["cpu" want[k]] = 1; sum = 0; n = 0 }
     $1 in wanted {
       total = 0; for (f = 2; f <= NF; f++) total += $f
       idle = $5 + $6
       if (!($1 in t0)) { t0[$1] = total; i0[$1] = idle; next }
-      if (total > t0[$1]) busy = 100 * (1 - (idle - i0[$1]) / (total - t0[$1])); else busy = 0
-      if (busy > worst) worst = busy
+      if (total > t0[$1]) sum += 100 * (1 - (idle - i0[$1]) / (total - t0[$1]))
+      n++
     }
-    END { printf "%d\n", worst }' "$1" "$2"
+    END { printf "%d\n", (n > 0 ? sum / n : 0) }' "$1" "$2"
 }
 
 quiet_s=0
@@ -44,7 +46,7 @@ while [[ "${quiet_s}" -lt 60 ]]; do
   simulators="$(pgrep -c -f '[g]z sim' || true)"
   if [[ -n "${FLIGHT_CPUSET:-}" ]]; then
     load="$(set_busy_percent <(printf '%s\n' "${stat_before}") /proc/stat)"
-    calm=$(( load <= 10 ))
+    calm=$(( load <= 15 ))
     load="${load}% busy on ${FLIGHT_CPUSET}"
   else
     load="$(cut -d' ' -f1 /proc/loadavg)"

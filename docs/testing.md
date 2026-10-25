@@ -305,8 +305,8 @@ core, a one-minute load under 3, no other `gz sim`), foreign processes are
 never touched, and a flight the load reaches anyway is replayed. On a
 flight's core set (`FLIGHT_CPUSET`, specification A4; the series fly on
 `0-11` of this host since 2026-10-24) the gate reads the set's own CPUs
-instead of the host's load: each of them at most 10 percent busy over the
-10 s sample, whatever the other CPUs do. The set is recorded in the
+instead of the host's load: its CPUs at most 15 percent busy on average
+over the 10 s sample, whatever the other CPUs do. The set is recorded in the
 manifest (`FLIGHT_CPUSET` among the effective overrides) and in the
 launcher's `CPU affinity:` line with the CPUs the container was given.
 

@@ -54,7 +54,7 @@ class FlightCpusetContract(unittest.TestCase):
         gate = (REPOSITORY / "scripts/quiet_host_gate.sh").read_text()
         self.assertIn('if [[ -n "${FLIGHT_CPUSET:-}" ]]; then', gate)
         self.assertIn("set_busy_percent", gate)
-        self.assertIn("calm=$(( load <= 10 ))", gate)
+        self.assertIn("calm=$(( load <= 15 ))", gate)
         self.assertIn("/proc/loadavg", gate)
 
     def test_inspect_prints_the_set(self):
