@@ -3,7 +3,8 @@
 // the scan stamp), and writes DIR/replay.csv (or out=PATH): stamp_ns,x,y,z,healthy,information,degenerate,
 // bias_x,bias_y,bias_z,vx,vy,vz,roll,pitch (rad, the estimate's tilt), plus PATH.ms with the registration time p50 p95 p99 max and the count
 // over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel tiltshare
-// (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level) and misalign=DEG (the
+// (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level), attitude=PATH (the
+// record's attitude.csv, the autopilot's own attitude as the level) and misalign=DEG (the
 // IMU turned about the body's y axis, a mount error that seeds a tilted map);
 // hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
 // must register from a prior the IMU alone carried: the recovery's case.
@@ -25,7 +26,7 @@ int main(int argc, char** argv) {
   LidarInertialOdometryConfig config;
   long long lag_ns = 0;
   double hole_from_s = -1.0, hole_to_s = -1.0;
-  std::string out_path, truth_path;
+  std::string out_path, truth_path, attitude_path;
   double misalign_deg = 0.0;  // the IMU turned about the body's y axis by this much, a mount error, to seed a tilted map
   for (int i = 3; i < argc; ++i) {
     std::string kv = argv[i]; auto eq = kv.find('='); std::string k = kv.substr(0, eq); double v = std::atof(kv.c_str() + eq + 1);
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
     else if (k == "tiltshare") config.tilt_prior_share = v;
     else if (k == "misalign") misalign_deg = v;
     else if (k == "truth") { truth_path = kv.substr(eq + 1); continue; }
+    else if (k == "attitude") { attitude_path = kv.substr(eq + 1); continue; }
     else { std::fprintf(stderr, "unknown %s\n", k.c_str()); return 2; }
   }
   std::vector<Imu> imu;
@@ -69,6 +71,15 @@ int main(int argc, char** argv) {
     }
     if (f) std::fclose(f);
     std::fprintf(stderr, "truth attitude samples %zu\n", truth.size());
+  }
+  // The autopilot's attitude as recorded (attitude.csv of extract_bag.py: stamp_ns, qw, qx, qy, qz, body FRD to NED),
+  // the level the flight itself had; the truth and this are exclusive, the attitude read first.
+  if (!attitude_path.empty()) {
+    std::FILE* f = std::fopen(attitude_path.c_str(), "r"); long long ns; double qw, qx, qy, qz;
+    truth.clear();
+    while (f && std::fscanf(f, "%lld,%lf,%lf,%lf,%lf", &ns, &qw, &qx, &qy, &qz) == 5) truth.push_back({static_cast<double>(ns) * 1e-9, Eigen::Quaterniond{qw, qx, qy, qz}});
+    if (f) std::fclose(f);
+    std::fprintf(stderr, "autopilot attitude samples %zu\n", truth.size());
   }
   std::size_t next_truth = 0;
   std::FILE* scans = std::fopen((dir + "/scans.bin").c_str(), "rb");

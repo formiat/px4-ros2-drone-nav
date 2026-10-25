@@ -26,6 +26,16 @@ class EstimateCapture(Node):
         self._lock = threading.Lock()
         self._rows: list[tuple[float, float, float, float, float, int, float, float]] = []
         self.create_subscription(PoseStamped, topic, self._on_pose, 10)
+        # The autopilot's attitude beside the estimate (px4_attitude.csv next to the output: the sample's stamp in
+        # seconds, roll, pitch, yaw in NED): the level the estimator's registration is held to since 2026-10-25.
+        self._attitude_rows: list[tuple[float, float, float, float]] = []
+        try:
+            from px4_msgs.msg import VehicleAttitude
+            from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+            qos = QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
+            self.create_subscription(VehicleAttitude, "/fmu/out/vehicle_attitude", self._on_attitude, qos)
+        except ImportError:
+            pass
         self.create_timer(save_period_s, self.save)
 
     def _on_pose(self, message) -> None:
@@ -41,9 +51,23 @@ class EstimateCapture(Node):
             self._rows.append((stamp, message.pose.position.x, message.pose.position.y,
                                message.pose.position.z, yaw, healthy, roll, pitch))
 
+    def _on_attitude(self, message) -> None:
+        w, x, y, z = (float(v) for v in message.q)
+        roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+        pitch = math.asin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
+        yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+        with self._lock:
+            self._attitude_rows.append((message.timestamp_sample * 1e-6, roll, pitch, yaw))
+
     def save(self) -> None:
         with self._lock:
             rows = list(self._rows)
+            attitude_rows = list(self._attitude_rows)
+        if attitude_rows:
+            attitude_path = os.path.join(os.path.dirname(self._output), "px4_attitude.csv")
+            with open(attitude_path + ".tmp", "w", newline="", encoding="utf-8") as stream:
+                csv.writer(stream).writerows(attitude_rows)
+            os.replace(attitude_path + ".tmp", attitude_path)
         temporary = self._output + ".tmp"
         with open(temporary, "w", newline="", encoding="utf-8") as stream:
             csv.writer(stream).writerows(rows)

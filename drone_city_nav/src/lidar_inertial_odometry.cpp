@@ -323,8 +323,15 @@ struct LidarInertialOdometry::Impl {
       attitude_levelled = true;
       return;
     }
-    const Eigen::Vector3d body_up =
-        (rest_accelerometer_sum / static_cast<double>(rest_samples)).normalized();
+    const Eigen::Vector3d rest_mean =
+        rest_accelerometer_sum / static_cast<double>(rest_samples);
+    // The gravity the IMU itself measures at rest, when it is one: the world's
+    // 9.8 against the constant's 9.80665 is 0.0067 m/s^2 of vertical
+    // acceleration the propagation would otherwise carry every second.
+    if (std::abs(rest_mean.norm() - config.gravity_mps2) < 0.3) {
+      config.gravity_mps2 = rest_mean.norm();
+    }
+    const Eigen::Vector3d body_up = rest_mean.normalized();
     const Eigen::Vector3d ned_up{0.0, 0.0, -1.0};
     const Eigen::Quaterniond tilt = Eigen::Quaterniond::FromTwoVectors(body_up, ned_up);
     const Eigen::Quaterniond heading{

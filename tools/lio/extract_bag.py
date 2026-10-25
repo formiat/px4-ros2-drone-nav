@@ -1,18 +1,20 @@
 """extract_bag.py MCAP_FILE OUT_DIR: lidar scans (body FRD, extrinsic applied) and PX4 IMU from a rosbag2
 mcap file, read record by record so a file cut off without its footer still yields its data.
-scans.bin: repeated [int64 stamp_ns][uint32 n][n*3 float32]; imu.csv: stamp_ns,gx,gy,gz,ax,ay,az.
+scans.bin: repeated [int64 stamp_ns][uint32 n][n*3 float32]; imu.csv: stamp_ns,gx,gy,gz,ax,ay,az;
+attitude.csv: stamp_ns,qw,qx,qy,qz (the autopilot's vehicle_attitude, body FRD to NED, when the bag carries it).
 IMU stamps are PX4 microseconds; in lockstep SITL they equal the simulation clock (tool-only assumption)."""
 import sys, struct, os
 import numpy as np
 from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import PointCloud2
-from px4_msgs.msg import SensorCombined, TimesyncStatus
+from px4_msgs.msg import SensorCombined, TimesyncStatus, VehicleAttitude
 path, out = sys.argv[1], sys.argv[2]
 os.makedirs(out, exist_ok=True)
 scans = open(os.path.join(out, "scans.bin"), "wb"); imu = open(os.path.join(out, "imu.csv"), "w")
+attitude = open(os.path.join(out, "attitude.csv"), "w")
 t_body = np.array([0.12, 0.0, -0.315], dtype=np.float32)
 channels = {}
-counts = {"scans": 0, "imu": 0, "compressed_chunks": 0, "unsynchronised_imu": 0}
+counts = {"scans": 0, "imu": 0, "attitude": 0, "compressed_chunks": 0, "unsynchronised_imu": 0}
 offset_us = [None]
 def handle(op, body):
     if op == 0x04:  # Channel
@@ -41,6 +43,10 @@ def handle(op, body):
             # the autopilot's own clock is the simulation's in lockstep.
             local_ns = (m.timestamp + offset_us[0]) * 1000
             imu.write("%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n" % (local_ns, *m.gyro_rad, *m.accelerometer_m_s2)); counts["imu"] += 1
+        elif topic == "/fmu/out/vehicle_attitude":
+            m = deserialize_message(data, VehicleAttitude)
+            local_ns = (m.timestamp_sample + (offset_us[0] or 0)) * 1000
+            attitude.write("%d,%.7f,%.7f,%.7f,%.7f\n" % (local_ns, *m.q)); counts["attitude"] += 1
     elif op == 0x06:  # Chunk
         n = struct.unpack_from("<I", body, 28)[0]; comp = body[32:32 + n].decode()
         size = struct.unpack_from("<Q", body, 32 + n)[0]; records = body[40 + n:40 + n + size]
