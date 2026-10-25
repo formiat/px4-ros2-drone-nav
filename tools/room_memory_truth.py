@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""room_memory_truth.py RUN [XMIN YMIN ZMIN XMAX YMAX ZMAX]: the memory of a room against the truth (roadmap item 23):
+"""room_memory_truth.py RUN [XMIN YMIN ZMIN XMAX YMAX ZMAX] [--truth PATH]: the memory of a room against the truth (roadmap item 23):
 from the run's last raw memory snapshot (RAW_SNAPSHOT_BOUNDS_M covers the room), the occupied voxels inside the box
 that have no truth occupancy within 0.5 m (phantoms), the truth-occupied voxels the memory observed free (missed
 walls), and the observed share of the box; the box is the snapshot's own when none is given. Truth is the 0.25 m
-voxelization in log/tools/truth25 (evaluation only). Host."""
+voxelization in log/tools/truth25 (evaluation only), or the one --truth names (the hall's
+environments/fixtures/dark_hall/world.occupancy3d for roadmap item 31). Host."""
 import glob, json, sys
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D  # noqa: E402
 
-run = sys.argv[1]
-box = [float(v) for v in sys.argv[2:8]] if len(sys.argv) >= 8 else None
+arguments = sys.argv[1:]
+truth_path = Path('log/tools/truth25/urban_r025.occupancy3d')
+if '--truth' in arguments:
+    at = arguments.index('--truth'); truth_path = Path(arguments[at + 1]); del arguments[at:at + 2]
+run = arguments[0]
+box = [float(v) for v in arguments[1:7]] if len(arguments) >= 7 else None
 snapshots = sorted(glob.glob(f'log/runs/{run}/raw_snapshot_3d_revision_*.json'),
                    key=lambda s: int(s.rsplit('_', 1)[1].split('.')[0]))
 if not snapshots:
@@ -19,7 +24,7 @@ if not snapshots:
 d = json.load(open(snapshots[-1])); g = d['grid']; S = g['chunk_size_cells']; res = g['resolution_m']; ox, oy, oz = g['origin_m']
 if box is None:
     box = d['selection']['bounds_m']
-truth = Occupancy3D.load(Path('log/tools/truth25/urban_r025.occupancy3d')); b = truth.bounds
+truth = Occupancy3D.load(truth_path); b = truth.bounds
 occ = np.zeros((b.width, b.height, b.depth), dtype=np.uint8)
 for (cx, cy, cz), words in truth.chunks.items():
     bits = np.unpackbits(np.frombuffer(np.array(words, dtype='<u8').tobytes(), dtype=np.uint8), bitorder='little')

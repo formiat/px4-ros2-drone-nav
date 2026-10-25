@@ -50,6 +50,11 @@ class DarkVoidScenarioTest(unittest.TestCase):
                       makefile)
         render = (REPOSITORY / "tools/render_flight.sh").read_text()
         self.assertIn('dark-void) target="sim-dark-void-headless"', render)
+        # The middle's scenario reaches the flight container by its variable
+        # (the first three "middle" flights of 2026-10-25 flew the wall's goal
+        # without it, r2185 to r2187).
+        container = (REPOSITORY / "scripts/container_run.sh").read_text()
+        self.assertIn("  DARK_VOID_SCENARIO_PATH\n", container)
         self.assertIn("**The dark void**", (REPOSITORY / "docs/scenarios.md").read_text())
 
 
