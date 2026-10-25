@@ -63,16 +63,20 @@ class EstimateCapture(Node):
         with self._lock:
             rows = list(self._rows)
             attitude_rows = list(self._attitude_rows)
-        if attitude_rows:
-            attitude_path = os.path.join(os.path.dirname(self._output), "px4_attitude.csv")
-            with open(attitude_path + ".tmp", "w", newline="", encoding="utf-8") as stream:
-                csv.writer(stream).writerows(attitude_rows)
-            os.replace(attitude_path + ".tmp", attitude_path)
-        temporary = self._output + ".tmp"
-        with open(temporary, "w", newline="", encoding="utf-8") as stream:
-            csv.writer(stream).writerows(rows)
-        os.replace(temporary, self._output)
-        print(f"estimates {len(rows)}", flush=True)
+            if attitude_rows:
+                # Beside the estimate, never in its way: a failure here is logged and the estimate is still saved.
+                attitude_path = os.path.join(os.path.dirname(self._output), "px4_attitude.csv")
+                try:
+                    with open(attitude_path + ".tmp", "w", newline="", encoding="utf-8") as stream:
+                        csv.writer(stream).writerows(attitude_rows)
+                    os.replace(attitude_path + ".tmp", attitude_path)
+                except OSError as error:
+                    print(f"attitude record not saved: {error}", flush=True)
+            temporary = self._output + ".tmp"
+            with open(temporary, "w", newline="", encoding="utf-8") as stream:
+                csv.writer(stream).writerows(rows)
+            os.replace(temporary, self._output)
+        print(f"estimates {len(rows)} attitude {len(attitude_rows)}", flush=True)
 
 
 def main() -> int:

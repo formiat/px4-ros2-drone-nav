@@ -76,6 +76,8 @@ public:
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
     config.tilt_prior_share =
         declare_parameter<double>("tilt_prior_share", config.tilt_prior_share);
+    config.minimum_rest_samples = static_cast<std::size_t>(declare_parameter<int>(
+        "minimum_rest_samples", static_cast<int>(config.minimum_rest_samples)));
     config.maximum_gyro_bias_radps = declare_parameter<double>(
         "maximum_gyro_bias_radps", config.maximum_gyro_bias_radps);
     config.acceleration_noise_mps2 = declare_parameter<double>(

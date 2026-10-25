@@ -53,6 +53,25 @@ restSample(const std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned,
                                     Eigen::Vector3d{0.0, 0.0, -9.80665}};
 }
 
+// The level and the gyroscope bias are read from the rest before the first
+// scan: a scan that comes with fewer than minimum_rest_samples behind it is
+// let go, and the one that comes once they are there registers.
+TEST(LidarInertialOdometryTest, TheFirstScanWaitsForARestToLevelBy) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  const Eigen::Vector3d start{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 10; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  EXPECT_FALSE(odometry.addScan(kSecond / 10, scanFrom(room, start, level)).healthy);
+  for (int i = 11; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  EXPECT_TRUE(odometry.addScan(kSecond / 2, scanFrom(room, start, level)).healthy);
+}
+
 TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};

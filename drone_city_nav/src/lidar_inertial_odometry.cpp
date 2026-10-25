@@ -404,6 +404,11 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     return estimate;
   }
   if (!impl.attitude_levelled) {
+    if (impl.rest_samples < impl.config.minimum_rest_samples) {
+      // Not yet half a second of rest to level by: this scan is let go.
+      estimate.healthy = false;
+      return estimate;
+    }
     impl.levelFromRest();
     impl.stamp_ns = stamp_ns;
   }

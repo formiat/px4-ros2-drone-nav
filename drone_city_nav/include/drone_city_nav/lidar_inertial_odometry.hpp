@@ -98,6 +98,13 @@ struct LidarInertialOdometryConfig {
   double tilt_prior_share{1.0};
   // An outside attitude older than this at the scan's stamp is not used.
   double maximum_attitude_age_s{0.2};
+  // The IMU samples the level and the gyroscope bias at rest are taken from
+  // before the first scan is registered: scans that come sooner are let go.
+  // In flight the first scan found 2 to 9 samples (0.02 to 0.09 s) where the
+  // replay of a record found 1954; a level read from a few samples carries
+  // their noise into the map's tilt, a different tilt every flight. Fifty:
+  // half a second at the autopilot's 100 Hz.
+  std::size_t minimum_rest_samples{50U};
   double maximum_gyro_bias_radps{0.05};
 };
 
