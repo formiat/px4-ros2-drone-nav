@@ -24,7 +24,7 @@ class EstimateCapture(Node):
         from geometry_msgs.msg import PoseStamped
         self._output = output
         self._lock = threading.Lock()
-        self._rows: list[tuple[float, float, float, float, float, int]] = []
+        self._rows: list[tuple[float, float, float, float, float, int, float, float]] = []
         self.create_subscription(PoseStamped, topic, self._on_pose, 10)
         self.create_timer(save_period_s, self.save)
 
@@ -32,10 +32,14 @@ class EstimateCapture(Node):
         stamp = message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
         q = message.pose.orientation
         yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+        # Roll and pitch too (the root goal of 2026-10-24, part 1): the estimate's
+        # tilt against the truth is what its vertical drift is read by.
+        roll = math.atan2(2.0 * (q.w * q.x + q.y * q.z), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+        pitch = math.asin(max(-1.0, min(1.0, 2.0 * (q.w * q.y - q.z * q.x))))
         healthy = 1 if message.header.frame_id == "map" else 0
         with self._lock:
             self._rows.append((stamp, message.pose.position.x, message.pose.position.y,
-                               message.pose.position.z, yaw, healthy))
+                               message.pose.position.z, yaw, healthy, roll, pitch))
 
     def save(self) -> None:
         with self._lock:
