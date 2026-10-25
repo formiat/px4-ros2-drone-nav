@@ -1115,22 +1115,94 @@ the light scenarios with no contact, its speeds measured against the x500's.
 **Type:** new capability; decided by the project owner on 2026-10-17 after
 the dark hall's recording (r1488): "complete darkness" means an empty dark
 volume with nothing within the carried light's reach, not a floor lit a few
-metres below. The goal is written and queued behind the release of v0.6.0;
-the stages, the scenario and the numbers are written into this item when it
-starts.
+metres below. Built on 2026-10-25 in the root goal of 2026-10-24 (part 2);
+the commits 96dea606, 7edd38eb, e5ce373c, 1f4e1eec, ecc12e03, affcd811 and the documents.
 
 **Hard prerequisites:** items 17, 29 and 18 (the light judged by its driver,
 F18; the blind frame, K12; the ladder's hold and descent, K19; the rotors'
 drag as a velocity, K21).
 
-What is settled now: a black frame under a working light is a measurement
-of emptiness to the light's reach, not an absence of guarantee; in the void
-the safety rests on the light and the braking contract (K9) and the
-position on dead reckoning, whose drift is the physics of the IMU; so the
-2 m capture radius is not required in the void: a goal there is reached when
-the true error is within the estimator's own published uncertainty (two
-sigma) plus 2 m, and a goal with a surface within the light's reach at its
-end is reached within 2 m as always. No GNSS in any flight.
+What is settled: a black frame under a working light is a measurement of
+emptiness to the light's reach, not an absence of guarantee; in the void the
+safety rests on the light and the braking contract (K9) and the position on
+dead reckoning, whose drift is the physics of the IMU; so the 2 m capture
+radius is not required in the void: a goal there is reached when the true
+error is within the estimator's own published uncertainty (two sigma) plus
+2 m, and a goal with a surface within the light's reach at its end is reached
+within 2 m as always. No GNSS in any flight.
+
+**Stage 0, the light's reach (done).** On the rig (`tools/smoke_rig.py`
+levels `height=Z,wall=60,record=20`, `tools/smoke_rig_report.py --reach`,
+`log/tools/void/reach`): over a textured floor the pair is blind to the
+braking contract from 5 m below (matched 0.062 of the frame), matches
+nothing from 13 m; the tracker holds 20 features or more in 97 percent of
+frames at 11 m and in none at 13 m (the 10 it holds there are the imager's
+noise, which `minimum_frame_features` refuses, r933); the frame's raw
+brightness at the 95th percentile 67, 40, 25, 14, 9, 7 levels at 3, 5, 7, 9,
+11, 13 m; a facing matte panel of the location's darkest albedo (0.07) at the
+pair's confident depth, 5.2 m, 52 levels, of the mean (0.10) at 7 m 46, at
+9 m 33. The void's radius is the confident depth (K7); the tracker's reach
+over a floor 11 m; both in K46.
+
+**Stage 1, the void (done; K46, K13 and K19 amended).** The stereo node
+judges a frame a void frame when the light's reading is sound (K12's 0.25),
+the frame's raw brightness is under 46 levels at the 95th percentile (what a
+surface of the mean albedo gives from beyond the reach), the pair's hits
+within the confident depth cover under 1 percent of it, and no surface of the
+time-of-flight ring lies in the camera's field, and publishes the confident
+depth on `/stereo_depth/void_range` (`stereo_void_frame.hpp`). The planner
+lifts the braking contract's frame range to it: the vehicle crosses the void
+at the speed the depth admits, 1.8 m/s (0.5 before, on the memory's range,
+K15). The camera estimator enters the void with such a frame
+(`visual_inertial_void.hpp`): past its unaided second it is in the void, not
+dead reckoning, the height held and the drag fused as on dead reckoning, the
+pose given to the autopilot as a sound one (so that the offboard flies the
+plan and the descent of K19 is not due), the ten seconds of K13 not spent;
+the void ends with the next update or, the witness gone (a failed light),
+with dead reckoning from that moment. The memory marks nothing (K14, as
+before). The first lines (24 levels, any match) refused the hall at 14 m,
+whose floor 14 m below and plain ceiling 6 m above, both beyond the reach,
+lift the frame to 18 to 39 levels and give 5 percent of matches 12 to 20 m
+away (r2174: the estimator flickering, 28 holds, two descents of K19 to
+11 m); the lines are what surfaces beyond the reach can give.
+
+**Stage 2, the drift and the stitch (done).** Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
+
+**Stage 3, the scenario and the acceptance (done).** `sim-dark-void-headless`
+and `-gui` (`dark_void_point_to_point_scenario.json`: a climb straight up
+over the pad to 14 m, then the goal 4.5 m from the east wall at 14 m, the
+wall within the reach at the end; `dark_void_mid_point_to_point_scenario.json`
+by `DARK_VOID_SCENARIO_PATH`: the hall's middle, an arrival on dead reckoning
+alone, judged within two sigma plus 2 m by the mission check), the row in
+[`scenarios.md`](scenarios.md), `tools/render_flight.sh dark-void`. A single
+goal at height was flown as the straight route, a ramp 2 to 10 m over a floor
+the light still reached (r2173), hence the climb first.
+
+| Flight | Run | Result |
+|---|---|---|
+| The reach by height, the rig | log/tools/void/reach | the floor matched 0.179 of the frame at 3 m, nothing at 13 m; the tracker 91, 62, 49, 32, 23, 10 features at 3, 5, 7, 9, 11, 13 m; raw brightness 67 to 7 at p95 |
+| The probes | r2173, r2174, r2175 | r2173 a ramp at 2 to 10 m, no void (one goal at height); r2174 at 14 m with the first lines, no void, 28 holds, two descents to 11 m; r2175 the first crossing in the void, 0.52 m by the truth, drift 0.19 m/s |
+| The drift, three crossings and the coefficient | r2176, r2177, r2178 | 0.84, 0.27, 0.38 m by the truth; the drift 0.13 to 0.23 m/s with 0.106, the estimate 8 to 13 percent fast along the track; K21 re-fitted to 0.118 |
+| The wall's goal, eight | r2180 to r2187 | 0.39, 0.80, 0.44, 0.42, 0.90, 0.31, 0.26, 0.36 m at the climb goal and 0.99, 0.38, 0.24, 0.94, 0.73, 0.76, 1.59, 1.27 m at the wall's by the truth; the drift 0.7 to 3.6 percent of 29 to 53 m of void; one hold a flight at the aided-void boundary, no descent, no contact |
+| The hall's middle, three | r2188, r2189, r2190 | 0.65, 1.00, 1.21 m by the truth against two sigma plus 2 m of 5.59, 6.00, 6.55; the drift 1.0 to 2.6 percent |
+| The lidar reference | r2179 | not flown: the lidar-inertial estimator unhealthy at the pad (matched 0.18 under 0.3), no pose, arming denied; the lidar is not reworked here (the owner's rule) |
+
+**Measurement:** `log/tools/journal/goal_journal_dark_void.md`,
+`log/tools/void/` (the rig's reach table, the crossings' void episodes with
+their drift against the published sigma, the along-track scale of the drag's
+velocity), the flights under `.keep`.
+
+**Completion:** the void frame and the void state built and registered
+(K46), the hall crossed at 14 m in the void without a hold, a descent or a
+contact, the wall's goal reached within 2 m by the truth five times, the
+middle's within the published uncertainty plus 2 m three times, the drift
+budget and the arrival rule registered. Open: the lidar cannot start in the
+hall (its estimator matches 0.18 of its own first scan, under its 0.3 line,
+where the far walls and the ceiling give sparse points without planes), so
+the lidar reference was not flown, by the owner's rule that the lidar is not
+reworked here; a real barometer drifts with the weather (item 35); a plain
+surface darker than the location's albedo within the reach is the ring's
+2.8 m to catch.
 
 ## 32. Hot Smoke: A Heat Source In The Plume
 
@@ -3753,7 +3825,8 @@ alone, and on the stereo set it is open.
 Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-14 (0d2141a4); the carried light judged by
 its driver's reading and the time-of-flight ring (F18, K12), a dark place
 under a working light left unmarked (K14, K15), the large dark hall crossed
-(r1488 to r1490) and the failing and lost light flown home or landed. What was asked for and how it was built is kept below as it was
+(r1488 to r1490) and the failing and lost light flown home or landed; the
+empty volume where the light reaches nothing is item 31's, the void (K46). What was asked for and how it was built is kept below as it was
 written; this is what came of it.
 
 **Type:** new capability; decided by the project owner on 2026-10-13

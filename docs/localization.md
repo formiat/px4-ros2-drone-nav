@@ -431,6 +431,27 @@ What this does not cover is in [`technical_debt.md`](technical_debt.md): a
 wall within that metre when the light goes, no floor within a few metres
 below, and a dark stretch in the estimator's first seconds on the pad.
 
+**The void (roadmap item 31, specification K46).** A black frame under a
+light its driver reads sound is not a loss of sight but a measurement of
+emptiness to the light's reach: the stereo node judges a frame a void frame
+when its raw brightness is under 46 levels at the 95th percentile (what a
+surface of the location's mean albedo gives from beyond the pair's confident
+depth; the darkest location surface at the depth gives 52), the pair's hits
+within the confident depth cover under 1 percent of the frame, and no
+surface of the time-of-flight ring lies in the camera's field; it publishes
+the confident depth on `/stereo_depth/void_range` (NaN otherwise). The
+estimator (`visual_inertial_void.hpp`) enters the void with such a frame:
+past its unaided second it is in the void, not dead reckoning: the height
+held and the drag fused as on dead reckoning, the pose given to the autopilot
+as a sound one (`quality` 100, so that the offboard's descent of K19 is not
+due; `VISUAL_INERTIAL_ODOMETRY_VOID` in the log), the ten seconds of K13 not
+spent (the budget counts the unaided time less the void's), the void left by
+the next update or, with the witness gone (a failed light), by dead
+reckoning from that moment with its whole budget. The planner lifts the
+braking contract's frame range to the void range, and the vehicle crosses
+the void at the speed the confident depth admits, 1.8 m/s. Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
+Accepted on 2026-10-25: the wall's goal eight times (r2180 to r2187, 0.24 to 1.59 m by the truth), the hall's middle three times on dead reckoning alone (r2188 to r2190, 0.65 to 1.21 m against the allowance of 5.6 to 6.6 m), no contact, no hold through the void, no descent; the lidar cannot start in the hall (its estimator matches 0.18 of its first scan, under its 0.3 line) and was not flown.
+
 ### Relocalization Against Its Own Map (Visual-Inertial SLAM)
 
 Roadmap item 19 flew the mission out and back and measured the drift of a

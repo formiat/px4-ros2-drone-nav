@@ -233,6 +233,23 @@ truly large spaces the answer is another sensor: the lidar build (40 m and
 its own emitter) or, in the open at a height, GNSS; a camera under a
 carried light sees about 8 m at night.
 
+Answered again on 2026-10-25 (roadmap item 31, specification K46), on the
+owner's rule of 2026-10-17 that complete darkness means an empty volume with
+nothing within the light's reach: such a frame is a measurement, and the
+three objections above are met by measurement, not by a mode. The frame is
+a void frame only when it is dark to the level a surface of the location's
+albedo gives from beyond the pair's confident depth (46 raw levels at the
+95th percentile; a lit surface without texture within the reach is brighter,
+objection 2), when the pair's hits within the depth cover under 1 percent of
+it (a small lit object within the reach, matched, is no void) and when the
+time-of-flight ring sees nothing in the camera's field; a light that fails
+in the void takes the witness with it, and the estimator is dead reckoning
+from that moment with its whole budget (objection 3). The position is kept
+as dead reckoning keeps it (objection 1), the drag as the velocity and the
+barometer as the height, and the goal in the void is reached within the
+estimator's own published uncertainty plus 2 m, by the owner's rule; a goal
+with a surface within the reach at its end within 2 m as always. Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
+
 ## Why Does Item 19's Proof Flood Through The Body's Radius, And Why Does A Grazing Ray Carve Nothing Of A Surface?
 
 The proof floods the memory from the vehicle through every voxel that is
