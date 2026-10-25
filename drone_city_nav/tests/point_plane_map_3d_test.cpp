@@ -106,6 +106,45 @@ TEST(PointPlaneMap3D, TheTiltPriorPricesRollAndPitchByItsShareAndLeavesTheHeadin
   EXPECT_LT(pitches[2], 1.05 * one_degree);
 }
 
+// The height prior: the room's corner registered from the true pose with an
+// outside height half a metre above it, the level held by the tilt prior as
+// in flight (without it the solve tilts the body to meet the height); at a
+// share of nought the pose stays, at one it rises part of the way, at ten
+// nearly the whole way, and x and y stay where the points put them.
+TEST(PointPlaneMap3D, TheHeightPriorPricesZByItsShareAndLeavesTheRest) {
+  const std::vector<Eigen::Vector3d> world = roomCorner();
+  PointPlaneMap3D map{
+      PointPlaneMapConfig3D{.cell_m = 0.4, .maximum_points_per_cell = 6U}};
+  map.insert(world, 1U, 0);
+  const Eigen::Vector3d body_position{1.0, 1.0, 1.0};
+  std::vector<Eigen::Vector3d> body;
+  for (std::size_t index = 0U; index < world.size(); index += 7U) {
+    body.push_back(world[index] - body_position);
+  }
+  double rises[3];
+  const double shares[3] = {0.0, 1.0, 10.0};
+  for (int index = 0; index < 3; ++index) {
+    PointPlaneRegistrationConfig3D config =
+        registrationConfig(std::numeric_limits<std::int64_t>::max());
+    config.height_prior = true;
+    config.height_prior_z_m = body_position.z() + 0.5;
+    config.height_prior_share = shares[index];
+    config.tilt_prior = true;
+    config.tilt_prior_rotation = Eigen::Quaterniond::Identity();
+    config.tilt_prior_share = 10.0;
+    const PointPlaneRegistration3D registration = registerPointsToPlanes(
+        map, body, body_position, Eigen::Quaterniond::Identity(), config);
+    EXPECT_TRUE(registration.converged) << shares[index];
+    rises[index] = registration.position.z() - body_position.z();
+    EXPECT_LT((registration.position.head<2>() - body_position.head<2>()).norm(), 0.05)
+        << shares[index];
+  }
+  EXPECT_LT(std::abs(rises[0]), 0.02);
+  EXPECT_GT(rises[1], 0.1);
+  EXPECT_LT(rises[1], 0.48);
+  EXPECT_GT(rises[2], 0.4);
+}
+
 // One wall at x = 0, seen from a prior 0.8 m (two cells) off along x: the
 // one ring of cells the search covers by default finds no point of it and
 // the registration matches nothing; two rings reach the wall and the offset

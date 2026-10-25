@@ -15,6 +15,7 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <Eigen/Geometry>
@@ -78,6 +79,8 @@ public:
         declare_parameter<double>("tilt_prior_share", config.tilt_prior_share);
     config.minimum_rest_samples = static_cast<std::size_t>(declare_parameter<int>(
         "minimum_rest_samples", static_cast<int>(config.minimum_rest_samples)));
+    config.height_prior_share =
+        declare_parameter<double>("height_prior_share", config.height_prior_share);
     config.maximum_gyro_bias_radps = declare_parameter<double>(
         "maximum_gyro_bias_radps", config.maximum_gyro_bias_radps);
     config.acceleration_noise_mps2 = declare_parameter<double>(
@@ -136,6 +139,12 @@ public:
     // controller closed the navigation for the rest of the flight.
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{100}}.best_effort().durability_volatile();
+    barometer_sub_ = create_subscription<sensor_msgs::msg::FluidPressure>(
+        declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
+        rclcpp::SensorDataQoS{},
+        [this](const sensor_msgs::msg::FluidPressure::ConstSharedPtr pressure) {
+          onBarometer(*pressure);
+        });
     autopilot_ = std::make_unique<AutopilotStateSource>(
         *this, transform_,
         AutopilotStateTopics{
@@ -170,6 +179,18 @@ public:
   }
 
 private:
+  // The vehicle's barometer as the outside height of the registration (the
+  // estimator's height_prior_share), as the camera estimator reads it: the
+  // pressure over 12.013 Pa a metre, up; the estimator smooths it and takes
+  // the rest as its datum.
+  void onBarometer(const sensor_msgs::msg::FluidPressure& pressure) {
+    if (!std::isfinite(pressure.fluid_pressure)) {
+      return;
+    }
+    odometry_->observeHeight(rclcpp::Time{pressure.header.stamp}.nanoseconds(),
+                             -pressure.fluid_pressure / kPressurePerMetrePa);
+  }
+
   // The autopilot's attitude as the outside level of the registration (the
   // estimator's tilt_prior_share): its roll and pitch rest on the
   // accelerometer's gravity, which the scans cannot see.
@@ -372,6 +393,8 @@ private:
   std::deque<sensor_msgs::msg::PointCloud2::SharedPtr> pending_clouds_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
+  static constexpr double kPressurePerMetrePa{12.013};
   Px4MapFrameTransform transform_;
   Eigen::Vector3d lidar_translation_body_{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond lidar_to_body_{Eigen::Quaterniond::Identity()};

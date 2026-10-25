@@ -27,6 +27,7 @@ from sensor_profile import (
     DEFAULT_NAVIGATION_SENSOR_PROFILE,
     LIDAR_INERTIAL_VERTICAL_ERROR,
     SMOKE_TOPIC_SUFFIX,
+    lidar_barometer_bridge,
     STEREO_TOF_OBSERVABILITY,
     VISION_MEMORY_OVERRIDES,
     stereo_tof_topics,
@@ -575,18 +576,20 @@ def generate_launch_description():
                 "[gz.msgs.PointCloudPacked"
             )
             ros_lidar_topic = "/lidar_3d/points"
+            bridge_arguments = [bridge_contract]
+            bridge_remaps = ["-r", f"{lidar_gz_topic}{sensor_suffix}:={ros_lidar_topic}"]
+            if not cameras_mounted:
+                # The vehicle's barometer for the lidar-inertial estimator's height (K45).
+                contract, remap = lidar_barometer_bridge(gazebo_world_name, gazebo_model_name)
+                bridge_arguments.append(contract)
+                bridge_remaps += ["-r", remap]
             nodes.append(
                 Node(
                     package="ros_gz_bridge",
                     executable="parameter_bridge",
                     name="scan_bridge",
                     output="screen",
-                    arguments=[
-                        bridge_contract,
-                        "--ros-args",
-                        "-r",
-                        f"{lidar_gz_topic}{sensor_suffix}:={ros_lidar_topic}",
-                    ],
+                    arguments=[*bridge_arguments, "--ros-args", *bridge_remaps],
                 )
             )
         if gazebo_bridge_enabled and cameras_mounted:

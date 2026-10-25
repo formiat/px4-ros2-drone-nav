@@ -434,6 +434,13 @@ PointPlaneRegistration3D registerPointsToPlanes(
       gradient(0) -= weight_roll * tilt.x();
       gradient(1) -= weight_pitch * tilt.y();
     }
+    if (config.height_prior && config.height_prior_share > 0.0 && matched > 0U) {
+      // The outside height as a prior on z, at its share of the points' own
+      // information about z.
+      const double weight = config.height_prior_share * hessian(5, 5);
+      hessian(5, 5) += weight;
+      gradient(5) -= weight * (config.height_prior_z_m - result.position.z());
+    }
     result.iterations = iteration + 1U;
     result.matched_fraction =
         static_cast<double>(matched) / static_cast<double>(points_body.size());

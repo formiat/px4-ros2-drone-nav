@@ -4,7 +4,8 @@
 // bias_x,bias_y,bias_z,vx,vy,vz,roll,pitch (rad, the estimate's tilt), plus PATH.ms with the registration time p50 p95 p99 max and the count
 // over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel tiltshare
 // (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level), attitude=PATH (the
-// record's attitude.csv, the autopilot's own attitude as the level) and misalign=DEG (the
+// record's attitude.csv, the autopilot's own attitude as the level), baro=PATH and heightshare=S (the record's baro.csv as
+// the outside height, and the share of the height prior) and misalign=DEG (the
 // IMU turned about the body's y axis, a mount error that seeds a tilted map);
 // hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
 // must register from a prior the IMU alone carried: the recovery's case.
@@ -26,7 +27,7 @@ int main(int argc, char** argv) {
   LidarInertialOdometryConfig config;
   long long lag_ns = 0;
   double hole_from_s = -1.0, hole_to_s = -1.0;
-  std::string out_path, truth_path, attitude_path;
+  std::string out_path, truth_path, attitude_path, baro_path;
   double misalign_deg = 0.0;  // the IMU turned about the body's y axis by this much, a mount error, to seed a tilted map
   for (int i = 3; i < argc; ++i) {
     std::string kv = argv[i]; auto eq = kv.find('='); std::string k = kv.substr(0, eq); double v = std::atof(kv.c_str() + eq + 1);
@@ -51,6 +52,8 @@ int main(int argc, char** argv) {
     else if (k == "misalign") misalign_deg = v;
     else if (k == "truth") { truth_path = kv.substr(eq + 1); continue; }
     else if (k == "attitude") { attitude_path = kv.substr(eq + 1); continue; }
+    else if (k == "baro") { baro_path = kv.substr(eq + 1); continue; }
+    else if (k == "heightshare") config.height_prior_share = v;
     else { std::fprintf(stderr, "unknown %s\n", k.c_str()); return 2; }
   }
   std::vector<Imu> imu;
@@ -81,6 +84,16 @@ int main(int argc, char** argv) {
     if (f) std::fclose(f);
     std::fprintf(stderr, "autopilot attitude samples %zu\n", truth.size());
   }
+  // The barometer as recorded (baro.csv of extract_bag.py: stamp_ns, pressure_pa), the height the flight itself had.
+  struct Baro { long long t; double height_up_m; };
+  std::vector<Baro> baro;
+  if (!baro_path.empty()) {
+    std::FILE* f = std::fopen(baro_path.c_str(), "r"); long long ns; double pa;
+    while (f && std::fscanf(f, "%lld,%lf", &ns, &pa) == 2) baro.push_back({ns, -pa / 12.013});
+    if (f) std::fclose(f);
+    std::fprintf(stderr, "barometer samples %zu\n", baro.size());
+  }
+  std::size_t next_baro = 0;
   std::size_t next_truth = 0;
   std::FILE* scans = std::fopen((dir + "/scans.bin").c_str(), "rb");
   if (out_path.empty()) out_path = dir + "/replay.csv";
@@ -94,6 +107,7 @@ int main(int argc, char** argv) {
   while (std::fread(&stamp, sizeof stamp, 1, scans) == 1 && std::fread(&n, sizeof n, 1, scans) == 1) {
     buffer.resize(3 * n);
     if (std::fread(buffer.data(), sizeof(float), 3 * n, scans) != 3 * n) break;
+    while (next_baro < baro.size() && baro[next_baro].t <= stamp) { if (odometry.initialized()) odometry.observeHeight(baro[next_baro].t, baro[next_baro].height_up_m); ++next_baro; }
     while (next_imu < imu.size() && imu[next_imu].t <= stamp - lag_ns) {
       const Imu& s = imu[next_imu++];
       if (!odometry.initialized()) odometry.initialize(s.t, Eigen::Vector3d::Zero(), heading);

@@ -72,6 +72,37 @@ TEST(LidarInertialOdometryTest, TheFirstScanWaitsForARestToLevelBy) {
   EXPECT_TRUE(odometry.addScan(kSecond / 2, scanFrom(room, start, level)).healthy);
 }
 
+// The barometer's datum is the rest's: heights observed before the first scan
+// set it, and a height observed in flight is read as its change since then.
+TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometryConfig config;
+  config.height_prior_share = 1.0;
+  LidarInertialOdometry odometry{config};
+  const Eigen::Vector3d start{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+    odometry.observeHeight(i * kSecond / 100, 100.0);
+  }
+  // The first scan at the rest's height, the second with the barometer a
+  // metre higher while the scans still show the same room from the same
+  // place: the prior pulls z up (NED: down is positive, so z falls).
+  const LidarInertialEstimate first =
+      odometry.addScan(kSecond / 2, scanFrom(room, start, level));
+  ASSERT_TRUE(first.healthy);
+  for (int i = 51; i <= 60; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+    odometry.observeHeight(i * kSecond / 100, 101.0);
+  }
+  const LidarInertialEstimate second =
+      odometry.addScan(6 * kSecond / 10, scanFrom(room, start, level));
+  ASSERT_TRUE(second.healthy);
+  EXPECT_LT(second.position_ned_m.z(), first.position_ned_m.z() - 0.02);
+  EXPECT_GT(second.position_ned_m.z(), first.position_ned_m.z() - 0.9);
+}
+
 TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};

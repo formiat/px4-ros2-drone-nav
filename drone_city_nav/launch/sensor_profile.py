@@ -20,6 +20,17 @@ NAVIGATION_SENSOR_PROFILES = ("lidar", "stereo_tof")
 # ran -0.85 to +0.77 m over 22 flights, and the half metre was short of it.
 LIDAR_INERTIAL_VERTICAL_ERROR = {"physical_footprint_vertical_error_below_m": 0.25,
                                  "physical_footprint_vertical_error_above_m": 0.25}
+
+
+def lidar_barometer_bridge(world_name, model_name):
+    """The vehicle's barometer bridged on the lidar profile for the lidar-inertial
+    estimator's height (specification K45): the Gazebo topic's contract for
+    ros_gz_bridge and its remap to /barometer/air_pressure. With cameras the
+    image source relays it instead (gazebo_air_pressure_topic above)."""
+    gz_topic = (f"/world/{world_name}/model/{model_name}/link/base_link/sensor/"
+                "air_pressure_sensor/air_pressure")
+    return (f"{gz_topic}@sensor_msgs/msg/FluidPressure[gz.msgs.FluidPressure",
+            f"{gz_topic}:=/barometer/air_pressure")
 DEFAULT_CAMERA_PROFILE = "stereo_tof"
 # Roadmap item 18 stage 1: the topics the smoke model's relay republishes
 # every sensor on (simulation_smoke_sensor_node), the drivers' input then.

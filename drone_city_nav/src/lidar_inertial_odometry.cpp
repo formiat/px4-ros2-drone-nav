@@ -181,11 +181,13 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
 // The registration of the thinned scan against the submap from the prior
 // pose, with the correspondence distance and the search's reach in rings of
 // cells the caller names.
-[[nodiscard]] PointPlaneRegistration3D registerScan(
-    Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
-    const Eigen::Vector3d& prior_position, const Eigen::Quaterniond& prior_rotation,
-    const LidarInertialOdometryConfig& config, const double correspondence_m,
-    const std::int32_t search_ring_cells, const Eigen::Quaterniond* tilt_prior) {
+[[nodiscard]] PointPlaneRegistration3D
+registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
+             const Eigen::Vector3d& prior_position,
+             const Eigen::Quaterniond& prior_rotation,
+             const LidarInertialOdometryConfig& config, const double correspondence_m,
+             const std::int32_t search_ring_cells, const Eigen::Quaterniond* tilt_prior,
+             const double* height_prior_z) {
   return registerPointsToPlanes(
       submap.map(), points_body, prior_position, prior_rotation,
       PointPlaneRegistrationConfig3D{
@@ -200,6 +202,9 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
           .tilt_prior_rotation =
               tilt_prior != nullptr ? *tilt_prior : Eigen::Quaterniond::Identity(),
           .tilt_prior_share = config.tilt_prior_share,
+          .height_prior = height_prior_z != nullptr,
+          .height_prior_z_m = height_prior_z != nullptr ? *height_prior_z : 0.0,
+          .height_prior_share = config.height_prior_share,
       });
 }
 
@@ -232,6 +237,15 @@ struct LidarInertialOdometry::Impl {
   bool has_attitude{false};
   std::int64_t attitude_stamp_ns{0};
   Eigen::Quaterniond attitude{Eigen::Quaterniond::Identity()};
+  // The outside height (observeHeight): smoothed, its datum the rest's mean.
+  bool has_height{false};
+  std::int64_t height_stamp_ns{0};
+  double height_smoothed_m{std::numeric_limits<double>::quiet_NaN()};
+  double height_rest_sum_m{0.0};
+  std::size_t height_rest_samples{0U};
+  double height_datum_m{std::numeric_limits<double>::quiet_NaN()};
+  // The pose's z at the rest, which the barometer's change is added to.
+  double height_datum_z_m{0.0};
   std::deque<LidarInertialImuSample> imu;
   std::int64_t last_imu_stamp_ns{0};
   Eigen::Vector3d last_keyframe_position{Eigen::Vector3d::Zero()};
@@ -394,6 +408,26 @@ void LidarInertialOdometry::observeAttitude(const std::int64_t stamp_ns,
   impl.attitude = body_to_ned.normalized();
 }
 
+void LidarInertialOdometry::observeHeight(const std::int64_t stamp_ns,
+                                          const double height_up_m) {
+  Impl& impl = *impl_;
+  if (!std::isfinite(height_up_m)) {
+    return;
+  }
+  impl.height_smoothed_m =
+      std::isfinite(impl.height_smoothed_m)
+          ? impl.height_smoothed_m +
+                impl.config.height_smoothing * (height_up_m - impl.height_smoothed_m)
+          : height_up_m;
+  impl.has_height = true;
+  impl.height_stamp_ns = stamp_ns;
+  if (!impl.attitude_levelled) {
+    // The rest: the datum the heights in flight are read against.
+    impl.height_rest_sum_m += height_up_m;
+    ++impl.height_rest_samples;
+  }
+}
+
 LidarInertialEstimate
 LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
                                const std::vector<Eigen::Vector3d>& points_body) {
@@ -411,6 +445,11 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     }
     impl.levelFromRest();
     impl.stamp_ns = stamp_ns;
+    if (impl.height_rest_samples > 0U) {
+      impl.height_datum_m =
+          impl.height_rest_sum_m / static_cast<double>(impl.height_rest_samples);
+      impl.height_datum_z_m = impl.position.z();
+    }
   }
   // A scan too large for the period is thinned coarser, not sampled: a
   // sampled scan leaves holes in the submap where a normal cannot be fitted.
@@ -459,9 +498,20 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
         std::llabs(stamp_ns - impl.attitude_stamp_ns) <=
             static_cast<std::int64_t>(impl.config.maximum_attitude_age_s * 1.0e9);
     const Eigen::Quaterniond* tilt_prior = level_fresh ? &impl.attitude : nullptr;
+    // The barometer's height since the rest, as the pose's z in NED (down).
+    const double height_prior_z =
+        impl.height_datum_z_m - (impl.height_smoothed_m - impl.height_datum_m);
+    const bool height_fresh =
+        impl.has_height && std::isfinite(impl.height_datum_m) &&
+        impl.config.height_prior_share > 0.0 &&
+        std::llabs(stamp_ns - impl.height_stamp_ns) <=
+            static_cast<std::int64_t>(impl.config.maximum_height_age_s * 1.0e9) &&
+        std::abs(height_prior_z - prior_position.z()) <=
+            impl.config.maximum_height_innovation_m;
+    const double* height_prior = height_fresh ? &height_prior_z : nullptr;
     PointPlaneRegistration3D registration =
         registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config,
-                     impl.config.maximum_correspondence_m, 1, tilt_prior);
+                     impl.config.maximum_correspondence_m, 1, tilt_prior, height_prior);
     healthy = assess(registration);
     if (!healthy && impl.has_registered) {
       // The recovery searches one ring of cells further than the update and
@@ -475,7 +525,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
                        prior_rotation, impl.config,
                        impl.config.maximum_correspondence_m *
                            impl.config.recovery_correspondence_factor,
-                       kRecoverySearchRingCells, tilt_prior);
+                       kRecoverySearchRingCells, tilt_prior, height_prior);
       if (assess(recovered)) {
         registration = recovered;
         healthy = true;

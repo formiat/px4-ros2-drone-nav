@@ -80,6 +80,15 @@ struct PointPlaneRegistrationConfig3D {
   bool tilt_prior{false};
   Eigen::Quaterniond tilt_prior_rotation{Eigen::Quaterniond::Identity()};
   double tilt_prior_share{0.0};
+  // A prior on the pose's height: the z an outside height (the barometer,
+  // against the datum of the rest) says, and the share of the points' own
+  // information about z it weighs; zero is no prior. Held level, the map
+  // still slides in height by the odometry's own random walk (a centimetre a
+  // keyframe, 0.2 to 0.4 m over a flight); a small share anchors it slowly,
+  // without the barometer's noise in every keyframe.
+  bool height_prior{false};
+  double height_prior_z_m{0.0};
+  double height_prior_share{0.0};
 };
 
 struct PointPlaneRegistration3D {
