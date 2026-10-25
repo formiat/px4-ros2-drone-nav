@@ -492,12 +492,14 @@ are a separate backend optimization and are not implied by component
 composition. The cooperative agents share a second component process; simulator
 truth never enters that process.
 
-The multi-vehicle launcher applies subsystem CPU affinity when the host exposes at
-least four logical CPUs. Control and physics, planning and mapping, and
+The multi-vehicle launcher applies subsystem CPU affinity when the process may
+run on at least four logical CPUs. Control and physics, planning and mapping, and
 diagnostics receive overlapping CPU masks so latency-sensitive work retains
-reserved capacity without assigning a vehicle to one core. Every mask can be
-overridden, and `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` restores unrestricted
-scheduling.
+reserved capacity without assigning a vehicle to one core; the masks are derived
+from the CPUs the launcher may run on, which a flight's core set
+(`FLIGHT_CPUSET`, the container's cpuset, specification A4) narrows. Every mask
+can be overridden, and `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` restores
+unrestricted scheduling.
 
 ## Current Architectural Limits
 

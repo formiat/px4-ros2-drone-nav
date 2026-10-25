@@ -78,3 +78,27 @@ exec_with_cpu_affinity() {
     exec "$@"
   fi
 }
+
+# The three subsystem CPU lists (control, planning, diagnostics) from the CPUs
+# this process may run on: the first half, from the first quarter to the end,
+# and the last quarter of the allowed list, the proportions of the masks on a
+# whole 16-CPU host (0-7, 4-15, 12-15). A flight confined to a core set
+# (FLIGHT_CPUSET, the container's cpuset, specification A4) has fewer CPUs and
+# other numbers than 0 to nproc - 1: a mask built from nproc would name CPUs
+# the container has not got and keep the intersection only. Prints nothing
+# under four CPUs.
+derive_subsystem_cpu_lists() {
+  local allowed part i cpus=()
+  allowed="$(taskset -pc $$ 2>/dev/null | sed 's/.*: //')"
+  for part in ${allowed//,/ }; do
+    if [[ "${part}" == *-* ]]; then
+      for ((i = ${part%-*}; i <= ${part#*-}; i++)); do cpus+=("${i}"); done
+    else
+      cpus+=("${part}")
+    fi
+  done
+  local n="${#cpus[@]}"
+  ((n >= 4)) || return 0
+  local IFS=,
+  printf '%s %s %s\n' "${cpus[*]:0:$((n / 2))}" "${cpus[*]:$((n / 4))}" "${cpus[*]:$((3 * n / 4))}"
+}

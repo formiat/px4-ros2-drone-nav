@@ -86,10 +86,20 @@ ground-truth boundaries remain separate processes.
 
 Multi-vehicle simulation uses subsystem affinity rather than per-vehicle
 pinning.
-On a 16-CPU host the default masks are control/physics `0-7`, planning/mapping
-`4-15`, and diagnostics `12-15`. The overlap leaves dedicated capacity at both
+The masks are derived from the CPUs the launcher may run on
+(`derive_subsystem_cpu_lists` in `scripts/simulation_runtime_helpers.sh`): the
+first half for control and physics, from the first quarter to the end for
+planning and mapping, the last quarter for diagnostics; on a whole 16-CPU host
+`0-7`, `4-15` and `12-15`. The overlap leaves dedicated capacity at both
 ends while allowing bursty control and planner work to share the middle CPUs.
-Set `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` to run an unrestricted comparison, or
+Since 2026-10-24 a flight can be confined to a core set of the host
+(`FLIGHT_CPUSET`, specification A4: `scripts/container_run.sh` passes it to
+docker as the container's cpuset, so the simulator, the autopilot and the
+onboard nodes all run inside it and the rest of the host is left to its
+owner); the masks then follow the set (`0-11` gives `0-5`, `3-11`, `9-11`),
+and a mask built from `nproc` would have named CPUs the container has not got.
+The series tools fly on `0-11` unless told otherwise. Set
+`ENABLE_SUBSYSTEM_CPU_AFFINITY=false` to run an unrestricted comparison, or
 override `CONTROL_CPU_LIST`, `PLANNING_CPU_LIST`, and `DIAGNOSTICS_CPU_LIST`.
 
 Buffers are allocated for the configured maximum rollout count. Route

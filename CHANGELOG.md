@@ -4,6 +4,10 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## Unreleased
+
+- **A flight on a core set of the host** (specification A4): `FLIGHT_CPUSET` confines the whole flight container (the simulator, the autopilot, the onboard nodes) to a set of the host's CPUs through docker's cpuset, the subsystem masks are derived from the CPUs the container may run on, the set is recorded in the manifest, the quiet-host gate reads the set's own CPUs, and the series fly on `0-11` of the development host (six physical cores) unless told otherwise, so that the owner's work on the other cores no longer voids a flight. `tools/process_cores.py` reads a flight's cost by process.
+
 ## v0.6.0 (2026-10-24)
 
 Smoke in the simulator, and what each sensor set makes of it. Smoke is a

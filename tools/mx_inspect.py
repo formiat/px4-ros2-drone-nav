@@ -8,7 +8,8 @@ for run in sys.argv[1:]:
     m = json.load(open(f'{d}/manifest.json'))
     o = m.get('effective_overrides', {})
     print(f"== {run} commit {m['repository']['commit'][:8]} faults={o.get('LIGHT_FAULTS')} "
-          f"stream={o.get('STREAM_FAULTS')} goals={o.get('MISSION_GOALS_XYZ_M')} battery={o.get('LIGHT_BATTERY_S')}")
+          f"stream={o.get('STREAM_FAULTS')} goals={o.get('MISSION_GOALS_XYZ_M')} battery={o.get('LIGHT_BATTERY_S')} "
+          f"cpuset={o.get('FLIGHT_CPUSET')}")
     for l in val.splitlines():
         if l.startswith('FAIL') or re.match(r'^(OK|NOTE): (mean flight|the true position|the goal was given up|the vehicle returned|the vehicle is whole|production tick wall time|real-time factor|no crash|crash)', l):
             print('  ', l[:170])

@@ -23,6 +23,13 @@ if ! command -v nvidia-smi >/dev/null 2>&1 ||
   exit 2
 fi
 gpu_args=(--gpus all)
+# The flight's core set (specification A4): the whole container, simulator and
+# onboard nodes alike, confined to these CPUs, the rest of the host left to
+# its owner. Empty: the container runs on every CPU, as before.
+cpuset_args=()
+if [[ -n "${FLIGHT_CPUSET:-}" ]]; then
+  cpuset_args=(--cpuset-cpus "${FLIGHT_CPUSET}")
+fi
 
 tty_args=(-i)
 if [[ -t 0 && -t 1 ]]; then
@@ -141,6 +148,7 @@ optional_env_vars=(
   SMOKE_ZONES
   SMOKE_SEED
   SMOKE_FACE
+  FLIGHT_CPUSET
   IMU_FAULTS
   PILOT_EVENTS
   PILOT_RC
@@ -200,6 +208,7 @@ docker run --rm "${tty_args[@]}" \
   --network host \
   --user "${user_uid}:${user_gid}" \
   "${gpu_args[@]}" \
+  "${cpuset_args[@]}" \
   "${group_args[@]}" \
   "${env_args[@]}" \
   --volume "${repo_root}:/workspace:rw" \

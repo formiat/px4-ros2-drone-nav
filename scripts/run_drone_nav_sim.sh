@@ -120,19 +120,17 @@ planning_cpu_list=""
 diagnostics_cpu_list=""
 if bool_is_true "${enable_subsystem_cpu_affinity}" &&
   command -v taskset >/dev/null 2>&1; then
-  cpu_count="$(nproc)"
-  if ((cpu_count >= 4)); then
-    control_cpu_list="${CONTROL_CPU_LIST:-0-$((cpu_count / 2 - 1))}"
-    planning_cpu_list="${PLANNING_CPU_LIST:-$((cpu_count / 4))-$((cpu_count - 1))}"
-    diagnostics_cpu_list="${DIAGNOSTICS_CPU_LIST:-$((3 * cpu_count / 4))-$((cpu_count - 1))}"
-    if ! taskset --cpu-list "${control_cpu_list}" true ||
-      ! taskset --cpu-list "${planning_cpu_list}" true ||
-      ! taskset --cpu-list "${diagnostics_cpu_list}" true; then
-      echo "WARNING: subsystem CPU affinity masks are unavailable; disabling affinity." >&2
-      control_cpu_list=""
-      planning_cpu_list=""
-      diagnostics_cpu_list=""
-    fi
+  # From the CPUs this process may run on (the flight's core set, A4), not 0 to nproc - 1.
+  read -r control_cpu_list planning_cpu_list diagnostics_cpu_list \
+    < <(derive_subsystem_cpu_lists) || true
+  control_cpu_list="${CONTROL_CPU_LIST:-${control_cpu_list}}"
+  planning_cpu_list="${PLANNING_CPU_LIST:-${planning_cpu_list}}"
+  diagnostics_cpu_list="${DIAGNOSTICS_CPU_LIST:-${diagnostics_cpu_list}}"
+  if [[ -n "${control_cpu_list}" ]] && { ! taskset --cpu-list "${control_cpu_list}" true ||
+    ! taskset --cpu-list "${planning_cpu_list}" true ||
+    ! taskset --cpu-list "${diagnostics_cpu_list}" true; }; then
+    echo "WARNING: subsystem CPU affinity masks are unavailable; disabling affinity." >&2
+    control_cpu_list=""; planning_cpu_list=""; diagnostics_cpu_list=""
   fi
 fi
 default_px4_model_target="gz_x500_lidar_3d"
@@ -743,7 +741,7 @@ echo "Expected obstacle sources for checks: static=$(format_override_value "${ex
 echo "Gazebo world: name=${world_name} sdf=${gazebo_world_sdf_path}"
 echo "Static world: occupancy=${static_occupancy_3d_path_override:-from_params} esdf=${static_esdf_3d_cache_path_override:-from_params} topology=${static_free_space_topology_3d_path_override:-from_params}"
 echo "Gazebo resources: ${runtime_dir}"
-echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_cpu_list:-all}' planning='${planning_cpu_list:-all}' diagnostics='${diagnostics_cpu_list:-all}'"
+echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_cpu_list:-all}' planning='${planning_cpu_list:-all}' diagnostics='${diagnostics_cpu_list:-all}' cpuset='$(taskset -pc $$ | sed 's/.*: //')' (FLIGHT_CPUSET='${FLIGHT_CPUSET:-}')"
 (
   gz_server_pid=""
   gz_gui_pid=""
