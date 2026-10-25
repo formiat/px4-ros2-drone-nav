@@ -812,9 +812,10 @@ visual_inertial_odometry_node:
     # The rotors' drag the estimator fuses as a velocity (specification K21):
     # the accelerometer's reading across the rotor axis over the body's
     # velocity there, 1/s. It is this airframe's (the x500 of the simulation,
-    # fitted on r575 and r576) and MUST be fitted again for another vehicle;
-    # 0 switches the fusion off.
-    rotor_drag_1ps: 0.106
+    # fitted on r575 and r576 at 0.106 and again on the void crossings r2175
+    # to r2178, where the velocity is this model's alone: 0.118) and MUST be
+    # fitted again for another vehicle; 0 switches the fusion off.
+    rotor_drag_1ps: 0.118
 
 lidar_inertial_odometry_node:
   ros__parameters:

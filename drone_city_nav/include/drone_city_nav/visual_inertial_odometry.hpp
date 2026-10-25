@@ -140,8 +140,13 @@ struct VisualInertialOdometryConfig {
   // metre away (r927, r932). Zero fuses nothing. The coefficient is the
   // airframe's (its rotors, its mass, its hover thrust): another vehicle
   // needs its own, fitted as the accelerometer's reading across the rotor
-  // axis against the true body velocity on recorded flights.
-  double rotor_drag_1ps{0.106};
+  // axis against the true body velocity on recorded flights. 0.118 since
+  // 2026-10-25 (roadmap item 31): through the void the velocity is this
+  // model's alone, and over four crossings of 27 to 32 s at 1.6 to 1.9 m/s
+  // the estimate ran 8 to 13 percent fast along the track (r2175 to r2178),
+  // a coefficient 11 percent low at that speed; the fit of r575 and r576,
+  // 0.106, had a residual of 0.036 m/s^2, 0.34 m/s, which could not see it.
+  double rotor_drag_1ps{0.118};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};
