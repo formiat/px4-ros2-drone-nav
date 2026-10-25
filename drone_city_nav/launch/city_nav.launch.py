@@ -25,6 +25,7 @@ from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
     DEFAULT_LOCALIZATION_PROFILES,
     DEFAULT_NAVIGATION_SENSOR_PROFILE,
+    LIDAR_INERTIAL_VERTICAL_ERROR,
     SMOKE_TOPIC_SUFFIX,
     STEREO_TOF_OBSERVABILITY,
     VISION_MEMORY_OVERRIDES,
@@ -454,6 +455,8 @@ def generate_launch_description():
             obstacle_memory_parameters.append(
                 {**VISION_MEMORY_OVERRIDES, "lidar_3d_topic": "/stereo_depth/points"}
             )
+        if localization == "lidar_inertial":
+            production_mppi_parameters.append(LIDAR_INERTIAL_VERTICAL_ERROR)
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
