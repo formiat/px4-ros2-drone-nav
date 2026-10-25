@@ -182,7 +182,15 @@ is not in r345's figures, which flew on GNSS; on the `lidar_inertial`
 profile it adds 0.5 cores at p50, 0.8 at p95 and 59 MiB, and the onboard set
 reads 3.5 to 3.8 cores at p50 and 4.4 to 4.7 at p95, 810 to 880 MiB at p95
 (r405 to r434). Not in these figures at all: the sensor driver and the
-flight controller link. Nothing here was run on an
+flight controller link. On the clear flights of v0.6.0 (2026-10-24) the onboard set reads 4.3 to
+4.6 cores at p50 and 5.2 to 5.5 at p95 on the stereo set (r2066 to r2070;
+the depth node 2.2 to 2.4, the controller 1.5 to 1.6, the memory 0.45) and
+3.4 to 3.8 at p50, 4.4 to 4.7 at p95 on the lidar (r2080 to r2084; the
+controller 1.8 to 2.0, the memory 1.2 to 1.4, the estimator 0.2); the GPU
+at 34 to 39 percent. The mission monitor, outside the set, takes 1.03 to
+1.04 cores on every flight (technical_debt.md). What this means for each
+computer, and the levers, are in [hardware_builds.md](hardware_builds.md),
+"The Compute Gap, Measured". Nothing here was run on an
 Orin: there is no arm64 build, and the only confirmation is a recorded
 flight on the device itself. The builds a vehicle could take, with
 their prices, are in [hardware_builds.md](hardware_builds.md).

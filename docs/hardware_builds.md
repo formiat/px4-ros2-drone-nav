@@ -48,6 +48,76 @@ the module, the carrier and a case (Seeed reComputer J4012) at $899, a price
 likely from before July 2026 [20]. The arm64 build does not exist yet
 (roadmap item 27 block 2).
 
+### The Compute Gap, Measured (2026-10-24)
+
+The owner's question of 2026-10-24: which computers fit by compute alone,
+which the stack nearly fits, by how much it misses, and what could close
+the gap. The figures are the clear flights of v0.6.0 on this host (Zen 3 at
+up to 4.6 GHz, RTX 3060 Laptop), the onboard set as the mission check counts
+it (`scripts/resource_budget_evidence.py`: the controller, the obstacle
+memory, the depth node, the lidar-inertial estimator, the offboard node and
+the DDS agent), cores at the median and the 95th percentile over five
+flights a profile:
+
+| Profile | Onboard set p50 | p95 | The heavy processes at p50 | GPU |
+|---|---|---|---|---|
+| Stereo set (r2066 to r2070) | 4.3 to 4.6 | 5.2 to 5.5 | depth node 2.2 to 2.4 (the matcher and the estimator), controller 1.5 to 1.6, memory 0.45 | 34 percent, 8192 rollouts in 6.4 ms of a 20 ms tick |
+| 3D lidar (r2080 to r2084) | 3.4 to 3.8 | 4.4 to 4.7 | controller 1.8 to 2.0, memory 1.2 to 1.4 (651 thousand points a second), estimator 0.2 | 39 percent |
+
+Outside that set the mission monitor (`mission_monitor_node`) takes 1.03 to
+1.04 cores steadily on every flight, though its timers run every 5 and 10 s;
+it carries item 19's proof, which is the vehicle's decision, so part of it
+is onboard logic, and its cost is unexplained
+([technical_debt.md](technical_debt.md)). The planning tick already runs
+24.6 ms at p50 against its 20 ms deadline on this host (80 percent of the
+ticks over it).
+
+The conversion to an Orin is the registry's assumption, not a measurement
+(resource_budget.md): a Cortex-A78AE core at 2.0 GHz does about half of a
+Zen 3 core, so the onboard set is about 7 to 9 A78 cores on the stereo set
+and 7 to 8 on the lidar at p50, 10 to 11 and 9 at p95; the mission monitor,
+if it flies, adds two more. Roadmap item 28 step 1 (the series at fewer
+rollouts and the onboard budget emulated on a core set of the Orin's class)
+replaces the assumption with a measurement.
+
+| Computer | By compute | The gap |
+|---|---|---|
+| AGX Orin 32GB / 64GB | Fits with margin | 8 or 12 cores at 2.2 GHz against 7 to 11 A78 cores needed; the GPU (1792 or 2048 cores) carries about 3 500 to 4 000 rollouts in the tick |
+| An x86 board with a discrete NVIDIA GPU | Fits | The mass and the power, not the compute |
+| Orin NX 16GB | The lidar nearly, the stereo set not | The GPU: 8192 rollouts take 30 to 40 ms, so about 2 000 or fewer fit the tick (item 28 step 1 measures what the flight loses); the CPU: the lidar's 7 to 8 cores at p50 against 8, short at p95; the stereo set's 9 to 11 against 8, about 40 percent short while the matcher is on the CPU |
+| Orin NX 8GB | No | Six cores: 1.5 times short on the lidar, 1.8 on the stereo set |
+| Orin Nano 8GB, the Super kit | No; the bench | Six cores at up to 1.7 GHz, another 15 percent behind the NX 8GB; the GPU of the NX's class at a lower clock |
+| VOXL 2 | No | No CUDA (item 28); by CPU it would stand with the NX 16GB |
+| Raspberry Pi 5, RK3588 | No | No CUDA; four to eight cores |
+
+What could close the gap, by the size of the lever:
+
+1. **The rollouts, 8192 to about 2048.** The one blocker common to every
+   Jetson; item 28 step 1 flies the four counts and says what the speed
+   and the true clearance lose.
+2. **The stereo matcher off the CPU**: 2.2 to 2.4 cores of the stereo
+   set's 4.3 to 4.6. Depth on the camera (build C2, the OAK-D Pro W: the
+   CPU freed, a shorter range, $276 more) or the matching on the GPU (item
+   26). With it the stereo set falls to about 2.2 Zen 3 cores, 4 to 5 A78,
+   and the Orin NX 16GB fits with margin.
+3. **The mission monitor's 1.03 cores**: what of it flies and why it costs
+   that much is to be measured; up to a core for nothing.
+4. **The memory on the lidar, 1.2 to 1.4 cores**: the simulated sphere
+   gives 651 thousand points a second; a Livox Mid-360 gives about 200
+   thousand and no sphere, so the cost falls on the real sensor while the
+   estimator gains the sweep's motion compensation (item 25's lidar
+   recording, [localization.md](localization.md)).
+5. **The controller's CPU, 1.5 to 2.0 cores, and the tick at 24.6 ms**:
+   the horizon's assembly (12 ms), the re-simulation of the chosen
+   sequence on the CPU and the planner's 150 ms in its own thread; fewer
+   rollouts relieve the CPU a little, and the tick on an Arm core is a
+   rework or a slower tick, the hardest of the five.
+
+With levers 1 and 2 the lidar and the stereo set both fit the Orin NX 16GB
+by this arithmetic; the NX 8GB and the Nano Super need levers 1 to 3
+together and stay at the edge. None of it is measured on an Orin: item 27
+block 2 and item 28 step 1 are where the numbers come from without a board.
+
 ## Stereo Cameras
 
 The simulated pair is the yardstick: 0.20 m of baseline behind a 120 degree
