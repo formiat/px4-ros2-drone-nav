@@ -21,8 +21,15 @@ set(CMAKE_CUDA_FLAGS_RELWITHDEBINFO "-O2 -g")
 
 option(DRONE_CITY_NAV_ENABLE_CUDA_MPPI
        "Build the CUDA MPPI controller and benchmark" ON)
+# Roadmap item 27 block 2 step 1: the onboard build. OFF leaves out what needs
+# Gazebo and SDFormat (the contact system, the truth adapter, the smoke relay,
+# the Gazebo stereo process, the heading source, the crash node, the SDF
+# voxelizer) and nothing else: the vehicle's nodes read plain ROS messages.
+option(DRONE_CITY_NAV_ENABLE_SIMULATION
+       "Build the simulation's and the tools' targets that need Gazebo" ON)
+# 75 and 86 are the development hosts' GPUs, 87 the Jetson Orin's (step 2).
 set(DRONE_CITY_NAV_CUDA_ARCHITECTURES
-    "75;86"
+    "75;86;87"
     CACHE STRING "CUDA architectures for MPPI targets")
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
@@ -42,20 +49,26 @@ find_package(ament_index_cpp REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(gz-common5 REQUIRED COMPONENTS graphics)
-find_package(gz-msgs10 REQUIRED)
-find_package(gz-sim8 REQUIRED)
-find_package(gz-transport13 REQUIRED)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  find_package(gz-common5 REQUIRED COMPONENTS graphics)
+  find_package(gz-msgs10 REQUIRED)
+  find_package(gz-sim8 REQUIRED)
+  find_package(gz-transport13 REQUIRED)
+endif()
 find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
 find_package(PkgConfig REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(ros_gz_interfaces REQUIRED)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  find_package(ros_gz_interfaces REQUIRED)
+endif()
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(sdformat14 REQUIRED)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  find_package(sdformat14 REQUIRED)
+endif()
 find_package(std_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -727,12 +740,14 @@ target_compile_features(stereo_depth_accuracy PRIVATE cxx_std_20)
 target_include_directories(stereo_depth_accuracy SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(stereo_depth_accuracy ${OpenCV_LIBS})
 
-add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
-target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
-target_link_libraries(
-  voxelize_sdf_collisions
-  PRIVATE drone_city_nav_core gz-common5::graphics sdformat14::sdformat14)
-enable_project_warnings(voxelize_sdf_collisions)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  add_executable(voxelize_sdf_collisions tools/voxelize_sdf_collisions.cpp)
+  target_compile_features(voxelize_sdf_collisions PRIVATE cxx_std_20)
+  target_link_libraries(
+    voxelize_sdf_collisions
+    PRIVATE drone_city_nav_core gz-common5::graphics sdformat14::sdformat14)
+  enable_project_warnings(voxelize_sdf_collisions)
+endif()
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_control)
@@ -865,13 +880,15 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     FORBIDDEN drone_city_nav_core drone_city_nav_ros_adapters)
 endif()
 
-add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
-target_compile_features(drone_contact_system PRIVATE cxx_std_20)
-target_link_libraries(
-  drone_contact_system
-  PRIVATE gz-sim8::gz-sim8 gz-transport13::gz-transport13
-          gz-msgs10::gz-msgs10)
-enable_project_warnings(drone_contact_system)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
+  target_compile_features(drone_contact_system PRIVATE cxx_std_20)
+  target_link_libraries(
+    drone_contact_system
+    PRIVATE gz-sim8::gz-sim8 gz-transport13::gz-transport13
+            gz-msgs10::gz-msgs10)
+  enable_project_warnings(drone_contact_system)
+endif()
 
 add_library(
   drone_city_nav_ros_adapters
@@ -936,16 +953,18 @@ ament_target_dependencies(
   visualization_msgs)
 enable_project_warnings(mppi_offboard_node)
 
-add_executable(collision_crash_node src/collision_crash_node.cpp)
-target_compile_features(collision_crash_node PRIVATE cxx_std_20)
-target_link_libraries(collision_crash_node drone_city_nav_core
-                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
-ament_target_dependencies(
-  collision_crash_node
-  geometry_msgs
-  rclcpp
-  ros_gz_interfaces)
-enable_project_warnings(collision_crash_node)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  add_executable(collision_crash_node src/collision_crash_node.cpp)
+  target_compile_features(collision_crash_node PRIVATE cxx_std_20)
+  target_link_libraries(collision_crash_node drone_city_nav_core
+                        drone_city_nav_ros_adapters ${cpp_typesupport_target})
+  ament_target_dependencies(
+    collision_crash_node
+    geometry_msgs
+    rclcpp
+    ros_gz_interfaces)
+  enable_project_warnings(collision_crash_node)
+endif()
 
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)
 target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
@@ -970,33 +989,39 @@ ament_target_dependencies(cooperative_traffic_referee_node rclcpp std_msgs
                           visualization_msgs)
 enable_project_warnings(cooperative_traffic_referee_node)
 
-add_executable(simulation_truth_adapter_node
-               src/simulation_truth_adapter_node.cpp)
-target_compile_features(simulation_truth_adapter_node PRIVATE cxx_std_20)
-target_link_libraries(
-  simulation_truth_adapter_node
-  drone_city_nav_core
-  ${cpp_typesupport_target}
-  gz-transport13::gz-transport13
-  gz-msgs10::gz-msgs10)
-ament_target_dependencies(simulation_truth_adapter_node rclcpp)
-enable_project_warnings(simulation_truth_adapter_node)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  add_executable(simulation_truth_adapter_node
+                 src/simulation_truth_adapter_node.cpp)
+  target_compile_features(simulation_truth_adapter_node PRIVATE cxx_std_20)
+  target_link_libraries(
+    simulation_truth_adapter_node
+    drone_city_nav_core
+    ${cpp_typesupport_target}
+    gz-transport13::gz-transport13
+    gz-msgs10::gz-msgs10)
+  ament_target_dependencies(simulation_truth_adapter_node rclcpp)
+  enable_project_warnings(simulation_truth_adapter_node)
 
-# Roadmap item 18 stage 1: the smoke the simulated sensors see, an evaluation
-# component between Gazebo and the vehicle's drivers.
-add_executable(simulation_smoke_sensor_node src/simulation_smoke_sensor_node.cpp
-                                            src/simulation_smoke_model.cpp)
-target_compile_features(simulation_smoke_sensor_node PRIVATE cxx_std_20)
-target_link_libraries(
-  simulation_smoke_sensor_node Eigen3::Eigen gz-transport13::gz-transport13
-  gz-msgs10::gz-msgs10 sdformat14::sdformat14)
-ament_target_dependencies(simulation_smoke_sensor_node rclcpp std_msgs)
-enable_project_warnings(simulation_smoke_sensor_node)
+  # Roadmap item 18 stage 1: the smoke the simulated sensors see, an evaluation
+  # component between Gazebo and the vehicle's drivers.
+  add_executable(simulation_smoke_sensor_node src/simulation_smoke_sensor_node.cpp
+                                              src/simulation_smoke_model.cpp)
+  target_compile_features(simulation_smoke_sensor_node PRIVATE cxx_std_20)
+  target_link_libraries(
+    simulation_smoke_sensor_node Eigen3::Eigen gz-transport13::gz-transport13
+    gz-msgs10::gz-msgs10 sdformat14::sdformat14)
+  ament_target_dependencies(simulation_smoke_sensor_node rclcpp std_msgs)
+  enable_project_warnings(simulation_smoke_sensor_node)
+endif()
 
 # The depth node in a process whose images arrive over ROS, and the same node
 # hosted beside the simulated pair's image source, which hands them over inside
 # the process.
-foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
+set(stereo_depth_processes stereo_depth_node)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  list(APPEND stereo_depth_processes gazebo_stereo_depth_node)
+endif()
+foreach(stereo_depth_process ${stereo_depth_processes})
   # The process that owns the pair's images hosts the depth node and, when
   # asked, the visual-inertial estimator that reads the same frames.
   add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
@@ -1017,9 +1042,11 @@ foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
   enable_project_warnings(${stereo_depth_process})
 endforeach()
 target_sources(stereo_depth_node PRIVATE src/stereo_depth_main.cpp)
-target_sources(gazebo_stereo_depth_node PRIVATE src/gazebo_stereo_depth_main.cpp)
-target_link_libraries(gazebo_stereo_depth_node gz-transport13::gz-transport13
-                      gz-msgs10::gz-msgs10)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  target_sources(gazebo_stereo_depth_node PRIVATE src/gazebo_stereo_depth_main.cpp)
+  target_link_libraries(gazebo_stereo_depth_node gz-transport13::gz-transport13
+                        gz-msgs10::gz-msgs10)
+endif()
 
 add_executable(lidar_inertial_odometry_node src/lidar_inertial_odometry_node.cpp)
 target_compile_features(lidar_inertial_odometry_node PRIVATE cxx_std_20)
@@ -1029,13 +1056,15 @@ ament_target_dependencies(lidar_inertial_odometry_node rclcpp px4_msgs sensor_ms
                           geometry_msgs)
 enable_project_warnings(lidar_inertial_odometry_node)
 
-add_executable(simulation_heading_source_node
-               src/simulation_heading_source_node.cpp)
-target_compile_features(simulation_heading_source_node PRIVATE cxx_std_20)
-target_link_libraries(simulation_heading_source_node gz-transport13::gz-transport13
-                      gz-msgs10::gz-msgs10)
-ament_target_dependencies(simulation_heading_source_node rclcpp px4_msgs)
-enable_project_warnings(simulation_heading_source_node)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  add_executable(simulation_heading_source_node
+                 src/simulation_heading_source_node.cpp)
+  target_compile_features(simulation_heading_source_node PRIVATE cxx_std_20)
+  target_link_libraries(simulation_heading_source_node gz-transport13::gz-transport13
+                        gz-msgs10::gz-msgs10)
+  ament_target_dependencies(simulation_heading_source_node rclcpp px4_msgs)
+  enable_project_warnings(simulation_heading_source_node)
+endif()
 
 add_library(
   drone_city_nav_cooperative_components SHARED
@@ -1202,8 +1231,16 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     RUNTIME DESTINATION lib/${PROJECT_NAME})
 endif()
 
+set(drone_city_nav_simulation_targets)
+if(DRONE_CITY_NAV_ENABLE_SIMULATION)
+  set(drone_city_nav_simulation_targets
+      drone_contact_system collision_crash_node simulation_truth_adapter_node
+      simulation_smoke_sensor_node simulation_heading_source_node
+      gazebo_stereo_depth_node voxelize_sdf_collisions)
+endif()
 install(
   TARGETS
+    ${drone_city_nav_simulation_targets}
     drone_city_nav_model
     drone_city_nav_localization
     drone_city_nav_control_contracts
@@ -1217,19 +1254,13 @@ install(
     drone_city_nav_control
     drone_city_nav_runtime
     drone_city_nav_ros_adapters
-    drone_contact_system
-    collision_crash_node
     obstacle_memory_3d_node
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
     cooperative_traffic_referee_node
-    simulation_truth_adapter_node
-    simulation_smoke_sensor_node
-    simulation_heading_source_node
     lidar_inertial_odometry_node
     stereo_depth_node
-    gazebo_stereo_depth_node
     cooperative_traffic_agent_node
     drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components
@@ -1237,7 +1268,6 @@ install(
     multi_vehicle_diagnostics_mux_node
     generate_static_esdf_cache
     free_space_topology_compiler
-    voxelize_sdf_collisions
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -1331,7 +1361,6 @@ if(BUILD_TESTING)
     px4_msgs
     rclcpp
     rclcpp_components
-    ros_gz_interfaces
     sensor_msgs
     std_msgs
     tf2_ros
