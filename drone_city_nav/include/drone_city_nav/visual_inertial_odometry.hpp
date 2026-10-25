@@ -178,6 +178,14 @@ struct VisualInertialEstimate {
   bool healthy{false};
   // Past the unaided timeout and inside the dead reckoning that follows it.
   bool dead_reckoning{false};
+  // In the void (roadmap item 31, specification K46): past the unaided
+  // timeout under a void frame, a frame the pair judged empty to the light's
+  // reach under a sound light (observeVoid). The state is what dead reckoning
+  // makes of it, with the height held and the drag fused, but the void is a
+  // measurement of emptiness, not a loss of sight: the dead-reckoning budget
+  // does not run through it, and it ends with the first aided frame or with
+  // the witness gone (a failed light is dead reckoning from that moment).
+  bool in_void{false};
   // Lost in a hole of the IMU stream longer than the unaided timeout, or past
   // the dead reckoning: silent until initialised again in flight (K28).
   bool lost{false};
@@ -234,6 +242,11 @@ public:
   // The barometer's height, in metres up from any origin: through a dark
   // stretch the filter holds its height to the change the barometer saw.
   void addBarometricHeight(double height_m);
+
+  // The pair's judgment of its latest frame (specification K46): a void
+  // frame, empty to the light's reach under a sound light, or not. Read at
+  // the next frame while younger than 0.6 s (a few periods of the pair).
+  void observeVoid(std::int64_t stamp_ns, bool void_frame);
 
   // One frame of the pair at `stamp_ns`, on the IMU's clock. The IMU samples
   // up to the stamp must have been added: the frame's pose is cloned where

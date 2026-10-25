@@ -6,6 +6,7 @@
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/stereo_lit_range.hpp"
 #include "drone_city_nav/stereo_silent_patches.hpp"
+#include "drone_city_nav/stereo_void_frame.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -38,6 +39,7 @@
 #include <vector>
 
 #include "stereo_calibration_ros.hpp"
+#include "stereo_frame_brightness.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -156,6 +158,11 @@ public:
     silent_range_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("silent_range_topic",
                                        "/stereo_depth/silent_range"),
+        rclcpp::SensorDataQoS{});
+    // Roadmap item 31 (K46): the pair's confident depth when the frame is a
+    // void frame, empty to the light's reach under a sound light; NaN otherwise.
+    void_range_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("void_range_topic", "/stereo_depth/void_range"),
         rclcpp::SensorDataQoS{});
     // Roadmap item 18 stage 2: the share of the ring's zones returning smoke.
     smoke_share_pub_ = create_publisher<std_msgs::msg::Float64>(
@@ -363,7 +370,7 @@ private:
     rejectLoneHits(returns);
     // The light the frame has left (K15): the brightness headroom, the lit range over
     // the confident depth, the light share over half its lit baseline (r1227).
-    const double brightness_p95 = brightnessPercentile(left_grey);
+    const double brightness_p95 = brightnessPercentile95(left_grey, kNoiseSampleStride);
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
     const double lit_range_m = lit_range_tracker_.observe(brightness_by_metre, lit);
@@ -616,6 +623,14 @@ private:
     const double stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     std::vector<Point3> unobservable =
         unobservableFrustum(stamp_s, blind && !light_sound);
+    const bool void_frame = isVoidFrame({.light_sound = light_sound,
+                                         .raw_brightness_p95 = raw_brightness,
+                                         .observed_share = observed_share,
+                                         .ring_surfaces_in_view = surfaces_in_view});
+    std_msgs::msg::Float64 void_message;
+    void_message.data = void_frame ? stereoConfidentDepthM(geometry_, returns_config_)
+                                   : std::numeric_limits<double>::quiet_NaN();
+    void_range_pub_->publish(void_message);
     if (stamp_s - face_emitted_s_ >= kFaceEmitPeriodS || stamp_s < face_emitted_s_) {
       const std::size_t pitch_cells = std::max<std::size_t>(
           1U, static_cast<std::size_t>(kRayPitchPx) / returns_config_.pixel_stride);
@@ -693,22 +708,23 @@ private:
     const double match_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - started)
                                 .count();
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
-        "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
-        "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
-        "observed_share=%.3f blind_dropped=%zu noise=%.1f "
-        "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
-        "silent_patches=%zu closed=%zu silent_range_m=%.1f "
-        "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
-        "face_marks_total=%zu free_dropped=%zu largest_lit=%s",
-        pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-        brightnessByMetreText(brightness_by_metre).c_str(), headroom, lit_range_m,
-        light_share, raw_brightness, observed_share, blind ? stereo_returns : 0U, noise,
-        unobservable_total_, surfaces_in_view, unlit_surfaces, patches.size(),
-        closed_patches, silent_range_m, smoky_zones, faces.size(), face_range_m,
-        face_marks_total_, face_rays_dropped_, largest_text.c_str());
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "STEREO_DEPTH pairs=%zu hits=%zu free_rays=%zu tof_rays=%zu "
+                         "match_ms=%.1f brightness_by_metre=%s headroom=%.3f "
+                         "lit_range_m=%.1f light_share=%.3f raw_brightness=%.1f "
+                         "observed_share=%.3f blind_dropped=%zu noise=%.1f "
+                         "unobservable_total=%zu tof_in_view=%zu tof_unlit=%zu "
+                         "silent_patches=%zu closed=%zu silent_range_m=%.1f "
+                         "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
+                         "face_marks_total=%zu free_dropped=%zu largest_lit=%s void=%s",
+                         pairs_, hits, returns.size() - hits, tof_rays, match_ms,
+                         brightnessByMetreText(brightness_by_metre).c_str(), headroom,
+                         lit_range_m, light_share, raw_brightness, observed_share,
+                         blind ? stereo_returns : 0U, noise, unobservable_total_,
+                         surfaces_in_view, unlit_surfaces, patches.size(),
+                         closed_patches, silent_range_m, smoky_zones, faces.size(),
+                         face_range_m, face_marks_total_, face_rays_dropped_,
+                         largest_text.c_str(), void_frame ? "true" : "false");
   }
 
   // The frame's 95th percentile of brightness over the gain's 200: one while
@@ -720,26 +736,6 @@ private:
   // itself at 6; the camera's own noise is 1.2 to 1.9 levels (A12).
   static constexpr int kSurfaceWindowPx{9};
   static constexpr double kUnlitRawGrey{6.0};
-
-  [[nodiscard]] static double brightnessPercentile(const cv::Mat& grey) {
-    std::array<std::size_t, 256U> histogram{};
-    std::size_t samples{0U};
-    for (int row = 0; row < grey.rows; row += kNoiseSampleStride) {
-      const std::uint8_t* const values = grey.ptr<std::uint8_t>(row);
-      for (int column = 0; column < grey.cols; column += kNoiseSampleStride) {
-        ++histogram[values[column]];
-        ++samples;
-      }
-    }
-    std::size_t below{0U};
-    for (std::size_t level = 0U; level < histogram.size(); ++level) {
-      below += histogram[level];
-      if (20U * below >= 19U * samples) {
-        return static_cast<double>(level);
-      }
-    }
-    return 255.0;
-  }
 
   // K14 (item 17 stage 8): a frame blind for longer than the moderate flicker's dark is
   // a pair that looked and could not see: the frustum 1.5 m to the confident depth.
@@ -1015,6 +1011,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr light_headroom_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr unlit_surface_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr silent_range_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr void_range_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr smoke_share_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
   std::atomic<double> light_reading_{std::numeric_limits<double>::quiet_NaN()};

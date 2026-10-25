@@ -163,6 +163,8 @@ private:
         "carried_light_output_topic", "/carried_light/output_share");
     world.topics.silent_range =
         declare<std::string>("silent_range_topic", "/stereo_depth/silent_range");
+    world.topics.void_range =
+        declare<std::string>("void_range_topic", "/stereo_depth/void_range");
     world.topics.latest_sensor_obstacle_scan =
         declare<std::string>("latest_sensor_obstacle_scan_topic",
                              "/drone_city_nav/latest_sensor_obstacle_scan");

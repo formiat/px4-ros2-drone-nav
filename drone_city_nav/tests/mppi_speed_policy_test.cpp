@@ -213,6 +213,39 @@ TEST(MppiSpeedPolicyTest, UnderASoundLightTheMemoryAnswersADarkFrameAnywhere) {
   EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 6.4);
 }
 
+TEST(MppiSpeedPolicyTest, AVoidFrameStandsBehindTheLightsReach) {
+  // Roadmap item 31: the frame is blind and the light read sound; the stereo
+  // node has judged it a void frame, empty to the pair's confident depth.
+  // The frame alone then stands behind that depth and the contract gives the
+  // speed it admits; without the judgment, the memory's range as before (K15).
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 5.2;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.6;
+  config.sensor_braking_contract.physical_margin_m = 2.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 0.5F;
+  input.sensor_observed_fraction = 0.0;
+  input.sensor_light_headroom = 1.0;
+  input.light_reads_sound = true;
+  input.unfaced_observed_range_m = 2.8;
+  const MppiSpeedPolicyResult dark = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(dark.sensor_measured_range_m, 2.8);
+  input.sensor_void_range_m = 5.2;
+  const MppiSpeedPolicyResult empty = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(empty.sensor_frame_range_m, 5.2);
+  EXPECT_DOUBLE_EQ(empty.sensor_measured_range_m, 5.2);
+  EXPECT_FALSE(empty.blind_along_motion);
+  EXPECT_GT(empty.sensor_braking_limit_mps, dark.sensor_braking_limit_mps);
+  // The share the light is judged by (K12) stays the frame's own.
+  EXPECT_DOUBLE_EQ(empty.sensor_frame_share, dark.sensor_frame_share);
+  // Never past the configured range.
+  input.sensor_void_range_m = 9.0;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 5.2);
+}
+
 TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   // A pair that sees 60 degrees either side of the heading. Flying where it
   // looks the contract's range answers; flying sideways nothing looks, and

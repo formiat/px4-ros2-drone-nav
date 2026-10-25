@@ -163,7 +163,7 @@ struct Hole {
 Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
            const Eigen::Vector3d& gyro_bias, const bool with_features,
            const bool with_outlier, const Hole hole = {}, const Hole dark = {},
-           const Hole sparse = {}) {
+           const Hole sparse = {}, const Hole void_frames = {}) {
   std::mt19937 generator{7U};
   const std::vector<Eigen::Vector3d> points = landmarks(generator);
   VisualInertialOdometry odometry{config};
@@ -196,6 +196,11 @@ Flight fly(const VisualInertialOdometryConfig& config, const double duration_s,
       moving.left.x() += 0.02 * static_cast<double>(frame % 20);
       moving.right.x() += 0.02 * static_cast<double>(frame % 20);
       observations.push_back(moving);
+    }
+    if (void_frames.contains(stamp)) {
+      odometry.observeVoid(stamp, true);
+    } else if (void_frames.to_s > 0.0) {
+      odometry.observeVoid(stamp, false);
     }
     flight.last = odometry.addFrame(stamp, observations);
     flight.maximum_position_error_m =
@@ -260,6 +265,48 @@ TEST(VisualInertialOdometry, ADarkStretchIsDeadReckoningForAStatedTime) {
   const Flight sighted = fly(config, 12.0, Eigen::Vector3d::Zero(), true, false);
   EXPECT_TRUE(sighted.last.healthy);
   EXPECT_FALSE(sighted.last.dead_reckoning);
+}
+
+TEST(VisualInertialOdometry, TheVoidIsNotDeadReckoningAndSpendsNoBudget) {
+  // Roadmap item 31 (K46): frames with nothing in them while the pair judges
+  // each a void frame. Past the unaided timeout the estimate is in the void,
+  // not dead reckoning, for as long as the void lasts, 30 s here, three
+  // times the dead-reckoning budget; it is never lost; and when the features
+  // return the estimate continues and is healthy again. The synthetic motion
+  // has no drag to bound the velocity by (K21), so the velocity's own bound,
+  // tested above, is lifted here: the void's time is the question.
+  VisualInertialOdometryConfig config = testConfig();
+  config.maximum_velocity_sigma_mps = 100.0;
+  const Flight in_void = fly(config, 35.0, Eigen::Vector3d::Zero(), true, false, {},
+                             Hole{5.0, 60.0}, {}, Hole{4.0, 60.0});
+  EXPECT_FALSE(in_void.last.healthy);
+  EXPECT_TRUE(in_void.last.in_void);
+  EXPECT_FALSE(in_void.last.dead_reckoning);
+  EXPECT_FALSE(in_void.last.lost);
+  EXPECT_NEAR(in_void.last.unaided_s, 30.0, 0.2);
+  const Flight seen_again = fly(config, 45.0, Eigen::Vector3d::Zero(), true, false, {},
+                                Hole{5.0, 35.0}, {}, Hole{4.0, 35.5});
+  EXPECT_TRUE(seen_again.last.healthy);
+  EXPECT_FALSE(seen_again.last.in_void);
+  EXPECT_FALSE(seen_again.last.lost);
+}
+
+TEST(VisualInertialOdometry, ALightFailingInTheVoidIsDeadReckoningFromThatMoment) {
+  // The void of 15 s, then the witness gone with the frames still dark (the
+  // light failed): dead reckoning from there with its whole budget (1 + 10 s),
+  // so at 8 s after the witness went the estimate is dead reckoning, and past
+  // the budget it is lost as before (K13).
+  VisualInertialOdometryConfig config = testConfig();
+  config.maximum_velocity_sigma_mps = 100.0;
+  const Flight reckoning = fly(config, 28.0, Eigen::Vector3d::Zero(), true, false, {},
+                               Hole{5.0, 60.0}, {}, Hole{4.0, 20.0});
+  EXPECT_FALSE(reckoning.last.in_void);
+  EXPECT_TRUE(reckoning.last.dead_reckoning);
+  EXPECT_FALSE(reckoning.last.lost);
+  const Flight spent = fly(config, 33.0, Eigen::Vector3d::Zero(), true, false, {},
+                           Hole{5.0, 60.0}, {}, Hole{4.0, 20.0});
+  EXPECT_FALSE(spent.last.dead_reckoning);
+  EXPECT_TRUE(spent.last.lost);
 }
 
 TEST(VisualInertialOdometry, AHandfulOfFeaturesIsNoAid) {

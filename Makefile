@@ -141,6 +141,19 @@ sim-dark-hall-headless: build
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
 
+# Roadmap item 31: the dark void, the hall crossed at 12 m, where the carried
+# light reaches neither the floor nor the ceiling (specification K46). The
+# scenario file names the goal: by the east wall (within the light's reach at
+# the end) unless DARK_VOID_SCENARIO_PATH names the hall's middle
+# (dark_void_mid_point_to_point_scenario.json, an arrival on dead reckoning).
+DARK_VOID_SCENARIO_PATH ?= drone_city_nav/config/dark_void_point_to_point_scenario.json
+
+.PHONY: sim-dark-void-headless sim-dark-void-gui
+sim-dark-void-headless: DARK_HALL_SCENARIO_PATH := $(DARK_VOID_SCENARIO_PATH)
+sim-dark-void-headless: sim-dark-hall-headless
+sim-dark-void-gui: DARK_HALL_SCENARIO_PATH := $(DARK_VOID_SCENARIO_PATH)
+sim-dark-void-gui: sim-dark-hall-gui
+
 .PHONY: sim-dark-hall-gui
 sim-dark-hall-gui: build
 	python3 scripts/prepare_environment_simulation.py \

@@ -216,7 +216,8 @@ target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_mod
 add_drone_city_nav_layer(drone_city_nav_localization
                          src/lidar_inertial_odometry.cpp
                          src/point_plane_map_3d.cpp
-                         src/visual_inertial_odometry.cpp)
+                         src/visual_inertial_odometry.cpp
+                         src/visual_inertial_void.cpp)
 target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
                                                          Eigen3::Eigen)
 
@@ -259,6 +260,7 @@ add_drone_city_nav_layer(
   src/stereo_depth_returns.cpp
   src/stereo_silent_patches.cpp
   src/stereo_lit_range.cpp
+  src/stereo_void_frame.cpp
   src/tracked_agent_lidar_filter.cpp)
 target_link_libraries(
   drone_city_nav_world
@@ -446,7 +448,8 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
 set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
     include/drone_city_nav/lidar_inertial_odometry.hpp
     include/drone_city_nav/point_plane_map_3d.hpp
-    include/drone_city_nav/visual_inertial_odometry.hpp)
+    include/drone_city_nav/visual_inertial_odometry.hpp
+    include/drone_city_nav/visual_inertial_void.hpp)
 
 set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
     include/drone_city_nav/control_contracts_3d.hpp
@@ -492,6 +495,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/stereo_depth_returns.hpp
     include/drone_city_nav/stereo_silent_patches.hpp
     include/drone_city_nav/stereo_lit_range.hpp
+    include/drone_city_nav/stereo_void_frame.hpp
     include/drone_city_nav/tracked_agent_lidar_filter.hpp
     include/drone_city_nav/world_snapshot_3d.hpp)
 
@@ -997,6 +1001,7 @@ foreach(stereo_depth_process stereo_depth_node gazebo_stereo_depth_node)
   # asked, the visual-inertial estimator that reads the same frames.
   add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
                                          src/stereo_feature_tracker.cpp
+                                         src/stereo_frame_brightness.cpp
                                          src/stereo_rectifier.cpp
                                          src/visual_inertial_odometry_node.cpp)
   target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
@@ -1857,6 +1862,10 @@ if(BUILD_TESTING)
   ament_add_gtest(lidar_scan_patterns_3d_test tests/lidar_scan_patterns_3d_test.cpp)
   target_compile_features(lidar_scan_patterns_3d_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_scan_patterns_3d_test drone_city_nav_core)
+  ament_add_gtest(stereo_void_frame_test tests/stereo_void_frame_test.cpp)
+  target_compile_features(stereo_void_frame_test PRIVATE cxx_std_20)
+  target_link_libraries(stereo_void_frame_test drone_city_nav_core)
+  enable_project_warnings(stereo_void_frame_test)
   ament_add_gtest(stereo_silent_patches_test tests/stereo_silent_patches_test.cpp)
   target_compile_features(stereo_silent_patches_test PRIVATE cxx_std_20)
   target_link_libraries(stereo_silent_patches_test drone_city_nav_core)

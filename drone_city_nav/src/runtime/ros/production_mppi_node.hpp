@@ -535,6 +535,22 @@ private:
     return range_m;
   }
 
+  // Roadmap item 31 (K46): the depth the pair's frame is empty to under a
+  // sound light, a void frame (NaN: none), fresh as the silent range is.
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr void_range_sub_;
+  std::atomic<double> void_range_{std::numeric_limits<double>::quiet_NaN()};
+  std::atomic<std::int64_t> void_range_stamp_ns_{0};
+
+  [[nodiscard]] std::optional<double> latestVoidRange(const std::int64_t now_ns) const {
+    constexpr std::int64_t kFreshNs{600'000'000};
+    const std::int64_t stamp_ns = void_range_stamp_ns_.load(std::memory_order_relaxed);
+    const double range_m = void_range_.load(std::memory_order_relaxed);
+    if (stamp_ns <= 0 || now_ns - stamp_ns > kFreshNs || !std::isfinite(range_m)) {
+      return std::nullopt;
+    }
+    return range_m;
+  }
+
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_reading_sub_;
   std::atomic<double> light_reading_{0.0};
   std::atomic<std::int64_t> light_reading_stamp_ns_{0};

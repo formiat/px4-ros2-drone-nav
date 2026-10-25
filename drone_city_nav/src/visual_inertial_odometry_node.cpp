@@ -20,6 +20,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include <Eigen/Eigenvalues>
@@ -240,6 +241,17 @@ public:
           odometry_->addBarometricHeight(-smoothed_pressure_pa_ / kPressurePerMetrePa);
         },
         in_group);
+    // The pair's judgment of its frame (roadmap item 31, K46): the depth it is
+    // empty to under a sound light, NaN where it is not a void frame.
+    void_range_sub_ = create_subscription<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("void_range_topic", "/stereo_depth/void_range"),
+        rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::ConstSharedPtr range) {
+          const std::scoped_lock lock{odometry_mutex_};
+          odometry_->observeVoid(get_clock()->now().nanoseconds(),
+                                 std::isfinite(range->data) && range->data > 0.0);
+        },
+        in_group);
     const auto image_qos = rclcpp::SensorDataQoS{}.keep_last(3);
     left_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("left_image_topic", "/stereo/left/image"),
@@ -359,9 +371,23 @@ private:
     applyMapFrame(estimate, stamp_ns);
     const std::optional<std::int64_t> px4_local_ns =
         time_mapper_.rosToPx4LocalTimeNs(estimate.stamp_ns);
-    if ((!estimate.healthy && !estimate.dead_reckoning) ||
+    if ((!estimate.healthy && !estimate.dead_reckoning && !estimate.in_void) ||
         estimate.stamp_ns != stamp_ns || !px4_local_ns.has_value()) {
       return;
+    }
+    // The void (roadmap item 31, K46) is declared, as dead reckoning is; the
+    // autopilot receives the pose as a sound one (quality 100): the vehicle
+    // flies on through an emptiness measured, and the offboard's descent
+    // (K19) stays the failed light's.
+    if (estimate.in_void != void_declared_) {
+      RCLCPP_WARN(get_logger(),
+                  "VISUAL_INERTIAL_ODOMETRY_VOID started=%s unaided_s=%.2f",
+                  estimate.in_void ? "true" : "false", estimate.unaided_s);
+      std_msgs::msg::String event;
+      event.data = std::string{"VISUAL_INERTIAL_ODOMETRY_VOID started="} +
+                   (estimate.in_void ? "true" : "false");
+      mission_event_pub_->publish(event);
+      void_declared_ = estimate.in_void;
     }
     // Dead reckoning (the ladder's second rung, roadmap item 17 stage 5) is
     // declared; the filter holds its height through it.
@@ -388,8 +414,12 @@ private:
     if (synchronised_ns <= 0) {
       return;
     }
-    odometry_pub_->publish(px4VisualOdometryFromEstimate(
-        estimate, static_cast<std::uint64_t>(synchronised_ns / 1000)));
+    px4_msgs::msg::VehicleOdometry odometry = px4VisualOdometryFromEstimate(
+        estimate, static_cast<std::uint64_t>(synchronised_ns / 1000));
+    if (estimate.in_void) {
+      odometry.quality = 100;
+    }
+    odometry_pub_->publish(odometry);
     last_autopilot_stamp_ns_ = stamp_ns;
     ++published_poses_;
     // How old the pose is when it leaves for the autopilot: a host that
@@ -519,7 +549,8 @@ private:
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "VISUAL_INERTIAL_ODOMETRY healthy=%s tracked=%zu candidates=%zu used=%zu "
+        "VISUAL_INERTIAL_ODOMETRY healthy=%s void=%s tracked=%zu candidates=%zu "
+        "used=%zu "
         "gated=%zu untriangulated=%zu residual_sigma=%.2f "
         "weakest_velocity_sigma_mps=%.3f "
         "clones=%zu speed_mps=%.2f frame_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
@@ -529,11 +560,11 @@ private:
         " position=(%.2f,%.2f,%.2f) yaw=%.3f velocity_sigma_ned=(%.3f,%.3f,%.3f)"
         " accelerometer_bias=(%.3f,%.3f,%.3f) accelerometer_bias_sigma=(%.3f,%.3f,%.3f)"
         " heading_sigma_deg=%.2f",
-        estimate.healthy ? "true" : "false", estimate.tracked_features,
-        estimate.candidate_features, estimate.used_features, estimate.gated_features,
-        estimate.untriangulated_features, estimate.residual_rms_sigma,
-        estimate.weakest_velocity_sigma_mps, estimate.clones,
-        estimate.velocity_ned_mps.norm(), frame_ms,
+        estimate.healthy ? "true" : "false", estimate.in_void ? "true" : "false",
+        estimate.tracked_features, estimate.candidate_features, estimate.used_features,
+        estimate.gated_features, estimate.untriangulated_features,
+        estimate.residual_rms_sigma, estimate.weakest_velocity_sigma_mps,
+        estimate.clones, estimate.velocity_ned_mps.norm(), frame_ms,
         1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
         1.0e-6 * static_cast<double>(imu_gap_max_ns_),
         1.0e-6 * static_cast<double>(pose_age_max_ns_), imu_samples_, frames_,
@@ -901,6 +932,8 @@ private:
   static constexpr double kPressureSmoothing{0.04};
   double smoothed_pressure_pa_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr void_range_sub_;
+  bool void_declared_{false};
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;

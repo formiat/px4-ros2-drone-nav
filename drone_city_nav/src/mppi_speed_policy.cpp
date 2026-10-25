@@ -301,6 +301,14 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
     // space is crossed at the speed that range admits.
     frame_range_m = std::max(contract.physical_margin_m + kBlindRangeAboveMarginM,
                              share * contract.guaranteed_detection_range_m);
+    // A void frame (K46): empty to the light's reach under a sound light, the
+    // frame alone stands behind that depth, never past the configured range.
+    if (input.sensor_void_range_m.has_value() &&
+        std::isfinite(*input.sensor_void_range_m) && *input.sensor_void_range_m > 0.0) {
+      frame_range_m =
+          std::max(frame_range_m, std::min(*input.sensor_void_range_m,
+                                           contract.guaranteed_detection_range_m));
+    }
     // A patch the pair is silent in on the heading, with a matched rim
     // within reach, bounds the motion into it by the rim's depth, as a
     // surface seen there would (specification F13); a smoke face's bound

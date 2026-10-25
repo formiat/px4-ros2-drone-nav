@@ -1,5 +1,7 @@
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 
+#include "drone_city_nav/visual_inertial_void.hpp"
+
 #include <Eigen/Cholesky>
 #include <Eigen/Eigenvalues>
 #include <Eigen/QR>
@@ -11,6 +13,8 @@
 #include <span>
 #include <unordered_map>
 #include <utility>
+
+#include "visual_inertial_math.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -27,32 +31,6 @@ constexpr Eigen::Index kGyroBias{9};
 constexpr Eigen::Index kAccelerometerBias{12};
 constexpr Eigen::Index kImuStates{15};
 constexpr Eigen::Index kCloneStates{6};
-
-Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
-  Eigen::Matrix3d m;
-  m << 0.0, -v.z(), v.y(), v.z(), 0.0, -v.x(), -v.y(), v.x(), 0.0;
-  return m;
-}
-
-Eigen::Matrix3d expSo3(const Eigen::Vector3d& rotation) {
-  const double angle = rotation.norm();
-  if (angle < 1.0e-9) {
-    return Eigen::Matrix3d::Identity() + skew(rotation);
-  }
-  return Eigen::AngleAxisd{angle, rotation / angle}.toRotationMatrix();
-}
-
-Eigen::Matrix3d orthonormalized(const Eigen::Matrix3d& rotation) {
-  return Eigen::Quaterniond{rotation}.normalized().toRotationMatrix();
-}
-
-// The quantile of chi-square with `degrees` degrees of freedom at the normal
-// quantile `z` (Wilson and Hilferty).
-double chiSquareQuantile(const Eigen::Index degrees, const double z) {
-  const double k = static_cast<double>(degrees);
-  const double term = 1.0 - 2.0 / (9.0 * k) + z * std::sqrt(2.0 / (9.0 * k));
-  return k * term * term * term;
-}
 
 struct Clone {
   std::uint64_t id{0U};
@@ -113,6 +91,8 @@ struct VisualInertialOdometry::Impl {
   double held_height_ned_m{0.0};
   std::optional<double> held_barometric_height_m;
   std::optional<double> barometric_height_m;
+  // The void (K46): the pair's judgment, the void's state and its time.
+  VisualInertialVoid in_void;
   // The accelerometer across the rotor axis, integrated since the last frame.
   Eigen::Vector2d drag_reading_sum_mps{Eigen::Vector2d::Zero()};
   double drag_reading_s{0.0};
@@ -362,12 +342,23 @@ void VisualInertialOdometry::Impl::judgeDeadReckoning(
       last_update_stamp_ns > 0
           ? static_cast<double>(estimate.stamp_ns - last_update_stamp_ns) * 1.0e-9
           : std::numeric_limits<double>::infinity();
-  estimate.dead_reckoning =
+  // The void's time (K46) is not the budget's: the frames were empty, not
+  // blind.
+  const bool sound =
       !estimate.healthy && !lost && last_update_stamp_ns > 0 &&
       static_cast<double>(estimate.imu_lag_ns) * 1.0e-9 <=
           config.maximum_imu_period_s &&
-      estimate.weakest_velocity_sigma_mps <= config.maximum_velocity_sigma_mps &&
-      estimate.unaided_s <= config.maximum_unaided_s + config.maximum_dead_reckoning_s;
+      estimate.weakest_velocity_sigma_mps <= config.maximum_velocity_sigma_mps;
+  estimate.in_void = sound && in_void.inVoid();
+  estimate.dead_reckoning =
+      sound && !in_void.inVoid() &&
+      estimate.unaided_s - in_void.seconds() <=
+          config.maximum_unaided_s + config.maximum_dead_reckoning_s;
+}
+
+void VisualInertialOdometry::observeVoid(const std::int64_t stamp_ns,
+                                         const bool void_frame) {
+  impl_->in_void.observe(stamp_ns, void_frame);
 }
 
 // The point every observation's ray passes nearest to, refined on the
@@ -835,9 +826,17 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   if (!state.initialized || stamp_ns <= state.stamp_ns) {
     return estimate;
   }
+  const std::int64_t previous_frame_stamp_ns = state.stamp_ns;
   estimate.imu_lag_ns = state.propagateTo(stamp_ns);
   state.augment(stamp_ns);
   const std::uint64_t clone_id = state.clones.back().id;
+  // The void (K46), kept by VisualInertialVoid.
+  state.in_void.frame(stamp_ns, previous_frame_stamp_ns, state.last_update_stamp_ns,
+                      observations.size() < state.config.minimum_frame_features,
+                      state.last_update_stamp_ns > 0 && !state.lost &&
+                          static_cast<double>(stamp_ns - state.last_update_stamp_ns) *
+                                  1.0e-9 >
+                              state.config.maximum_unaided_s);
   if (observations.size() >= state.config.minimum_frame_features) {
     for (const StereoFeatureObservation& observation : observations) {
       state.tracks[observation.id].push_back(TrackObservation{
@@ -905,6 +904,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
     state.last_update_stamp_ns = stamp_ns;
     state.held_height_ned_m = state.position.z();
     state.held_barometric_height_m = state.barometric_height_m;
+    state.in_void.updated();
   } else if (state.last_update_stamp_ns > 0 && !state.lost &&
              static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 >
                  state.config.maximum_unaided_s) {
@@ -954,7 +954,8 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   // returned for a second, and the autopilot reset onto it and flew the
   // vehicle into the platform it lay on (specification K13).
   if (state.last_update_stamp_ns > 0 && !estimate.healthy && !estimate.dead_reckoning &&
-      estimate.unaided_s >
+      !estimate.in_void &&
+      estimate.unaided_s - state.in_void.seconds() >
           state.config.maximum_unaided_s + state.config.maximum_dead_reckoning_s) {
     state.lost = true;
   }

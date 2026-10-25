@@ -63,6 +63,7 @@ struct PlanningCycleRequest3D {
   std::optional<double> latest_light_headroom;
   std::optional<double> latest_light_reading;
   std::optional<double> latest_silent_range_m;
+  std::optional<double> latest_void_range_m;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   Point3 mission_goal{};
   std::chrono::steady_clock::time_point tick_started{};

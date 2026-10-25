@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # render_flight.sh SCENARIO FIRST_RUN DIRECTORY [RATE]: one flight of a named scenario (point-to-point, light-lost,
-# light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall;
+# light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall, dark-void across it at 12 m (item 31);
 # the stereo set only) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
 # passes through to the flight: the stereo set's smoke flights held 0.8, K25; the smoke scenarios are not flown since
 # 2026-10-24, specification F4)
@@ -14,6 +14,7 @@ scenario=$1; first=$2; directory=$3; rate=${4:-1.0}
 case $scenario in
   point-to-point | light-lost | light-failure | low-battery | smoke-blocked | smoke | smoke-rooms | clear) target="sim-urban-${scenario}-headless" ;;
   dark-hall) target="sim-dark-hall-headless" ;;
+  dark-void) target="sim-dark-void-headless" ;;
   *) echo "unknown or set-aside scenario $scenario" >&2; exit 2 ;;
 esac
 RENDER_BAG=1 ENABLE_RVIZ=true RVIZ_CONFIG_FILE=none ENABLE_LIDAR_DEBUG=true \

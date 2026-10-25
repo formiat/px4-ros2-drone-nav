@@ -478,7 +478,8 @@ def run_level(out: Path, level: str) -> None:
             arrays = {key: np.stack(frames) for key, frames in collector.frames.items() if frames}
         meta = {"sigma": sigma, "x0": x0, "len": length, "light": light, "particles": float(spec.get("particles", 0)),
                 "panel": float(spec.get("panel", 0)), "albedo": float(spec.get("albedo", 0)),
-                "noise": spec.get("noise", "model"), "wall": float(spec.get("wall", 8.0))}
+                "noise": spec.get("noise", "model"), "wall": float(spec.get("wall", 8.0)),
+                "height": float(spec.get("height", 1.5))}
         np.savez_compressed(out / f"{name}.npz", **arrays, meta=np.array([str(meta)]))
         print(f"{name}: " + ", ".join(f"{key} {len(frames)}" for key, frames in collector.frames.items()), flush=True)
     finally:

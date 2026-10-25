@@ -121,6 +121,11 @@ struct MppiSpeedPolicyInput {
   // patch the pair matched nothing in, within its reach; absent where the
   // heading looks at no such patch.
   std::optional<double> sensor_silent_range_m;
+  // Roadmap item 31 (specification K46): the depth the pair's frame is empty
+  // to under a sound light, a void frame; absent where the frame is not one.
+  // The frame alone then stands behind that range: the void's safety is the
+  // light and the braking contract, not the map.
+  std::optional<double> sensor_void_range_m;
   // Whether the carried light's driver reads it sound (roadmap item 29): a
   // frame blind under a sound light is the place's darkness, and the memory's
   // range, what the pair and the time-of-flight ring observed, answers for

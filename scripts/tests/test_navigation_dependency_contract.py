@@ -293,7 +293,9 @@ class NavigationDependencyContractTest(unittest.TestCase):
     def test_the_visual_inertial_estimator_reads_eigen_and_nothing_else(self) -> None:
         """The filter is replayed offline and carries no image library and no
         middleware: features reach it as coordinates. Every system include of
-        its header and source is the standard library or Eigen."""
+        its header and source is the standard library or Eigen, and the only
+        headers of its own it reads are its rotation arithmetic and the void's
+        bookkeeping (K46), which read Eigen and the standard library alike."""
         standard = re.compile(r"^[a-z_]+$")
         for path in (INCLUDE / "visual_inertial_odometry.hpp",
                      SOURCE / "visual_inertial_odometry.cpp"):
@@ -304,8 +306,16 @@ class NavigationDependencyContractTest(unittest.TestCase):
                     f"{path.name} includes <{include}>")
             self.assertEqual(
                 [name for name in LOCAL_INCLUDE_PATTERN.findall(text)
-                 if name != "drone_city_nav/visual_inertial_odometry.hpp"],
+                 if name not in ("drone_city_nav/visual_inertial_odometry.hpp",
+                                 "drone_city_nav/visual_inertial_void.hpp",
+                                 "visual_inertial_math.hpp")],
                 [], path.name)
+        for path in (INCLUDE / "visual_inertial_void.hpp", SOURCE / "visual_inertial_math.hpp"):
+            text = path.read_text(encoding="utf-8")
+            for include in re.findall(r"^\s*#\s*include\s*<([^>]+)>", text, re.MULTILINE):
+                self.assertTrue(
+                    include.startswith("Eigen/") or standard.match(include),
+                    f"{path.name} includes <{include}>")
 
     def test_orchestration_contracts_do_not_parse_source_order(self) -> None:
         test_directory = REPOSITORY / "scripts" / "tests"

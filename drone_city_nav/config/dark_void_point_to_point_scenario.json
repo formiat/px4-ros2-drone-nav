@@ -1,0 +1,24 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/dark_hall.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [
+      4.0,
+      30.0,
+      0.73
+    ],
+    "yaw_rad": 3.141592653589793
+  },
+  "navigation": {
+    "initial_altitude_m": 12.0
+  },
+  "mission_goal_sequence_m": [
+    [
+      75.5,
+      30.0,
+      12.0
+    ]
+  ]
+}

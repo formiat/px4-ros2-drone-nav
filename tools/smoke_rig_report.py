@@ -14,6 +14,12 @@ the thermal camera on the wall.
 two, by the brightness of the pixel (the camera's noise setting, specification A12).
 --vio OUT_DIR NAME...: the camera estimator replayed over a level's record (NAME_vio/replay_smoke.csv): the features
 tracked, the position error at the end and at most, the path flown.
+--reach OUT_DIR NAME...: the carried light's reach by the carrier's height over the floor (roadmap item 31, the root
+goal of 2026-10-24 part 2.0; levels of `height=Z,wall=60`): over the whole left frame, before the gain, its mean and
+95th percentile of grey and the share of its pixels under 6 levels (the unlit grey of K12); after the gain the share
+the pair matches, the matched depth's median against the evaluation depth's at the same pixels, and the corners the
+tracker's detector takes; and, where NAME_vio/replay_reach.csv exists, the features the estimator's tracker held over
+the record (mean, least).
 """
 import csv
 import ast
@@ -152,6 +158,37 @@ def vio(out, names):
               f"{path:.1f} m |")
 
 
+def reach(out, names):
+    """The light's reach by height: the whole frame, not the wall's region."""
+    print("| level | height m | raw grey mean / p95 | under 6 levels | matched share | matched depth p50 m (true) "
+          "| corners | tracked (least) |")
+    print("|---|---|---|---|---|---|---|---|")
+    for name in names:
+        data, meta = load(out, name)
+        rows = []
+        for index in range(min(len(data["left"]), len(data["right"]))):
+            left = cv2.cvtColor(data["left"][index], cv2.COLOR_RGB2GRAY)
+            right = cv2.cvtColor(data["right"][index], cv2.COLOR_RGB2GRAY)
+            gained_left, gained_right = gained(left, right)
+            matched, depth = stereo(gained_left, gained_right)
+            corners = cv2.goodFeaturesToTrack(gained_left, 400, 0.01, 20)
+            true_depth = data["depth"][index]
+            rows.append([left.mean(), np.percentile(left, 95), np.mean(left < 6), matched.mean(),
+                         np.nanmedian(depth[matched]) if matched.any() else np.nan,
+                         np.nanmedian(true_depth[matched]) if matched.any() else np.nan,
+                         0 if corners is None else len(corners)])
+        camera = np.nanmean(np.array(rows, dtype=float), axis=0)
+        tracked = "-"
+        replay = f"{out}/{name}_vio/replay_reach.csv"
+        try:
+            tracks = np.array([float(row["tracked"]) for row in list(csv.DictReader(open(replay)))[1:]])
+            tracked = f"{tracks.mean():.0f} ({tracks.min():.0f})"
+        except (FileNotFoundError, ValueError):
+            pass
+        print(f"| {name} | {float(meta.get('height', name.lstrip('h') or 1.5)):g} | {camera[0]:.1f} / {camera[1]:.0f} | {camera[2]:.2f} | "
+              f"{camera[3]:.3f} | {camera[4]:.2f} ({camera[5]:.2f}) | {camera[6]:.0f} | {tracked} |")
+
+
 def thermal(out, names):
     """Thermal stereo on the rig's pair of thermal cameras (roadmap item 18 stage 3): the pair's 16-bit frames
     (0.01 K a level) stretched over 280 to 330 K to 8 bits, matched as the visible pair is, against the
@@ -186,6 +223,9 @@ def main():
         return 0
     if arguments and arguments[0] == "--vio":
         vio(arguments[1], arguments[2:])
+        return 0
+    if arguments and arguments[0] == "--reach":
+        reach(arguments[1], arguments[2:])
         return 0
     if arguments and arguments[0] == "--noise":
         noise(arguments[1], arguments[2:])
