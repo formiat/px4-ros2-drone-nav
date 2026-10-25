@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Roadmap item 31: the dark void, the hall of item 29 crossed at 12 m, by the
-point-to-point mission; the goal by the east wall or in the hall's middle."""
+"""Roadmap item 31: the dark void, the hall of item 29 crossed at 14 m, by the
+point-to-point mission: a first goal straight up over the pad (the planner
+flies the route as the straight line, a ramp that crossed r2173 at 2 to 10 m
+over a floor the light still reached), then the goal by the east wall or in
+the hall's middle."""
 
 from __future__ import annotations
 
@@ -21,16 +24,19 @@ SPEC.loader.exec_module(SCENARIO_MODULE)
 
 
 class DarkVoidScenarioTest(unittest.TestCase):
-    def test_the_hall_is_crossed_at_twelve_metres(self) -> None:
+    def test_the_hall_is_crossed_at_fourteen_metres_after_a_climb_over_the_pad(self) -> None:
         for path, goal_x in ((WALL_SCENARIO, 75.5), (MID_SCENARIO, 40.0)):
             scenario = SCENARIO_MODULE.load_point_to_point_scenario(path)
             self.assertEqual(scenario["canonical_world_path"], WORLD_PATH.resolve())
             self.assertEqual(scenario["map_start_m"], (4.0, 30.0, 0.73))
-            goal = scenario["mission_goal_sequence_m"][-1]
-            self.assertEqual((goal_x, 30.0, 12.0), tuple(goal))
-            # Twelve metres: the tracker holds 20 features over the floor at 11 m
-            # and none at 13 (K46); the ceiling 8 m above is out of reach.
-            self.assertEqual(12.0, scenario["initial_altitude_m"])
+            climb, goal = scenario["mission_goal_sequence_m"]
+            self.assertEqual((4.0, 30.0, 14.0), tuple(climb))
+            self.assertEqual((goal_x, 30.0, 14.0), tuple(goal))
+            # Fourteen metres: on the rig the floor 13 m below reads the imager's
+            # noise and the pair matches nothing (K46); the hall's own floor still
+            # gave 5 percent of matches 8 to 10 m below (r2173); the ceiling is 6 m
+            # above, out of the forward frame.
+            self.assertEqual(14.0, scenario["initial_altitude_m"])
         # The wall's goal is within the light's reach of the east wall at x = 80.
         self.assertLess(80.0 - 75.5, 5.2)
 
