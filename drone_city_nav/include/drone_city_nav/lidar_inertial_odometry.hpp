@@ -88,6 +88,16 @@ struct LidarInertialOdometryConfig {
   // will believe. r357 flew with 0.05 of the error per scan divided by the
   // interval, ten times this, and the heading ran away within ten seconds.
   double gyro_bias_gain{0.005};
+  // The share of the points' own information about each horizontal axis an
+  // outside level (observeAttitude, the autopilot's attitude) weighs in every
+  // registration (PointPlaneRegistrationConfig3D::tilt_prior_share); zero
+  // leaves the map's level to the map. One, measured on the replays of
+  // 2026-10-25: an IMU mount error of 0.4 degrees seeded a map tilt of 0.16
+  // to 0.30 degrees and a height 0.35 to 0.53 m off at share zero, and at
+  // share one the tilt's median was nought and the height within 0.17 m.
+  double tilt_prior_share{1.0};
+  // An outside attitude older than this at the scan's stamp is not used.
+  double maximum_attitude_age_s{0.2};
   double maximum_gyro_bias_radps{0.05};
 };
 
@@ -135,6 +145,10 @@ public:
   [[nodiscard]] bool initialized() const noexcept;
 
   void addImu(const LidarInertialImuSample& sample);
+  // An outside level of the body (the autopilot's attitude, body FRD to NED):
+  // its roll and pitch hold the submap level in the registrations that
+  // follow (tilt_prior_share); its heading is not read.
+  void observeAttitude(std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned);
 
   // One scan, its points in the body FRD frame at `stamp_ns`, on the same
   // clock as the IMU samples; returns the estimate at that stamp. The IMU

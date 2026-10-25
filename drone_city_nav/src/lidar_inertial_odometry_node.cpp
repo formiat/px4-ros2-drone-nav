@@ -74,6 +74,8 @@ public:
         "innovation_gate_sigma", config.innovation_gate_sigma);
     config.gyro_bias_gain =
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
+    config.tilt_prior_share =
+        declare_parameter<double>("tilt_prior_share", config.tilt_prior_share);
     config.maximum_gyro_bias_radps = declare_parameter<double>(
         "maximum_gyro_bias_radps", config.maximum_gyro_bias_radps);
     config.acceleration_noise_mps2 = declare_parameter<double>(
@@ -135,6 +137,8 @@ public:
     autopilot_ = std::make_unique<AutopilotStateSource>(
         *this, transform_,
         AutopilotStateTopics{
+            .attitude = declare_parameter<std::string>("px4_vehicle_attitude_topic",
+                                                       "/fmu/out/vehicle_attitude"),
             .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
                                                   "/fmu/out/sensor_combined"),
             .clock_sync = declare_parameter<std::string>("px4_timesync_status_topic",
@@ -142,6 +146,7 @@ public:
         },
         px4_qos,
         AutopilotStateCallbacks{
+            .attitude = [this](const AutopilotAttitude& sample) { onAttitude(sample); },
             .imu = [this](const AutopilotImuSample& sample) { onImu(sample); },
             .clock_sync =
                 [this](const AutopilotClockSync& sample) {
@@ -163,6 +168,20 @@ public:
   }
 
 private:
+  // The autopilot's attitude as the outside level of the registration (the
+  // estimator's tilt_prior_share): its roll and pitch rest on the
+  // accelerometer's gravity, which the scans cannot see.
+  void onAttitude(const AutopilotAttitude& sample) {
+    const LidarPoseSourceStampResult source = resolveLidarPoseSourceStamp(
+        time_mapper_, sample.timestamp_sample_us, get_clock()->now().nanoseconds());
+    if (!source.resolved()) {
+      return;
+    }
+    const std::array<float, 4>& q = sample.quaternion;
+    odometry_->observeAttitude(source.mapped_ros_stamp_ns,
+                               Eigen::Quaterniond{q[0], q[1], q[2], q[3]});
+  }
+
   void onImu(const AutopilotImuSample& sample) {
     // The IMU arrives stamped on the transport's clock and the scans on the
     // simulation's; the same resolution the obstacle memory applies to the

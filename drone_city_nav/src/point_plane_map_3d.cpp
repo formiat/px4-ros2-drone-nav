@@ -420,6 +420,20 @@ PointPlaneRegistration3D registerPointsToPlanes(
       weighted_square += weight * residual * residual;
       ++matched;
     }
+    if (config.tilt_prior && config.tilt_prior_share > 0.0 && matched > 0U) {
+      // The left perturbation that would turn the pose to the prior's tilt,
+      // its heading component dropped, priced about each horizontal axis at
+      // the prior's share of the points' own information about that axis.
+      const Eigen::AngleAxisd error{config.tilt_prior_rotation *
+                                    result.rotation.conjugate()};
+      const Eigen::Vector3d tilt = error.angle() * error.axis();
+      const double weight_roll = config.tilt_prior_share * hessian(0, 0);
+      const double weight_pitch = config.tilt_prior_share * hessian(1, 1);
+      hessian(0, 0) += weight_roll;
+      hessian(1, 1) += weight_pitch;
+      gradient(0) -= weight_roll * tilt.x();
+      gradient(1) -= weight_pitch * tilt.y();
+    }
     result.iterations = iteration + 1U;
     result.matched_fraction =
         static_cast<double>(matched) / static_cast<double>(points_body.size());

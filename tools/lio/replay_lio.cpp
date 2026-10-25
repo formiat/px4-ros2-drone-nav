@@ -2,7 +2,9 @@
 // extract_bag.py output (DIR/scans.bin, DIR/imu.csv), merging IMU and scans by stamp (IMU delivered up to
 // the scan stamp), and writes DIR/replay.csv (or out=PATH): stamp_ns,x,y,z,healthy,information,degenerate,
 // bias_x,bias_y,bias_z,vx,vy,vz,roll,pitch (rad, the estimate's tilt), plus PATH.ms with the registration time p50 p95 p99 max and the count
-// over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel;
+// over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel tiltshare
+// (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level) and misalign=DEG (the
+// IMU turned about the body's y axis, a mount error that seeds a tilted map);
 // hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
 // must register from a prior the IMU alone carried: the recovery's case.
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
@@ -23,7 +25,8 @@ int main(int argc, char** argv) {
   LidarInertialOdometryConfig config;
   long long lag_ns = 0;
   double hole_from_s = -1.0, hole_to_s = -1.0;
-  std::string out_path;
+  std::string out_path, truth_path;
+  double misalign_deg = 0.0;  // the IMU turned about the body's y axis by this much, a mount error, to seed a tilted map
   for (int i = 3; i < argc; ++i) {
     std::string kv = argv[i]; auto eq = kv.find('='); std::string k = kv.substr(0, eq); double v = std::atof(kv.c_str() + eq + 1);
     if (k == "out") { out_path = kv.substr(eq + 1); continue; }
@@ -43,12 +46,31 @@ int main(int argc, char** argv) {
     else if (k == "range") config.maximum_range_m = v;
     else if (k == "points") config.maximum_scan_points = static_cast<std::size_t>(v);
     else if (k == "voxel") config.scan_voxel_m = v;
+    else if (k == "tiltshare") config.tilt_prior_share = v;
+    else if (k == "misalign") misalign_deg = v;
+    else if (k == "truth") { truth_path = kv.substr(eq + 1); continue; }
     else { std::fprintf(stderr, "unknown %s\n", k.c_str()); return 2; }
   }
   std::vector<Imu> imu;
   { std::FILE* f = std::fopen((dir + "/imu.csv").c_str(), "r"); Imu s;
     while (std::fscanf(f, "%lld,%lf,%lf,%lf,%lf,%lf,%lf", &s.t, &s.g[0], &s.g[1], &s.g[2], &s.a[0], &s.a[1], &s.a[2]) == 7) imu.push_back(s);
     std::fclose(f); }
+  // The truth's attitude (gz_pose.csv: t, x, y, z, qw, qx, qy, qz, body FLU to the ENU map) as the outside level,
+  // turned to body FRD to NED; fed before each scan at the scan's stamp, the ideal level the autopilot's stands in for.
+  struct Truth { double t; Eigen::Quaterniond q; };
+  std::vector<Truth> truth;
+  if (!truth_path.empty()) {
+    std::FILE* f = std::fopen(truth_path.c_str(), "r"); double t, x, y, z, qw, qx, qy, qz;
+    Eigen::Matrix3d enu_to_ned; enu_to_ned << 0, 1, 0, 1, 0, 0, 0, 0, -1;
+    const Eigen::Matrix3d frd_to_flu = Eigen::Vector3d{1.0, -1.0, -1.0}.asDiagonal();
+    while (f && std::fscanf(f, "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf%*[^\n]", &t, &x, &y, &z, &qw, &qx, &qy, &qz) == 8) {
+      const Eigen::Matrix3d r = enu_to_ned * Eigen::Quaterniond{qw, qx, qy, qz}.toRotationMatrix() * frd_to_flu;
+      truth.push_back({t, Eigen::Quaterniond{r}});
+    }
+    if (f) std::fclose(f);
+    std::fprintf(stderr, "truth attitude samples %zu\n", truth.size());
+  }
+  std::size_t next_truth = 0;
   std::FILE* scans = std::fopen((dir + "/scans.bin").c_str(), "rb");
   if (out_path.empty()) out_path = dir + "/replay.csv";
   std::FILE* out = std::fopen(out_path.c_str(), "w");
@@ -64,7 +86,8 @@ int main(int argc, char** argv) {
     while (next_imu < imu.size() && imu[next_imu].t <= stamp - lag_ns) {
       const Imu& s = imu[next_imu++];
       if (!odometry.initialized()) odometry.initialize(s.t, Eigen::Vector3d::Zero(), heading);
-      odometry.addImu(LidarInertialImuSample{.stamp_ns = s.t, .gyro_radps = {s.g[0], s.g[1], s.g[2]}, .accelerometer_mps2 = {s.a[0], s.a[1], s.a[2]}});
+      const Eigen::Matrix3d mount = Eigen::AngleAxisd{misalign_deg * M_PI / 180.0, Eigen::Vector3d::UnitY()}.toRotationMatrix();
+      odometry.addImu(LidarInertialImuSample{.stamp_ns = s.t, .gyro_radps = mount * Eigen::Vector3d{s.g[0], s.g[1], s.g[2]}, .accelerometer_mps2 = mount * Eigen::Vector3d{s.a[0], s.a[1], s.a[2]}});
     }
     if (!odometry.initialized()) continue;
     if (first_stamp < 0) first_stamp = stamp;
@@ -72,6 +95,8 @@ int main(int argc, char** argv) {
     if (since_first_s >= hole_from_s && since_first_s < hole_to_s) continue;
     std::vector<Eigen::Vector3d> points; points.reserve(n);
     for (unsigned i = 0; i < n; ++i) points.emplace_back(buffer[3 * i], buffer[3 * i + 1], buffer[3 * i + 2]);
+    while (next_truth < truth.size() && truth[next_truth].t * 1e9 <= static_cast<double>(stamp)) ++next_truth;
+    if (next_truth > 0 && !truth.empty()) odometry.observeAttitude(stamp, truth[next_truth - 1].q);
     const auto started = std::chrono::steady_clock::now();
     const LidarInertialEstimate e = odometry.addScan(stamp, points);
     durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());

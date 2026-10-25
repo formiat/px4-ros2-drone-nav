@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <limits>
 #include <vector>
@@ -180,12 +181,11 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
 // The registration of the thinned scan against the submap from the prior
 // pose, with the correspondence distance and the search's reach in rings of
 // cells the caller names.
-[[nodiscard]] PointPlaneRegistration3D
-registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
-             const Eigen::Vector3d& prior_position,
-             const Eigen::Quaterniond& prior_rotation,
-             const LidarInertialOdometryConfig& config, const double correspondence_m,
-             const std::int32_t search_ring_cells) {
+[[nodiscard]] PointPlaneRegistration3D registerScan(
+    Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
+    const Eigen::Vector3d& prior_position, const Eigen::Quaterniond& prior_rotation,
+    const LidarInertialOdometryConfig& config, const double correspondence_m,
+    const std::int32_t search_ring_cells, const Eigen::Quaterniond* tilt_prior) {
   return registerPointsToPlanes(
       submap.map(), points_body, prior_position, prior_rotation,
       PointPlaneRegistrationConfig3D{
@@ -196,6 +196,10 @@ registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
           .convergence_rotation_rad = config.convergence_rotation_rad,
           .robust_width_m = config.robust_width_m,
           .born_by_ns = std::numeric_limits<std::int64_t>::max(),
+          .tilt_prior = tilt_prior != nullptr,
+          .tilt_prior_rotation =
+              tilt_prior != nullptr ? *tilt_prior : Eigen::Quaterniond::Identity(),
+          .tilt_prior_share = config.tilt_prior_share,
       });
 }
 
@@ -224,6 +228,10 @@ struct LidarInertialOdometry::Impl {
   Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
   Eigen::Vector3d gyro_bias{Eigen::Vector3d::Zero()};
+  // The outside level, when one is observed (observeAttitude).
+  bool has_attitude{false};
+  std::int64_t attitude_stamp_ns{0};
+  Eigen::Quaterniond attitude{Eigen::Quaterniond::Identity()};
   std::deque<LidarInertialImuSample> imu;
   std::int64_t last_imu_stamp_ns{0};
   Eigen::Vector3d last_keyframe_position{Eigen::Vector3d::Zero()};
@@ -371,6 +379,14 @@ void LidarInertialOdometry::addImu(const LidarInertialImuSample& sample) {
   }
 }
 
+void LidarInertialOdometry::observeAttitude(const std::int64_t stamp_ns,
+                                            const Eigen::Quaterniond& body_to_ned) {
+  Impl& impl = *impl_;
+  impl.has_attitude = true;
+  impl.attitude_stamp_ns = stamp_ns;
+  impl.attitude = body_to_ned.normalized();
+}
+
 LidarInertialEstimate
 LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
                                const std::vector<Eigen::Vector3d>& points_body) {
@@ -426,9 +442,14 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
              registration.matched_fraction >= impl.config.minimum_matched_fraction &&
              registration.residual_rms_m <= impl.config.maximum_residual_rms_m;
     };
+    const bool level_fresh =
+        impl.has_attitude && impl.config.tilt_prior_share > 0.0 &&
+        std::llabs(stamp_ns - impl.attitude_stamp_ns) <=
+            static_cast<std::int64_t>(impl.config.maximum_attitude_age_s * 1.0e9);
+    const Eigen::Quaterniond* tilt_prior = level_fresh ? &impl.attitude : nullptr;
     PointPlaneRegistration3D registration =
         registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config,
-                     impl.config.maximum_correspondence_m, 1);
+                     impl.config.maximum_correspondence_m, 1, tilt_prior);
     healthy = assess(registration);
     if (!healthy && impl.has_registered) {
       // The recovery searches one ring of cells further than the update and
@@ -442,7 +463,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
                        prior_rotation, impl.config,
                        impl.config.maximum_correspondence_m *
                            impl.config.recovery_correspondence_factor,
-                       kRecoverySearchRingCells);
+                       kRecoverySearchRingCells, tilt_prior);
       if (assess(recovered)) {
         registration = recovered;
         healthy = true;

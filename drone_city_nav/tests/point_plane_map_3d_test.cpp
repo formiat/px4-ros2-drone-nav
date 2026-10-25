@@ -56,6 +56,56 @@ TEST(PointPlaneMap3D, TheRegistrationRecoversTheBodyPoseFromAnOffsetPrior) {
       << registration.matched_fraction << " iterations " << registration.iterations;
 }
 
+// The tilt prior: the room's corner registered from a level prior with an
+// outside level that says the body is pitched one degree. Without a share the
+// registration stays level (the map's own level); at a share of one the pose
+// pitches part of the way (more than half: the points' hold on the pitch is
+// less than their diagonal information once the translation they share it
+// with is free); at ten the prior nearly has its way. The heading is never
+// the prior's.
+TEST(PointPlaneMap3D, TheTiltPriorPricesRollAndPitchByItsShareAndLeavesTheHeading) {
+  const std::vector<Eigen::Vector3d> world = roomCorner();
+  PointPlaneMap3D map{
+      PointPlaneMapConfig3D{.cell_m = 0.4, .maximum_points_per_cell = 6U}};
+  map.insert(world, 1U, 0);
+  const Eigen::Vector3d body_position{1.0, 1.0, 1.0};
+  std::vector<Eigen::Vector3d> body;
+  for (std::size_t index = 0U; index < world.size(); index += 7U) {
+    body.push_back(world[index] - body_position);
+  }
+  const double one_degree = M_PI / 180.0;
+  const Eigen::Quaterniond level_says{
+      Eigen::AngleAxisd{one_degree, Eigen::Vector3d::UnitY()} *
+      Eigen::AngleAxisd{5.0 * one_degree, Eigen::Vector3d::UnitZ()}};
+  const auto pitch_of = [](const Eigen::Quaterniond& q) {
+    return std::asin(2.0 * (q.w() * q.y() - q.z() * q.x()));
+  };
+  const auto yaw_of = [](const Eigen::Quaterniond& q) {
+    return std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
+                      1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+  };
+  double pitches[3];
+  const double shares[3] = {0.0, 1.0, 10.0};
+  for (int index = 0; index < 3; ++index) {
+    PointPlaneRegistrationConfig3D config =
+        registrationConfig(std::numeric_limits<std::int64_t>::max());
+    config.tilt_prior = true;
+    config.tilt_prior_rotation = level_says;
+    config.tilt_prior_share = shares[index];
+    const PointPlaneRegistration3D registration = registerPointsToPlanes(
+        map, body, body_position, Eigen::Quaterniond::Identity(), config);
+    EXPECT_TRUE(registration.converged) << shares[index];
+    pitches[index] = pitch_of(registration.rotation);
+    EXPECT_LT(std::abs(yaw_of(registration.rotation)), 0.2 * one_degree)
+        << shares[index];
+  }
+  EXPECT_LT(std::abs(pitches[0]), 0.05 * one_degree);
+  EXPECT_GT(pitches[1], 0.25 * one_degree);
+  EXPECT_LT(pitches[1], 0.95 * one_degree);
+  EXPECT_GT(pitches[2], 0.9 * one_degree);
+  EXPECT_LT(pitches[2], 1.05 * one_degree);
+}
+
 // One wall at x = 0, seen from a prior 0.8 m (two cells) off along x: the
 // one ring of cells the search covers by default finds no point of it and
 // the registration matches nothing; two rings reach the wall and the offset

@@ -67,6 +67,19 @@ struct PointPlaneRegistrationConfig3D {
   double robust_width_m{0.2};
   // Only cells born by this moment are matched.
   std::int64_t born_by_ns{std::numeric_limits<std::int64_t>::max()};
+  // A prior on the pose's tilt: the body rotation an outside level says (the
+  // autopilot's attitude in flight, the truth in a replay), and the share of
+  // the points' own information about each horizontal axis it weighs (one:
+  // the prior and the points weigh alike); zero is no prior. Only
+  // the horizontal components of the rotation's error in the world frame
+  // (roll and pitch) are priced; the heading stays the registration's. The
+  // map's level is otherwise the map's own: a registration's rotational
+  // error enters the next keyframe, every later scan registers level to the
+  // tilted map, and the pose's height slides with the travel (22 flights of
+  // 2026-10, tilts to 0.46 degrees, heights 0.75 m off over 350 m).
+  bool tilt_prior{false};
+  Eigen::Quaterniond tilt_prior_rotation{Eigen::Quaterniond::Identity()};
+  double tilt_prior_share{0.0};
 };
 
 struct PointPlaneRegistration3D {
