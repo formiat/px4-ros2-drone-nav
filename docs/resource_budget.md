@@ -188,7 +188,11 @@ the depth node 2.2 to 2.4, the controller 1.5 to 1.6, the memory 0.45) and
 3.4 to 3.8 at p50, 4.4 to 4.7 at p95 on the lidar (r2080 to r2084; the
 controller 1.8 to 2.0, the memory 1.2 to 1.4, the estimator 0.2); the GPU
 at 34 to 39 percent. The mission monitor, outside the set, takes 1.03 to
-1.04 cores on every flight (technical_debt.md). What this means for each
+1.04 cores on every flight (technical_debt.md). Since 2026-10-25 the series
+fly on a core set of the host, `0-13` (specification A4): the cost by
+process on it is the base's (r2097 to r2106), and seven physical cores hold
+the camera flight's real-time factor at 0.88 to 0.99 where six held it in
+five of six attempts. What this means for each
 computer, and the levers, are in [hardware_builds.md](hardware_builds.md),
 "The Compute Gap, Measured". Nothing here was run on an
 Orin: there is no arm64 build, and the only confirmation is a recorded

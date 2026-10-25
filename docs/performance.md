@@ -96,9 +96,11 @@ Since 2026-10-24 a flight can be confined to a core set of the host
 (`FLIGHT_CPUSET`, specification A4: `scripts/container_run.sh` passes it to
 docker as the container's cpuset, so the simulator, the autopilot and the
 onboard nodes all run inside it and the rest of the host is left to its
-owner); the masks then follow the set (`0-11` gives `0-5`, `3-11`, `9-11`),
+owner); the masks then follow the set (`0-13` gives `0-6`, `3-13`, `10-13`),
 and a mask built from `nproc` would have named CPUs the container has not got.
-The series tools fly on `0-11` unless told otherwise. Set
+The series tools fly on `0-13` unless told otherwise (seven physical cores;
+six held the camera flight in five of six attempts, measured on 2026-10-25).
+Set
 `ENABLE_SUBSYSTEM_CPU_AFFINITY=false` to run an unrestricted comparison, or
 override `CONTROL_CPU_LIST`, `PLANNING_CPU_LIST`, and `DIAGNOSTICS_CPU_LIST`.
 

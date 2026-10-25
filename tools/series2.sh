@@ -9,10 +9,11 @@ profile=cameras; envs=()
 if [ "${1:-}" = "--lidar" ]; then profile=lidar; envs=(CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar); shift; fi
 mkdir -p log/tools/journal; touch log/tools/journal/.keep
 out="log/tools/journal/series_$(git rev-parse --short HEAD)_${profile}.txt"
-# The flight's core set (specification A4): CPUs 0-11 of this host, six physical cores with both SMT siblings each,
-# unless the caller sets FLIGHT_CPUSET (empty: the whole host, as before 2026-10-24). The quiet-host gate then reads
-# the set's own CPUs, not the host's load.
-export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-11}"
+# The flight's core set (specification A4): CPUs 0-13 of this host, seven physical cores with both SMT siblings each
+# (six, 0-11, held the camera flight in five of six attempts and gave two R2 misses in five, 2026-10-25), unless the
+# caller sets FLIGHT_CPUSET (empty: the whole host, as before 2026-10-24). The quiet-host gate then reads the set's
+# own CPUs, not the host's load.
+export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-13}"
 for id in "$@"; do
   ./scripts/quiet_host_gate.sh 2>/dev/null
   ./scripts/stop_sim.sh > /dev/null 2>&1

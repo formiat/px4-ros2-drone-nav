@@ -46,7 +46,7 @@ class FlightCpusetContract(unittest.TestCase):
 
     def test_series_fly_on_the_set_through_the_gate(self):
         series = (REPOSITORY / "tools/series2.sh").read_text()
-        self.assertIn('export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-11}"', series)
+        self.assertIn('export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-13}"', series)
         self.assertIn("./scripts/quiet_host_gate.sh", series)
         self.assertNotIn("/proc/loadavg); sim=", series)
 

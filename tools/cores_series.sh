@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cores_series.sh GROUP FIRST COUNT [TAG]: a group of flights that count on the flight's core set (FLIGHT_CPUSET, 0-11
+# cores_series.sh GROUP FIRST COUNT [TAG]: a group of flights that count on the flight's core set (FLIGHT_CPUSET, 0-13
 # unless set; specification A4), one at a time through tools/fly_until_valid.sh (3 attempts a flight), each numbered
 # after the last; GROUP is cameras or lidar. Beside every flight the host's CPU temperature and clocks are sampled every
 # 10 s (log/tools/flight_cores/thermal_rNNNN.txt: time, the thermal zones in millidegrees, the CPUs' MHz) and, after it,
@@ -12,7 +12,7 @@ group=$1; first=$2; count=$3; tag=${4:-$group}
 out="log/tools/flight_cores/series_${tag}.txt"
 mkdir -p log/tools/flight_cores; touch log/tools/flight_cores/.keep
 lidar=(); [ "$group" = lidar ] && lidar=(--lidar)
-export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-11}"
+export FLIGHT_CPUSET="${FLIGHT_CPUSET-0-13}"
 echo "== batch $group start $(date -u +%H:%M:%S) first r$first count $count cpuset ${FLIGHT_CPUSET:-all} commit $(git rev-parse --short HEAD)" | tee -a "$out"
 next=$first
 for i in $(seq 1 "$count"); do
