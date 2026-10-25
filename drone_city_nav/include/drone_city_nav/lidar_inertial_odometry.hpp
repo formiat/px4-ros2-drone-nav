@@ -103,11 +103,11 @@ struct LidarInertialOdometryConfig {
   // every registration (PointPlaneRegistrationConfig3D::height_prior_share);
   // zero leaves the map's height to the map. A fiftieth: the map's height
   // relaxes to the barometer over some fifty scans, five seconds, and takes
-  // a fiftieth of the barometer's smoothed noise a keyframe.
+  // a fiftieth of the barometer's noise a keyframe (the simulated barometer:
+  // 50 Hz, 3 Pa, a quarter of a metre a sample, so 5 mm). The height is
+  // taken raw: a smoothing of half a second lagged a climb by up to a metre
+  // (r2145), and the registrations are the smoother.
   double height_prior_share{0.02};
-  // The height's smoothing per sample (the simulated barometer: 50 Hz, 3 Pa
-  // of noise, a quarter of a metre a sample; 0.04 is half a second).
-  double height_smoothing{0.04};
   // An outside height older than this at the scan's stamp is not used, and
   // one farther than this from the pose is not believed.
   double maximum_height_age_s{0.5};
@@ -171,8 +171,10 @@ public:
   // follow (tilt_prior_share); its heading is not read.
   void observeAttitude(std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned);
   // An outside height of the body, up from any origin (the barometer's, as
-  // pressure over 12.013 Pa a metre): its change since the rest holds the
-  // submap's height in the registrations that follow (height_prior_share).
+  // pressure over 12.013 Pa a metre): its change since the rest (or since
+  // its own first half second, for a barometer that begins after the rest)
+  // holds the submap's height in the registrations that follow
+  // (height_prior_share).
   void observeHeight(std::int64_t stamp_ns, double height_up_m);
 
   // One scan, its points in the body FRD frame at `stamp_ns`, on the same

@@ -86,21 +86,57 @@ TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
     odometry.addImu(restSample(i * kSecond / 100, level));
     odometry.observeHeight(i * kSecond / 100, 100.0);
   }
-  // The first scan at the rest's height, the second with the barometer a
-  // metre higher while the scans still show the same room from the same
-  // place: the prior pulls z up (NED: down is positive, so z falls).
+  // The first scan at the rest's height, the second with the barometer 0.3 m
+  // higher while the scans still show the same room from the same place: the
+  // prior pulls z up (NED: down is positive, so z falls), part of the way,
+  // within what the estimator's own innovation gate lets a scan move at rest.
   const LidarInertialEstimate first =
       odometry.addScan(kSecond / 2, scanFrom(room, start, level));
   ASSERT_TRUE(first.healthy);
   for (int i = 51; i <= 60; ++i) {
     odometry.addImu(restSample(i * kSecond / 100, level));
-    odometry.observeHeight(i * kSecond / 100, 101.0);
+    odometry.observeHeight(i * kSecond / 100, 100.3);
   }
   const LidarInertialEstimate second =
       odometry.addScan(6 * kSecond / 10, scanFrom(room, start, level));
   ASSERT_TRUE(second.healthy);
   EXPECT_LT(second.position_ned_m.z(), first.position_ned_m.z() - 0.02);
-  EXPECT_GT(second.position_ned_m.z(), first.position_ned_m.z() - 0.9);
+  EXPECT_GT(second.position_ned_m.z(), first.position_ned_m.z() - 0.3);
+}
+
+// A barometer that begins after the first scan (a record begun in flight)
+// takes its datum from the first half second of its own heights and the pose
+// then, and anchors from there.
+TEST(LidarInertialOdometryTest, TheHeightDatumSettlesWhenTheBarometerBeginsLate) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometryConfig config;
+  config.height_prior_share = 1.0;
+  LidarInertialOdometry odometry{config};
+  const Eigen::Vector3d start{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  const LidarInertialEstimate first =
+      odometry.addScan(kSecond / 2, scanFrom(room, start, level));
+  ASSERT_TRUE(first.healthy);
+  for (int i = 51; i <= 80; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+    odometry.observeHeight(i * kSecond / 100, 100.0);
+  }
+  const LidarInertialEstimate settled =
+      odometry.addScan(8 * kSecond / 10, scanFrom(room, start, level));
+  ASSERT_TRUE(settled.healthy);
+  EXPECT_NEAR(settled.position_ned_m.z(), first.position_ned_m.z(), 0.02);
+  for (int i = 81; i <= 90; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+    odometry.observeHeight(i * kSecond / 100, 100.3);
+  }
+  const LidarInertialEstimate raised =
+      odometry.addScan(9 * kSecond / 10, scanFrom(room, start, level));
+  ASSERT_TRUE(raised.healthy);
+  EXPECT_LT(raised.position_ned_m.z(), first.position_ned_m.z() - 0.02);
 }
 
 TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {

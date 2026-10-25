@@ -181,8 +181,8 @@ public:
 private:
   // The vehicle's barometer as the outside height of the registration (the
   // estimator's height_prior_share), as the camera estimator reads it: the
-  // pressure over 12.013 Pa a metre, up; the estimator smooths it and takes
-  // the rest as its datum.
+  // pressure over 12.013 Pa a metre, up; the estimator takes the rest as its
+  // datum.
   void onBarometer(const sensor_msgs::msg::FluidPressure& pressure) {
     if (!std::isfinite(pressure.fluid_pressure)) {
       return;

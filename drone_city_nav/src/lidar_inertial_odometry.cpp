@@ -208,6 +208,11 @@ registerScan(Submap& submap, const std::vector<Eigen::Vector3d>& points_body,
       });
 }
 
+// The heights the datum of a barometer that began after the rest is the mean
+// of (half a second of the simulated 50 Hz; the noise of a quarter of a
+// metre a sample falls to 5 cm).
+constexpr std::size_t kHeightDatumSamples{25U};
+
 } // namespace
 
 struct LidarInertialOdometry::Impl {
@@ -237,12 +242,13 @@ struct LidarInertialOdometry::Impl {
   bool has_attitude{false};
   std::int64_t attitude_stamp_ns{0};
   Eigen::Quaterniond attitude{Eigen::Quaterniond::Identity()};
-  // The outside height (observeHeight): smoothed, its datum the rest's mean.
+  // The outside height (observeHeight), its datum the rest's mean.
   bool has_height{false};
   std::int64_t height_stamp_ns{0};
-  double height_smoothed_m{std::numeric_limits<double>::quiet_NaN()};
+  double height_m{std::numeric_limits<double>::quiet_NaN()};
   double height_rest_sum_m{0.0};
   std::size_t height_rest_samples{0U};
+  std::size_t height_samples{0U};
   double height_datum_m{std::numeric_limits<double>::quiet_NaN()};
   // The pose's z at the rest, which the barometer's change is added to.
   double height_datum_z_m{0.0};
@@ -414,17 +420,26 @@ void LidarInertialOdometry::observeHeight(const std::int64_t stamp_ns,
   if (!std::isfinite(height_up_m)) {
     return;
   }
-  impl.height_smoothed_m =
-      std::isfinite(impl.height_smoothed_m)
-          ? impl.height_smoothed_m +
-                impl.config.height_smoothing * (height_up_m - impl.height_smoothed_m)
-          : height_up_m;
+  impl.height_m = height_up_m;
   impl.has_height = true;
   impl.height_stamp_ns = stamp_ns;
+  ++impl.height_samples;
   if (!impl.attitude_levelled) {
     // The rest: the datum the heights in flight are read against.
     impl.height_rest_sum_m += height_up_m;
     ++impl.height_rest_samples;
+  } else if (!std::isfinite(impl.height_datum_m)) {
+    impl.height_rest_sum_m += height_up_m;
+  }
+  if (impl.attitude_levelled && !std::isfinite(impl.height_datum_m) &&
+      impl.height_rest_samples == 0U && impl.height_samples >= kHeightDatumSamples) {
+    // No height reached the rest (the barometer began after the first scan,
+    // as a record begun with the bag does): the datum is the mean of the
+    // first half second of heights and the pose's z, read against each
+    // other from here on.
+    impl.height_datum_m =
+        impl.height_rest_sum_m / static_cast<double>(impl.height_samples);
+    impl.height_datum_z_m = impl.position.z();
   }
 }
 
@@ -500,7 +515,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     const Eigen::Quaterniond* tilt_prior = level_fresh ? &impl.attitude : nullptr;
     // The barometer's height since the rest, as the pose's z in NED (down).
     const double height_prior_z =
-        impl.height_datum_z_m - (impl.height_smoothed_m - impl.height_datum_m);
+        impl.height_datum_z_m - (impl.height_m - impl.height_datum_m);
     const bool height_fresh =
         impl.has_height && std::isfinite(impl.height_datum_m) &&
         impl.config.height_prior_share > 0.0 &&
