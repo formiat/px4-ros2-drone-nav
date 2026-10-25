@@ -99,7 +99,7 @@ struct LidarInertialOdometryConfig {
   // An outside attitude older than this at the scan's stamp is not used.
   double maximum_attitude_age_s{0.2};
   // The share of the points' own information about z an outside height
-  // (observeHeight, the barometer against the datum of the rest) weighs in
+  // (observeHeight, the barometer against the rest's datum) weighs in
   // every registration (PointPlaneRegistrationConfig3D::height_prior_share);
   // zero leaves the map's height to the map. A fiftieth: the map's height
   // relaxes to the barometer over some fifty scans, five seconds, and takes
@@ -171,8 +171,8 @@ public:
   // follow (tilt_prior_share); its heading is not read.
   void observeAttitude(std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned);
   // An outside height of the body, up from any origin (the barometer's, as
-  // pressure over 12.013 Pa a metre): its change since the rest (or since
-  // its own first half second, for a barometer that begins after the rest)
+  // pressure over 12.013 Pa a metre): its change since the rest, the mean of
+  // the heights for as long as the pose stayed where the first found it,
   // holds the submap's height in the registrations that follow
   // (height_prior_share).
   void observeHeight(std::int64_t stamp_ns, double height_up_m);

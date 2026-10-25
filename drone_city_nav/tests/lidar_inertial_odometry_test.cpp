@@ -72,8 +72,10 @@ TEST(LidarInertialOdometryTest, TheFirstScanWaitsForARestToLevelBy) {
   EXPECT_TRUE(odometry.addScan(kSecond / 2, scanFrom(room, start, level)).healthy);
 }
 
-// The barometer's datum is the rest's: heights observed before the first scan
-// set it, and a height observed in flight is read as its change since then.
+// The barometer's datum is the rest's: the heights observed while the pose
+// stays where the first found it set it, and a height observed in flight is
+// read as its change since then. The pose stays here, so the datum is still
+// open and the later heights also enter it, at ten against fifty.
 TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometryConfig config;
@@ -104,9 +106,9 @@ TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
   EXPECT_GT(second.position_ned_m.z(), first.position_ned_m.z() - 0.3);
 }
 
-// A barometer that begins after the first scan (a record begun in flight)
-// takes its datum from the first half second of its own heights and the pose
-// then, and anchors from there.
+// A barometer that begins after the first scan (a record begun with the bag)
+// takes its datum from its own heights and the pose then, from half a second
+// of them on, and anchors from there.
 TEST(LidarInertialOdometryTest, TheHeightDatumSettlesWhenTheBarometerBeginsLate) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometryConfig config;
