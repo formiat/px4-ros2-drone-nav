@@ -180,12 +180,13 @@ brightnessByMetreText(const std::array<double, LitRangeTracker::kMetres>& bright
   std::snprintf(
       text.data(), text.size(),
       "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f pixels=%zu "
-      "share=%.4f fix=%d bearings=%zu baseline_m=%.1f fix_m=(%.1f,%.1f,%.1f)",
+      "share=%.4f fix=%d bearings=%zu baseline_m=%.1f residual_deg=%.1f "
+      "fix_m=(%.1f,%.1f,%.1f)",
       rays, range_m,
       std::atan2(-reading.direction.y, reading.direction.x) * 180.0 / std::numbers::pi,
       std::asin(std::clamp(reading.direction.z, -1.0, 1.0)) * 180.0 / std::numbers::pi,
       reading.hot_pixels, reading.hot_share, point.has_value() ? 1 : 0, fix.bearings(),
-      fix.baselineM(), at.x, at.y, at.z);
+      fix.baselineM(), fix.residualRad() * 180.0 / std::numbers::pi, at.x, at.y, at.z);
   return std::string{text.data()};
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace drone_city_nav {
@@ -175,14 +176,14 @@ double HeatSourceFix::baselineM() const noexcept {
   return 2.0 * widest;
 }
 
-std::optional<Point3> HeatSourceFix::point() const {
-  if (rays_.size() < 2U || baselineM() < config_.least_baseline_m) {
-    return std::nullopt;
-  }
-  // The point nearest the rays: the sum over them of (I - d d^T)(p - o) = 0.
+namespace {
+
+// The point nearest the rays: the sum over them of (I - d d^T)(p - o) = 0.
+template<typename Rays>
+[[nodiscard]] std::optional<Point3> nearestPoint(const Rays& rays) {
   Matrix3 normal{};
   Point3 right{0.0, 0.0, 0.0};
-  for (const Ray& ray : rays_) {
+  for (const auto& ray : rays) {
     const std::array<double, 3> d{ray.direction.x, ray.direction.y, ray.direction.z};
     const std::array<double, 3> o{ray.origin.x, ray.origin.y, ray.origin.z};
     const double along = d[0] * o[0] + d[1] * o[1] + d[2] * o[2];
@@ -200,19 +201,42 @@ std::optional<Point3> HeatSourceFix::point() const {
       !std::isfinite(p->z)) {
     return std::nullopt;
   }
+  return p;
+}
+
+// The rays' mean angle off the point; infinite where the point lies behind one.
+template<typename Rays>
+[[nodiscard]] double residualOf(const Rays& rays, const Point3& p) {
   double residual_square{0.0};
-  for (const Ray& ray : rays_) {
-    const Point3 offset = minus(*p, ray.origin);
+  for (const auto& ray : rays) {
+    const Point3 offset = minus(p, ray.origin);
     const double along = dot(offset, ray.direction);
-    // Behind a bearing's origin the point is no fix of it.
     if (along <= 0.0) {
-      return std::nullopt;
+      return std::numeric_limits<double>::infinity();
     }
     const Point3 miss = minus(offset, scaled(ray.direction, along));
     residual_square += dot(miss, miss) / (along * along);
   }
-  if (std::sqrt(residual_square / static_cast<double>(rays_.size())) >
-      config_.most_residual_rad) {
+  return std::sqrt(residual_square / static_cast<double>(rays.size()));
+}
+
+} // namespace
+
+double HeatSourceFix::residualRad() const {
+  if (rays_.size() < 2U || baselineM() < config_.least_baseline_m) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const std::optional<Point3> p = nearestPoint(rays_);
+  return p.has_value() ? residualOf(rays_, *p)
+                       : std::numeric_limits<double>::quiet_NaN();
+}
+
+std::optional<Point3> HeatSourceFix::point() const {
+  if (rays_.size() < 2U || baselineM() < config_.least_baseline_m) {
+    return std::nullopt;
+  }
+  const std::optional<Point3> p = nearestPoint(rays_);
+  if (!p.has_value() || !(residualOf(rays_, *p) <= config_.most_residual_rad)) {
     return std::nullopt;
   }
   return p;
@@ -225,22 +249,20 @@ std::vector<Point3> heatStandoffCap(const ThermalReading& reading, const double 
     return cap;
   }
   const Point3 centre = scaled(reading.direction, range_m);
-  // A Fibonacci lattice over the sphere, one point a `spacing_m` square.
-  const auto count = static_cast<std::size_t>(std::ceil(
-      4.0 * std::numbers::pi * standoff_m * standoff_m / (spacing_m * spacing_m)));
-  const double golden = std::numbers::pi * (3.0 - std::sqrt(5.0));
-  for (std::size_t index = 0U; index < count; ++index) {
-    const double z =
-        1.0 - 2.0 * (static_cast<double>(index) + 0.5) / static_cast<double>(count);
-    const double radius = std::sqrt(std::max(0.0, 1.0 - z * z));
-    const double angle = golden * static_cast<double>(index);
-    const Point3 normal{radius * std::cos(angle), radius * std::sin(angle), z};
-    if (range_m >= standoff_m && dot(normal, reading.direction) >= 0.0) {
-      continue;
+  const bool whole = range_m < standoff_m;
+  const auto steps = static_cast<int>(std::ceil(standoff_m / spacing_m));
+  for (int i = -steps; i <= steps; ++i) {
+    for (int j = -steps; j <= steps; ++j) {
+      for (int k = -steps; k <= steps; ++k) {
+        const Point3 offset{i * spacing_m, j * spacing_m, k * spacing_m};
+        if (dot(offset, offset) > standoff_m * standoff_m ||
+            (!whole && dot(offset, reading.direction) > 0.0)) {
+          continue;
+        }
+        cap.push_back(
+            Point3{centre.x + offset.x, centre.y + offset.y, centre.z + offset.z});
+      }
     }
-    cap.push_back(Point3{centre.x + standoff_m * normal.x,
-                         centre.y + standoff_m * normal.y,
-                         centre.z + standoff_m * normal.z});
   }
   return cap;
 }

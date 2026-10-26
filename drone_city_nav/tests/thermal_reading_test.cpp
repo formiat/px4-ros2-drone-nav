@@ -90,22 +90,22 @@ TEST(ThermalReadingTest, TheCapIsWholeAndTheBallDropsTheReturnsThroughIt) {
   ThermalReading reading;
   reading.hot_pixels = 20U;
   reading.direction = Point3{0.8, 0.6, 0.0};
-  const std::vector<Point3> cap = heatStandoffCap(reading, 5.2, 4.0, 0.25);
-  ASSERT_GT(cap.size(), 1000U);
+  const std::vector<Point3> cap = heatStandoffCap(reading, 5.2, 4.0, 0.5);
+  ASSERT_GT(cap.size(), 900U);
   const Point3 centre{5.2 * 0.8, 5.2 * 0.6, 0.0};
   double nearest{1e9};
   for (const Point3& point : cap) {
     const Point3 offset{point.x - centre.x, point.y - centre.y, point.z - centre.z};
-    EXPECT_NEAR(norm(offset), 4.0, 1e-9);
-    EXPECT_LT(offset.x * reading.direction.x + offset.y * reading.direction.y, 0.0);
+    EXPECT_LE(norm(offset), 4.0 + 1e-9);
+    EXPECT_LE(offset.x * reading.direction.x + offset.y * reading.direction.y, 0.0);
     nearest = std::min(nearest, norm(point));
   }
-  // The apex, 1.2 m before the vehicle, is laid: no hole (r2237).
-  EXPECT_LT(nearest, 1.3);
+  // The half is filled to its apex, 1.2 m before the vehicle: no hole (r2237, r2239).
+  EXPECT_LT(nearest, 1.6);
   // Inside the ball (the range under the standoff) the whole ball is laid.
-  const std::vector<Point3> ball = heatStandoffCap(reading, 3.0, 4.0, 0.25);
-  EXPECT_GT(ball.size(), 1.9 * static_cast<double>(cap.size()));
-  EXPECT_TRUE(heatStandoffCap(reading, 5.2, 0.0, 0.25).empty());
+  const std::vector<Point3> ball = heatStandoffCap(reading, 3.0, 4.0, 0.5);
+  EXPECT_GT(ball.size(), 1.8 * static_cast<double>(cap.size()));
+  EXPECT_TRUE(heatStandoffCap(reading, 5.2, 0.0, 0.5).empty());
   // The returns: inside the ball, or beyond it along a ray through it, dropped;
   // beside it and before it kept.
   EXPECT_TRUE(crossesHeatStandoff(centre, reading, 5.2, 4.0));
@@ -143,6 +143,7 @@ TEST(ThermalReadingTest, TheSourceIsFixedFromBearingsOverTheMotion) {
   EXPECT_NEAR(fix.baselineM(), 2.0 * 1.0 * std::sin(std::atan2(8.0, 9.0)), 0.15);
   const std::optional<Point3> point = fix.point();
   ASSERT_TRUE(point.has_value());
+  EXPECT_LT(fix.residualRad(), 0.01);
   const Point3 fixed = point.value_or(Point3{});
   EXPECT_NEAR(fixed.x, source.x, 0.1);
   EXPECT_NEAR(fixed.y, source.y, 0.1);
@@ -158,6 +159,7 @@ TEST(ThermalReadingTest, TheSourceIsFixedFromBearingsOverTheMotion) {
   }
   EXPECT_GE(fan.baselineM(), 1.0);
   EXPECT_FALSE(fan.point().has_value());
+  EXPECT_GT(fan.residualRad(), 0.09);
   // Bearings that agree on nothing give no fix; the window drops the old ones.
   HeatSourceFix scatter;
   scatter.observe({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 0.0);

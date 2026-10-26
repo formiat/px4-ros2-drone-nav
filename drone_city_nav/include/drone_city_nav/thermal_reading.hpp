@@ -76,7 +76,9 @@ readThermalFrame(std::span<const std::uint16_t> kelvin_hundredths, std::size_t w
 struct HeatSourceFixConfig {
   double window_s{10.0};
   double least_baseline_m{1.0};
-  double most_residual_rad{0.05};
+  // Five degrees: the core's frame against the pose of a turning vehicle (a
+  // tenth of a second at 30 degrees a second is 3) and the estimate's yaw.
+  double most_residual_rad{0.09};
 };
 
 class HeatSourceFix {
@@ -95,6 +97,8 @@ public:
   }
 
   [[nodiscard]] double baselineM() const noexcept;
+  // The bearings' mean angle off the point nearest them (NaN without one).
+  [[nodiscard]] double residualRad() const;
 
 private:
   struct Ray {
@@ -108,14 +112,15 @@ private:
 };
 
 // The heat mark (K49): the near half of the standoff ball round the range
-// point, as the memory's observed-unobservable rays at `spacing_m`, whole
-// (a cap cut at 1.5 m before the vehicle had a hole at its apex, and the
-// vehicle flew through it, r2237; the memory's own filter of 0.9 m is the
-// one cut). From every stand the half facing the vehicle keeps its straight
-// approaches out; the halves laid from the stands round a source make its
-// ball. With the vehicle inside the ball (the range under the standoff) the
-// whole ball is laid: the planner's escape search leads out of it by the
-// nearest way, which is away from the centre.
+// point, filled on a lattice of `spacing_m`, as the memory's
+// observed-unobservable rays. A shell had a hole wherever the vehicle stood
+// at it: cut at 1.5 m (r2237) or by the memory's own filter of 0.9 m
+// (r2239), and the vehicle flew through; a filled half is solid behind
+// whatever the filter takes. From every stand the half facing the vehicle
+// keeps its straight approaches out; the halves laid from the stands round a
+// source make its ball. With the vehicle inside the ball (the range under
+// the standoff) the whole ball is laid: the planner's escape search leads out
+// of it by the nearest way, which is away from the centre.
 [[nodiscard]] std::vector<Point3> heatStandoffCap(const ThermalReading& reading,
                                                   double range_m, double standoff_m,
                                                   double spacing_m);

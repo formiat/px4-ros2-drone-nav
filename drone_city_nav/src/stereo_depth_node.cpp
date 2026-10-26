@@ -748,7 +748,7 @@ private:
     if (heat.has_value() &&
         (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
       const std::vector<Point3> cap =
-          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kStepM);
+          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kHeatMarkSpacingM);
       heat_emitted_s_ = stamp_s;
       unobservable.insert(unobservable.end(), cap.begin(), cap.end());
       heat_marks_total_ += cap.size();
@@ -926,6 +926,9 @@ private:
   static constexpr double kHeatStandoffM{4.0};
   // The hot cone widened by a pair cell at the stride (4 px of 369).
   static constexpr double kHeatConeMarginRad{0.02};
+  // The mark's lattice: solid once the planner inflates the grid's 0.25 m voxels
+  // by the body's 0.55 m.
+  static constexpr double kHeatMarkSpacingM{0.5};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
   std::mutex thermal_mutex_;
