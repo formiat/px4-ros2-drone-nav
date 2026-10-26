@@ -1519,8 +1519,10 @@ if(BUILD_TESTING)
                         ${OpenCV_LIBS})
   enable_project_warnings(stereo_rectifier_test)
 
+  # The synthetic flights take 4.7 s on the development host and over the
+  # default 60 s under arm64 emulation (roadmap item 27 block 2 step 3).
   ament_add_gtest(visual_inertial_odometry_test
-                  tests/visual_inertial_odometry_test.cpp)
+                  tests/visual_inertial_odometry_test.cpp TIMEOUT 600)
   target_compile_features(visual_inertial_odometry_test PRIVATE cxx_std_20)
   target_link_libraries(visual_inertial_odometry_test drone_city_nav_localization)
   enable_project_warnings(visual_inertial_odometry_test)

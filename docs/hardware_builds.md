@@ -64,7 +64,8 @@ written, though its speed held at 2048. The numbers are encouraging for the
 bench board B on the stereo set, the base product, and not yet for the
 lidar set. The onboard build exists since 2026-10-25 (roadmap item 27
 block 2: amd64 on CUDA 13 without Gazebo, the package and its 154 unit
-tests; arm64 under emulation, see roadmap item 27 block 2 step 3).
+tests; arm64 under emulation, the package and 140 of 142 unit tests, the
+two left assuming the development host's speed, no x86 dependency found).
 
 ### The Compute Gap, Measured (2026-10-24)
 

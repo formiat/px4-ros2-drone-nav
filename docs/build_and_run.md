@@ -35,6 +35,23 @@ ROS_SETUP_FILE=/path/to/ros/setup.bash
 PX4_MSGS_SETUP_FILE=/path/to/px4_msgs/setup.bash
 ```
 
+## The Onboard Build (Roadmap Item 27 Block 2)
+
+What a flight computer carries is built without the simulator:
+`drone_city_nav/CMakeLists.txt` puts everything that needs Gazebo or SDFormat
+(the contact system, the truth adapter, the smoke relay, the Gazebo stereo
+process, the heading source, the crash node, the SDF voxelizer) behind
+`DRONE_CITY_NAV_ENABLE_SIMULATION` (ON in the development image), and the
+Dockerfile's `onboard` stage carries ROS 2 base, the messages, Eigen, OpenCV,
+zstd, `px4_msgs` and CUDA 13 (on amd64; a Jetson brings CUDA with JetPack)
+and no Gazebo. `tools/onboard_image.sh` builds the stage as
+`drone-gazebo-onboard:amd64`, then the package in it from the mounted
+workspace with the option off (into `build-onboard-amd64/`) and runs the
+unit tests, the CUDA ones on the host's GPU; `--arm64` builds the arm64
+stage under emulation (`qemu-user-static`, `binfmt-support`) without CUDA
+and tests it there, slowly. The development image is the Dockerfile's `dev`
+stage (`scripts/build_dev_image.sh`). Measured on 2026-10-25: amd64: the image 2.35 GB with 0 Gazebo packages and CUDA 13.0; the package with the option off built in 6 min and its 154 unit tests passed (the seven CUDA ones on the host's GPU). arm64 under emulation: the stage 1.75 GB (77 min to build, px4_msgs's generation the long part), the package in 1 h 2 min on 16 threads, its warnings a subset of the amd64 build's, 140 of 142 unit tests passed (139 at first; the estimator test's ctest timeout raised from 60 to 600 s, its 4.7 s running past a minute at the emulation's speed); the two left, the D* Lite repair's share of a 20 ms budget and the initial search's certification within its budget, assume the development host's speed and are not x86 dependencies, of which none was found.
+
 ## Commands Inside The Dev Shell
 
 Inside `./scripts/dev_shell.sh`, use:

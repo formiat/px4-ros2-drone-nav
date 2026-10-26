@@ -912,17 +912,23 @@ Ubuntu 24.04 with CUDA 13, the image's distribution
 
 What is missing, in order:
 
-1. An onboard build without Gazebo. The package requires `gz-sim8`,
-   `gz-transport13`, `gz-msgs10`, `gz-common5` and `sdformat14`; the targets
-   that use them are the simulation's and the tools' (the contact system,
-   the truth adapter, the Gazebo stereo node, the heading source, the SDF
-   voxelizer) and go behind an option; the onboard nodes take plain ROS
-   messages (the stereo node's plain variant takes `sensor_msgs/Image`).
+1. An onboard build without Gazebo. **Built on 2026-10-25** (the root goal
+   of 2026-10-24, part 3): `DRONE_CITY_NAV_ENABLE_SIMULATION` guards
+   `gz-sim8`, `gz-transport13`, `gz-msgs10`, `gz-common5`, `sdformat14` and
+   `ros_gz_interfaces` and the targets that use them (the contact system,
+   the truth adapter, the smoke relay, the Gazebo stereo process, the
+   heading source, the crash node, the SDF voxelizer); the Dockerfile's
+   `onboard` stage carries no Gazebo, and `tools/onboard_image.sh` builds
+   the package in it with the option off and runs the unit tests
+   ([build_and_run.md](build_and_run.md)): amd64: the image 2.35 GB with 0 Gazebo packages and CUDA 13.0; the package with the option off built in 6 min and its 154 unit tests passed (the seven CUDA ones on the host's GPU).
 2. The Orin's CUDA architecture, 87, in `DRONE_CITY_NAV_CUDA_ARCHITECTURES`
-   (`75;86` today), and a build against CUDA 13 (the image carries 12.6).
-3. An arm64 image (the Dockerfile's CUDA repository is the x86_64 one; on a
-   Jetson CUDA comes with JetPack) and the unit tests run on arm64, on an
-   arm64 machine or under emulation.
+   and a build against CUDA 13. **Built on 2026-10-25:** `75;86;87`; the
+   onboard stage installs CUDA 13.0 (`cuda-compiler-13-0`,
+   `cuda-cudart-dev-13-0`) and the MPPI's tests pass on the host's GPU from
+   it; the development image stays on 12.6.
+3. An arm64 image and the unit tests run on arm64 under emulation. **Built
+   on 2026-10-25:** `tools/onboard_image.sh --arm64` (qemu-user-static,
+   docker buildx, CUDA off): arm64 under emulation: the stage 1.75 GB (77 min to build, px4_msgs's generation the long part), the package in 1 h 2 min on 16 threads, its warnings a subset of the amd64 build's, 140 of 142 unit tests passed (139 at first; the estimator test's ctest timeout raised from 60 to 600 s, its 4.7 s running past a minute at the emulation's speed); the two left, the D* Lite repair's share of a 20 ms budget and the initial search's certification within its budget, assume the development host's speed and are not x86 dependencies, of which none was found.
 4. The stack on recorded data on an arm64 board, the Orin Nano Super
    developer kit ($399, the registry's bench): the cores, the tick and the
    rollouts the GPU carries, measured; the first number the registry and
