@@ -5,6 +5,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -49,28 +51,78 @@ readThermalFrame(std::span<const std::uint16_t> kelvin_hundredths, std::size_t w
 
 // The range to the source: the median range of the hits (the ring's or the
 // pair's, whichever has them) within the hot region's cone, widened by
-// `cone_margin_rad`; without one, `conservative_range_m` (K7's 5.2 m: the rig
-// read no range through 1/m and none beyond 3.7 m through 0.1/m).
+// `cone_margin_rad`, and never over `ceiling_range_m` (the source's fix over
+// the vehicle's motion when there is one, else K7's 5.2 m: the rig read no
+// range through 1/m and none beyond 3.7 m through 0.1/m); without hits, the
+// ceiling. A hit in the cone is the plume's face or its body, nearer than
+// the source, or the smoke's texture matched at a chance disparity, far
+// beyond it (r2237: 4.7 m read while the source stood at 2.3): the nearer
+// of the two readings is the one to keep.
 [[nodiscard]] double heatSourceRangeM(const ThermalReading& reading,
                                       std::span<const StereoDepthReturn> returns,
-                                      double cone_margin_rad,
-                                      double conservative_range_m);
+                                      double cone_margin_rad, double ceiling_range_m);
+
+// The source fixed in the world from its bearings over the vehicle's motion
+// (a bearing-only fix): a range point laid at a guessed range ahead moves with
+// the vehicle, and a bound before a moving point stops nothing (r2236: the
+// vehicle crept to 1.5 m of the source at the conservative range). The fix
+// is the point nearest the bearing rays of the last `window_s`, taken once
+// the rays' origins spread `least_baseline_m` across the mean bearing, and
+// kept while the rays pass within `most_residual_m` of it on average.
+struct HeatSourceFixConfig {
+  double window_s{10.0};
+  double least_baseline_m{1.0};
+  double most_residual_m{1.0};
+};
+
+class HeatSourceFix {
+public:
+  explicit HeatSourceFix(const HeatSourceFixConfig& config = {})
+      : config_{config} {
+  }
+
+  // A bearing from `origin` along the unit `direction`, both in the world frame.
+  void observe(const Point3& origin, const Point3& direction, double stamp_s);
+  // The fix, when the bearings so far give one.
+  [[nodiscard]] std::optional<Point3> point() const;
+
+  [[nodiscard]] std::size_t bearings() const noexcept {
+    return rays_.size();
+  }
+
+  [[nodiscard]] double baselineM() const noexcept;
+
+private:
+  struct Ray {
+    Point3 origin;
+    Point3 direction;
+    double stamp_s;
+  };
+
+  HeatSourceFixConfig config_;
+  std::deque<Ray> rays_;
+};
 
 // The heat mark (K49): the near half of the standoff ball round the range
-// point, as the memory's observed-unobservable rays at `spacing_m`, nothing
-// nearer than `nearest_m` (K44's: a mark pushed to the vehicle boxed it in,
-// r1837). From every stand the half facing the vehicle keeps its straight
+// point, as the memory's observed-unobservable rays at `spacing_m`, whole
+// (a cap cut at 1.5 m before the vehicle had a hole at its apex, and the
+// vehicle flew through it, r2237; the memory's own filter of 0.9 m is the
+// one cut). From every stand the half facing the vehicle keeps its straight
 // approaches out; the halves laid from the stands round a source make its
-// ball.
+// ball. With the vehicle inside the ball (the range under the standoff) the
+// whole ball is laid: the planner's escape search leads out of it by the
+// nearest way, which is away from the centre.
 [[nodiscard]] std::vector<Point3> heatStandoffCap(const ThermalReading& reading,
                                                   double range_m, double standoff_m,
-                                                  double spacing_m, double nearest_m);
+                                                  double spacing_m);
 
-// Whether a point lies inside the standoff ball round the range point: the
-// pair's returns there are the plume's own texture and are dropped, as K44
-// drops a face's (a match published inside carved the marks, r1847).
-[[nodiscard]] bool withinHeatStandoff(const Point3& point,
-                                      const ThermalReading& reading, double range_m,
-                                      double standoff_m) noexcept;
+// Whether a return's ray from the sensor crosses the standoff ball round the
+// range point before its end, or ends inside it: such returns are the plume's
+// own texture, or the surfaces beyond it, and are dropped, as K44 drops a
+// face's chance matches (a match published through the marks carved them,
+// r1847; the memory scores misses against the marks).
+[[nodiscard]] bool crossesHeatStandoff(const Point3& point,
+                                       const ThermalReading& reading, double range_m,
+                                       double standoff_m) noexcept;
 
 } // namespace drone_city_nav

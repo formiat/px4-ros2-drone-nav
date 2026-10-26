@@ -78,40 +78,89 @@ TEST(ThermalReadingTest, TheRangeIsTheHitsInTheConeOrTheConservativeOne) {
   returns.push_back({.point = {2.0, 1.5, 0.0}, .hit = true});  // outside the cone
   returns.push_back({.point = {3.0, 0.0, 0.0}, .hit = false}); // a free ray
   returns.push_back({.point = {2.5, 0.0, 0.0}, .hit = true, .unobservable = true});
-  EXPECT_DOUBLE_EQ(heatSourceRangeM(reading, returns, 0.02, 5.2),
+  EXPECT_DOUBLE_EQ(heatSourceRangeM(reading, returns, 0.02, 12.0),
                    std::sqrt(36.0 + 0.01));
+  // The hits beyond the ceiling are the smoke's chance matches (r2237).
+  EXPECT_DOUBLE_EQ(heatSourceRangeM(reading, returns, 0.02, 5.2), 5.2);
   EXPECT_DOUBLE_EQ(
       heatSourceRangeM(reading, std::vector<StereoDepthReturn>{}, 0.02, 5.2), 5.2);
 }
 
-TEST(ThermalReadingTest, TheCapFacesTheVehicleAtTheStandoffAndKeepsOffIt) {
+TEST(ThermalReadingTest, TheCapIsWholeAndTheBallDropsTheReturnsThroughIt) {
   ThermalReading reading;
   reading.hot_pixels = 20U;
   reading.direction = Point3{0.8, 0.6, 0.0};
-  const std::vector<Point3> cap = heatStandoffCap(reading, 5.2, 4.0, 0.25, 1.5);
+  const std::vector<Point3> cap = heatStandoffCap(reading, 5.2, 4.0, 0.25);
   ASSERT_GT(cap.size(), 1000U);
   const Point3 centre{5.2 * 0.8, 5.2 * 0.6, 0.0};
+  double nearest{1e9};
   for (const Point3& point : cap) {
     const Point3 offset{point.x - centre.x, point.y - centre.y, point.z - centre.z};
     EXPECT_NEAR(norm(offset), 4.0, 1e-9);
     EXPECT_LT(offset.x * reading.direction.x + offset.y * reading.direction.y, 0.0);
-    EXPECT_GE(norm(point), 1.5);
-    EXPECT_TRUE(
-        withinHeatStandoff(Point3{0.99 * point.x, 0.99 * point.y, 0.99 * point.z},
-                           reading, 5.2, 4.0) ||
-        norm(Point3{0.99 * point.x - centre.x, 0.99 * point.y - centre.y,
-                    0.99 * point.z - centre.z}) >= 4.0);
+    nearest = std::min(nearest, norm(point));
   }
-  EXPECT_TRUE(withinHeatStandoff(centre, reading, 5.2, 4.0));
-  EXPECT_FALSE(withinHeatStandoff(Point3{0.0, 0.0, 0.0}, reading, 5.2, 4.0));
-  // Inside the ball (the range under the standoff) the half behind the vehicle is
-  // dropped.
-  const std::vector<Point3> near = heatStandoffCap(reading, 3.0, 4.0, 0.25, 1.5);
-  for (const Point3& point : near) {
-    EXPECT_GE(norm(point), 1.5);
+  // The apex, 1.2 m before the vehicle, is laid: no hole (r2237).
+  EXPECT_LT(nearest, 1.3);
+  // Inside the ball (the range under the standoff) the whole ball is laid.
+  const std::vector<Point3> ball = heatStandoffCap(reading, 3.0, 4.0, 0.25);
+  EXPECT_GT(ball.size(), 1.9 * static_cast<double>(cap.size()));
+  EXPECT_TRUE(heatStandoffCap(reading, 5.2, 0.0, 0.25).empty());
+  // The returns: inside the ball, or beyond it along a ray through it, dropped;
+  // beside it and before it kept.
+  EXPECT_TRUE(crossesHeatStandoff(centre, reading, 5.2, 4.0));
+  EXPECT_TRUE(
+      crossesHeatStandoff(Point3{3.0 * 0.8, 3.0 * 0.6, 0.0}, reading, 5.2, 4.0));
+  EXPECT_TRUE(
+      crossesHeatStandoff(Point3{20.0 * 0.8, 20.0 * 0.6, 0.0}, reading, 5.2, 4.0));
+  EXPECT_TRUE(
+      crossesHeatStandoff(Point3{12.0 * 0.8, 12.0 * 0.6, 3.0}, reading, 5.2, 4.0));
+  EXPECT_FALSE(
+      crossesHeatStandoff(Point3{1.0 * 0.8, 1.0 * 0.6, 0.0}, reading, 5.2, 4.0));
+  EXPECT_FALSE(crossesHeatStandoff(Point3{0.0, 0.0, 0.0}, reading, 5.2, 4.0));
+  EXPECT_FALSE(crossesHeatStandoff(Point3{-6.0, 0.0, 0.0}, reading, 5.2, 4.0));
+  EXPECT_FALSE(crossesHeatStandoff(Point3{0.0, 0.0, 10.0}, reading, 5.2, 4.0));
+  EXPECT_FALSE(
+      crossesHeatStandoff(Point3{6.0 * 0.6, -6.0 * 0.8, 0.0}, reading, 5.2, 4.0));
+}
+
+TEST(ThermalReadingTest, TheSourceIsFixedFromBearingsOverTheMotion) {
+  // The vehicle flies along y past a source at (12, 22, 11), looking at it
+  // from 8 m aside: a baseline of 2 m over 2 s fixes it within a decimetre.
+  const Point3 source{12.0, 22.0, 11.0};
+  HeatSourceFix fix;
+  EXPECT_FALSE(fix.point().has_value());
+  for (int step = 0; step <= 20; ++step) {
+    const Point3 origin{4.0, 12.0 + 0.1 * step, 9.0};
+    const Point3 offset{source.x - origin.x, source.y - origin.y, source.z - origin.z};
+    const double length = norm(offset);
+    fix.observe(origin, Point3{offset.x / length, offset.y / length, offset.z / length},
+                0.1 * step);
+    if (step < 10) {
+      EXPECT_FALSE(fix.point().has_value()) << step; // under a metre of baseline
+    }
   }
-  EXPECT_LT(near.size(), cap.size());
-  EXPECT_TRUE(heatStandoffCap(reading, 5.2, 0.0, 0.25, 1.5).empty());
+  EXPECT_NEAR(fix.baselineM(), 2.0 * 1.0 * std::sin(std::atan2(8.0, 9.0)), 0.15);
+  const std::optional<Point3> point = fix.point();
+  ASSERT_TRUE(point.has_value());
+  const Point3 fixed = point.value_or(Point3{});
+  EXPECT_NEAR(fixed.x, source.x, 0.1);
+  EXPECT_NEAR(fixed.y, source.y, 0.1);
+  EXPECT_NEAR(fixed.z, source.z, 0.1);
+  // Bearings that agree on nothing give no fix; the window drops the old ones.
+  HeatSourceFix scatter;
+  scatter.observe({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 0.0);
+  scatter.observe({0.0, 3.0, 0.0}, {1.0, 0.0, 0.0}, 0.5);
+  scatter.observe({0.0, -3.0, 0.0}, {0.0, 0.0, 1.0}, 1.0);
+  EXPECT_FALSE(scatter.point().has_value());
+  scatter.observe({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 20.0);
+  EXPECT_EQ(scatter.bearings(), 1U);
+  // Along the bearing the origins spread no baseline.
+  HeatSourceFix along;
+  along.observe({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 0.0);
+  along.observe({3.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 1.0);
+  EXPECT_DOUBLE_EQ(along.baselineM(), 0.0);
+  EXPECT_FALSE(along.point().has_value());
 }
 
 } // namespace

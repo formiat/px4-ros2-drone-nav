@@ -7,7 +7,8 @@
 # (series2.sh) and log/tools/fly_until_valid.txt. Not run since 2026-10-24: no smoke flight is flown (the owner's rule,
 # specification F4); kept as the record of roadmap item 18's acceptance (r2049 to r2065). Roadmap item 32's groups
 # (2026-10-26, the one exception, flown for its acceptance alone): hot_plume | hot_room | cold_room (the moderate rooms
-# as they are, the control) on the stereo set at the real-time factor 1.0 on the flight's core set, and hot_plume_lidar
+# as they are, the control) on the stereo set at the real-time factor 0.8 (K25: at 1.0 the smoke relay's frames stall the
+# simulator for seconds at a time, r2236 a fifth of its seconds under 0.5), and hot_plume_lidar
 # | hot_room_lidar on the lidar; their lines land in log/tools/part4/series_<group>.txt.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -19,9 +20,9 @@ case "$group" in
   ordinary) envs=(REAL_TIME_FACTOR=0.8 SMOKE_DURATION_S=900); lidar=() ;;
   clear) envs=(TARGET=sim-urban-clear-headless SMOKE_DURATION_S=900); lidar=() ;;
   lidar) envs=(SMOKE_DURATION_S=900); lidar=(--lidar) ;;
-  hot_plume) envs=(TARGET=sim-urban-hot-smoke-plume-headless SMOKE_DURATION_S=900); lidar=() ;;
-  hot_room) envs=(TARGET=sim-urban-hot-smoke-room-headless SMOKE_DURATION_S=900); lidar=() ;;
-  cold_room) envs=(TARGET=sim-urban-smoke-rooms-headless SMOKE_DURATION_S=900); lidar=() ;;
+  hot_plume) envs=(TARGET=sim-urban-hot-smoke-plume-headless REAL_TIME_FACTOR=0.8 SMOKE_DURATION_S=900); lidar=() ;;
+  hot_room) envs=(TARGET=sim-urban-hot-smoke-room-headless REAL_TIME_FACTOR=0.8 SMOKE_DURATION_S=900); lidar=() ;;
+  cold_room) envs=(TARGET=sim-urban-smoke-rooms-headless REAL_TIME_FACTOR=0.8 SMOKE_DURATION_S=900); lidar=() ;;
   hot_plume_lidar) envs=(TARGET=sim-urban-hot-smoke-plume-headless SMOKE_DURATION_S=900); lidar=(--lidar) ;;
   hot_room_lidar) envs=(TARGET=sim-urban-hot-smoke-room-headless SMOKE_DURATION_S=900); lidar=(--lidar) ;;
   *) echo "unknown group $group"; exit 2 ;;

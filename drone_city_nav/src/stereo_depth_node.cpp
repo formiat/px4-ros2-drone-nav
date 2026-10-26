@@ -19,6 +19,7 @@
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/string.hpp>
 
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -234,6 +235,9 @@ public:
           along_last_ = std::pair{t.x, t.y};
           heading_rad_.store(yaw);
           height_m_.store(t.z);
+          const std::lock_guard<std::mutex> lock{pose_mutex_};
+          body_position_ = Eigen::Vector3d{t.x, t.y, t.z};
+          body_orientation_ = Eigen::Quaterniond{q.w, q.x, q.y, q.z};
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -613,8 +617,24 @@ private:
     const std::optional<ThermalReading> heat = heatReading(pair_stamp_s);
     double heat_range_m = std::numeric_limits<double>::quiet_NaN();
     if (heat.has_value()) {
-      heat_range_m = heatSourceRangeM(*heat, returns, kHeatConeMarginRad,
-                                      silent_patch_config_.confident_depth_m);
+      // The source's fix in the world from its bearings over the motion (K49),
+      // the range's ceiling (the conservative one without a fix).
+      Eigen::Vector3d origin;
+      Eigen::Vector3d bearing;
+      {
+        const std::lock_guard<std::mutex> lock{pose_mutex_};
+        origin = body_position_;
+        bearing =
+            body_orientation_ *
+            Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
+      }
+      heat_fix_.observe({origin.x(), origin.y(), origin.z()},
+                        {bearing.x(), bearing.y(), bearing.z()}, pair_stamp_s);
+      const std::optional<Point3> fix = heat_fix_.point();
+      heat_range_m = heatSourceRangeM(
+          *heat, returns, kHeatConeMarginRad,
+          fix.has_value() ? (Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()
+                          : silent_patch_config_.confident_depth_m);
       const double boundary_m = std::max(0.0, heat_range_m - kHeatStandoffM);
       silent_range_m = std::isfinite(silent_range_m)
                            ? std::min(silent_range_m, boundary_m)
@@ -728,27 +748,29 @@ private:
     if (heat.has_value() &&
         (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
       const std::vector<Point3> cap =
-          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kStepM, kNearestM);
+          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kStepM);
       heat_emitted_s_ = stamp_s;
       unobservable.insert(unobservable.end(), cap.begin(), cap.end());
       heat_marks_total_ += cap.size();
-      RCLCPP_WARN(get_logger(),
-                  "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f "
-                  "pixels=%zu share=%.4f",
-                  cap.size(), heat_range_m,
-                  std::atan2(-heat->direction.y, heat->direction.x) * 180.0 /
-                      std::numbers::pi,
-                  std::asin(std::clamp(heat->direction.z, -1.0, 1.0)) * 180.0 /
-                      std::numbers::pi,
-                  heat->hot_pixels, heat->hot_share);
+      RCLCPP_WARN(
+          get_logger(),
+          "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f "
+          "pixels=%zu share=%.4f fix=%d bearings=%zu baseline_m=%.1f",
+          cap.size(), heat_range_m,
+          std::atan2(-heat->direction.y, heat->direction.x) * 180.0 / std::numbers::pi,
+          std::asin(std::clamp(heat->direction.z, -1.0, 1.0)) * 180.0 /
+              std::numbers::pi,
+          heat->hot_pixels, heat->hot_share, heat_fix_.point().has_value() ? 1 : 0,
+          heat_fix_.bearings(), heat_fix_.baselineM());
     }
     if (heat.has_value()) {
-      // The returns inside the standoff are the plume's own texture (K49), dropped
-      // here, after the frame's counts, which index the pair's returns at the front
-      // (r2235: dropped before them, the counts ran past the end and the process died).
+      // The returns through the standoff ball are the plume's own texture and
+      // the surfaces beyond it (K49), dropped here, after the frame's counts,
+      // which index the pair's returns at the front (r2235: dropped before them,
+      // the counts ran past the end and the process died).
       std::erase_if(returns, [&](const StereoDepthReturn& ray) {
-        return ray.hit &&
-               withinHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
+        return !ray.unobservable &&
+               crossesHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
       });
     }
     unobservable_total_ += unobservable.size();
@@ -919,6 +941,10 @@ private:
   double heat_emitted_s_{0.0};
   std::size_t heat_marks_total_{0U};
   bool heat_seen_{false};
+  HeatSourceFix heat_fix_{};
+  std::mutex pose_mutex_;
+  Eigen::Vector3d body_position_{Eigen::Vector3d::Zero()};
+  Eigen::Quaterniond body_orientation_{Eigen::Quaterniond::Identity()};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr heat_point_pub_;
