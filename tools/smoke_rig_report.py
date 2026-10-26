@@ -216,8 +216,64 @@ def thermal(out, names):
               f"{np.nanmedian(depths):.2f} | {np.mean(spreads):.2f} |")
 
 
+CORE_FOCAL_PX = 80.0 / np.tan(0.9948376736367679 / 2.0)
+CORE_X_M = 0.32
+
+
+def heat(out, names):
+    """The thermal core's reading of a heat source (roadmap item 32 step 2, the rule's numbers): the core's frames
+    (160 x 120, 0.01 K a level) against the frame's median, the share of pixels over it by 5, 10, 20, 30 and 40 K,
+    the hot pixels' count and centre direction at 30 K, the source's true distance from the core, and whether the
+    pair and the ring read a range there: the pair's matched depth in the pair's window round the hot centre, and
+    the ring's nearest return within 15 degrees of it."""
+    import cv2
+    print("| level | sigma 1/m | source K, r m, at m | light | frame p50 K | frame max K | share > p50 by 5 / 10 / 20 / 30 / 40 K "
+          "| hot px at 30 K | hot centre az / el deg | pair depth at the centre m (matched share) | ring m |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    for name in names:
+        data, meta = load(out, name)
+        core = 0.01 * data["thermal_core"].astype(np.float64)
+        medians = np.median(core.reshape(len(core), -1), axis=1)
+        shares = [float(np.mean([np.mean(frame > median + above) for frame, median in zip(core, medians)]))
+                  for above in (5.0, 10.0, 20.0, 30.0, 40.0)]
+        hot = np.stack([frame > median + 30.0 for frame, median in zip(core, medians)])
+        count = float(hot.reshape(len(hot), -1).sum(axis=1).mean())
+        heat_text, distance_text, az_text, pair_text, ring_text = "none", "-", "-", "-", "-"
+        if meta.get("heat"):
+            distance = float(meta["heatx"]) - CORE_X_M
+            heat_text = f"{meta['heat']:g}, {meta['heatr']:g}, {distance:.2f}"
+        if count >= 1.0:
+            rows, cols = np.nonzero(hot.any(axis=0))
+            weights = hot.sum(axis=0)[rows, cols].astype(np.float64)
+            v = float(np.average(rows, weights=weights)); u = float(np.average(cols, weights=weights))
+            az = np.degrees(np.arctan((u - 79.5) / CORE_FOCAL_PX)); el = np.degrees(np.arctan((59.5 - v) / CORE_FOCAL_PX))
+            az_text = f"{az:+.1f} / {el:+.1f}"
+            # The same direction in the pair's frame (both on the carrier's camera link): a window of 60 px.
+            pu = int(round(639.5 + FOCAL_PX * np.tan(np.radians(az)))); pv = int(round(479.5 - FOCAL_PX * np.tan(np.radians(el))))
+            window = (slice(max(pv - 30, 0), pv + 30), slice(max(pu - 30, 0), pu + 30))
+            depths, matched_shares = [], []
+            for index in range(min(len(data["left"]), len(data["right"]))):
+                left = cv2.cvtColor(data["left"][index], cv2.COLOR_RGB2GRAY)
+                right = cv2.cvtColor(data["right"][index], cv2.COLOR_RGB2GRAY)
+                matched, depth = stereo(*gained(left, right))
+                matched_shares.append(matched[window].mean())
+                region = depth[window]
+                depths.append(np.nanmedian(region) if np.isfinite(region).any() else np.nan)
+            pair_text = f"{np.nanmedian(depths):.2f} ({np.mean(matched_shares):.2f})" if np.isfinite(depths).any() else f"none ({np.mean(matched_shares):.2f})"
+            cloud = data["tof_front"][..., :3]
+            ranges = np.linalg.norm(cloud, axis=-1)
+            bearing = np.degrees(np.arctan2(cloud[..., 1], cloud[..., 0]))
+            near = np.isfinite(ranges) & (ranges < 2.8) & (np.abs(bearing + az) < 15.0)
+            ring_text = f"{np.min(ranges[near]):.2f}" if near.any() else "none"
+        print(f"| {name} | {meta['sigma']:g} | {heat_text} | {meta['light']} | {np.mean(medians):.1f} | {core.max():.1f} | "
+              + " / ".join(f"{share:.4f}" for share in shares) + f" | {count:.0f} | {az_text} | {pair_text} | {ring_text} |")
+
+
 def main():
     arguments = sys.argv[1:]
+    if arguments and arguments[0] == "--heat":
+        heat(arguments[1], arguments[2:])
+        return 0
     if arguments and arguments[0] == "--thermal":
         thermal(arguments[1], arguments[2:])
         return 0

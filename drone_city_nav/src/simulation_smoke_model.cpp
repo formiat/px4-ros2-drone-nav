@@ -177,8 +177,13 @@ void inBands(std::size_t count, unsigned threads, const Work& work) {
 
 } // namespace
 
-std::vector<SmokeZone> parseSmokeZones(std::string_view text) {
-  std::vector<SmokeZone> zones;
+namespace {
+
+// The items of a ";"-separated list, each exactly `N` comma-separated numbers.
+template<std::size_t N>
+std::vector<std::array<double, N>> parseNumberLists(std::string_view text,
+                                                    const char* expected) {
+  std::vector<std::array<double, N>> lists;
   while (!text.empty()) {
     const std::size_t end = std::min(text.find(';'), text.size());
     std::string_view item = text.substr(0U, end);
@@ -186,12 +191,12 @@ std::vector<SmokeZone> parseSmokeZones(std::string_view text) {
     if (item.find_first_not_of(' ') == std::string_view::npos) {
       continue;
     }
-    std::array<double, 7> values{};
+    std::array<double, N> values{};
     std::size_t count = 0U;
     while (true) {
       const std::size_t comma = item.find(',');
       if (count == values.size()) {
-        throw std::invalid_argument{"smoke zone: more than seven numbers"};
+        throw std::invalid_argument{std::string{expected} + ": too many numbers"};
       }
       values.at(count++) = parseNumber(item.substr(0U, comma));
       if (comma == std::string_view::npos) {
@@ -200,8 +205,33 @@ std::vector<SmokeZone> parseSmokeZones(std::string_view text) {
       item.remove_prefix(comma + 1U);
     }
     if (count != values.size()) {
-      throw std::invalid_argument{"smoke zone: x,y,z,sx,sy,sz,sigma expected"};
+      throw std::invalid_argument{std::string{expected} + " expected"};
     }
+    lists.push_back(values);
+  }
+  return lists;
+}
+
+} // namespace
+
+std::vector<HeatSource> parseHeatSources(std::string_view text) {
+  std::vector<HeatSource> sources;
+  for (const std::array<double, 5>& values :
+       parseNumberLists<5>(text, "heat source: x,y,z,r,T")) {
+    HeatSource source{{values[0], values[1], values[2]}, values[3], values[4]};
+    if (source.radius_m <= 0.0 || source.kelvin <= 0.0) {
+      throw std::invalid_argument{
+          "heat source: the radius and the temperature must be positive"};
+    }
+    sources.push_back(source);
+  }
+  return sources;
+}
+
+std::vector<SmokeZone> parseSmokeZones(std::string_view text) {
+  std::vector<SmokeZone> zones;
+  for (const std::array<double, 7>& values :
+       parseNumberLists<7>(text, "smoke zone: x,y,z,sx,sy,sz,sigma")) {
     SmokeZone zone{{values[0], values[1], values[2]},
                    {values[3], values[4], values[5]},
                    values[6]};

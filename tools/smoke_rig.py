@@ -20,6 +20,10 @@ A LEVEL is NAME[,key=value...]:
                ratio=P its particle_scatter_ratio (0.65)
   fog=D        Gazebo's scene fog of density D (exponential), no model
   panel=D,albedo=A  calibration: a matte panel of albedo A, D m in front of the pair, no wall, no smoke
+  heat=T       a heat source (roadmap item 32): a sphere of radius heatr=R m (0.3) at the surface temperature T K, textured as
+               the wall is, created at run time through the world's create service as a flight creates it; heatx=D
+               its centre D m ahead of the carrier (4.0), heatz=Z its height (the carrier's); read by the thermal
+               core of the vehicle's class (160 x 120, 57 degrees, 9 Hz, up to 650 K) the carrier adds for it
   corridor=W   two textured side walls W m apart along the whole floor, 6 m tall (the location's north corridor is
                4.4 m wide): the smoke box, 6 m wide, then fills the corridor wall to wall, and the walls give the
                pair's silence a rim at the smoke's face as the location does (the smoke face detector's measurement)
@@ -52,6 +56,7 @@ from gz.msgs10.light_pb2 import Light
 from gz.msgs10.pointcloud_packed_pb2 import PointCloudPacked
 from gz.msgs10.pose_pb2 import Pose
 from gz.msgs10.clock_pb2 import Clock
+from gz.msgs10.entity_factory_pb2 import EntityFactory
 from gz.transport13 import Node
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -68,6 +73,7 @@ SENSORS = {  # key: (topic tail, message)
     "depth": ("stereo_tof_link/sensor/evaluation_depth_left/depth_image", Image),
     "thermal": ("thermal_link/sensor/thermal/image", Image),
     "thermal_right": ("thermal_right_link/sensor/thermal_right/image", Image),
+    "thermal_core": ("thermal_core_link/sensor/thermal_core/image", Image),
     "tof_front": ("stereo_tof_link/sensor/tof_front/scan/points", PointCloudPacked),
     "lidar": ("link/sensor/lidar_3d_v1/scan/points", PointCloudPacked),
 }
@@ -113,6 +119,13 @@ def carrier(models: Path, light: str, noise: str | None) -> None:
         </image><clip><near>0.1</near><far>100</far></clip></camera>
       <plugin filename="gz-sim-thermal-sensor-system" name="gz::sim::systems::ThermalSensor">
         <min_temp>250</min_temp><max_temp>350</max_temp><resolution>0.01</resolution></plugin>
+    </sensor></link>
+  <link name="thermal_core_link"><pose>0.32 0 0.07 0 0 0</pose>
+    <sensor name="thermal_core" type="thermal_camera"><always_on>1</always_on><update_rate>9</update_rate>
+      <camera><horizontal_fov>0.9948376736367679</horizontal_fov><image><width>160</width><height>120</height>
+        <format>L16</format></image><clip><near>0.1</near><far>60</far></clip></camera>
+      <plugin filename="gz-sim-thermal-sensor-system" name="gz::sim::systems::ThermalSensor">
+        <min_temp>250</min_temp><max_temp>650</max_temp><resolution>0.01</resolution></plugin>
     </sensor></link>
 </model></sdf>
 """)
@@ -197,6 +210,18 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
 """
 
 
+def heat_source_sdf(x: float, z: float, radius: float, kelvin: float, textures: Path) -> str:
+    """A heat source (roadmap item 32): a static textured sphere the pair and the lidar see as a body, tagged
+    with its surface temperature for the thermal camera (the world's temperatures are tags, not physics)."""
+    return f"""<?xml version="1.0"?>
+<sdf version="1.10"><model name="heat_source"><static>true</static><pose>{x} 0 {z} 0 0 0</pose><link name="l">
+  <collision name="c"><geometry><sphere><radius>{radius}</radius></sphere></geometry></collision>
+  <visual name="v"><geometry><sphere><radius>{radius}</radius></sphere></geometry>
+    <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
+    <plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal"><temperature>{kelvin}</temperature></plugin>
+  </visual></link></model></sdf>"""
+
+
 def textures(out: Path) -> Path:
     """A wall and a floor of random texture (seeded), the matcher's work in the light."""
     directory = out / "textures"
@@ -226,7 +251,7 @@ def decode(key: str, message) -> np.ndarray:
     if isinstance(message, Image):
         if key == "depth":
             return np.frombuffer(message.data, dtype=np.float32).reshape(message.height, message.width).copy()
-        if key in ("thermal", "thermal_right"):
+        if key in ("thermal", "thermal_right", "thermal_core"):
             return np.frombuffer(message.data, dtype=np.uint16).reshape(message.height, message.width).copy()
         return np.frombuffer(message.data, dtype=np.uint8).reshape(message.height, message.width, 3).copy()
     offsets = {field.name: field.offset for field in message.field}
@@ -455,6 +480,17 @@ def run_level(out: Path, level: str) -> None:
             if ok and reply.data:
                 break
             time.sleep(1.0)
+        if "heat" in spec:
+            # The source as a flight creates it (simulation_smoke_sensor_node): the running world's create service.
+            kelvin, radius = float(spec["heat"]), float(spec.get("heatr", 0.3))
+            source = EntityFactory()
+            source.sdf = heat_source_sdf(float(spec.get("heatx", 4.0)), float(spec.get("heatz", spec.get("height", 1.5))), radius,
+                                         kelvin, textures(out))
+            source.name = "heat_source"
+            source.allow_renaming = False
+            ok, reply = node.request("/world/smoke_rig/create", source, EntityFactory, Boolean, 5000)
+            if not (ok and reply.data):
+                raise RuntimeError("the heat source could not be created")
         time.sleep(WARM_UP_S)
         collector.armed = True
         deadline = time.time() + 60.0
@@ -477,6 +513,7 @@ def run_level(out: Path, level: str) -> None:
         with collector.lock:
             arrays = {key: np.stack(frames) for key, frames in collector.frames.items() if frames}
         meta = {"sigma": sigma, "x0": x0, "len": length, "light": light, "particles": float(spec.get("particles", 0)),
+                "heat": float(spec.get("heat", 0)), "heatr": float(spec.get("heatr", 0.3)), "heatx": float(spec.get("heatx", 4.0)), "heatz": float(spec.get("heatz", spec.get("height", 1.5))),
                 "panel": float(spec.get("panel", 0)), "albedo": float(spec.get("albedo", 0)),
                 "noise": spec.get("noise", "model"), "wall": float(spec.get("wall", 8.0)),
                 "height": float(spec.get("height", 1.5))}

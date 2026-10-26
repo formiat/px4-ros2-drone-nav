@@ -274,6 +274,7 @@ add_drone_city_nav_layer(
   src/stereo_silent_patches.cpp
   src/stereo_lit_range.cpp
   src/stereo_void_frame.cpp
+  src/thermal_reading.cpp
   src/tracked_agent_lidar_filter.cpp)
 target_link_libraries(
   drone_city_nav_world
@@ -509,6 +510,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/stereo_silent_patches.hpp
     include/drone_city_nav/stereo_lit_range.hpp
     include/drone_city_nav/stereo_void_frame.hpp
+    include/drone_city_nav/thermal_reading.hpp
     include/drone_city_nav/tracked_agent_lidar_filter.hpp
     include/drone_city_nav/world_snapshot_3d.hpp)
 
@@ -1893,6 +1895,10 @@ if(BUILD_TESTING)
   ament_add_gtest(lidar_scan_patterns_3d_test tests/lidar_scan_patterns_3d_test.cpp)
   target_compile_features(lidar_scan_patterns_3d_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_scan_patterns_3d_test drone_city_nav_core)
+  ament_add_gtest(thermal_reading_test tests/thermal_reading_test.cpp)
+  target_compile_features(thermal_reading_test PRIVATE cxx_std_20)
+  target_link_libraries(thermal_reading_test drone_city_nav_core)
+  enable_project_warnings(thermal_reading_test)
   ament_add_gtest(stereo_void_frame_test tests/stereo_void_frame_test.cpp)
   target_compile_features(stereo_void_frame_test PRIVATE cxx_std_20)
   target_link_libraries(stereo_void_frame_test drone_city_nav_core)

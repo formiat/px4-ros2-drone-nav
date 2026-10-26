@@ -105,6 +105,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             "smoke": "$(SMOKE_SCENARIO)",
             "smoke-blocked": "$(SMOKE_BLOCKED_SCENARIO)",
             "smoke-rooms": "$(SMOKE_ROOMS_SCENARIO)",
+            "hot-smoke-plume": "$(HOT_PLUME_SCENARIO)",
+            "hot-smoke-room": "$(HOT_ROOM_SCENARIO)",
             "clear": "$(CLEAR_SCENARIO)",
         }
         for name, settings in scenarios.items():

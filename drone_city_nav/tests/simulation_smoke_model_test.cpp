@@ -39,6 +39,24 @@ TEST(SimulationSmokeModelTest, ParsesZonesAndRefusesAnythingElse) {
                std::invalid_argument);
 }
 
+TEST(SimulationSmokeModelTest, ParsesHeatSourcesAndRefusesAnythingElse) {
+  const auto sources = parseHeatSources("12,22,11,0.3,500; -26.6, 24.5 ,5,0.1,350");
+  ASSERT_EQ(sources.size(), 2U);
+  EXPECT_EQ(sources[0].center, Eigen::Vector3d(12.0, 22.0, 11.0));
+  EXPECT_DOUBLE_EQ(sources[0].radius_m, 0.3);
+  EXPECT_DOUBLE_EQ(sources[1].kelvin, 350.0);
+  EXPECT_TRUE(parseHeatSources("").empty());
+  EXPECT_THROW(static_cast<void>(parseHeatSources("1,2,3,0.3")), std::invalid_argument);
+  EXPECT_THROW(static_cast<void>(parseHeatSources("1,2,3,0.3,500,1")),
+               std::invalid_argument);
+  EXPECT_THROW(static_cast<void>(parseHeatSources("1,2,3,0,500")),
+               std::invalid_argument);
+  EXPECT_THROW(static_cast<void>(parseHeatSources("1,2,3,0.3,-5")),
+               std::invalid_argument);
+  EXPECT_THROW(static_cast<void>(parseHeatSources("1,2,x,0.3,500")),
+               std::invalid_argument);
+}
+
 TEST(SimulationSmokeModelTest, TheFieldHoldsTheZonesFigureOnAverageAndChurns) {
   const SmokeField field = cube(1.0);
   EXPECT_EQ(field.extinction({4.0, 0.0, 4.5}, 0.0), 0.0);

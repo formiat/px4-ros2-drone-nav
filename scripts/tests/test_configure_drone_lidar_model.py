@@ -97,6 +97,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
                 "tof_back": "gpu_lidar",
                 "tof_left": "gpu_lidar",
                 "tof_right": "gpu_lidar",
+                "thermal": "thermal_camera",
             },
             sensors,
         )

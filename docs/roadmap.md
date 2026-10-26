@@ -1288,6 +1288,26 @@ The order:
 
 Size: M for steps 1 and 2, M for step 3, L with the series.
 
+**Built on 2026-10-26 (steps 1 to 3, the root goal's part 4; specification
+K49):** `HEAT_SOURCES` ("x,y,z,r,T") rides with `SMOKE_ZONES`, the smoke
+model's relay creating each source in the running world as a static body
+tagged with its temperature (A13); the Lepton-class core is back on the
+stereo set with its cap at 650 K (K39), its frame relayed as the pair's and
+read by the depth node (`thermal_reading.hpp`): a source is four pixels or
+more at 30 K over the frame's median, the threshold set on the rig against
+the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
+the tag is binary); its range the hits in the hot cone, else 5.2 m; the
+standoff 4.0 m, laid as the near half of the ball round the range point
+(observed unobservable, every half second while the core reads the source),
+the motion bounded before it, the pair's returns inside dropped, the words
+`HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
+overlay; the truth judged never within the standoff
+(`validate_standoff_from_heat_sources`). The scenarios: `sim-urban-hot-smoke-plume-*`
+(the location's plume at (12,22,11) with a source at its centre) and
+`sim-urban-hot-smoke-room-*` (the moderate rooms with a source on the west
+hall's crossing), the cold room the rooms scenario as it is; flown only for
+this item's acceptance (the owner, 2026-10-24). Step 4 follows.
+
 This item is complete when the hot plume and the hot room are kept out of
 in five of five flights on the stereo set with no contact, the cold room is
 still crossed, the standoff is a measured number in the specification, and

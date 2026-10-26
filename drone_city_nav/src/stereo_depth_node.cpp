@@ -7,14 +7,17 @@
 #include "drone_city_nav/stereo_lit_range.hpp"
 #include "drone_city_nav/stereo_silent_patches.hpp"
 #include "drone_city_nav/stereo_void_frame.hpp"
+#include "drone_city_nav/thermal_reading.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <limits>
 #include <memory>
@@ -39,6 +43,7 @@
 #include <vector>
 
 #include "stereo_calibration_ros.hpp"
+#include "stereo_depth_node_internal.hpp"
 #include "stereo_frame_brightness.hpp"
 
 namespace drone_city_nav {
@@ -165,6 +170,26 @@ public:
         declare_parameter<std::string>("void_range_topic", "/stereo_depth/void_range"),
         rclcpp::SensorDataQoS{});
     // Roadmap item 18 stage 2: the share of the ring's zones returning smoke.
+    // Roadmap item 32 (K49): the thermal core's frame, read for a heat source;
+    // its reading published as the ring's smoke share is, the range point
+    // (direction and range) with it, and the mission's words on it.
+    thermal_sub_ = create_subscription<sensor_msgs::msg::Image>(
+        declare_parameter<std::string>("thermal_image_topic", "/thermal/image"),
+        rclcpp::SensorDataQoS{}.keep_last(1),
+        [this](const sensor_msgs::msg::Image::ConstSharedPtr image) {
+          onThermal(*image);
+        });
+    thermal_share_pub_ = create_publisher<std_msgs::msg::Float64>(
+        declare_parameter<std::string>("thermal_body_share_topic",
+                                       "/stereo_depth/thermal_body_share"),
+        rclcpp::SensorDataQoS{});
+    heat_point_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(
+        declare_parameter<std::string>("heat_point_topic", "/stereo_depth/heat_point"),
+        rclcpp::SensorDataQoS{});
+    mission_event_pub_ = create_publisher<std_msgs::msg::String>(
+        declare_parameter<std::string>("mission_event_topic",
+                                       "/drone_city_nav/mission_events"),
+        10);
     smoke_share_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("smoke_share_topic",
                                        "/stereo_depth/smoke_share"),
@@ -302,20 +327,6 @@ private:
     return best;
   }
 
-  [[nodiscard]] static cv::Mat grey(const sensor_msgs::msg::Image& image) {
-    // The matcher reads the buffer only; OpenCV has no const view of one.
-    auto* const data = const_cast<std::uint8_t*>(image.data.data());
-    if (image.encoding == "mono8") {
-      return cv::Mat{static_cast<int>(image.height), static_cast<int>(image.width),
-                     CV_8UC1, data, image.step};
-    }
-    const cv::Mat rgb{static_cast<int>(image.height), static_cast<int>(image.width),
-                      CV_8UC3, data, image.step};
-    cv::Mat result;
-    cv::cvtColor(rgb, result, cv::COLOR_RGB2GRAY);
-    return result;
-  }
-
   void matchIfPaired() {
     if (left_ == nullptr || right_ == nullptr ||
         left_->header.stamp != right_->header.stamp) {
@@ -334,7 +345,8 @@ private:
     }
     const auto started = std::chrono::steady_clock::now();
     const std::array<cv::Mat, 2> rectified_pair =
-        rectifier_->rectify(grey(*left), grey(*right));
+        rectifier_->rectify(stereo_depth_node_internal::grey(*left),
+                            stereo_depth_node_internal::grey(*right));
     const cv::Mat& left_grey = rectified_pair[0];
     const cv::Mat& right_grey = rectified_pair[1];
     cv::Mat disparity;
@@ -360,17 +372,19 @@ private:
         }
       }
     }
-    const double noise = rejectMatchesWithinNoise(left_grey, disparity);
+    const double noise =
+        stereo_depth_node_internal::rejectMatchesWithinNoise(left_grey, disparity);
     const std::array<double, LitRangeTracker::kMetres> brightness_by_metre =
         matchedBrightnessByMetre(left_grey, disparity);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
                            image_width_, image_height_, geometry_, returns_config_);
-    rejectLoneHits(returns);
+    stereo_depth_node_internal::rejectLoneHits(returns);
     // The light the frame has left (K15): the brightness headroom, the lit range over
     // the confident depth, the light share over half its lit baseline (r1227).
-    const double brightness_p95 = brightnessPercentile95(left_grey, kNoiseSampleStride);
+    const double brightness_p95 = brightnessPercentile95(
+        left_grey, stereo_depth_node_internal::kNoiseSampleStride);
     const double brightness_headroom = std::min(1.0, brightness_p95 / kGainTargetGrey);
     const bool lit = brightness_headroom > 0.9;
     const double lit_range_m = lit_range_tracker_.observe(brightness_by_metre, lit);
@@ -592,6 +606,43 @@ private:
       }
       returns.insert(returns.end(), rays.begin(), rays.end());
     }
+    // The heat source (K49): its range from the hits in its cone, else the
+    // conservative one; the returns inside its standoff dropped; the speed's
+    // boundary before the standoff (0 stops, K44's law).
+    const double pair_stamp_s = rclcpp::Time{left->header.stamp}.seconds();
+    const std::optional<ThermalReading> heat = heatReading(pair_stamp_s);
+    double heat_range_m = std::numeric_limits<double>::quiet_NaN();
+    if (heat.has_value()) {
+      heat_range_m = heatSourceRangeM(*heat, returns, kHeatConeMarginRad,
+                                      silent_patch_config_.confident_depth_m);
+      std::erase_if(returns, [&](const StereoDepthReturn& ray) {
+        return ray.hit &&
+               withinHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
+      });
+      const double boundary_m = std::max(0.0, heat_range_m - kHeatStandoffM);
+      silent_range_m = std::isfinite(silent_range_m)
+                           ? std::min(silent_range_m, boundary_m)
+                           : boundary_m;
+      silent_message.data = silent_range_m;
+      silent_range_pub_->publish(silent_message);
+      geometry_msgs::msg::Vector3Stamped point;
+      point.header.stamp = left->header.stamp;
+      point.header.frame_id = frame_id_;
+      point.vector.x = heat_range_m * heat->direction.x;
+      point.vector.y = heat_range_m * heat->direction.y;
+      point.vector.z = heat_range_m * heat->direction.z;
+      heat_point_pub_->publish(point);
+    }
+    if (heat.has_value() != heat_seen_) {
+      heat_seen_ = heat.has_value();
+      std_msgs::msg::String event;
+      event.data =
+          heat_seen_ ? "HEAT_SOURCE seen=true range_m=" + std::to_string(heat_range_m) +
+                           " pixels=" + std::to_string(heat->hot_pixels)
+                     : "HEAT_SOURCE seen=false";
+      mission_event_pub_->publish(event);
+      RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
+    }
     std_msgs::msg::Float64 smoke_message;
     smoke_message.data = tof_zones > 0U ? static_cast<double>(smoky_zones) /
                                               static_cast<double>(tof_zones)
@@ -678,6 +729,23 @@ private:
         point = toPhysicalFlu(point);
       }
     }
+    if (heat.has_value() &&
+        (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
+      const std::vector<Point3> cap =
+          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kStepM, kNearestM);
+      heat_emitted_s_ = stamp_s;
+      unobservable.insert(unobservable.end(), cap.begin(), cap.end());
+      heat_marks_total_ += cap.size();
+      RCLCPP_WARN(get_logger(),
+                  "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f "
+                  "pixels=%zu share=%.4f",
+                  cap.size(), heat_range_m,
+                  std::atan2(-heat->direction.y, heat->direction.x) * 180.0 /
+                      std::numbers::pi,
+                  std::asin(std::clamp(heat->direction.z, -1.0, 1.0)) * 180.0 /
+                      std::numbers::pi,
+                  heat->hot_pixels, heat->hot_share);
+    }
     unobservable_total_ += unobservable.size();
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = left->header.stamp;
@@ -730,14 +798,43 @@ private:
         "silent_patches=%zu closed=%zu silent_range_m=%.1f "
         "tof_smoky_zones=%zu smoke_faces=%zu face_range_m=%.1f "
         "face_marks_total=%zu free_dropped=%zu largest_lit=%s void=%s "
-        "within_reach=%.3f",
+        "within_reach=%.3f heat=%.4f heat_range_m=%.1f heat_marks_total=%zu",
         pairs_, hits, returns.size() - hits, tof_rays, match_ms,
-        brightnessByMetreText(brightness_by_metre).c_str(), headroom, lit_range_m,
-        light_share, raw_brightness, observed_share, blind ? stereo_returns : 0U, noise,
-        unobservable_total_, surfaces_in_view, unlit_surfaces, patches.size(),
-        closed_patches, silent_range_m, smoky_zones, faces.size(), face_range_m,
-        face_marks_total_, face_rays_dropped_, largest_text.c_str(),
-        void_frame ? "true" : "false", matched_within_reach_share);
+        stereo_depth_node_internal::brightnessByMetreText(brightness_by_metre).c_str(),
+        headroom, lit_range_m, light_share, raw_brightness, observed_share,
+        blind ? stereo_returns : 0U, noise, unobservable_total_, surfaces_in_view,
+        unlit_surfaces, patches.size(), closed_patches, silent_range_m, smoky_zones,
+        faces.size(), face_range_m, face_marks_total_, face_rays_dropped_,
+        largest_text.c_str(), void_frame ? "true" : "false", matched_within_reach_share,
+        heat.has_value() ? heat->hot_share : 0.0, heat_range_m, heat_marks_total_);
+  }
+
+  // The core's latest frame read (K49), held while the pair matches: fresh
+  // within half a second of the pair's stamp (the core runs at 9 Hz).
+  void onThermal(const sensor_msgs::msg::Image& image) {
+    const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
+    if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
+      return;
+    }
+    std::vector<std::uint16_t> kelvin_hundredths(pixels);
+    std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
+    const ThermalReading reading =
+        readThermalFrame(kelvin_hundredths, image.width, image.height, thermal_config_);
+    std_msgs::msg::Float64 share;
+    share.data = reading.hot_share;
+    thermal_share_pub_->publish(share);
+    const std::lock_guard<std::mutex> lock{thermal_mutex_};
+    thermal_reading_ = reading;
+    thermal_stamp_s_ = rclcpp::Time{image.header.stamp}.seconds();
+  }
+
+  [[nodiscard]] std::optional<ThermalReading> heatReading(const double stamp_s) {
+    const std::lock_guard<std::mutex> lock{thermal_mutex_};
+    if (thermal_reading_.hot() &&
+        std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS) {
+      return thermal_reading_;
+    }
+    return std::nullopt;
   }
 
   // The frame's 95th percentile of brightness over the gain's 200: one while
@@ -793,126 +890,6 @@ private:
     return brightness;
   }
 
-  [[nodiscard]] static std::string brightnessByMetreText(
-      const std::array<double, LitRangeTracker::kMetres>& brightness) {
-    std::string text;
-    for (std::size_t metre = 0U; metre < brightness.size(); ++metre) {
-      text += (metre == 0U ? "" : "/") +
-              std::to_string(brightness[metre] < 0.0 ? -1L
-                                                     : std::lround(brightness[metre]));
-    }
-    return text;
-  }
-
-  // A match stands where the local standard deviation clears its brightness's noise
-  // twofold (Immerkaer's operator by sixteenths of the range, A12; r764, r1476).
-  static double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
-    cv::Mat laplacian;
-    const cv::Mat kernel = (cv::Mat_<float>(3, 3) << 1.0F, -2.0F, 1.0F, -2.0F, 4.0F,
-                            -2.0F, 1.0F, -2.0F, 1.0F);
-    cv::filter2D(grey, laplacian, CV_32F, kernel);
-    cv::Mat grey_float;
-    grey.convertTo(grey_float, CV_32F);
-    cv::Mat mean;
-    cv::Mat mean_square;
-    const cv::Size window{kSignalWindowPx, kSignalWindowPx};
-    cv::boxFilter(grey_float, mean, CV_32F, window);
-    cv::boxFilter(grey_float.mul(grey_float), mean_square, CV_32F, window);
-    // The operator's response is six noise deviations on a flat patch and far more on
-    // an edge; its median is the flat patches' (r765: the mean read texture as noise).
-    std::vector<std::size_t> histograms(kBrightnessBins * kLaplacianBins, 0U);
-    std::array<std::size_t, kBrightnessBins> samples{};
-    for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
-      const float* const values = laplacian.ptr<float>(row);
-      const float* const means = mean.ptr<float>(row);
-      for (int column = 1; column + 1 < laplacian.cols; column += kNoiseSampleStride) {
-        const std::size_t bin = brightnessBin(means[column]);
-        ++histograms[bin * kLaplacianBins +
-                     std::min<std::size_t>(
-                         kLaplacianBins - 1U,
-                         static_cast<std::size_t>(std::abs(values[column])))];
-        ++samples[bin];
-      }
-    }
-    const auto noiseOf = [&](const std::size_t first_bin, const std::size_t last_bin) {
-      std::size_t count{0U};
-      for (std::size_t bin = first_bin; bin <= last_bin; ++bin) {
-        count += samples[bin];
-      }
-      std::size_t below{0U};
-      for (std::size_t response = 0U; response < kLaplacianBins; ++response) {
-        for (std::size_t bin = first_bin; bin <= last_bin; ++bin) {
-          below += histograms[bin * kLaplacianBins + response];
-        }
-        if (2U * below >= count) {
-          return 1.4826 * (static_cast<double>(response) + 0.5) / 6.0;
-        }
-      }
-      return 0.0;
-    };
-    const double noise = noiseOf(0U, kBrightnessBins - 1U);
-    // A brightness too rare in the frame to estimate takes the noise of the
-    // next darker one (the frame's own for the darkest).
-    std::array<float, kBrightnessBins> minimum_variance{};
-    double carried = noise;
-    for (std::size_t bin = 0U; bin < kBrightnessBins; ++bin) {
-      if (samples[bin] >= kMinimumBinSamples) {
-        carried = noiseOf(bin, bin);
-      }
-      minimum_variance[bin] = static_cast<float>(
-          std::pow(kSignalOverNoise * std::max(carried, kMinimumNoiseLevels), 2.0));
-    }
-    for (int row = 0; row < disparity.rows; ++row) {
-      const float* const means = mean.ptr<float>(row);
-      const float* const squares = mean_square.ptr<float>(row);
-      std::int16_t* const values = disparity.ptr<std::int16_t>(row);
-      for (int column = 0; column < disparity.cols; ++column) {
-        if (squares[column] - means[column] * means[column] <
-            minimum_variance[brightnessBin(means[column])]) {
-          values[column] = std::int16_t{-16};
-        }
-      }
-    }
-    return noise;
-  }
-
-  // A hit alone in its voxel is no surface: the latest scan carried every hit, and
-  // the matcher's strays (A12) were 98 percent of the hits blocking a route (r1481,
-  // 159 s of holds in 380); this rule brings them from 33 a frame to the noiseless 9,
-  // keeping 99 percent of the hits within a voxel of the truth (r1476, r782). A
-  // surface within the confident depth puts 19 rays in a voxel at 5.2 m.
-  static void rejectLoneHits(std::vector<StereoDepthReturn>& returns) {
-    std::unordered_map<std::uint64_t, std::uint32_t> hits_by_voxel;
-    const auto voxel = [](const Point3& point) {
-      const auto coordinate = [](const double value) {
-        return static_cast<std::uint64_t>(
-                   static_cast<std::int64_t>(std::floor(value / kLoneHitVoxelM)) +
-                   (1LL << 20U)) &
-               ((1ULL << 21U) - 1ULL);
-      };
-      return (coordinate(point.x) << 42U) | (coordinate(point.y) << 21U) |
-             coordinate(point.z);
-    };
-    for (const StereoDepthReturn& stereo_return : returns) {
-      if (stereo_return.hit) {
-        ++hits_by_voxel[voxel(stereo_return.point)];
-      }
-    }
-    std::erase_if(returns, [&](const StereoDepthReturn& stereo_return) {
-      return stereo_return.hit &&
-             hits_by_voxel[voxel(stereo_return.point)] < kLoneHitVoxelLeastHits;
-    });
-  }
-
-  static constexpr double kLoneHitVoxelM{0.25};
-  static constexpr std::uint32_t kLoneHitVoxelLeastHits{2U};
-
-  [[nodiscard]] static std::size_t brightnessBin(const float mean) noexcept {
-    return std::min(
-        kBrightnessBins - 1U,
-        static_cast<std::size_t>(std::max(0.0F, mean) / kBrightnessBinLevels));
-  }
-
   DarknessWatch darkness_;
   std::size_t unobservable_total_{0U};
   // The dark frustum's and the smoke faces' rays (K14, K44).
@@ -921,6 +898,25 @@ private:
   static constexpr int kRayPitchPx{30};
   static constexpr std::size_t kFaceFrames{4U};
   static constexpr double kFaceEmitPeriodS{0.5};
+  // The heat source's standoff (K49, the rig of 2026-10-26): under the
+  // conservative range by 1.2 m (5.2 / 1.2 = 4.33), so that a mark laid on
+  // that range stands before the vehicle, and over the pair's ranging reach
+  // in moderate smoke (3.7 m).
+  static constexpr double kHeatStandoffM{4.0};
+  // The hot cone widened by a pair cell at the stride (4 px of 369).
+  static constexpr double kHeatConeMarginRad{0.02};
+  static constexpr double kThermalFreshS{0.5};
+  ThermalReadingConfig thermal_config_{};
+  std::mutex thermal_mutex_;
+  ThermalReading thermal_reading_{};
+  double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
+  double heat_emitted_s_{std::numeric_limits<double>::quiet_NaN()};
+  std::size_t heat_marks_total_{0U};
+  bool heat_seen_{false};
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr heat_point_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   SmokeFaceConfig smoke_face_config_{};
   bool smoke_face_{false};
   std::size_t face_frames_{0U};
@@ -933,16 +929,6 @@ private:
   double face_emitted_s_{-1.0};
   std::size_t face_marks_total_{0U};
   std::size_t face_rays_dropped_{0U};
-  static constexpr int kSignalWindowPx{9};
-  static constexpr std::size_t kLaplacianBins{1024U};
-  static constexpr int kNoiseSampleStride{4};
-  static constexpr double kSignalOverNoise{2.0};
-  static constexpr std::size_t kBrightnessBins{16U};
-  static constexpr float kBrightnessBinLevels{16.0F};
-  static constexpr std::size_t kMinimumBinSamples{50U};
-  // A noiseless render still quantizes: never trust less than a level.
-  static constexpr double kMinimumNoiseLevels{1.0};
-
   // Half a period of the sensors' common 7.5 Hz.
   static constexpr double kTofStampToleranceS{0.067};
   // A second of scans: a pair is matched well inside it.

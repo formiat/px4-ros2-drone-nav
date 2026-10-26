@@ -146,6 +146,10 @@ def stereo_tof_topics(
         "air_pressure_sensor/air_pressure"
     )
     depth_parameters["air_pressure_topic"] = f"{vehicle_prefix}/barometer/air_pressure"
+    # The thermal core (roadmap item 32), relayed as the pair is; the smoke
+    # model leaves it untouched (K39), so it has no relay suffix.
+    depth_parameters["thermal_gazebo_image_topic"] = f"{sensor_prefix}/thermal/image"
+    depth_parameters["thermal_image_topic"] = f"{vehicle_prefix}/thermal/image"
     for side in ("up", "down", "front", "back", "left", "right"):
         gz_topic = f"{sensor_prefix}/tof_{side}/scan/points{tof_topic_suffix}"
         ros_topic = f"{vehicle_prefix}/tof/{side}/points"

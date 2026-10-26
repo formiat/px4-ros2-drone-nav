@@ -98,6 +98,10 @@ project has two requirements, and the mission check fails on nothing else:
   (`validate_no_entry_into_dense_smoke`, specification R7, the owner's rule
   of 2026-10-18); a room of 0.1/m is crossed by design (F4) and is not
   judged;
+- the true position keeps the standoff from every heat source: a flight
+  whose manifest carries `HEAT_SOURCES` fails at the first true-pose sample
+  within 4.0 m of a source's centre, with the time and the distance
+  (`validate_standoff_from_heat_sources`, specification K49, roadmap item 32);
 - the mean flight speed exceeds the figure of the sensor set: 2.0 m/s on the
   lidar, 1.2 m/s on the stereo set;
 - a goal in the void (roadmap item 31, the scenario `dark_void_mid`) is reached

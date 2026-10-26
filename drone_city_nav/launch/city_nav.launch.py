@@ -177,6 +177,7 @@ def generate_launch_description():
     stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
     smoke_zones = LaunchConfiguration("smoke_zones")
     smoke_seed = LaunchConfiguration("smoke_seed")
+    heat_sources = LaunchConfiguration("heat_sources")
     smoke_face = LaunchConfiguration("smoke_face")
     mppi_rollouts = LaunchConfiguration("mppi_rollouts")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
@@ -504,6 +505,7 @@ def generate_launch_description():
                             "model_name": gazebo_model_name,
                             "zones": smoke,
                             "seed": int(smoke_seed.perform(context)),
+                            "heat_sources": heat_sources.perform(context).strip(),
                             "output_suffix": SMOKE_TOPIC_SUFFIX,
                         }
                     ],
@@ -808,6 +810,16 @@ def generate_launch_description():
                 "smoke_seed",
                 default_value="0",
                 description="Seed of the smoke's churn (roadmap item 18 stage 1).",
+            ),
+            DeclareLaunchArgument(
+                "heat_sources",
+                default_value="",
+                description=(
+                    "Heat sources of the location, 'x,y,z,r,T' in the world frame "
+                    "separated by ';' (roadmap item 32): bodies the smoke model's "
+                    "relay creates in the world, rendered by the thermal core at T "
+                    "kelvin. Needs smoke_zones (the relay carries them)."
+                ),
             ),
             DeclareLaunchArgument(
                 "mppi_rollouts",

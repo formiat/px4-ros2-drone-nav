@@ -417,6 +417,37 @@
         <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
+      <!-- Roadmap item 32 (item 18 stage 3's core, back with its decision): the
+           thermal core of the accepted build, a detector of the FLIR Lepton 3.5
+           class (160 x 120, 57 degrees, 9 Hz; specification K39, K49). Longwave
+           infrared sees through smoke, which the smoke model leaves it to; the
+           world carries no thermal texture but the temperatures its surfaces
+           are tagged with, a heat source's up to 650 K. -->
+      <sensor name="thermal" type="thermal_camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>0 0 0.05 0 0 0</pose>
+        <camera>
+          <horizontal_fov>0.9948376736367679</horizontal_fov>
+          <image>
+            <width>160</width>
+            <height>120</height>
+            <format>L16</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>60</far>
+          </clip>
+          <visibility_mask>218103807</visibility_mask>
+        </camera>
+        <plugin filename="gz-sim-thermal-sensor-system" name="gz::sim::systems::ThermalSensor">
+          <min_temp>250</min_temp>
+          <max_temp>650</max_temp>
+          <resolution>0.01</resolution>
+        </plugin>
+        <always_on>true</always_on>
+        <update_rate>9</update_rate>
+        <visualize>false</visualize>
+      </sensor>
     </link>
   </model>
 </sdf>

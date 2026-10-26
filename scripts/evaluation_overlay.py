@@ -118,6 +118,11 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
                  "main_battery": "MAIN BATTERY", "operator": "OPERATOR"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
+    # A heat source in the thermal core's frame (roadmap item 32, K49), while
+    # the depth node reads one.
+    heat = next((event for event in reversed(events) if event.startswith("HEAT_SOURCE")), "")
+    if "seen=true" in heat:
+        return "HEAT SOURCE", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         return "TO GOAL", GREEN
     return ("TAKEOFF" if airborne else "ON THE PAD"), GREY

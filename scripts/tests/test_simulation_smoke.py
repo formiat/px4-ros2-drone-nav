@@ -65,6 +65,51 @@ class SimulationSmokeContractTest(unittest.TestCase):
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
         self.assertIn('"smoke_face": smoke_face', launch)
 
+    def test_the_heat_sources_ride_with_the_smoke_and_the_core_reads_them(self) -> None:
+        # Roadmap item 32: HEAT_SOURCES reach the smoke model's relay, which
+        # creates the bodies in the world; the thermal core is back on the
+        # stereo set, its frame relayed as the pair's without the smoke's
+        # suffix (the model leaves it untouched, K39); the depth node reads
+        # the frame alone, never the sources; the hot scenarios are their own
+        # targets and the ordinary flight sets no source.
+        runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
+        self.assertIn('heat_sources:="${HEAT_SOURCES:-}"', runtime)
+        launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
+        self.assertIn('"heat_sources": heat_sources.perform(context).strip()', launch)
+        self.assertIn("  HEAT_SOURCES\n", (REPOSITORY / "scripts" / "container_run.sh").read_text())
+        self.assertIn("HEAT_SOURCES SMOKE_ZONES SMOKE_SEED",
+                      (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text())
+        relay = (REPOSITORY / "drone_city_nav" / "src" / "simulation_smoke_sensor_node.cpp").read_text()
+        self.assertIn('declare_parameter<std::string>("heat_sources", "")', relay)
+        self.assertIn('"/create"', relay)
+        self.assertIn("gz::sim::systems::Thermal", relay)
+        self.assertNotIn("thermal/image", relay)
+        model = (REPOSITORY / "drone_city_nav" / "models" / "stereo_tof_v1" / "model.sdf").read_text()
+        self.assertIn('<sensor name="thermal" type="thermal_camera">', model)
+        self.assertIn("<max_temp>650</max_temp>", model)
+        _, _, depth = stereo_tof_topics(
+            "world", "model", image_topic_suffix=SMOKE_TOPIC_SUFFIX,
+            tof_topic_suffix=SMOKE_TOPIC_SUFFIX)
+        self.assertEqual(depth["thermal_gazebo_image_topic"],
+                         "/world/world/model/model/link/stereo_tof_link/sensor/thermal/image")
+        self.assertEqual(depth["thermal_image_topic"], "/thermal/image")
+        node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
+        self.assertIn("readThermalFrame(", node)
+        self.assertIn("heatStandoffCap(", node)
+        self.assertIn("HEAT_SOURCE_MARKS", node)
+        self.assertNotIn("HEAT_SOURCES", node)
+        makefile = (REPOSITORY / "Makefile").read_text()
+        self.assertIn('HOT_PLUME_SCENARIO := SMOKE_ZONES="12,22,11,3,3,3,1.0" '
+                      'HEAT_SOURCES="12,22,11,0.3,500"', makefile)
+        self.assertIn('HEAT_SOURCES="-26.6,24.5,5,0.3,500"', makefile)
+        self.assertNotIn('HEAT_SOURCES="$${HEAT_SOURCES-', makefile)
+        self.assertEqual(makefile.count("HEAT_SOURCES="), 2)
+        scenarios = (REPOSITORY / "docs" / "scenarios.md").read_text()
+        self.assertIn("sim_urban_hot_smoke_plume_headless.sh", scenarios)
+        self.assertIn("sim_urban_hot_smoke_room_headless.sh", scenarios)
+        evidence = (REPOSITORY / "scripts" / "smoke_truth_evidence.py").read_text()
+        self.assertIn("HEAT_STANDOFF_M = 4.0", evidence)
+
     def test_the_smoke_face_detector_reads_the_frame_alone(self) -> None:
         # The smoke face detector (K44) is the vehicle's: it reads the pair's
         # frame, never the location's zones or the run's manifest, and the

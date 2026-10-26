@@ -28,6 +28,7 @@ from headless_runtime_evidence import (
     validate_localization_profile,
     validate_mean_flight_speed,
     validate_no_entry_into_dense_smoke,
+    validate_standoff_from_heat_sources,
     validate_persistent_3d_acceptance_metrics,
     validate_runtime_manifest,
 )
@@ -518,6 +519,9 @@ def main() -> int:
         # Dense smoke is never entered, whatever the flight was asked (R7).
         validate_no_entry_into_dense_smoke(args.runtime_manifest.parent / "gz_pose.csv",
                                            manifest_overrides, errors)
+        # A heat source is kept at the standoff, whatever the flight was asked (K49).
+        validate_standoff_from_heat_sources(args.runtime_manifest.parent / "gz_pose.csv",
+                                            manifest_overrides, errors)
     require(
         "production offboard is ready",
         ros_log,

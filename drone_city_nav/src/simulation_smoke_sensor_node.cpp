@@ -20,6 +20,8 @@
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <gz/msgs/boolean.pb.h>
+#include <gz/msgs/entity_factory.pb.h>
 #include <gz/msgs/image.pb.h>
 #include <gz/msgs/pointcloud_packed.pb.h>
 #include <gz/msgs/pose_v.pb.h>
@@ -195,6 +197,7 @@ public:
     const auto model_uri =
         declare_parameter<std::string>("model_uri", "model://x500_lidar_3d");
     const auto zones = declare_parameter<std::string>("zones", "");
+    const auto heat_sources = declare_parameter<std::string>("heat_sources", "");
     const auto seed = declare_parameter<int>("seed", 0);
     suffix_ = declare_parameter<std::string>("output_suffix", "/smoke");
     threads_ = static_cast<unsigned>(declare_parameter<int>("threads", 4));
@@ -205,6 +208,7 @@ public:
                                           static_cast<std::uint32_t>(seed));
     seed_ = static_cast<std::uint32_t>(seed);
     loadModel(model_uri);
+    createHeatSources(world, simulation_smoke::parseHeatSources(heat_sources));
     prefix_ = "/world/" + world + "/model/" + model_name_ + "/link/";
     if (!gazebo_.Subscribe("/world/" + world + "/pose/info",
                            &SimulationSmokeSensorNode::onPoses, this)) {
@@ -254,6 +258,57 @@ private:
     double busy_s{0.0};
     std::jthread worker;
   };
+
+  // Roadmap item 32: the location's heat sources, bodies the sensors see and
+  // the thermal core renders at their temperature (the world's temperatures
+  // are tags, not physics), created in the running world as a flight's own
+  // objects. The create service answers once the world runs: tried for a
+  // minute.
+  void createHeatSources(const std::string& world,
+                         const std::vector<simulation_smoke::HeatSource>& sources) {
+    for (std::size_t index = 0U; index < sources.size(); ++index) {
+      const simulation_smoke::HeatSource& source = sources[index];
+      gz::msgs::EntityFactory factory;
+      factory.set_name("heat_source_" + std::to_string(index));
+      factory.set_allow_renaming(false);
+      factory.set_sdf(
+          "<?xml version=\"1.0\"?><sdf version=\"1.10\"><model name=\"heat_source\">"
+          "<static>true</static><pose>" +
+          std::to_string(source.center.x()) + " " + std::to_string(source.center.y()) +
+          " " + std::to_string(source.center.z()) +
+          " 0 0 0</pose><link name=\"link\"><collision name=\"body\"><geometry><sphere>"
+          "<radius>" +
+          std::to_string(source.radius_m) +
+          "</radius></sphere></geometry></collision><visual name=\"body\"><geometry>"
+          "<sphere><radius>" +
+          std::to_string(source.radius_m) +
+          "</radius></sphere></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse>"
+          "</material><plugin filename=\"gz-sim-thermal-system\" "
+          "name=\"gz::sim::systems::Thermal\"><temperature>" +
+          std::to_string(source.kelvin) +
+          "</temperature></plugin></visual></link></model></sdf>");
+      gz::msgs::Boolean reply;
+      bool result = false;
+      for (int attempt = 0; attempt < 12; ++attempt) {
+        if (gazebo_.Request("/world/" + world + "/create", factory, 5000U, reply,
+                            result) &&
+            result && reply.data()) {
+          break;
+        }
+        result = false;
+        std::this_thread::sleep_for(std::chrono::seconds{1});
+      }
+      if (!result) {
+        throw std::runtime_error{"the heat source " + std::to_string(index) +
+                                 " could not be created in the world"};
+      }
+      RCLCPP_INFO(
+          get_logger(),
+          "HEAT_SOURCE_CREATED index=%zu x=%.2f y=%.2f z=%.2f r=%.2f kelvin=%.0f",
+          index, source.center.x(), source.center.y(), source.center.z(),
+          source.radius_m, source.kelvin);
+    }
+  }
 
   void loadModel(const std::string& uri) {
     sdf::ParserConfig config;

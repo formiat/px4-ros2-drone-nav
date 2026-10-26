@@ -248,6 +248,24 @@ SMOKE_ROOMS_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.
 # and the route crosses the hall either way). sim-urban-clear-* is the
 # ordinary flight under its old reference name.
 CLEAR_SCENARIO := SMOKE_ZONES=""
+# Roadmap item 32: hot smoke, flown only for its acceptance (the owner,
+# 2026-10-24: the ordinary flight is clear, and hot smoke joins no ordinary
+# scenario). The hot plume: the location's plume at (12,22,11), which the
+# ordinary route passes within a metre (r2191), 3 x 3 x 3 at 1/m with a heat
+# source at its centre (0.3 m, 500 K); the smoke face (K44) is on, the plume
+# being dense. The hot room: the moderate rooms of item 23 with a source on
+# the route's crossing of the west hall (its middle in r2191, (-26.6,24.5,5));
+# the way round it or the way home are both the rule's (K49). The cold room,
+# the control, is sim-urban-smoke-rooms-* as it is.
+HOT_PLUME_SCENARIO := SMOKE_ZONES="12,22,11,3,3,3,1.0" HEAT_SOURCES="12,22,11,0.3,500" \
+	SMOKE_FACE=true SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
+HOT_ROOM_SCENARIO := SMOKE_ZONES="-20,22.5,9,26,40,18,0.1;18,-6,5,12,10,10,0.1" \
+	HEAT_SOURCES="-26.6,24.5,5,0.3,500" \
+	RETURN_HOME_ALLOWED=true RETURN_TRIGGERS_ALLOWED=topological,battery \
+	LIGHT_BATTERY_S=720 \
+	OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
+	RAW_SNAPSHOT_BOUNDS_M="-33,2.5,0,-7,42.5,18" \
+	SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}"
 LIGHT_LOST_SCENARIO := LIGHT_FAULTS=lost STREAM_FAULTS=moderate \
 	VEHICLE_INTACT_EXPECTED=true
 
@@ -347,6 +365,22 @@ sim-urban-smoke-blocked-gui:
 .PHONY: sim-urban-smoke-rooms-headless
 sim-urban-smoke-rooms-headless:
 	$(SMOKE_ROOMS_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-hot-smoke-plume-headless
+sim-urban-hot-smoke-plume-headless:
+	$(HOT_PLUME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-hot-smoke-plume-gui
+sim-urban-hot-smoke-plume-gui:
+	$(HOT_PLUME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-hot-smoke-room-headless
+sim-urban-hot-smoke-room-headless:
+	$(HOT_ROOM_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-hot-smoke-room-gui
+sim-urban-hot-smoke-room-gui:
+	$(HOT_ROOM_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
 
 .PHONY: sim-urban-smoke-rooms-gui
 sim-urban-smoke-rooms-gui:

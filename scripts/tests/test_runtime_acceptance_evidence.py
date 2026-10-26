@@ -508,6 +508,37 @@ class RuntimeManifestTest(unittest.TestCase):
                                                         errors)
         self.assertTrue(any("recorded the true pose" in error for error in errors))
 
+    def test_the_standoff_from_a_heat_source_is_judged_in_truth(self) -> None:
+        # Roadmap item 32 (K49): the same path along y 40 at x -12 to -2.1; a
+        # source 3 m beside it is within the 4 m standoff from x -8.6 (3.4 s),
+        # one 5 m beside it never.
+        directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        truth = directory / "gz_pose.csv"
+        truth.write_text("".join(
+            f"{0.1 * index:.1f},{-12.0 + 0.1 * index:.3f},40.0,8.0,1,0,0,0,{1000.0 + 0.1 * index:.1f}\n"
+            for index in range(100)), encoding="utf-8")
+        errors: list[str] = []
+        with redirect_stdout(io.StringIO()):
+            evidence.validate_standoff_from_heat_sources(
+                truth, {"HEAT_SOURCES": "-6,43,8,0.3,500"}, errors)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("heat source 0 (4 m): within it at 3.4 s", errors[0])
+        self.assertIn("3.00 m at the nearest", errors[0])
+        for sources, note in (("-6,45,8,0.3,500; 30,30,8,0.3,350", "nearest approach 5.00 m"),
+                              ("", "no heat source")):
+            errors = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                evidence.validate_standoff_from_heat_sources(
+                    truth, {"HEAT_SOURCES": sources}, errors)
+            self.assertEqual(errors, [])
+            self.assertIn(note, output.getvalue())
+        errors = []
+        with redirect_stdout(io.StringIO()):
+            evidence.validate_standoff_from_heat_sources(
+                directory / "none.csv", {"HEAT_SOURCES": "-6,43,8,0.3,500"}, errors)
+        self.assertTrue(any("recorded the true pose" in error for error in errors))
+
     def test_the_gnss_profiles_report_and_gate_nothing(self) -> None:
         for profile in ("gnss", "gnss_shadow"):
             errors: list[str] = []

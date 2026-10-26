@@ -31,6 +31,20 @@ struct SmokeZone {
 // by ";". Throws std::invalid_argument on anything else.
 [[nodiscard]] std::vector<SmokeZone> parseSmokeZones(std::string_view text);
 
+// A heat source in the location (roadmap item 32): a body of the world the
+// thermal camera renders at its surface temperature; the smoke model leaves
+// the thermal frame untouched (K39).
+struct HeatSource {
+  Eigen::Vector3d center{Eigen::Vector3d::Zero()};
+  double radius_m{0.0};
+  double kelvin{0.0};
+};
+
+// HEAT_SOURCES: "x,y,z,r,T" in the world frame (the body's radius in metres,
+// its surface temperature in kelvin), several separated by ";". Throws
+// std::invalid_argument on anything else.
+[[nodiscard]] std::vector<HeatSource> parseHeatSources(std::string_view text);
+
 struct RaySegment {
   double entry_m{0.0};
   double exit_m{0.0};
