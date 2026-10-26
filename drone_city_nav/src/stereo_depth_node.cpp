@@ -615,10 +615,6 @@ private:
     if (heat.has_value()) {
       heat_range_m = heatSourceRangeM(*heat, returns, kHeatConeMarginRad,
                                       silent_patch_config_.confident_depth_m);
-      std::erase_if(returns, [&](const StereoDepthReturn& ray) {
-        return ray.hit &&
-               withinHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
-      });
       const double boundary_m = std::max(0.0, heat_range_m - kHeatStandoffM);
       silent_range_m = std::isfinite(silent_range_m)
                            ? std::min(silent_range_m, boundary_m)
@@ -745,6 +741,15 @@ private:
                   std::asin(std::clamp(heat->direction.z, -1.0, 1.0)) * 180.0 /
                       std::numbers::pi,
                   heat->hot_pixels, heat->hot_share);
+    }
+    if (heat.has_value()) {
+      // The returns inside the standoff are the plume's own texture (K49), dropped
+      // here, after the frame's counts, which index the pair's returns at the front
+      // (r2235: dropped before them, the counts ran past the end and the process died).
+      std::erase_if(returns, [&](const StereoDepthReturn& ray) {
+        return ray.hit &&
+               withinHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
+      });
     }
     unobservable_total_ += unobservable.size();
     sensor_msgs::msg::PointCloud2 cloud;
@@ -910,7 +915,8 @@ private:
   std::mutex thermal_mutex_;
   ThermalReading thermal_reading_{};
   double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
-  double heat_emitted_s_{std::numeric_limits<double>::quiet_NaN()};
+  // Nought, so that the first hot frame lays its marks (r2235: NaN laid none).
+  double heat_emitted_s_{0.0};
   std::size_t heat_marks_total_{0U};
   bool heat_seen_{false};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
