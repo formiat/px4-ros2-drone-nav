@@ -173,6 +173,19 @@ TEST(MppiSpeedPolicyTest, ASilentPatchOnTheHeadingBoundsTheMotionByItsRim) {
   // Never under the margin, whatever the rim says.
   input.sensor_silent_range_m = 1.0;
   EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 2.0);
+  // The bound caps what the memory answers for under a sound light (r2241:
+  // the memory had seen the way free before the heat mark was laid), and
+  // holds for a frame that observed nothing (its returns dropped).
+  input.light_reads_sound = true;
+  input.unfaced_observed_range_m = 5.2;
+  input.sensor_silent_range_m = 1.2;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 2.0,
+              0.01);
+  input.sensor_observed_fraction = std::nullopt;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 2.0,
+              0.01);
+  input.sensor_silent_range_m = std::nullopt;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m, 5.2);
   // A smoke face's bound fallen to nought is the face at hand: the margin,
   // the limit nought, not the open frame's (K44, r2047).
   input.sensor_silent_range_m = 0.0;

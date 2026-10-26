@@ -326,6 +326,22 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
                                        input.unfaced_observed_range_m.value_or(0.0))
                             : 0.0});
   }
+  // The sensor's own bound on the heading (a smoke face, a heat source's
+  // standoff, K44, K49) caps what the memory answers for as well: the memory
+  // saw that space free before the mark was laid (r2241: a heat source at
+  // 1.2 m by the bound, 5.2 m by the memory under a sound light, flown into
+  // to 2.6 m), and read whatever the frame observed, so that a frame emptied
+  // by the mark (its returns through the ball dropped) still bounds.
+  if (input.sensor_silent_range_m.has_value() &&
+      std::isfinite(*input.sensor_silent_range_m) &&
+      *input.sensor_silent_range_m >= 0.0) {
+    const double floor_m = contract.physical_margin_m + kBlindRangeAboveMarginM;
+    frame_range_m =
+        std::max(floor_m, std::min(frame_range_m, *input.sensor_silent_range_m));
+    contract.guaranteed_detection_range_m =
+        std::max(floor_m, std::min(contract.guaranteed_detection_range_m,
+                                   *input.sensor_silent_range_m));
+  }
   if (input.sensor_evidence_age_s.has_value() &&
       std::isfinite(*input.sensor_evidence_age_s) &&
       *input.sensor_evidence_age_s >= 0.0) {
