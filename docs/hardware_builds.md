@@ -45,8 +45,26 @@ in July 2026) and are an order of magnitude, not a quote.
 An Orin NX module needs a carrier board (interfaces, the camera connectors,
 the cooling): Seeed's A603 is listed at €165 to $309 [19]; a whole box with
 the module, the carrier and a case (Seeed reComputer J4012) at $899, a price
-likely from before July 2026 [20]. The arm64 build does not exist yet
-(roadmap item 27 block 2).
+likely from before July 2026 [20].
+
+**Measured on 2026-10-26 (roadmap item 28 step 1, specification K48):** the
+flight needs 2048 rollouts on the stereo set by the rule of K48 (the speed
+and the arrival hold to 1024, 1.418 against 1.390 m/s over five clear
+flights each, and the clearance clause fails at 1024 by one flight in
+five) and keeps 8192 on the lidar by the same rule (the speed holds to
+2048, 2.375 m/s, and the clearance clause fails at every lower count by one
+or two flights in five), with the MPPI tick at 22.6 and 25.1 ms p50 on the
+RTX 3060 Laptop at those counts. By the GPU's ratio
+already in item 28 (the 3060's about 11 TFLOPS against the Orin NX's 1.9 to
+2.4 and the Orin Nano Super's 2.1, from its 1024 CUDA cores at 1020 MHz
+[25]), the 6.4 ms the 3060 spends on 8192 rollouts become 30 to 40 ms on an
+Orin at 8192 and about 8 to 10 ms at 2048: the stereo set's count fits an
+Orin's GPU inside the tick, the lidar's 8192 does not by the rule as
+written, though its speed held at 2048. The numbers are encouraging for the
+bench board B on the stereo set, the base product, and not yet for the
+lidar set. The onboard build exists since 2026-10-25 (roadmap item 27
+block 2: amd64 on CUDA 13 without Gazebo, the package and its 154 unit
+tests; arm64 under emulation, see roadmap item 27 block 2 step 3).
 
 ### The Compute Gap, Measured (2026-10-24)
 
@@ -373,3 +391,4 @@ Prices and specifications as found on 2026-10-13.
 22. [X500 V2 ARF kit at Elektor](https://www.elektor.com/products/holybro-x500-v2-arf-drone-kit) (€379.95), [the frame kit at Flying Tech](https://www.flyingtech.co.uk/product/holybro-x500-v2-quadcopter-frame-kit/).
 23. [ModalAI's VOXL 2 launch, 2022](https://www.modalai.com/blogs/press-releases/modalai%E2%93%A1-launches-voxl%E2%93%A1-2-the-smallest-smartest-blue-uas-framework-autopilot-at-16g).
 24. [Starling 2](https://modalai.com/starling-2), [Starling 2 Max](https://modalai.com/starling-2-max) at ModalAI.
+25. [Jetson Orin Nano Super Developer Kit at NVIDIA](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano-super-developer-kit/) (67 INT8 TOPS, 1024 CUDA cores, 32 tensor cores, 6 Cortex-A78AE, 8 GB, 7 to 25 W); the GPU's 1020 MHz from [CNX Software's spec list](https://cnx-software.com/2024/12/18/249-nvidia-jetson-orin-nano-super-developer-kit-targets-generative-ai-applications-at-the-edge/); 1024 x 2 x 1.02 GHz = 2.1 TFLOPS dense FP32, derived as item 28 derives the Orin NX's.

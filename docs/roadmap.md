@@ -1054,8 +1054,32 @@ The order:
    now, and the lists are to be checked against the buyer's rules when the
    market is chosen. What the board would take in full is item 37.
 
+**Step 1 done on 2026-10-26** (the root goal of 2026-10-24, part 3;
+specification K48, `MPPI_ROLLOUTS` sets the count for a flight): eight
+groups of five clear flights, r2191 to r2234, no contact in forty.
+
+| Set | Rollouts | Mean speed, m/s (min) | B by the truth, max | Holds, % | Tick p50 / p95, ms | GPU, % |
+|---|---|---|---|---|---|---|
+| stereo | 8192 | 1.390 (1.333) | 1.16 | 0.90 | 22.7 / 29.6 | 34 |
+| stereo | 4096 | 1.380 (1.324) | 1.94 | 0.82 | 22.5 / 29.3 | 33 |
+| stereo | 2048 | 1.411 (1.349) | 1.38 | 0.96 | 22.6 / 29.7 | 32 |
+| stereo | 1024 | 1.418 (1.326) | 1.13 | 0.89 | 21.6 / 28.5 | 32 |
+| lidar | 8192 | 2.375 (2.143) | 0.64 | 2.4 to 2.7 | 25.1 / 33.2 | 39 |
+| lidar | 4096 | 2.424 (2.283) | 0.74 | 2.1 to 2.7 | 24.3 / 32.1 | 37 |
+| lidar | 2048 | 2.375 (2.188) | 0.49 | 1.8 to 2.8 | 24.2 / 32.3 | 37 |
+| lidar | 1024 | 2.192 (1.900) | 0.77 | 2.3 to 2.9 | 23.8 / 31.4 | 35 |
+
+The stereo set's speed and arrival hold at 1024 as at 8192; the lidar's
+hold to 2048 and lose 8 percent at 1024, one flight under R3. The true clearance of the modelled body (0.55 m, larger than the airframe) in the middle of the flight, the pad and the landing left out: its least value touches 0.00 in every group, the 8192 ones included (a graze of the modelled body, no contact), so the clause that tells the groups apart is the seconds under 0.10 m, and it is set by one flight in five: the 8192 groups' most 1.3 s (stereo) and 0.8 s (lidar); stereo 4096 3.6 s (r2208), 2048 0.7 s, 1024 5.3 s (r2229); lidar 4096 3.7 s (r2212), 2048 3.1 s (r2220, r2222), 1024 2.5 s (r2231). By the rule read as written the stereo set's count is 2048 (1024 fails the clearance clause by one flight) and the lidar's stays 8192 (every lower count fails it by one or two flights while keeping the speed to 2048); the means of the seconds, 0.2 to 1.1 s on the stereo set and 0.5 to 1.2 s on the lidar at every count, do not separate the counts, and ten flights a group would be needed to. The tick on the development host
+barely follows the count: the MPPI's GPU share is the 6.4 ms at 8192
+measured above, the rest of the tick is the CPU's; so on this host the count
+is no lever, and on an Orin, where the 6.4 ms become 30 to 40, it is the
+lever: 2048 rollouts there cost about what 8192 cost here; the counts
+by the rule are 2048 for the stereo set and 8192 for the lidar
+([hardware_builds.md](hardware_builds.md), specification K48).
+
 Complete, step by step: (1) the series at the four counts with the mean
-speed, the holds and the closest true clearance against 8192; (2) the engine
+speed, the holds and the closest true clearance against 8192 (done, above); (2) the engine
 built and its unit tests run on a machine without CUDA, the parity tests
 holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
 series on the board.
