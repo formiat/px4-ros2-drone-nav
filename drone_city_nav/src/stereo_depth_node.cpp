@@ -752,16 +752,10 @@ private:
       heat_emitted_s_ = stamp_s;
       unobservable.insert(unobservable.end(), cap.begin(), cap.end());
       heat_marks_total_ += cap.size();
-      RCLCPP_WARN(
-          get_logger(),
-          "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f "
-          "pixels=%zu share=%.4f fix=%d bearings=%zu baseline_m=%.1f",
-          cap.size(), heat_range_m,
-          std::atan2(-heat->direction.y, heat->direction.x) * 180.0 / std::numbers::pi,
-          std::asin(std::clamp(heat->direction.z, -1.0, 1.0)) * 180.0 /
-              std::numbers::pi,
-          heat->hot_pixels, heat->hot_share, heat_fix_.point().has_value() ? 1 : 0,
-          heat_fix_.bearings(), heat_fix_.baselineM());
+      RCLCPP_WARN(get_logger(), "%s",
+                  stereo_depth_node_internal::heatMarksText(cap.size(), heat_range_m,
+                                                            *heat, heat_fix_)
+                      .c_str());
     }
     if (heat.has_value()) {
       // The returns through the standoff ball are the plume's own texture and

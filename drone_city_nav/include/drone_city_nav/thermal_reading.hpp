@@ -68,11 +68,15 @@ readThermalFrame(std::span<const std::uint16_t> kelvin_hundredths, std::size_t w
 // vehicle crept to 1.5 m of the source at the conservative range). The fix
 // is the point nearest the bearing rays of the last `window_s`, taken once
 // the rays' origins spread `least_baseline_m` across the mean bearing, and
-// kept while the rays pass within `most_residual_m` of it on average.
+// kept while the rays pass it within `most_residual_rad` of their length on
+// average: a fan of bearings from one stand, turned by the vehicle's yaw
+// (r2238: the pad, the heading's errors at takeoff), has a point near the
+// stand within a metre of every ray and reads as a source 2.5 m off; by
+// angle it is 20 degrees off every ray.
 struct HeatSourceFixConfig {
   double window_s{10.0};
   double least_baseline_m{1.0};
-  double most_residual_m{1.0};
+  double most_residual_rad{0.05};
 };
 
 class HeatSourceFix {

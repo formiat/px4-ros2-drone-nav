@@ -96,7 +96,8 @@ class SimulationSmokeContractTest(unittest.TestCase):
         node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
         self.assertIn("readThermalFrame(", node)
         self.assertIn("heatStandoffCap(", node)
-        self.assertIn("HEAT_SOURCE_MARKS", node)
+        self.assertIn("heatMarksText(", node)
+        self.assertIn("HEAT_SOURCE_MARKS", (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node_internal.hpp").read_text())
         self.assertNotIn("HEAT_SOURCES", node)
         makefile = (REPOSITORY / "Makefile").read_text()
         self.assertIn('HOT_PLUME_SCENARIO := SMOKE_ZONES="12,22,11,3,3,3,1.0" '

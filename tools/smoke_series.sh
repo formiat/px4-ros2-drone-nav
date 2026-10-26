@@ -39,8 +39,8 @@ for flight in 1 2 3 4 5; do
     grep -E '^FAIL|^(OK|NOTE): (mean flight|crash|no crash|the true position|the goal was given up|the vehicle returned|the vehicle is whole)' "log/tools/run_$run.log" | sed "s/^/$run /" >> "$out"
     grep -o 'smoke_faces=[0-9]* face_range_m=[0-9.na-]* face_marks_total=[0-9]*' "log/runs/$run/gz_drone_nav.log" 2>/dev/null | awk -v r="$run" 'BEGIN{f=0} /smoke_faces=[1-9]/{if(!f){print r" first face: "$0; f=1}} END{print r" last: "$0}' >> "$out"
     # Roadmap item 32: the core's reading as the decision's evidence (K49).
-    grep -o 'heat=[0-9.]* heat_range_m=[0-9.na-]* heat_marks_total=[0-9]*' "log/runs/$run/gz_drone_nav.log" 2>/dev/null | awk -v r="$run" 'BEGIN{f=0} /heat=0\.0*[1-9]/{if(!f){print r" first heat: "$0; f=1}} END{print r" last: "$0}' >> "$out"
-    grep -c 'HEAT_SOURCE seen=true' "log/runs/$run/gz_drone_nav.log" 2>/dev/null | sed "s/^/$run HEAT_SOURCE seen=true events: /" >> "$out"
+    grep -o 'heat=[0-9.]* heat_range_m=[0-9.na-]* heat_marks_total=[0-9]*' "log/runs/$run/ros_drone_nav.log" 2>/dev/null | awk -v r="$run" 'BEGIN{f=0} /heat=0\.0*[1-9]/{if(!f){print r" first heat: "$0; f=1}} END{print r" last: "$0}' >> "$out"
+    grep -c 'HEAT_SOURCE seen=true' "log/runs/$run/ros_drone_nav.log" 2>/dev/null | sed "s/^/$run HEAT_SOURCE seen=true events: /" >> "$out"
   fi
   number=$(( $(ls log/runs | sed "s/^r//" | sort -n | tail -1) + 1 ))
 done

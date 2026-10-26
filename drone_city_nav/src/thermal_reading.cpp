@@ -209,10 +209,10 @@ std::optional<Point3> HeatSourceFix::point() const {
       return std::nullopt;
     }
     const Point3 miss = minus(offset, scaled(ray.direction, along));
-    residual_square += dot(miss, miss);
+    residual_square += dot(miss, miss) / (along * along);
   }
   if (std::sqrt(residual_square / static_cast<double>(rays_.size())) >
-      config_.most_residual_m) {
+      config_.most_residual_rad) {
     return std::nullopt;
   }
   return p;

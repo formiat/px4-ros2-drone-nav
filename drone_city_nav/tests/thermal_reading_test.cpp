@@ -147,6 +147,17 @@ TEST(ThermalReadingTest, TheSourceIsFixedFromBearingsOverTheMotion) {
   EXPECT_NEAR(fixed.x, source.x, 0.1);
   EXPECT_NEAR(fixed.y, source.y, 0.1);
   EXPECT_NEAR(fixed.z, source.z, 0.1);
+  // A fan of bearings from one stand, turned by the yaw's errors over a short
+  // climb, has a point near the stand within a metre of every ray (r2238):
+  // by angle it is no fix.
+  HeatSourceFix fan;
+  for (int step = 0; step <= 20; ++step) {
+    const double yaw = 0.3 * std::sin(0.7 * step);
+    fan.observe({0.0, 0.0, 0.1 * step}, {std::cos(yaw), std::sin(yaw), 0.0},
+                0.1 * step);
+  }
+  EXPECT_GE(fan.baselineM(), 1.0);
+  EXPECT_FALSE(fan.point().has_value());
   // Bearings that agree on nothing give no fix; the window drops the old ones.
   HeatSourceFix scatter;
   scatter.observe({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 0.0);

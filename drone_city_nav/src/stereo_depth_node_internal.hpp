@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/stereo_lit_range.hpp"
+#include "drone_city_nav/thermal_reading.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <sensor_msgs/msg/image.hpp>
@@ -11,6 +12,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <numbers>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <string>
@@ -163,6 +166,27 @@ brightnessByMetreText(const std::array<double, LitRangeTracker::kMetres>& bright
         std::to_string(brightness[metre] < 0.0 ? -1L : std::lround(brightness[metre]));
   }
   return text;
+}
+
+// The heat mark's log line (K49): the rays laid, the range, the hot centre's
+// bearing in the frame, the pixels and the source's fix.
+[[nodiscard]] inline std::string heatMarksText(const std::size_t rays,
+                                               const double range_m,
+                                               const ThermalReading& reading,
+                                               const HeatSourceFix& fix) {
+  const std::optional<Point3> point = fix.point();
+  const Point3 at = point.value_or(Point3{});
+  std::array<char, 256> text{};
+  std::snprintf(
+      text.data(), text.size(),
+      "HEAT_SOURCE_MARKS rays=%zu range_m=%.2f az_deg=%.1f el_deg=%.1f pixels=%zu "
+      "share=%.4f fix=%d bearings=%zu baseline_m=%.1f fix_m=(%.1f,%.1f,%.1f)",
+      rays, range_m,
+      std::atan2(-reading.direction.y, reading.direction.x) * 180.0 / std::numbers::pi,
+      std::asin(std::clamp(reading.direction.z, -1.0, 1.0)) * 180.0 / std::numbers::pi,
+      reading.hot_pixels, reading.hot_share, point.has_value() ? 1 : 0, fix.bearings(),
+      fix.baselineM(), at.x, at.y, at.z);
+  return std::string{text.data()};
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal
