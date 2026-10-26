@@ -303,14 +303,20 @@ motion were set on the flights' logged candidates replayed offline
 core sees a fire's body through the smoke that carries it (longwave infrared
 crosses 1/m untouched, K39), which the pair, the ring and the lidar read by
 density alone. A source is four pixels or more at 30 K over the frame's
-median (the location's surfaces are 23 K apart at most); its range the median
-of the hits in the hot cone, the ring's or the pair's, else the conservative
-5.2 m; the standoff 4.0 m. The mark is a measurement like the face's: the near
-half of the standoff ball round the range point enters the memory observed
-unobservable every half second while the core reads the source, nothing
-nearer than 1.5 m, the pair's returns inside the ball dropped as the plume's
-own texture; the motion is bounded at the range less the standoff, a bound
-fallen to nought being a stop. Nothing is latched: a frame without the source
+median (the location's surfaces are 23 K apart at most); its range the nearer
+of the hits in the hot cone (the ring's or the pair's; inside a plume the
+pair's are the smoke's chance matches, far beyond the source) and the source's
+fix in the world from its bearings over the motion (a range guessed ahead
+moves with the vehicle, and a bound before it stops nothing), else the
+conservative 5.2 m; the standoff 4.0 m. The mark is a measurement like the
+face's: the near half of the standoff ball round the range point enters the
+memory observed unobservable every half second while the core reads the
+source, whole (a cap cut short of the vehicle had a hole at its apex), the
+whole ball from inside it (the escape search leads out, away from the centre);
+every return whose ray crosses the ball is dropped, the plume's own texture and
+the surfaces beyond it, so that the memory's misses do not clear the marks;
+the motion is bounded at the range less the standoff, a bound fallen to nought
+being a stop. Nothing is latched: a frame without the source
 lays nothing, and what was laid is lifted as any unobservable mark is, by the
 pair's measured rays. The way round the ball is the planner's; a room whose
 crossing the ball closes is given up by item 19's proof or the light's charge.

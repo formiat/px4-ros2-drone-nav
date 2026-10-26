@@ -1296,10 +1296,12 @@ stereo set with its cap at 650 K (K39), its frame relayed as the pair's and
 read by the depth node (`thermal_reading.hpp`): a source is four pixels or
 more at 30 K over the frame's median, the threshold set on the rig against
 the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
-the tag is binary); its range the hits in the hot cone, else 5.2 m; the
-standoff 4.0 m, laid as the near half of the ball round the range point
-(observed unobservable, every half second while the core reads the source),
-the motion bounded before it, the pair's returns inside dropped, the words
+the tag is binary); its range the nearer of the hits in the hot cone and the
+source's bearing-only fix over the motion, else 5.2 m; the standoff 4.0 m,
+laid as the near half of the ball round the range point (observed
+unobservable, every half second while the core reads the source, the whole
+ball from inside), the motion bounded before it, every return through the
+ball dropped, the words
 `HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
 overlay; the truth judged never within the standoff
 (`validate_standoff_from_heat_sources`). The scenarios: `sim-urban-hot-smoke-plume-*`
