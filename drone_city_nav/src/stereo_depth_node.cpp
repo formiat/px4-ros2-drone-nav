@@ -604,10 +604,9 @@ private:
     const std::optional<ThermalReading> heat = heatReading(pair_stamp_s);
     double heat_range_m = std::numeric_limits<double>::quiet_NaN();
     if (heat.has_value()) {
-      // The source's fix in the world from its bearings over the motion (K49),
-      // the range's ceiling (the conservative one without a fix); the bearings
-      // are taken as the core's frames arrive (onThermal), each with the pose
-      // of its own moment.
+      // The range's ceiling: the source's fix from its bearings over the motion
+      // (K49), else the body's apparent size (a point guessed 5.2 m ahead moved
+      // with the vehicle, r2236, and held it at its first sight, r2252).
       const std::optional<Point3> fix = heat_fix_snapshot_.point();
       Eigen::Vector3d origin;
       Eigen::Vector3d bearing;
@@ -621,7 +620,7 @@ private:
       heat_range_m = heatSourceRangeM(
           *heat, returns, kHeatConeMarginRad,
           fix.has_value() ? (Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()
-                          : silent_patch_config_.confident_depth_m);
+                          : heat->range_by_size_m);
       const double boundary_m = std::max(0.0, heat_range_m - kHeatStandoffM);
       silent_range_m = std::isfinite(silent_range_m)
                            ? std::min(silent_range_m, boundary_m)
@@ -927,7 +926,8 @@ private:
   // The mark's lattice (solid under the 0.55 m inflation of 0.25 m voxels) and the
   // ball a step wider than the standoff (r2249: 3.99 m with the ball at 4.0).
   static constexpr double kHeatMarkSpacingM{0.5};
-  static constexpr double kHeatMarkRadiusM{kHeatStandoffM + kHeatMarkSpacingM};
+  // The ball a metre over the standoff: the range by size errs by a sixth at 11 m.
+  static constexpr double kHeatMarkRadiusM{kHeatStandoffM + 1.0};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
   std::mutex thermal_mutex_;

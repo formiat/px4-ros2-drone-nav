@@ -45,6 +45,8 @@ TEST(ThermalReadingTest, ASourceIsReadWithItsDirectionAndWidth) {
   EXPECT_NEAR(std::atan2(-reading.direction.y, reading.direction.x),
               std::atan(25.0 / kFocalPx), 1e-6);
   EXPECT_GT(reading.direction.z, 0.0);
+  // A hundred hot pixels of a 0.3 m body: 7.9 m by its size (the rig's 6200).
+  EXPECT_NEAR(reading.range_by_size_m, std::sqrt(62.0), 1e-9);
   // Half the block's diagonal, 6.4 px, plus half a pixel.
   EXPECT_NEAR(reading.half_angle_rad,
               std::atan(6.36 / kFocalPx) + std::atan(0.5 / kFocalPx), 0.003);

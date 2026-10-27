@@ -9,8 +9,7 @@
 #include <vector>
 
 // The gaze of a vehicle whose sensor looks forward (mppi_control_sequence.hpp):
-// the motion's heading, the rest heading, the survey of a shaft, and the point
-// the gaze is held on (K49).
+// the motion's heading, the rest heading and the survey of a shaft.
 namespace drone_city_nav::mppi {
 namespace {
 
@@ -45,38 +44,6 @@ TEST(MppiGazeTest, TheGazeTurnsTheHeadingToTheMotionWithoutOvershoot) {
   EXPECT_NEAR(horizon.back().yaw_rate, 0.0F, 0.1F);
   // Two seconds in, the quarter turn is within ten degrees of done.
   EXPECT_NEAR(horizon[40U].yaw, north, 0.18F);
-}
-
-TEST(MppiGazeTest, TheGazeHeldOnAPointKeepsItWhileTheVehicleFliesPast) {
-  // The vehicle flies north at 2 m/s past a heat source 10 m to its east
-  // (K49): the heading stays on the source as it passes, turning from east
-  // toward south-east, and never follows the motion north; the translation
-  // is not touched.
-  DynamicsConfig dynamics;
-  dynamics.dt_s = 0.05F;
-  dynamics.maximum_yaw_rate_radps = 1.5F;
-  dynamics.maximum_yaw_acceleration_radps2 = 2.0F;
-  std::vector<Control> controls(80U);
-  std::vector<State> horizon{State{.vy = 2.0F}};
-  for (const Control& control : controls) {
-    horizon.push_back(integrateReference(horizon.back(), control, dynamics));
-  }
-  const std::vector<State> translation = horizon;
-  const GazeDecision decision =
-      applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F,
-                           GazeTarget{10.0F, 0.0F});
-  EXPECT_EQ(decision.rule, GazeRule::kLookAt);
-  EXPECT_NEAR(decision.target_yaw_rad, 0.0F, 1.0e-6F);
-  for (std::size_t index = 0U; index < controls.size(); ++index) {
-    EXPECT_FLOAT_EQ(horizon[index + 1U].y, translation[index + 1U].y);
-    EXPECT_FLOAT_EQ(controls[index].ay, 0.0F);
-  }
-  // Four seconds on, 8 m north of where it started, the source bears 39 degrees
-  // to the south of east: the heading has turned that way, never north.
-  const State& last = horizon.back();
-  EXPECT_NEAR(last.yaw, std::atan2(0.0F - last.y, 10.0F - last.x), 0.1F);
-  EXPECT_LT(last.yaw, 0.0F);
-  EXPECT_GT(last.yaw, -1.0F);
 }
 
 TEST(MppiGazeTest, TheGazeHoldsTheHeadingOfAVehicleThatHardlyMoves) {

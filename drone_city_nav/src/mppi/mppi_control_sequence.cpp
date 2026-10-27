@@ -687,11 +687,13 @@ RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
 // autopilot's yaw response, a few tenths of a second, stays well inside that.
 constexpr float kGazeRateGainPerSecond{1.5F};
 
-GazeDecision applyGazeYawControls(
-    const std::span<Control> controls, const std::span<State> horizon,
-    const DynamicsConfig& dynamics, const float lookahead_s,
-    const float minimum_displacement_m, const std::optional<float> rest_heading_rad,
-    const float survey_yaw_rate_radps, const std::optional<GazeTarget> look_at) {
+GazeDecision applyGazeYawControls(const std::span<Control> controls,
+                                  const std::span<State> horizon,
+                                  const DynamicsConfig& dynamics,
+                                  const float lookahead_s,
+                                  const float minimum_displacement_m,
+                                  const std::optional<float> rest_heading_rad,
+                                  const float survey_yaw_rate_radps) {
   GazeDecision decision{};
   if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
     return decision;
@@ -719,20 +721,11 @@ GazeDecision applyGazeYawControls(
     // one or two of eight heading sectors faced per half metre of a 12 m
     // climb, then 20 s of probing exits at the top, 39 routes; r600 the
     // same). The survey turns the pair around the walls as they pass.
-    const bool surveying = !look_at.has_value() && !moving &&
-                           !rest_heading_rad.has_value() &&
+    const bool surveying = !moving && !rest_heading_rad.has_value() &&
                            survey_yaw_rate_radps > 0.0F &&
                            std::abs(ahead.z - state.z) >= minimum_displacement_m;
-    // The point the gaze is held on, from where this step of the horizon stands.
-    const std::optional<float> look_at_rad =
-        look_at.has_value()
-            ? std::optional{std::atan2(look_at->y - state.y, look_at->x - state.x)}
-            : std::nullopt;
     if (index == 0U) {
-      if (look_at_rad.has_value()) {
-        decision.rule = GazeRule::kLookAt;
-        decision.target_yaw_rad = *look_at_rad;
-      } else if (moving) {
+      if (moving) {
         decision.rule = GazeRule::kMotion;
         decision.target_yaw_rad = std::atan2(ahead_y, ahead_x);
       } else if (rest_heading_rad.has_value()) {
@@ -757,14 +750,12 @@ GazeDecision applyGazeYawControls(
       horizon[index + 1U].yaw_rate = integrated.yaw_rate;
       continue;
     }
-    const float error_rad =
-        look_at_rad.has_value() || moving || rest_heading_rad.has_value()
-            ? std::remainder((look_at_rad.has_value() ? *look_at_rad
-                              : moving                ? std::atan2(ahead_y, ahead_x)
-                                                      : *rest_heading_rad) -
-                                 state.yaw,
-                             2.0F * std::numbers::pi_v<float>)
-            : 0.0F;
+    const float error_rad = moving || rest_heading_rad.has_value()
+                                ? std::remainder((moving ? std::atan2(ahead_y, ahead_x)
+                                                         : *rest_heading_rad) -
+                                                     state.yaw,
+                                                 2.0F * std::numbers::pi_v<float>)
+                                : 0.0F;
     // A turn rate proportional to the remaining angle, inside the yaw rate
     // limit. The rate that closes the angle at the full yaw deceleration is
     // the fastest plan, and it left no room for the autopilot's own yaw

@@ -28,6 +28,12 @@ struct ThermalReadingConfig {
   // Fewer hot pixels are no source: a 0.3 m body gives 6 at 30 m and 16 at
   // 20 (the rig), a 0.1 m one 20 at 5.7.
   std::size_t least_hot_pixels{4U};
+  // The body's apparent size as its range: hot pixels times the range squared,
+  // for the body the rule assumes, 0.3 m across (the rig: 456 at 3.7 m, 192
+  // at 5.7, 104 at 7.7, 48 at 11.7, 16 at 19.7, within 5 percent of 6200).
+  // A larger body reads nearer than it is, a smaller one farther; the hits in
+  // the cone and the bearings' fix refine it (K49).
+  double body_pixel_metres_squared{6200.0};
 };
 
 struct ThermalReading {
@@ -39,6 +45,8 @@ struct ThermalReading {
   // frame, and the angular radius of the region round it (half a pixel added).
   Point3 direction{1.0, 0.0, 0.0};
   double half_angle_rad{0.0};
+  // The range the body's apparent size gives (nought without a source).
+  double range_by_size_m{0.0};
 
   [[nodiscard]] bool hot() const noexcept {
     return hot_pixels > 0U;

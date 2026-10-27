@@ -116,6 +116,8 @@ ThermalReading readThermalFrame(const std::span<const std::uint16_t> kelvin_hund
     }
   }
   reading.half_angle_rad = widest + std::atan(0.5 / focal_px);
+  reading.range_by_size_m =
+      std::sqrt(config.body_pixel_metres_squared / static_cast<double>(count));
   return reading;
 }
 
