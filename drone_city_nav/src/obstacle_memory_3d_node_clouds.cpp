@@ -84,6 +84,7 @@ anyVolumeContains(const std::span<const DynamicAgentLidarVolume> volumes,
 
 PendingPointCloudDisposition
 ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
+  const bool hit_only_returns = hit_only_returns_ || pending.heat_marks;
   const auto processing_started = std::chrono::steady_clock::now();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const std::optional<std::int64_t> scan_stamp_ns =
@@ -145,18 +146,17 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
     return PendingPointCloudDisposition::kConsumed;
   }
   OrganizedLidarScan3DResult decoded =
-      hit_only_returns_
-          ? decodeHitOnlyReturns3D(
-                *raw_returns,
-                decodePointCloudFloatField(pending.cloud, "intensity")
-                    .value_or(std::vector<float>{}),
-                scan_config_.minimum_range_m, scan_config_.maximum_range_m)
-          : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
+      hit_only_returns ? decodeHitOnlyReturns3D(
+                             *raw_returns,
+                             decodePointCloudFloatField(pending.cloud, "intensity")
+                                 .value_or(std::vector<float>{}),
+                             scan_config_.minimum_range_m, scan_config_.maximum_range_m)
+                       : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
   // Roadmap item 18 stage 0: the patterns in which the lidar fails, read
   // from the organized scan; an aerosol's returns and a dropout bundle's
   // rays become misses to their range with fail evidence there.
   LidarScanPatternsResult patterns;
-  if (!hit_only_returns_ && decoded.organized_dimensions_match) {
+  if (!hit_only_returns && decoded.organized_dimensions_match) {
     patterns = classifyLidarScanPatterns3D(
         decoded,
         decodePointCloudFloatField(pending.cloud, "intensity")
@@ -191,11 +191,11 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
   // it could not see enters the memory the same way (roadmap item 17 stage
   // 8).
   std::vector<LidarBeamSample3D> surface_samples =
-      hit_only_returns_
+      hit_only_returns
           ? decoded.unobservable
           : interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
                                                 surface_interpolation_config_);
-  if (!hit_only_returns_) {
+  if (!hit_only_returns) {
     surface_samples.insert(surface_samples.end(), decoded.unobservable.begin(),
                            decoded.unobservable.end());
   }
@@ -234,7 +234,7 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
       // The way the vehicle came is never observed unobservable
       // (specification K14, I3's exit guarantee): a pair that turns back
       // at the dim edge of a dark looks into the same dark and would close it.
-      if (hit_only_returns_ && sample.interpolated &&
+      if (hit_only_returns && sample.interpolated &&
           std::ranges::any_of(flown_path_, [&endpoint](const Point3& pose) {
             return squaredDistance(pose, endpoint) <=
                    kFlownPathClearanceM * kFlownPathClearanceM;
@@ -304,11 +304,14 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
   const std::size_t dynamic_filtered = cooperative_filtered;
   latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;
   latest.valid = true;
-  latest_scan_pub_->publish(makeLatestSensorObstacleScanMessage(
-      latest, source_header, frame_id_, acquisition_stamp_ns,
-      latest_scan_producer_instance_id_, ++latest_scan_sequence_, pose_generation));
-  const bool publish_current_cloud =
-      persistent_memory_diagnostics_enabled_ && persistent_memory_selection_.selected();
+  if (!pending.heat_marks) {
+    latest_scan_pub_->publish(makeLatestSensorObstacleScanMessage(
+        latest, source_header, frame_id_, acquisition_stamp_ns,
+        latest_scan_producer_instance_id_, ++latest_scan_sequence_, pose_generation));
+  }
+  const bool publish_current_cloud = !pending.heat_marks &&
+                                     persistent_memory_diagnostics_enabled_ &&
+                                     persistent_memory_selection_.selected();
   if (publish_current_cloud) {
     current_returns_pub_->publish(buildLidarDebugPointCloud(
         hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_,

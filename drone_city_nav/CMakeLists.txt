@@ -1044,6 +1044,14 @@ foreach(stereo_depth_process ${stereo_depth_processes})
   enable_project_warnings(${stereo_depth_process})
 endforeach()
 target_sources(stereo_depth_node PRIVATE src/stereo_depth_main.cpp)
+# The thermal core's reading on the lidar set (K49): the depth node's heat rule for a vehicle without cameras.
+add_executable(thermal_core_node src/thermal_core_node.cpp)
+target_compile_features(thermal_core_node PRIVATE cxx_std_20)
+target_include_directories(thermal_core_node SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_include_directories(thermal_core_node PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(thermal_core_node drone_city_nav_core Eigen3::Eigen ${OpenCV_LIBS})
+ament_target_dependencies(thermal_core_node rclcpp sensor_msgs geometry_msgs)
+enable_project_warnings(thermal_core_node)
 if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   target_sources(gazebo_stereo_depth_node PRIVATE src/gazebo_stereo_depth_main.cpp)
   target_link_libraries(gazebo_stereo_depth_node gz-transport13::gz-transport13
@@ -1263,6 +1271,7 @@ install(
     cooperative_traffic_referee_node
     lidar_inertial_odometry_node
     stereo_depth_node
+    thermal_core_node
     cooperative_traffic_agent_node
     drone_city_nav_cooperative_components
     drone_city_nav_diagnostics_components

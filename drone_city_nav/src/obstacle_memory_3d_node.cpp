@@ -322,6 +322,19 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
         onPointCloud(std::move(cloud));
       },
       cloud_subscription_options);
+  // The heat marks of the lidar set's thermal core (K49), a cloud of their own
+  // beside the scan: hits along their rays, no misses (the scan's misses score
+  // against them, so the core lays them with every scan).
+  const std::string heat_marks_topic =
+      declare_parameter<std::string>("heat_marks_topic", "");
+  if (!heat_marks_topic.empty()) {
+    heat_marks_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        heat_marks_topic, rclcpp::SensorDataQoS{}.keep_last(1),
+        [this](sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
+          onHeatMarks(std::move(cloud));
+        },
+        cloud_subscription_options);
+  }
   autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
       *this, map_transform_,
       AutopilotStateTopics{

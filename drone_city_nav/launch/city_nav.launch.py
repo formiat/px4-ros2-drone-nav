@@ -258,6 +258,9 @@ def generate_launch_description():
             camera_profile.perform(context),
             navigation_sensor_profile.perform(context),
         )
+        if navigation_sensors == "lidar":
+            # The lidar set's heat marks (K49), a cloud beside the scan.
+            obstacle_memory_overrides["heat_marks_topic"] = "/drone_city_nav/heat_marks"
         localization = (
             localization_profile.perform(context).strip()
             or DEFAULT_LOCALIZATION_PROFILES[navigation_sensors]
@@ -524,6 +527,13 @@ def generate_launch_description():
                 contract, remap = lidar_barometer_bridge(gazebo_world_name, gazebo_model_name)
                 bridge_arguments.append(contract)
                 bridge_remaps += ["-r", remap]
+                # The thermal core's frame (K49), 160 x 120 at 9 Hz: the bridge carries it.
+                thermal_gz_topic = (
+                    f"/world/{gazebo_world_name}/model/{gazebo_model_name}/link/link/"
+                    "sensor/thermal/image"
+                )
+                bridge_arguments.append(f"{thermal_gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image")
+                bridge_remaps += ["-r", f"{thermal_gz_topic}:=/thermal/image"]
             nodes.append(
                 Node(
                     package="ros_gz_bridge",
@@ -641,6 +651,18 @@ def generate_launch_description():
                     name="lidar_inertial_odometry_node",
                     output="screen",
                     parameters=[params_file.perform(context), lidar_inertial_overrides],
+                )
+            )
+        if navigation_sensors == "lidar":
+            # The thermal core's reading on the lidar set (roadmap item 32, K49): the heat
+            # marks a cloud of their own into the memory, the bound on the silent range.
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="thermal_core_node",
+                    name="thermal_core_node",
+                    output="screen",
+                    parameters=[{"use_sim_time": True}],
                 )
             )
         nodes.append(
