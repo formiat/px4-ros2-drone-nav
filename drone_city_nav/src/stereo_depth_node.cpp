@@ -603,8 +603,8 @@ private:
     const double pair_stamp_s = rclcpp::Time{left->header.stamp}.seconds();
     const std::optional<ThermalReading> heat = heatReading(pair_stamp_s);
     double heat_range_m = std::numeric_limits<double>::quiet_NaN();
+    bool heat_ranged{false};
     if (heat.has_value()) {
-      // The range (heatRange): the hits, the fix, else the body's size (K49).
       const std::optional<Point3> fix = heat_fix_snapshot_.point();
       Eigen::Vector3d origin;
       Eigen::Vector3d bearing;
@@ -621,6 +621,13 @@ private:
               ? std::optional{(Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()}
               : std::nullopt,
           thermal_config_.range_by_size_error_share, heat_size_range_m_, heat_error_m_);
+      heat_point_m_ = fix.has_value()
+                          ? Eigen::Vector3d{fix->x, fix->y, fix->z}
+                          : Eigen::Vector3d{origin + heat_range_m * bearing};
+      // Seen but not ranged (no hits, fix or size yet, r2289): no bound, no mark.
+      heat_ranged = std::isfinite(heat_range_m);
+    }
+    if (heat_ranged) {
       const double boundary_m =
           std::max(0.0, heat_range_m - heat_error_m_ - kHeatStandoffM);
       silent_range_m = std::isfinite(silent_range_m)
@@ -628,10 +635,8 @@ private:
                            : boundary_m;
       silent_message.data = silent_range_m;
       silent_range_pub_->publish(silent_message);
-      // The source in the map (the fix, else the range point): the gaze's hold.
-      const Eigen::Vector3d at = fix.has_value()
-                                     ? Eigen::Vector3d{fix->x, fix->y, fix->z}
-                                     : Eigen::Vector3d{origin + heat_range_m * bearing};
+      // The source in the map (the fix, else the range point): the evidence's point.
+      const Eigen::Vector3d at = heat_point_m_;
       geometry_msgs::msg::PointStamped point;
       point.header.stamp = left->header.stamp;
       point.header.frame_id = "map";
@@ -733,7 +738,7 @@ private:
         point = toPhysicalFlu(point);
       }
     }
-    if (heat.has_value() &&
+    if (heat_ranged &&
         (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
       const std::vector<Point3> cap = heatStandoffCap(
           *heat, heat_range_m, kHeatStandoffM + heat_error_m_, kHeatMarkSpacingM);
@@ -745,7 +750,7 @@ private:
                                                             *heat, heat_fix_snapshot_)
                       .c_str());
     }
-    if (heat.has_value()) {
+    if (heat_ranged) {
       // The returns through the standoff ball are the plume's own texture and
       // the surfaces beyond it (K49), dropped here, after the frame's counts,
       // which index the pair's returns at the front (r2235: dropped before them,
@@ -821,14 +826,12 @@ private:
   // The core's latest frame read (K49), held while the pair matches: fresh
   // within half a second of the pair's stamp (the core runs at 9 Hz).
   void onThermal(const sensor_msgs::msg::Image& image) {
-    const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
-    if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
+    const std::optional<ThermalReading> read =
+        stereo_depth_node_internal::readThermalImage(image, thermal_config_);
+    if (!read.has_value()) {
       return;
     }
-    std::vector<std::uint16_t> kelvin_hundredths(pixels);
-    std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
-    const ThermalReading reading =
-        readThermalFrame(kelvin_hundredths, image.width, image.height, thermal_config_);
+    const ThermalReading& reading = *read;
     std_msgs::msg::Float64 share;
     share.data = reading.hot_share;
     thermal_share_pub_->publish(share);
@@ -917,17 +920,14 @@ private:
   static constexpr int kRayPitchPx{30};
   static constexpr std::size_t kFaceFrames{4U};
   static constexpr double kFaceEmitPeriodS{0.5};
-  // The heat source's standoff (K49, the rig of 2026-10-26): under the
-  // conservative range by 1.2 m (5.2 / 1.2 = 4.33), so that a mark laid on
-  // that range stands before the vehicle, and over the pair's ranging reach
-  // in moderate smoke (3.7 m).
+  // The standoff (K49, the rig of 2026-10-26: over the pair's ranging reach in
+  // moderate smoke, 3.7 m), the hot cone's margin (a pair cell at the stride) and
+  // the mark's lattice (solid under the 0.55 m inflation of 0.25 m voxels).
   static constexpr double kHeatStandoffM{4.0};
-  // The hot cone widened by a pair cell at the stride (4 px of 369).
   static constexpr double kHeatConeMarginRad{0.02};
-  // The mark's lattice (solid under the 0.55 m inflation of 0.25 m voxels) and the
-  // ball a step wider than the standoff (r2249: 3.99 m with the ball at 4.0).
   static constexpr double kHeatMarkSpacingM{0.5};
   double heat_size_range_m_{0.0};
+  Eigen::Vector3d heat_point_m_{Eigen::Vector3d::Zero()};
   double heat_error_m_{1.0};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};

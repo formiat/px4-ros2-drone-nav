@@ -16,7 +16,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <numbers>
 #include <opencv2/core.hpp>
@@ -322,12 +324,35 @@ heatRange(const ThermalReading& heat, const std::span<const StereoDepthReturn> r
           const double cone_margin_rad, const std::optional<double> fix_range_m,
           const double size_error_share, double& size_range_m, double& error_m) {
   size_range_m = heat.range_by_size_m > 0.0 ? heat.range_by_size_m : size_range_m;
-  const double range_m =
-      heatSourceRangeM(heat, returns, cone_margin_rad,
-                       fix_range_m.has_value() ? *fix_range_m : size_range_m);
+  // No fix, no size yet (the body cut by the frame's edge from the first frame on,
+  // r2289) and no hits: no range, nothing laid and nothing bounded, rather than
+  // a nought that put the whole ball round the vehicle.
+  const double ceiling_m = fix_range_m.has_value() ? *fix_range_m
+                           : size_range_m > 0.0
+                               ? size_range_m
+                               : std::numeric_limits<double>::infinity();
+  const double range_m = heatSourceRangeM(heat, returns, cone_margin_rad, ceiling_m);
+  if (!std::isfinite(range_m)) {
+    error_m = 1.0;
+    return std::numeric_limits<double>::quiet_NaN();
+  }
   const bool by_size = !fix_range_m.has_value() && range_m >= size_range_m;
   error_m = by_size ? size_error_share * range_m : 1.0;
   return range_m;
+}
+
+// The thermal core's frame as its driver publishes it (mono16, hundredths of a
+// kelvin) read for a source; none for another encoding or a short frame.
+[[nodiscard]] inline std::optional<ThermalReading>
+readThermalImage(const sensor_msgs::msg::Image& image,
+                 const ThermalReadingConfig& config) {
+  const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
+  if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
+    return std::nullopt;
+  }
+  std::vector<std::uint16_t> kelvin_hundredths(pixels);
+  std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
+  return readThermalFrame(kelvin_hundredths, image.width, image.height, config);
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal

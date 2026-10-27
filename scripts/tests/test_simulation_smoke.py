@@ -94,7 +94,7 @@ class SimulationSmokeContractTest(unittest.TestCase):
                          "/world/world/model/model/link/stereo_tof_link/sensor/thermal/image")
         self.assertEqual(depth["thermal_image_topic"], "/thermal/image")
         node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
-        self.assertIn("readThermalFrame(", node)
+        self.assertIn("readThermalImage(", node)
         self.assertIn("heatStandoffCap(", node)
         self.assertIn("heatMarksText(", node)
         self.assertIn("HEAT_SOURCE_MARKS", (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node_internal.hpp").read_text())

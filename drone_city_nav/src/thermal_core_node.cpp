@@ -96,14 +96,12 @@ private:
   static constexpr double kThermalFreshS{0.5};
 
   void onThermal(const sensor_msgs::msg::Image& image) {
-    const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
-    if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
+    const std::optional<ThermalReading> read =
+        stereo_depth_node_internal::readThermalImage(image, thermal_config_);
+    if (!read.has_value()) {
       return;
     }
-    std::vector<std::uint16_t> kelvin_hundredths(pixels);
-    std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
-    const ThermalReading reading =
-        readThermalFrame(kelvin_hundredths, image.width, image.height, thermal_config_);
+    const ThermalReading& reading = *read;
     std_msgs::msg::Float64 share;
     share.data = reading.hot_share;
     thermal_share_pub_->publish(share);
@@ -191,6 +189,9 @@ private:
             ? std::optional{(Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()}
             : std::nullopt,
         thermal_config_.range_by_size_error_share, size_range_m_, error_m);
+    if (!std::isfinite(last_range_m_)) {
+      return; // the source seen but not ranged: no mark, no bound
+    }
     std_msgs::msg::Float64 bound;
     bound.data = std::max(0.0, last_range_m_ - error_m - kHeatStandoffM);
     silent_range_pub_->publish(bound);
