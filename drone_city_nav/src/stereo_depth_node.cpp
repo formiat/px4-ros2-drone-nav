@@ -618,19 +618,15 @@ private:
     double heat_range_m = std::numeric_limits<double>::quiet_NaN();
     if (heat.has_value()) {
       // The source's fix in the world from its bearings over the motion (K49),
-      // the range's ceiling (the conservative one without a fix).
+      // the range's ceiling (the conservative one without a fix); the bearings
+      // are taken as the core's frames arrive (onThermal), each with the pose
+      // of its own moment.
+      const std::optional<Point3> fix = heat_fix_snapshot_.point();
       Eigen::Vector3d origin;
-      Eigen::Vector3d bearing;
       {
         const std::lock_guard<std::mutex> lock{pose_mutex_};
         origin = body_position_;
-        bearing =
-            body_orientation_ *
-            Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
       }
-      heat_fix_.observe({origin.x(), origin.y(), origin.z()},
-                        {bearing.x(), bearing.y(), bearing.z()}, pair_stamp_s);
-      const std::optional<Point3> fix = heat_fix_.point();
       heat_range_m = heatSourceRangeM(
           *heat, returns, kHeatConeMarginRad,
           fix.has_value() ? (Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()
@@ -652,10 +648,7 @@ private:
     if (heat.has_value() != heat_seen_) {
       heat_seen_ = heat.has_value();
       std_msgs::msg::String event;
-      event.data =
-          heat_seen_ ? "HEAT_SOURCE seen=true range_m=" + std::to_string(heat_range_m) +
-                           " pixels=" + std::to_string(heat->hot_pixels)
-                     : "HEAT_SOURCE seen=false";
+      event.data = stereo_depth_node_internal::heatEventText(heat, heat_range_m);
       mission_event_pub_->publish(event);
       RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
     }
@@ -754,7 +747,7 @@ private:
       heat_marks_total_ += cap.size();
       RCLCPP_WARN(get_logger(), "%s",
                   stereo_depth_node_internal::heatMarksText(cap.size(), heat_range_m,
-                                                            *heat, heat_fix_)
+                                                            *heat, heat_fix_snapshot_)
                       .c_str());
     }
     if (heat.has_value()) {
@@ -844,15 +837,27 @@ private:
     std_msgs::msg::Float64 share;
     share.data = reading.hot_share;
     thermal_share_pub_->publish(share);
+    const double stamp_s = rclcpp::Time{image.header.stamp}.seconds();
     const std::lock_guard<std::mutex> lock{thermal_mutex_};
     thermal_reading_ = reading;
-    thermal_stamp_s_ = rclcpp::Time{image.header.stamp}.seconds();
+    thermal_stamp_s_ = stamp_s;
+    if (reading.hot()) {
+      // The bearing at this frame's moment (taken at the pair's, up to half a
+      // second later on a turning vehicle, r2241's disagreed by 9 degrees).
+      const std::lock_guard<std::mutex> pose_lock{pose_mutex_};
+      const Eigen::Vector3d bearing =
+          body_orientation_ * Eigen::Vector3d{reading.direction.x, reading.direction.y,
+                                              reading.direction.z};
+      heat_fix_.observe({body_position_.x(), body_position_.y(), body_position_.z()},
+                        {bearing.x(), bearing.y(), bearing.z()}, stamp_s);
+    }
   }
 
   [[nodiscard]] std::optional<ThermalReading> heatReading(const double stamp_s) {
     const std::lock_guard<std::mutex> lock{thermal_mutex_};
     if (thermal_reading_.hot() &&
         std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS) {
+      heat_fix_snapshot_ = heat_fix_;
       return thermal_reading_;
     }
     return std::nullopt;
@@ -926,8 +931,7 @@ private:
   static constexpr double kHeatStandoffM{4.0};
   // The hot cone widened by a pair cell at the stride (4 px of 369).
   static constexpr double kHeatConeMarginRad{0.02};
-  // The mark's lattice: solid once the planner inflates the grid's 0.25 m voxels
-  // by the body's 0.55 m.
+  // The mark's lattice: solid under the planner's 0.55 m inflation of 0.25 m voxels.
   static constexpr double kHeatMarkSpacingM{0.5};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
@@ -939,6 +943,7 @@ private:
   std::size_t heat_marks_total_{0U};
   bool heat_seen_{false};
   HeatSourceFix heat_fix_{};
+  HeatSourceFix heat_fix_snapshot_{};
   std::mutex pose_mutex_;
   Eigen::Vector3d body_position_{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond body_orientation_{Eigen::Quaterniond::Identity()};

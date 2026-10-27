@@ -16,6 +16,7 @@
 #include <numbers>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -188,6 +189,17 @@ brightnessByMetreText(const std::array<double, LitRangeTracker::kMetres>& bright
       reading.hot_pixels, reading.hot_share, point.has_value() ? 1 : 0, fix.bearings(),
       fix.baselineM(), fix.residualRad() * 180.0 / std::numbers::pi, at.x, at.y, at.z);
   return std::string{text.data()};
+}
+
+// The mission's words on the heat source (K49): seen, with the range read and
+// the pixels, or gone.
+[[nodiscard]] inline std::string
+heatEventText(const std::optional<ThermalReading>& heat, const double range_m) {
+  if (!heat.has_value()) {
+    return "HEAT_SOURCE seen=false";
+  }
+  return "HEAT_SOURCE seen=true range_m=" + std::to_string(range_m) +
+         " pixels=" + std::to_string(heat->hot_pixels);
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal
