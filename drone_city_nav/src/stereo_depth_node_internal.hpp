@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // The stereo depth node's helpers (stereo_depth_node.cpp): the frame as grey,
@@ -269,6 +270,23 @@ matchedBrightnessByMetre(const cv::Mat& grey, const cv::Mat& disparity,
         count[metre] == 0U ? -1.0 : sum[metre] / static_cast<double>(count[metre]);
   }
   return brightness;
+}
+
+// The pending heat bearings (a frame's stamp and direction) the poses now
+// bracket, each with its pose; the rest wait.
+[[nodiscard]] inline std::vector<std::pair<TimedPose, Point3>>
+resolveBearings(const std::deque<TimedPose>& poses,
+                std::deque<std::pair<double, Point3>>& pending) {
+  std::vector<std::pair<TimedPose, Point3>> resolved;
+  while (!pending.empty() && !poses.empty() &&
+         pending.front().first <= poses.back().stamp_s) {
+    const std::optional<TimedPose> pose = poseAt(poses, pending.front().first);
+    if (pose.has_value()) {
+      resolved.emplace_back(*pose, pending.front().second);
+    }
+    pending.pop_front();
+  }
+  return resolved;
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal

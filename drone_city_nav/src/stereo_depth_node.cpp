@@ -235,14 +235,7 @@ public:
           along_last_ = std::pair{t.x, t.y};
           heading_rad_.store(yaw);
           height_m_.store(t.z);
-          const std::lock_guard<std::mutex> lock{pose_mutex_};
-          body_position_ = Eigen::Vector3d{t.x, t.y, t.z};
-          body_orientation_ = Eigen::Quaterniond{q.w, q.x, q.y, q.z};
-          poses_.push_back({rclcpp::Time{message->header.stamp}.seconds(),
-                            body_position_, body_orientation_});
-          while (poses_.size() > stereo_depth_node_internal::kPosesKept) {
-            poses_.pop_front();
-          }
+          onPose(*message);
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -848,22 +841,43 @@ private:
     thermal_reading_ = reading;
     thermal_stamp_s_ = stamp_s;
     if (reading.hot()) {
-      // The bearing with the estimate's pose interpolated at the frame's stamp
-      // (at the pair's moment, up to half a second later, the bearings disagreed
-      // by 9 degrees, r2241; the latest at the frame's arrival still by 7 to 10
-      // on a vehicle yawing 50 degrees a second with the estimate at 7.5 Hz,
-      // r2247).
+      // The bearing waits for the estimate's pose at the frame's stamp, which
+      // comes a tenth of a second or two later (the estimate at 7.5 Hz, behind
+      // the frame; r2248: most frames found no pose); the pose's arrival
+      // resolves it (onPose). A bearing with the latest pose at the frame's
+      // arrival was 7 to 10 degrees off on a vehicle yawing 50 degrees a
+      // second (r2247), one at the pair's moment 9 (r2241).
       const std::lock_guard<std::mutex> pose_lock{pose_mutex_};
-      const std::optional<stereo_depth_node_internal::TimedPose> pose =
-          stereo_depth_node_internal::poseAt(poses_, stamp_s);
-      if (pose.has_value()) {
-        const Eigen::Vector3d bearing =
-            pose->orientation * Eigen::Vector3d{reading.direction.x,
-                                                reading.direction.y,
-                                                reading.direction.z};
-        heat_fix_.observe({pose->position.x(), pose->position.y(), pose->position.z()},
-                          {bearing.x(), bearing.y(), bearing.z()}, stamp_s);
+      pending_bearings_.push_back({stamp_s, reading.direction});
+      while (pending_bearings_.size() > stereo_depth_node_internal::kPosesKept) {
+        pending_bearings_.pop_front();
       }
+    }
+  }
+
+  // The estimate's pose for the heat bearings (K49): the pending bearings it
+  // brackets are resolved into the fix.
+  void onPose(const geometry_msgs::msg::PoseStamped& message) {
+    std::vector<std::pair<stereo_depth_node_internal::TimedPose, Point3>> resolved;
+    {
+      const std::lock_guard<std::mutex> lock{pose_mutex_};
+      const auto& t = message.pose.position;
+      const auto& q = message.pose.orientation;
+      body_position_ = Eigen::Vector3d{t.x, t.y, t.z};
+      body_orientation_ = Eigen::Quaterniond{q.w, q.x, q.y, q.z};
+      poses_.push_back({rclcpp::Time{message.header.stamp}.seconds(), body_position_,
+                        body_orientation_});
+      while (poses_.size() > stereo_depth_node_internal::kPosesKept) {
+        poses_.pop_front();
+      }
+      resolved = stereo_depth_node_internal::resolveBearings(poses_, pending_bearings_);
+    }
+    const std::lock_guard<std::mutex> lock{thermal_mutex_};
+    for (const auto& [pose, direction] : resolved) {
+      const Eigen::Vector3d bearing =
+          pose.orientation * Eigen::Vector3d{direction.x, direction.y, direction.z};
+      heat_fix_.observe({pose.position.x(), pose.position.y(), pose.position.z()},
+                        {bearing.x(), bearing.y(), bearing.z()}, pose.stamp_s);
     }
   }
 
@@ -931,6 +945,7 @@ private:
   Eigen::Vector3d body_position_{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond body_orientation_{Eigen::Quaterniond::Identity()};
   std::deque<stereo_depth_node_internal::TimedPose> poses_;
+  std::deque<std::pair<double, Point3>> pending_bearings_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr heat_point_pub_;
