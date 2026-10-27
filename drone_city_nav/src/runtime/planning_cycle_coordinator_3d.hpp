@@ -64,6 +64,8 @@ struct PlanningCycleRequest3D {
   std::optional<double> latest_light_reading;
   std::optional<double> latest_silent_range_m;
   std::optional<double> latest_void_range_m;
+  // The heat source the core sees (K49), a point of the map the gaze is held on.
+  std::optional<Point3> latest_heat_point;
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   Point3 mission_goal{};
   std::chrono::steady_clock::time_point tick_started{};

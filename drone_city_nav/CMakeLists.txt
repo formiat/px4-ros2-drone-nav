@@ -1735,6 +1735,12 @@ if(BUILD_TESTING)
     target_link_libraries(mppi_control_sequence_test_current
                           drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_control_sequence_test_current)
+    ament_add_gtest(mppi_gaze_test
+                    tests/mppi_gaze_test.cpp)
+    target_compile_features(mppi_gaze_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_gaze_test
+                          drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_gaze_test)
 
     ament_add_gtest(mppi_finite_horizon_test
                     tests/mppi_finite_horizon_test.cpp)

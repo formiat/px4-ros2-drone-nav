@@ -165,6 +165,8 @@ private:
         declare<std::string>("silent_range_topic", "/stereo_depth/silent_range");
     world.topics.void_range =
         declare<std::string>("void_range_topic", "/stereo_depth/void_range");
+    world.topics.heat_point =
+        declare<std::string>("heat_point_topic", "/stereo_depth/heat_point");
     world.topics.latest_sensor_obstacle_scan =
         declare<std::string>("latest_sensor_obstacle_scan_topic",
                              "/drone_city_nav/latest_sensor_obstacle_scan");

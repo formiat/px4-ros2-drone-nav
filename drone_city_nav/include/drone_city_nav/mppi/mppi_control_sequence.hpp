@@ -65,13 +65,17 @@ projectForwardRouteStation(std::span<const RouteSample3D> route, const State& st
 // the heading turns to `rest_heading_rad`, where the route leaves; where there
 // is none and the horizon climbs or descends, it turns at
 // `survey_yaw_rate_radps` to sweep the walls it passes (zero holds it), and is
-// held otherwise. The translation is untouched: the yaw channel does not act
-// on it. Returns the decision taken at the first step, for diagnostics.
+// held otherwise. A `look_at` point names the heading before all of these:
+// the heading turns to the point from each step of the horizon (K49: the
+// heat source stays in the core's field while the vehicle skirts it). The
+// translation is untouched: the yaw channel does not act on it. Returns the
+// decision taken at the first step, for diagnostics.
 GazeDecision applyGazeYawControls(std::span<Control> controls, std::span<State> horizon,
                                   const DynamicsConfig& dynamics, float lookahead_s,
                                   float minimum_displacement_m,
                                   std::optional<float> rest_heading_rad,
-                                  float survey_yaw_rate_radps);
+                                  float survey_yaw_rate_radps,
+                                  std::optional<GazeTarget> look_at = std::nullopt);
 
 // The heading of the route where the vehicle stands on it: what a vehicle at
 // rest has to face before the speed law lets it leave along a route it has

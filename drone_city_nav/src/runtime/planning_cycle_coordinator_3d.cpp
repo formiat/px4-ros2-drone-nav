@@ -789,55 +789,76 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   output.controller.request =
       MppiControllerRequest3D{
           .input =
-              mppi::MppiTickInput{
-                  .initial_state = request.execution_input->state(),
-                  .target = target,
-                  .pose_revision = request.execution_input->poseRevision(),
-                  .obstacle_revision = planningRawRevision(request.use_static_map,
-                                                           request.world->revision,
-                                                           request.latest_raw_world),
-                  .expected_esdf_revision =
-                      request.world->local_world_generation.gpu_esdf_revision,
-                  .planning_stamp_ns = request.now_ns,
-                  .previous_applied_control =
-                      request.execution_input->previousControl(),
-                  .reference_speed_mps =
-                      output.controller.speed_policy.enabled
-                          ? static_cast<float>(
-                                output.controller.speed_policy.reference_speed_mps)
-                          : -1.0F,
-                  .route =
-                      output.controller.planning_state ==
-                                  ProductionMppiPlanningState::kPlanned &&
-                              output.route.usable &&
-                              output.route.controller_route != nullptr &&
-                              output.route.projection.valid && !hold_in_place
-                          ? std::optional<mppi::RouteReference>{mppi::RouteReference{
-                                .points = output.route.controller_route,
-                                .generation = output.route.generation,
-                                .initial_station_m = static_cast<float>(
-                                    output.route.projection.station_m),
-                                .terminal_cross_track_tolerance_m =
-                                    routeCrossTrackTolerance3D(
-                                        config_.route_cross_track_constraints_enabled),
-                            }}
-                          : std::nullopt,
-                  .dynamic_aircraft =
-                      output.controller.cooperative.mppi.dynamic_aircraft,
-                  .cooperative_maneuver = output.controller.cooperative.mppi.maneuver,
-                  .cooperative_acquisition =
-                      output.controller.cooperative.mppi.acquisition,
-                  .active_rollouts = output.controller.rollout_budget.active_rollouts,
-                  .deterministic_candidate = deterministic_candidate,
-                  .prefer_route_directed_candidate =
-                      !config_.stochastic_trajectory_selection_enabled,
-                  .force_route_directed_candidate =
-                      output.controller.liveness
-                          .recovery_active ||
-                      output.controller.route_progress.local_reseed_requested,
-                  .cooperative_avoidance_active =
-                      output.controller.cooperative.mppi.avoidance_active,
-              },
+              mppi::
+                  MppiTickInput{
+                      .initial_state = request.execution_input->state(),
+                      .target = target,
+                      .gaze_at =
+                          request.latest_heat_point.has_value()
+                              ? std::optional{mppi::GazeTarget{
+                                    static_cast<float>(request.latest_heat_point->x),
+                                    static_cast<float>(request.latest_heat_point->y)}}
+                              : std::nullopt,
+                      .pose_revision = request.execution_input->poseRevision(),
+                      .obstacle_revision = planningRawRevision(
+                          request.use_static_map, request.world->revision,
+                          request.latest_raw_world),
+                      .expected_esdf_revision =
+                          request.world->local_world_generation.gpu_esdf_revision,
+                      .planning_stamp_ns = request.now_ns,
+                      .previous_applied_control =
+                          request.execution_input->previousControl(),
+                      .reference_speed_mps =
+                          output.controller.speed_policy.enabled
+                              ? static_cast<float>(
+                                    output.controller.speed_policy
+                                        .reference_speed_mps)
+                              : -1.0F,
+                      .route = output.controller.planning_state ==
+                                           ProductionMppiPlanningState::kPlanned &&
+                                       output.route.usable &&
+                                       output.route.controller_route != nullptr &&
+                                       output.route.projection.valid && !hold_in_place
+                                   ? std::
+                                         optional<mppi::
+                                                      RouteReference>{mppi::
+                                                                          RouteReference{
+                                                                              .points = output
+                                                                                            .route
+                                                                                            .controller_route,
+                                                                              .generation = output
+                                                                                                .route
+                                                                                                .generation,
+                                                                              .initial_station_m =
+                                                                                  static_cast<
+                                                                                      float>(output
+                                                                                                 .route
+                                                                                                 .projection
+                                                                                                 .station_m),
+                                                                              .terminal_cross_track_tolerance_m =
+                                                                                  routeCrossTrackTolerance3D(
+                                                                                      config_
+                                                                                          .route_cross_track_constraints_enabled),
+                                                                          }}
+                                   : std::nullopt,
+                      .dynamic_aircraft =
+                          output.controller.cooperative.mppi.dynamic_aircraft,
+                      .cooperative_maneuver =
+                          output.controller.cooperative.mppi.maneuver,
+                      .cooperative_acquisition =
+                          output.controller.cooperative.mppi.acquisition,
+                      .active_rollouts =
+                          output.controller.rollout_budget.active_rollouts,
+                      .deterministic_candidate = deterministic_candidate,
+                      .prefer_route_directed_candidate =
+                          !config_.stochastic_trajectory_selection_enabled,
+                      .force_route_directed_candidate =
+                          output.controller.liveness
+                              .recovery_active ||
+                          output.controller.route_progress.local_reseed_requested,
+                      .cooperative_avoidance_active =
+                          output.controller.cooperative.mppi.avoidance_active,
+                  },
           .nominal_reseed =
               MppiNominalReseedObservation{
                   .route_generation = output.route.generation,

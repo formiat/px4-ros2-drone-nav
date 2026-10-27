@@ -34,6 +34,16 @@ enum class GazeRule : std::uint8_t {
   kMotion,
   kRest,
   kSurvey,
+  kLookAt,
+};
+
+// A point of the map the gaze is held on while it is named (roadmap item 32,
+// K49: the heat source the core sees, kept in the core's field while the
+// vehicle skirts it, so that its bearings fix it); the translation is the
+// route's as ever, unfaced where it leaves the gaze's cone.
+struct GazeTarget {
+  float x{0.0F};
+  float y{0.0F};
 };
 
 struct GazeDecision {
@@ -51,6 +61,8 @@ struct GazeDecision {
       return "rest";
     case GazeRule::kSurvey:
       return "survey";
+    case GazeRule::kLookAt:
+      return "look_at";
   }
   return "unknown";
 }
@@ -64,6 +76,8 @@ enum class DeterministicCandidateKind : std::uint8_t {
 struct MppiTickInput {
   State initial_state{};
   State target{};
+  // A point of the map the gaze is held on (K49), before the motion's rule.
+  std::optional<GazeTarget> gaze_at;
   std::uint64_t pose_revision{0U};
   std::uint64_t obstacle_revision{0U};
   std::uint64_t expected_esdf_revision{0U};

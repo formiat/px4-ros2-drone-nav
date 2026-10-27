@@ -55,6 +55,7 @@
 #include "drone_city_nav/world_generation.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
 
+#include <geometry_msgs/msg/point_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -540,6 +541,23 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr void_range_sub_;
   std::atomic<double> void_range_{std::numeric_limits<double>::quiet_NaN()};
   std::atomic<std::int64_t> void_range_stamp_ns_{0};
+
+  // Roadmap item 32 (K49): the heat source the core sees, a point of the map
+  // the gaze is held on while it is fresh (a second: the core's reading lapses
+  // with the source out of its field, and the gaze returns to the motion).
+  rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr heat_point_sub_;
+  mutable std::mutex heat_point_mutex_;
+  Point3 heat_point_{};
+  std::int64_t heat_point_stamp_ns_{0};
+
+  [[nodiscard]] std::optional<Point3> latestHeatPoint(const std::int64_t now_ns) const {
+    constexpr std::int64_t kFreshNs{1'000'000'000};
+    const std::lock_guard<std::mutex> lock{heat_point_mutex_};
+    if (heat_point_stamp_ns_ <= 0 || now_ns - heat_point_stamp_ns_ > kFreshNs) {
+      return std::nullopt;
+    }
+    return heat_point_;
+  }
 
   [[nodiscard]] std::optional<double> latestVoidRange(const std::int64_t now_ns) const {
     constexpr std::int64_t kFreshNs{600'000'000};

@@ -623,6 +623,15 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                                    std::memory_order_relaxed);
       },
       sensor_evidence_subscription_options);
+  // The heat source the core sees (K49): a point of the map the gaze is held on.
+  heat_point_sub_ = create_subscription<geometry_msgs::msg::PointStamped>(
+      config_.world.topics.heat_point, rclcpp::SensorDataQoS{},
+      [this](const geometry_msgs::msg::PointStamped::SharedPtr message) {
+        const std::lock_guard<std::mutex> lock{heat_point_mutex_};
+        heat_point_ = Point3{message->point.x, message->point.y, message->point.z};
+        heat_point_stamp_ns_ = get_clock()->now().nanoseconds();
+      },
+      sensor_evidence_subscription_options);
   light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
       config_.world.topics.carried_light_output, rclcpp::QoS{1}.reliable(),
       [this](const std_msgs::msg::Float64::SharedPtr message) {

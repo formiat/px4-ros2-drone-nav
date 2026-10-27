@@ -460,6 +460,7 @@ void ProductionMppiNode::planningTick() {
           .latest_light_reading = latestLightReading(now_ns),
           .latest_silent_range_m = latestSilentRange(now_ns),
           .latest_void_range_m = latestVoidRange(now_ns),
+          .latest_heat_point = latestHeatPoint(now_ns),
           .cooperative_command = cooperative_command,
           .mission_goal = mission_goal,
           .tick_started = snapshot_started,

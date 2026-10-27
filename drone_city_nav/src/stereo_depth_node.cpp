@@ -10,8 +10,8 @@
 #include "drone_city_nav/thermal_reading.hpp"
 #include "drone_city_nav/tof_zone_returns.hpp"
 
+#include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -184,7 +184,7 @@ public:
         declare_parameter<std::string>("thermal_body_share_topic",
                                        "/stereo_depth/thermal_body_share"),
         rclcpp::SensorDataQoS{});
-    heat_point_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(
+    heat_point_pub_ = create_publisher<geometry_msgs::msg::PointStamped>(
         declare_parameter<std::string>("heat_point_topic", "/stereo_depth/heat_point"),
         rclcpp::SensorDataQoS{});
     mission_event_pub_ = create_publisher<std_msgs::msg::String>(
@@ -610,9 +610,13 @@ private:
       // of its own moment.
       const std::optional<Point3> fix = heat_fix_snapshot_.point();
       Eigen::Vector3d origin;
+      Eigen::Vector3d bearing;
       {
         const std::lock_guard<std::mutex> lock{pose_mutex_};
         origin = body_position_;
+        bearing =
+            body_orientation_ *
+            Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
       }
       heat_range_m = heatSourceRangeM(
           *heat, returns, kHeatConeMarginRad,
@@ -624,12 +628,16 @@ private:
                            : boundary_m;
       silent_message.data = silent_range_m;
       silent_range_pub_->publish(silent_message);
-      geometry_msgs::msg::Vector3Stamped point;
+      // The source in the map (the fix, else the range point): the gaze's hold.
+      const Eigen::Vector3d at = fix.has_value()
+                                     ? Eigen::Vector3d{fix->x, fix->y, fix->z}
+                                     : Eigen::Vector3d{origin + heat_range_m * bearing};
+      geometry_msgs::msg::PointStamped point;
       point.header.stamp = left->header.stamp;
-      point.header.frame_id = frame_id_;
-      point.vector.x = heat_range_m * heat->direction.x;
-      point.vector.y = heat_range_m * heat->direction.y;
-      point.vector.z = heat_range_m * heat->direction.z;
+      point.header.frame_id = "map";
+      point.point.x = at.x();
+      point.point.y = at.y();
+      point.point.z = at.z();
       heat_point_pub_->publish(point);
     }
     if (heat.has_value() != heat_seen_) {
@@ -938,7 +946,7 @@ private:
   std::deque<std::pair<double, Point3>> pending_bearings_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr heat_point_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr heat_point_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   SmokeFaceConfig smoke_face_config_{};
   bool smoke_face_{false};

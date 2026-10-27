@@ -813,7 +813,7 @@ public:
           updated_, result.horizon, config_.dynamics, kGazeLookaheadS,
           kGazeMinimumDisplacementM,
           gazeRestHeading(input.route, config_.gaze_minimum_horizontal_share),
-          config_.gaze_survey_yaw_rate_radps);
+          config_.gaze_survey_yaw_rate_radps, input.gaze_at);
       result.controls = updated_;
     }
     State state = result.horizon.front();
