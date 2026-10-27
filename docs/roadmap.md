@@ -1320,8 +1320,8 @@ this item's acceptance (the owner, 2026-10-24).
 | The hot room, 5 of 5 | r2262 to r2266 | 10.73, 12.37, 11.51, 10.84, 11.48 | home every time, by the light's charge (the battery trigger at about 250 s), within 0.3 m of the start | — |
 | The cold room, the control, 5 of 5 | r2271 to r2275 | no source | B at 0.52, 0.40, 1.30, 0.71, 1.80 m | 1.305, 1.137, 1.292, 1.273, 1.185 (K43's 1.1) |
 | The lidar on the hot room, no core | r2276 | 1.30: crossed | B at 0.25 m | 2.343 |
-| The clear location, the stereo set, 5 of 5 | REG_CAM | no source | B | see K49 |
-| The clear location, the lidar, 5 of 5 | REG_LIDAR | no source | B | see K49 |
+| The clear location, the stereo set, 5 of 5 | r2277, r2279 to r2281, r2288 (r2282 acknowledged B at 2.09 m, the estimate's drift) | the core silent | B at 0.9 to 1.6 m | 1.268, 1.277, 1.395, 1.345, 1.291 |
+| The clear location, the lidar, 5 of 5 | r2283 to r2287 | no core | B at 0.3 to 0.7 m | 2.207, 2.647, 2.249, 2.656, 2.467 |
 
 No contact in any flight, the dense plume never entered (R7), the core's
 reading in the log of every hot flight (`HEAT_SOURCE_MARKS`, the
