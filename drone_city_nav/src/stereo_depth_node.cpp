@@ -313,22 +313,6 @@ private:
     }
   }
 
-  [[nodiscard]] sensor_msgs::msg::PointCloud2::ConstSharedPtr
-  nearest(const TofScans& scans, const rclcpp::Time& stamp) {
-    const std::scoped_lock lock{tof_mutex_};
-    sensor_msgs::msg::PointCloud2::ConstSharedPtr best;
-    double best_s{kTofStampToleranceS};
-    for (const sensor_msgs::msg::PointCloud2::ConstSharedPtr& scan : scans) {
-      const double apart_s = std::abs(
-          (rclcpp::Time{scan->header.stamp, stamp.get_clock_type()} - stamp).seconds());
-      if (apart_s <= best_s) {
-        best_s = apart_s;
-        best = scan;
-      }
-    }
-    return best;
-  }
-
   void matchIfPaired() {
     if (left_ == nullptr || right_ == nullptr ||
         left_->header.stamp != right_->header.stamp) {
@@ -424,7 +408,9 @@ private:
     {
       const TofSensor& front = tof_sensors_[kFrontTofSlot];
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan =
-          nearest(front.scans, rclcpp::Time{left->header.stamp});
+          stereo_depth_node_internal::nearestScan(front.scans,
+                                                  rclcpp::Time{left->header.stamp},
+                                                  kTofStampToleranceS, tof_mutex_);
       const std::optional<std::vector<Point3>> zones =
           scan != nullptr ? decodePointCloudReturns(*scan) : std::nullopt;
       if (zones.has_value()) {
@@ -544,7 +530,9 @@ private:
       // The scan nearest the pair's moment (a pair takes longer to match than a scan to
       // arrive).
       const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan =
-          nearest(sensor.scans, rclcpp::Time{left->header.stamp});
+          stereo_depth_node_internal::nearestScan(sensor.scans,
+                                                  rclcpp::Time{left->header.stamp},
+                                                  kTofStampToleranceS, tof_mutex_);
       if (scan == nullptr) {
         continue;
       }
@@ -740,7 +728,7 @@ private:
     if (heat.has_value() &&
         (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
       const std::vector<Point3> cap =
-          heatStandoffCap(*heat, heat_range_m, kHeatStandoffM, kHeatMarkSpacingM);
+          heatStandoffCap(*heat, heat_range_m, kHeatMarkRadiusM, kHeatMarkSpacingM);
       heat_emitted_s_ = stamp_s;
       unobservable.insert(unobservable.end(), cap.begin(), cap.end());
       heat_marks_total_ += cap.size();
@@ -756,7 +744,7 @@ private:
       // the counts ran past the end and the process died).
       std::erase_if(returns, [&](const StereoDepthReturn& ray) {
         return !ray.unobservable &&
-               crossesHeatStandoff(ray.point, *heat, heat_range_m, kHeatStandoffM);
+               crossesHeatStandoff(ray.point, *heat, heat_range_m, kHeatMarkRadiusM);
       });
     }
     unobservable_total_ += unobservable.size();
@@ -928,8 +916,10 @@ private:
   static constexpr double kHeatStandoffM{4.0};
   // The hot cone widened by a pair cell at the stride (4 px of 369).
   static constexpr double kHeatConeMarginRad{0.02};
-  // The mark's lattice: solid under the planner's 0.55 m inflation of 0.25 m voxels.
+  // The mark's lattice (solid under the 0.55 m inflation of 0.25 m voxels) and the
+  // ball a step wider than the standoff (r2249: 3.99 m with the ball at 4.0).
   static constexpr double kHeatMarkSpacingM{0.5};
+  static constexpr double kHeatMarkRadiusM{kHeatStandoffM + kHeatMarkSpacingM};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
   std::mutex thermal_mutex_;

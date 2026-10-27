@@ -5,7 +5,9 @@
 #include "drone_city_nav/thermal_reading.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <Eigen/Geometry>
 #include <algorithm>
@@ -15,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <deque>
+#include <mutex>
 #include <numbers>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -287,6 +290,25 @@ resolveBearings(const std::deque<TimedPose>& poses,
     pending.pop_front();
   }
   return resolved;
+}
+
+// The ring's scan nearest the pair's moment within the tolerance (a pair takes
+// longer to match than a scan to arrive), under the scans' lock.
+[[nodiscard]] inline sensor_msgs::msg::PointCloud2::ConstSharedPtr
+nearestScan(const std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr>& scans,
+            const rclcpp::Time& stamp, const double tolerance_s, std::mutex& lock) {
+  const std::scoped_lock guard{lock};
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr best;
+  double best_s{tolerance_s};
+  for (const sensor_msgs::msg::PointCloud2::ConstSharedPtr& scan : scans) {
+    const double apart_s = std::abs(
+        (rclcpp::Time{scan->header.stamp, stamp.get_clock_type()} - stamp).seconds());
+    if (apart_s <= best_s) {
+      best_s = apart_s;
+      best = scan;
+    }
+  }
+  return best;
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal
