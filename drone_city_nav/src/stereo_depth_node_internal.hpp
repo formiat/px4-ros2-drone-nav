@@ -7,12 +7,14 @@
 
 #include <sensor_msgs/msg/image.hpp>
 
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <numbers>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -200,6 +202,73 @@ heatEventText(const std::optional<ThermalReading>& heat, const double range_m) {
   }
   return "HEAT_SOURCE seen=true range_m=" + std::to_string(range_m) +
          " pixels=" + std::to_string(heat->hot_pixels);
+}
+
+// The estimate's poses of the last seconds (7.5 Hz: forty hold five) and the
+// pose at a stamp, interpolated between its neighbours (the orientation by
+// slerp); a stamp past the latest by `kPoseStaleS` at most takes the latest,
+// one further off has none.
+struct TimedPose {
+  double stamp_s;
+  Eigen::Vector3d position;
+  Eigen::Quaterniond orientation;
+};
+
+inline constexpr std::size_t kPosesKept{40U};
+inline constexpr double kPoseStaleS{0.15};
+
+[[nodiscard]] inline std::optional<TimedPose> poseAt(const std::deque<TimedPose>& poses,
+                                                     const double stamp_s) {
+  for (std::size_t index = 1U; index < poses.size(); ++index) {
+    const TimedPose& before = poses[index - 1U];
+    const TimedPose& after = poses[index];
+    if (before.stamp_s <= stamp_s && stamp_s <= after.stamp_s) {
+      const double share =
+          after.stamp_s > before.stamp_s
+              ? (stamp_s - before.stamp_s) / (after.stamp_s - before.stamp_s)
+              : 0.0;
+      return TimedPose{stamp_s,
+                       before.position + share * (after.position - before.position),
+                       before.orientation.slerp(share, after.orientation)};
+    }
+  }
+  if (!poses.empty() && std::abs(poses.back().stamp_s - stamp_s) <= kPoseStaleS) {
+    return poses.back();
+  }
+  return std::nullopt;
+}
+
+// The mean grey of the matched pixels in each metre of depth, 0 to 8 m (-1
+// where none matched): what the carried light gives a surface at each distance.
+[[nodiscard]] inline std::array<double, LitRangeTracker::kMetres>
+matchedBrightnessByMetre(const cv::Mat& grey, const cv::Mat& disparity,
+                         const StereoPairGeometry& geometry,
+                         const std::size_t pixel_stride) {
+  constexpr std::size_t kMetres{LitRangeTracker::kMetres};
+  std::array<double, kMetres> sum{};
+  std::array<std::size_t, kMetres> count{};
+  const auto stride = static_cast<int>(pixel_stride);
+  for (int row = 0; row < disparity.rows; row += stride) {
+    for (int column = 0; column < disparity.cols; column += stride) {
+      const std::int16_t disparity_16 = disparity.at<std::int16_t>(row, column);
+      if (disparity_16 <= 0) {
+        continue;
+      }
+      const double depth_m =
+          16.0 * geometry.focal_px * geometry.baseline_m / disparity_16;
+      const auto metre = static_cast<std::size_t>(depth_m);
+      if (metre < kMetres) {
+        sum[metre] += grey.at<std::uint8_t>(row, column);
+        ++count[metre];
+      }
+    }
+  }
+  std::array<double, kMetres> brightness{};
+  for (std::size_t metre = 0U; metre < kMetres; ++metre) {
+    brightness[metre] =
+        count[metre] == 0U ? -1.0 : sum[metre] / static_cast<double>(count[metre]);
+  }
+  return brightness;
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal

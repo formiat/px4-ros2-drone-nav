@@ -238,6 +238,11 @@ public:
           const std::lock_guard<std::mutex> lock{pose_mutex_};
           body_position_ = Eigen::Vector3d{t.x, t.y, t.z};
           body_orientation_ = Eigen::Quaterniond{q.w, q.x, q.y, q.z};
+          poses_.push_back({rclcpp::Time{message->header.stamp}.seconds(),
+                            body_position_, body_orientation_});
+          while (poses_.size() > stereo_depth_node_internal::kPosesKept) {
+            poses_.pop_front();
+          }
         });
     right_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("right_image_topic", "/stereo/right/image"),
@@ -379,7 +384,8 @@ private:
     const double noise =
         stereo_depth_node_internal::rejectMatchesWithinNoise(left_grey, disparity);
     const std::array<double, LitRangeTracker::kMetres> brightness_by_metre =
-        matchedBrightnessByMetre(left_grey, disparity);
+        stereo_depth_node_internal::matchedBrightnessByMetre(
+            left_grey, disparity, geometry_, returns_config_.pixel_stride);
     std::vector<StereoDepthReturn> returns =
         stereoDepthReturns(std::span<const std::int16_t>{disparity.ptr<std::int16_t>(),
                                                          image_width_ * image_height_},
@@ -842,14 +848,22 @@ private:
     thermal_reading_ = reading;
     thermal_stamp_s_ = stamp_s;
     if (reading.hot()) {
-      // The bearing at this frame's moment (taken at the pair's, up to half a
-      // second later on a turning vehicle, r2241's disagreed by 9 degrees).
+      // The bearing with the estimate's pose interpolated at the frame's stamp
+      // (at the pair's moment, up to half a second later, the bearings disagreed
+      // by 9 degrees, r2241; the latest at the frame's arrival still by 7 to 10
+      // on a vehicle yawing 50 degrees a second with the estimate at 7.5 Hz,
+      // r2247).
       const std::lock_guard<std::mutex> pose_lock{pose_mutex_};
-      const Eigen::Vector3d bearing =
-          body_orientation_ * Eigen::Vector3d{reading.direction.x, reading.direction.y,
-                                              reading.direction.z};
-      heat_fix_.observe({body_position_.x(), body_position_.y(), body_position_.z()},
-                        {bearing.x(), bearing.y(), bearing.z()}, stamp_s);
+      const std::optional<stereo_depth_node_internal::TimedPose> pose =
+          stereo_depth_node_internal::poseAt(poses_, stamp_s);
+      if (pose.has_value()) {
+        const Eigen::Vector3d bearing =
+            pose->orientation * Eigen::Vector3d{reading.direction.x,
+                                                reading.direction.y,
+                                                reading.direction.z};
+        heat_fix_.observe({pose->position.x(), pose->position.y(), pose->position.z()},
+                          {bearing.x(), bearing.y(), bearing.z()}, stamp_s);
+      }
     }
   }
 
@@ -885,37 +899,6 @@ private:
                                    stereoConfidentDepthM(geometry_, returns_config_));
   }
 
-  // The mean grey of the matched pixels in each metre of depth, 0 to 8 m (-1
-  // where none matched): what the carried light gives a surface at each distance.
-  [[nodiscard]] std::array<double, LitRangeTracker::kMetres>
-  matchedBrightnessByMetre(const cv::Mat& grey, const cv::Mat& disparity) const {
-    constexpr std::size_t kMetres{LitRangeTracker::kMetres};
-    std::array<double, kMetres> sum{};
-    std::array<std::size_t, kMetres> count{};
-    const auto stride = static_cast<int>(returns_config_.pixel_stride);
-    for (int row = 0; row < disparity.rows; row += stride) {
-      for (int column = 0; column < disparity.cols; column += stride) {
-        const std::int16_t disparity_16 = disparity.at<std::int16_t>(row, column);
-        if (disparity_16 <= 0) {
-          continue;
-        }
-        const double depth_m =
-            16.0 * geometry_.focal_px * geometry_.baseline_m / disparity_16;
-        const auto metre = static_cast<std::size_t>(depth_m);
-        if (metre < kMetres) {
-          sum[metre] += grey.at<std::uint8_t>(row, column);
-          ++count[metre];
-        }
-      }
-    }
-    std::array<double, kMetres> brightness{};
-    for (std::size_t metre = 0U; metre < kMetres; ++metre) {
-      brightness[metre] =
-          count[metre] == 0U ? -1.0 : sum[metre] / static_cast<double>(count[metre]);
-    }
-    return brightness;
-  }
-
   DarknessWatch darkness_;
   std::size_t unobservable_total_{0U};
   // The dark frustum's and the smoke faces' rays (K14, K44).
@@ -947,6 +930,7 @@ private:
   std::mutex pose_mutex_;
   Eigen::Vector3d body_position_{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond body_orientation_{Eigen::Quaterniond::Identity()};
+  std::deque<stereo_depth_node_internal::TimedPose> poses_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr heat_point_pub_;
