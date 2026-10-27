@@ -35,18 +35,28 @@ def report(path: str) -> None:
     ate_raw = np.sqrt(np.mean(raw_error ** 2))
     steps = np.linalg.norm(np.diff(reference, axis=0), axis=1)
     station = np.concatenate([[0.0], np.cumsum(steps)])
+    # The relative error over 10 m on the yaw-aligned estimate: an estimator that starts in
+    # a frame of its own (OpenVINS, roadmap item 25's reference) would otherwise charge the
+    # frames' turn to every segment; ours starts on the reference's pose, unchanged by it.
     segment_errors = []
     for start in range(len(rows)):
         end = int(np.searchsorted(station, station[start] + 10.0))
         if end >= len(rows):
             break
-        added = (estimate[end] - estimate[start]) - (reference[end] - reference[start])
+        added = (aligned[end] - aligned[start]) - (reference[end] - reference[start])
         segment_errors.append(np.linalg.norm(added))
     rte = np.sqrt(np.mean(np.square(segment_errors))) if segment_errors else float("nan")
+    # The end's drift after the start's alignment alone (the first five seconds, 4-DOF): what
+    # the flight sees of a drift, the same number as without alignment for an estimator that
+    # starts on the reference's pose.
+    first = rows[:, 0] <= rows[0, 0] + 5.0
+    start_rotation, start_translation = yaw_alignment(estimate[first], reference[first])
+    from_start = np.linalg.norm(estimate @ start_rotation.T + start_translation - reference, axis=1)
     print(f"{path}: {rows[0, 0]:.1f}..{rows[-1, 0]:.1f} s, path {station[-1]:.1f} m; "
           f"ATE {ate:.3f} m (no alignment {ate_raw:.3f} m, max {raw_error.max():.2f} m); "
-          f"RTE(10 m) {rte:.3f} m; drift at the end {raw_error[-1]:.2f} m = "
-          f"{100.0 * raw_error[-1] / station[-1]:.2f} % of the path; "
+          f"RTE(10 m) {rte:.3f} m; drift at the end {from_start[-1]:.2f} m = "
+          f"{100.0 * from_start[-1] / station[-1]:.2f} % of the path (the start aligned; "
+          f"{raw_error[-1]:.2f} m raw); "
           f"frames with features used {100.0 * np.mean(rows[:, 20] > 0):.0f} %")
 
 

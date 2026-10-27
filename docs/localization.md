@@ -531,3 +531,58 @@ Features are used on 92 to 97 % of the frames; the rectified focal length is
 436.2 px and the baseline 0.110 m. Against the simulator's first passes, 0.1
 to 0.4 percent of the path, the real recordings drift alike, the fastest and
 darkest of the three (V1_03, motion blur) the most.
+
+**The reference beside ours (2026-10-27, specification K50).** OpenVINS
+(rpng/open_vins at 69488123, the stereo MSCKF with its EuRoC configuration,
+online camera calibration, 200 KLT points; built without ROS in the tool
+image of `tools/tools_image.sh` and fed the sequences by
+`tools/vio/openvins_euroc.cpp`) on the same three sequences, measured by the
+same `tools/vio/euroc_report.py`. The report takes the relative error on the
+yaw-aligned estimate and the end's drift after the first five seconds'
+alignment, since OpenVINS starts in a frame of its own; ours starts on the
+reference's pose, so its figures are the raw ones above.
+
+| Sequence | Ours: ATE, RTE over 10 m, at the end | OpenVINS: ATE, RTE over 10 m, at the end |
+| --- | --- | --- |
+| V1_01_easy | 0.050 m, 0.065 m, 0.06 m (0.11 %) | 0.057 m, 0.082 m, 0.18 m (0.31 %) |
+| V1_02_medium | 0.046 m, 0.047 m, 0.13 m (0.17 %) | 0.080 m, 0.092 m, 0.17 m (0.23 %) |
+| V1_03_difficult | 0.115 m, 0.130 m, 0.33 m (0.42 %) | 0.058 m, 0.083 m, 0.07 m (0.08 %) |
+
+Ours is the reference's equal or better on the easy and the medium sequence
+and twice worse on the difficult one, where the reference's tracker holds
+through the motion blur of the dark fast passes. The machine hall sequences
+were not downloaded: the ETH server answered nothing on 2026-10-27.
+
+### On A Real Lidar Recording (NTU VIRAL)
+
+Roadmap item 25's lidar question: a real sweep moves during its 100 ms and
+the lidar-inertial estimator registers it at one instant, as the simulator's
+organised cloud allows. NTU VIRAL's eee_01 (a UAV over a carpark, 399 s, an
+Ouster OS1-16 gen 1 at 10 Hz, 1024 x 16, a VectorNav VN-100 at 385 Hz, a
+Leica prism as the reference at 20 Hz for 47 to 383 s, 237 m of path and 10 m
+of height) is turned into the replay's record by
+`tools/lio/rosbag1_to_record.py` (the lidar in the body by the sequence's
+`lidar_horz.yaml`, the body forward-right-down as the autopilot's) and the
+estimate measured by `tools/lio/record_report.py` through the same report;
+the reference is the prism's position, 0.4 m from the body's origin, a floor
+of that size on every figure below, the same for both estimators. FAST-LIO
+(hku-mars/FAST_LIO at cc3c9e8b, the ROS2 branch, per-point motion
+compensation by the IMU, 3 iterations, a 0.5 m map) runs in the tool image
+on the converted bag at real time (`tools/lio/fastlio_record.sh`,
+`tools/lio/fastlio_ntu_viral.yaml`).
+
+| Estimator | The sweep's stamp | Path | ATE (4-DOF aligned) | RTE over 10 m | At the end | Registration p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ours (K45) | the sweep's start, as the Ouster stamps it | 130 m to the loss | 0.409 m | 0.421 m | lost at 228 s: the registration's information fell from 0.30 to 0.05 in the open carpark, the estimate unhealthy for the rest of the record | 20.5 / 110 ms, 1146 of 3987 scans over 100 ms |
+| Ours (K45) | the sweep's middle (the one probe: the record's stamps moved by 50 ms) | 237 m | 0.255 m | 0.241 m | 0.48 m, 0.20 % | 16 / 32 ms, none over 100 ms |
+| FAST-LIO | per-point compensation | 237 m | 0.379 m | 0.379 m | 0.99 m, 0.42 % | kept real time: 3906 of 3987 scans |
+
+The error by 20-s windows: ours at the middle stamp p50 0.13 to 0.34 m, the
+height within 0.1 m of the truth throughout (K45's level and height on a
+real IMU); FAST-LIO p50 0.22 to 0.46 m. So the moving sweep is the
+difference between losing the map and a drift of 0.2 % of the path, and the
+stamp at the sweep's middle, a convention of the driver, is what the board's
+lidar driver needs at least (`hardware_builds.md`); per-point compensation
+is not what sets FAST-LIO apart on this recording. The estimator's health
+rule, tuned on the simulator's 360 x 181 lidar, is what gives up on a
+16-beam sweep in an open space, and it is not touched here.

@@ -705,7 +705,22 @@ sequences, TUM-VI (its fisheye pair needs another camera model; the archive
 of room 1 is downloaded), the stereo depth and the memory on the
 recordings, the lidar recordings, a reference system on the same records.
 
-### What comes next (recommended on 2026-10-13)
+**Done on 2026-10-27 (the root goal's part 5; specification K50;
+`docs/localization.md`):** the two steps below. OpenVINS beside ours on
+V1_01, V1_02 and V1_03 (the machine hall's server answered nothing): ATE
+0.057 / 0.080 / 0.058 m against ours 0.050 / 0.046 / 0.115, the relative
+error over 10 m 0.082 / 0.092 / 0.083 against 0.065 / 0.047 / 0.130, the end
+0.31 / 0.23 / 0.08 % against 0.11 / 0.17 / 0.42 %: ours the reference's equal
+or better but on the difficult sequence. NTU VIRAL's eee_01 (an OS1-16 sweep
+that moves) through ours and through FAST-LIO: stamped at the sweep's start
+ours loses its map at 228 s; stamped at the sweep's middle (the one probe)
+it drifts 0.20 % of 237 m (ATE 0.255 m, the registration p95 32 ms);
+FAST-LIO with per-point compensation 0.42 % (ATE 0.379 m). The board's
+driver needs the stamp at the sweep's middle at least; the tool image is
+`docker/Dockerfile.tools` (`tools/tools_image.sh`), nothing of it in the
+flight. TUM-VI stays not done.
+
+### What came next (recommended on 2026-10-13, done on 2026-10-27)
 
 The owner's question whether ready estimators would have served better
 ([design_questions.md](design_questions.md): not in vain, not to be redone,

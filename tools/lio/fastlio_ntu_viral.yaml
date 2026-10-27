@@ -1,0 +1,47 @@
+# FAST-LIO (hku-mars/FAST_LIO, the ROS2 branch, in the tool image of tools/tools_image.sh) on an NTU VIRAL
+# sequence (roadmap item 25): the horizontal Ouster OS1-16 (/os1_cloud_node1/points, gen 1, per-point time in
+# nanoseconds) and the VectorNav VN-100 (/imu/imu); the lidar in the IMU frame from the sequence's lidar_horz.yaml
+# (T_Body_Lidar: the identity and -0.050, 0.000, 0.055); the IMU noise as FAST-LIVO2's NTU VIRAL configuration
+# reads it (acc_cov 0.5, gyr_cov 0.3); no map saved, the path published. Run with
+# ros2 launch fast_lio mapping.launch.py config_path:=/workspace/tools/lio/fastlio_ntu_viral.yaml and the
+# converted bag played (tools/lio/fastlio_record.sh).
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 3
+        max_iteration: 3
+        filter_size_surf: 0.5
+        filter_size_map: 0.5
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "./test.pcd"
+        common:
+            lid_topic: "/os1_cloud_node1/points"
+            imu_topic: "/imu/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+        preprocess:
+            lidar_type: 3
+            scan_line: 16
+            timestamp_unit: 3
+            blind: 1.0
+        mapping:
+            acc_cov: 0.5
+            gyr_cov: 0.3
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 100.0
+            extrinsic_est_en: false
+            extrinsic_T: [-0.050, 0.000, 0.055]
+            extrinsic_R: [1., 0., 0.,
+                          0., 1., 0.,
+                          0., 0., 1.]
+        publish:
+            path_en: true
+            scan_publish_en: false
+            dense_publish_en: false
+            scan_bodyframe_pub_en: false
+        pcd_save:
+            pcd_save_en: false
+            interval: -1

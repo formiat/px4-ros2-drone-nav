@@ -347,7 +347,7 @@ The questions that move the choice most, and the owner's answers of
 | Stereo pair | Gazebo's images taken inside the depth node's process | Plain `sensor_msgs/Image` with the pair's calibration and rectification (K33, run on EuRoC's 752 x 480 pair); no camera driver, the pair's stamps taken as equal |
 | Depth from the camera itself | — | Not supported: the obstacle memory takes the depth node's returns; an adapter node is to write |
 | Time-of-flight ring | Gazebo's `gpu_lidar` in the 8 x 8 layout | No driver |
-| 3D lidar | An organised 360 x 181 cloud, no motion during a sweep | No driver adapter, no motion compensation |
+| 3D lidar | An organised 360 x 181 cloud, no motion during a sweep | No driver adapter; the sweep's stamp at its middle at least: on a real OS1-16 sweep stamped at its start (NTU VIRAL eee_01, 2026-10-27, K50) the estimator lost its map at 228 s, stamped at the sweep's middle it drifted 0.20 % of 237 m, FAST-LIO's per-point compensation 0.42 % |
 | IMU | PX4's `sensor_combined` over uXRCE-DDS | Carries over; the cameras' and lidars' own IMUs are unused |
 | Light | Set by the evaluation, its charge simulated | No control and no telemetry |
 | Autopilot | PX4 SITL over uXRCE-DDS (UDP) | Carries over; the serial link and the parameter set for a real vehicle (K34) |
