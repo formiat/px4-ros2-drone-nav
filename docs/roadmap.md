@@ -1297,18 +1297,45 @@ read by the depth node (`thermal_reading.hpp`): a source is four pixels or
 more at 30 K over the frame's median, the threshold set on the rig against
 the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
 the tag is binary); its range the nearer of the hits in the hot cone and the
-source's bearing-only fix over the motion, else 5.2 m; the standoff 4.0 m,
-laid as the near half of the ball round the range point (observed
-unobservable, every half second while the core reads the source, the whole
-ball from inside), the motion bounded before it, every return through the
-ball dropped, the words
+source's bearing-only fix over the motion, else the body's apparent size
+(7000 pixel-metres squared for the 0.3 m body the rule assumes); the
+standoff 4.0 m, laid as the near half of the ball round the range point
+(observed unobservable, every half second while the core reads the source,
+the whole ball from inside, a fifth of the range wider for the size's
+error), the motion bounded before it, every return through the ball
+dropped, the words
 `HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
 overlay; the truth judged never within the standoff
 (`validate_standoff_from_heat_sources`). The scenarios: `sim-urban-hot-smoke-plume-*`
 (the location's plume at (12,22,11) with a source at its centre) and
 `sim-urban-hot-smoke-room-*` (the moderate rooms with a source on the west
 hall's crossing), the cold room the rooms scenario as it is; flown only for
-this item's acceptance (the owner, 2026-10-24). Step 4 follows.
+this item's acceptance (the owner, 2026-10-24).
+
+**Accepted on 2026-10-27 (step 4; the stereo set; specification K49):**
+
+| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot plume, 5 of 5 | r2257 to r2261 | 4.97, 4.21, 5.52, 5.82, 5.79 | B at 1.31, 1.63, 1.32, 1.03, 1.59 m | 1.279, 1.424, 1.407, 1.354, 1.310 |
+| The hot room, 5 of 5 | r2262 to r2266 | 10.73, 12.37, 11.51, 10.84, 11.48 | home every time, by the light's charge (the battery trigger at about 250 s), within 0.3 m of the start | — |
+| The cold room, the control, 5 of 5 | r2271 to r2275 | no source | B at 0.52, 0.40, 1.30, 0.71, 1.80 m | 1.305, 1.137, 1.292, 1.273, 1.185 (K43's 1.1) |
+| The lidar on the hot room, no core | r2276 | 1.30: crossed | B at 0.25 m | 2.343 |
+| The clear location, the stereo set, 5 of 5 | REG_CAM | no source | B | see K49 |
+| The clear location, the lidar, 5 of 5 | REG_LIDAR | no source | B | see K49 |
+
+No contact in any flight, the dense plume never entered (R7), the core's
+reading in the log of every hot flight (`HEAT_SOURCE_MARKS`, the
+`HEAT_SOURCE seen=true` event). Nineteen probe flights preceded the
+groups (r2235 to r2253; `log/tools/journal/goal_journal_hot_smoke.md`):
+the mark's shell had holes the vehicle flew through, the braking contract
+let the memory's observed range override the sensor's bound, a range
+guessed ahead moved with the vehicle, a gaze held on the source froze the
+flight; what stands is in K49. The lidar set, which carries no core,
+crosses the hot room (r2276): by the measurement the lidar build takes
+the same core (`docs/hardware_builds.md`, L1); the core's reading on the
+lidar set, a thermal node of its own with the memory's second input, is
+the lidar's open item (K49), so the lidar acceptance of the hot plume and
+the hot room is not flown here.
 
 This item is complete when the hot plume and the hot room are kept out of
 in five of five flights on the stereo set with no contact, the cold room is
