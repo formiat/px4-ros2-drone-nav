@@ -73,7 +73,7 @@ class SimulationSmokeContractTest(unittest.TestCase):
         # the frame alone, never the sources; the hot scenarios are their own
         # targets and the ordinary flight sets no source.
         runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
-        self.assertIn('heat_sources:="${HEAT_SOURCES:-}"', runtime)
+        self.assertIn('[[ -n "${HEAT_SOURCES:-}" ]] && ros_launch_args+=(heat_sources:="${HEAT_SOURCES}")', runtime)
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
         self.assertIn('"heat_sources": heat_sources.perform(context).strip()', launch)
         self.assertIn("  HEAT_SOURCES\n", (REPOSITORY / "scripts" / "container_run.sh").read_text())
