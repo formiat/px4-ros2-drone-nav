@@ -89,11 +89,15 @@ ThermalReading readThermalFrame(const std::span<const std::uint16_t> kelvin_hund
   std::size_t count{0U};
   double sum_u{0.0};
   double sum_v{0.0};
+  bool at_edge{false};
   for (std::size_t index = 0U; index < pixels; ++index) {
     if (static_cast<double>(kelvin_hundredths[index]) >= threshold) {
       ++count;
-      sum_u += static_cast<double>(index % width);
-      sum_v += static_cast<double>(index / width);
+      const std::size_t u = index % width;
+      const std::size_t v = index / width;
+      sum_u += static_cast<double>(u);
+      sum_v += static_cast<double>(v);
+      at_edge = at_edge || u == 0U || v == 0U || u + 1U == width || v + 1U == height;
     }
   }
   reading.hot_share = static_cast<double>(count) / static_cast<double>(pixels);
@@ -117,7 +121,9 @@ ThermalReading readThermalFrame(const std::span<const std::uint16_t> kelvin_hund
   }
   reading.half_angle_rad = widest + std::atan(0.5 / focal_px);
   reading.range_by_size_m =
-      std::sqrt(config.body_pixel_metres_squared / static_cast<double>(count));
+      at_edge
+          ? 0.0
+          : std::sqrt(config.body_pixel_metres_squared / static_cast<double>(count));
   return reading;
 }
 

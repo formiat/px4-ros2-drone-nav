@@ -604,9 +604,7 @@ private:
     const std::optional<ThermalReading> heat = heatReading(pair_stamp_s);
     double heat_range_m = std::numeric_limits<double>::quiet_NaN();
     if (heat.has_value()) {
-      // The range's ceiling: the source's fix from its bearings over the motion
-      // (K49), else the body's apparent size (a point guessed 5.2 m ahead moved
-      // with the vehicle, r2236, and held it at its first sight, r2252).
+      // The range (heatRange): the hits, the fix, else the body's size (K49).
       const std::optional<Point3> fix = heat_fix_snapshot_.point();
       Eigen::Vector3d origin;
       Eigen::Vector3d bearing;
@@ -617,11 +615,14 @@ private:
             body_orientation_ *
             Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
       }
-      heat_range_m = heatSourceRangeM(
+      heat_range_m = stereo_depth_node_internal::heatRange(
           *heat, returns, kHeatConeMarginRad,
-          fix.has_value() ? (Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()
-                          : heat->range_by_size_m);
-      const double boundary_m = std::max(0.0, heat_range_m - kHeatStandoffM);
+          fix.has_value()
+              ? std::optional{(Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()}
+              : std::nullopt,
+          thermal_config_.range_by_size_error_share, heat_size_range_m_, heat_error_m_);
+      const double boundary_m =
+          std::max(0.0, heat_range_m - heat_error_m_ - kHeatStandoffM);
       silent_range_m = std::isfinite(silent_range_m)
                            ? std::min(silent_range_m, boundary_m)
                            : boundary_m;
@@ -734,8 +735,8 @@ private:
     }
     if (heat.has_value() &&
         (stamp_s - heat_emitted_s_ >= kFaceEmitPeriodS || stamp_s < heat_emitted_s_)) {
-      const std::vector<Point3> cap =
-          heatStandoffCap(*heat, heat_range_m, kHeatMarkRadiusM, kHeatMarkSpacingM);
+      const std::vector<Point3> cap = heatStandoffCap(
+          *heat, heat_range_m, kHeatStandoffM + heat_error_m_, kHeatMarkSpacingM);
       heat_emitted_s_ = stamp_s;
       unobservable.insert(unobservable.end(), cap.begin(), cap.end());
       heat_marks_total_ += cap.size();
@@ -750,8 +751,8 @@ private:
       // which index the pair's returns at the front (r2235: dropped before them,
       // the counts ran past the end and the process died).
       std::erase_if(returns, [&](const StereoDepthReturn& ray) {
-        return !ray.unobservable &&
-               crossesHeatStandoff(ray.point, *heat, heat_range_m, kHeatMarkRadiusM);
+        return !ray.unobservable && crossesHeatStandoff(ray.point, *heat, heat_range_m,
+                                                        kHeatStandoffM + heat_error_m_);
       });
     }
     unobservable_total_ += unobservable.size();
@@ -926,8 +927,8 @@ private:
   // The mark's lattice (solid under the 0.55 m inflation of 0.25 m voxels) and the
   // ball a step wider than the standoff (r2249: 3.99 m with the ball at 4.0).
   static constexpr double kHeatMarkSpacingM{0.5};
-  // The ball a metre over the standoff: the range by size errs by a sixth at 11 m.
-  static constexpr double kHeatMarkRadiusM{kHeatStandoffM + 1.0};
+  double heat_size_range_m_{0.0};
+  double heat_error_m_{1.0};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
   std::mutex thermal_mutex_;

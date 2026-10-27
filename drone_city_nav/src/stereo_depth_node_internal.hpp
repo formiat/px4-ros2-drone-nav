@@ -22,6 +22,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -309,6 +310,24 @@ nearestScan(const std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr>& sca
     }
   }
   return best;
+}
+
+// The heat source's range (K49): the nearer of the hits in the hot cone and
+// the ceiling, which is the fix's range where there is one, else the body's
+// apparent size (`size_range_m` keeps the last size through a frame the edge
+// cuts); `error_m` is set to the error the mark and the bound allow, a share
+// of a range by size (r2255: 3.92 m at the nearest), a metre otherwise.
+[[nodiscard]] inline double
+heatRange(const ThermalReading& heat, const std::span<const StereoDepthReturn> returns,
+          const double cone_margin_rad, const std::optional<double> fix_range_m,
+          const double size_error_share, double& size_range_m, double& error_m) {
+  size_range_m = heat.range_by_size_m > 0.0 ? heat.range_by_size_m : size_range_m;
+  const double range_m =
+      heatSourceRangeM(heat, returns, cone_margin_rad,
+                       fix_range_m.has_value() ? *fix_range_m : size_range_m);
+  const bool by_size = !fix_range_m.has_value() && range_m >= size_range_m;
+  error_m = by_size ? size_error_share * range_m : 1.0;
+  return range_m;
 }
 
 } // namespace drone_city_nav::stereo_depth_node_internal
