@@ -111,19 +111,17 @@ class SimulationSmokeContractTest(unittest.TestCase):
         evidence = (REPOSITORY / "scripts" / "smoke_truth_evidence.py").read_text()
         self.assertIn("HEAT_STANDOFF_M = 4.0", evidence)
         # The lidar set (K49): the core on the lidar model, its frame over the bridge, the
-        # thermal node and the memory's heat marks input on the lidar profile alone.
+        # thermal node and the memory's scan through it on the lidar profile alone.
         lidar_model = (REPOSITORY / "drone_city_nav" / "models" / "lidar_3d_v1" / "model.sdf").read_text()
         self.assertIn('<sensor name="thermal" type="thermal_camera">', lidar_model)
         self.assertIn('executable="thermal_core_node"', launch)
         self.assertIn('sensor/thermal/image"', launch)
-        self.assertIn('obstacle_memory_overrides["heat_marks_topic"] = "/drone_city_nav/heat_marks"', launch)
         self.assertIn('production_mppi_parameters.append({"gaze_follows_motion": True})', launch)
         thermal_node = (REPOSITORY / "drone_city_nav" / "src" / "thermal_core_node.cpp").read_text()
         self.assertIn("dropWeakReturns(returns, intensities);", thermal_node)
         self.assertIn('obstacle_memory_overrides["lidar_3d_topic"] = "/drone_city_nav/thermal_core/points"', launch)
         self.assertIn('"/drone_city_nav/thermal_core/points"', thermal_node)
-        memory = (REPOSITORY / "drone_city_nav" / "src" / "obstacle_memory_3d_node.cpp").read_text()
-        self.assertIn('declare_parameter<std::string>("heat_marks_topic", "")', memory)
+        self.assertNotIn("heat_marks", launch)
         self.assertIn("thermal_core_node", (REPOSITORY / "drone_city_nav" / "CMakeLists.txt").read_text())
 
     def test_the_smoke_face_detector_reads_the_frame_alone(self) -> None:

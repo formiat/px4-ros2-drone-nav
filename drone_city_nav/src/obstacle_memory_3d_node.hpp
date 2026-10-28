@@ -63,9 +63,6 @@ namespace drone_city_nav {
 struct PendingPointCloud3D {
   sensor_msgs::msg::PointCloud2 cloud;
   std::int64_t receive_stamp_ns{0};
-  // Heat marks (K49, the lidar set's thermal core): hits along their rays,
-  // no misses, no organized grid, and never the latest sensor scan.
-  bool heat_marks{false};
 };
 
 enum class PendingPointCloudDisposition : std::uint8_t {
@@ -128,21 +125,6 @@ private:
         return;
       }
     }
-    // The heat marks of the lidar set (K49) after the scans, in a queue of
-    // their own: a mark stamped with its scan has the scan's pose bracket.
-    while (std::optional<PendingPointCloud3D> marks = pending_heat_marks_.take()) {
-      if (processPendingCloud(*marks) ==
-          PendingPointCloudDisposition::kWaitForPoseBracket) {
-        pending_heat_marks_.defer(std::move(*marks));
-        return;
-      }
-    }
-  }
-
-  void onHeatMarks(sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
-    static_cast<void>(pending_heat_marks_.submit(PendingPointCloud3D{
-        std::move(*cloud), get_clock()->now().nanoseconds(), true}));
-    processPendingClouds();
   }
 
   [[nodiscard]] PendingPointCloudDisposition
@@ -197,8 +179,6 @@ private:
   rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr heat_marks_sub_;
-  LatestProcessingQueue<PendingPointCloud3D> pending_heat_marks_;
   // The hop from the Gazebo bridge: what the transport took to deliver each
   // scan, reported with the alignment diagnostic.
   TransportLatencySamples cloud_delivery_ms_;

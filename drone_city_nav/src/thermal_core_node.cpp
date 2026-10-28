@@ -4,13 +4,12 @@
 // (/thermal/image, 16 bits a pixel in hundredths of a kelvin) is read for a heat source
 // (thermal_reading.hpp); the source's bearings, with the estimate's pose interpolated
 // at the frame's stamp, fix it over the motion; at every lidar scan the range is the
-// nearer of the scan's hits in the hot cone and the fix, else the body's apparent size;
-// the near half of the standoff ball round the range point goes to the memory as heat
-// marks (a cloud of its own, intensity 2, in the scan's frame and at the scan's stamp,
-// every scan: the memory scores the scan's misses against them, and a lay a scan keeps
-// them), the motion is bounded before the standoff on the braking contract's silent
-// range, the source's point of the map and the mission's words are published. The lidar
-// cannot tell hot smoke from cold (r2276); the core can.
+// nearer of the scan's hits in the hot cone and the fix, else the body's apparent size,
+// and the source is held in the map. The memory reads the lidar's scan through this
+// node: every ray that enters the held standoff ball ends at its surface. The motion is
+// bounded before the standoff on the braking contract's silent range, the source's
+// point of the map and the mission's words are published. The lidar cannot tell hot
+// smoke from cold (r2276); the core can.
 #include "drone_city_nav/lidar_scan_patterns_3d.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/thermal_reading.hpp"
@@ -66,10 +65,6 @@ public:
         [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan) {
           onScan(*scan);
         });
-    marks_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-        declare_parameter<std::string>("heat_marks_topic",
-                                       "/drone_city_nav/heat_marks"),
-        rclcpp::SensorDataQoS{}.keep_last(1));
     // The scan the memory reads: the lidar's, without the rays through the held ball.
     scan_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("memory_scan_topic",
@@ -99,7 +94,6 @@ public:
 private:
   static constexpr double kHeatStandoffM{4.0};
   static constexpr double kHeatConeMarginRad{0.02};
-  static constexpr double kHeatMarkSpacingM{0.5};
   static constexpr double kViewMarginRad{0.035};
   static constexpr double kReleaseReachM{30.0};
   static constexpr double kReleaseAfterS{1.0};
@@ -286,59 +280,70 @@ private:
       scan_pub_->publish(scan);
       return;
     }
-    // The held ball in the scan's frame, as a reading toward its centre.
+    // The held ball in the scan's frame (a reading toward its centre for the log).
     const Eigen::Vector3d centre_scan = to_scan * (held_->centre - origin);
     const double centre_range = centre_scan.norm();
     const Eigen::Vector3d unit = centre_scan / std::max(centre_range, 1e-6);
     ThermalReading toward;
     toward.direction = Point3{unit.x(), unit.y(), unit.z()};
     const double ball_m = kHeatStandoffM + held_->error_m;
+    // A ray that enters the ball ends at its surface, a matte return there: the memory
+    // marks the surface and carves the space before it, and never the ball's inside. A
+    // ray from inside the ball is set at the sensor, under the memory's least range,
+    // which it reads as no ray (set as no return, it read free to the full range and
+    // carved the ball, r2293). A ray with no return has no direction in the cloud and
+    // is left as it is. The marks ride in the scan itself: a cloud of their own, queued
+    // beside the scans, was displaced by the next scan in the memory's queue of one
+    // (r2292, fifteen of thousands integrated).
     sensor_msgs::msg::PointCloud2 forwarded = scan;
+    const float matte =
+        static_cast<float>(LidarScanPatternsConfig{}.matte_surface_intensity);
+    std::optional<sensor_msgs::PointCloud2Iterator<float>> fi;
+    if (std::ranges::any_of(forwarded.fields, [](const auto& field) {
+          return field.name == "intensity";
+        })) {
+      fi.emplace(forwarded, "intensity");
+    }
+    std::size_t surface{0U};
     std::size_t dropped{0U};
     sensor_msgs::PointCloud2Iterator<float> fx{forwarded, "x"};
     sensor_msgs::PointCloud2Iterator<float> fy{forwarded, "y"};
     sensor_msgs::PointCloud2Iterator<float> fz{forwarded, "z"};
-    // A dropped ray is set at the sensor, under the memory's least range, which it
-    // reads as no ray at all; a ray with no return (not finite) it reads as free to the
-    // full range, and set so a dropped ray carved the ball it was dropped for (r2293).
-    // A ray with no return has no direction in the cloud and is left as it is.
     for (; fx != fx.end(); ++fx, ++fy, ++fz) {
-      const Point3 ray{*fx, *fy, *fz};
-      if (std::isfinite(ray.x) && std::isfinite(ray.y) && std::isfinite(ray.z) &&
-          crossesHeatStandoff(ray, toward, centre_range, ball_m)) {
-        *fx = 0.0F;
-        *fy = 0.0F;
-        *fz = 0.0F;
-        ++dropped;
+      const Eigen::Vector3d ray{*fx, *fy, *fz};
+      const double length = ray.norm();
+      if (std::isfinite(length) && length > 0.0) {
+        // Where the ray meets the ball: the closest approach of its line to the centre
+        // and the half chord either side.
+        const Eigen::Vector3d along_unit = ray / length;
+        const double along = along_unit.dot(centre_scan);
+        const double miss_square = centre_scan.squaredNorm() - along * along;
+        if (miss_square < ball_m * ball_m) {
+          const double half_chord = std::sqrt(ball_m * ball_m - miss_square);
+          const double entry = along - half_chord;
+          if (along + half_chord > 0.0 && length >= std::max(0.0, entry)) {
+            const Eigen::Vector3d end = entry > 0.0
+                                            ? Eigen::Vector3d{along_unit * entry}
+                                            : Eigen::Vector3d::Zero();
+            *fx = static_cast<float>(end.x());
+            *fy = static_cast<float>(end.y());
+            *fz = static_cast<float>(end.z());
+            if (entry > 0.0) {
+              ++surface;
+              if (fi.has_value()) {
+                **fi = matte;
+              }
+            } else {
+              ++dropped;
+            }
+          }
+        }
+      }
+      if (fi.has_value()) {
+        ++*fi;
       }
     }
     scan_pub_->publish(forwarded);
-    const std::vector<Point3> cap =
-        heatStandoffCap(toward, centre_range, ball_m, kHeatMarkSpacingM);
-    sensor_msgs::msg::PointCloud2 cloud;
-    cloud.header = scan.header;
-    sensor_msgs::PointCloud2Modifier modifier{cloud};
-    modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y",
-                                  1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
-                                  sensor_msgs::msg::PointField::FLOAT32, "intensity", 1,
-                                  sensor_msgs::msg::PointField::FLOAT32);
-    modifier.resize(cap.size());
-    sensor_msgs::PointCloud2Iterator<float> cx{cloud, "x"};
-    sensor_msgs::PointCloud2Iterator<float> cy{cloud, "y"};
-    sensor_msgs::PointCloud2Iterator<float> cz{cloud, "z"};
-    sensor_msgs::PointCloud2Iterator<float> flag{cloud, "intensity"};
-    for (const Point3& point : cap) {
-      *cx = static_cast<float>(point.x);
-      *cy = static_cast<float>(point.y);
-      *cz = static_cast<float>(point.z);
-      *flag = 2.0F;
-      ++cx;
-      ++cy;
-      ++cz;
-      ++flag;
-    }
-    marks_pub_->publish(cloud);
-    marks_total_ += cap.size();
     geometry_msgs::msg::PointStamped point;
     point.header.stamp = scan.header.stamp;
     point.header.frame_id = "map";
@@ -350,7 +355,7 @@ private:
       marks_logged_s_ = stamp_s;
       RCLCPP_WARN(get_logger(), "%s dropped=%zu held_m=%.2f seen=%d",
                   stereo_depth_node_internal::heatMarksText(
-                      cap.size(), last_range_m_, heat.value_or(toward), fix_snapshot)
+                      surface, last_range_m_, heat.value_or(toward), fix_snapshot)
                       .c_str(),
                   dropped, centre_range, heat.has_value() ? 1 : 0);
     }
@@ -404,12 +409,10 @@ private:
   std::optional<HeldSource> held_;
   std::optional<double> cold_since_s_;
   double marks_logged_s_{0.0};
-  std::size_t marks_total_{0U};
   bool heat_seen_{false};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr scan_sub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr marks_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr scan_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr silent_range_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
