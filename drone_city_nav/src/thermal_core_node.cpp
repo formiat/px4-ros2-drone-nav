@@ -298,11 +298,17 @@ private:
     sensor_msgs::PointCloud2Iterator<float> fx{forwarded, "x"};
     sensor_msgs::PointCloud2Iterator<float> fy{forwarded, "y"};
     sensor_msgs::PointCloud2Iterator<float> fz{forwarded, "z"};
+    // A dropped ray is set at the sensor, under the memory's least range, which it
+    // reads as no ray at all; a ray with no return (not finite) it reads as free to the
+    // full range, and set so a dropped ray carved the ball it was dropped for (r2293).
+    // A ray with no return has no direction in the cloud and is left as it is.
     for (; fx != fx.end(); ++fx, ++fy, ++fz) {
-      if (crossesHeatStandoff(Point3{*fx, *fy, *fz}, toward, centre_range, ball_m)) {
-        *fx = std::numeric_limits<float>::quiet_NaN();
-        *fy = std::numeric_limits<float>::quiet_NaN();
-        *fz = std::numeric_limits<float>::quiet_NaN();
+      const Point3 ray{*fx, *fy, *fz};
+      if (std::isfinite(ray.x) && std::isfinite(ray.y) && std::isfinite(ray.z) &&
+          crossesHeatStandoff(ray, toward, centre_range, ball_m)) {
+        *fx = 0.0F;
+        *fy = 0.0F;
+        *fz = 0.0F;
         ++dropped;
       }
     }
