@@ -11,6 +11,7 @@
 // them), the motion is bounded before the standoff on the braking contract's silent
 // range, the source's point of the map and the mission's words are published. The lidar
 // cannot tell hot smoke from cold (r2276); the core can.
+#include "drone_city_nav/lidar_scan_patterns_3d.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/thermal_reading.hpp"
 
@@ -29,6 +30,7 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -93,6 +95,34 @@ private:
   static constexpr double kHeatStandoffM{4.0};
   static constexpr double kHeatConeMarginRad{0.02};
   static constexpr double kHeatMarkSpacingM{0.5};
+
+  // The memory's weak return (K37, lidar_scan_patterns_3d.hpp): an intensity over
+  // nought (nought is no reading) under half the scan's surface intensity, the median
+  // of its hits' and never under a matte surface's.
+  static void dropWeakReturns(std::vector<StereoDepthReturn>& returns,
+                              const std::vector<float>& intensities) {
+    std::vector<float> read;
+    std::ranges::copy_if(intensities, std::back_inserter(read),
+                         [](const float value) { return value > 0.0F; });
+    if (read.empty()) {
+      return;
+    }
+    std::ranges::nth_element(read, read.begin() +
+                                       static_cast<std::ptrdiff_t>(read.size() / 2U));
+    const LidarScanPatternsConfig patterns{};
+    const double weak_under = patterns.weak_intensity_share *
+                              std::max(static_cast<double>(read[read.size() / 2U]),
+                                       patterns.matte_surface_intensity);
+    std::size_t kept{0U};
+    for (std::size_t index = 0U; index < returns.size(); ++index) {
+      const bool weak = intensities[index] > 0.0F && intensities[index] < weak_under;
+      if (!weak) {
+        returns[kept++] = returns[index];
+      }
+    }
+    returns.resize(kept);
+  }
+
   static constexpr double kThermalFreshS{0.5};
 
   void onThermal(const sensor_msgs::msg::Image& image) {
@@ -110,7 +140,7 @@ private:
     thermal_reading_ = reading;
     thermal_stamp_s_ = stamp_s;
     if (reading.hot()) {
-      pending_bearings_.push_back({stamp_s, reading.direction});
+      pending_bearings_.emplace_back(stamp_s, reading.direction);
       while (pending_bearings_.size() > stereo_depth_node_internal::kPosesKept) {
         pending_bearings_.pop_front();
       }
@@ -168,8 +198,18 @@ private:
     if (!heat.has_value()) {
       return;
     }
-    // The scan's hits in the hot cone (the lidar and the core on one link, one frame).
+    // The scan's hits in the hot cone (the lidar and the core on one link, one frame),
+    // its weak returns left out: a weak return is smoke, not a surface (K37), and in
+    // the hot room of 0.1/m every hit in the cone was the smoke's at 4.6 to 4.9 m,
+    // intensity 0.004, whatever the source's range (the rig of 2026-10-26; r2291
+    // stopped 12 m off).
     std::vector<StereoDepthReturn> returns;
+    std::vector<float> intensities;
+    std::optional<sensor_msgs::PointCloud2ConstIterator<float>> intensity;
+    if (std::ranges::any_of(
+            scan.fields, [](const auto& field) { return field.name == "intensity"; })) {
+      intensity.emplace(scan, "intensity");
+    }
     sensor_msgs::PointCloud2ConstIterator<float> x{scan, "x"};
     sensor_msgs::PointCloud2ConstIterator<float> y{scan, "y"};
     sensor_msgs::PointCloud2ConstIterator<float> z{scan, "z"};
@@ -177,17 +217,24 @@ private:
       const Point3 point{*x, *y, *z};
       const double range =
           std::sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+      const float value = intensity.has_value() ? **intensity : 0.0F;
+      if (intensity.has_value()) {
+        ++*intensity;
+      }
       if (std::isfinite(range) && range > 0.3 && range <= scan_range_m_) {
         returns.push_back({.point = point, .hit = true});
+        intensities.push_back(value);
       }
     }
-    const std::optional<Point3> fix = fix_snapshot.point();
+    dropWeakReturns(returns, intensities);
+    std::optional<Eigen::Vector3d> fix;
+    if (const std::optional<Point3> fixed = fix_snapshot.point(); fixed.has_value()) {
+      fix.emplace(fixed->x, fixed->y, fixed->z);
+    }
     double error_m{1.0};
     last_range_m_ = stereo_depth_node_internal::heatRange(
         *heat, returns, kHeatConeMarginRad,
-        fix.has_value()
-            ? std::optional{(Eigen::Vector3d{fix->x, fix->y, fix->z} - origin).norm()}
-            : std::nullopt,
+        fix.has_value() ? std::optional{(*fix - origin).norm()} : std::nullopt,
         thermal_config_.range_by_size_error_share, size_range_m_, error_m);
     if (!std::isfinite(last_range_m_)) {
       return; // the source seen but not ranged: no mark, no bound
@@ -224,9 +271,7 @@ private:
     const Eigen::Vector3d bearing =
         orientation *
         Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
-    const Eigen::Vector3d at = fix.has_value()
-                                   ? Eigen::Vector3d{fix->x, fix->y, fix->z}
-                                   : Eigen::Vector3d{origin + last_range_m_ * bearing};
+    const Eigen::Vector3d at = fix.value_or(origin + last_range_m_ * bearing);
     geometry_msgs::msg::PointStamped point;
     point.header.stamp = scan.header.stamp;
     point.header.frame_id = "map";
@@ -249,7 +294,7 @@ private:
   double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
   std::deque<stereo_depth_node_internal::TimedPose> poses_;
   std::deque<std::pair<double, Point3>> pending_bearings_;
-  HeatSourceFix heat_fix_{};
+  HeatSourceFix heat_fix_;
   double scan_range_m_{35.0};
   double size_range_m_{0.0};
   double last_range_m_{std::numeric_limits<double>::quiet_NaN()};
