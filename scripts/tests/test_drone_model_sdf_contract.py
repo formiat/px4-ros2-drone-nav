@@ -63,6 +63,10 @@ class DroneModelSdfContractTest(unittest.TestCase):
         # view and showed through the smoke's veil as a pin.
         self.assertNotIn("yellow_arm_x", visuals)
         self.assertNotIn("yellow_arm_y", visuals)
+        # No rotor discs (the owner, 2026-10-27): the four discs at the arms'
+        # ends showed in the recordings and through the smoke.
+        for corner in ("front_left", "front_right", "back_left", "back_right"):
+            self.assertNotIn(f"yellow_rotor_{corner}", visuals)
         self.assertIn("yellow_ground_projection_beam", visuals)
         self.assertIn("yellow_ground_projection_disc", visuals)
 

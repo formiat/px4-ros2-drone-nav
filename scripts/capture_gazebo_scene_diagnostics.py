@@ -59,10 +59,6 @@ EXPECTED_X500_VISUAL_TOKENS = (
 )
 EXPECTED_YELLOW_VISUAL_TOKENS = (
     "yellow_body_plate",
-    "yellow_rotor_front_left",
-    "yellow_rotor_front_right",
-    "yellow_rotor_back_left",
-    "yellow_rotor_back_right",
     "yellow_drone_locator_core",
     "yellow_ground_projection_beam",
     "yellow_ground_projection_disc",

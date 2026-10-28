@@ -48,71 +48,9 @@
            pair, and the evaluation depth cameras, which the smoke relay reads
            the veil's depth from, rendered it although the pair's mask hides
            this layer, so that every frame in smoke showed a pin-shaped hole in
-           the veil (r1745; the owner, 2026-10-18). -->
-      <visual name="yellow_rotor_front_left">
-        <pose>0.48 0.48 0.10 0 0 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.14</radius>
-            <length>0.035</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.55 0.42 0.0 1</emissive>
-        </material>
-      </visual>
-      <visual name="yellow_rotor_front_right">
-        <pose>0.48 -0.48 0.10 0 0 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.14</radius>
-            <length>0.035</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.55 0.42 0.0 1</emissive>
-        </material>
-      </visual>
-      <visual name="yellow_rotor_back_left">
-        <pose>-0.48 0.48 0.10 0 0 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.14</radius>
-            <length>0.035</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.55 0.42 0.0 1</emissive>
-        </material>
-      </visual>
-      <visual name="yellow_rotor_back_right">
-        <pose>-0.48 -0.48 0.10 0 0 0</pose>
-        <cast_shadows>false</cast_shadows>
-        <visibility_flags>33554432</visibility_flags>
-        <geometry>
-          <cylinder>
-            <radius>0.14</radius>
-            <length>0.035</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>1.0 0.85 0.0 1</ambient>
-          <diffuse>1.0 0.85 0.0 1</diffuse>
-          <emissive>0.55 0.42 0.0 1</emissive>
-        </material>
-      </visual>
+           the veil (r1745; the owner, 2026-10-18). No rotor discs either: the
+           four discs at the arms' ends showed in the recordings and through
+           the smoke (the owner, 2026-10-27). -->
       <visual name="yellow_ground_projection_beam">
         <pose>0 0 -8.9 0 0 0</pose>
         <cast_shadows>false</cast_shadows>
