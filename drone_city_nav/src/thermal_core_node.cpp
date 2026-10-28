@@ -70,6 +70,11 @@ public:
         declare_parameter<std::string>("heat_marks_topic",
                                        "/drone_city_nav/heat_marks"),
         rclcpp::SensorDataQoS{}.keep_last(1));
+    // The scan the memory reads: the lidar's, without the rays through the held ball.
+    scan_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        declare_parameter<std::string>("memory_scan_topic",
+                                       "/drone_city_nav/thermal_core/points"),
+        rclcpp::SensorDataQoS{}.keep_last(1));
     silent_range_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("silent_range_topic",
                                        "/stereo_depth/silent_range"),
@@ -95,6 +100,9 @@ private:
   static constexpr double kHeatStandoffM{4.0};
   static constexpr double kHeatConeMarginRad{0.02};
   static constexpr double kHeatMarkSpacingM{0.5};
+  static constexpr double kViewMarginRad{0.035};
+  static constexpr double kReleaseReachM{30.0};
+  static constexpr double kReleaseAfterS{1.0};
 
   // The memory's weak return (K37, lidar_scan_patterns_3d.hpp): an intensity over
   // nought (nought is no reading) under half the scan's surface intensity, the median
@@ -139,6 +147,9 @@ private:
     const std::lock_guard<std::mutex> lock{mutex_};
     thermal_reading_ = reading;
     thermal_stamp_s_ = stamp_s;
+    if (image.width > 0U) {
+      thermal_aspect_ = static_cast<double>(image.height) / image.width;
+    }
     if (reading.hot()) {
       pending_bearings_.emplace_back(stamp_s, reading.direction);
       while (pending_bearings_.size() > stereo_depth_node_internal::kPosesKept) {
@@ -168,21 +179,35 @@ private:
     }
   }
 
-  // Every scan: the range, the marks in the scan's frame at the scan's stamp, the
-  // bound.
+  // Every scan: the range, the source held in the map, the scan forwarded to the memory
+  // without its rays through the ball, the marks in the scan's frame at the scan's
+  // stamp, the bound.
+  //
+  // The lidar sees all round and the core 57 degrees ahead: a ball the core laid and
+  // then turned from was carved by the lidar's next scan (its misses through the hot
+  // room's thin smoke too), and the vehicle stood 7 m off with no mark in its memory,
+  // the bound holding it (r2292). So the source is held in the map, its ball laid and
+  // the rays through it dropped from the memory's scan as the stereo set drops the
+  // pair's (the lidar's free space is no reading of heat), until the core looks at the
+  // place and sees no heat there for a second: the hold is the core's measurement and
+  // its release the core's measurement too.
   void onScan(const sensor_msgs::msg::PointCloud2& scan) {
     const double stamp_s = rclcpp::Time{scan.header.stamp}.seconds();
     std::optional<ThermalReading> heat;
+    bool looked_cold{false};
+    double aspect{0.75};
     HeatSourceFix fix_snapshot;
     Eigen::Vector3d origin{Eigen::Vector3d::Zero()};
     Eigen::Quaterniond orientation{Eigen::Quaterniond::Identity()};
     {
       const std::lock_guard<std::mutex> lock{mutex_};
-      if (thermal_reading_.hot() &&
-          std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS) {
+      const bool fresh = std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS;
+      if (fresh && thermal_reading_.hot()) {
         heat = thermal_reading_;
         fix_snapshot = heat_fix_;
       }
+      looked_cold = fresh && !thermal_reading_.hot();
+      aspect = thermal_aspect_;
       if (!poses_.empty()) {
         origin = poses_.back().position;
         orientation = poses_.back().orientation;
@@ -195,14 +220,10 @@ private:
       mission_event_pub_->publish(event);
       RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
     }
-    if (!heat.has_value()) {
-      return;
-    }
-    // The scan's hits in the hot cone (the lidar and the core on one link, one frame),
-    // its weak returns left out: a weak return is smoke, not a surface (K37), and in
-    // the hot room of 0.1/m every hit in the cone was the smoke's at 4.6 to 4.9 m,
-    // intensity 0.004, whatever the source's range (the rig of 2026-10-26; r2291
-    // stopped 12 m off).
+    // The scan's hits (the lidar and the core on one link, one frame), its weak returns
+    // left out: a weak return is smoke, not a surface (K37), and in the hot room of
+    // 0.1/m every hit in the hot cone was the smoke's at 4.6 to 4.9 m, intensity 0.004,
+    // whatever the source's range (the rig of 2026-10-26; r2291 stopped 12 m off).
     std::vector<StereoDepthReturn> returns;
     std::vector<float> intensities;
     std::optional<sensor_msgs::PointCloud2ConstIterator<float>> intensity;
@@ -227,23 +248,67 @@ private:
       }
     }
     dropWeakReturns(returns, intensities);
-    std::optional<Eigen::Vector3d> fix;
-    if (const std::optional<Point3> fixed = fix_snapshot.point(); fixed.has_value()) {
-      fix.emplace(fixed->x, fixed->y, fixed->z);
+    const Eigen::Quaterniond to_scan = orientation.conjugate();
+    if (heat.has_value()) {
+      std::optional<Eigen::Vector3d> fix;
+      if (const std::optional<Point3> fixed = fix_snapshot.point(); fixed.has_value()) {
+        fix.emplace(fixed->x, fixed->y, fixed->z);
+      }
+      double error_m{1.0};
+      last_range_m_ = stereo_depth_node_internal::heatRange(
+          *heat, returns, kHeatConeMarginRad,
+          fix.has_value() ? std::optional{(*fix - origin).norm()} : std::nullopt,
+          thermal_config_.range_by_size_error_share, size_range_m_, error_m);
+      if (std::isfinite(last_range_m_)) {
+        std_msgs::msg::Float64 bound;
+        bound.data = std::max(0.0, last_range_m_ - error_m - kHeatStandoffM);
+        silent_range_pub_->publish(bound);
+        const Eigen::Vector3d bearing =
+            orientation *
+            Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
+        held_ = HeldSource{fix.value_or(origin + last_range_m_ * bearing), error_m};
+        cold_since_s_.reset();
+      }
+    } else if (held_.has_value() && looked_cold &&
+               inView(to_scan * (held_->centre - origin), returns, aspect)) {
+      if (!cold_since_s_.has_value()) {
+        cold_since_s_ = stamp_s;
+      } else if (stamp_s - *cold_since_s_ >= kReleaseAfterS) {
+        RCLCPP_WARN(get_logger(), "HEAT_SOURCE_RELEASED looked_at_s=%.1f",
+                    kReleaseAfterS);
+        held_.reset();
+        cold_since_s_.reset();
+      }
+    } else {
+      cold_since_s_.reset();
     }
-    double error_m{1.0};
-    last_range_m_ = stereo_depth_node_internal::heatRange(
-        *heat, returns, kHeatConeMarginRad,
-        fix.has_value() ? std::optional{(*fix - origin).norm()} : std::nullopt,
-        thermal_config_.range_by_size_error_share, size_range_m_, error_m);
-    if (!std::isfinite(last_range_m_)) {
-      return; // the source seen but not ranged: no mark, no bound
+    if (!held_.has_value()) {
+      scan_pub_->publish(scan);
+      return;
     }
-    std_msgs::msg::Float64 bound;
-    bound.data = std::max(0.0, last_range_m_ - error_m - kHeatStandoffM);
-    silent_range_pub_->publish(bound);
-    const std::vector<Point3> cap = heatStandoffCap(
-        *heat, last_range_m_, kHeatStandoffM + error_m, kHeatMarkSpacingM);
+    // The held ball in the scan's frame, as a reading toward its centre.
+    const Eigen::Vector3d centre_scan = to_scan * (held_->centre - origin);
+    const double centre_range = centre_scan.norm();
+    const Eigen::Vector3d unit = centre_scan / std::max(centre_range, 1e-6);
+    ThermalReading toward;
+    toward.direction = Point3{unit.x(), unit.y(), unit.z()};
+    const double ball_m = kHeatStandoffM + held_->error_m;
+    sensor_msgs::msg::PointCloud2 forwarded = scan;
+    std::size_t dropped{0U};
+    sensor_msgs::PointCloud2Iterator<float> fx{forwarded, "x"};
+    sensor_msgs::PointCloud2Iterator<float> fy{forwarded, "y"};
+    sensor_msgs::PointCloud2Iterator<float> fz{forwarded, "z"};
+    for (; fx != fx.end(); ++fx, ++fy, ++fz) {
+      if (crossesHeatStandoff(Point3{*fx, *fy, *fz}, toward, centre_range, ball_m)) {
+        *fx = std::numeric_limits<float>::quiet_NaN();
+        *fy = std::numeric_limits<float>::quiet_NaN();
+        *fz = std::numeric_limits<float>::quiet_NaN();
+        ++dropped;
+      }
+    }
+    scan_pub_->publish(forwarded);
+    const std::vector<Point3> cap =
+        heatStandoffCap(toward, centre_range, ball_m, kHeatMarkSpacingM);
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header = scan.header;
     sensor_msgs::PointCloud2Modifier modifier{cloud};
@@ -268,24 +333,49 @@ private:
     }
     marks_pub_->publish(cloud);
     marks_total_ += cap.size();
-    const Eigen::Vector3d bearing =
-        orientation *
-        Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
-    const Eigen::Vector3d at = fix.value_or(origin + last_range_m_ * bearing);
     geometry_msgs::msg::PointStamped point;
     point.header.stamp = scan.header.stamp;
     point.header.frame_id = "map";
-    point.point.x = at.x();
-    point.point.y = at.y();
-    point.point.z = at.z();
+    point.point.x = held_->centre.x();
+    point.point.y = held_->centre.y();
+    point.point.z = held_->centre.z();
     heat_point_pub_->publish(point);
     if (stamp_s - marks_logged_s_ >= 0.5 || stamp_s < marks_logged_s_) {
       marks_logged_s_ = stamp_s;
-      RCLCPP_WARN(get_logger(), "%s",
-                  stereo_depth_node_internal::heatMarksText(cap.size(), last_range_m_,
-                                                            *heat, fix_snapshot)
-                      .c_str());
+      RCLCPP_WARN(get_logger(), "%s dropped=%zu held_m=%.2f seen=%d",
+                  stereo_depth_node_internal::heatMarksText(
+                      cap.size(), last_range_m_, heat.value_or(toward), fix_snapshot)
+                      .c_str(),
+                  dropped, centre_range, heat.has_value() ? 1 : 0);
     }
+  }
+
+  // Whether the core looks at a point (in the scan's frame, the core's axis its x): two
+  // degrees inside the frame's edges, where a body is not cut; within the core's reach
+  // (a 0.3 m body gives 6 hot pixels at 30 m, the reading needs 4: the rig of
+  // 2026-10-26); and no surface of the scan nearer than a metre short of it within two
+  // degrees of its direction (a wall between hides the source from the core).
+  [[nodiscard]] bool inView(const Eigen::Vector3d& point,
+                            const std::vector<StereoDepthReturn>& returns,
+                            const double aspect) const {
+    const double range = point.norm();
+    const double half_width = 0.5 * thermal_config_.horizontal_fov_rad - kViewMarginRad;
+    const double half_height =
+        std::atan(std::tan(0.5 * thermal_config_.horizontal_fov_rad) * aspect) -
+        kViewMarginRad;
+    if (!(range > 0.0) || range > kReleaseReachM || point.x() <= 0.0 ||
+        std::abs(std::atan2(point.y(), point.x())) > half_width ||
+        std::abs(std::atan2(point.z(), std::hypot(point.x(), point.y()))) >
+            half_height) {
+      return false;
+    }
+    const Eigen::Vector3d direction = point / range;
+    return std::ranges::none_of(returns, [&](const StereoDepthReturn& hit) {
+      const Eigen::Vector3d ray{hit.point.x, hit.point.y, hit.point.z};
+      const double length = ray.norm();
+      return length < range - 1.0 &&
+             ray.dot(direction) >= length * std::cos(kViewMarginRad);
+    });
   }
 
   ThermalReadingConfig thermal_config_{};
@@ -298,6 +388,15 @@ private:
   double scan_range_m_{35.0};
   double size_range_m_{0.0};
   double last_range_m_{std::numeric_limits<double>::quiet_NaN()};
+  double thermal_aspect_{0.75};
+
+  struct HeldSource {
+    Eigen::Vector3d centre;
+    double error_m{1.0};
+  };
+
+  std::optional<HeldSource> held_;
+  std::optional<double> cold_since_s_;
   double marks_logged_s_{0.0};
   std::size_t marks_total_{0U};
   bool heat_seen_{false};
@@ -305,6 +404,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr marks_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr scan_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr silent_range_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr thermal_share_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr heat_point_pub_;

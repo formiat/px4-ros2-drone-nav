@@ -120,6 +120,8 @@ class SimulationSmokeContractTest(unittest.TestCase):
         self.assertIn('production_mppi_parameters.append({"gaze_follows_motion": True})', launch)
         thermal_node = (REPOSITORY / "drone_city_nav" / "src" / "thermal_core_node.cpp").read_text()
         self.assertIn("dropWeakReturns(returns, intensities);", thermal_node)
+        self.assertIn('obstacle_memory_overrides["lidar_3d_topic"] = "/drone_city_nav/thermal_core/points"', launch)
+        self.assertIn('"/drone_city_nav/thermal_core/points"', thermal_node)
         memory = (REPOSITORY / "drone_city_nav" / "src" / "obstacle_memory_3d_node.cpp").read_text()
         self.assertIn('declare_parameter<std::string>("heat_marks_topic", "")', memory)
         self.assertIn("thermal_core_node", (REPOSITORY / "drone_city_nav" / "CMakeLists.txt").read_text())

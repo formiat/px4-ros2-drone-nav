@@ -41,7 +41,7 @@ class EstimateCapture(Node):
     def _on_pose(self, message) -> None:
         stamp = message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
         q = message.pose.orientation
-        yaw = math.atan2(2.0 * q.w * q.z, 1.0 - 2.0 * q.z * q.z)
+        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
         # Roll and pitch too (the root goal of 2026-10-24, part 1): the estimate's
         # tilt against the truth is what its vertical drift is read by.
         roll = math.atan2(2.0 * (q.w * q.x + q.y * q.z), 1.0 - 2.0 * (q.x * q.x + q.y * q.y))

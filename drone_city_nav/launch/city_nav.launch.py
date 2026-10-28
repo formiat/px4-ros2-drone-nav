@@ -259,8 +259,10 @@ def generate_launch_description():
             navigation_sensor_profile.perform(context),
         )
         if navigation_sensors == "lidar":
-            # The lidar set's heat marks (K49), a cloud beside the scan.
+            # The lidar set's heat marks (K49), a cloud beside the scan, and the scan
+            # itself through the thermal node, without the rays through a held ball.
             obstacle_memory_overrides["heat_marks_topic"] = "/drone_city_nav/heat_marks"
+            obstacle_memory_overrides["lidar_3d_topic"] = "/drone_city_nav/thermal_core/points"
         localization = (
             localization_profile.perform(context).strip()
             or DEFAULT_LOCALIZATION_PROFILES[navigation_sensors]
