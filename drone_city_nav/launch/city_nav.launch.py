@@ -398,6 +398,14 @@ def generate_launch_description():
             obstacle_memory_parameters.append(
                 {**VISION_MEMORY_OVERRIDES, "lidar_3d_topic": "/stereo_depth/points"}
             )
+        if navigation_sensors == "lidar":
+            # The lidar set carries the thermal core (K49), which looks forward
+            # through 57 degrees while the lidar sees all round: the heading follows
+            # the motion as the stereo set's does, so that the core reads the course
+            # ahead (r2290: the heading held, the core saw the source only once it
+            # was behind the vehicle, which crossed it at 0.76 m). The lidar's own
+            # field stays the whole circle (no rest gaze, no survey, no unfaced crawl).
+            production_mppi_parameters.append({"gaze_follows_motion": True})
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)

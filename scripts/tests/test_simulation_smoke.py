@@ -117,6 +117,7 @@ class SimulationSmokeContractTest(unittest.TestCase):
         self.assertIn('executable="thermal_core_node"', launch)
         self.assertIn('sensor/thermal/image"', launch)
         self.assertIn('obstacle_memory_overrides["heat_marks_topic"] = "/drone_city_nav/heat_marks"', launch)
+        self.assertIn('production_mppi_parameters.append({"gaze_follows_motion": True})', launch)
         memory = (REPOSITORY / "drone_city_nav" / "src" / "obstacle_memory_3d_node.cpp").read_text()
         self.assertIn('declare_parameter<std::string>("heat_marks_topic", "")', memory)
         self.assertIn("thermal_core_node", (REPOSITORY / "drone_city_nav" / "CMakeLists.txt").read_text())
