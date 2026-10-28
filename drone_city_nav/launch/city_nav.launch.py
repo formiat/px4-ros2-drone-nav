@@ -406,7 +406,14 @@ def generate_launch_description():
             # ahead (r2290: the heading held, the core saw the source only once it
             # was behind the vehicle, which crossed it at 0.76 m). The lidar's own
             # field stays the whole circle (no rest gaze, no survey, no unfaced crawl).
-            production_mppi_parameters.append({"gaze_follows_motion": True})
+            # The turn no faster than the lidar-inertial estimate has kept up with:
+            # it registers each sweep whole, and at the gaze's 2 rad/s (11 degrees a
+            # sweep) it lost 2.3 m of height in the hot room's smoke and the vehicle
+            # met the floor (r2297); without the gaze the five clear flights turned at
+            # 0.95 rad/s at most and the estimate held within 0.6 m (r2283 to r2287).
+            production_mppi_parameters.append(
+                {"gaze_follows_motion": True, "maximum_yaw_rate_radps": 0.8}
+            )
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)

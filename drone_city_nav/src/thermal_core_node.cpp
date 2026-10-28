@@ -63,7 +63,7 @@ public:
         declare_parameter<std::string>("scan_topic", "/lidar_3d/points"),
         rclcpp::SensorDataQoS{}.keep_last(1),
         [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan) {
-          onScan(*scan);
+          onScan(scan);
         });
     // The scan the memory reads: the lidar's, without the rays through the held ball.
     scan_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -155,6 +155,19 @@ private:
   // The estimate's pose in the map (yaw alone in its orientation): the bearings it
   // brackets.
   void onPose(const geometry_msgs::msg::PoseStamped& message) {
+    recordPose(message);
+    // A scan that waits for the pose at its stamp (the estimate registers the scan
+    // and stamps its pose with the scan's stamp, 40 to 51 ms later).
+    if (waiting_scan_ != nullptr &&
+        rclcpp::Time{message.header.stamp}.seconds() >=
+            rclcpp::Time{waiting_scan_->header.stamp}.seconds()) {
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr scan = waiting_scan_;
+      waiting_scan_.reset();
+      processScan(*scan);
+    }
+  }
+
+  void recordPose(const geometry_msgs::msg::PoseStamped& message) {
     const auto& t = message.pose.position;
     const auto& q = message.pose.orientation;
     const std::lock_guard<std::mutex> lock{mutex_};
@@ -174,18 +187,60 @@ private:
   }
 
   // Every scan: the range, the source held in the map, the scan forwarded to the memory
-  // without its rays through the ball, the marks in the scan's frame at the scan's
-  // stamp, the bound.
+  // with its rays ending at the held ball's surface, the bound.
   //
   // The lidar sees all round and the core 57 degrees ahead: a ball the core laid and
   // then turned from was carved by the lidar's next scan (its misses through the hot
   // room's thin smoke too), and the vehicle stood 7 m off with no mark in its memory,
-  // the bound holding it (r2292). So the source is held in the map, its ball laid and
-  // the rays through it dropped from the memory's scan as the stereo set drops the
-  // pair's (the lidar's free space is no reading of heat), until the core looks at the
-  // place and sees no heat there for a second: the hold is the core's measurement and
-  // its release the core's measurement too.
-  void onScan(const sensor_msgs::msg::PointCloud2& scan) {
+  // the bound holding it (r2292). So the source is held in the map and no ray of the
+  // memory's scan reaches into its ball (the lidar's free space is no reading of heat),
+  // until the core looks at the place and sees no heat there for a second: the hold is
+  // the core's measurement and its release the core's measurement too.
+  //
+  // With no source seen or held the scan goes on at once. Otherwise it waits for the
+  // estimate's pose at its stamp, and the frame's bearing is turned with the pose at
+  // the frame's stamp: turned with the latest pose instead, while the vehicle turned at
+  // 2 rad/s, the held source stood 5 to 12 m from the true one and its ball's surface
+  // hid the walls behind it (r2297, a contact).
+  void onScan(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& scan) {
+    const double stamp_s = rclcpp::Time{scan->header.stamp}.seconds();
+    bool hot{false};
+    bool covered{false};
+    {
+      const std::lock_guard<std::mutex> lock{mutex_};
+      hot = thermal_reading_.hot() &&
+            std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS;
+      covered = !poses_.empty() && poses_.back().stamp_s >= stamp_s;
+    }
+    if (waiting_scan_ != nullptr) {
+      // Its pose never came before the next scan: it goes with the latest.
+      const sensor_msgs::msg::PointCloud2::ConstSharedPtr earlier = waiting_scan_;
+      waiting_scan_.reset();
+      processScan(*earlier);
+    }
+    if (!hot && !held_.has_value()) {
+      announce(std::nullopt);
+      scan_pub_->publish(*scan);
+      return;
+    }
+    if (covered) {
+      processScan(*scan);
+    } else {
+      waiting_scan_ = scan;
+    }
+  }
+
+  void announce(const std::optional<ThermalReading>& heat) {
+    if (heat.has_value() != heat_seen_) {
+      heat_seen_ = heat.has_value();
+      std_msgs::msg::String event;
+      event.data = stereo_depth_node_internal::heatEventText(heat, last_range_m_);
+      mission_event_pub_->publish(event);
+      RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
+    }
+  }
+
+  void processScan(const sensor_msgs::msg::PointCloud2& scan) {
     const double stamp_s = rclcpp::Time{scan.header.stamp}.seconds();
     std::optional<ThermalReading> heat;
     bool looked_cold{false};
@@ -196,24 +251,32 @@ private:
     {
       const std::lock_guard<std::mutex> lock{mutex_};
       const bool fresh = std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS;
-      if (fresh && thermal_reading_.hot()) {
-        heat = thermal_reading_;
-        fix_snapshot = heat_fix_;
-      }
-      looked_cold = fresh && !thermal_reading_.hot();
-      aspect = thermal_aspect_;
-      if (!poses_.empty()) {
+      const std::optional<stereo_depth_node_internal::TimedPose> at_scan =
+          stereo_depth_node_internal::poseAt(poses_, stamp_s);
+      const std::optional<stereo_depth_node_internal::TimedPose> at_frame =
+          stereo_depth_node_internal::poseAt(poses_, thermal_stamp_s_);
+      if (at_scan.has_value()) {
+        origin = at_scan->position;
+        orientation = at_scan->orientation;
+      } else if (!poses_.empty()) {
         origin = poses_.back().position;
         orientation = poses_.back().orientation;
       }
+      if (fresh && thermal_reading_.hot()) {
+        heat = thermal_reading_;
+        fix_snapshot = heat_fix_;
+        if (at_frame.has_value()) {
+          // The frame's bearing in the scan's frame.
+          const Eigen::Vector3d bearing =
+              orientation.conjugate() * at_frame->orientation *
+              Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
+          heat->direction = Point3{bearing.x(), bearing.y(), bearing.z()};
+        }
+      }
+      looked_cold = fresh && !thermal_reading_.hot();
+      aspect = thermal_aspect_;
     }
-    if (heat.has_value() != heat_seen_) {
-      heat_seen_ = heat.has_value();
-      std_msgs::msg::String event;
-      event.data = stereo_depth_node_internal::heatEventText(heat, last_range_m_);
-      mission_event_pub_->publish(event);
-      RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
-    }
+    announce(heat);
     // The scan's hits (the lidar and the core on one link, one frame), its weak returns
     // left out: a weak return is smoke, not a surface (K37), and in the hot room of
     // 0.1/m every hit in the hot cone was the smoke's at 4.6 to 4.9 m, intensity 0.004,
@@ -408,6 +471,7 @@ private:
 
   std::optional<HeldSource> held_;
   std::optional<double> cold_since_s_;
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr waiting_scan_;
   double marks_logged_s_{0.0};
   bool heat_seen_{false};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
