@@ -53,9 +53,9 @@ namespace {
 // Where each time-of-flight sensor looks and sits, in the left camera's
 // forward-left-up frame (the model's pose less the camera's 0.10 m).
 struct TofMount {
-  const char* side;
-  double pitch_rad;
-  double yaw_rad;
+  const char* side{nullptr};
+  double pitch_rad{0.0};
+  double yaw_rad{0.0};
   Point3 position_m;
 };
 
@@ -123,14 +123,14 @@ public:
     // (r476: 0.97/0.84/0.66 of the pixels within a voxel at 4-6, 6-8, 8-10 m).
     // The threads are capped: the matcher otherwise takes every core (r478:
     // the lidar-inertial scans grew from 80 to 200 ms, the vehicle crashed).
-    cv::setNumThreads(declare_parameter<int>("matcher_threads", 2));
-    far_disparities_ = declare_parameter<int>("far_disparity_px", 64);
-    const int near_disparities =
-        declare_parameter<int>("maximum_disparity_px", 256) / 2;
-    const int block_size = declare_parameter<int>("block_size_px", 5);
+    using stereo_depth_node_internal::intParameter;
+    cv::setNumThreads(intParameter(*this, "matcher_threads", 2));
+    far_disparities_ = intParameter(*this, "far_disparity_px", 64);
+    const int near_disparities = intParameter(*this, "maximum_disparity_px", 256) / 2;
+    const int block_size = intParameter(*this, "block_size_px", 5);
     const int left_right_difference =
-        declare_parameter<int>("left_right_maximum_difference_px", 1);
-    const int uniqueness = declare_parameter<int>("uniqueness_ratio_percent", 10);
+        intParameter(*this, "left_right_maximum_difference_px", 1);
+    const int uniqueness = intParameter(*this, "uniqueness_ratio_percent", 10);
     // A disparity island under the speckle window is dropped: 400 px, a patch 0.1 m
     // across at 2 m and 0.27 at 5; 100 px left islands at a wrong depth
     // (kLoneHitVoxelM).
@@ -261,7 +261,7 @@ public:
     tof_options.callback_group = tof_callbacks_;
     const auto tof_qos = rclcpp::SensorDataQoS{}.keep_last(kTofScansKept);
     for (std::size_t slot = 0U; slot < kTofSensorCount; ++slot) {
-      const TofMount& mount = kTofMounts[slot];
+      const TofMount& mount = kTofMounts.at(slot);
       const std::string side{mount.side};
       const std::vector<double> position = declare_parameter<std::vector<double>>(
           "tof_" + side + "_position_left_camera_flu_m",
@@ -269,7 +269,7 @@ public:
       if (position.size() != 3U) {
         throw std::invalid_argument{"invalid time-of-flight sensor position"};
       }
-      TofSensor& sensor = tof_sensors_[slot];
+      TofSensor& sensor = tof_sensors_.at(slot);
       sensor.config = tof;
       sensor.config.pitch_rad = mount.pitch_rad;
       sensor.config.yaw_rad = mount.yaw_rad;
@@ -377,7 +377,8 @@ private:
     const double lit_range_m = lit_range_tracker_.observe(brightness_by_metre, lit);
     double reach_m{0.0};
     for (std::size_t metre = 1U; metre < brightness_by_metre.size(); ++metre) {
-      if (brightness_by_metre[metre] >= 0.0 && brightness_by_metre[metre - 1U] >= 0.0) {
+      if (brightness_by_metre.at(metre) >= 0.0 &&
+          brightness_by_metre.at(metre - 1U) >= 0.0) {
         reach_m = static_cast<double>(metre + 1U);
       }
     }
@@ -440,7 +441,8 @@ private:
     // The smoke faces (K44): lit silence the pair does not see through.
     const std::vector<std::uint8_t> raw_cells = rawCells(
         std::span<const std::uint8_t>{left_grey.data,
-                                      left_grey.step[0] * left_grey.rows},
+                                      left_grey.step[0] *
+                                          static_cast<std::size_t>(left_grey.rows)},
         left_grey.step[0], image_width_, image_height_, returns_config_.pixel_stride,
         camera_gain_.load(std::memory_order_relaxed));
     const std::vector<std::uint8_t> seen_cells =
@@ -664,10 +666,10 @@ private:
                              : std::numeric_limits<double>::quiet_NaN();
     unlit_surface_pub_->publish(unlit_message);
     // The frame's observed share as the braking contract reads it.
+    const std::size_t frame_samples = (image_width_ / returns_config_.pixel_stride) *
+                                      (image_height_ / returns_config_.pixel_stride);
     const double observed_share =
-        static_cast<double>(returns.size()) /
-        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
-                            (image_height_ / returns_config_.pixel_stride));
+        static_cast<double>(returns.size()) / static_cast<double>(frame_samples);
     // The void's witness (K46): the pair's matches within the confident depth.
     const double confident_depth_m = stereoConfidentDepthM(geometry_, returns_config_);
     const double matched_within_reach_share =
@@ -677,8 +679,7 @@ private:
                           [confident_depth_m](const StereoDepthReturn& ray) {
                             return ray.hit && ray.point.x <= confident_depth_m;
                           })) /
-        static_cast<double>((image_width_ / returns_config_.pixel_stride) *
-                            (image_height_ / returns_config_.pixel_stride));
+        static_cast<double>(frame_samples);
     // A blind frame's stereo returns never reach the memory (r1175), the ring's do.
     const bool blind =
         sensorFrameShare(observed_share, headroom) < kSensorBlindFrameShare;
@@ -780,7 +781,7 @@ private:
       *x = static_cast<float>(ray.point.x);
       *y = static_cast<float>(ray.point.y);
       *z = static_cast<float>(ray.point.z);
-      *flag = ray.unobservable ? 2.0F : ray.hit ? 1.0F : 0.0F;
+      *flag = ray.unobservable ? 2.0F : static_cast<float>(ray.hit);
       hits += ray.hit ? 1U : 0U;
       ++x;
       ++y;
@@ -847,7 +848,7 @@ private:
       // arrival was 7 to 10 degrees off on a vehicle yawing 50 degrees a
       // second (r2247), one at the pair's moment 9 (r2241).
       const std::lock_guard<std::mutex> pose_lock{pose_mutex_};
-      pending_bearings_.push_back({stamp_s, reading.direction});
+      pending_bearings_.emplace_back(stamp_s, reading.direction);
       while (pending_bearings_.size() > stereo_depth_node_internal::kPosesKept) {
         pending_bearings_.pop_front();
       }
@@ -938,8 +939,8 @@ private:
   double heat_emitted_s_{0.0};
   std::size_t heat_marks_total_{0U};
   bool heat_seen_{false};
-  HeatSourceFix heat_fix_{};
-  HeatSourceFix heat_fix_snapshot_{};
+  HeatSourceFix heat_fix_;
+  HeatSourceFix heat_fix_snapshot_;
   std::mutex pose_mutex_;
   Eigen::Vector3d body_position_{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond body_orientation_{Eigen::Quaterniond::Identity()};

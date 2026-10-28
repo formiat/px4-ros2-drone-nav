@@ -57,9 +57,9 @@ using Matrix3 = std::array<std::array<double, 3>, 3>;
   std::array<double, 3> result{};
   for (std::size_t row = 0U; row < 3U; ++row) {
     for (std::size_t column = 0U; column < 3U; ++column) {
-      result[row] += adjugate[row][column] * rhs[column];
+      result.at(row) += adjugate.at(row).at(column) * rhs.at(column);
     }
-    result[row] /= determinant;
+    result.at(row) /= determinant;
   }
   return Point3{result[0], result[1], result[2]};
 }
@@ -113,9 +113,10 @@ ThermalReading readThermalFrame(const std::span<const std::uint16_t> kelvin_hund
   double widest{0.0};
   for (std::size_t index = 0U; index < pixels; ++index) {
     if (static_cast<double>(kelvin_hundredths[index]) >= threshold) {
+      const std::size_t row = index / width;
       const Point3 ray =
           unit(1.0, -(static_cast<double>(index % width) - centre_u) / focal_px,
-               -(static_cast<double>(index / width) - centre_v) / focal_px);
+               -(static_cast<double>(row) - centre_v) / focal_px);
       widest = std::max(widest, angleBetween(ray, reading.direction));
     }
   }
@@ -198,9 +199,10 @@ template<typename Rays>
     std::array<double, 3> projected{};
     for (std::size_t row = 0U; row < 3U; ++row) {
       for (std::size_t column = 0U; column < 3U; ++column) {
-        normal[row][column] += (row == column ? 1.0 : 0.0) - d[row] * d[column];
+        normal.at(row).at(column) +=
+            (row == column ? 1.0 : 0.0) - d.at(row) * d.at(column);
       }
-      projected[row] = o[row] - d[row] * along;
+      projected.at(row) = o.at(row) - d.at(row) * along;
     }
     right = {right.x + projected[0], right.y + projected[1], right.z + projected[2]};
   }
@@ -257,14 +259,12 @@ std::vector<Point3> heatStandoffCap(const ThermalReading& reading, const double 
     return cap;
   }
   const Point3 centre = scaled(reading.direction, range_m);
-  const bool whole = range_m < standoff_m;
   const auto steps = static_cast<int>(std::ceil(standoff_m / spacing_m));
   for (int i = -steps; i <= steps; ++i) {
     for (int j = -steps; j <= steps; ++j) {
       for (int k = -steps; k <= steps; ++k) {
         const Point3 offset{i * spacing_m, j * spacing_m, k * spacing_m};
-        if (dot(offset, offset) > standoff_m * standoff_m ||
-            (!whole && dot(offset, reading.direction) > 0.0)) {
+        if (dot(offset, offset) > standoff_m * standoff_m) {
           continue;
         }
         cap.push_back(

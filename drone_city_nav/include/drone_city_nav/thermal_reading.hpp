@@ -123,16 +123,16 @@ private:
   std::deque<Ray> rays_;
 };
 
-// The heat mark (K49): the near half of the standoff ball round the range
-// point, filled on a lattice of `spacing_m`, as the memory's
-// observed-unobservable rays. A shell had a hole wherever the vehicle stood
-// at it: cut at 1.5 m (r2237) or by the memory's own filter of 0.9 m
-// (r2239), and the vehicle flew through; a filled half is solid behind
-// whatever the filter takes. From every stand the half facing the vehicle
-// keeps its straight approaches out; the halves laid from the stands round a
-// source make its ball. With the vehicle inside the ball (the range under
-// the standoff) the whole ball is laid: the planner's escape search leads out
-// of it by the nearest way, which is away from the centre.
+// The heat mark (K49): the standoff ball round the range point, filled on a
+// lattice of `spacing_m`, as the memory's observed-unobservable rays. A shell
+// had a hole wherever the vehicle stood at it: cut at 1.5 m (r2237) or by the
+// memory's own filter of 0.9 m (r2239), and the vehicle flew through; a filled
+// ball is solid behind whatever the filter takes. The whole ball from every
+// stand: the near half alone left the far side open to a vehicle that lost
+// the source from the core's 57 degrees and went round it, and it came within
+// 3.66 m from there (r2321, as r2250). With the vehicle inside the ball (the
+// range under the standoff) the planner's escape search leads out of it by
+// the nearest way, which is away from the centre.
 [[nodiscard]] std::vector<Point3> heatStandoffCap(const ThermalReading& reading,
                                                   double range_m, double standoff_m,
                                                   double spacing_m);

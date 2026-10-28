@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -106,14 +107,21 @@ TEST(ThermalReadingTest, TheCapIsWholeAndTheBallDropsTheReturnsThroughIt) {
   for (const Point3& point : cap) {
     const Point3 offset{point.x - centre.x, point.y - centre.y, point.z - centre.z};
     EXPECT_LE(norm(offset), 4.0 + 1e-9);
-    EXPECT_LE(offset.x * reading.direction.x + offset.y * reading.direction.y, 0.0);
     nearest = std::min(nearest, norm(point));
   }
-  // The half is filled to its apex, 1.2 m before the vehicle: no hole (r2237, r2239).
+  // Filled to its apex, 1.2 m before the vehicle: no hole (r2237, r2239).
   EXPECT_LT(nearest, 1.6);
-  // Inside the ball (the range under the standoff) the whole ball is laid.
+  // The whole ball, its far side too (r2321): as many marks behind the centre as
+  // before.
+  const auto behind = std::ranges::count_if(cap, [&](const Point3& point) {
+    return (point.x - centre.x) * reading.direction.x +
+               (point.y - centre.y) * reading.direction.y >
+           0.0;
+  });
+  EXPECT_GT(static_cast<double>(behind), 0.4 * static_cast<double>(cap.size()));
+  // Inside the ball (the range under the standoff) the same whole ball.
   const std::vector<Point3> ball = heatStandoffCap(reading, 3.0, 4.0, 0.5);
-  EXPECT_GT(ball.size(), 1.8 * static_cast<double>(cap.size()));
+  EXPECT_EQ(ball.size(), cap.size());
   EXPECT_TRUE(heatStandoffCap(reading, 5.2, 0.0, 0.5).empty());
   // The returns: inside the ball, or beyond it along a ray through it, dropped;
   // beside it and before it kept.

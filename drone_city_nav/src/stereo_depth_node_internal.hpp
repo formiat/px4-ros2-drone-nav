@@ -222,6 +222,13 @@ struct TimedPose {
 };
 
 inline constexpr std::size_t kPosesKept{40U};
+
+// An integer parameter as an int: rclcpp keeps integers in 64 bits.
+[[nodiscard]] inline int intParameter(rclcpp::Node& node, const std::string& name,
+                                      const int value) {
+  return static_cast<int>(node.declare_parameter<std::int64_t>(name, value));
+}
+
 inline constexpr double kPoseStaleS{0.15};
 
 [[nodiscard]] inline std::optional<TimedPose> poseAt(const std::deque<TimedPose>& poses,
