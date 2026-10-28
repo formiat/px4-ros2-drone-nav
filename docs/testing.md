@@ -341,7 +341,7 @@ next flight:
   leak at the tick rate crosses the bound within a flight).
 
 The onboard set includes `lidar_inertial_odometry_node` when the flight
-runs it. The reported lines give each onboard process's cores at p50, p95 and most,
+runs it, and `thermal_core_node` on the lidar set (K49). The reported lines give each onboard process's cores at p50, p95 and most,
 memory at p95 and growth, the per-second sums of the onboard processes, of
 the captures and of the simulator with the harness, the GPU figures and the
 real-time factor. [resource_budget.md](resource_budget.md) reads them.

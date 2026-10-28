@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ONBOARD = ("production_mppi_node", "obstacle_memory_3d_node", "stereo_depth_node", "gazebo_stereo_depth_node",
-           "lidar_inertial_odometry_node", "mppi_offboard_node", "MicroXRCEAgent")
+           "lidar_inertial_odometry_node", "thermal_core_node", "mppi_offboard_node", "MicroXRCEAgent")
 
 
 def quantile(values, share):

@@ -42,10 +42,11 @@ HORIZON_TRANSPORT_PATTERN = re.compile(
 # agent. PX4 lives on the flight controller, the simulator and the
 # visualisation do not exist there, and the captures are the harness.
 # The depth node is the stereo profile's perception and flies with it: left
-# with the simulator it hid 1.4 cores of the onboard budget (r506).
+# with the simulator it hid 1.4 cores of the onboard budget (r506). The thermal
+# core's node is the lidar set's reading of its core (K49).
 ONBOARD_PROCESSES = ("production_mppi_node", "obstacle_memory_3d_node",
                      "stereo_depth_node", "gazebo_stereo_depth_node",
-                     "lidar_inertial_odometry_node",
+                     "lidar_inertial_odometry_node", "thermal_core_node",
                      "mppi_offboard_node", "MicroXRCEAgent")
 MINIMUM_RECORD_COVERAGE = 0.90
 SAMPLE_PERIOD_S = 1.0

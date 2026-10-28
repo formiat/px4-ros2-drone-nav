@@ -1314,10 +1314,10 @@ the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
 the tag is binary); its range the nearer of the hits in the hot cone and the
 source's bearing-only fix over the motion, else the body's apparent size
 (7000 pixel-metres squared for the 0.3 m body the rule assumes); the
-standoff 4.0 m, laid as the near half of the ball round the range point
-(observed unobservable, every half second while the core reads the source,
-the whole ball from inside, a fifth of the range wider for the size's
-error), the motion bounded before it, every return through the ball
+standoff 4.0 m, laid as the ball round the range point (observed
+unobservable, every half second while the core reads the source, a fifth
+of the range wider for the size's error; the near half alone until
+2026-10-28), the motion bounded before it, every return through the ball
 dropped, the words
 `HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
 overlay; the truth judged never within the standoff
@@ -1347,10 +1347,45 @@ let the memory's observed range override the sensor's bound, a range
 guessed ahead moved with the vehicle, a gaze held on the source froze the
 flight; what stands is in K49. The lidar set, which carries no core,
 crosses the hot room (r2276): by the measurement the lidar build takes
-the same core (`docs/hardware_builds.md`, L1); the core's reading on the
-lidar set, a thermal node of its own with the memory's second input, is
-the lidar's open item (K49), so the lidar acceptance of the hot plume and
-the hot room is not flown here.
+the same core (`docs/hardware_builds.md`, L1), read on the lidar set as
+below.
+
+**Accepted on the lidar set on 2026-10-28 (step 4; specification K49):**
+the core on `lidar_3d_v1`'s link, read by `thermal_core_node`: the range
+from the scan's hits in the hot cone without the lidar's weak returns
+(K37: the hot room's smoke answered in the cone at 4.6 to 4.9 m whatever
+the source's range), the fix or the body's size otherwise; the source held
+in the map until the core looks at the place and reads no heat for a
+second (the lidar sees all round and carved a ball the core had turned
+from); the memory reads the scan through the node, every ray that enters
+the held ball ending at its surface; the bearings turned with the
+lidar-inertial estimate's full orientation at their own stamps; the
+heading follows the motion while the core is carried, at 0.8 rad/s at
+most, inside what the estimate, which registers each sweep whole, has
+kept up with (at 2 rad/s it lost 2.3 m of height in smoke and the vehicle
+met the floor, r2297). Ten probes (r2289 to r2298) found and repaired
+what K49's change log lists. The node costs 0.08 cores at p50 and 0.10
+at p95 (r2299, `tools/process_cores.py`).
+
+| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot room, the lidar, 5 of 5 | r2299 to r2303 | 8.55, 8.55, 10.30, 8.50, 9.00 | home every time, by the topological proof, within 0.34 m of the start | — |
+| The hot plume, the lidar, 5 of 5 | r2304 to r2308 | 5.30, 5.46, 4.75, 5.80, 4.74 | B at 0.32, 0.42, 0.34, 0.73, 0.21 m | 2.401, 2.108, 2.479, 2.518, 2.299 |
+| The clear location, the lidar, 5 of 5 | r2309 to r2313 | no source | B at 0.25 to 0.57 m | 2.273, 2.008, 2.441, 2.478, 2.264 (R3's 2.0) |
+| The hot plume, the stereo set, the whole ball, 5 of 5 | r2322 to r2326 (r2321 on the half ball: 3.66 m) | 7.15, 7.74, 5.78, 8.00, 7.31 | B at 0.89, 1.23, 1.72, 1.37, 0.87 m | 1.305, 1.339, 1.278, 1.357, 1.289 |
+| The hot room, the stereo set, the whole ball, 5 of 5 | r2327 to r2331 | 9.38, 11.10, 9.20, 10.71, 9.35 | home every time, by the light's charge, within 0.4 m of the start | — |
+| The clear location, the stereo set, 5 of 5 | r2333 to r2335, r2337, r2338 (r2336 at 1.179 m/s, under R3; r2314 to r2320 before the whole ball) | the core silent | B at 0.69 to 1.44 m | 1.248, 1.282, 1.286, 1.345, 1.336 |
+
+No contact in any flight. The core read the source in every hot room
+flight on the lidar (`HEAT_SOURCE seen=true`, `HEAT_SOURCE_MARKS`), and in
+no hot plume flight on it: the lidar never enters the dense plume (K37,
+R7), it went round it with its heading along its way, and the source at the
+plume's centre stayed outside the core's 57 degrees; there the standoff is
+the plume's own reading's. The stereo set's regression after this work
+found the half ball's open side (r2321: the vehicle lost the source, went
+round the half and came within 3.66 m from behind, as r2250): the whole
+ball is laid from every stand now and the stereo set's three groups were
+flown again on it (above).
 
 This item is complete when the hot plume and the hot room are kept out of
 in five of five flights on the stereo set with no contact, the cold room is
