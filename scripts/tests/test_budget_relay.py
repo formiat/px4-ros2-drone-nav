@@ -60,7 +60,7 @@ class ContractTest(unittest.TestCase):
         self.assertIn("  BUDGET_RELAY\n", (REPOSITORY / "scripts" / "container_run.sh").read_text())
         evidence = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
         self.assertIn("IMU_FAULT_SEED BUDGET_RELAY \\", evidence)
-        self.assertIn('ros2 run drone_city_nav budget_relay_node --ros-args -p "mode:=${BUDGET_RELAY}"', evidence)
+        self.assertIn('ros2 run drone_city_nav budget_relay_node --ros-args -p "mode:=\'${BUDGET_RELAY}\'"', evidence)
         resources = (REPOSITORY / "scripts" / "simulation_resource_runtime.sh").read_text()
         self.assertIn("ros_launch_args+=(budget_relay:=true)", resources)
         launch = (LAUNCH_DIR / "city_nav.launch.py").read_text()

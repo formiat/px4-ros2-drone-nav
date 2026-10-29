@@ -135,9 +135,10 @@ start_runtime_evidence_capture() {
     fi
     # Roadmap item 36 (K53): the onboard budget as a relay ('on'), or its measurement ('measure').
     if [[ "${BUDGET_RELAY:-off}" == on || "${BUDGET_RELAY:-off}" == measure ]]; then
-      ros2 run drone_city_nav budget_relay_node --ros-args -p "mode:=${BUDGET_RELAY}" \
-        -p "profile:=${NAVIGATION_SENSOR_PROFILE:-stereo_tof}" \
-        -p "output:=${runtime_artifact_dir}/budget_relay.csv" -p use_sim_time:=true \
+      # The values quoted: ros2's parameter parser reads an unquoted 'on' as a bool.
+      ros2 run drone_city_nav budget_relay_node --ros-args -p "mode:='${BUDGET_RELAY}'" \
+        -p "profile:='${NAVIGATION_SENSOR_PROFILE:-stereo_tof}'" \
+        -p "output:='${runtime_artifact_dir}/budget_relay.csv'" -p use_sim_time:=true \
         > "${runtime_artifact_dir}/budget_relay.log" 2>&1 &
     fi
   fi

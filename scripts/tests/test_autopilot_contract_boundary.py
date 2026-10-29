@@ -21,6 +21,8 @@ PX4_ADAPTER_SOURCES = {
     "drone_city_nav/src/mppi_offboard_node.cpp",
     "drone_city_nav/src/mppi_offboard_node.hpp",
     "drone_city_nav/src/simulation_heading_source_node.cpp",
+    # The budget relay carries the estimators' odometry to the autopilot's topic as bytes (K53).
+    "drone_city_nav/src/budget_relay.hpp",
     "drone_city_nav/src/visual_inertial_odometry_node.cpp",
     "drone_city_nav/tests/px4_autopilot_adapter_test.cpp",
     "drone_city_nav/tests/px4_offboard_setpoint_io_test.cpp",
