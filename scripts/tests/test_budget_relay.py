@@ -92,7 +92,7 @@ class ContractTest(unittest.TestCase):
         self.assertIn("IMU_FAULT_SEED BUDGET_RELAY \\", evidence)
         self.assertIn('budget_relay.py" --mode "${BUDGET_RELAY}"', evidence)
         resources = (REPOSITORY / "scripts" / "simulation_resource_runtime.sh").read_text()
-        self.assertIn('[[ "${BUDGET_RELAY:-off}" == on ]] && ros_launch_args+=(budget_relay:=true)', resources)
+        self.assertIn("ros_launch_args+=(budget_relay:=true)", resources)
         launch = (LAUNCH_DIR / "city_nav.launch.py").read_text()
         self.assertIn('"budget_relay"', launch)
         self.assertIn("apply_budget_relay(", launch)

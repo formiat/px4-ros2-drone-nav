@@ -19,7 +19,10 @@ append_sensor_relay_launch_args() {
     ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
   fi
   # Roadmap item 36 (K53): the loop's consumers read the budget relay's topics; 'measure' listens only.
-  [[ "${BUDGET_RELAY:-off}" == on ]] && ros_launch_args+=(budget_relay:=true)
+  # (An if, not a '&&' list: the function's last status under set -e ended r2434 before the launch.)
+  if [[ "${BUDGET_RELAY:-off}" == on ]]; then
+    ros_launch_args+=(budget_relay:=true)
+  fi
 }
 
 prepare_runtime_resources() {
