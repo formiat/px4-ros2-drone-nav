@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
 
+# The launch arguments of the sensor relays (appended to ros_launch_args). Roadmap item
+# 17 stage 5: the camera stream's failures, injected by a relay the camera driver then
+# reads from (runtime_evidence_runtime.sh). Roadmap item 35 (K52): the real vehicle's
+# imperfections: the IMU stream's jitter rides the K28 relay, the frames' stamp offset the
+# stream relay, the lidar's sweep cadence its own relay; the model's part is the
+# preparation's (configure_imperfections.py below).
+append_sensor_relay_launch_args() {
+  if [[ "${IMPERFECTIONS:-none}" == nominal ]]; then
+    export IMU_FAULTS="${IMU_FAULTS:-jitter}"
+    export IMU_FAULT_SEED="${IMU_FAULT_SEED:-${IMPERFECTION_SEED:-0}}"
+    if [[ -z "${SMOKE_ZONES:-}" && "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]]; then
+      ros_launch_args+=(lidar_scan_topic_suffix:=/relayed)
+    fi
+  fi
+  if [[ ( -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ) ||
+    ( "${IMPERFECTIONS:-none}" == nominal && -z "${SMOKE_ZONES:-}" ) ]]; then
+    ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
+  fi
+}
+
 prepare_runtime_resources() {
   rm -rf "${runtime_dir}"
   mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
@@ -47,4 +67,13 @@ prepare_runtime_resources() {
     "${runtime_models_dir}/${runtime_sensor_model_name}/model.sdf" \
     --mode "${lidar_visibility_mode}" \
     --enabled true
+  # Roadmap item 35 (K52): the real vehicle's imperfections in the runtime
+  # model alone: the IMU's bias walk, the rotors' vibration, the sensor set's
+  # pose turned by the calibration's residual.
+  if [[ "${IMPERFECTIONS:-none}" == nominal ]]; then
+    python3 "${repo_root}/scripts/configure_imperfections.py" \
+      "${runtime_models_dir}" \
+      --seed "${IMPERFECTION_SEED:-0}" \
+      --px4-models-dir "${px4_models_dir}"
+  fi
 }

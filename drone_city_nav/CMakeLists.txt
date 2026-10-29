@@ -890,6 +890,11 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
     PRIVATE gz-sim8::gz-sim8 gz-transport13::gz-transport13
             gz-msgs10::gz-msgs10)
   enable_project_warnings(drone_contact_system)
+  # Roadmap item 35 (K52): the rotors' vibration on the body, a simulation plugin.
+  add_library(drone_vibration_system SHARED src/drone_vibration_system.cpp)
+  target_compile_features(drone_vibration_system PRIVATE cxx_std_20)
+  target_link_libraries(drone_vibration_system PRIVATE gz-sim8::gz-sim8)
+  enable_project_warnings(drone_vibration_system)
 endif()
 
 add_library(
@@ -1244,7 +1249,7 @@ endif()
 set(drone_city_nav_simulation_targets)
 if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   set(drone_city_nav_simulation_targets
-      drone_contact_system collision_crash_node simulation_truth_adapter_node
+      drone_contact_system drone_vibration_system collision_crash_node simulation_truth_adapter_node
       simulation_smoke_sensor_node simulation_heading_source_node
       gazebo_stereo_depth_node voxelize_sdf_collisions)
 endif()

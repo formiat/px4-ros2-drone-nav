@@ -30,9 +30,12 @@ class CameraStreamFaultContractTest(unittest.TestCase):
                 self.assertNotIn(word, text, f"{path} reads the injection")
 
     def test_the_runtime_points_the_driver_at_the_relay(self) -> None:
-        runtime = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text()
+        # The suffix is appended by the helper the runtime sources (its size limit).
+        runtime = (REPOSITORY / "scripts" / "simulation_resource_runtime.sh").read_text()
         self.assertIn(
             f"stereo_image_topic_suffix:={INJECTOR.RELAY_SUFFIX}", runtime)
+        self.assertIn("append_sensor_relay_launch_args",
+                      (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text())
 
     def test_schedules_are_seeded_and_of_the_two_kinds(self) -> None:
         first = INJECTOR.schedule("moderate", 3, 600.0)

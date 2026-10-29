@@ -52,6 +52,7 @@ prepare_runtime_evidence() {
     BLANK_PANELS REAL_TIME_FACTOR LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
+    IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -95,21 +96,42 @@ start_runtime_evidence_capture() {
       --output "${runtime_artifact_dir}/carried_light.csv" \
       > "${runtime_artifact_dir}/carried_light.log" 2>&1 &
     # The camera stream's failures, the same kind of component: the camera
-    # driver reads the pair from its relay (run_drone_nav_sim.sh).
-    if [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]]; then
+    # driver reads the pair from its relay (run_drone_nav_sim.sh). Under the
+    # imperfections profile (roadmap item 35, K52) the relay also moves every
+    # frame's stamp by +-2 ms, the sign from the seed.
+    if [[ ( -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ) ||
+      ( "${IMPERFECTIONS:-none}" == nominal && -z "${SMOKE_ZONES:-}" ) ]]; then
+      local frame_offset_ms=0
+      if [[ "${IMPERFECTIONS:-none}" == nominal ]]; then
+        frame_offset_ms=$(( ${IMPERFECTION_SEED:-0} % 2 == 0 ? 2 : -2 ))
+      fi
       python3 "${repo_root}/scripts/camera_stream_faults.py" \
         --world "${world_name}" --model "${default_gazebo_follow_target}" \
-        --profile "${STREAM_FAULTS}" --seed "${STREAM_FAULT_SEED:-0}" \
+        --profile "${STREAM_FAULTS:-none}" --seed "${STREAM_FAULT_SEED:-0}" \
+        --stamp-offset-ms "${frame_offset_ms}" \
         --output "${runtime_artifact_dir}/camera_stream.csv" \
         > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
     fi
+  fi
+  if ! bool_is_true "${multi_vehicle_mission}"; then
     # Specification K28: the autopilot's IMU stream failing, the same kind of
-    # component: the camera estimator reads its samples from the relay.
+    # component: the estimators read its samples from the relay (the holes of
+    # K28, or the jitter and gaps of the imperfections profile, K52).
     if [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]]; then
       python3 "${repo_root}/scripts/imu_stream_faults.py" \
-        --profile "${IMU_FAULTS}" \
+        --profile "${IMU_FAULTS}" --seed "${IMU_FAULT_SEED:-0}" \
         --output "${runtime_artifact_dir}/imu_stream.csv" \
         > "${runtime_artifact_dir}/imu_stream.log" 2>&1 &
+    fi
+    # Roadmap item 35 (K52): the lidar's sweeps delivered with a real driver's
+    # cadence spread; the bridge reads the relay (run_drone_nav_sim.sh).
+    if [[ "${IMPERFECTIONS:-none}" == nominal && "${NAVIGATION_SENSOR_PROFILE:-}" == lidar &&
+      -z "${SMOKE_ZONES:-}" ]]; then
+      python3 "${repo_root}/scripts/lidar_sweep_jitter.py" \
+        --world "${world_name}" --model "${default_gazebo_follow_target}" \
+        --seed "${IMPERFECTION_SEED:-0}" \
+        --output "${runtime_artifact_dir}/lidar_sweeps.csv" \
+        > "${runtime_artifact_dir}/lidar_sweeps.log" 2>&1 &
     fi
   fi
   # The evaluation overlay of RViz: the vehicle's decisions in words, its

@@ -181,6 +181,7 @@ def generate_launch_description():
     smoke_face = LaunchConfiguration("smoke_face")
     mppi_rollouts = LaunchConfiguration("mppi_rollouts")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
+    lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -259,8 +260,7 @@ def generate_launch_description():
             navigation_sensor_profile.perform(context),
         )
         if navigation_sensors == "lidar":
-            # The lidar set's scan through the thermal node (K49): every ray that enters
-            # a held heat ball ends at its surface.
+            # The lidar set's scan through the thermal node (K49): rays end at a held heat ball.
             obstacle_memory_overrides["lidar_3d_topic"] = "/drone_city_nav/thermal_core/points"
         localization = (
             localization_profile.perform(context).strip()
@@ -286,6 +286,10 @@ def generate_launch_description():
         imu_suffix = imu_topic_suffix.perform(context).strip()
         if visual_inertial_overrides is not None and imu_suffix:
             visual_inertial_overrides["px4_sensor_combined_topic"] = (
+                "/fmu/out/sensor_combined" + imu_suffix
+            )
+        if imu_suffix:
+            lidar_inertial_overrides["px4_sensor_combined_topic"] = (
                 "/fmu/out/sensor_combined" + imu_suffix
             )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
@@ -400,17 +404,10 @@ def generate_launch_description():
                 {**VISION_MEMORY_OVERRIDES, "lidar_3d_topic": "/stereo_depth/points"}
             )
         if navigation_sensors == "lidar":
-            # The lidar set carries the thermal core (K49), which looks forward
-            # through 57 degrees while the lidar sees all round: the heading follows
-            # the motion as the stereo set's does, so that the core reads the course
-            # ahead (r2290: the heading held, the core saw the source only once it
-            # was behind the vehicle, which crossed it at 0.76 m). The lidar's own
-            # field stays the whole circle (no rest gaze, no survey, no unfaced crawl).
-            # The turn no faster than the lidar-inertial estimate has kept up with:
-            # it registers each sweep whole, and at the gaze's 2 rad/s (11 degrees a
-            # sweep) it lost 2.3 m of height in the hot room's smoke and the vehicle
-            # met the floor (r2297); without the gaze the five clear flights turned at
-            # 0.95 rad/s at most and the estimate held within 0.6 m (r2283 to r2287).
+            # The lidar set carries the thermal core (K49, 57 degrees): the heading follows
+            # the motion as the stereo set's (r2290 crossed the source at 0.76 m without),
+            # the lidar's field stays the whole circle; the turn within what the
+            # lidar-inertial estimate keeps up with (r2297 met the floor at 2 rad/s).
             production_mppi_parameters.append(
                 {"gaze_follows_motion": True, "maximum_yaw_rate_radps": 0.8}
             )
@@ -504,7 +501,9 @@ def generate_launch_description():
         # the vehicle is read through the smoke model's relay.
         smoke = smoke_zones.perform(context).strip()
         image_suffix = stereo_image_topic_suffix.perform(context)
-        sensor_suffix = ""
+        sensor_suffix = lidar_scan_topic_suffix.perform(context).strip()
+        if smoke and sensor_suffix:
+            raise RuntimeError("smoke_zones and lidar_scan_topic_suffix both relay the sweeps")
         if smoke:
             if image_suffix:
                 raise RuntimeError(
@@ -825,6 +824,11 @@ def generate_launch_description():
                     "lidar is absent from the vehicle) or lidar (the whole "
                     "sphere)."
                 ),
+            ),
+            DeclareLaunchArgument(
+                "lidar_scan_topic_suffix",
+                default_value="",
+                description="Suffix of the lidar's Gazebo cloud topic the bridge reads (K52).",
             ),
             DeclareLaunchArgument(
                 "imu_topic_suffix",

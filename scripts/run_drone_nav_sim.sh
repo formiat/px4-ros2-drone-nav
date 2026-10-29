@@ -963,9 +963,8 @@ else
       mission_goal_sequence_xyz_m:="${mission_goal_sequence_xyz_m}"
     )
   fi
-  # Roadmap item 17 stage 5: the camera stream's failures are injected by a
-  # relay the camera driver then reads from (runtime_evidence_runtime.sh).
-  [[ -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ]] && ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
+  # Item 17 stage 5's stream relay and item 35's imperfections (K52): simulation_resource_runtime.sh.
+  append_sensor_relay_launch_args
   # Roadmap item 18 stage 1: smoke in the location, every sensor read through it (the launch starts its relay).
   [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")
   [[ -n "${HEAT_SOURCES:-}" ]] && ros_launch_args+=(heat_sources:="${HEAT_SOURCES}")  # item 32: the heat sources ride with the smoke (an empty value is a malformed argument, r2267)
