@@ -1289,7 +1289,7 @@ the light still reached (r2173), hence the climb first.
 | The drift, three crossings and the coefficient | r2176, r2177, r2178 | 0.84, 0.27, 0.38 m by the truth; the drift 0.13 to 0.23 m/s with 0.106, the estimate 8 to 13 percent fast along the track; K21 re-fitted to 0.118 |
 | The wall's goal, eight | r2180 to r2187 | 0.39, 0.80, 0.44, 0.42, 0.90, 0.31, 0.26, 0.36 m at the climb goal and 0.99, 0.38, 0.24, 0.94, 0.73, 0.76, 1.59, 1.27 m at the wall's by the truth; the drift 0.7 to 3.6 percent of 29 to 53 m of void; one hold a flight at the aided-void boundary, no descent, no contact |
 | The hall's middle, three | r2188, r2189, r2190 | 0.65, 1.00, 1.21 m by the truth against two sigma plus 2 m of 5.59, 6.00, 6.55; the drift 1.0 to 2.6 percent |
-| The lidar reference | r2179 | not flown: the lidar-inertial estimator unhealthy at the pad (matched 0.18 under 0.3), no pose, arming denied; the start in a large hall is a defect to repair (technical_debt.md; the "owner's rule" the part cited on 2026-10-25 was never given: the owner, 2026-10-29) |
+| The lidar reference | r2179; r2367 | r2179 not flown: the lidar-inertial estimator unhealthy at the pad (matched 0.18 under 0.3), no pose, arming denied. Repaired on 2026-10-29 (K51, the count of matched points beside their share): r2367 crossed the hall on the lidar, the climb goal 0.34 m and the wall's 0.53 m by the truth, no contact, max speed 6.21 m/s, the height error within 0.08 m over 82 m, 70 of 71 scans healthy; r2366 with a floor of 500 points came down on the pad and set the floor at 200 |
 
 **Measurement:** `log/tools/journal/goal_journal_dark_void.md`,
 `log/tools/void/` (the rig's reach table, the crossings' void episodes with
@@ -1303,10 +1303,8 @@ middle's within the published uncertainty plus 2 m three times, the drift
 budget and the arrival rule registered. Open: the lidar cannot start in the
 hall (its estimator matches 0.18 of its own first scan, under its 0.3 line,
 where the far walls and the ceiling give sparse points without planes), so
-the lidar reference was not flown; the start is a defect to repair (a health
-line by the count of matched points, with its own acceptance), not an owner's
-rule: the rule the part cited on 2026-10-25 was never given (the owner,
-2026-10-29); a real barometer drifts with the weather (item 35); a plain
+the lidar reference was flown on 2026-10-29 after the repair (K51: the health
+reads the count of matched points beside their share; r2367 above); a real barometer drifts with the weather (item 35); a plain
 surface darker than the location's albedo within the reach is the ring's
 2.8 m to catch.
 

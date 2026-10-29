@@ -168,8 +168,9 @@ correction along the track; the node logs them once a second
 (`LIDAR_INERTIAL_ODOMETRY`) and publishes the estimate's pose to
 `/drone_city_nav/lidar_inertial_odometry/pose` with the frame `map` or
 `map_unhealthy`, its orientation the estimate's whole (the body forward-left-up;
-the thermal core's reading turns its bearings with it, K49). An unhealthy scan (matched share under 0.3, residual over
-0.5 m, or no convergence) is not published to the autopilot. Without
+the thermal core's reading turns its bearings with it, K49). An unhealthy scan (matched share under 0.3 and fewer than 200 matched
+points, K51; residual over 0.5 m; or no convergence) is not published to the
+autopilot. Without
 odometry for 200 ms the autopilot's external-vision fusion stops, and after
 `EKF2_NOAID_TOUT` (5 s) of dead reckoning it withdraws its horizontal
 estimate: the local position arrives at the stack with `xy_valid` false,
