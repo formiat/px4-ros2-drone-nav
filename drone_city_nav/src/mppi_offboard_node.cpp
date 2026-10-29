@@ -308,6 +308,10 @@ MppiOffboardNode::MppiOffboardNode()
                                      "/fmu/in/vehicle_command"),
       px4_qos);
   timer_ = create_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
+  // Roadmap item 36: the step acknowledgement follows the tick and the inputs (one
+  // executor).
+  step_acknowledger_ = std::make_unique<StepAcknowledger>(*this, "offboard", nullptr,
+                                                          [] { return true; });
   RCLCPP_INFO(get_logger(),
               "Production MPPI offboard ready: takeoff_climb_m=%.1f "
               "takeoff_altitude_m=%.1f",

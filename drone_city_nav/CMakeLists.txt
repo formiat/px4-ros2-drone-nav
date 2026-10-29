@@ -616,6 +616,7 @@ set(DRONE_CITY_NAV_RUNTIME_HEADERS
 set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/cooperative_traffic_agent_node.hpp
     include/drone_city_nav/cooperative_traffic_ros.hpp
+    include/drone_city_nav/step_acknowledger.hpp
     include/drone_city_nav/execution_horizon_contract_ros.hpp
     include/drone_city_nav/transport_latency_ros.hpp
     include/drone_city_nav/multi_vehicle_diagnostics_mux_node.hpp

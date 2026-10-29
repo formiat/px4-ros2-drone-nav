@@ -12,6 +12,7 @@
 #include "drone_city_nav/px4_autopilot_adapter.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -274,6 +275,10 @@ public:
     depth_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     rclcpp::SubscriptionOptions depth_options;
     depth_options.callback_group = depth_group_;
+    // Roadmap item 36: the step acknowledgement follows the frames and the IMU
+    // (their group); the depth registration's thread is not waited for.
+    step_acknowledger_ = std::make_unique<StepAcknowledger>(
+        *this, "visual_inertial", group_, [] { return true; });
     depth_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
         // The depth node's own returns topic: both nodes of the process read
         // the one parameter.
@@ -922,6 +927,7 @@ private:
   std::uint64_t reinitialisations_{0U};
   // The first try of the restart under way, on the node's clock; zero: none.
   rclcpp::CallbackGroup::SharedPtr group_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;

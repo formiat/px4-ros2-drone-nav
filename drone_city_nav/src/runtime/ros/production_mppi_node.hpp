@@ -48,6 +48,7 @@
 #include "drone_city_nav/route_successor_improvement_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/transport_latency_ros.hpp"
@@ -586,6 +587,7 @@ private:
       cooperative_passage_state_pub_;
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   rclcpp::TimerBase::SharedPtr planner_health_timer_;
 };
 

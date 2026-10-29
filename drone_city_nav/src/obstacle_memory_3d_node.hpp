@@ -23,6 +23,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 #include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
@@ -176,6 +177,7 @@ private:
   bool use_px4_heading_for_scan_{true};
 
   rclcpp::CallbackGroup::SharedPtr cloud_callback_group_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;

@@ -26,7 +26,7 @@ from launch_overrides import (
 from point_to_point_scenario import load_point_to_point_scenario
 from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
-from budget_relay import apply_budget_relay
+from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
     DEFAULT_LOCALIZATION_PROFILES,
@@ -52,9 +52,10 @@ def stereo_vision_nodes(
     smoke_face,
     vio_arguments,
 ):
-    """The vision path of roadmap item 14: the pair and the time-of-flight scans bridged, depth recovered;
-    in shadow a second memory integrates the returns beside the lidar's; with visual-inertial overrides the
-    process that owns the images also hosts the estimator (item 16), vio_arguments its ROS arguments."""
+    """The vision path of roadmap item 14: the pair and the time-of-flight scans bridged, depth
+    recovered; in shadow a second memory integrates the returns beside the lidar's; with
+    visual-inertial overrides the process that owns the images also hosts the estimator (item 16),
+    vio_arguments its ROS arguments."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
         gazebo_world_name,
         gazebo_model_name,
@@ -79,8 +80,8 @@ def stereo_vision_nodes(
             # process; no name, which would rename both of its nodes.
             executable="gazebo_stereo_depth_node",
             output="screen",
-            arguments=(["--visual-inertial-odometry"] if visual_inertial_overrides is not None else [])
-            + vio_arguments,
+            arguments=(["--visual-inertial-odometry"] if visual_inertial_overrides is not None
+                       else []) + vio_arguments,
             parameters=[
                 params_path,
                 depth_topics,
@@ -178,6 +179,7 @@ def generate_launch_description():
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
+    step_ack = LaunchConfiguration("step_ack")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -462,11 +464,13 @@ def generate_launch_description():
                     offboard_overrides[
                         "unavailable_path_braking_acceleration_mps2"
                     ] = override
-        # Roadmap item 36 (K53): the loop's consumers read the budget relay's topics.
-        vio_arguments = apply_budget_relay(
+        vio_arguments = apply_budget_relay(  # roadmap item 36 (K53): the loop's wiring
             budget_relay.perform(context), navigation_sensors, production_mppi_parameters,
             offboard_overrides, visual_inertial_overrides, lidar_inertial_overrides,
             obstacle_memory_parameters)
+        apply_step_ack(step_ack.perform(context), production_mppi_parameters,
+                       obstacle_memory_parameters, offboard_overrides, mission_monitor_parameters,
+                       visual_inertial_overrides, lidar_inertial_overrides)
         if static_world_path_override:
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
@@ -841,11 +845,8 @@ def generate_launch_description():
                 description="Smoky places, 'x,y,z,sx,sy,sz,sigma' in the world frame, ';' between "
                 "(roadmap item 18 stage 1): every sensor is read through the smoke model's relay.",
             ),
-            DeclareLaunchArgument(
-                "budget_relay",
-                default_value="false",
-                description="The loop's consumers read the budget relay's topics (roadmap item 36, K53).",
-            ),
+            DeclareLaunchArgument("budget_relay", default_value="false", description="Item 36, K53."),
+            DeclareLaunchArgument("step_ack", default_value="false", description="Item 36: step acks."),
             DeclareLaunchArgument(
                 "smoke_seed",
                 default_value="0",

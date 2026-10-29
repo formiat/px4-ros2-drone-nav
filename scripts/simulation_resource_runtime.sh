@@ -23,6 +23,10 @@ append_sensor_relay_launch_args() {
   if [[ "${BUDGET_RELAY:-off}" == on ]]; then
     ros_launch_args+=(budget_relay:=true)
   fi
+  # Roadmap item 36: the simulator waits for the onboard loop; the nodes acknowledge its steps.
+  if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
+    ros_launch_args+=(step_ack:=true)
+  fi
 }
 
 prepare_runtime_resources() {

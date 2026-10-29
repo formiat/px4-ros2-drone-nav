@@ -19,6 +19,7 @@
 #include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
@@ -199,6 +200,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mission_event_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr operator_command_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
 };
 
 } // namespace drone_city_nav

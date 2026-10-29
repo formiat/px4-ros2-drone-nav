@@ -1,6 +1,7 @@
-"""The budget relay's wiring (roadmap item 36, specification K53): with `budget_relay:=true` the consumers of the
-onboard loop read the `/budgeted` topics that `budget_relay_node` publishes, and the estimators publish their
-odometry to the relay instead of the autopilot; no node learns anything else. Off, every topic is as it was."""
+"""The wiring of roadmap item 36 (specification K53). With `budget_relay:=true` the consumers of the onboard loop
+read the `/budgeted` topics that `budget_relay_node` publishes, and the estimators publish their odometry to the
+relay instead of the autopilot; with `step_ack:=true` the onboard nodes acknowledge the step controller's steps
+(`scripts/step_controller.py`). Off, every topic is as it was and the acknowledgement topic is silent."""
 from __future__ import annotations
 
 BUDGETED = "/budgeted"
@@ -36,3 +37,23 @@ def apply_budget_relay(
         return []
     obstacle_memory_parameters.append({"lidar_3d_topic": DEPTH_POINTS + BUDGETED})
     return ["--ros-args", "-r", f"visual_inertial_odometry_node:{DEPTH_POINTS}:={DEPTH_POINTS}{BUDGETED}"]
+
+
+def apply_step_ack(
+    enabled: str,
+    production_mppi_parameters: list,
+    obstacle_memory_parameters: list,
+    offboard_overrides: dict,
+    mission_monitor_parameters: list,
+    visual_inertial_overrides: dict | None,
+    lidar_inertial_overrides: dict | None,
+) -> None:
+    """Turns the step acknowledgement on in the planner, the memory, the offboard, the monitor and the estimators."""
+    if enabled.strip().lower() not in ("true", "1", "on"):
+        return
+    for parameters in (production_mppi_parameters, obstacle_memory_parameters, mission_monitor_parameters):
+        parameters.append({"step_ack_enabled": True})
+    offboard_overrides["step_ack_enabled"] = True
+    for overrides in (visual_inertial_overrides, lidar_inertial_overrides):
+        if overrides is not None:
+            overrides["step_ack_enabled"] = True

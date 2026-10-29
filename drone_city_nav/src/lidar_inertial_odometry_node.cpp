@@ -12,6 +12,7 @@
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -183,6 +184,10 @@ public:
         rclcpp::SensorDataQoS{}.keep_last(3),
         [this](const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
           onCloudReceived(cloud);
+          // Roadmap item 36: the step acknowledgement follows the sweeps and the IMU
+          // (one executor).
+          step_acknowledger_ = std::make_unique<StepAcknowledger>(
+              *this, "lidar_inertial", nullptr, [] { return true; });
         });
     RCLCPP_INFO(get_logger(),
                 "LIDAR_INERTIAL_ODOMETRY ready publish_to_autopilot=%s "
@@ -416,6 +421,7 @@ private:
   std::unique_ptr<LidarInertialOdometry> odometry_;
   std::unique_ptr<AutopilotStateSource> autopilot_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   std::deque<sensor_msgs::msg::PointCloud2::SharedPtr> pending_clouds_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;

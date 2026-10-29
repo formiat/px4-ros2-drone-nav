@@ -32,6 +32,13 @@ public:
     return Submission{replaced_pending, processor_acquired};
   }
 
+  // Nothing pending, deferred or being processed: the step acknowledgement
+  // of roadmap item 36 waits for this.
+  [[nodiscard]] bool idle() const {
+    const std::lock_guard<std::mutex> lock{mutex_};
+    return !processor_active_ && !pending_.has_value() && !deferred_.has_value();
+  }
+
   [[nodiscard]] bool tryAcquireProcessor() {
     const std::scoped_lock lock{mutex_};
     if (processor_active_ || (!deferred_.has_value() && !pending_.has_value())) {
@@ -72,7 +79,7 @@ public:
   }
 
 private:
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::optional<T> deferred_;
   std::optional<T> pending_;
   bool processor_active_{false};

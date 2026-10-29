@@ -99,6 +99,11 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
   cloud_subscription_options.callback_group = cloud_callback_group_;
   rclcpp::SubscriptionOptions pose_subscription_options;
   pose_subscription_options.callback_group = pose_callback_group_;
+  // Roadmap item 36: the step acknowledgement follows the clouds' callbacks and
+  // waits for the integration thread to have nothing pending.
+  step_acknowledger_ =
+      std::make_unique<StepAcknowledger>(*this, "memory", cloud_callback_group_,
+                                         [this] { return pending_clouds_.idle(); });
   persistent_memory_enabled_ =
       declare_parameter<bool>("persistent_memory_enabled", true);
   persistent_memory_diagnostics_enabled_ = declare_parameter<bool>(

@@ -18,6 +18,7 @@
 #include "drone_city_nav/operator_command.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/return_trail.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -259,6 +260,9 @@ public:
     proof_timer_ =
         create_timer(std::chrono::seconds{10}, [this] { judgeReturnHome(); });
     summary_timer_ = create_timer(std::chrono::seconds{5}, [this] { logSummary(); });
+    // Roadmap item 36: the step acknowledgement follows the judgments (one executor).
+    step_acknowledger_ = std::make_unique<StepAcknowledger>(
+        *this, "mission_monitor", nullptr, [] { return true; });
     RCLCPP_INFO(get_logger(),
                 "Mission monitor ready: start=(%.2f, %.2f) waypoint_count=%zu "
                 "first_goal=(%.2f, %.2f)",
@@ -935,6 +939,7 @@ private:
       waypoint_acknowledgement_sub_;
   rclcpp::Subscription<msg::NavigationHealth>::SharedPtr navigation_health_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   rclcpp::TimerBase::SharedPtr shutdown_timer_;
   static constexpr double kLandingTimeoutS{90.0};
   MainBatteryEstimate main_battery_;

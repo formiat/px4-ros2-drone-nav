@@ -52,7 +52,7 @@ prepare_runtime_evidence() {
     BLANK_PANELS REAL_TIME_FACTOR LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
-    IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY \
+    IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -140,6 +140,15 @@ start_runtime_evidence_capture() {
         -p "profile:='${NAVIGATION_SENSOR_PROFILE:-stereo_tof}'" \
         -p "output:='${runtime_artifact_dir}/budget_relay.csv'" -p use_sim_time:=true \
         > "${runtime_artifact_dir}/budget_relay.log" 2>&1 &
+    fi
+    # Roadmap item 36: the simulator waits for the onboard loop (the step controller, a simulation process).
+    if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
+      local step_nodes=offboard,mission_monitor,memory,planner,visual_inertial
+      [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]] && step_nodes=offboard,mission_monitor,memory,planner,lidar_inertial
+      python3 "${repo_root}/scripts/step_controller.py" --world "${world_name}" \
+        --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" \
+        --output "${runtime_artifact_dir}/step_controller.csv" \
+        > "${runtime_artifact_dir}/step_controller.log" 2>&1 &
     fi
   fi
   # The evaluation overlay of RViz: the vehicle's decisions in words, its
