@@ -1376,6 +1376,17 @@ at p95 (r2299, `tools/process_cores.py`).
 | The hot room, the stereo set, the whole ball, 5 of 5 | r2327 to r2331 | 9.38, 11.10, 9.20, 10.71, 9.35 | home every time, by the light's charge, within 0.4 m of the start | — |
 | The clear location, the stereo set, 5 of 5 | r2333 to r2335, r2337, r2338 (r2336 at 1.179 m/s, under R3; r2314 to r2320 before the whole ball) | the core silent | B at 0.69 to 1.44 m | 1.248, 1.282, 1.286, 1.345, 1.336 |
 
+The whole ball changed the code after the lidar's groups above, so they were
+flown again on the final code (2d794294; the commits after it change
+documents and tools alone), with the cold room as the control:
+
+| Group, the final code | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot room, the lidar, 5 of 5 | r2339 to r2343 | 10.17, 10.38, 9.55, 7.90, 10.93 | home every time, by the topological proof, within 0.31 m | — |
+| The hot plume, the lidar, 5 of 5 | r2344 to r2348 | 5.38, 5.66, 5.34, 4.50, 5.38 | B at 0.33, 0.30, 0.95, 0.49, 0.98 m | 2.438, 2.198, 2.385, 1.991, 2.020 (r2347 under R3's 2.0 by 0.009: a finding, the hot scenarios' criteria are the standoff, the arrival and no contact) |
+| The clear location, the lidar, 5 of 5 | r2349 to r2353 | no source | B at 0.22 to 0.49 m | 2.493, 2.306, 2.052, 2.441, 2.029 |
+| The cold room, the stereo set, the control, 5 of 5 | r2354, r2355, r2358, r2360, r2365 (r2356, r2357, r2359, r2361 to r2363 stopped by the watchdog under the host's load) | no source | B at 1.17, 0.53, 1.01, 1.28, 1.37 m | 1.310, 1.297, 1.263, 1.109, 1.239 (K43's 1.1) |
+
 No contact in any flight. The core read the source in every hot room
 flight on the lidar (`HEAT_SOURCE seen=true`, `HEAT_SOURCE_MARKS`), and in
 no hot plume flight on it: the lidar never enters the dense plume (K37,
