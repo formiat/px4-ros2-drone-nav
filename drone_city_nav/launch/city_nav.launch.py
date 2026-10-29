@@ -26,6 +26,7 @@ from launch_overrides import (
 from point_to_point_scenario import load_point_to_point_scenario
 from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
+from budget_relay import apply_budget_relay
 from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
     DEFAULT_LOCALIZATION_PROFILES,
@@ -49,14 +50,11 @@ def stereo_vision_nodes(
     image_topic_suffix,
     tof_topic_suffix,
     smoke_face,
+    vio_arguments,
 ):
-    """The vision path of roadmap item 14: the pair's images and the
-    time-of-flight scans bridged to ROS and depth recovered from them. In
-    shadow a second obstacle memory integrates those returns on topics of its
-    own beside the lidar's, and nothing consumes it; otherwise the launch's one
-    obstacle memory is the vision memory and this adds no memory of its own.
-    With visual-inertial overrides the process that owns the pair's images
-    also hosts the visual-inertial estimator of roadmap item 16."""
+    """The vision path of roadmap item 14: the pair and the time-of-flight scans bridged, depth recovered;
+    in shadow a second memory integrates the returns beside the lidar's; with visual-inertial overrides the
+    process that owns the images also hosts the estimator (item 16), vio_arguments its ROS arguments."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
         gazebo_world_name,
         gazebo_model_name,
@@ -81,11 +79,8 @@ def stereo_vision_nodes(
             # process; no name, which would rename both of its nodes.
             executable="gazebo_stereo_depth_node",
             output="screen",
-            arguments=(
-                ["--visual-inertial-odometry"]
-                if visual_inertial_overrides is not None
-                else []
-            ),
+            arguments=(["--visual-inertial-odometry"] if visual_inertial_overrides is not None else [])
+            + vio_arguments,
             parameters=[
                 params_path,
                 depth_topics,
@@ -182,6 +177,7 @@ def generate_launch_description():
     mppi_rollouts = LaunchConfiguration("mppi_rollouts")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
+    budget_relay = LaunchConfiguration("budget_relay")
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -450,16 +446,10 @@ def generate_launch_description():
                 production_mppi_parameters.append({parameter_name: override})
         offboard_overrides = {}
         for argument_name, launch_config in (
-            (
-                "tracking_error_tube_response_time_s",
-                tracking_error_tube_response_time_s,
-            ),
+            ("tracking_error_tube_response_time_s", tracking_error_tube_response_time_s),
             ("cruise_speed_mps", cruise_speed_mps),
             ("absolute_speed_limit_mps", absolute_speed_limit_mps),
-            (
-                "maximum_horizontal_acceleration_mps2",
-                maximum_horizontal_acceleration_mps2,
-            ),
+            ("maximum_horizontal_acceleration_mps2", maximum_horizontal_acceleration_mps2),
         ):
             override = optional_nonnegative_float_override(
                 context, launch_config, argument_name
@@ -472,6 +462,11 @@ def generate_launch_description():
                     offboard_overrides[
                         "unavailable_path_braking_acceleration_mps2"
                     ] = override
+        # Roadmap item 36 (K53): the loop's consumers read the budget relay's topics.
+        vio_arguments = apply_budget_relay(
+            budget_relay.perform(context), navigation_sensors, production_mppi_parameters,
+            offboard_overrides, visual_inertial_overrides, lidar_inertial_overrides,
+            obstacle_memory_parameters)
         if static_world_path_override:
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
@@ -571,6 +566,7 @@ def generate_launch_description():
                     tof_topic_suffix=sensor_suffix,
                     smoke_face=optional_bool_override(context, smoke_face, "smoke_face")
                     is True,
+                    vio_arguments=vio_arguments,
                 )
             )
         nodes.append(
@@ -842,11 +838,13 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "smoke_zones",
                 default_value="",
-                description=(
-                    "Smoky places of the location, 'x,y,z,sx,sy,sz,sigma' in the world "
-                    "frame separated by ';' (roadmap item 18 stage 1): every sensor is "
-                    "then read through the smoke model's relay."
-                ),
+                description="Smoky places, 'x,y,z,sx,sy,sz,sigma' in the world frame, ';' between "
+                "(roadmap item 18 stage 1): every sensor is read through the smoke model's relay.",
+            ),
+            DeclareLaunchArgument(
+                "budget_relay",
+                default_value="false",
+                description="The loop's consumers read the budget relay's topics (roadmap item 36, K53).",
             ),
             DeclareLaunchArgument(
                 "smoke_seed",

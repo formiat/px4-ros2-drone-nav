@@ -182,7 +182,7 @@ class ContractTest(unittest.TestCase):
         for name in ("IMPERFECTIONS", "IMPERFECTION_SEED", "IMU_FAULT_SEED"):
             self.assertIn(f"  {name}\n", container)
         evidence = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
-        self.assertIn("IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED \\", evidence)
+        self.assertIn("IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY \\", evidence)
         self.assertIn("lidar_sweep_jitter.py", evidence)
         self.assertIn('--stamp-offset-ms "${frame_offset_ms}"', evidence)
         self.assertIn('--profile "${IMU_FAULTS}" --seed "${IMU_FAULT_SEED:-0}"', evidence)

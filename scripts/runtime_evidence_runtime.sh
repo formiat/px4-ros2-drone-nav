@@ -52,7 +52,7 @@ prepare_runtime_evidence() {
     BLANK_PANELS REAL_TIME_FACTOR LIGHT_FAULTS LIGHT_FAULT_SEED \
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
-    IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED \
+    IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -132,6 +132,13 @@ start_runtime_evidence_capture() {
         --seed "${IMPERFECTION_SEED:-0}" \
         --output "${runtime_artifact_dir}/lidar_sweeps.csv" \
         > "${runtime_artifact_dir}/lidar_sweeps.log" 2>&1 &
+    fi
+    # Roadmap item 36 (K53): the onboard budget as a relay ('on'), or its measurement ('measure').
+    if [[ "${BUDGET_RELAY:-off}" == on || "${BUDGET_RELAY:-off}" == measure ]]; then
+      python3 "${repo_root}/scripts/budget_relay.py" --mode "${BUDGET_RELAY}" \
+        --profile "${NAVIGATION_SENSOR_PROFILE:-stereo_tof}" \
+        --output "${runtime_artifact_dir}/budget_relay.csv" \
+        > "${runtime_artifact_dir}/budget_relay.log" 2>&1 &
     fi
   fi
   # The evaluation overlay of RViz: the vehicle's decisions in words, its

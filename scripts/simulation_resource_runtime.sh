@@ -18,6 +18,8 @@ append_sensor_relay_launch_args() {
     { imperfection_family_on stamps && [[ -z "${SMOKE_ZONES:-}" ]]; }; then
     ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
   fi
+  # Roadmap item 36 (K53): the loop's consumers read the budget relay's topics; 'measure' listens only.
+  [[ "${BUDGET_RELAY:-off}" == on ]] && ros_launch_args+=(budget_relay:=true)
 }
 
 prepare_runtime_resources() {
