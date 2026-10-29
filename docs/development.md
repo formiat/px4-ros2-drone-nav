@@ -21,6 +21,56 @@ Use the documented scripts and Make targets. Do not run ad-hoc top-level CMake
 commands. Do not write workspace files as root unless doing intentional
 maintenance with `ALLOW_ROOT_WORKSPACE_WRITE=1`.
 
+## The Development Host In The Cloud (weighed 2026-10-29)
+
+The owner's question of 2026-10-29: can the builds, the simulations and the
+agent's work move to a rented machine, so that they run round the clock
+without the owner's computer on. Yes, under one hard condition that rules
+most GPU rentals out.
+
+**What the workflow needs of a host.** `scripts/container_run.sh` runs the
+flight image with `docker run --privileged --gpus all --cpuset-cpus 0-13`
+(the core set of A4) on the NVIDIA container runtime: the host must give a
+full virtual machine or bare metal with its own Docker daemon and an NVIDIA
+driver, not a container. A GPU "pod" (RunPod, the ordinary Vast.ai
+instances) is itself an unprivileged container without nested Docker, and
+cannot run the image; Vast.ai's virtual-machine hosts (`vms_enabled`) can.
+The rest, by this host's figures: 16 logical cores (the series' set is 14 of
+them), about 30 GiB of RAM, a CUDA 12.6 driver, Gazebo's headless rendering
+of the stereo pair through EGL (unverified on a data-centre GPU such as the
+L4: the first check on any trial machine), about 25 GB of images
+(`drone-gazebo-dev` 9.1 GB, the PX4 base 6.1, the tool image 6.0, the
+onboard stages 4.1) plus 3.8 GB of environment artifacts and 36 GB of the
+datasets of roadmap item 25 under `/data/gazebo/`. The agent (Claude Code)
+works on such a host through `ssh` and `tmux` as it does here; the
+repository and its logs move with `git` and `rsync`.
+
+**What it costs**, hourly per GPU instance plus storage, as the aggregators
+quoted on 2026-10-29 (checked against the providers' own pages before
+renting):
+
+| Option | Kind | Price |
+|---|---|---|
+| AWS g6.4xlarge (L4 24 GB, 16 vCPU, 64 GiB) | virtual machine | about $1.32 an hour on demand (us-east-1); a 1-year plan lower |
+| Vast.ai, RTX 4090 | container, or a virtual machine on `vms_enabled` hosts | $0.14 to $0.40 an hour, marketplace |
+| RunPod, RTX 4090 | container only (no nested Docker) | $0.34 (community) to $0.89 (secure) an hour |
+| Hetzner GEX line (RTX 4000 SFF Ada class and up) | bare metal, monthly | the GEX44 was EUR 184 to 232 a month before the 2026 repricing; the line changed to the GEX45 and GEX63 in autumn 2026, their prices not in the sources found |
+
+A month of round-the-clock work is therefore about $950 on the AWS
+instance, $100 to $300 on a Vast.ai machine, and a fixed monthly sum on
+Hetzner; a machine switched off between sessions costs its storage alone.
+Item 38 (faster than real time) is what a stronger rented host would buy on
+top. Not decided; recorded for the choice.
+
+Sources: [Hostinger, cloud GPU pricing](https://www.hostinger.com/tutorials/cloud-gpu-pricing/),
+[gpu.ai price index](https://gpu.ai/gpu-price-index), [gpuperhour](https://gpuperhour.com/),
+[DoiT, g6.4xlarge us-east-1](https://www.doit.com/compute/spot/us-east-1/g6.4xlarge),
+[Holori, g6.4xlarge](https://calculator.holori.com/aws/ec2/g6.4xlarge),
+[Vast.ai, virtual machines](https://docs.vast.ai/guides/instances/virtual-machines),
+[RunPod, pods](https://docs.runpod.io/pods/overview%20),
+[wz-it, Hetzner GPU servers](https://wz-it.com/blog/hetzner-gpu-server-vergleich/),
+[achromatic, Hetzner comparison](https://achromatic.dev/blog/hetzner-server-comparison).
+
 ## Adding A ROS Node
 
 1. Add source files under `drone_city_nav/src`.

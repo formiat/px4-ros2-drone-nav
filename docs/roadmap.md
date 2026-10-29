@@ -1868,7 +1868,7 @@ the controller and the simulator share the cores, A4), and the smoke
 relay's frames stall the simulator at 1.0 (K25); the lidar flights hold
 1.00 with an unmeasured margin. A factor of 2 needs a host that renders
 the pair's frames and runs the matcher twice as fast, so the item is for a
-stronger computer (item 39's cloud question, or a workstation), and its
+stronger computer (a rented host, development.md, or a workstation), and its
 first measurement is how far above 1.0 each profile goes before A7's floor
 (scaled by the factor) is lost.
 
