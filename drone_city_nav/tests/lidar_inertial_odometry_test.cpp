@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -184,6 +185,64 @@ TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
 // A scan that registers far from where the IMU carried the vehicle, beyond
 // the spread of both, is no measurement: a registration that slid into
 // another fit does not drag the estimate along.
+// A very large hall: the near wall gives a few hundred matched points, the far
+// walls and the ceiling thousands of points without a plane in the submap. The
+// share of matched points falls under 0.3 while the registration is sound
+// (r2179: 0.18 of 3 955 points, residual 2 to 5 mm), so the health reads the
+// count of matched points as well, 500 at least.
+TEST(LidarInertialOdometryTest, AFewHundredMatchedPointsInAVastHallAreHealthy) {
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  const Eigen::Vector3d start{0.0, 0.0, -1.5};
+  LidarInertialOdometryConfig config;
+  LidarInertialOdometry odometry{config};
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  // The submap: the room, as a smaller hall whose walls the lidar reaches.
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  ASSERT_TRUE(odometry.addScan(kSecond / 2, scanFrom(room, start, level)).healthy);
+  // The next scan: one wall of the room (a few hundred points on known planes)
+  // and far points 25 m out, inside the lidar's reach, where the submap has nothing to
+  // match.
+  std::vector<Eigen::Vector3d> hall;
+  for (const Eigen::Vector3d& point : room) {
+    if (point.x() > 9.9) {
+      hall.push_back(point);
+    }
+  }
+  const std::size_t near_points = hall.size();
+  for (int i = 0; i < 3000; ++i) {
+    const double azimuth = 2.0 * std::numbers::pi * i / 3000.0;
+    const double elevation = -0.4 + 0.8 * ((i * 37) % 100) / 100.0;
+    hall.emplace_back(25.0 * std::cos(elevation) * std::cos(azimuth),
+                      25.0 * std::cos(elevation) * std::sin(azimuth),
+                      -1.5 - 25.0 * std::sin(elevation));
+  }
+  for (int i = 51; i <= 70; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  const LidarInertialEstimate estimate =
+      odometry.addScan(7 * kSecond / 10, scanFrom(hall, start, level));
+  EXPECT_LT(estimate.matched_fraction, 0.3);
+  EXPECT_GE(estimate.matched_fraction * static_cast<double>(hall.size()), 500.0)
+      << near_points;
+  EXPECT_TRUE(estimate.healthy);
+  // With the count's floor above what the wall gives, the share alone decides
+  // again and the scan is unhealthy, as it was before the floor.
+  config.minimum_matched_points = 100000U;
+  LidarInertialOdometry strict{config};
+  strict.initialize(0, start, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    strict.addImu(restSample(i * kSecond / 100, level));
+  }
+  ASSERT_TRUE(strict.addScan(kSecond / 2, scanFrom(room, start, level)).healthy);
+  for (int i = 51; i <= 70; ++i) {
+    strict.addImu(restSample(i * kSecond / 100, level));
+  }
+  EXPECT_FALSE(strict.addScan(7 * kSecond / 10, scanFrom(hall, start, level)).healthy);
+}
+
 TEST(LidarInertialOdometryTest, ARegistrationFarBeyondThePriorIsNoMeasurement) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};

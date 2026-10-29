@@ -67,6 +67,8 @@ public:
         "recovery_correspondence_factor", config.recovery_correspondence_factor);
     config.minimum_matched_fraction = declare_parameter<double>(
         "minimum_matched_fraction", config.minimum_matched_fraction);
+    config.minimum_matched_points = static_cast<std::size_t>(declare_parameter<int>(
+        "minimum_matched_points", static_cast<int>(config.minimum_matched_points)));
     config.maximum_residual_rms_m = declare_parameter<double>(
         "maximum_residual_rms_m", config.maximum_residual_rms_m);
     config.minimum_information_per_point = declare_parameter<double>(

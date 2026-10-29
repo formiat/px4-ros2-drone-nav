@@ -879,6 +879,11 @@ lidar_inertial_odometry_node:
     # matched, the residual stayed under this width and the weakest
     # translational axis kept this much information per matched point.
     minimum_matched_fraction: 0.3
+    # Or at least this many matched points whatever their share: a very large
+    # hall gives sparse far points without planes, and the share falls while
+    # the registration stays sound (r2179: 0.18 of 3 955, about 712 points,
+    # residual 2 to 5 mm; 500 leaves it a margin of 1.4).
+    minimum_matched_points: 500
     maximum_residual_rms_m: 0.5
     # An axis with less information than this per matched point is
     # degenerate: the registration is no measurement along it and the IMU

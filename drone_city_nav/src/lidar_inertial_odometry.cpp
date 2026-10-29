@@ -497,9 +497,14 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     healthy = !thinned.empty();
     estimate.matched_fraction = healthy ? 1.0 : 0.0;
   } else {
-    const auto assess = [&impl](const PointPlaneRegistration3D& registration) {
+    const auto assess = [&impl,
+                         &thinned](const PointPlaneRegistration3D& registration) {
+      const double matched_points =
+          registration.matched_fraction * static_cast<double>(thinned.size());
       return registration.converged &&
-             registration.matched_fraction >= impl.config.minimum_matched_fraction &&
+             (registration.matched_fraction >= impl.config.minimum_matched_fraction ||
+              matched_points >=
+                  static_cast<double>(impl.config.minimum_matched_points)) &&
              registration.residual_rms_m <= impl.config.maximum_residual_rms_m;
     };
     const bool level_fresh =

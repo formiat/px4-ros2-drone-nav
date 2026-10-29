@@ -67,6 +67,15 @@ struct LidarInertialOdometryConfig {
   // registration is no measurement at all; the IMU carries the motion and
   // its uncertainty grows there.
   double minimum_matched_fraction{0.3};
+  // Or at least this many matched points, whatever their share: in a very
+  // large hall the far walls and the ceiling give sparse points without
+  // planes, so the share falls while the registration stays sound (r2179,
+  // the dark hall's pad: 0.18 of 3 955 points, about 712, registered to a
+  // residual of 2 to 5 mm with 0.244 of information per point; the share
+  // alone refused every scan and the vehicle never armed). 500 leaves that
+  // scan a margin of 1.4 and is far above what an empty or degenerate scan
+  // matches; the urban flights match 0.72 to 0.97 of 3 400 and never read it.
+  std::size_t minimum_matched_points{500U};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.01};
   // An observed axis whose registered position lies farther from the prior
