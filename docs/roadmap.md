@@ -557,6 +557,65 @@ without a collision, a door moving in view leaves no occupancy older than
 the stated decay, and the out-and-back door flight takes the open door on the
 way back in every one of five.
 
+### The Thermal Core As A Reader Of Moving Bodies (proposed 2026-10-29)
+
+Proposed by the project owner on 2026-10-29: the bodies that move in a
+place where the vehicle flies are mostly warm (people, animals, running
+vehicles), and the thermal core the stack carries since item 32 (K39,
+K49: a Lepton-class core, 160 x 120 at 57 degrees, 9 Hz) reads them as hot
+pixels. The proposal reads "warm" as "moving" in a first iteration: a
+warm body is not written into the persistent memory as a wall, either kept
+out of the memory or written as a class of its own (a "heat body"), never
+as an ordinary obstacle.
+
+Weighed on 2026-10-29, and taken up as the first source of evidence for
+stage 1 (the moving layer), with the proposal's own limits stated:
+
+- **Warm is a strong hint of a body, not a measurement of motion.** A
+  radiator, a lamp, a wall the sun warmed and a parked car with a hot
+  engine are warm and still; a door, a cart and a cold vehicle move and are
+  not warm. So the core's hot pixels do not decide motion by themselves:
+  they say "a body that may move stands there", and the motion itself is
+  measured as stage 1 says (an occupancy that appears in observed free
+  space, a cluster that shifts between scans, a voxel that turns occupied
+  and free again within seconds). The core raises the evidence to the
+  moving layer at once, before the shift is seen, which is what a body
+  walking towards the vehicle needs; the layer's decay and re-observation
+  rules are the same for a warm body and a cold one.
+- **A warm body is never left out of the collision validation.** Keeping it
+  out of the persistent memory (so that a person who walked past leaves no
+  wall) is the point; flying into it is not: the moving layer enters the
+  braking contract and the collision validation with the sweep the body
+  can make (stage 2), and item 32's standoff ball is the shape of that
+  prohibition already in the code (K49: a ball round the range point,
+  observed unobservable, carved only by the core's own look). A person
+  differs from item 32's source in that the ball must move with the body
+  and die with it: the heat marks of a body that left are cleared by the
+  next look at the place (I2), not kept until a free ray carves them.
+- **What the core gives for nothing:** the range (the pair's hits in the hot
+  cone, the lidar's hits without the weak returns, the body's apparent
+  size for a body of a known class: a person about 0.5 m across, K49's
+  size rule with another constant), the bearing fix over the vehicle's
+  motion, the event on the mission's words (`HEAT_SOURCE`'s line, with a
+  class), and the overlay. What it lacks: the field of 57 degrees (a body
+  beside the vehicle is unseen; the lidar and the ring see it as a body
+  without a class), and the temperature threshold of K49 (30 K over the
+  frame's median) set for a 500 K source, which a person at 305 K against
+  a 288 K room does not reach: the reader needs a second, lower threshold
+  for bodies, measured on the rig against the warm walls of item 32's
+  signature (311 K).
+
+So the stages gain one step: **stage 1a, warm bodies on the rig and in the
+location** (a walking body model at 305 to 310 K, its signature at 2 to
+20 m against the warm wall, the threshold with a 20 percent margin), and
+stage 1 takes the core's class as evidence beside the shift between scans.
+The invariants hold: the class is a measurement of the frame, no list of
+kinds, no zone, and a warm body that stands still for long enough becomes an
+ordinary occupancy as any body does. The acceptance adds a walking body to
+the door variant: five flights past a body that crosses the route, no
+contact, no occupancy of it older than the stated decay, and the mean
+speed of R3 kept.
+
 ## 22. Passive Navigation Without Illumination: Thermal-Inertial
 
 **Type:** sensing and localization, general.
@@ -1770,6 +1829,134 @@ VOXL 2 vehicle of its class with the camera profile, through the pilot's
 authority and the mission's end as item 27 block 1 asks, the acceptance of
 A1 flown on the vehicle itself, and every point of layer 3 is written as
 checked, with what was adapted and what was taken from the board.
+
+## 38. Faster Than Real Time On A Stronger Host
+
+**Type:** infrastructure of the simulation, proposed by the project owner
+on 2026-10-29 at the question whether the slowed flight of K25 has an
+inverse: the same flights flown faster than the wall clock on a computer
+stronger than this host, so that a series takes fewer hours.
+
+**Hard prerequisites:** K24 (every period of the stack on the simulation
+clock; the autopilot in lockstep); the core set of A4. Item 36 supersedes
+it: a simulator that waits for the onboard loop runs as fast as the host
+allows by construction, and the factor disappears.
+
+**Validation environment:** any; Urban Circuit Practice 01 for the
+comparison with the series at 1.0.
+
+Possible, by what is in place: the factor is written into the world by the
+preparation (`scripts/prepare_environment_simulation.py`,
+`configure_real_time_factor`), PX4 SITL follows the simulation clock in
+lockstep, every period and watchdog of the stack runs on the node clock
+(K24), the sensors' rates are the world's (the lidar at 10 Hz, the pair at
+7.5 Hz of simulated time), and the mission check measures speed on the
+simulation clock (R3). What stops it today is a rule, not the code: K25
+says the factor is never above 1, because a factor under 1 flatters the
+onboard budget. Above 1 the flattery turns the other way: the stack gets a
+slower computer than the vehicle has, by the factor, so the tick's 20 ms
+and the planner's 150 ms must be met in less wall time. That is harsher,
+not kinder, and it is why a flight above 1 can serve regression and
+exploration but not the acceptance's figures until item 36 models the
+budget.
+
+What limits the gain is this host: the camera flights already run at a
+real-time factor of 0.85 to 1.00 of the wall clock on it (the depth node,
+the controller and the simulator share the cores, A4), and the smoke
+relay's frames stall the simulator at 1.0 (K25); the lidar flights hold
+1.00 with an unmeasured margin. A factor of 2 needs a host that renders
+the pair's frames and runs the matcher twice as fast, so the item is for a
+stronger computer (item 39's cloud question, or a workstation), and its
+first measurement is how far above 1.0 each profile goes before A7's floor
+(scaled by the factor) is lost.
+
+The work: the factor allowed above 1 in the preparation and the run
+script, A7's floor and the watchdog's read against the factor as they are
+below 1, the manifest's record, and K25 rewritten (a factor above 1 is a
+stress, counted for regression, never for the acceptance's figures); then
+five flights a profile at the largest factor the host holds, compared
+with the series at 1.0 (the mean speed, the arrival, the holds, the
+tick's and the planner's wall figures). Size: S for the switch, M with the
+rules and the comparison.
+
+This item is complete when a flight above 1.0 counts by the rules written
+for it, the largest factor each profile holds on a named host is a
+measured figure, and the series at that factor matches the series at 1.0
+on the metres flown.
+
+## 39. Open Sky: The Hybrid Stack, Underground And Outdoors
+
+**Type:** direction of the project, decided by the project owner on
+2026-10-29: the vehicle goes outdoors, and the stack becomes a hybrid that
+flies the cave and the open sky with one set of rules. The owner's figure
+for the open sky's speed: 10 m/s at least, 20 m/s the aim, against the
+2 m/s of the cave (R3); recorded as the open-sky profile's requirement in
+the specification (R8), to be set as the cave's was, by measurement, when
+the profile's first series flies. The location for such flights (found or
+built) is a question of its own, stage 0 below.
+
+**Hard prerequisites:** none for stages 0 to 2 (the simulator and the
+parts in place); item 35 for the sensors' imperfections of stage 3; item
+25's method for the drift of stage 4. The order against items 33 to 35 is
+the owner's, when the item is taken up.
+
+**Validation environment:** an open-sky world of its own (stage 0); Urban
+Circuit Practice 01 keeps the cave's acceptance.
+
+What the open sky changes: a satellite signal that is there, then gone,
+then wrong (jammed or spoofed), against the cave's none at all; heights of
+tens of metres over ground that the forward pair cannot see; kilometres of
+distance, where 0.1 to 0.4 percent of drift is 10 to 40 m; and the speed.
+What carries over as it is: the camera estimator with its health rules
+(the declared dead reckoning, the ladder of failures, the rotors' drag,
+the barometer for height), the relocalisation on the vehicle's own map,
+the way failures are read (an external component fails, the vehicle
+decides on its own measurements), the `gnss` profile and the autopilot's
+fusion. What the open sky does not need: the dark, the smoke, the thermal
+core's roles of items 17, 18 and 32, and most of the obstacle logic of a
+corridor.
+
+The stages:
+
+0. **The location.** An open-sky world with ground, a few buildings and
+   trees, kilometres across, in the simulator: a Fuel world or one built
+   from the environment pipeline (item 11's materialisation), with a
+   truth the mission check reads as now. Chosen by the same route as
+   `environment_candidates.md` chose the cave worlds.
+1. **The signal lost on the way.** A relay that drops GNSS in flight, as
+   the smoke relay drops the frames; the `gnss` and `visual_inertial`
+   profiles, exclusive today, fused at once with their frames aligned,
+   so that the flight goes on when the signal goes; the drift over
+   kilometres measured. Size S to M, all in the simulator.
+2. **The signal lied to.** The relay walks the satellite position away
+   slowly; the stack reads a steady disagreement with the estimator,
+   stops trusting the signal and takes it back when it agrees again:
+   deterministic, a measurement, no latch. The most valuable stage: an
+   independent check of the signal's honesty. Size M.
+3. **The sensors for height.** A camera looking down for the estimator (the
+   forward pair at 30 to 100 m sees nothing near), the magnetometer back
+   for the heading (`EKF2_MAG_TYPE` 5 today), a rangefinder down; a new
+   vehicle model and the estimator tuned again. Size L.
+4. **Absolute correction without the signal.** Terrain against a height
+   model, or frames against an orthophoto, deterministic; or an external
+   absolute source modelled as a noisy coordinate. Size L.
+5. **The speed and the obstacles.** The braking contract on the pair's
+   6.4 m gives about 2.4 m/s; the open sky asks 10 to 20. Either the route
+   above the obstacles (the planner nearly idle) or a lidar of 40 m; the
+   speed profile's ceiling (10 m/s, V3) raised with the airframe's
+   envelope measured (item 30). Size L; this is where R8 is measured.
+
+Stages 1 and 2 are cheap, made of parts in place, and give the strongest
+demonstration of the direction (the signal jammed or spoofed, the vehicle
+knows it and arrives); stages 3 to 5 are a second product of the size of
+the roadmap behind this one. The invariants stay: unknown space free, every
+prohibition a measurement, no history latch, and the signal's trust a
+measurement too.
+
+This item is complete when the vehicle flies a point-to-point mission of
+kilometres over the open-sky world through a jammed and a spoofed signal,
+arrives by the truth within the rule written for it, keeps the cave's
+acceptance unchanged on the same code, and R8 is a measured figure.
 
 ## Completed
 

@@ -8,7 +8,7 @@ offboard runtime decisions.
 
 Follow:
 
-- `CPP_BEST_PRACTICES.md`
+- `cpp_best_practices.md` (this folder)
 - `AGENTS.md`
 - `README.md`
 - `CONTRIBUTING.md`

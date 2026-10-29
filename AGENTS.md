@@ -1,7 +1,7 @@
 # Development Instructions
 
 All development work in this repository must follow the code requirements and
-guidelines described in [CPP_BEST_PRACTICES.md](CPP_BEST_PRACTICES.md).
+guidelines described in [docs/cpp_best_practices.md](docs/cpp_best_practices.md).
 
 Use the repository-approved workflow documented in [README.md](README.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md). This is a ROS 2 workspace; prefer `colcon`

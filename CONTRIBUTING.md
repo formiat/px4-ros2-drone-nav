@@ -1,6 +1,6 @@
 # Contributing
 
-All C++ development must follow `CPP_BEST_PRACTICES.md`.
+All C++ development must follow `docs/cpp_best_practices.md`.
 
 ## C++ Workflow Decision Tree
 

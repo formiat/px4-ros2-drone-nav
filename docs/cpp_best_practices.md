@@ -1,8 +1,8 @@
-# C++ Best Practices v2 (Modern C++17/20/23)
+# C++ Best Practices (Modern C++20)
 
 A standalone guide for writing maintainable, safe, testable, and performant C++.
 
-Default assumption: use C++20 as the practical baseline, adopt C++23 features when the project toolchain supports them, and keep C++17 compatibility only when a dependency or deployment target requires it.
+**This project's baseline (2026-10-29):** every target is C++20 (`cxx_std_20` in `drone_city_nav/CMakeLists.txt`), and C++20 is the ceiling: the CUDA engine (`src/mppi/*.cu`) is compiled by nvcc 12.6 in the development image and nvcc 13 in the onboard image, and nvcc accepts `--std` up to `c++20`, so every header the engine includes must stay C++20; the rest is built by GCC 13.3 (Ubuntu 24.04) and checked by clang-tidy 18 and cppcheck. C++23 facilities such as `std::expected`, `std::optional::transform` and `std::print` are therefore not available here; where this guide names them, use `std::optional` with an explicit check, an error enum, or a `[[nodiscard]]` status. The gates are `make format` (clang-format), `make build`, `make test` (gtest), `make test-scripts` and `make quality` (clang-tidy, cppcheck, the size test: a source file has at most 1000 non-empty lines); sanitizers are not part of the gate. The rest of the guide is general and applies as written.
 
 ---
 
