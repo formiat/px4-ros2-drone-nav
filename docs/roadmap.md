@@ -1654,6 +1654,47 @@ with its seed in the manifest, every effect's magnitude has its source in
 the specification, and both sensor sets pass the urban series five of five
 under it.
 
+**Done on 2026-10-29 but for the stereo set's acceptance under the profile**
+(the goal of 2026-10-29, part 1; code 16468cd3 to 93ec0747; specification K52,
+F21). Built: `IMPERFECTIONS=nominal` with `IMPERFECTION_SEED` (the run's number
+in `tools/series2.sh`, so every acceptance flight carries it and the manifest
+reproduces it), four families each a measurement with its source
+(`tools/imperfections_sources.py`): the IMU's bias walk from the EuRoC imu0
+calibration written into a runtime copy of `x500_base` as the model's dynamic
+bias (the element takes the walk's density, 73a6d193); the rotors' vibration
+from the NTU VIRAL eee_01 recording as a wrench at 55 Hz on `base_link`
+(`drone_vibration_system`); the sensor set's pose turned by the calibration's
+residual of 0.08 degrees (K33); the stamps as a real driver writes them, the
+IMU stream's jitter and gaps (the K28 relay's `jitter` profile), the frames'
+offset of 2 ms (the stream relay), the lidar sweeps' cadence
+(`lidar_sweep_jitter.py`). The aerodynamics near walls and the spread of
+thrust and mass have no source on this machine and are in the register.
+
+Flown apart (`tools/imperfections_series.sh`, forty counted flights) and whole
+(ten), seeds 1 to 5, the clean location, no contact in fifty:
+
+| family | stereo set, m/s (R3 1.2) | B, m (within 2) | lidar set, m/s (R3 2.0) | B, m |
+|---|---|---|---|---|
+| clean (r2333 to r2338, r2349 to r2353) | 1.248 to 1.345 | 0.63 to 1.44 | 2.029 to 2.493 | 0.22 to 0.49 |
+| stamps (r2376 to r2386) | 1.093 to 1.253, two under | 0.55 to 1.75 | 2.023 to 2.219 | 0.24 to 1.30 |
+| imu (r2389 to r2399) | 1.178 to 1.261, three under | 0.53 to 2.21, one over | 1.620 to 2.418, one under | 0.32 to 0.71 |
+| vibration (r2400 to r2409) | 1.173 to 1.362, one under | 0.56 to 1.29 | 2.265 to 2.527 | 0.24 to 0.48 |
+| extrinsics (r2410 to r2419) | 1.159 to 1.335, one under | 1.17 to 2.29, one over | 1.610 to 2.530, one under | 0.20 to 0.64 |
+| whole (r2420 to r2433) | 1.074 to 1.258, three under | 0.88 to 2.82, two over | 1.906 to 2.559, one under | 0.44 to 1.19 |
+
+The lidar set passes under the profile (its three slow flights are of the
+clean location's own kind, r2368 1.968). The stereo set does not: its
+estimate's heading turns 0.2 to 2.0 degrees a flight against the truth under
+the profile (0.3 to 0.7 clean; the lidar 0.2 at most), which is the whole of
+its error (0.2 m remains after the turn) and misses B and R3; the physics of
+the magnitudes alone (jitter of 2.6 ms, 0.08 degrees, a ripple of
+micrometres) gives centimetres, so the finding is the estimator's sensitivity
+and it is in the register (class (b), the remedies named), not a reason to
+soften the profile. The cost: the onboard set within the clean figures
+(cameras 4.28 to 4.42 cores at p50, lidar 3.41 to 3.72), the relays 0.27 cores
+outside it. What remains of the item: the stereo set's five of five under the
+profile, through the register's row.
+
 ## 36. The Simulator Waits For The Onboard Loop: Deterministic Flights
 
 **Type:** infrastructure of the simulation, deferred; weighed on 2026-10-24

@@ -318,6 +318,15 @@ over the 10 s sample, whatever the other CPUs do. The set is recorded in the
 manifest (`FLIGHT_CPUSET` among the effective overrides) and in the
 launcher's `CPU affinity:` line with the CPUs the container was given.
 
+Every acceptance flight of `tools/series2.sh` carries the real vehicle's
+imperfections (`IMPERFECTIONS=nominal`, specification K52 and F21;
+[`gazebo_simulation.md`](gazebo_simulation.md), "The Real Vehicle's
+Imperfections") with the run's number as `IMPERFECTION_SEED`, both in the
+manifest; `IMPERFECTIONS=` on the command line flies the clean vehicle, and
+`tools/imperfections_series.sh` flies the families apart. The mean speed of R3
+is measured under the profile as under the light's flicker (F1); R3's figures
+stay the clean vehicle's.
+
 ### Resource record
 
 Every flight, headless or not, records what its processes consume

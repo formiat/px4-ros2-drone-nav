@@ -202,6 +202,9 @@ class ContractTest(unittest.TestCase):
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
         self.assertIn('"lidar_scan_topic_suffix"', launch)
         self.assertIn('lidar_inertial_overrides["px4_sensor_combined_topic"]', launch)
+        series = (REPOSITORY / "tools" / "series2.sh").read_text()
+        self.assertIn('export IMPERFECTIONS="${IMPERFECTIONS-nominal}"', series)
+        self.assertIn("IMPERFECTION_SEED=${IMPERFECTION_SEED:-${id#r}}", series)
         cmake = (REPOSITORY / "drone_city_nav" / "CMakeLists.txt").read_text()
         self.assertIn("add_library(drone_vibration_system SHARED src/drone_vibration_system.cpp)", cmake)
 

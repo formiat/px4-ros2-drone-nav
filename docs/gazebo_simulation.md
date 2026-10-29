@@ -414,3 +414,30 @@ sensor. `SMOKE_ZONES` puts boxes of smoke in the location that
 `simulation_smoke_sensor_node` lays over every sensor between the simulator
 and the vehicle's drivers ([`obstacle_mapping.md`](obstacle_mapping.md),
 "Smoke In The Simulator", specification A13).
+
+## The Real Vehicle's Imperfections
+
+`IMPERFECTIONS=nominal` (roadmap item 35, specification K52) flies the vehicle
+with the imperfections a real one has, each a measurement from a source on
+this machine (`tools/imperfections_sources.py` prints them with their
+sources), and `IMPERFECTION_SEED` draws their random parts, so the manifest
+reproduces a flight. Four families, `IMPERFECTIONS=nominal_<family>` for one
+alone: `imu`, the bias walk of the EuRoC imu0 calibration written by
+`scripts/configure_imperfections.py` into a runtime copy of `x500_base` as the
+model's dynamic bias (the element takes the walk's density; the x500 model
+has white noise and no bias); `vibration`, the rotors' wrench at 55 Hz on
+`base_link` with the NTU VIRAL eee_01 amplitudes (`drone_vibration_system`,
+a simulation plugin in the runtime vehicle model only); `extrinsics`, the
+sensor set's include turned by the calibration's residual of 0.08 degrees
+about pitch and yaw while the stack reads the nominal pose; `stamps`, the IMU
+stream's jitter and gaps as the recording shows them (the K28 relay's
+`jitter` profile, `IMU_FAULTS=jitter`), the frames' stamp moved 2 ms by the
+stream relay, the lidar's sweeps delivered with a real driver's cadence
+spread (`scripts/lidar_sweep_jitter.py`, the bridge reading
+`lidar_scan_topic_suffix:=/relayed`). The relays are evaluation components;
+no production node reads the variable (the contract test holds it there),
+and the IMU relay writes an evidence row every 2500 samples (the relayed
+period's mean, deviation and largest gap; the rms of each axis'
+sample-to-sample difference, where the rotors' ripple shows). The
+acceptance series fly under the profile by default (`tools/series2.sh`, F21);
+`IMPERFECTIONS=` empties it for the clean vehicle.
