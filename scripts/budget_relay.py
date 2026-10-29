@@ -8,7 +8,12 @@ whatever the host does to the nodes. At a real-time factor of 1.0 the outputs ar
 arrive, so the relay changes nothing; under a simulator that waits for the loop, it is what keeps the budget
 honest. The bytes pass untouched. BUDGET_RELAY=measure listens only and records every output's age at the relay;
 BUDGET_RELAY=on relays (the consumers read the `/budgeted` topics, the estimators publish their odometry to the
-relay: `launch/budget_relay.py`). The ages are the medians K53 keeps; they are never turned down by hand.
+relay: `launch/budget_relay.py`). The ages are the medians the relay itself measured on the host of record (K53:
+the stereo set r2438, the lidar set r2439, mode measure); they are never turned down by hand. An output stamped at
+its observation (the depth returns, the memory's delta, snapshot and latest scan, the lidar estimator's odometry)
+carries the whole chain's latency in its age; one stamped at its publication (the planner's horizon, the camera
+estimator's odometry at the IMU's time) carries the transport alone, and its node's duration is what the step
+controller has to pay for (stage 2.2 of the part), not this relay.
 """
 from __future__ import annotations
 
@@ -37,24 +42,25 @@ class Relayed:
     age_ms: dict[str, float]  # the median age at the consumer by sensor profile (K53), ms
 
 
-# The ages measured on the host of record (K53): the relay holds each output until it is this old.
+# The ages at the consumer measured on the host of record (K53; the medians of the relay's own rows over the
+# measure flights r2438 stereo and r2439 lidar): the relay holds each output until it is this old.
 RELAYED = (
     Relayed("depth_points", "/stereo_depth/points", "/stereo_depth/points" + BUDGETED_SUFFIX,
             "sensor_msgs/msg/PointCloud2", "sensor", True, {"stereo_tof": 154.0}),
     Relayed("odometry", UNBUDGETED_ODOMETRY, ODOMETRY, "px4_msgs/msg/VehicleOdometry", "best_effort10", False,
-            {"stereo_tof": 65.0, "lidar": 25.0}),
+            {"stereo_tof": 6.4, "lidar": 58.0}),
     Relayed("memory_delta", "/drone_city_nav/raw_obstacle_delta_3d",
             "/drone_city_nav/raw_obstacle_delta_3d" + BUDGETED_SUFFIX, "drone_city_nav/msg/RawObstacleDelta3D",
-            "best_effort_transient", True, {"stereo_tof": 43.0, "lidar": 78.0}),
+            "best_effort_transient", True, {"stereo_tof": 210.0, "lidar": 160.0}),
     Relayed("memory_snapshot", "/drone_city_nav/raw_obstacle_snapshot_3d",
             "/drone_city_nav/raw_obstacle_snapshot_3d" + BUDGETED_SUFFIX, "drone_city_nav/msg/RawObstacleSnapshot3D",
-            "reliable_transient", True, {"stereo_tof": 43.0, "lidar": 78.0}),
+            "reliable_transient", True, {"stereo_tof": 202.0, "lidar": 172.0}),
     Relayed("latest_scan", "/drone_city_nav/latest_sensor_obstacle_scan",
             "/drone_city_nav/latest_sensor_obstacle_scan" + BUDGETED_SUFFIX,
-            "drone_city_nav/msg/LatestSensorObstacleScan", "sensor", True, {"stereo_tof": 43.0, "lidar": 78.0}),
+            "drone_city_nav/msg/LatestSensorObstacleScan", "sensor", True, {"stereo_tof": 170.0, "lidar": 68.0}),
     Relayed("horizon", "/drone_city_nav/mppi/execution_horizon",
             "/drone_city_nav/mppi/execution_horizon" + BUDGETED_SUFFIX, "drone_city_nav/msg/MppiTrajectoryHorizon",
-            "reliable2", True, {"stereo_tof": 23.0, "lidar": 26.0}),
+            "reliable2", True, {"stereo_tof": 4.0, "lidar": 4.0}),
 )
 
 
@@ -155,7 +161,8 @@ def main() -> int:
         node.create_subscription(message_type, source, receiver(r), qos_of(r.qos), raw=True)
         if args.mode == "on":
             publishers[r.name] = node.create_publisher(message_type, r.target, qos_of(r.qos))
-    node.create_timer(0.002, release)
+    # The simulation clock moves in the world's 4 ms steps: a finer timer only costs cores (0.27 at 2 ms).
+    node.create_timer(0.004, release)
     print(f"BUDGET_RELAY mode={args.mode} profile={args.profile} outputs={[r.name for r in relayed]} "
           f"ages_ms={[r.age_ms[args.profile] for r in relayed]}", flush=True)
     from rclpy.executors import ExternalShutdownException
