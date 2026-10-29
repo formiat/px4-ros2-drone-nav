@@ -188,8 +188,9 @@ TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
 // A very large hall: the near wall gives a few hundred matched points, the far
 // walls and the ceiling thousands of points without a plane in the submap. The
 // share of matched points falls under 0.3 while the registration is sound
-// (r2179: 0.18 of 3 955 points, residual 2 to 5 mm), so the health reads the
-// count of matched points as well, 500 at least.
+// (r2179: 0.18 of 3 955 points at the pad; r2366: 261 to 407 of 3 000 in the
+// climb), so the health reads the count of matched points as well, 200 at
+// least.
 TEST(LidarInertialOdometryTest, AFewHundredMatchedPointsInAVastHallAreHealthy) {
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   const Eigen::Vector3d start{0.0, 0.0, -1.5};
@@ -225,7 +226,7 @@ TEST(LidarInertialOdometryTest, AFewHundredMatchedPointsInAVastHallAreHealthy) {
   const LidarInertialEstimate estimate =
       odometry.addScan(7 * kSecond / 10, scanFrom(hall, start, level));
   EXPECT_LT(estimate.matched_fraction, 0.3);
-  EXPECT_GE(estimate.matched_fraction * static_cast<double>(hall.size()), 500.0)
+  EXPECT_GE(estimate.matched_fraction * static_cast<double>(hall.size()), 200.0)
       << near_points;
   EXPECT_TRUE(estimate.healthy);
   // With the count's floor above what the wall gives, the share alone decides

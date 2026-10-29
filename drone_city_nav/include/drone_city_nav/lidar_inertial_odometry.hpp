@@ -69,13 +69,16 @@ struct LidarInertialOdometryConfig {
   double minimum_matched_fraction{0.3};
   // Or at least this many matched points, whatever their share: in a very
   // large hall the far walls and the ceiling give sparse points without
-  // planes, so the share falls while the registration stays sound (r2179,
-  // the dark hall's pad: 0.18 of 3 955 points, about 712, registered to a
-  // residual of 2 to 5 mm with 0.244 of information per point; the share
-  // alone refused every scan and the vehicle never armed). 500 leaves that
-  // scan a margin of 1.4 and is far above what an empty or degenerate scan
-  // matches; the urban flights match 0.72 to 0.97 of 3 400 and never read it.
-  std::size_t minimum_matched_points{500U};
+  // planes, so the share falls while the registration stays sound. At the
+  // dark hall's pad the share alone (0.18 of 3 955 points) refused every
+  // scan and the vehicle never armed (r2179); in the climb from that pad
+  // 261 to 407 points of 2 900 to 3 300 match the near wall and the floor at
+  // a residual of 0.03 to 0.06 m with 0.011 to 0.013 of information per
+  // point (r2366: a floor of 500 refused them, the estimate froze and the
+  // vehicle came down on the pad). 200 lies under the least of those with a
+  // margin of 1.3 and far above what an empty scan matches; the urban
+  // flights match 0.72 to 0.97 of about 3 400 and never read the count.
+  std::size_t minimum_matched_points{200U};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.01};
   // An observed axis whose registered position lies farther from the prior

@@ -881,9 +881,10 @@ lidar_inertial_odometry_node:
     minimum_matched_fraction: 0.3
     # Or at least this many matched points whatever their share: a very large
     # hall gives sparse far points without planes, and the share falls while
-    # the registration stays sound (r2179: 0.18 of 3 955, about 712 points,
-    # residual 2 to 5 mm; 500 leaves it a margin of 1.4).
-    minimum_matched_points: 500
+    # the registration stays sound (r2366, the dark hall's climb: 261 to 407
+    # of about 3 000 at a residual of 0.03 to 0.06 m; 200 leaves it a margin
+    # of 1.3; r2179's pad never armed on the share alone).
+    minimum_matched_points: 200
     maximum_residual_rms_m: 0.5
     # An axis with less information than this per matched point is
     # degenerate: the registration is no measurement along it and the IMU
