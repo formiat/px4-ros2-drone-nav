@@ -1019,6 +1019,12 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
     gz-msgs10::gz-msgs10 sdformat14::sdformat14)
   ament_target_dependencies(simulation_smoke_sensor_node rclcpp std_msgs)
   enable_project_warnings(simulation_smoke_sensor_node)
+  # Roadmap item 36 (K53): the onboard budget as a relay, an evaluation process
+  # between the loop's producers and consumers.
+  add_executable(budget_relay_node src/budget_relay_node.cpp)
+  target_compile_features(budget_relay_node PRIVATE cxx_std_20)
+  ament_target_dependencies(budget_relay_node rclcpp)
+  enable_project_warnings(budget_relay_node)
 endif()
 
 # The depth node in a process whose images arrive over ROS, and the same node
@@ -1251,7 +1257,7 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   set(drone_city_nav_simulation_targets
       drone_contact_system drone_vibration_system collision_crash_node simulation_truth_adapter_node
       simulation_smoke_sensor_node simulation_heading_source_node
-      gazebo_stereo_depth_node voxelize_sdf_collisions)
+      gazebo_stereo_depth_node voxelize_sdf_collisions budget_relay_node)
 endif()
 install(
   TARGETS
@@ -1448,6 +1454,8 @@ if(BUILD_TESTING)
   add_drone_city_nav_private_runtime_gtest(
     route_execution_selector_3d_test
     tests/route_execution_selector_3d_test.cpp drone_city_nav_route_runtime)
+  add_drone_city_nav_core_gtest(budget_relay_test tests/budget_relay_test.cpp)
+  target_include_directories(budget_relay_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_drone_city_nav_core_gtest(px4_ros_time_mapper_test
                                 tests/px4_ros_time_mapper_test.cpp)
 

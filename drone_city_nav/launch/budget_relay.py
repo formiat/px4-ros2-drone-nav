@@ -1,5 +1,5 @@
 """The budget relay's wiring (roadmap item 36, specification K53): with `budget_relay:=true` the consumers of the
-onboard loop read the `/budgeted` topics that `scripts/budget_relay.py` publishes, and the estimators publish their
+onboard loop read the `/budgeted` topics that `budget_relay_node` publishes, and the estimators publish their
 odometry to the relay instead of the autopilot; no node learns anything else. Off, every topic is as it was."""
 from __future__ import annotations
 
