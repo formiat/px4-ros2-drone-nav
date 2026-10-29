@@ -44,6 +44,25 @@ GAPS_PER_MINUTE = 2.4  # gaps over 15 ms a minute
 GAP_SHORTEST_S = 0.015
 GAP_LONGEST_S = 0.0223  # the largest gap recorded
 LEAST_SPACING_S = 0.0005  # the stamps stay monotonic
+WINDOW_SAMPLES = 2500  # ten seconds at 250 Hz: one evidence row of the stream as relayed
+
+
+def window_row(stamps_us: list[int], accel: list[tuple[float, float, float]],
+               gyro: list[tuple[float, float, float]]) -> list[str]:
+    """What the relayed stream looked like over a window: the period's mean, deviation and
+    largest gap (the jitter's evidence) and the rms of each axis' sample-to-sample difference
+    (the rotors' ripple at 55 Hz sampled at 250 Hz shows as 1.275 times its amplitude over
+    the square root of two; a smooth flight gives a few hundredths)."""
+    periods = [(b - a) * 1.0e-3 for a, b in zip(stamps_us, stamps_us[1:])]
+    mean = sum(periods) / len(periods)
+    std = (sum((p - mean) ** 2 for p in periods) / len(periods)) ** 0.5
+    cells = [f"period_ms={mean:.3f}", f"period_std_ms={std:.3f}", f"gap_max_ms={max(periods):.1f}"]
+    for name, series in (("accel", accel), ("gyro", gyro)):
+        for axis in range(3):
+            diffs = [b[axis] - a[axis] for a, b in zip(series, series[1:])]
+            rms = (sum(d * d for d in diffs) / len(diffs)) ** 0.5
+            cells.append(f"{name}_diff_rms_{'xyz'[axis]}={rms:.4f}")
+    return cells
 
 
 def schedule(profile: str, seed: int = 0, horizon_s: float = 7200.0) -> list[ImuHole]:
@@ -111,6 +130,7 @@ def main() -> int:
     writer.writerow(["stamp_s", "action"])
     lock = threading.Lock()
     dropped = [0]
+    window: tuple[list, list, list] = ([], [], [])
 
     def relay(message: SensorCombined) -> None:
         # The autopilot runs in lockstep on the simulation clock: its stamp,
@@ -126,6 +146,15 @@ def main() -> int:
             message.timestamp = jittered_stamp_us(int(message.timestamp), previous_us[0], jitter)
             previous_us[0] = int(message.timestamp)
         publisher.publish(message)
+        window[0].append(int(message.timestamp))
+        window[1].append(tuple(float(v) for v in message.accelerometer_m_s2))
+        window[2].append(tuple(float(v) for v in message.gyro_rad))
+        if len(window[0]) >= WINDOW_SAMPLES:
+            with lock:
+                writer.writerow([f"{stamp_s:.3f}", "window", *window_row(*window)])
+                log.flush()
+            for series in window:
+                series.clear()
 
     node.create_subscription(SensorCombined, args.topic, relay, qos)
     print(f"IMU_STREAM_FAULTS profile={args.profile} seed={args.seed} holes={len(holes)}", flush=True)

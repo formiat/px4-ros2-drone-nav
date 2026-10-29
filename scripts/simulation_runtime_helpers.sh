@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+# Roadmap item 35 (K52): the real vehicle's imperfections. IMPERFECTIONS=nominal
+# turns the whole profile on, IMPERFECTIONS=nominal_<family> one family alone, for
+# the series that fly them apart: imu (the bias walk), vibration (the rotors'
+# wrench), extrinsics (the sensor set's pose), stamps (the IMU stream's jitter and
+# gaps, the frames' offset, the sweeps' cadence).
+imperfection_family_on() {
+  [[ "${IMPERFECTIONS:-none}" == nominal || "${IMPERFECTIONS:-none}" == "nominal_$1" ]]
+}
+
 make_abs_path() {
   local path="$1"
   case "${path}" in

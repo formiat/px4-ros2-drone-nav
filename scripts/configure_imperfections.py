@@ -97,14 +97,15 @@ def pose_turned(pose_text: str, seed: int) -> str:
     return " ".join(f"{v:.6g}" for v in values)
 
 
-def write_vehicle_model(model_sdf: Path, seed: int) -> tuple[int, bool]:
+def write_vehicle_model(model_sdf: Path, seed: int, extrinsics: bool = True,
+                        vibration: bool = True) -> tuple[int, bool]:
     """The sensor includes turned and the vibration plugin added; returns (poses turned, plugin added)."""
     tree = ET.parse(model_sdf)
     model = tree.getroot().find("model")
     if model is None:
         raise RuntimeError(f"model element is missing in {model_sdf}")
     turned = 0
-    for include in model.findall("include"):
+    for include in model.findall("include") if extrinsics else []:
         uri = (include.findtext("uri") or "").removeprefix("model://")
         if uri not in SENSOR_MODELS:
             continue
@@ -117,6 +118,9 @@ def write_vehicle_model(model_sdf: Path, seed: int) -> tuple[int, bool]:
     for stale in model.findall("plugin"):
         if stale.get("name") == PLUGIN_NAME:
             model.remove(stale)
+    if not vibration:
+        tree.write(model_sdf, encoding="utf-8", xml_declaration=True)
+        return turned, False
     plugin = ET.SubElement(model, "plugin", {"filename": PLUGIN_FILENAME, "name": PLUGIN_NAME})
     ET.SubElement(plugin, "link").text = "base_link"
     ET.SubElement(plugin, "frequency_hz").text = f"{VIBRATION_FREQUENCY_HZ:g}"
@@ -127,11 +131,21 @@ def write_vehicle_model(model_sdf: Path, seed: int) -> tuple[int, bool]:
     return turned, True
 
 
-def configure(runtime_models_dir: Path, seed: int, px4_models_dir: Path) -> dict[str, int]:
-    base_sdf = copy_base_model(runtime_models_dir, px4_models_dir)
-    axes = write_imu_bias(base_sdf)
-    turned, _ = write_vehicle_model(runtime_models_dir / VEHICLE_MODEL / "model.sdf", seed)
-    return {"imu_axes_with_bias": axes, "sensor_poses_turned": turned}
+FAMILIES = ("imu", "vibration", "extrinsics")
+
+
+def configure(runtime_models_dir: Path, seed: int, px4_models_dir: Path,
+              families: tuple[str, ...] = FAMILIES) -> dict[str, int]:
+    """The families named (a subset of FAMILIES, for the series that fly them apart) written into the models."""
+    unknown = set(families) - set(FAMILIES)
+    if unknown:
+        raise ValueError(f"unknown imperfection families {sorted(unknown)}")
+    axes = 0
+    if "imu" in families:
+        axes = write_imu_bias(copy_base_model(runtime_models_dir, px4_models_dir))
+    turned, plugin = write_vehicle_model(runtime_models_dir / VEHICLE_MODEL / "model.sdf", seed,
+                                         extrinsics="extrinsics" in families, vibration="vibration" in families)
+    return {"imu_axes_with_bias": axes, "sensor_poses_turned": turned, "vibration_plugin": int(plugin)}
 
 
 def main() -> int:
@@ -139,10 +153,13 @@ def main() -> int:
     parser.add_argument("runtime_models_dir", type=Path)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--px4-models-dir", type=Path, required=True)
+    parser.add_argument("--families", default=",".join(FAMILIES),
+                        help="comma-separated subset of imu,vibration,extrinsics")
     args = parser.parse_args()
-    done = configure(args.runtime_models_dir, args.seed, args.px4_models_dir)
-    print(f"IMPERFECTIONS seed={args.seed} imu_axes_with_bias={done['imu_axes_with_bias']} "
-          f"sensor_poses_turned={done['sensor_poses_turned']} vibration_plugin=1")
+    done = configure(args.runtime_models_dir, args.seed, args.px4_models_dir,
+                     tuple(f for f in args.families.split(",") if f))
+    print(f"IMPERFECTIONS seed={args.seed} families={args.families} imu_axes_with_bias={done['imu_axes_with_bias']} "
+          f"sensor_poses_turned={done['sensor_poses_turned']} vibration_plugin={done['vibration_plugin']}")
     return 0
 
 

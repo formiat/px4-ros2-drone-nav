@@ -99,10 +99,10 @@ start_runtime_evidence_capture() {
     # driver reads the pair from its relay (run_drone_nav_sim.sh). Under the
     # imperfections profile (roadmap item 35, K52) the relay also moves every
     # frame's stamp by +-2 ms, the sign from the seed.
-    if [[ ( -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ) ||
-      ( "${IMPERFECTIONS:-none}" == nominal && -z "${SMOKE_ZONES:-}" ) ]]; then
+    if [[ ( -n "${STREAM_FAULTS:-}" && "${STREAM_FAULTS}" != none ) ]] ||
+      { imperfection_family_on stamps && [[ -z "${SMOKE_ZONES:-}" ]]; }; then
       local frame_offset_ms=0
-      if [[ "${IMPERFECTIONS:-none}" == nominal ]]; then
+      if imperfection_family_on stamps; then
         frame_offset_ms=$(( ${IMPERFECTION_SEED:-0} % 2 == 0 ? 2 : -2 ))
       fi
       python3 "${repo_root}/scripts/camera_stream_faults.py" \
@@ -125,7 +125,7 @@ start_runtime_evidence_capture() {
     fi
     # Roadmap item 35 (K52): the lidar's sweeps delivered with a real driver's
     # cadence spread; the bridge reads the relay (run_drone_nav_sim.sh).
-    if [[ "${IMPERFECTIONS:-none}" == nominal && "${NAVIGATION_SENSOR_PROFILE:-}" == lidar &&
+    if imperfection_family_on stamps && [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar &&
       -z "${SMOKE_ZONES:-}" ]]; then
       python3 "${repo_root}/scripts/lidar_sweep_jitter.py" \
         --world "${world_name}" --model "${default_gazebo_follow_target}" \

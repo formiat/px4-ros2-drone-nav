@@ -95,6 +95,16 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         self.assertEqual(len([p for p in root.find("model").findall("plugin")
                               if p.get("name") == imperfections.PLUGIN_NAME]), 1)
 
+    def test_one_family_alone_writes_only_its_part(self) -> None:
+        done = imperfections.configure(self.runtime, 0, self.px4_models, ("extrinsics",))
+        self.assertEqual(done, {"imu_axes_with_bias": 0, "sensor_poses_turned": 1, "vibration_plugin": 0})
+        self.assertTrue((self.runtime / "x500_base").is_symlink(), "the base model stays PX4's")
+        root = ET.parse(self.runtime / "x500_lidar_3d" / "model.sdf").getroot()
+        self.assertEqual([p for p in root.find("model").findall("plugin")
+                          if p.get("name") == imperfections.PLUGIN_NAME], [])
+        with self.assertRaises(ValueError):
+            imperfections.configure(self.runtime, 0, self.px4_models, ("stamps",))
+
     def test_the_turn_takes_its_signs_from_the_seed(self) -> None:
         self.assertEqual(imperfections.pose_turned("0 0 0.24 0 0 0", 0).split()[4:],
                          [f"{imperfections.EXTRINSIC_ANGLE_RAD:.6g}"] * 2)
@@ -131,6 +141,15 @@ class RelaysTest(unittest.TestCase):
         spread = (sum(d * d for d in deviations) / len(deviations)) ** 0.5
         self.assertGreater(spread, 1500.0)
         self.assertLess(spread, 3500.0)
+        import math
+        stamps = [4000 * i for i in range(2500)]
+        ripple = [(0.5 * math.sin(2 * math.pi * 55 * i / 250.0), 0.0, 9.81) for i in range(2500)]
+        row = IMU.window_row(stamps, ripple, [(0.0, 0.0, 0.0)] * 2500)
+        self.assertIn("period_ms=4.000", row)
+        self.assertIn("gap_max_ms=4.0", row)
+        rms_x = float([c for c in row if c.startswith("accel_diff_rms_x=")][0].split("=")[1])
+        self.assertAlmostEqual(rms_x, 0.5 * 1.275 / math.sqrt(2.0), delta=0.01)
+        self.assertIn("accel_diff_rms_z=0.0000", row)
 
     def test_the_frames_stamp_moves_by_the_offset_and_the_bytes_stay(self) -> None:
         from gz.msgs10.image_pb2 import Image
@@ -171,6 +190,13 @@ class ContractTest(unittest.TestCase):
         self.assertIn('export IMU_FAULTS="${IMU_FAULTS:-jitter}"', resources)
         self.assertIn("lidar_scan_topic_suffix:=/relayed", resources)
         self.assertIn("configure_imperfections.py", resources)
+        self.assertIn('--families "$(IFS=,; echo "${model_families[*]}")"', resources)
+        helpers = (REPOSITORY / "scripts" / "simulation_runtime_helpers.sh").read_text()
+        self.assertIn('"${IMPERFECTIONS:-none}" == "nominal_$1"', helpers)
+        for family in ("imu", "vibration", "extrinsics", "stamps"):
+            self.assertIn(family, helpers)
+        self.assertEqual(resources.count("imperfection_family_on stamps"), 2)
+        self.assertEqual(evidence.count("imperfection_family_on stamps"), 3)
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()
         self.assertIn('"lidar_scan_topic_suffix"', launch)
         self.assertIn('lidar_inertial_overrides["px4_sensor_combined_topic"]', launch)
