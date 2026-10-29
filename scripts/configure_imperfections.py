@@ -9,8 +9,11 @@ runtime copy of it (never into the repository's or PX4's own models):
 - the IMU's bias walk: the x500 model has white noise and no bias, so `x500_base` is copied out of PX4's tree in
   place of its symlink and each axis of its IMU noise gets a dynamic bias, the EuRoC imu0 calibration's random walk
   (an ADIS16448: gyro 1.94e-5 rad/s^2/sqrt(Hz), accelerometer 3.0e-3 m/s^3/sqrt(Hz)) as a first-order process with a
-  correlation time of 400 s, the acceptance flight's length, so that over a flight it walks as the calibration says:
-  a standing deviation of 2.7e-4 rad/s and 0.042 m/s^2;
+  correlation time of 400 s, the acceptance flight's length. The model's `dynamic_bias_stddev` is the walk's density
+  itself: gz-sensors drives the process with sigma_b * sqrt(dt) a step (the Rotors formula), so the bias stands at
+  sigma_b * sqrt(tau / 2) over a flight, 2.7e-4 rad/s and 0.042 m/s^2, as the calibration says. (The first writing
+  put the standing deviation into the element and flew r2374, r2375 and r2387 with a bias fourteen times the source;
+  all three met the staging area's base.)
 - the rotors' vibration: the plugin `drone_vibration_system` added to the vehicle wrapper model, with the NTU VIRAL
   eee_01 amplitudes (55 Hz; 0.192, 0.552, 0.380 m/s^2 and 0.0156, 0.0141, 0.0042 rad/s, the rms above 50 Hz times
   the square root of two) and the seed for its phases;
@@ -41,8 +44,8 @@ PLUGIN_FILENAME = "libdrone_vibration_system.so"
 PLUGIN_NAME = "drone_city_nav::DroneVibrationSystem"
 
 
-def bias_stddev(random_walk: float) -> float:
-    """The standing deviation of a first-order bias process whose increments are the random walk's."""
+def bias_standing_stddev(random_walk: float) -> float:
+    """What the bias written as the walk's density stands at over the correlation time (for the record)."""
     return random_walk * math.sqrt(BIAS_CORRELATION_TIME_S / 2.0)
 
 
@@ -68,7 +71,7 @@ def write_imu_bias(model_sdf: Path) -> int:
                 for tag in ("dynamic_bias_stddev", "dynamic_bias_correlation_time"):
                     for stale in noise.findall(tag):
                         noise.remove(stale)
-                ET.SubElement(noise, "dynamic_bias_stddev").text = f"{bias_stddev(walk):.6g}"
+                ET.SubElement(noise, "dynamic_bias_stddev").text = f"{walk:.6g}"
                 ET.SubElement(noise, "dynamic_bias_correlation_time").text = f"{BIAS_CORRELATION_TIME_S:g}"
                 written += 1
     tree.write(model_sdf, encoding="utf-8", xml_declaration=True)

@@ -68,8 +68,10 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         root = ET.parse(base / "model.sdf").getroot()
         gyro = root.find(".//angular_velocity/x/noise")
         accel = root.find(".//linear_acceleration/z/noise")
-        self.assertAlmostEqual(float(gyro.findtext("dynamic_bias_stddev")), 2.74e-4, delta=1e-5)
-        self.assertAlmostEqual(float(accel.findtext("dynamic_bias_stddev")), 0.0424, delta=5e-4)
+        # The element takes the walk's density (gz-sensors drives the process with it times sqrt(dt)).
+        self.assertAlmostEqual(float(gyro.findtext("dynamic_bias_stddev")), 1.9393e-5, delta=1e-9)
+        self.assertAlmostEqual(float(accel.findtext("dynamic_bias_stddev")), 3.0e-3, delta=1e-9)
+        self.assertAlmostEqual(imperfections.bias_standing_stddev(1.9393e-5), 2.74e-4, delta=1e-5)
         self.assertEqual(gyro.findtext("dynamic_bias_correlation_time"), "400")
         self.assertEqual(gyro.findtext("stddev"), "0.0008726646", "the white noise stays the model's")
 
