@@ -3,6 +3,7 @@
 #include "drone_city_nav/carried_light_judgment.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/step_acknowledger.hpp"
 #include "drone_city_nav/stereo_depth_returns.hpp"
 #include "drone_city_nav/stereo_lit_range.hpp"
 #include "drone_city_nav/stereo_silent_patches.hpp"
@@ -117,12 +118,9 @@ public:
     }
     silent_patch_config_.confident_depth_m =
         stereoConfidentDepthM(geometry_, returns_config_);
-    // Far and near are matched apart: the far surfaces at full resolution with a
-    // short search, the near ones at half with a long one; 108 ms on two threads
-    // against 187 for one search of 256 disparities, the same depth recovered
-    // (r476: 0.97/0.84/0.66 of the pixels within a voxel at 4-6, 6-8, 8-10 m).
-    // The threads are capped: the matcher otherwise takes every core (r478:
-    // the lidar-inertial scans grew from 80 to 200 ms, the vehicle crashed).
+    // Far and near matched apart (full resolution, short search; half, long):
+    // 108 ms on two threads against 187 for one search of 256 disparities,
+    // the same depth (r476). Threads capped: uncapped, r478 crashed.
     using stereo_depth_node_internal::intParameter;
     cv::setNumThreads(intParameter(*this, "matcher_threads", 2));
     far_disparities_ = intParameter(*this, "far_disparity_px", 64);
@@ -259,6 +257,9 @@ public:
         create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     rclcpp::SubscriptionOptions tof_options;
     tof_options.callback_group = tof_callbacks_;
+    // Item 36: the acknowledgement follows the match in the pair's callbacks.
+    step_acknowledger_ = std::make_unique<StepAcknowledger>(
+        *this, "stereo_depth", nullptr, [] { return true; });
     const auto tof_qos = rclcpp::SensorDataQoS{}.keep_last(kTofScansKept);
     for (std::size_t slot = 0U; slot < kTofSensorCount; ++slot) {
       const TofMount& mount = kTofMounts.at(slot);
@@ -752,10 +753,9 @@ private:
                       .c_str());
     }
     if (heat_ranged) {
-      // The returns through the standoff ball are the plume's own texture and
-      // the surfaces beyond it (K49), dropped here, after the frame's counts,
-      // which index the pair's returns at the front (r2235: dropped before them,
-      // the counts ran past the end and the process died).
+      // The returns through the standoff ball (the plume's texture, the
+      // surfaces beyond, K49) dropped after the frame's counts, which index
+      // the pair's returns at the front (r2235: dropped before, the process died).
       std::erase_if(returns, [&](const StereoDepthReturn& ray) {
         return !ray.unobservable && crossesHeatStandoff(ray.point, *heat, heat_range_m,
                                                         kHeatStandoffM + heat_error_m_);
@@ -841,12 +841,9 @@ private:
     thermal_reading_ = reading;
     thermal_stamp_s_ = stamp_s;
     if (reading.hot()) {
-      // The bearing waits for the estimate's pose at the frame's stamp, which
-      // comes a tenth of a second or two later (the estimate at 7.5 Hz, behind
-      // the frame; r2248: most frames found no pose); the pose's arrival
-      // resolves it (onPose). A bearing with the latest pose at the frame's
-      // arrival was 7 to 10 degrees off on a vehicle yawing 50 degrees a
-      // second (r2247), one at the pair's moment 9 (r2241).
+      // The bearing waits for the estimate's pose at the frame's stamp (r2248:
+      // most frames found no pose); onPose resolves it. The latest pose at the
+      // frame's arrival was 7 to 10 degrees off at 50 deg/s of yaw (r2247).
       const std::lock_guard<std::mutex> pose_lock{pose_mutex_};
       pending_bearings_.emplace_back(stamp_s, reading.direction);
       while (pending_bearings_.size() > stereo_depth_node_internal::kPosesKept) {
@@ -999,6 +996,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr gain_sub_;
   int far_disparities_{64};
   cv::Ptr<cv::StereoSGBM> far_matcher_;
+  std::unique_ptr<StepAcknowledger> step_acknowledger_;
   cv::Ptr<cv::StereoSGBM> near_matcher_;
   std::string frame_id_;
   sensor_msgs::msg::Image::ConstSharedPtr left_;

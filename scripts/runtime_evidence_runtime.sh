@@ -144,10 +144,10 @@ start_runtime_evidence_capture() {
     fi
     # Roadmap item 36: the simulator waits for the onboard loop (the step controller, a simulation process).
     if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
-      local step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial
+      local step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial,stereo_depth
       [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]] && step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial
       python3 "${repo_root}/scripts/step_controller.py" --world "${world_name}" \
-        --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" \
+        --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" --timeout-s 10 \
         --output "${runtime_artifact_dir}/step_controller.csv" \
         > "${runtime_artifact_dir}/step_controller.log" 2>&1 &
     fi

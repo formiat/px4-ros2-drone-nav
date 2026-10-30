@@ -48,7 +48,7 @@ class ContractTest(unittest.TestCase):
         evidence = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
         self.assertIn("BUDGET_RELAY STEP_CONTROLLER \\", evidence)
         self.assertIn('step_controller.py" --world "${world_name}"', evidence)
-        self.assertIn("step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial", evidence)
+        self.assertIn("step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial,stereo_depth", evidence)
         self.assertIn("--step-protocol", evidence)
         self.assertIn('gz_args+=(--seed "${IMPERFECTION_SEED:-0}")', (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text())
         self.assertIn("step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial", evidence)
@@ -60,7 +60,8 @@ class ContractTest(unittest.TestCase):
         header = (REPOSITORY / "drone_city_nav" / "include" / "drone_city_nav" / "step_acknowledger.hpp").read_text()
         self.assertIn('declare_parameter<bool>("step_ack_enabled", false)', header)
         self.assertIn('"/drone_city_nav/step_ack/" + name', header)
-        for name in ("offboard", "mission_monitor", "memory", "planner", "visual_inertial", "lidar_inertial"):
+        for name in ("offboard", "mission_monitor", "memory", "planner", "visual_inertial", "lidar_inertial",
+                     "stereo_depth"):
             self.assertGreaterEqual(
                 sum(f'"{name}"' in path.read_text(errors="ignore")
                     for path in (REPOSITORY / "drone_city_nav" / "src").rglob("*.cpp")), 1, name)
