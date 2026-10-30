@@ -70,7 +70,8 @@ def main() -> int:
 
     log = args.output.open("w", newline="")
     writer = csv.writer(log)
-    writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "stalls", "timeouts", "missing", "wall_speed"])
+    writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "stalls", "runaways", "timeouts", "missing",
+                     "wall_speed"])
     # The world stays paused from the start (the runtime starts it without -r); said again here for a world
     # that runs. The stack is up when every expected node publishes its acknowledgement.
     if not control(pause=True):
@@ -91,13 +92,21 @@ def main() -> int:
     index = 0
     waits: list[float] = []
     stalls = 0
+    runaways = 0  # the world found running on its own (the autopilot's bridge unpauses it at its start)
+    expected_ns = sim_ns()
     timeouts = 0
     missing_names: dict[str, int] = {}
     window_started = time.monotonic()
     window_sim_started = sim_ns()
     try:
         while rclpy.ok():
+            if sim_ns() > expected_ns + step_ns // iterations:
+                # The world ran on its own since the last step: pause it again and step from where it is.
+                runaways += 1
+                control(pause=True)
+                rclpy.spin_once(node, timeout_sec=0.05)
             target_ns = sim_ns() + step_ns
+            expected_ns = target_ns
             if not control(multi_step=iterations):
                 stalls += 1
             # The world's iterations done: the clock has reached the step's end.
@@ -123,7 +132,8 @@ def main() -> int:
                 wall = time.monotonic() - window_started
                 speed = (sim_ns() - window_sim_started) * 1.0e-9 / wall if wall > 0 else 0.0
                 writer.writerow([f"{sim_ns() * 1e-9:.3f}", index, f"{ordered[len(ordered) // 2]:.1f}",
-                                 f"{ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]:.1f}", stalls, timeouts,
+                                 f"{ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]:.1f}", stalls, runaways,
+                                 timeouts,
                                  ";".join(f"{k}:{v}" for k, v in sorted(missing_names.items())), f"{speed:.3f}"])
                 log.flush()
                 waits.clear()
