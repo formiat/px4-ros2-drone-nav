@@ -32,11 +32,12 @@ public:
     return Submission{replaced_pending, processor_acquired};
   }
 
-  // Nothing pending, deferred or being processed: the step acknowledgement
-  // of roadmap item 36 waits for this.
-  [[nodiscard]] bool idle() const {
+  // Nothing being processed right now: the step acknowledgement of roadmap
+  // item 36 waits for this (a pending or deferred item waits for an input of a
+  // later step, so it does not hold the acknowledgement).
+  [[nodiscard]] bool processing() const {
     const std::lock_guard<std::mutex> lock{mutex_};
-    return !processor_active_ && !pending_.has_value() && !deferred_.has_value();
+    return processor_active_;
   }
 
   [[nodiscard]] bool tryAcquireProcessor() {

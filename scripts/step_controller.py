@@ -47,9 +47,13 @@ def main() -> int:
     qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10)
     step_pub = node.create_publisher(UInt64, "/drone_city_nav/step", qos)
     acknowledged: dict[str, int] = {name: -1 for name in expected}
+    ack_waits: dict[str, list[float]] = {name: [] for name in expected}
+    asked_at = [0.0]
 
     def listener(name: str):
         def on_ack(message: UInt64) -> None:
+            if int(message.data) > acknowledged[name]:
+                ack_waits[name].append((time.monotonic() - asked_at[0]) * 1.0e3)
             acknowledged[name] = max(acknowledged[name], int(message.data))
         return on_ack
 
@@ -71,7 +75,7 @@ def main() -> int:
     log = args.output.open("w", newline="")
     writer = csv.writer(log)
     writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "stalls", "runaways", "timeouts", "missing",
-                     "wall_speed"])
+                     "wall_speed", "slowest"])
     # The world stays paused from the start (the runtime starts it without -r); said again here for a world
     # that runs. The stack is up when every expected node publishes its acknowledgement.
     if not control(pause=True):
@@ -117,8 +121,9 @@ def main() -> int:
             if sim_ns() < target_ns:
                 stalls += 1
             index += 1
-            step_pub.publish(UInt64(data=index))
             asked = time.monotonic()
+            asked_at[0] = asked
+            step_pub.publish(UInt64(data=index))
             deadline = asked + args.timeout_s
             while any(acknowledged[name] < index for name in expected) and time.monotonic() < deadline:
                 rclpy.spin_once(node, timeout_sec=0.0005)
@@ -132,12 +137,17 @@ def main() -> int:
                 ordered = sorted(waits)
                 wall = time.monotonic() - window_started
                 speed = (sim_ns() - window_sim_started) * 1.0e-9 / wall if wall > 0 else 0.0
+                medians = {name: sorted(values)[len(values) // 2] for name, values in ack_waits.items() if values}
+                slowest = max(medians, key=medians.get) if medians else ""
                 writer.writerow([f"{sim_ns() * 1e-9:.3f}", index, f"{ordered[len(ordered) // 2]:.1f}",
                                  f"{ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]:.1f}", stalls, runaways,
                                  timeouts,
-                                 ";".join(f"{k}:{v}" for k, v in sorted(missing_names.items())), f"{speed:.3f}"])
+                                 ";".join(f"{k}:{v}" for k, v in sorted(missing_names.items())), f"{speed:.3f}",
+                                 f"{slowest}:{medians[slowest]:.0f}" if slowest else ""])
                 log.flush()
                 waits.clear()
+                for values in ack_waits.values():
+                    values.clear()
                 window_started = time.monotonic()
                 window_sim_started = sim_ns()
     except KeyboardInterrupt:

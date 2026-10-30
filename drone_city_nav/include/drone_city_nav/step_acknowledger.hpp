@@ -50,9 +50,9 @@ public:
 private:
   void acknowledge(const std_msgs::msg::UInt64& step) {
     // The worker threads' outputs of the step are in once the predicate holds;
-    // a node stuck past five seconds acknowledges anyway, and the controller's
-    // own timeout names it.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    // a node stuck past a second acknowledges anyway, and the controller's log
+    // names the slowest node of every window.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
     while (!idle_() && std::chrono::steady_clock::now() < deadline) {
       std::this_thread::sleep_for(std::chrono::microseconds{200});
     }

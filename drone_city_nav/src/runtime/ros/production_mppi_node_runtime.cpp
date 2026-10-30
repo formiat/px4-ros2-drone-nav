@@ -154,14 +154,15 @@ void ProductionMppiNode::startPlanningTimer() {
       std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
       [this]() { planningTick(); }, planning_callback_group_);
   // Roadmap item 36: the step acknowledgement follows the tick (its group) and
-  // waits for every task the worker pools were given to have completed.
+  // waits for the worker pools' queues to be empty (a running task ends in
+  // milliseconds; a lane's long-lived task held it for the five-second cap).
   if (step_acknowledger_ == nullptr) {
     step_acknowledger_ = std::make_unique<StepAcknowledger>(
         *this, "planner", planning_callback_group_, [this] {
           for (const auto* pool :
                {planning_worker_pool_.get(), world_worker_pool_.get()}) {
             for (const auto& lane : pool->snapshot().lanes) {
-              if (lane.submitted != lane.completed) {
+              if (lane.pending != 0U) {
                 return false;
               }
             }
