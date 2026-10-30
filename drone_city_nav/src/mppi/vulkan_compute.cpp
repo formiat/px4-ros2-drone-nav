@@ -1,7 +1,6 @@
 #include "vulkan_compute.hpp"
 
 #include <cstring>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -96,22 +95,44 @@ ComputeDevice::~ComputeDevice() {
   }
 }
 
-std::uint32_t
-ComputeDevice::hostVisibleMemoryType(const std::uint32_t type_bits) const {
+std::uint32_t ComputeDevice::hostVisibleMemoryType(const std::uint32_t type_bits,
+                                                   const bool device_reads) const {
   VkPhysicalDeviceMemoryProperties memory{};
   vkGetPhysicalDeviceMemoryProperties(physical_, &memory);
-  constexpr VkMemoryPropertyFlags kWanted =
+  constexpr VkMemoryPropertyFlags kCoherent =
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  for (std::uint32_t type = 0U; type < memory.memoryTypeCount; ++type) {
-    if ((type_bits & (1U << type)) != 0U &&
-        (memory.memoryTypes[type].propertyFlags & kWanted) == kWanted) {
-      return type;
+  const auto find = [&](const VkMemoryPropertyFlags wanted,
+                        const VkMemoryPropertyFlags unwanted) -> std::int64_t {
+    for (std::uint32_t type = 0U; type < memory.memoryTypeCount; ++type) {
+      const VkMemoryPropertyFlags flags = memory.memoryTypes[type].propertyFlags;
+      if ((type_bits & (1U << type)) != 0U && (flags & wanted) == wanted &&
+          (flags & unwanted) == 0U) {
+        return type;
+      }
+    }
+    return -1;
+  };
+  std::int64_t found = -1;
+  if (device_reads) {
+    found = find(kCoherent | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0U);
+  } else {
+    found = find(kCoherent | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (found < 0) {
+      found = find(kCoherent, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
   }
-  throw std::runtime_error{"Vulkan: no host-visible coherent memory type"};
+  if (found < 0) {
+    found = find(kCoherent, 0U);
+  }
+  if (found < 0) {
+    throw std::runtime_error{"Vulkan: no host-visible coherent memory type"};
+  }
+  return static_cast<std::uint32_t>(found);
 }
 
-HostBuffer::HostBuffer(const ComputeDevice& device, const std::size_t bytes)
+HostBuffer::HostBuffer(const ComputeDevice& device, const std::size_t bytes,
+                       const bool device_reads)
     : device_{device},
       bytes_{bytes} {
   VkBufferCreateInfo buffer_info{};
@@ -126,7 +147,8 @@ HostBuffer::HostBuffer(const ComputeDevice& device, const std::size_t bytes)
   VkMemoryAllocateInfo allocate{};
   allocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocate.allocationSize = requirements.size;
-  allocate.memoryTypeIndex = device_.hostVisibleMemoryType(requirements.memoryTypeBits);
+  allocate.memoryTypeIndex =
+      device_.hostVisibleMemoryType(requirements.memoryTypeBits, device_reads);
   check(vkAllocateMemory(device_.device(), &allocate, nullptr, &memory_),
         "vkAllocateMemory");
   check(vkBindBufferMemory(device_.device(), buffer_, memory_, 0U),
@@ -288,21 +310,6 @@ void ComputePipeline::dispatch(const std::span<HostBuffer* const> buffers,
   check(vkQueueSubmit(device_.queue(), 1U, &submit, fence_), "vkQueueSubmit");
   check(vkWaitForFences(device_.device(), 1U, &fence_, VK_TRUE, UINT64_MAX),
         "vkWaitForFences");
-}
-
-std::vector<std::uint32_t> readSpirv(const std::string& path) {
-  std::ifstream stream{path, std::ios::binary | std::ios::ate};
-  if (!stream) {
-    throw std::runtime_error{"Vulkan: cannot read the shader " + path};
-  }
-  const std::streamsize bytes = stream.tellg();
-  if (bytes <= 0 || bytes % 4 != 0) {
-    throw std::runtime_error{"Vulkan: the shader " + path + " is not SPIR-V"};
-  }
-  std::vector<std::uint32_t> words(static_cast<std::size_t>(bytes) / 4U);
-  stream.seekg(0);
-  stream.read(reinterpret_cast<char*>(words.data()), bytes);
-  return words;
 }
 
 } // namespace drone_city_nav::mppi::vulkan

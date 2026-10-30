@@ -1,0 +1,49 @@
+// The weighted update on Vulkan compute (roadmap item 28, way B): one work
+// group a step, its threads over the rollouts, the weighted noise summed in
+// shared memory and the nominal control moved by the sum over the weight sum,
+// as the CUDA engine's accumulateControlUpdatePartials and
+// finalizeControlUpdate do. The limiter runs on the host afterwards.
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform Push {
+  uint rollouts;
+  uint steps;
+  float denominator;
+} push;
+
+layout(std430, binding = 0) readonly buffer Noise { float values[]; } noise;  // 4 planes
+layout(std430, binding = 1) readonly buffer Weights { float values[]; } weights;
+layout(std430, binding = 2) readonly buffer Nominal { float values[]; } nominal;  // 4 a step
+layout(std430, binding = 3) writeonly buffer Updated { float values[]; } updated;  // 4 a step
+
+shared vec4 partial[256];
+
+void main() {
+  uint step = gl_WorkGroupID.x;
+  uint lane = gl_LocalInvocationID.x;
+  uint plane = push.rollouts * push.steps;
+  vec4 sum = vec4(0.0);
+  for (uint rollout = lane; rollout < push.rollouts; rollout += 256u) {
+    uint index = rollout * push.steps + step;
+    float weight = weights.values[rollout];
+    sum += weight * vec4(noise.values[index], noise.values[plane + index],
+                         noise.values[2u * plane + index], noise.values[3u * plane + index]);
+  }
+  partial[lane] = sum;
+  barrier();
+  for (uint stride = 128u; stride > 0u; stride >>= 1u) {
+    if (lane < stride) {
+      partial[lane] += partial[lane + stride];
+    }
+    barrier();
+  }
+  if (lane == 0u && step < push.steps) {
+    vec4 total = partial[0];
+    updated.values[step * 4u] = nominal.values[step * 4u] + total.x / push.denominator;
+    updated.values[step * 4u + 1u] = nominal.values[step * 4u + 1u] + total.y / push.denominator;
+    updated.values[step * 4u + 2u] = nominal.values[step * 4u + 2u] + total.z / push.denominator;
+    updated.values[step * 4u + 3u] = nominal.values[step * 4u + 3u] + total.w / push.denominator;
+  }
+}

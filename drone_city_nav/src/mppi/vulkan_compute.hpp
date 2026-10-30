@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <span>
 #include <string>
-#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace drone_city_nav::mppi::vulkan {
@@ -50,7 +49,12 @@ public:
     return shader_int64_;
   }
 
-  [[nodiscard]] std::uint32_t hostVisibleMemoryType(std::uint32_t type_bits) const;
+  // A host-visible, coherent memory type for the buffer's traffic: one the
+  // device reads in its kernels (device-local when a host-visible heap of it
+  // exists: the resizable-BAR window or a unified memory), or one the host
+  // reads back (cached system memory, never the uncached device heap).
+  [[nodiscard]] std::uint32_t hostVisibleMemoryType(std::uint32_t type_bits,
+                                                    bool device_reads) const;
 
 private:
   VkInstance instance_{VK_NULL_HANDLE};
@@ -63,10 +67,11 @@ private:
   bool shader_int64_{false};
 };
 
-// A storage buffer the host can read and write (host-visible, coherent).
+// A storage buffer the host can read and write (host-visible, coherent);
+// `device_reads` picks its memory (see hostVisibleMemoryType).
 class HostBuffer {
 public:
-  HostBuffer(const ComputeDevice& device, std::size_t bytes);
+  HostBuffer(const ComputeDevice& device, std::size_t bytes, bool device_reads);
   ~HostBuffer();
   HostBuffer(const HostBuffer&) = delete;
   HostBuffer& operator=(const HostBuffer&) = delete;
@@ -126,8 +131,5 @@ private:
   VkFence fence_{VK_NULL_HANDLE};
   std::uint32_t buffer_count_{0U};
 };
-
-// The SPIR-V words of a compiled shader file.
-[[nodiscard]] std::vector<std::uint32_t> readSpirv(const std::string& path);
 
 } // namespace drone_city_nav::mppi::vulkan

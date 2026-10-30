@@ -239,7 +239,8 @@ struct EsdfUploadResult {
 };
 
 // The engine's interface, one for every backend (roadmap item 28): the CUDA
-// engine below, the CPU engine (`mppi_cpu_engine.hpp`), a Vulkan one in time.
+// engine below, the CPU engine (`mppi_cpu_engine.hpp`), the Vulkan engine
+// (`mppi_vulkan_engine.hpp`).
 class MppiEngine {
 public:
   virtual ~MppiEngine() = default;
@@ -259,6 +260,7 @@ protected:
 enum class MppiEngineKind : std::uint8_t {
   kCuda,
   kCpu,
+  kVulkan,
 };
 
 [[nodiscard]] inline const char*
@@ -268,6 +270,8 @@ mppiEngineKindName(const MppiEngineKind kind) noexcept {
       return "cuda";
     case MppiEngineKind::kCpu:
       return "cpu";
+    case MppiEngineKind::kVulkan:
+      return "vulkan";
   }
   return "unknown";
 }
@@ -279,6 +283,9 @@ parseMppiEngineKind(const std::string_view name) noexcept {
   }
   if (name == "cpu") {
     return MppiEngineKind::kCpu;
+  }
+  if (name == "vulkan") {
+    return MppiEngineKind::kVulkan;
   }
   return std::nullopt;
 }

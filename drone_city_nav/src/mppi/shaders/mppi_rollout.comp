@@ -1,0 +1,859 @@
+// One rollout of the population on Vulkan compute (roadmap item 28, way B):
+// the shared body of mppi_rollout_body.hpp (simulateRollout and the laws it
+// calls: the step limiter, the dynamics, the altitude envelope, the body's
+// clearance query against the ESDF, the horizon sampling, the route
+// projection, the clearance, tube and stopping laws, the dynamic aircraft)
+// written once more in GLSL, since a shader cannot share C++. Every line
+// mirrors the body's; the parity test holds the two to each other. The ESDF
+// is a storage buffer read by cell, [z][y][x], as the host engine reads it.
+#version 450
+
+layout(local_size_x = 64) in;
+
+// The tick's scalars, std430: scalars only, in the order of RolloutParams on
+// the host (mppi_vulkan_engine.cpp), so the two layouts coincide.
+layout(std430, binding = 0) readonly buffer Params {
+  uint steps;
+  uint rollouts;
+  uint direct;       // 1: the sequences in Direct replace nominal plus noise
+  uint write_terms;  // 1: the cost terms written at Terms
+  float initial[8];  // x y z vx vy vz yaw yaw_rate
+  float target[8];
+  // dynamics
+  float dt_s;
+  float linear_drag_1ps;
+  float maximum_horizontal_acceleration_mps2;
+  float maximum_vertical_acceleration_mps2;
+  float maximum_horizontal_speed_mps;
+  float maximum_vertical_speed_mps;
+  float maximum_translational_speed_mps;
+  float translational_limit_mps[33];
+  float maximum_yaw_acceleration_radps2;
+  float maximum_yaw_rate_radps;
+  float maximum_control_jerk_mps3;
+  // risk
+  float critical_distance_m;
+  float preferred_distance_m;
+  float tube_response_time_s;
+  float stopping_response_time_s;
+  float stopping_deceleration_mps2;
+  // footprint
+  float footprint_radius_m;
+  float footprint_lower_extent_m;
+  float footprint_upper_extent_m;
+  uint perimeter_samples;
+  uint radial_rings;
+  uint axial_samples;
+  uint clearance_broad_phase_enabled;
+  // altitude envelope
+  float minimum_z_m;
+  float maximum_z_m;
+  float guaranteed_vertical_deceleration_mps2;
+  float reaction_latency_s;
+  // costs
+  float guide_deviation_weight;
+  float altitude_tracking_weight;
+  float head_progress_horizon_s;
+  float head_progress_weight;
+  float progress_weight;
+  float route_progress_integral_weight;
+  float speed_tracking_weight;
+  float overspeed_weight;
+  float acceleration_weight;
+  float jerk_weight;
+  float yaw_change_weight;
+  float cooperative_maneuver_preference_weight;
+  float terminal_weight;
+  float clearance_preference_weight;
+  float obstacle_approach_weight;
+  // horizon sampling
+  float full_rate_duration_s;
+  uint far_cost_stride;
+  // grid
+  int grid_width;
+  int grid_height;
+  int grid_depth;
+  float grid_resolution_m;
+  float grid_origin_x_m;
+  float grid_origin_y_m;
+  float grid_origin_z_m;
+  uint outside_is_unknown;
+  // route
+  uint route_point_count;
+  float initial_route_station_m;
+  // dynamic aircraft and their cost policy
+  uint dynamic_aircraft_count;
+  float strong_separation_m;
+  float anticipation_separation_m;
+  float strong_weight;
+  float anticipation_weight;
+  float time_to_collision_gain_s;
+  float maximum_time_to_collision_multiplier;
+  // cooperative preference
+  float cooperative_preferred[4];
+  uint cooperative_preference_steps;
+  uint cooperative_preference_enabled;
+  // the tick
+  float previous_applied[4];
+  float first_control_interval_s;
+  float reference_speed_mps;
+  uint early_exit;
+} p;
+
+layout(std430, binding = 1) readonly buffer Esdf { float distances[]; } esdf;
+layout(std430, binding = 2) readonly buffer Nominal { float values[]; } nominal;  // 4 a step
+// The noise in four planes of rollouts * steps: ax, ay, az, yaw.
+layout(std430, binding = 3) readonly buffer Noise { float values[]; } noise;
+// 9 a point: x y z tx ty tz station reference_speed tier
+layout(std430, binding = 4) readonly buffer Route { float values[]; } route;
+// The aircraft: samples (3 a step, aircraft-major), then radii, then active steps.
+layout(std430, binding = 5) readonly buffer Aircraft { float values[]; } aircraft;
+layout(std430, binding = 6) readonly buffer Direct { float values[]; } direct;  // 4 a step
+// Outputs, four float planes: soft cost, critical exposure, planning exposure,
+// minimum clearance; three uint planes: altitude violation, collision, tier.
+layout(std430, binding = 7) writeonly buffer OutFloat { float values[]; } out_float;
+layout(std430, binding = 8) writeonly buffer OutUint { uint values[]; } out_uint;
+layout(std430, binding = 9) writeonly buffer Terms { float values[]; } terms;  // 22 a rollout
+
+const float kPi = 3.14159265358979323846;
+#define kInfinity uintBitsToFloat(0x7f800000u)
+const float kFloatMax = 3.402823466e+38;
+const float kUnknownEsdfDistanceM = -1.0;
+const uint kMaximumHorizonSteps = 256u;
+
+struct State { float x, y, z, vx, vy, vz, yaw, yaw_rate; };
+struct Control { float ax, ay, az, yaw_accel; };
+struct EsdfQuery { float clearance_m; bool unknown_space; bool inside_occupied; };
+struct RouteProjection {
+  float station_m, distance_m, reference_x_m, reference_y_m, reference_z_m,
+      reference_speed_mps, tangent_x, tangent_y, tangent_z;
+  bool valid;
+};
+
+bool finiteValue(float v) { return !isnan(v) && !isinf(v); }
+float hypot2(float a, float b) { return sqrt(a * a + b * b); }
+float remainder2pi(float v) { return v - roundEven(v / (2.0 * kPi)) * (2.0 * kPi); }
+
+void clampHorizontal(inout float x, inout float y, float limit) {
+  float magnitude = hypot2(x, y);
+  if (magnitude > limit && magnitude > 0.0) {
+    float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+  }
+}
+
+void clampTranslational(inout float x, inout float y, inout float z, float limit) {
+  float magnitude = hypot2(hypot2(x, y), z);
+  if (magnitude > limit && magnitude > 0.0) {
+    float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+    z *= scale;
+  }
+}
+
+// translationalSpeedLimitForVerticalShare3D on the dynamics' table.
+float translationalSpeedLimitAlong(float vx, float vy, float vz) {
+  float speed = hypot2(hypot2(vx, vy), vz);
+  if (!(speed > 0.0)) {
+    return p.maximum_translational_speed_mps;
+  }
+  float share = abs(vz) / speed;
+  const uint kLast = 32u;
+  float scaled = min(max(share, 0.0), 1.0) * float(kLast);
+  uint lower = uint(scaled);
+  if (lower > kLast) {
+    lower = kLast;
+  }
+  bool between = scaled > float(lower) && lower < kLast;
+  uint upper = between ? lower + 1u : lower;
+  return min(p.maximum_translational_speed_mps,
+             min(p.translational_limit_mps[lower], p.translational_limit_mps[upper]));
+}
+
+// limitMotionControlStep3D.
+Control limitControlStep(Control control, Control previous, float interval_s) {
+  clampHorizontal(control.ax, control.ay, p.maximum_horizontal_acceleration_mps2);
+  control.az = min(max(control.az, -p.maximum_vertical_acceleration_mps2),
+                   p.maximum_vertical_acceleration_mps2);
+  control.yaw_accel = min(max(control.yaw_accel, -p.maximum_yaw_acceleration_radps2),
+                          p.maximum_yaw_acceleration_radps2);
+  float maximum_delta = p.maximum_control_jerk_mps3 * interval_s;
+  float delta_x = control.ax - previous.ax;
+  float delta_y = control.ay - previous.ay;
+  float scale = 1.0;
+  if (abs(delta_x) > maximum_delta) {
+    scale = min(scale, maximum_delta / abs(delta_x));
+  }
+  if (abs(delta_y) > maximum_delta) {
+    scale = min(scale, maximum_delta / abs(delta_y));
+  }
+  control.ax = previous.ax + delta_x * scale;
+  control.ay = previous.ay + delta_y * scale;
+  control.az = min(max(control.az, previous.az - maximum_delta), previous.az + maximum_delta);
+  return control;
+}
+
+State integrate(State state, Control control) {
+  clampHorizontal(control.ax, control.ay, p.maximum_horizontal_acceleration_mps2);
+  control.az = clamp(control.az, -p.maximum_vertical_acceleration_mps2,
+                     p.maximum_vertical_acceleration_mps2);
+  control.yaw_accel = clamp(control.yaw_accel, -p.maximum_yaw_acceleration_radps2,
+                            p.maximum_yaw_acceleration_radps2);
+  float drag = max(0.0, 1.0 - p.linear_drag_1ps * p.dt_s);
+  float inherited_horizontal_speed_mps = hypot2(state.vx, state.vy);
+  float inherited_vertical_speed_mps = abs(state.vz);
+  float inherited_translational_speed_mps =
+      hypot2(inherited_horizontal_speed_mps, inherited_vertical_speed_mps);
+  float inherited_yaw_rate_radps = abs(state.yaw_rate);
+  state.vx = state.vx * drag + control.ax * p.dt_s;
+  state.vy = state.vy * drag + control.ay * p.dt_s;
+  state.vz = state.vz * drag + control.az * p.dt_s;
+  float horizontal_shed_mps = p.maximum_horizontal_acceleration_mps2 * p.dt_s;
+  float vertical_shed_mps = p.maximum_vertical_acceleration_mps2 * p.dt_s;
+  clampHorizontal(state.vx, state.vy,
+                  max(p.maximum_horizontal_speed_mps,
+                      inherited_horizontal_speed_mps - horizontal_shed_mps));
+  float vertical_speed_limit_mps =
+      max(p.maximum_vertical_speed_mps, inherited_vertical_speed_mps - vertical_shed_mps);
+  state.vz = clamp(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
+  clampTranslational(state.vx, state.vy, state.vz,
+                     max(translationalSpeedLimitAlong(state.vx, state.vy, state.vz),
+                         inherited_translational_speed_mps - horizontal_shed_mps));
+  float yaw_rate_limit_radps = max(p.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
+  state.yaw_rate = clamp(state.yaw_rate + control.yaw_accel * p.dt_s,
+                         -yaw_rate_limit_radps, yaw_rate_limit_radps);
+  state.x += state.vx * p.dt_s;
+  state.y += state.vy * p.dt_s;
+  state.z += state.vz * p.dt_s;
+  state.yaw = remainder2pi(state.yaw + state.yaw_rate * p.dt_s);
+  return state;
+}
+
+// verticalStoppingDistanceM3D with the envelope's deceleration and latency.
+float verticalStoppingDistanceM(float vertical_speed_mps, float vertical_acceleration_mps2) {
+  float speed_mps = vertical_speed_mps < 0.0 ? -vertical_speed_mps : vertical_speed_mps;
+  if (!(speed_mps > 0.0)) {
+    return 0.0;
+  }
+  float guaranteed_deceleration_mps2 =
+      p.guaranteed_vertical_deceleration_mps2 < p.maximum_vertical_acceleration_mps2
+          ? p.guaranteed_vertical_deceleration_mps2
+          : p.maximum_vertical_acceleration_mps2;
+  float maximum_jerk_mps3 = p.maximum_control_jerk_mps3;
+  float reaction_latency_s = p.reaction_latency_s;
+  if (!(guaranteed_deceleration_mps2 > 0.0) || !(maximum_jerk_mps3 > 0.0) ||
+      !(reaction_latency_s >= 0.0)) {
+    return kFloatMax;
+  }
+  float direction = vertical_speed_mps < 0.0 ? -1.0 : 1.0;
+  float aligned_acceleration_mps2 =
+      direction * vertical_acceleration_mps2 < -guaranteed_deceleration_mps2
+          ? -guaranteed_deceleration_mps2
+          : (direction * vertical_acceleration_mps2 > p.maximum_vertical_acceleration_mps2
+                 ? p.maximum_vertical_acceleration_mps2
+                 : direction * vertical_acceleration_mps2);
+  float latency_speed_mps = speed_mps + aligned_acceleration_mps2 * reaction_latency_s;
+  if (!(latency_speed_mps > 0.0)) {
+    return aligned_acceleration_mps2 < 0.0
+               ? speed_mps * speed_mps / (-2.0 * aligned_acceleration_mps2)
+               : 0.0;
+  }
+  float latency_distance_m = speed_mps * reaction_latency_s +
+                             0.5 * aligned_acceleration_mps2 * reaction_latency_s *
+                                 reaction_latency_s;
+  float ramp_time_s = (aligned_acceleration_mps2 + guaranteed_deceleration_mps2) / maximum_jerk_mps3;
+  float ramp_time_squared_s2 = ramp_time_s * ramp_time_s;
+  float speed_after_ramp_mps = latency_speed_mps + aligned_acceleration_mps2 * ramp_time_s -
+                               0.5 * maximum_jerk_mps3 * ramp_time_squared_s2;
+  if (!(speed_after_ramp_mps > 0.0)) {
+    float nonnegative_acceleration_mps2 =
+        aligned_acceleration_mps2 > 0.0 ? aligned_acceleration_mps2 : 0.0;
+    return latency_distance_m + latency_speed_mps * ramp_time_s +
+           0.5 * nonnegative_acceleration_mps2 * ramp_time_squared_s2;
+  }
+  float ramp_distance_m = latency_speed_mps * ramp_time_s +
+                          0.5 * aligned_acceleration_mps2 * ramp_time_squared_s2 -
+                          maximum_jerk_mps3 * ramp_time_squared_s2 * ramp_time_s / 6.0;
+  float constant_acceleration_distance_m =
+      speed_after_ramp_mps * speed_after_ramp_mps / (2.0 * guaranteed_deceleration_mps2);
+  return latency_distance_m + ramp_distance_m + constant_acceleration_distance_m;
+}
+
+bool altitudeEnvelopeDynamicallyRecoverable(State state, Control control) {
+  if (!finiteValue(state.z) || !finiteValue(state.vz) || !finiteValue(control.az) ||
+      state.z < p.minimum_z_m || state.z >= p.maximum_z_m) {
+    return false;
+  }
+  if (state.vz < 0.0) {
+    return verticalStoppingDistanceM(state.vz, control.az) <= state.z - p.minimum_z_m;
+  }
+  if (state.vz > 0.0) {
+    return verticalStoppingDistanceM(state.vz, control.az) < p.maximum_z_m - state.z;
+  }
+  return true;
+}
+
+vec3 normalizeAxis(vec3 axis) {
+  float len = sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+  return len > 1.0e-6 && finiteValue(len) ? vec3(axis.x / len, axis.y / len, axis.z / len)
+                                          : vec3(0.0, 0.0, 1.0);
+}
+
+vec3 bodyAxisFromControl(Control control) {
+  const float kGravityMps2 = 9.80665;
+  return normalizeAxis(vec3(control.ax, control.ay, control.az + kGravityMps2));
+}
+
+vec3 crossAxis(vec3 a, vec3 b) {
+  return vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+}
+
+float lookup(int x, int y, int z) {
+  return esdf.distances[(uint(z) * uint(p.grid_height) + uint(y)) * uint(p.grid_width) + uint(x)];
+}
+
+EsdfQuery queryEsdfPoint(float x, float y, float z) {
+  float cell_x_float = (x - p.grid_origin_x_m) / p.grid_resolution_m;
+  float cell_y_float = (y - p.grid_origin_y_m) / p.grid_resolution_m;
+  int cell_x = int(floor(cell_x_float));
+  int cell_y = int(floor(cell_y_float));
+  int depth = max(1, p.grid_depth);
+  int cell_z = depth > 1 ? int(floor((z - p.grid_origin_z_m) / p.grid_resolution_m)) : 0;
+  if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= p.grid_width ||
+      cell_y >= p.grid_height || cell_z >= depth) {
+    bool unknown = p.outside_is_unknown != 0u;
+    return EsdfQuery(unknown ? 0.0 : kInfinity, unknown, false);
+  }
+  float center_distance_m = lookup(cell_x, cell_y, cell_z);
+  if (center_distance_m == kUnknownEsdfDistanceM) {
+    return EsdfQuery(0.0, true, false);
+  }
+  if (center_distance_m == kInfinity) {
+    return EsdfQuery(center_distance_m, false, false);
+  }
+  if (!finiteValue(center_distance_m) || center_distance_m < 0.0) {
+    return EsdfQuery(0.0, true, false);
+  }
+  float center_x_m = p.grid_origin_x_m + (float(cell_x) + 0.5) * p.grid_resolution_m;
+  float center_y_m = p.grid_origin_y_m + (float(cell_y) + 0.5) * p.grid_resolution_m;
+  float center_z_m = p.grid_origin_z_m + (float(cell_z) + 0.5) * p.grid_resolution_m;
+  float dx = x - center_x_m;
+  float dy = y - center_y_m;
+  float dz = depth > 1 ? z - center_z_m : 0.0;
+  float half_diagonal_scale = depth > 1 ? 0.86602540378443864676 : 0.70710678118654752440;
+  float correction_m = sqrt(dx * dx + dy * dy + dz * dz) + half_diagonal_scale * p.grid_resolution_m;
+  return EsdfQuery(max(0.0, center_distance_m - correction_m), false, center_distance_m == 0.0);
+}
+
+EsdfQuery queryFootprint(State state, vec3 body_axis, float safe_clearance_m) {
+  EsdfQuery result = queryEsdfPoint(state.x, state.y, state.z);
+  if (result.unknown_space || !(p.footprint_radius_m > 0.0) || p.perimeter_samples == 0u) {
+    return result;
+  }
+  if (p.grid_depth <= 1) {
+    float minimum_x = state.x - p.footprint_radius_m;
+    float maximum_x = state.x + p.footprint_radius_m;
+    float minimum_y = state.y - p.footprint_radius_m;
+    float maximum_y = state.y + p.footprint_radius_m;
+    int minimum_cell_x = max(0, int(floor((minimum_x - p.grid_origin_x_m) / p.grid_resolution_m)));
+    int maximum_cell_x = min(p.grid_width - 1,
+                             int(ceil((maximum_x - p.grid_origin_x_m) / p.grid_resolution_m)) - 1);
+    int minimum_cell_y = max(0, int(floor((minimum_y - p.grid_origin_y_m) / p.grid_resolution_m)));
+    int maximum_cell_y = min(p.grid_height - 1,
+                             int(ceil((maximum_y - p.grid_origin_y_m) / p.grid_resolution_m)) - 1);
+    float radius_squared = p.footprint_radius_m * p.footprint_radius_m;
+    for (int cell_y = minimum_cell_y; cell_y <= maximum_cell_y; ++cell_y) {
+      for (int cell_x = minimum_cell_x; cell_x <= maximum_cell_x; ++cell_x) {
+        float center_distance_m = lookup(cell_x, cell_y, 0);
+        if (center_distance_m == kUnknownEsdfDistanceM) {
+          result.unknown_space = true;
+          return result;
+        }
+        if ((!finiteValue(center_distance_m) && center_distance_m != kInfinity) ||
+            center_distance_m < 0.0) {
+          result.unknown_space = true;
+          return result;
+        }
+        if (center_distance_m != 0.0) {
+          continue;
+        }
+        float cell_minimum_x = p.grid_origin_x_m + float(cell_x) * p.grid_resolution_m;
+        float cell_minimum_y = p.grid_origin_y_m + float(cell_y) * p.grid_resolution_m;
+        float nearest_x = clamp(state.x, cell_minimum_x, cell_minimum_x + p.grid_resolution_m);
+        float nearest_y = clamp(state.y, cell_minimum_y, cell_minimum_y + p.grid_resolution_m);
+        float dx = state.x - nearest_x;
+        float dy = state.y - nearest_y;
+        if (dx * dx + dy * dy <= radius_squared) {
+          result.clearance_m = 0.0;
+          result.inside_occupied = true;
+        }
+      }
+    }
+    result.clearance_m = max(0.0, result.clearance_m - p.footprint_radius_m);
+    return result;
+  }
+  vec3 axis = normalizeAxis(body_axis);
+  vec3 reference = abs(axis.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+  vec3 radial_x = normalizeAxis(crossAxis(axis, reference));
+  vec3 radial_y = normalizeAxis(crossAxis(axis, radial_x));
+  float bounding_radius_m =
+      hypot2(p.footprint_radius_m, max(p.footprint_lower_extent_m, p.footprint_upper_extent_m));
+  if (safe_clearance_m > 0.0 && result.clearance_m - bounding_radius_m >= safe_clearance_m) {
+    result.clearance_m -= bounding_radius_m;
+    return result;
+  }
+  uint axial_samples = p.axial_samples > 2u ? p.axial_samples : 2u;
+  uint radial_rings = p.radial_rings > 1u ? p.radial_rings : 1u;
+  for (uint ring = 0u; ring <= radial_rings; ++ring) {
+    uint angular_samples = ring == 0u ? 1u : p.perimeter_samples;
+    float radial_offset = p.footprint_radius_m * float(ring) / float(radial_rings);
+    for (uint angular = 0u; angular < angular_samples; ++angular) {
+      float angle = 2.0 * kPi * float(angular) / float(angular_samples);
+      float sin_angle = sin(angle);
+      float cos_angle = cos(angle);
+      float radial_x_offset = radial_offset * (cos_angle * radial_x.x + sin_angle * radial_y.x);
+      float radial_y_offset = radial_offset * (cos_angle * radial_x.y + sin_angle * radial_y.y);
+      float radial_z_offset = radial_offset * (cos_angle * radial_x.z + sin_angle * radial_y.z);
+      for (uint axial_sample = 0u; axial_sample < axial_samples; ++axial_sample) {
+        float axial_ratio = float(axial_sample) / float(axial_samples - 1u);
+        float axial_offset = -p.footprint_lower_extent_m +
+                             axial_ratio * (p.footprint_lower_extent_m + p.footprint_upper_extent_m);
+        EsdfQuery query = queryEsdfPoint(state.x + axial_offset * axis.x + radial_x_offset,
+                                         state.y + axial_offset * axis.y + radial_y_offset,
+                                         state.z + axial_offset * axis.z + radial_z_offset);
+        result.clearance_m = min(result.clearance_m, query.clearance_m);
+        result.unknown_space = result.unknown_space || query.unknown_space;
+        result.inside_occupied = result.inside_occupied || query.inside_occupied;
+        if (result.unknown_space) {
+          return result;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+float tubeClearanceDeficitM2(float clearance_m, float speed_mps, float response_time_s) {
+  if (!finiteValue(clearance_m) || !finiteValue(speed_mps) || !(response_time_s >= 0.0)) {
+    return 0.0;
+  }
+  float speed = speed_mps > 0.0 ? speed_mps : 0.0;
+  float clearance = clearance_m > 0.0 ? clearance_m : 0.0;
+  float shortfall_m = speed * response_time_s - clearance;
+  return shortfall_m > 0.0 ? shortfall_m * shortfall_m : 0.0;
+}
+
+float stoppingDistanceDeficitM2(float available_distance_m, float speed_mps) {
+  float response_time_s = p.stopping_response_time_s;
+  float deceleration_mps2 = p.stopping_deceleration_mps2;
+  if (!finiteValue(available_distance_m) || !finiteValue(speed_mps) ||
+      !(response_time_s >= 0.0) || !(deceleration_mps2 > 0.0)) {
+    return 0.0;
+  }
+  float available_m = available_distance_m > 0.0 ? available_distance_m : 0.0;
+  float speed = speed_mps > 0.0 ? speed_mps : 0.0;
+  float required_m = !(deceleration_mps2 > 0.0)
+                         ? speed * response_time_s
+                         : speed * response_time_s + speed * speed / (2.0 * deceleration_mps2);
+  float shortfall_m = required_m - available_m;
+  return shortfall_m > 0.0 ? shortfall_m * shortfall_m : 0.0;
+}
+
+float clearancePreferenceDepth(float clearance_m, float preferred_distance_m) {
+  if (!finiteValue(clearance_m) || !(preferred_distance_m > 0.0) ||
+      clearance_m >= preferred_distance_m) {
+    return 0.0;
+  }
+  float clearance = clearance_m > 0.0 ? clearance_m : 0.0;
+  return (preferred_distance_m - clearance) / preferred_distance_m;
+}
+
+uint durationSteps(float duration_s, float dt_s) {
+  if (!(duration_s > 0.0) || !(dt_s > 0.0)) {
+    return 0u;
+  }
+  uint steps = uint(duration_s / dt_s);
+  if (float(steps) * dt_s + 1.0e-6 < duration_s) {
+    ++steps;
+  }
+  return steps;
+}
+
+// horizonCostSample: represented steps (0 when not evaluated).
+uint horizonCostSample(uint step, uint total_steps) {
+  if (step >= total_steps || p.far_cost_stride == 0u) {
+    return 0u;
+  }
+  uint full_rate_steps = durationSteps(p.full_rate_duration_s, p.dt_s);
+  uint head_steps = durationSteps(p.head_progress_horizon_s, p.dt_s);
+  if (full_rate_steps < head_steps) {
+    full_rate_steps = head_steps;
+  }
+  if (full_rate_steps > total_steps) {
+    full_rate_steps = total_steps;
+  }
+  if (step < full_rate_steps || p.far_cost_stride == 1u) {
+    return 1u;
+  }
+  uint far_step_count = step - full_rate_steps + 1u;
+  uint remainder = far_step_count % p.far_cost_stride;
+  if (remainder == 0u) {
+    return p.far_cost_stride;
+  }
+  if (step + 1u == total_steps) {
+    return remainder;
+  }
+  return 0u;
+}
+
+RouteProjection projectOntoRoute(State state, float minimum_station_m) {
+  RouteProjection result = RouteProjection(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false);
+  float best_squared_distance = kFloatMax;
+  for (uint index = 0u; index + 1u < p.route_point_count; ++index) {
+    uint a = index * 9u;
+    uint b = (index + 1u) * 9u;
+    float second_station_m = route.values[b + 6u];
+    if (second_station_m + 1.0e-5 < minimum_station_m) {
+      continue;
+    }
+    float first_x = route.values[a];
+    float first_y = route.values[a + 1u];
+    float first_z = route.values[a + 2u];
+    float first_station_m = route.values[a + 6u];
+    float dx = route.values[b] - first_x;
+    float dy = route.values[b + 1u] - first_y;
+    float dz = route.values[b + 2u] - first_z;
+    float squared_length = dx * dx + dy * dy + dz * dz;
+    float station_length_m = second_station_m - first_station_m;
+    if (!(squared_length > 1.0e-8) || !(station_length_m > 1.0e-5)) {
+      continue;
+    }
+    float unclamped_minimum_ratio = (minimum_station_m - first_station_m) / station_length_m;
+    float minimum_ratio = min(1.0, max(0.0, unclamped_minimum_ratio));
+    float projected_ratio =
+        ((state.x - first_x) * dx + (state.y - first_y) * dy + (state.z - first_z) * dz) / squared_length;
+    float ratio = min(1.0, max(minimum_ratio, projected_ratio));
+    float reference_x_m = first_x + ratio * dx;
+    float reference_y_m = first_y + ratio * dy;
+    float reference_z_m = first_z + ratio * dz;
+    float offset_x = state.x - reference_x_m;
+    float offset_y = state.y - reference_y_m;
+    float offset_z = state.z - reference_z_m;
+    float squared_distance = offset_x * offset_x + offset_y * offset_y + offset_z * offset_z;
+    if (squared_distance < best_squared_distance) {
+      best_squared_distance = squared_distance;
+      result.station_m = first_station_m + ratio * station_length_m;
+      result.distance_m = sqrt(squared_distance);
+      result.reference_x_m = reference_x_m;
+      result.reference_y_m = reference_y_m;
+      result.reference_z_m = reference_z_m;
+      float first_speed = route.values[a + 7u];
+      result.reference_speed_mps = first_speed + ratio * (route.values[b + 7u] - first_speed);
+      float inverse_length = 1.0 / sqrt(squared_length);
+      result.tangent_x = dx * inverse_length;
+      result.tangent_y = dy * inverse_length;
+      result.tangent_z = dz * inverse_length;
+      result.valid = true;
+    }
+  }
+  return result;
+}
+
+float creditedRouteProgressM(float projected_station_m, float initial_station_m,
+                             float traveled_distance_m) {
+  float projected_progress_m = max(0.0, projected_station_m - initial_station_m);
+  return min(projected_progress_m, max(0.0, traveled_distance_m));
+}
+
+void main() {
+  uint rollout = gl_GlobalInvocationID.x;
+  if (rollout >= p.rollouts) {
+    return;
+  }
+  uint steps = p.steps;
+  State state = State(p.initial[0], p.initial[1], p.initial[2], p.initial[3], p.initial[4],
+                      p.initial[5], p.initial[6], p.initial[7]);
+  State initial = state;
+  State target = State(p.target[0], p.target[1], p.target[2], p.target[3], p.target[4],
+                       p.target[5], p.target[6], p.target[7]);
+  Control previous_applied = Control(p.previous_applied[0], p.previous_applied[1],
+                                     p.previous_applied[2], p.previous_applied[3]);
+  Control previous = previous_applied;
+  float guide_cost = 0.0;
+  float acceleration_cost = 0.0;
+  float jerk_cost = 0.0;
+  float yaw_cost = 0.0;
+  float altitude_cost = 0.0;
+  float speed_tracking_cost = 0.0;
+  float overspeed_cost = 0.0;
+  float dynamic_aircraft_survival_cost = 0.0;
+  float maneuver_preference_cost = 0.0;
+  float critical_m = 0.0;
+  float planning_m = 0.0;
+  float obstacle_approach_m2_s = 0.0;
+  float stopping_deficit_m2_s = 0.0;
+  float clearance_preference_s = 0.0;
+  float minimum_clearance_m = kInfinity;
+  float contact_distance_m = kInfinity;
+  float head_speed_mps = 0.0;
+  bool collision_hit = false;
+  float trace_station_m[kMaximumHorizonSteps + 1u];
+  float trace_speed_mps[kMaximumHorizonSteps + 1u];
+  trace_station_m[0] = 0.0;
+  trace_speed_mps[0] = hypot2(hypot2(initial.vx, initial.vy), initial.vz);
+  bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(initial, previous_applied);
+  uint tier = 0u;
+  float initial_distance =
+      hypot2(hypot2(target.x - initial.x, target.y - initial.y), target.z - initial.z);
+  float head_progress = 0.0;
+  float terminal_route_progress = 0.0;
+  float route_progress_integral_m_s = 0.0;
+  float traveled_distance_m = 0.0;
+  float rollout_route_station_m = p.initial_route_station_m;
+  uint requested_head_steps = uint(ceil(p.head_progress_horizon_s / p.dt_s));
+  uint head_steps = requested_head_steps == 0u
+                        ? 1u
+                        : (requested_head_steps > steps ? steps : requested_head_steps);
+  uint noise_plane = p.rollouts * steps;
+  bool route_active = p.route_point_count >= 2u;
+  for (uint step = 0u; step < steps; ++step) {
+    uint index = rollout * steps + step;
+    Control control;
+    if (p.direct != 0u) {
+      control = Control(direct.values[index * 4u], direct.values[index * 4u + 1u],
+                        direct.values[index * 4u + 2u], direct.values[index * 4u + 3u]);
+    } else {
+      control = Control(nominal.values[step * 4u] + noise.values[index],
+                        nominal.values[step * 4u + 1u] + noise.values[noise_plane + index],
+                        nominal.values[step * 4u + 2u] + noise.values[2u * noise_plane + index],
+                        nominal.values[step * 4u + 3u] + noise.values[3u * noise_plane + index]);
+    }
+    control = limitControlStep(control, previous,
+                               step == 0u ? p.first_control_interval_s : p.dt_s);
+    State previous_state = state;
+    state = integrate(state, control);
+    altitude_envelope_hit =
+        altitude_envelope_hit || !altitudeEnvelopeDynamicallyRecoverable(state, control);
+    float segment_length_m = hypot2(hypot2(state.x - previous_state.x, state.y - previous_state.y),
+                                    state.z - previous_state.z);
+    traveled_distance_m += segment_length_m;
+    float validation_step_m = max(0.05, 0.5 * p.grid_resolution_m);
+    int validation_samples = max(1, int(ceil(segment_length_m / validation_step_m)));
+    float clearance = kInfinity;
+    bool step_contact = false;
+    vec3 body_axis = bodyAxisFromControl(control);
+    for (int sweep = 1; sweep <= validation_samples; ++sweep) {
+      float ratio = float(sweep) / float(validation_samples);
+      State swept_state = state;
+      swept_state.x = previous_state.x + ratio * (state.x - previous_state.x);
+      swept_state.y = previous_state.y + ratio * (state.y - previous_state.y);
+      swept_state.z = previous_state.z + ratio * (state.z - previous_state.z);
+      EsdfQuery esdf_query = queryFootprint(
+          swept_state, body_axis,
+          p.clearance_broad_phase_enabled != 0u ? p.preferred_distance_m : 0.0);
+      if (!esdf_query.unknown_space) {
+        clearance = min(clearance, esdf_query.clearance_m);
+        step_contact = step_contact || esdf_query.inside_occupied || !(esdf_query.clearance_m > 0.0);
+      }
+    }
+    minimum_clearance_m = min(minimum_clearance_m, clearance);
+    float segment_speed_mps = hypot2(hypot2(state.vx, state.vy), state.vz);
+    float segment_m = p.dt_s * segment_speed_mps;
+    if (clearance < p.critical_distance_m) {
+      tier = max(tier, 2u);
+      critical_m += segment_m;
+    } else if (clearance < p.preferred_distance_m) {
+      tier = max(tier, 1u);
+      planning_m += segment_m;
+    }
+    {
+      float depth = clearancePreferenceDepth(clearance, p.preferred_distance_m);
+      clearance_preference_s += p.dt_s * depth * depth;
+    }
+    obstacle_approach_m2_s +=
+        p.dt_s * tubeClearanceDeficitM2(clearance, segment_speed_mps, p.tube_response_time_s);
+    if (!collision_hit) {
+      trace_station_m[step + 1u] = traveled_distance_m;
+      trace_speed_mps[step + 1u] = segment_speed_mps;
+      if (step_contact) {
+        collision_hit = true;
+        contact_distance_m = traveled_distance_m;
+        for (uint prior = 0u; prior <= step; ++prior) {
+          stopping_deficit_m2_s +=
+              p.dt_s * stoppingDistanceDeficitM2(traveled_distance_m - trace_station_m[prior],
+                                                 trace_speed_mps[prior]);
+        }
+      }
+    }
+    if (step_contact) {
+      stopping_deficit_m2_s += p.dt_s * stoppingDistanceDeficitM2(0.0, segment_speed_mps);
+    }
+    for (uint aircraft_index = 0u; aircraft_index < p.dynamic_aircraft_count; ++aircraft_index) {
+      uint radii_at = 16u * steps * 3u;
+      uint active_at = radii_at + 16u;
+      if (float(step) >= aircraft.values[active_at + aircraft_index]) {
+        continue;
+      }
+      uint sample_at = (aircraft_index * steps + step) * 3u;
+      float ax_ = aircraft.values[sample_at];
+      float ay_ = aircraft.values[sample_at + 1u];
+      float az_ = aircraft.values[sample_at + 2u];
+      float peer_separation_m = hypot2(hypot2(ax_ - state.x, ay_ - state.y), az_ - state.z);
+      float strong_separation_m =
+          max(p.strong_separation_m, p.footprint_radius_m + aircraft.values[radii_at + aircraft_index]);
+      float anticipation_separation_m = max(p.anticipation_separation_m, strong_separation_m);
+      float elapsed_s = float(step + 1u) * p.dt_s;
+      float bounded_elapsed_s = max(0.05, elapsed_s);
+      float multiplier = min(p.maximum_time_to_collision_multiplier,
+                             1.0 + p.time_to_collision_gain_s / bounded_elapsed_s);
+      float strong_shortfall_m = max(0.0, strong_separation_m - peer_separation_m);
+      float anticipation_shortfall_m =
+          max(0.0, anticipation_separation_m - max(peer_separation_m, strong_separation_m));
+      dynamic_aircraft_survival_cost +=
+          multiplier * p.strong_weight * strong_shortfall_m * strong_shortfall_m +
+          multiplier * p.anticipation_weight * anticipation_shortfall_m * anticipation_shortfall_m;
+    }
+    if (p.cooperative_preference_enabled != 0u && step < p.cooperative_preference_steps) {
+      float preference_ax = control.ax - p.cooperative_preferred[0];
+      float preference_ay = control.ay - p.cooperative_preferred[1];
+      float preference_az = control.az - p.cooperative_preferred[2];
+      maneuver_preference_cost += preference_ax * preference_ax + preference_ay * preference_ay +
+                                  preference_az * preference_az;
+    }
+    uint represented_steps = route_active ? horizonCostSample(step, steps) : 1u;
+    bool evaluate = represented_steps != 0u;
+    RouteProjection route_projection =
+        RouteProjection(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false);
+    if (evaluate && route_active) {
+      route_projection = projectOntoRoute(state, rollout_route_station_m);
+    }
+    if (evaluate) {
+      float sample_weight = float(represented_steps);
+      if (route_projection.valid) {
+        rollout_route_station_m = route_projection.station_m;
+        guide_cost += sample_weight * route_projection.distance_m * route_projection.distance_m;
+        terminal_route_progress = creditedRouteProgressM(
+            route_projection.station_m, p.initial_route_station_m, traveled_distance_m);
+        route_progress_integral_m_s += sample_weight * p.dt_s * terminal_route_progress;
+      } else {
+        float guide_x = target.x - initial.x;
+        float guide_y = target.y - initial.y;
+        float guide_z = target.z - initial.z;
+        float offset_x = state.x - initial.x;
+        float offset_y = state.y - initial.y;
+        float offset_z = state.z - initial.z;
+        float cross_x = offset_y * guide_z - offset_z * guide_y;
+        float cross_y = offset_z * guide_x - offset_x * guide_z;
+        float cross_z = offset_x * guide_y - offset_y * guide_x;
+        float guide_length = max(1.0, hypot2(hypot2(guide_x, guide_y), guide_z));
+        float cross_track = hypot2(hypot2(cross_x, cross_y), cross_z) / guide_length;
+        guide_cost += sample_weight * cross_track * cross_track;
+      }
+      float z_reference = route_projection.valid ? route_projection.reference_z_m : target.z;
+      float altitude_error = state.z - z_reference;
+      altitude_cost += sample_weight * altitude_error * altitude_error;
+      float active_reference_speed_mps =
+          route_projection.valid && route_projection.reference_speed_mps > 0.0
+              ? min(p.reference_speed_mps, route_projection.reference_speed_mps)
+              : p.reference_speed_mps;
+      if (active_reference_speed_mps >= 0.0) {
+        float speed_mps;
+        if (route_projection.valid) {
+          speed_mps = max(0.0, state.vx * route_projection.tangent_x +
+                                   state.vy * route_projection.tangent_y +
+                                   state.vz * route_projection.tangent_z);
+        } else {
+          speed_mps = hypot2(hypot2(state.vx, state.vy), state.vz);
+        }
+        float speed_error = speed_mps - active_reference_speed_mps;
+        speed_tracking_cost += sample_weight * speed_error * speed_error;
+        float reference_excess_mps = max(0.0, speed_error);
+        overspeed_cost += sample_weight * reference_excess_mps * reference_excess_mps;
+      }
+      {
+        float horizontal_speed_mps = hypot2(state.vx, state.vy);
+        float translational_speed_mps = hypot2(horizontal_speed_mps, state.vz);
+        float excess_mps = max(
+            0.0, max(horizontal_speed_mps - p.maximum_horizontal_speed_mps,
+                     translational_speed_mps -
+                         translationalSpeedLimitAlong(state.vx, state.vy, state.vz)));
+        overspeed_cost += sample_weight * excess_mps * excess_mps;
+      }
+    }
+    if (step + 1u == head_steps) {
+      head_speed_mps = segment_speed_mps;
+      head_progress = route_projection.valid
+                          ? terminal_route_progress
+                          : initial_distance - hypot2(hypot2(target.x - state.x, target.y - state.y),
+                                                      target.z - state.z);
+    }
+    acceleration_cost += control.ax * control.ax + control.ay * control.ay + control.az * control.az;
+    jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
+                 (control.ay - previous.ay) * (control.ay - previous.ay) +
+                 (control.az - previous.az) * (control.az - previous.az);
+    yaw_cost += control.yaw_accel * control.yaw_accel;
+    previous = control;
+    if (altitude_envelope_hit && p.early_exit != 0u) {
+      break;
+    }
+  }
+  float terminal_distance =
+      hypot2(hypot2(target.x - state.x, target.y - state.y), target.z - state.z);
+  float progress = route_active ? terminal_route_progress : initial_distance - terminal_distance;
+  float t_head_progress = p.head_progress_weight * -head_progress;
+  float t_progress = p.progress_weight * -progress;
+  float t_route_progress_integral = p.route_progress_integral_weight * -route_progress_integral_m_s;
+  float t_speed_tracking = p.speed_tracking_weight * p.dt_s * speed_tracking_cost;
+  float t_overspeed = p.overspeed_weight * p.dt_s * overspeed_cost;
+  float t_guide_deviation = p.guide_deviation_weight * p.dt_s * guide_cost;
+  float t_altitude_tracking = p.altitude_tracking_weight * p.dt_s * altitude_cost;
+  float t_acceleration = p.acceleration_weight * p.dt_s * acceleration_cost;
+  float t_jerk = p.jerk_weight * jerk_cost;
+  float t_yaw_change = p.yaw_change_weight * yaw_cost;
+  float t_dynamic_aircraft = p.dt_s * dynamic_aircraft_survival_cost;
+  float t_maneuver_preference =
+      p.cooperative_maneuver_preference_weight * p.dt_s * maneuver_preference_cost;
+  float t_clearance_preference = p.clearance_preference_weight * clearance_preference_s;
+  float t_obstacle_approach = p.obstacle_approach_weight * obstacle_approach_m2_s;
+  float t_stopping_deficit = p.obstacle_approach_weight * stopping_deficit_m2_s;
+  float t_terminal = p.terminal_weight * terminal_distance;
+  float soft_cost = t_head_progress + t_progress + t_route_progress_integral + t_speed_tracking +
+                    t_overspeed + t_guide_deviation + t_altitude_tracking + t_acceleration +
+                    t_jerk + t_yaw_change + t_dynamic_aircraft + t_maneuver_preference +
+                    t_clearance_preference + t_obstacle_approach + t_stopping_deficit + t_terminal;
+  uint n = p.rollouts;
+  out_float.values[rollout] = soft_cost;
+  out_float.values[n + rollout] = critical_m;
+  out_float.values[2u * n + rollout] = planning_m;
+  out_float.values[3u * n + rollout] = minimum_clearance_m;
+  out_uint.values[rollout] = altitude_envelope_hit ? 1u : 0u;
+  out_uint.values[n + rollout] = collision_hit ? 1u : 0u;
+  out_uint.values[2u * n + rollout] = tier;
+  if (p.write_terms != 0u) {
+    uint t = rollout * 22u;
+    terms.values[t] = t_head_progress;
+    terms.values[t + 1u] = t_progress;
+    terms.values[t + 2u] = t_route_progress_integral;
+    terms.values[t + 3u] = t_speed_tracking;
+    terms.values[t + 4u] = t_overspeed;
+    terms.values[t + 5u] = t_guide_deviation;
+    terms.values[t + 6u] = t_altitude_tracking;
+    terms.values[t + 7u] = t_acceleration;
+    terms.values[t + 8u] = t_jerk;
+    terms.values[t + 9u] = t_yaw_change;
+    terms.values[t + 10u] = t_dynamic_aircraft;
+    terms.values[t + 11u] = t_maneuver_preference;
+    terms.values[t + 12u] = t_clearance_preference;
+    terms.values[t + 13u] = t_obstacle_approach;
+    terms.values[t + 14u] = t_stopping_deficit;
+    terms.values[t + 15u] = t_terminal;
+    terms.values[t + 16u] = soft_cost;
+    terms.values[t + 17u] = minimum_clearance_m;
+    terms.values[t + 18u] = contact_distance_m;
+    terms.values[t + 19u] = head_speed_mps;
+    terms.values[t + 20u] = collision_hit ? 1.0 : 0.0;
+    terms.values[t + 21u] = altitude_envelope_hit ? 1.0 : 0.0;
+  }
+}

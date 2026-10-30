@@ -30,6 +30,7 @@
 
 #include "mppi_device_route_window.hpp"
 #include "mppi_engine_host_evaluation.hpp"
+#include "mppi_population_device.hpp"
 #include "mppi_rollout_body.hpp"
 
 namespace drone_city_nav::mppi {
@@ -68,22 +69,125 @@ double elapsedMs(const std::chrono::steady_clock::time_point from,
   return std::chrono::duration<double, std::milli>(to - from).count();
 }
 
+// The population's work in plain loops over the shared body.
+class HostPopulationDevice final : public detail::MppiPopulationDevice {
+public:
+  HostPopulationDevice(const std::size_t rollouts, const std::size_t steps)
+      : steps_{steps},
+        noise_ax_(rollouts * steps),
+        noise_ay_(rollouts * steps),
+        noise_az_(rollouts * steps),
+        noise_yaw_(rollouts * steps) {
+  }
+
+  void uploadEsdf(const EsdfGrid& grid,
+                  const std::span<const float> distances) override {
+    lookup_ = ArrayLookup{distances.data(), grid.width, grid.height};
+  }
+
+  void generateNoise(const std::size_t count, const std::size_t steps,
+                     const std::uint64_t seed, const std::uint64_t tick,
+                     const NoiseConfig& config,
+                     const std::span<const Control> candidate_row) override {
+    if (count > noise_ax_.size() || steps != steps_) {
+      throw std::invalid_argument{"host noise: count exceeds the capacity"};
+    }
+    for (std::size_t index = 0U; index < count; ++index) {
+      const rollout::NoiseSample sample =
+          rollout::noiseSample(index, seed, tick, config);
+      noise_ax_[index] = sample.ax;
+      noise_ay_[index] = sample.ay;
+      noise_az_[index] = sample.az;
+      noise_yaw_[index] = sample.yaw;
+    }
+    for (std::size_t step = 0U; step < candidate_row.size(); ++step) {
+      noise_ax_[step] = candidate_row[step].ax;
+      noise_ay_[step] = candidate_row[step].ay;
+      noise_az_[step] = candidate_row[step].az;
+      noise_yaw_[step] = candidate_row[step].yaw_accel;
+    }
+  }
+
+  void simulate(const std::size_t rollouts, const rollout::RolloutInputs& inputs,
+                const std::span<const Control> direct_controls,
+                const detail::PopulationOutputs& outputs) override {
+    rollout::RolloutInputs in = inputs;
+    in.noise_ax = noise_ax_.data();
+    in.noise_ay = noise_ay_.data();
+    in.noise_az = noise_az_.data();
+    in.noise_yaw = noise_yaw_.data();
+    in.direct_controls = direct_controls.empty() ? nullptr : direct_controls.data();
+    const rollout::RolloutOutputs out{outputs.soft_cost,
+                                      outputs.critical_exposure,
+                                      outputs.planning_exposure,
+                                      outputs.minimum_clearance,
+                                      outputs.altitude_envelope_violation,
+                                      outputs.collision_violation,
+                                      outputs.worst_tier,
+                                      outputs.cost_terms};
+    for (std::size_t index = 0U; index < rollouts; ++index) {
+      rollout::simulateRollout(index, in, out, lookup_);
+    }
+  }
+
+  void weightedUpdate(const std::span<const float> weights,
+                      const std::span<const Control> nominal, const float denominator,
+                      const std::span<Control> updated) override {
+    for (std::size_t step = 0U; step < steps_; ++step) {
+      Control sum{};
+      for (std::size_t index = 0U; index < weights.size(); ++index) {
+        const float weight = weights[index];
+        const std::size_t at = index * steps_ + step;
+        sum.ax += weight * noise_ax_[at];
+        sum.ay += weight * noise_ay_[at];
+        sum.az += weight * noise_az_[at];
+        sum.yaw_accel += weight * noise_yaw_[at];
+      }
+      updated[step] = Control{nominal[step].ax + sum.ax / denominator,
+                              nominal[step].ay + sum.ay / denominator,
+                              nominal[step].az + sum.az / denominator,
+                              nominal[step].yaw_accel + sum.yaw_accel / denominator};
+    }
+  }
+
+  void rolloutControls(const std::size_t rollout,
+                       const std::span<const Control> nominal,
+                       const std::span<Control> controls) override {
+    for (std::size_t step = 0U; step < steps_; ++step) {
+      const std::size_t at = rollout * steps_ + step;
+      controls[step] = Control{
+          nominal[step].ax + noise_ax_[at], nominal[step].ay + noise_ay_[at],
+          nominal[step].az + noise_az_[at], nominal[step].yaw_accel + noise_yaw_[at]};
+    }
+  }
+
+  [[nodiscard]] std::size_t allocatedBytes() const noexcept override {
+    return noise_ax_.size() * 4U * sizeof(float);
+  }
+
+private:
+  std::size_t steps_;
+  std::vector<float> noise_ax_;
+  std::vector<float> noise_ay_;
+  std::vector<float> noise_az_;
+  std::vector<float> noise_yaw_;
+  ArrayLookup lookup_{nullptr, 0, 0};
+};
+
 } // namespace
 
 class MppiCpuEngine::Impl {
 public:
-  explicit Impl(BenchmarkConfig config)
+  Impl(BenchmarkConfig config, std::shared_ptr<detail::MppiPopulationDevice> device)
       : config_{std::move(config)},
+        device_{std::move(device)},
         nominal_(config_.steps),
         updated_(config_.steps),
         best_feasible_(config_.steps),
         repair_candidates_(kMaximumRepairCandidateCount * config_.steps),
         reacquisition_candidate_(config_.steps),
         zero_noise_(config_.steps),
-        noise_ax_(config_.rollouts * config_.steps),
-        noise_ay_(config_.rollouts * config_.steps),
-        noise_az_(config_.rollouts * config_.steps),
-        noise_yaw_(config_.rollouts * config_.steps),
+        candidate_noise_(config_.steps),
         soft_cost_(config_.rollouts),
         critical_exposure_(config_.rollouts),
         planning_exposure_(config_.rollouts),
@@ -114,6 +218,7 @@ public:
     }
     esdf_.assign(snapshot.distances_m.begin(), snapshot.distances_m.end());
     grid_ = snapshot.grid;
+    device_->uploadEsdf(grid_, esdf_);
     esdf_revision_ = snapshot.revision;
     esdf_ready_ = true;
     return EsdfUploadResult{true, elapsedMs(started, std::chrono::steady_clock::now()),
@@ -238,35 +343,31 @@ public:
     const auto noise_started = std::chrono::steady_clock::now();
     const std::size_t noise_count = active_rollouts * steps;
     const std::uint64_t tick = tick_sequence_++;
-    for (std::size_t index = 0U; index < noise_count; ++index) {
-      const rollout::NoiseSample sample =
-          rollout::noiseSample(index, config_.seed, tick, config_.noise);
-      noise_ax_[index] = sample.ax;
-      noise_ay_[index] = sample.ay;
-      noise_az_[index] = sample.az;
-      noise_yaw_[index] = sample.yaw;
-    }
+    std::span<const Control> candidate_row;
     if (deterministic_candidate_enabled) {
       for (std::size_t step = 0U; step < steps; ++step) {
-        noise_ax_[step] = reacquisition_candidate_[step].ax - nominal_[step].ax;
-        noise_ay_[step] = reacquisition_candidate_[step].ay - nominal_[step].ay;
-        noise_az_[step] = reacquisition_candidate_[step].az - nominal_[step].az;
-        noise_yaw_[step] =
-            reacquisition_candidate_[step].yaw_accel - nominal_[step].yaw_accel;
+        candidate_noise_[step] = Control{
+            reacquisition_candidate_[step].ax - nominal_[step].ax,
+            reacquisition_candidate_[step].ay - nominal_[step].ay,
+            reacquisition_candidate_[step].az - nominal_[step].az,
+            reacquisition_candidate_[step].yaw_accel - nominal_[step].yaw_accel};
       }
+      candidate_row = candidate_noise_;
     }
+    device_->generateNoise(noise_count, steps, config_.seed, tick, config_.noise,
+                           candidate_row);
     const auto noise_done = std::chrono::steady_clock::now();
     // One shape for every simulation this tick runs (the population, the
-    // repair candidates, the reported sequences), as the CUDA engine's launch.
-    const ArrayLookup lookup{esdf_.data(), grid_.width, grid_.height};
+    // repair candidates, the reported sequences), as the CUDA engine's launch;
+    // the noise is the device's own.
     const auto simulate = [&](const std::size_t rollouts,
-                              const Control* const direct_controls,
+                              const std::span<const Control> direct_controls,
                               RolloutCostTerms* const cost_terms) {
       const rollout::RolloutInputs inputs{
-          noise_ax_.data(),
-          noise_ay_.data(),
-          noise_az_.data(),
-          noise_yaw_.data(),
+          nullptr,
+          nullptr,
+          nullptr,
+          nullptr,
           nominal_.data(),
           steps,
           input.initial_state,
@@ -294,20 +395,18 @@ public:
           first_control_interval_s,
           input.reference_speed_mps,
           config_.early_exit_on_altitude_envelope_violation,
-          direct_controls};
-      const rollout::RolloutOutputs outputs{soft_cost_.data(),
-                                            critical_exposure_.data(),
-                                            planning_exposure_.data(),
-                                            minimum_clearance_.data(),
-                                            altitude_envelope_violation_.data(),
-                                            collision_violation_.data(),
-                                            worst_tier_.data(),
-                                            cost_terms};
-      for (std::size_t index = 0U; index < rollouts; ++index) {
-        rollout::simulateRollout(index, inputs, outputs, lookup);
-      }
+          nullptr};
+      const detail::PopulationOutputs outputs{soft_cost_.data(),
+                                              critical_exposure_.data(),
+                                              planning_exposure_.data(),
+                                              minimum_clearance_.data(),
+                                              altitude_envelope_violation_.data(),
+                                              collision_violation_.data(),
+                                              worst_tier_.data(),
+                                              cost_terms};
+      device_->simulate(rollouts, inputs, direct_controls, outputs);
     };
-    simulate(active_rollouts, nullptr, nullptr);
+    simulate(active_rollouts, {}, nullptr);
     const auto simulation_done = std::chrono::steady_clock::now();
 
     // The weighting, as the device's reductions: the feasible minimum, the
@@ -364,34 +463,16 @@ public:
     const auto weights_done = std::chrono::steady_clock::now();
     // The weighted update, limited; the best feasible rollout's controls.
     const float denominator = std::max(feasible_weight_sum, 1.0e-12F);
-    for (std::size_t step = 0U; step < steps; ++step) {
-      Control sum{};
-      for (std::size_t index = 0U; index < active_rollouts; ++index) {
-        const float weight = weights_[index];
-        const std::size_t at = index * steps + step;
-        sum.ax += weight * noise_ax_[at];
-        sum.ay += weight * noise_ay_[at];
-        sum.az += weight * noise_az_[at];
-        sum.yaw_accel += weight * noise_yaw_[at];
-      }
-      updated_[step] = Control{nominal_[step].ax + sum.ax / denominator,
-                               nominal_[step].ay + sum.ay / denominator,
-                               nominal_[step].az + sum.az / denominator,
-                               nominal_[step].yaw_accel + sum.yaw_accel / denominator};
-    }
+    device_->weightedUpdate(std::span<const float>{weights_.data(), active_rollouts},
+                            nominal_, denominator, updated_);
     rollout::limitControlSequence(updated_.data(), steps, config_.dynamics,
                                   previous_applied_control, first_control_interval_s);
-    for (std::size_t step = 0U; step < steps; ++step) {
-      if (best_rollout_index < 0 ||
-          static_cast<std::size_t>(best_rollout_index) >= active_rollouts) {
-        best_feasible_[step] = nominal_[step];
-        continue;
-      }
-      const std::size_t at =
-          static_cast<std::size_t>(best_rollout_index) * steps + step;
-      best_feasible_[step] = Control{
-          nominal_[step].ax + noise_ax_[at], nominal_[step].ay + noise_ay_[at],
-          nominal_[step].az + noise_az_[at], nominal_[step].yaw_accel + noise_yaw_[at]};
+    if (best_rollout_index < 0 ||
+        static_cast<std::size_t>(best_rollout_index) >= active_rollouts) {
+      std::ranges::copy(nominal_, best_feasible_.begin());
+    } else {
+      device_->rolloutControls(static_cast<std::size_t>(best_rollout_index), nominal_,
+                               best_feasible_);
     }
     rollout::limitControlSequence(best_feasible_.data(), steps, config_.dynamics,
                                   previous_applied_control, first_control_interval_s);
@@ -506,7 +587,10 @@ public:
           },
           steps, repair_candidates_);
       const auto repair_started = std::chrono::steady_clock::now();
-      simulate(candidate_count, repair_candidates_.data(), nullptr);
+      simulate(
+          candidate_count,
+          std::span<const Control>{repair_candidates_.data(), candidate_count * steps},
+          nullptr);
       repair_validation_ms =
           elapsedMs(repair_started, std::chrono::steady_clock::now());
       bool repaired{false};
@@ -561,7 +645,10 @@ public:
                           reported_controls_.begin() +
                               static_cast<std::ptrdiff_t>(steps));
       }
-      simulate(reported_count, reported_controls_.data(), reported_terms_.data());
+      simulate(
+          reported_count,
+          std::span<const Control>{reported_controls_.data(), reported_count * steps},
+          reported_terms_.data());
       result.selected_cost_terms = reported_terms_[0];
       result.route_directed_candidate_cost_terms_available = route_directed_candidate;
       if (route_directed_candidate) {
@@ -602,8 +689,8 @@ public:
   }
 
   [[nodiscard]] std::size_t allocatedBytes() const noexcept {
-    return (noise_ax_.size() * 4U + soft_cost_.size() * 3U + weights_.size()) *
-               sizeof(float) +
+    return device_->allocatedBytes() +
+           (soft_cost_.size() * 4U + weights_.size()) * sizeof(float) +
            (altitude_envelope_violation_.size() * 3U) * sizeof(std::uint8_t) +
            esdf_.size() * sizeof(float);
   }
@@ -614,6 +701,7 @@ public:
 
 private:
   BenchmarkConfig config_;
+  std::shared_ptr<detail::MppiPopulationDevice> device_;
   std::vector<float> esdf_;
   EsdfGrid grid_{};
   std::uint64_t esdf_revision_{0U};
@@ -629,12 +717,9 @@ private:
   std::vector<Control> repair_candidates_;
   std::vector<Control> reacquisition_candidate_;
   std::vector<Control> zero_noise_;
+  std::vector<Control> candidate_noise_;
   std::vector<Control> reported_controls_ = std::vector<Control>(2U * config_.steps);
   std::array<RolloutCostTerms, 2U> reported_terms_{};
-  std::vector<float> noise_ax_;
-  std::vector<float> noise_ay_;
-  std::vector<float> noise_az_;
-  std::vector<float> noise_yaw_;
   std::vector<float> soft_cost_;
   std::vector<float> critical_exposure_;
   std::vector<float> planning_exposure_;
@@ -652,7 +737,13 @@ private:
 };
 
 MppiCpuEngine::MppiCpuEngine(BenchmarkConfig config)
-    : impl_{std::make_unique<Impl>(std::move(config))} {
+    : impl_{std::make_unique<Impl>(config, std::make_shared<HostPopulationDevice>(
+                                               config.rollouts, config.steps))} {
+}
+
+MppiCpuEngine::MppiCpuEngine(BenchmarkConfig config,
+                             std::shared_ptr<detail::MppiPopulationDevice> device)
+    : impl_{std::make_unique<Impl>(std::move(config), std::move(device))} {
 }
 
 MppiCpuEngine::~MppiCpuEngine() = default;

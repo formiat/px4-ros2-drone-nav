@@ -18,7 +18,7 @@ class MppiEngineContractTest(unittest.TestCase):
         self.assertIn('"mppi_engine"', launch)
         self.assertIn("engine_overrides(mppi_engine.perform(context))", launch)
 
-    def test_the_launch_override_accepts_cuda_and_cpu_only(self) -> None:
+    def test_the_launch_override_accepts_the_three_engines_only(self) -> None:
         import importlib.util
         import sys
         path = REPOSITORY / "drone_city_nav" / "launch" / "launch_overrides.py"
@@ -29,8 +29,9 @@ class MppiEngineContractTest(unittest.TestCase):
         self.assertEqual(module.engine_overrides(""), {})
         self.assertEqual(module.engine_overrides(" cpu "), {"mppi_engine": "cpu"})
         self.assertEqual(module.engine_overrides("cuda"), {"mppi_engine": "cuda"})
+        self.assertEqual(module.engine_overrides("vulkan"), {"mppi_engine": "vulkan"})
         with self.assertRaises(RuntimeError):
-            module.engine_overrides("vulkan")
+            module.engine_overrides("opencl")
 
     def test_the_node_reads_the_engine_and_the_build_gates_the_cuda_one(self) -> None:
         loader = (REPOSITORY / "drone_city_nav" / "src" / "runtime" / "ros" /
@@ -42,6 +43,8 @@ class MppiEngineContractTest(unittest.TestCase):
         cmake = (REPOSITORY / "drone_city_nav" / "CMakeLists.txt").read_text()
         self.assertIn("src/mppi/mppi_cpu_engine.cpp", cmake)
         self.assertIn("DRONE_CITY_NAV_HAS_CUDA_MPPI=1", cmake)
+        self.assertIn("DRONE_CITY_NAV_HAS_VULKAN_MPPI=1", cmake)
+        self.assertIn("std::make_unique<mppi::MppiVulkanEngine>(config)", controller)
 
 
 if __name__ == "__main__":

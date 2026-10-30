@@ -18,10 +18,8 @@ layout(push_constant) uniform Push {
   float yaw_sigma;
 } push;
 
-layout(std430, binding = 0) writeonly buffer NoiseAx { float values[]; } noise_ax;
-layout(std430, binding = 1) writeonly buffer NoiseAy { float values[]; } noise_ay;
-layout(std430, binding = 2) writeonly buffer NoiseAz { float values[]; } noise_az;
-layout(std430, binding = 3) writeonly buffer NoiseYaw { float values[]; } noise_yaw;
+// The noise in four planes of `count`: ax, ay, az, yaw.
+layout(std430, binding = 0) writeonly buffer Noise { float values[]; } noise;
 
 const float kPi = 3.14159265358979323846;
 
@@ -47,11 +45,11 @@ void main() {
     return;
   }
   uint64_t base = push.seed ^ (push.tick * 0xd1342543de82ef95UL) ^ uint64_t(index);
-  noise_ax.values[index] = push.horizontal_sigma * gaussian(base, base ^ 0xa0761d6478bd642fUL);
-  noise_ay.values[index] =
+  noise.values[index] = push.horizontal_sigma * gaussian(base, base ^ 0xa0761d6478bd642fUL);
+  noise.values[push.count + index] =
       push.horizontal_sigma * gaussian(base ^ 0xe7037ed1a0b428dbUL, base ^ 0x8ebc6af09c88c6e3UL);
-  noise_az.values[index] =
+  noise.values[2u * push.count + index] =
       push.vertical_sigma * gaussian(base ^ 0x589965cc75374cc3UL, base ^ 0x1d8e4e27c47d124fUL);
-  noise_yaw.values[index] =
+  noise.values[3u * push.count + index] =
       push.yaw_sigma * gaussian(base ^ 0xeb44accab455d165UL, base ^ 0x9e3779b97f4a7c15UL);
 }

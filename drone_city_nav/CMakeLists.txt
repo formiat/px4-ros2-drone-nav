@@ -153,36 +153,55 @@ target_include_directories(
 enable_project_warnings(drone_city_nav_mppi)
 
 if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
-  # The shaders compiled by glslc at build time into the build tree; the
-  # compiled modules installed beside the configuration.
+  # The Vulkan engine (roadmap item 28, way B): the shaders compiled by glslc
+  # at build time and carried inside the library as SPIR-V words
+  # (cmake/embed_spirv.cmake), so nothing is read at run time.
   set(DRONE_CITY_NAV_MPPI_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-  add_custom_command(
-    OUTPUT "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${DRONE_CITY_NAV_MPPI_SHADER_DIR}"
-    COMMAND ${Vulkan_GLSLC_EXECUTABLE} --target-env=vulkan1.1 -O
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/mppi/shaders/mppi_noise.comp"
-            -o "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
-    DEPENDS src/mppi/shaders/mppi_noise.comp
-    COMMENT "glslc mppi_noise.comp")
-  add_custom_target(drone_city_nav_mppi_shaders
-                    DEPENDS "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv")
-  add_library(drone_city_nav_mppi_vulkan src/mppi/vulkan_compute.cpp
-                                         src/mppi/mppi_vulkan_noise.cpp)
-  add_dependencies(drone_city_nav_mppi_vulkan drone_city_nav_mppi_shaders)
+  set(DRONE_CITY_NAV_MPPI_SPIRV_INCLUDES "")
+  function(drone_city_nav_mppi_shader shader array_name)
+    set(source "${CMAKE_CURRENT_SOURCE_DIR}/src/mppi/shaders/${shader}.comp")
+    set(spirv "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/${shader}.spv")
+    set(include "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/${shader}.inc")
+    add_custom_command(
+      OUTPUT "${spirv}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${DRONE_CITY_NAV_MPPI_SHADER_DIR}"
+      COMMAND ${Vulkan_GLSLC_EXECUTABLE} --target-env=vulkan1.1 -O "${source}" -o
+              "${spirv}"
+      DEPENDS "${source}"
+      COMMENT "glslc ${shader}.comp")
+    add_custom_command(
+      OUTPUT "${include}"
+      COMMAND ${CMAKE_COMMAND} -DINPUT=${spirv} -DOUTPUT=${include}
+              -DNAME=${array_name} -P
+              "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_spirv.cmake"
+      DEPENDS "${spirv}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_spirv.cmake"
+      COMMENT "embed ${shader}.spv")
+    list(APPEND DRONE_CITY_NAV_MPPI_SPIRV_INCLUDES "${include}")
+    set(DRONE_CITY_NAV_MPPI_SPIRV_INCLUDES "${DRONE_CITY_NAV_MPPI_SPIRV_INCLUDES}"
+        PARENT_SCOPE)
+  endfunction()
+  drone_city_nav_mppi_shader(mppi_noise kMppiNoiseSpv)
+  drone_city_nav_mppi_shader(mppi_rollout kMppiRolloutSpv)
+  drone_city_nav_mppi_shader(mppi_update kMppiUpdateSpv)
+  add_library(
+    drone_city_nav_mppi_vulkan
+    src/mppi/vulkan_compute.cpp
+    src/mppi/mppi_vulkan_population_device.cpp
+    src/mppi/mppi_vulkan_engine.cpp
+    ${DRONE_CITY_NAV_MPPI_SPIRV_INCLUDES})
   target_compile_features(drone_city_nav_mppi_vulkan PUBLIC cxx_std_20)
   set_target_properties(drone_city_nav_mppi_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_include_directories(
-    drone_city_nav_mppi_vulkan PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/mppi>)
-  target_link_libraries(drone_city_nav_mppi_vulkan PUBLIC drone_city_nav_control Vulkan::Vulkan)
+    drone_city_nav_mppi_vulkan
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/mppi" "${CMAKE_CURRENT_BINARY_DIR}")
+  target_link_libraries(drone_city_nav_mppi_vulkan PUBLIC drone_city_nav_mppi
+                                                          Vulkan::Vulkan)
   enable_project_warnings(drone_city_nav_mppi_vulkan)
   add_executable(vulkan_probe tools/vulkan_probe.cpp)
   target_compile_features(vulkan_probe PRIVATE cxx_std_20)
   target_link_libraries(vulkan_probe Vulkan::Vulkan)
   enable_project_warnings(vulkan_probe)
-  install(FILES "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
-          DESTINATION share/${PROJECT_NAME}/shaders)
   install(TARGETS drone_city_nav_mppi_vulkan vulkan_probe
           ARCHIVE DESTINATION lib
           LIBRARY DESTINATION lib
@@ -926,6 +945,21 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
                              PRIVATE DRONE_CITY_NAV_HAS_CUDA_MPPI=1)
   list(APPEND DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS drone_city_nav_mppi_cuda)
 endif()
+if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
+  target_link_libraries(drone_city_nav_mppi_runtime PUBLIC drone_city_nav_mppi_vulkan)
+  target_compile_definitions(drone_city_nav_mppi_runtime
+                             PRIVATE DRONE_CITY_NAV_HAS_VULKAN_MPPI=1)
+  list(APPEND DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS drone_city_nav_mppi_vulkan)
+endif()
+# The tick's cost on each engine (K54).
+add_executable(mppi_engine_benchmark tools/mppi_engine_benchmark.cpp)
+target_compile_features(mppi_engine_benchmark PRIVATE cxx_std_20)
+target_link_libraries(mppi_engine_benchmark ${DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS})
+target_compile_definitions(
+  mppi_engine_benchmark
+  PRIVATE DRONE_CITY_NAV_HAS_CUDA_MPPI=$<BOOL:${DRONE_CITY_NAV_ENABLE_CUDA_MPPI}>
+          DRONE_CITY_NAV_HAS_VULKAN_MPPI=$<BOOL:${DRONE_CITY_NAV_ENABLE_VULKAN_MPPI}>)
+enable_project_warnings(mppi_engine_benchmark)
 
 assert_drone_city_nav_target_links(
   drone_city_nav_world_runtime
@@ -1419,7 +1453,7 @@ if(BUILD_TESTING)
   # path is off (the onboard image).
   if(NOT DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
     list(FILTER drone_city_nav_private_headers EXCLUDE
-         REGEX "src/mppi/(vulkan_compute|mppi_vulkan_noise)\\.hpp$")
+         REGEX "src/mppi/(vulkan_compute|mppi_vulkan_population_device)\\.hpp$")
   endif()
   drone_city_nav_header_check_sources(
     drone_city_nav_header_check_sources_list
@@ -1527,11 +1561,17 @@ if(BUILD_TESTING)
     ament_add_gtest(mppi_vulkan_noise_test tests/mppi_vulkan_noise_test.cpp)
     target_compile_features(mppi_vulkan_noise_test PRIVATE cxx_std_20)
     target_include_directories(mppi_vulkan_noise_test PRIVATE src/mppi)
-    target_compile_definitions(
-      mppi_vulkan_noise_test
-      PRIVATE DRONE_CITY_NAV_MPPI_SHADER_DIR="${DRONE_CITY_NAV_MPPI_SHADER_DIR}")
     target_link_libraries(mppi_vulkan_noise_test drone_city_nav_mppi_vulkan)
     enable_project_warnings(mppi_vulkan_noise_test)
+    ament_add_gtest(mppi_vulkan_engine_parity_test
+                    tests/mppi_vulkan_engine_parity_test.cpp)
+    target_compile_features(mppi_vulkan_engine_parity_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_vulkan_engine_parity_test
+                          ${DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS})
+    target_compile_definitions(
+      mppi_vulkan_engine_parity_test
+      PRIVATE DRONE_CITY_NAV_HAS_CUDA_MPPI=$<BOOL:${DRONE_CITY_NAV_ENABLE_CUDA_MPPI}>)
+    enable_project_warnings(mppi_vulkan_engine_parity_test)
   endif()
   target_include_directories(budget_relay_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_drone_city_nav_core_gtest(px4_ros_time_mapper_test

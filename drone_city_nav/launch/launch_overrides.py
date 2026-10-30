@@ -92,11 +92,11 @@ def rollouts_overrides(value):
 
 
 def engine_overrides(value):
-    """The MPPI controller's engine given as text (MPPI_ENGINE of a flight: cuda or
-    cpu, roadmap item 28), an empty dict for the configuration's."""
+    """The MPPI controller's engine given as text (MPPI_ENGINE of a flight: cuda,
+    cpu or vulkan, roadmap item 28), an empty dict for the configuration's."""
     text = value.strip()
     if not text:
         return {}
-    if text not in ("cuda", "cpu"):
-        raise RuntimeError(f"Launch argument 'mppi_engine' must be cuda or cpu, got '{value}'")
+    if text not in ("cuda", "cpu", "vulkan"):
+        raise RuntimeError(f"Launch argument 'mppi_engine' must be cuda, cpu or vulkan, got '{value}'")
     return {"mppi_engine": text}

@@ -1,6 +1,9 @@
 #include "mppi_controller_3d.hpp"
 
 #include "drone_city_nav/mppi/mppi_cpu_engine.hpp"
+#if DRONE_CITY_NAV_HAS_VULKAN_MPPI
+#include "drone_city_nav/mppi/mppi_vulkan_engine.hpp"
+#endif
 
 #include <chrono>
 #include <exception>
@@ -79,6 +82,14 @@ std::unique_ptr<mppi::MppiEngine> makeEngine(const mppi::BenchmarkConfig& config
                                              const mppi::MppiEngineKind engine) {
   if (engine == mppi::MppiEngineKind::kCpu) {
     return std::make_unique<mppi::MppiCpuEngine>(config);
+  }
+  if (engine == mppi::MppiEngineKind::kVulkan) {
+#if DRONE_CITY_NAV_HAS_VULKAN_MPPI
+    return std::make_unique<mppi::MppiVulkanEngine>(config);
+#else
+    throw std::invalid_argument{
+        "the Vulkan MPPI engine is not in this build; mppi_engine must be cuda or cpu"};
+#endif
   }
 #if DRONE_CITY_NAV_HAS_CUDA_MPPI
   return std::make_unique<mppi::MppiCudaEngine>(config);
