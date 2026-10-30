@@ -89,3 +89,14 @@ def rollouts_overrides(value):
     if rollouts <= 0:
         raise RuntimeError(f"Launch argument 'mppi_rollouts' must be positive, got '{value}'")
     return {"rollouts": rollouts, "open_static_rollouts": rollouts * 3 // 4}
+
+
+def engine_overrides(value):
+    """The MPPI controller's engine given as text (MPPI_ENGINE of a flight: cuda or
+    cpu, roadmap item 28), an empty dict for the configuration's."""
+    text = value.strip()
+    if not text:
+        return {}
+    if text not in ("cuda", "cpu"):
+        raise RuntimeError(f"Launch argument 'mppi_engine' must be cuda or cpu, got '{value}'")
+    return {"mppi_engine": text}

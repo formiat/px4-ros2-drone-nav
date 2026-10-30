@@ -27,6 +27,10 @@ append_sensor_relay_launch_args() {
   if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
     ros_launch_args+=(step_ack:=true)
   fi
+  # Roadmap item 28: the MPPI engine the flight is asked to fly with (cuda, cpu).
+  if [[ -n "${MPPI_ENGINE:-}" ]]; then
+    ros_launch_args+=(mppi_engine:="${MPPI_ENGINE}")
+  fi
 }
 
 prepare_runtime_resources() {

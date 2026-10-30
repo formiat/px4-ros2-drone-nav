@@ -169,6 +169,8 @@ struct ProductionMppiConfig final {
   };
 
   struct Control final {
+    // The engine the controller runs (roadmap item 28): cuda, or cpu.
+    mppi::MppiEngineKind engine{mppi::MppiEngineKind::kCuda};
     mppi::BenchmarkConfig mppi{};
     MppiRolloutBudgetConfig rollout_budget{};
     MppiSpeedPolicyConfig speed_policy{};

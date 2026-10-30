@@ -1,7 +1,10 @@
 #include "mppi_controller_3d.hpp"
 
+#include "drone_city_nav/mppi/mppi_cpu_engine.hpp"
+
 #include <chrono>
 #include <exception>
+#include <stdexcept>
 #include <utility>
 
 namespace drone_city_nav {
@@ -68,19 +71,39 @@ bool MppiControllerResult3D::executable() const noexcept {
          status == MppiControllerStatus3D::kStationaryHold;
 }
 
-MppiController3D::MppiController3D(const mppi::BenchmarkConfig& config)
-    : engine_{config} {
+namespace {
+
+// The engine the controller owns: the CPU one on request, otherwise the CUDA
+// one when this build carries it (DRONE_CITY_NAV_ENABLE_CUDA_MPPI).
+std::unique_ptr<mppi::MppiEngine> makeEngine(const mppi::BenchmarkConfig& config,
+                                             const mppi::MppiEngineKind engine) {
+  if (engine == mppi::MppiEngineKind::kCpu) {
+    return std::make_unique<mppi::MppiCpuEngine>(config);
+  }
+#if DRONE_CITY_NAV_HAS_CUDA_MPPI
+  return std::make_unique<mppi::MppiCudaEngine>(config);
+#else
+  throw std::invalid_argument{
+      "the CUDA MPPI engine is not in this build; mppi_engine must be cpu"};
+#endif
+}
+
+} // namespace
+
+MppiController3D::MppiController3D(const mppi::BenchmarkConfig& config,
+                                   const mppi::MppiEngineKind engine)
+    : engine_{makeEngine(config, engine)} {
 }
 
 bool MppiController3D::ready() const noexcept {
   const std::scoped_lock lock{mutex_};
-  return engine_.ready();
+  return engine_->ready();
 }
 
 mppi::EsdfUploadResult
 MppiController3D::updateEsdf(const mppi::EsdfSnapshot& snapshot) {
   const std::scoped_lock lock{mutex_};
-  return engine_.updateEsdf(snapshot);
+  return engine_->updateEsdf(snapshot);
 }
 
 MppiControllerResult3D MppiController3D::run(MppiControllerRequest3D request) {
@@ -114,13 +137,13 @@ MppiControllerResult3D MppiController3D::run(MppiControllerRequest3D request) {
     return output;
   }
 
-  if (!engine_.ready()) {
+  if (!engine_->ready()) {
     output.status = MppiControllerStatus3D::kBackendUnavailable;
     return output;
   }
 
   try {
-    output.result = engine_.plan(output.input);
+    output.result = engine_->plan(output.input);
   } catch (const std::exception& error) {
     output.status = MppiControllerStatus3D::kBackendFailure;
     output.failure_message = error.what();

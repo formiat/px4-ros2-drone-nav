@@ -43,12 +43,6 @@ constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kReportedSequenceCount{2U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
-// The gaze looks where the horizon is 1.5 s on, about the time a quarter turn
-// of the heading took under the original yaw limits (1.5 rad/s, 2 rad/s^2;
-// the configured ones are in urban_mvp.yaml), and holds the heading where the
-// horizon moves less than the body's radius in that time.
-constexpr float kGazeLookaheadS{1.5F};
-constexpr float kGazeMinimumDisplacementM{0.55F};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
               static_cast<std::size_t>(kThreadsPerBlock));
 
@@ -61,9 +55,11 @@ using detail::EsdfTexture;
 using detail::evaluateControlSequence;
 using detail::EvaluatedControlSequence;
 using detail::Event;
+using detail::fillResultFromEvaluation;
 using detail::kMaximumRepairCandidateCount;
 using detail::kRepairBacktrackRatios;
 using detail::RepairCandidateInput;
+using detail::ResultReconstructionInput;
 
 #include "mppi_engine_device_buffers.cuh"
 #include "mppi_engine_kernels.cuh"
@@ -805,118 +801,14 @@ public:
             .count();
     result.timings.gpu_total_ms =
         elapsedMs(started_, completed_) + repair_validation_ms;
-    const auto reconstruction_started = std::chrono::steady_clock::now();
-    result.horizon = std::move(selected_evaluation.trace.horizon);
-    if (result.horizon.size() != updated_.size() + 1U) {
-      throw std::runtime_error{"MPPI control evaluation returned incomplete horizon"};
-    }
-    if (config_.gaze_follows_motion) {
-      result.gaze = applyGazeYawControls(
-          updated_, result.horizon, config_.dynamics, kGazeLookaheadS,
-          kGazeMinimumDisplacementM,
-          gazeRestHeading(input.route, config_.gaze_minimum_horizontal_share),
-          config_.gaze_survey_yaw_rate_radps);
-      result.controls = updated_;
-    }
-    State state = result.horizon.front();
-    const float initial_distance =
-        std::hypot(input.target.x - state.x, input.target.y - state.y);
-    float fixed_target_head_progress_m = 0.0F;
-    float reconstruction_route_station_m =
-        input.route.has_value() ? input.route->initial_station_m : 0.0F;
-    float reconstruction_traveled_distance_m = 0.0F;
-    std::optional<float> latest_route_station;
-    float latest_credited_route_progress_m = 0.0F;
-    const RolloutMetrics& metrics = selected_evaluation.metrics;
-    result.altitude_envelope_violation = metrics.altitude_envelope_violation;
-    result.route_terminal_cross_track_violation =
-        selected_evaluation.route_terminal_cross_track_violation;
-    result.terminal_route_cross_track_m =
-        selected_evaluation.terminal_route_cross_track_m;
-    result.route_terminal_arrival_shaping_attempts =
-        selected_evaluation.route_terminal_arrival_shaping_attempts;
-    result.route_terminal_nominal_prefix_control_count =
-        selected_evaluation.route_terminal_nominal_prefix_control_count;
-    result.critical_exposure_m = metrics.critical_exposure_m;
-    result.planning_exposure_m = metrics.planning_exposure_m;
-    result.obstacle_approach_m2_s = metrics.costs.obstacle_approach_m2_s;
-    result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
-    result.minimum_peer_separation_m = metrics.minimum_peer_separation_m;
-    result.peer_separation_cost = metrics.costs.peer_separation;
-    result.dynamic_aircraft_anticipation_cost =
-        config_.dynamics.dt_s * metrics.costs.dynamic_aircraft_anticipation;
-    result.dynamic_aircraft_survival_cost =
-        config_.dynamics.dt_s * metrics.costs.dynamic_aircraft_survival;
-    const float non_survival_cost =
-        std::abs(metrics.soft_cost - result.dynamic_aircraft_survival_cost);
-    result.dynamic_aircraft_survival_cost_ratio =
-        result.dynamic_aircraft_survival_cost / std::max(1.0e-3F, non_survival_cost);
-    result.selected_tier = metrics.worst_tier;
-    result.post_update_classification = selected_evaluation.classification;
-    Control previous_control = previous_applied_control;
-    if (!updated_.empty()) {
-      result.first_control_delta =
-          std::hypot(std::hypot(updated_.front().ax - previous_applied_control.ax,
-                                updated_.front().ay - previous_applied_control.ay),
-                     updated_.front().az - previous_applied_control.az);
-    }
-    const std::size_t head_steps = std::clamp<std::size_t>(
-        static_cast<std::size_t>(
-            std::ceil(config_.costs.head_progress_horizon_s / config_.dynamics.dt_s)),
-        1U, updated_.size());
-    for (std::size_t index = 0U; index < updated_.size(); ++index) {
-      const Control& control = updated_[index];
-      result.maximum_acceleration_mps2 =
-          std::max(result.maximum_acceleration_mps2,
-                   std::hypot(std::hypot(control.ax, control.ay), control.az));
-      result.maximum_jerk_mps3 = std::max(
-          result.maximum_jerk_mps3,
-          std::hypot(std::hypot(control.ax - previous_control.ax,
-                                control.ay - previous_control.ay),
-                     control.az - previous_control.az) /
-              (index == 0U ? first_control_interval_s : config_.dynamics.dt_s));
-      previous_control = control;
-      const State previous_state = state;
-      state = result.horizon[index + 1U];
-      reconstruction_traveled_distance_m +=
-          std::hypot(std::hypot(state.x - previous_state.x, state.y - previous_state.y),
-                     state.z - previous_state.z);
-      if (input.route.has_value() && input.route->points) {
-        latest_route_station = projectForwardRouteStation(
-            *input.route->points, state, reconstruction_route_station_m);
-        if (latest_route_station.has_value()) {
-          reconstruction_route_station_m = *latest_route_station;
-          latest_credited_route_progress_m = creditedRouteProgressM(
-              *latest_route_station, input.route->initial_station_m,
-              reconstruction_traveled_distance_m);
-          result.route_progress_integral_m_s +=
-              config_.dynamics.dt_s * latest_credited_route_progress_m;
-        }
-      }
-      if (index + 1U == head_steps) {
-        if (latest_route_station.has_value()) {
-          result.head_progress_m = latest_credited_route_progress_m;
-        } else {
-          fixed_target_head_progress_m =
-              initial_distance -
-              std::hypot(input.target.x - state.x, input.target.y - state.y);
-        }
-      }
-    }
-    if (latest_route_station.has_value()) {
-      result.terminal_progress_m = latest_credited_route_progress_m;
-    } else {
-      const MppiProgressDiagnostics progress = resolveUnroutedProgressDiagnostics(
-          fixed_target_head_progress_m,
-          initial_distance -
-              std::hypot(input.target.x - state.x, input.target.y - state.y));
-      result.head_progress_m = progress.head_progress_m;
-      result.terminal_progress_m = progress.terminal_progress_m;
-    }
-    result.timings.horizon_reconstruction_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  reconstruction_started)
-            .count();
+    fillResultFromEvaluation(result, std::move(selected_evaluation),
+                             ResultReconstructionInput{
+                                 .input = input,
+                                 .config = config_,
+                                 .controls = updated_,
+                                 .previous_applied_control = previous_applied_control,
+                                 .first_control_interval_s = first_control_interval_s,
+                             });
     result.timings.host_total_ms = std::chrono::duration<double, std::milli>(
                                        std::chrono::steady_clock::now() - host_started)
                                        .count();

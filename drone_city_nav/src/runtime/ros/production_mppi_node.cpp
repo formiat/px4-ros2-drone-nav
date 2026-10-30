@@ -197,7 +197,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
           std::make_unique<BoundedWorkerPool>(config_.planning.planner_worker_count)},
       world_worker_pool_{
           std::make_unique<BoundedWorkerPool>(config_.world.world_worker_count)},
-      mppi_controller_{std::make_unique<MppiController3D>(config_.control.mppi)},
+      mppi_controller_{std::make_unique<MppiController3D>(config_.control.mppi,
+                                                          config_.control.engine)},
       navigation_angular_derivative_estimator_{
           config_.control.navigation_angular_derivative},
       objective_replan_anchor_{mission_goal_},

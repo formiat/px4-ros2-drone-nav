@@ -12,6 +12,7 @@
 #include <functional>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -32,6 +33,15 @@ void ProductionMppiConfigLoader::declareControl() {
           static_cast<float>(config_.world.flight_envelope.maximum_target_z_m),
   };
   mppi.rollouts = declarePositiveSize("rollouts", 8192);
+  // Roadmap item 28: the engine, cuda (the flight's) or cpu (the build without CUDA).
+  const std::string engine_name = declare<std::string>("mppi_engine", "cuda");
+  const std::optional<mppi::MppiEngineKind> engine =
+      mppi::parseMppiEngineKind(engine_name);
+  if (!engine.has_value()) {
+    throw std::invalid_argument{"mppi_engine must be cuda or cpu, got '" + engine_name +
+                                "'"};
+  }
+  control.engine = *engine;
   control.rollout_budget.full_rollouts = mppi.rollouts;
   control.rollout_budget.open_static_rollouts =
       declarePositiveSize("open_static_rollouts", 6144);

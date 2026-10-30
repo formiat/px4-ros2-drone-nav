@@ -116,20 +116,31 @@ function(enable_project_warnings target_name)
       -Wold-style-cast)
 endfunction()
 
+# The MPPI engine's host side (roadmap item 28): the CPU engine, the host
+# evaluation and the sequence helpers every backend shares, built whatever the
+# toolchain; the CUDA engine below rides on it.
+add_library(
+  drone_city_nav_mppi
+  src/mppi/mppi_acquisition_diagnostics.cpp
+  src/mppi/mppi_cpu_engine.cpp
+  src/mppi/mppi_engine_host_evaluation.cpp
+  src/mppi/mppi_control_arbitration.cpp
+  src/mppi/mppi_control_sequence.cpp
+  src/mppi/mppi_temperature_regulator.cpp
+  src/mppi/mppi_input_validation.cpp
+  src/mppi/static_route_handoff.cpp
+  src/mppi/mppi_separation_acquisition.cpp
+  src/mppi/mppi_separation_acquisition_coordinator.cpp)
+target_compile_features(drone_city_nav_mppi PUBLIC cxx_std_20)
+set_target_properties(drone_city_nav_mppi PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(
+  drone_city_nav_mppi PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+enable_project_warnings(drone_city_nav_mppi)
+
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  add_library(
-    drone_city_nav_mppi_cuda
-    src/mppi/mppi_acquisition_diagnostics.cpp
-    src/mppi/mppi_engine.cu
-    src/mppi/mppi_engine_host_evaluation.cpp
-    src/mppi/mppi_control_arbitration.cpp
-    src/mppi/mppi_control_sequence.cpp
-    src/mppi/mppi_temperature_regulator.cpp
-    src/mppi/mppi_input_validation.cpp
-    src/mppi/static_route_handoff.cpp)
-  target_sources(drone_city_nav_mppi_cuda PRIVATE
-                 src/mppi/mppi_separation_acquisition.cpp
-                 src/mppi/mppi_separation_acquisition_coordinator.cpp)
+  add_library(drone_city_nav_mppi_cuda src/mppi/mppi_engine.cu)
   target_compile_features(drone_city_nav_mppi_cuda PUBLIC cxx_std_20)
   set_target_properties(
     drone_city_nav_mppi_cuda
@@ -141,7 +152,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_mppi_cuda PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC CUDA::cudart)
+  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_mppi CUDA::cudart)
   target_compile_options(
     drone_city_nav_mppi_cuda
     PRIVATE
@@ -752,9 +763,7 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   enable_project_warnings(voxelize_sdf_collisions)
 endif()
 
-if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_control)
-endif()
+target_link_libraries(drone_city_nav_mppi PUBLIC drone_city_nav_control)
 
 function(add_drone_city_nav_private_runtime target_name)
   add_library(${target_name} STATIC ${ARGN})
@@ -840,8 +849,7 @@ target_link_libraries(drone_city_nav_route_runtime
                       PUBLIC drone_city_nav_world_runtime
                              drone_city_nav_execution)
 
-if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  set(DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES
+set(DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES
       src/runtime/execution_horizon_assembler_3d.cpp
       src/runtime/mppi_controller_3d.cpp
       src/runtime/navigation_diagnostics_sink.cpp
@@ -851,15 +859,22 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
       src/runtime/production_mppi_execution_control.cpp
       src/runtime/production_mppi_execution_diagnostics.cpp
       src/runtime/production_mppi_node_names.cpp)
-  add_drone_city_nav_private_runtime(drone_city_nav_mppi_runtime
-                                     ${DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES})
-  target_include_directories(
-    drone_city_nav_mppi_runtime
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/runtime>")
-  target_link_libraries(drone_city_nav_mppi_runtime
-                        PUBLIC drone_city_nav_route_runtime
-                               drone_city_nav_runtime
-                               drone_city_nav_mppi_cuda)
+add_drone_city_nav_private_runtime(drone_city_nav_mppi_runtime
+                                   ${DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES})
+target_include_directories(
+  drone_city_nav_mppi_runtime
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/runtime>")
+target_link_libraries(drone_city_nav_mppi_runtime
+                      PUBLIC drone_city_nav_route_runtime
+                             drone_city_nav_runtime
+                             drone_city_nav_mppi)
+set(DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS drone_city_nav_mppi)
+if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  # The controller makes the CUDA engine only in a build that carries it.
+  target_link_libraries(drone_city_nav_mppi_runtime PUBLIC drone_city_nav_mppi_cuda)
+  target_compile_definitions(drone_city_nav_mppi_runtime
+                             PRIVATE DRONE_CITY_NAV_HAS_CUDA_MPPI=1)
+  list(APPEND DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS drone_city_nav_mppi_cuda)
 endif()
 
 assert_drone_city_nav_target_links(
@@ -875,13 +890,11 @@ assert_drone_city_nav_target_links(
   FORBIDDEN drone_city_nav_core drone_city_nav_mppi_runtime
             drone_city_nav_runtime drone_city_nav_control
             drone_city_nav_ros_adapters drone_city_nav_mppi_cuda)
-if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  assert_drone_city_nav_target_links(
-    drone_city_nav_mppi_runtime
-    REQUIRED drone_city_nav_route_runtime drone_city_nav_runtime
-             drone_city_nav_mppi_cuda
-    FORBIDDEN drone_city_nav_core drone_city_nav_ros_adapters)
-endif()
+assert_drone_city_nav_target_links(
+  drone_city_nav_mppi_runtime
+  REQUIRED drone_city_nav_route_runtime drone_city_nav_runtime
+           ${DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS}
+  FORBIDDEN drone_city_nav_core drone_city_nav_ros_adapters)
 
 if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
@@ -1167,7 +1180,7 @@ ament_target_dependencies(multi_vehicle_diagnostics_mux_node rclcpp)
 enable_project_warnings(multi_vehicle_diagnostics_mux_node)
 
 
-if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+# The planner's component builds with any engine (roadmap item 28, way A).
   add_library(
     drone_city_nav_production_mppi_component SHARED
     src/runtime/ros/raw_world_ingress_ros_3d.cpp
@@ -1251,7 +1264,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME})
-endif()
 
 set(drone_city_nav_simulation_targets)
 if(DRONE_CITY_NAV_ENABLE_SIMULATION)
@@ -1263,6 +1275,7 @@ endif()
 install(
   TARGETS
     ${drone_city_nav_simulation_targets}
+    drone_city_nav_mppi
     drone_city_nav_model
     drone_city_nav_localization
     drone_city_nav_control_contracts
@@ -1372,10 +1385,8 @@ if(BUILD_TESTING)
   target_link_libraries(
     drone_city_nav_header_self_containment
     drone_city_nav_core drone_city_nav_ros_adapters ${cpp_typesupport_target})
-  if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-    target_link_libraries(drone_city_nav_header_self_containment
-                          drone_city_nav_mppi_cuda)
-  endif()
+  target_link_libraries(drone_city_nav_header_self_containment
+                        ${DRONE_CITY_NAV_MPPI_RUNTIME_ENGINE_LINKS})
   ament_target_dependencies(
     drone_city_nav_header_self_containment
     ament_index_cpp
@@ -1745,36 +1756,44 @@ if(BUILD_TESTING)
   target_include_directories(mppi_horizon_sampling_test PRIVATE include)
   enable_project_warnings(mppi_horizon_sampling_test)
 
-  if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  # The engine's host side and the planner's runtime test with any engine; the
+  # tests that drive the CUDA engine, and the parity of the CPU engine against
+  # it, need the CUDA build (roadmap item 28, way A).
     ament_add_gtest(mppi_temperature_regulator_test
                     tests/mppi_temperature_regulator_test.cpp)
     target_compile_features(mppi_temperature_regulator_test PRIVATE cxx_std_20)
-    target_link_libraries(mppi_temperature_regulator_test drone_city_nav_mppi_cuda)
+    target_link_libraries(mppi_temperature_regulator_test drone_city_nav_mppi)
     enable_project_warnings(mppi_temperature_regulator_test)
 
+  if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     ament_add_gtest(mppi_control_sequence_test_current
                     tests/mppi_control_sequence_test.cpp)
     target_compile_features(mppi_control_sequence_test_current PRIVATE cxx_std_20)
     target_link_libraries(mppi_control_sequence_test_current
                           drone_city_nav_mppi_cuda)
     enable_project_warnings(mppi_control_sequence_test_current)
+    ament_add_gtest(mppi_engine_parity_test tests/mppi_engine_parity_test.cpp)
+    target_compile_features(mppi_engine_parity_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_engine_parity_test drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_engine_parity_test)
+  endif()
     ament_add_gtest(mppi_gaze_test
                     tests/mppi_gaze_test.cpp)
     target_compile_features(mppi_gaze_test PRIVATE cxx_std_20)
     target_link_libraries(mppi_gaze_test
-                          drone_city_nav_mppi_cuda)
+                          drone_city_nav_mppi)
     enable_project_warnings(mppi_gaze_test)
 
     ament_add_gtest(mppi_finite_horizon_test
                     tests/mppi_finite_horizon_test.cpp)
     target_compile_features(mppi_finite_horizon_test PRIVATE cxx_std_20)
-    target_link_libraries(mppi_finite_horizon_test drone_city_nav_mppi_cuda)
+    target_link_libraries(mppi_finite_horizon_test drone_city_nav_mppi)
     enable_project_warnings(mppi_finite_horizon_test)
 
         ament_add_gtest(static_route_handoff_test
                     tests/static_route_handoff_test.cpp)
     target_compile_features(static_route_handoff_test PRIVATE cxx_std_20)
-    target_link_libraries(static_route_handoff_test drone_city_nav_mppi_cuda)
+    target_link_libraries(static_route_handoff_test drone_city_nav_mppi)
     enable_project_warnings(static_route_handoff_test)
 
     add_drone_city_nav_private_runtime_gtest(
@@ -1820,7 +1839,6 @@ if(BUILD_TESTING)
     target_link_libraries(production_mppi_execution_points_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(production_mppi_execution_points_test)
-  endif()
 
   ament_add_gtest(route_progress_3d_test
                   tests/route_progress_3d_test.cpp)

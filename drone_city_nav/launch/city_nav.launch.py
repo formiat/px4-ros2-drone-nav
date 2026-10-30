@@ -18,6 +18,7 @@ from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from launch_overrides import (
+    engine_overrides,
     optional_bool_override,
     optional_nonnegative_float_override,
     optional_waypoint_sequence_override,
@@ -176,6 +177,7 @@ def generate_launch_description():
     heat_sources = LaunchConfiguration("heat_sources")
     smoke_face = LaunchConfiguration("smoke_face")
     mppi_rollouts = LaunchConfiguration("mppi_rollouts")
+    mppi_engine = LaunchConfiguration("mppi_engine")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
@@ -412,9 +414,11 @@ def generate_launch_description():
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
-        # Roadmap item 28 step 1: the rollouts the flight is asked to fly with.
-        if rollouts_overrides(mppi_rollouts.perform(context)):
-            production_mppi_parameters.append(rollouts_overrides(mppi_rollouts.perform(context)))
+        # Roadmap item 28: the rollouts and the engine the flight is asked to fly with.
+        for overrides in (rollouts_overrides(mppi_rollouts.perform(context)),
+                          engine_overrides(mppi_engine.perform(context))):
+            if overrides:
+                production_mppi_parameters.append(overrides)
         diagnostics_dir_override = mppi_diagnostics_output_dir.perform(context).strip()
         if diagnostics_dir_override:
             # The per-tick records go with the run they describe.
@@ -825,11 +829,10 @@ def generate_launch_description():
                     "sphere)."
                 ),
             ),
-            DeclareLaunchArgument(
-                "lidar_scan_topic_suffix",
-                default_value="",
-                description="Suffix of the lidar's Gazebo cloud topic the bridge reads (K52).",
-            ),
+            DeclareLaunchArgument("lidar_scan_topic_suffix", default_value="",
+                                  description="The lidar cloud topic's suffix (K52's relay)."),
+            DeclareLaunchArgument("mppi_engine", default_value="",
+                                  description="The MPPI engine, cuda or cpu (item 28)."),
             DeclareLaunchArgument(
                 "imu_topic_suffix",
                 default_value="",
@@ -845,8 +848,8 @@ def generate_launch_description():
                 description="Smoky places, 'x,y,z,sx,sy,sz,sigma' in the world frame, ';' between "
                 "(roadmap item 18 stage 1): every sensor is read through the smoke model's relay.",
             ),
-            DeclareLaunchArgument("budget_relay", default_value="false", description="Item 36, K53."),
-            DeclareLaunchArgument("step_ack", default_value="false", description="Item 36: step acks."),
+            DeclareLaunchArgument("budget_relay", default_value="false", description="Item 36."),
+            DeclareLaunchArgument("step_ack", default_value="false", description="Item 36."),
             DeclareLaunchArgument(
                 "smoke_seed",
                 default_value="0",
@@ -862,14 +865,8 @@ def generate_launch_description():
                     "kelvin. Needs smoke_zones (the relay carries them)."
                 ),
             ),
-            DeclareLaunchArgument(
-                "mppi_rollouts",
-                default_value="",
-                description=(
-                    "The MPPI controller's rollouts (roadmap item 28 step 1); empty leaves "
-                    "the configuration's 8192, with the open-space count at three quarters."
-                ),
-            ),
+            DeclareLaunchArgument("mppi_rollouts", default_value="",
+                                  description="The MPPI rollouts (item 28); empty: the configuration's."),
             DeclareLaunchArgument(
                 "smoke_face",
                 default_value="false",

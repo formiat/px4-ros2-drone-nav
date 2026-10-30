@@ -31,9 +31,11 @@ class MppiRolloutsContractTest(unittest.TestCase):
                       (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text())
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text()
         self.assertIn('LaunchConfiguration("mppi_rollouts")', launch)
-        self.assertIn("production_mppi_parameters.append(rollouts_overrides(", launch)
+        # The rollouts and the engine (roadmap item 28) share one override loop.
+        self.assertIn("rollouts_overrides(mppi_rollouts.perform(context))", launch)
+        self.assertIn("production_mppi_parameters.append(overrides)", launch)
         self.assertIn("  MPPI_ROLLOUTS\n", (REPOSITORY / "scripts/container_run.sh").read_text())
-        self.assertIn("SMOKE_SEED MPPI_ROLLOUTS SMOKE_FACE FLIGHT_CPUSET; do",
+        self.assertIn("SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do",
                       (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text())
 
 

@@ -70,12 +70,14 @@ struct MppiControllerResult3D {
   [[nodiscard]] bool executable() const noexcept;
 };
 
-// Sole owner of the stateful CUDA backend and nominal-reseed lifecycle. ROS
-// logging, world-residency locking, and execution side effects remain adapter
+// Sole owner of the stateful engine (the CUDA one by default, the CPU one on
+// request: roadmap item 28) and the nominal-reseed lifecycle. ROS logging,
+// world-residency locking, and execution side effects remain adapter
 // responsibilities.
 class MppiController3D final {
 public:
-  explicit MppiController3D(const mppi::BenchmarkConfig& config);
+  explicit MppiController3D(const mppi::BenchmarkConfig& config,
+                            mppi::MppiEngineKind engine = mppi::MppiEngineKind::kCuda);
 
   MppiController3D(const MppiController3D&) = delete;
   MppiController3D& operator=(const MppiController3D&) = delete;
@@ -88,7 +90,7 @@ public:
 
 private:
   mutable std::mutex mutex_;
-  mppi::MppiCudaEngine engine_;
+  std::unique_ptr<mppi::MppiEngine> engine_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
 };
 

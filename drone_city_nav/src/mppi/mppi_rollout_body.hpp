@@ -120,7 +120,7 @@ noiseSample(const std::size_t index, const std::uint64_t seed, const std::uint64
 }
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ROLLOUT_HOST_DEVICE inline State
-integrate(State state, Control control, const DynamicsConfig config) {
+integrate(State state, Control control, const DynamicsConfig& config) {
   clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
   control.az = clampValue(control.az, -config.maximum_vertical_acceleration_mps2,
                           config.maximum_vertical_acceleration_mps2);
@@ -247,7 +247,7 @@ queryEsdfPoint(const float x, const float y, const float z, const EsdfGrid grid,
 template<typename Lookup>
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ROLLOUT_HOST_DEVICE inline EsdfQuery
 queryFootprint(const State& state, const BodyAxis body_axis,
-               const FootprintConfig footprint, const float safe_clearance_m,
+               const FootprintConfig& footprint, const float safe_clearance_m,
                const EsdfGrid grid, const Lookup& lookup) {
   EsdfQuery result = queryEsdfPoint(state.x, state.y, state.z, grid, lookup);
   if (result.unknown_space || !(footprint.radius_m > 0.0F) ||
@@ -750,7 +750,7 @@ rolloutFeasible(const std::uint8_t altitude_envelope_violation,
 // The sequence limited in place to the dynamics' caps and the jerk between
 // consecutive controls, from the previously applied control.
 DRONE_CITY_NAV_MPPI_ROLLOUT_HOST_DEVICE inline void limitControlSequence(
-    Control* controls, const std::size_t steps, const DynamicsConfig dynamics,
+    Control* controls, const std::size_t steps, const DynamicsConfig& dynamics,
     const Control previous_applied_control, const float first_control_interval_s) {
   Control previous = previous_applied_control;
   for (std::size_t step = 0U; step < steps; ++step) {

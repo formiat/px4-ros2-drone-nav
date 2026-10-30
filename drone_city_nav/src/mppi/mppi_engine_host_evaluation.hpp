@@ -71,4 +71,27 @@ struct RepairCandidateInput {
 buildRepairCandidateSequences(const RepairCandidateInput& input, std::size_t steps,
                               std::span<Control> candidates);
 
+// The gaze looks where the horizon is 1.5 s on, about the time a quarter turn
+// of the heading took under the original yaw limits (1.5 rad/s, 2 rad/s^2;
+// the configured ones are in urban_mvp.yaml), and holds the heading where the
+// horizon moves less than the body's radius in that time.
+inline constexpr float kGazeLookaheadS{1.5F};
+inline constexpr float kGazeMinimumDisplacementM{0.55F};
+
+struct ResultReconstructionInput {
+  const MppiTickInput& input;
+  const BenchmarkConfig& config;
+  // The selected sequence; the gaze writes its yaw controls in place.
+  std::span<Control> controls;
+  Control previous_applied_control{};
+  float first_control_interval_s{0.0F};
+};
+
+// The part of a tick every backend shares once its sequence is selected and
+// evaluated: the horizon, the gaze, the exposures, the first control's delta,
+// the progress along the route or toward the target, the reconstruction time.
+void fillResultFromEvaluation(MppiTickResult& result,
+                              EvaluatedControlSequence&& selected_evaluation,
+                              const ResultReconstructionInput& in);
+
 } // namespace drone_city_nav::mppi::detail

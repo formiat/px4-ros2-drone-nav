@@ -8,6 +8,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -237,23 +238,68 @@ struct EsdfUploadResult {
   std::uint64_t revision{0U};
 };
 
+// The engine's interface, one for every backend (roadmap item 28): the CUDA
+// engine below, the CPU engine (`mppi_cpu_engine.hpp`), a Vulkan one in time.
+class MppiEngine {
+public:
+  virtual ~MppiEngine() = default;
+  [[nodiscard]] virtual EsdfUploadResult updateEsdf(const EsdfSnapshot& snapshot) = 0;
+  [[nodiscard]] virtual MppiTickResult plan(const MppiTickInput& input) = 0;
+  [[nodiscard]] virtual std::size_t allocatedBytes() const noexcept = 0;
+  [[nodiscard]] virtual bool ready() const noexcept = 0;
+
+protected:
+  MppiEngine() = default;
+  MppiEngine(const MppiEngine&) = default;
+  MppiEngine& operator=(const MppiEngine&) = default;
+  MppiEngine(MppiEngine&&) = default;
+  MppiEngine& operator=(MppiEngine&&) = default;
+};
+
+enum class MppiEngineKind : std::uint8_t {
+  kCuda,
+  kCpu,
+};
+
+[[nodiscard]] inline const char*
+mppiEngineKindName(const MppiEngineKind kind) noexcept {
+  switch (kind) {
+    case MppiEngineKind::kCuda:
+      return "cuda";
+    case MppiEngineKind::kCpu:
+      return "cpu";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] inline std::optional<MppiEngineKind>
+parseMppiEngineKind(const std::string_view name) noexcept {
+  if (name == "cuda") {
+    return MppiEngineKind::kCuda;
+  }
+  if (name == "cpu") {
+    return MppiEngineKind::kCpu;
+  }
+  return std::nullopt;
+}
+
 // The local planner: model predictive path integral control (MPPI), a
 // sampling-based model predictive controller on the GPU, rolling out control
 // sequences against the ESDF for obstacle avoidance.
-class MppiCudaEngine {
+class MppiCudaEngine final : public MppiEngine {
 public:
   explicit MppiCudaEngine(BenchmarkConfig config);
-  ~MppiCudaEngine();
+  ~MppiCudaEngine() override;
 
   MppiCudaEngine(const MppiCudaEngine&) = delete;
   MppiCudaEngine& operator=(const MppiCudaEngine&) = delete;
   MppiCudaEngine(MppiCudaEngine&&) noexcept;
   MppiCudaEngine& operator=(MppiCudaEngine&&) noexcept;
 
-  [[nodiscard]] EsdfUploadResult updateEsdf(const EsdfSnapshot& snapshot);
-  [[nodiscard]] MppiTickResult plan(const MppiTickInput& input);
-  [[nodiscard]] std::size_t allocatedBytes() const noexcept;
-  [[nodiscard]] bool ready() const noexcept;
+  [[nodiscard]] EsdfUploadResult updateEsdf(const EsdfSnapshot& snapshot) override;
+  [[nodiscard]] MppiTickResult plan(const MppiTickInput& input) override;
+  [[nodiscard]] std::size_t allocatedBytes() const noexcept override;
+  [[nodiscard]] bool ready() const noexcept override;
 
 private:
   class Impl;
