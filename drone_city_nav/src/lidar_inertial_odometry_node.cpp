@@ -184,11 +184,12 @@ public:
         rclcpp::SensorDataQoS{}.keep_last(3),
         [this](const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
           onCloudReceived(cloud);
-          // Roadmap item 36: the step acknowledgement follows the sweeps and the IMU
-          // (one executor).
-          step_acknowledger_ = std::make_unique<StepAcknowledger>(
-              *this, "lidar_inertial", nullptr, [] { return true; });
         });
+    // Roadmap item 36: the step acknowledgement follows the sweeps and the IMU
+    // (one executor). (Placed inside the cloud's callback at first, it declared
+    // its parameter at every sweep and r2465 lost the estimator.)
+    step_acknowledger_ = std::make_unique<StepAcknowledger>(
+        *this, "lidar_inertial", nullptr, [] { return true; });
     RCLCPP_INFO(get_logger(),
                 "LIDAR_INERTIAL_ODOMETRY ready publish_to_autopilot=%s "
                 "initial_heading_ned=%.3f",
