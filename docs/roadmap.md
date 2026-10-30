@@ -1188,6 +1188,9 @@ separation acquisition of item 15's missions. The host evaluator
 `simulateReference` stays what it was (it reads the footprint through the
 known-clearance evidence and tracks peer separation, which the sampler's body
 does not): the one body is the sampler's, on both backends.
+The arm64 onboard image (item 27 block 2) rebuilt with the CPU engine as the
+node's engine: 154 of 156 unit tests under qemu on 2026-10-30 (3b5746c3), the
+two failures those of 2026-10-26 (`log/tools/board/onboard_arm64.log`).
 
 **Step 2, way B, begun on 2026-10-30 and closed by record** (the same goal,
 part 3; code baca86d5). Vulkan compute runs in the dev container after one
