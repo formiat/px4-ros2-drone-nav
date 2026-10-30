@@ -1772,6 +1772,54 @@ other on a quiet and on a loaded host, the onboard budget is a measured
 model in the loop whose removal is visible in the flight, and A7's verdict
 is no longer needed for a flight to count.
 
+**Measured on 2026-10-30** (the goal of 2026-10-29, part 2; code 20414079
+to be4fa324; specification K53). Built, in order: (1) the onboard budget as a
+measurement (`tools/node_budget.py`) and as a relay, `budget_relay_node`
+(`BUDGET_RELAY=on`), which holds every output of the loop until it is as old
+on the simulation clock as the host of record measured it at its consumer
+(the ages in K53), the bytes untouched; at a real-time factor of 1.0 it
+changes nothing: cameras r2456 to r2464 at 1.137 to 1.335 m/s and the lidar
+r2467 to r2471 at 1.947 to 2.429, the ages the planner sees the base's, no
+contact. (2) The step controller, `scripts/step_controller.py`
+(`STEP_CONTROLLER=on`): the world starts paused and seeded (`gz sim
+--seed`), the controller advances it 20 ms at a time (`STEP_MS`) and after
+each step waits for the acknowledgement of every onboard node (the planner,
+the memory, the offboard, the mission monitor, the estimator, the stereo
+depth node; `StepAcknowledger` behind `step_ack_enabled`, off by default and
+silent on the vehicle) and of the pilot, which acts inside the protocol. In
+r2479 and r2480 the world moved only by the controller's steps (15100 steps,
+0 runaways, 0 timeouts, the acknowledgements' median wait 22 ms, the planner
+the slowest), at a wall speed of 0.34: the flight's window (`SMOKE_DURATION_S`,
+wall seconds) then needs three times the clean one's.
+
+Two flights with the same seeds (`tools/flight_diff.py`) do not fly the same
+metres: before the controller, r2472 and r2473 parted at the arming (25.45
+against 25.00 s, the pilot's timers and the free-running start); with the
+world paused from the start and the pilot in the protocol, r2474 and r2475
+parted at the climb (8.6 s; the depth returns of a step matched before or
+after the next); with the depth node acknowledging and the world truly held,
+r2479 and r2480 part at 9.0 s (0.15 m at 10 s, 1.0 m at 15 s, 9 to 20 m
+from 30 s on): the pilot arms at the same 5.008 s, the estimator's first
+healthy frames track 71 against 73 features, the memory's first accepted
+scan is one frame earlier in one twin (2.526 against 2.658 s). What remains
+lies inside a step: the order in which the step's messages reach the nodes
+(DDS, best effort on the sensor paths), the memory's and the planner's worker
+threads and the MPPI's GPU reductions, and the autopilot's own threads under
+its lockstep. The item's criterion (within 0.10 m over a flight, Р2.4) is
+not met after the two repairs the part allowed; the acceptance rules (A1,
+A4, A6, A7, K25) stand as they were and the series fly as before. What the
+controller gives today: a flight whose pace the host cannot change (the
+world waits for the loop), with the budget relay keeping the loop's
+latencies honest. Variants for the rest: an in-step order (every node
+consumes the step's messages in one fixed order, which means the nodes read
+their inputs through the controller, an L-sized rework of the transport);
+a CPU MPPI engine with a seeded, ordered reduction (item 28's way A gives
+it); the autopilot replayed from its own log instead of run (its lockstep is
+not deterministic across runs). Recommendation: take the deterministic
+flight up again after item 28's way A, on the lidar set first (its estimate
+registers against the map and does not drift), with the in-step order as
+the one remaining mechanism. Registered in `technical_debt.md`.
+
 ## 37. Full Support Of The ModalAI VOXL 2
 
 **Type:** new capability, deferred; recorded on 2026-10-24 at the project

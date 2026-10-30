@@ -441,3 +441,26 @@ period's mean, deviation and largest gap; the rms of each axis'
 sample-to-sample difference, where the rotors' ripple shows). The
 acceptance series fly under the profile by default (`tools/series2.sh`, F21);
 `IMPERFECTIONS=` empties it for the clean vehicle.
+
+## The Simulator Waits For The Onboard Loop
+
+Roadmap item 36 (specification K53) adds two simulation processes nobody
+tells the vehicle about. `budget_relay_node` (`BUDGET_RELAY=on`) carries the
+loop's outputs through `/budgeted` topics and holds each until it is as old
+on the simulation clock as the host of record measured it at its consumer
+(`launch/budget_relay.py` rewires the consumers through their topic
+parameters and the camera estimator through a node-specific remap, and the
+estimators publish their odometry to the relay, which publishes it to the
+autopilot's topic). `scripts/step_controller.py` (`STEP_CONTROLLER=on`)
+starts the world paused and seeded (`gz sim --seed`), pauses it again should
+anything set it running, and advances it `STEP_MS` milliseconds at a time by
+`WorldControl` with `pause` and `multi_step` in one request (the message's
+default would set the world running); after each step it publishes the step's
+number on `/drone_city_nav/step` and waits for `/drone_city_nav/step_ack/<name>`
+from every expected node: the onboard nodes behind `step_ack_enabled` (the
+acknowledgement rides the callback group of the node's heavy work and waits
+for its worker to finish what it is on) and the pilot, whose ticks run on the
+steps. The world then moves only when the loop has finished with the step.
+Measured on 2026-10-30: the flight's pace is the loop's (a wall speed of
+0.34, 0 runaways, 22 ms a step), and two flights with the same seeds part at
+9 s of flight (`docs/technical_debt.md`).

@@ -327,6 +327,26 @@ manifest; `IMPERFECTIONS=` on the command line flies the clean vehicle, and
 is measured under the profile as under the light's flicker (F1); R3's figures
 stay the clean vehicle's.
 
+Two more simulation processes of roadmap item 36 (specification K53) ride a
+flight on request. `BUDGET_RELAY=on` puts `budget_relay_node` between the
+loop's producers and consumers: every output (the depth returns, the
+estimator's odometry to the autopilot, the memory's delta, snapshot and
+latest scan, the planner's horizon) is held until it is as old on the
+simulation clock as the host of record measured it at its consumer, so a
+simulator that waits for the loop hands no node a faster computer than the
+vehicle has; at a real-time factor of 1.0 it changes nothing (r2456 to
+r2471), and `BUDGET_RELAY=measure` records the ages without holding
+(`budget_relay.csv`). `STEP_CONTROLLER=on` starts the world paused and seeded
+and lets `scripts/step_controller.py` advance it `STEP_MS` (20) milliseconds
+at a time, each step acknowledged by every onboard node and the pilot
+(`step_controller.csv`: the waits, the runaways, the timeouts, the slowest
+node, the wall speed); the host cannot slow such a flight, but two flights
+with the same seeds do not yet repeat (the register's row; `tools/flight_diff.py`
+measures how far they part). A stepped flight runs at a third of real time,
+so its window (`SMOKE_DURATION_S`, wall seconds) is set three times the
+usual, and the host verdict A7, which reads the real-time factor, voids it:
+such flights are flown through `tools/series2.sh` and read by hand.
+
 ### Resource record
 
 Every flight, headless or not, records what its processes consume
