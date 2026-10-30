@@ -51,7 +51,7 @@ and 2026-10-30 are the examples, kept by the owner outside the repository.
   hashes, line counts, tool availability, the baselines with the runs they
   came from. Nothing is written from memory of an earlier conversation.
 - Every open question is closed at writing time by a decision with a
-  one-line reason, numbered (Р1, Р2 ...) so the journal can refer to it, or
+  one-line reason, numbered (D1, D2 ...) so the journal can refer to it, or
   by an instruction how to decide during the work (what to measure, what
   counts). Never "ask the owner".
 - Every stage has Why, How (commands, paths, parameters, what to record) and
@@ -64,7 +64,7 @@ and 2026-10-30 are the examples, kept by the owner outside the repository.
   renamed or moved by the agent once written.
 - The time guides are budgets against over-running, not reasons to stop:
   the owner stops the work.
-- Closure by record ("Закрыта записью") is for the impossible, and the
+- Closure by record is for the impossible, and the
   impossible is only what the part's file names as a blocker (no board, a
   container that will not start after two repairs). Effort, a marginal
   threshold, or a shortage of flights are not blockers; a stop hook reads
@@ -80,7 +80,7 @@ record → report. In practice:
    recalled memory names a file or a flag: verify it still exists.
 2. **Decide and write the decision down** in the deviations file the moment
    it is taken, with "required / why not / done / why so"; a doubt goes to
-   the suspicious list the moment it appears and is marked "снято: how" when
+   the suspicious list the moment it appears and is marked "resolved: how" when
    resolved, never deleted. A doubt noticed in the second hour is otherwise
    lost by the compactions before the report.
 3. **Build the smallest change**: edit existing code before adding modules,
@@ -221,10 +221,10 @@ outcome and what could not be verified, gives the numbers in tables, names
 every new entity with its requirement, lists the voided flights and the
 time per stage, and ends with two sections that are never left out:
 
-- **Отклонения от оригинальной постановки**: every item as required / why
+- **Deviations from the original statement**: every item as required / why
   not / done / why so, or "none" only after comparing the result with the
   task's text.
-- **Список подозрительного для проверки пользователем**: what a person must
+- **The suspicious list for the owner's eyes**: what a person must
   look at by eye, always present even when empty: inherited behaviour,
   duplicated mechanisms, states unknown until a later event, side repairs,
   paths covered only by unit tests, decisions without an owner, what was
