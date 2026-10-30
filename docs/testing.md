@@ -102,8 +102,9 @@ project has two requirements, and the mission check fails on nothing else:
   whose manifest carries `HEAT_SOURCES` fails at the first true-pose sample
   within 4.0 m of a source's centre, with the time and the distance
   (`validate_standoff_from_heat_sources`, specification K49, roadmap item 32);
-- the mean flight speed exceeds the figure of the sensor set: 2.0 m/s on the
-  lidar, 1.2 m/s on the stereo set;
+- the mean flight speed is within 20 percent of the target of the sensor set
+  (R3: 2.28 m/s on the lidar, 1.16 m/s on the stereo set; a flight fails under
+  1.82 and 0.93 m/s), and a flight under the target is noted for the register;
 - a goal in the void (roadmap item 31, the scenario `dark_void_mid`) is reached
   when the true position at its acknowledgement is within the estimator's
   published horizontal uncertainty (two sigma, from its status line) plus 2 m;
@@ -276,11 +277,21 @@ simulation clock, which both of its records share.
 
 The mean flight speed is the only speed the programme targets, and it is
 gated by the navigation sensor profile the manifest records, whatever
-localizes the vehicle: it has to exceed 2.0 m/s on the lidar and 1.2 m/s on
-the stereo sensor set (the lidar's 2.0 since 2026-10-25, by measurement: specification R3). These are the project owner's requirements of
-2026-09-19; they replaced 2.5 m/s and the 1.226 m/s derived for the stereo
-profile as half of what its braking contract admits forward (6.4 m of
-confident depth admit 2.452 m/s).
+localizes the vehicle. Since 2026-10-30 (the project owner's rule of that
+day, specification R3) the figure is a target mean speed, the one the
+acceptance configuration measured under the imperfections profile: 2.28 m/s
+on the lidar and 1.16 m/s on the stereo sensor set. During work (features,
+fixes) a flight may fall up to 20 percent under the target and still count
+(it fails under 1.82 and 0.93 m/s); the mission check notes every counted
+flight under the target, and a series whose mean is under the target is
+recorded in [`technical_debt.md`](technical_debt.md) ("Attempts To Return To
+The Target Mean Speed") with its flights, mean, deviation and plan, the entry
+leaving when a series is back at the target. The targets move only by
+measurement on the acceptance configuration. Before that day the rule was a
+floor every flight had to exceed: the owner's 2.4 and 1.2 m/s of 2026-09-19
+(which replaced 2.5 m/s and the 1.226 m/s derived for the stereo profile as
+half of what its braking contract admits forward), the lidar's 2.1 from
+2026-10-18 and 2.0 from 2026-10-25.
 
 The clock the speed is measured on was the wall clock through the acceptance
 series of items 14, 16 and the speed work of 2026-09-24/25, so a simulation
@@ -288,8 +299,8 @@ slower than real time lowered the figure by as much (r577: 1.22 m/s on the
 wall clock for 1.53 m/s of simulation time under foreign desktop load; the
 camera profile runs at a real-time factor of 0.89 to 1.00 on the reference
 host). On 2026-09-25 the project owner decided that the requirement is
-measured on the simulation clock, with the thresholds 2.4 and 1.2 m/s
-unchanged, and the check reads it so since then. The base series, re-read by
+measured on the simulation clock, with the thresholds of the day (2.4 and
+1.2 m/s) unchanged, and the check reads it so since then. The base series, re-read by
 the same check:
 
 | Series | Commit | Wall clock, m/s | Simulation clock, m/s |
@@ -324,8 +335,8 @@ imperfections (`IMPERFECTIONS=nominal`, specification K52 and F21;
 Imperfections") with the run's number as `IMPERFECTION_SEED`, both in the
 manifest; `IMPERFECTIONS=` on the command line flies the clean vehicle, and
 `tools/imperfections_series.sh` flies the families apart. The mean speed of R3
-is measured under the profile as under the light's flicker (F1); R3's figures
-stay the clean vehicle's.
+is measured under the profile as under the light's flicker (F1); R3's targets
+are the means measured under it, the clean vehicle's means references.
 
 Two more simulation processes of roadmap item 36 (specification K53) ride a
 flight on request. `BUDGET_RELAY=on` puts `budget_relay_node` between the

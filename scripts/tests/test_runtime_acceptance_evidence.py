@@ -304,26 +304,44 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertEqual(errors, [])
 
         validator.validate_mean_flight_speed(
-            self._flight_log(300.0, 300.0), errors, "stereo_tof", self._truth(1.0)
+            self._flight_log(270.0, 300.0), errors, "stereo_tof", self._truth(1.0)
         )
         self.assertEqual(len(errors), 1)
-        self.assertIn("exceeds 1.2 m/s", errors[0])
+        self.assertIn("exceeds 0.93 m/s", errors[0])
 
     def test_mean_flight_speed_has_to_exceed_the_requirement_on_either_profile(
         self,
     ) -> None:
-        # The owner's requirement (R3): above 2.1 m/s on the lidar (K43's figure
-        # since the location's smoke is the ordinary flight's default), above
-        # 1.2 m/s on the stereo sensor set. The figure itself is not enough.
-        for path_m, profile, passes in ((603.0, "lidar", True), (597.0, "lidar", False),
-                                        (363.0, "stereo_tof", True),
-                                        (360.0, "stereo_tof", False)):
+        # The owner's rule (R3, 2026-10-30): a flight counts down to 20 percent
+        # under the target mean speed, 2.28 m/s on the lidar (the floor 1.82)
+        # and 1.16 m/s on the stereo sensor set (the floor 0.93); the floor
+        # itself is not enough.
+        for path_m, profile, passes in ((549.0, "lidar", True), (546.0, "lidar", False),
+                                        (282.0, "stereo_tof", True),
+                                        (279.0, "stereo_tof", False)):
             with self.subTest(path_m=path_m, profile=profile):
                 errors: list[str] = []
                 validator.validate_mean_flight_speed(
                     self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0)
                 )
                 self.assertEqual(errors == [], passes, errors)
+
+    def test_mean_flight_speed_under_the_target_is_noted_for_the_register(self) -> None:
+        # 1.00 m/s on the stereo set counts (above the floor of 0.93) and is
+        # noted as 13.8 percent under the target of 1.16 (R3): the series it
+        # belongs to goes to the technical debt as an attempt to return.
+        errors: list[str] = []
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            validator.validate_mean_flight_speed(
+                self._flight_log(300.0, 300.0), errors, "stereo_tof", self._truth(1.0)
+            )
+
+        self.assertEqual(errors, [])
+        self.assertIn("OK: mean flight speed is 1.000 m/s", stdout.getvalue())
+        self.assertIn("NOTE: mean flight speed is 13.8 % under the target 1.16 m/s (R3)",
+                      stdout.getvalue())
 
     def test_mean_flight_speed_needs_a_successful_mission(self) -> None:
         errors: list[str] = []

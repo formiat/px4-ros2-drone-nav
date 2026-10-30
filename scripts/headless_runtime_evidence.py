@@ -75,8 +75,22 @@ MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 # the real one": the largest tenth every one of the ten clear lidar flights on
 # the final code exceeded by 0.1 m/s or more (2.18 to 2.83 m/s: r2156 2.743, r2157 2.375, r2158 2.825, r2159 2.426, r2160 2.209, r2168 2.329, r2169 2.181, r2170 2.188, r2171 2.593, r2172 2.459), with the estimate's
 # vertical drift repaired (K45).
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.0
-MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.2
+# Since 2026-10-30 (the owner's rule of that day, specification R3) the figure
+# is a target mean speed, the measured one on the acceptance configuration
+# (the imperfections profile F21, the clear location, the CUDA engine at 8192
+# rollouts): 2.28 m/s on the lidar (r2429 to r2433: 1.906, 2.320, 2.286,
+# 2.559, 2.330) and 1.16 m/s on the stereo set (r2420 to r2428: 1.074, 1.093,
+# 1.258, 1.159, 1.232). During work a flight may fall up to 20 percent under
+# the target and still count; it fails under that; a counted flight under the
+# target is noted here, and a series whose mean is under the target is
+# recorded in the technical debt as an attempt to return to the target.
+TARGET_MEAN_FLIGHT_SPEED_MPS = 2.28
+TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS = 1.16
+ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL = 0.20
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = round(
+    TARGET_MEAN_FLIGHT_SPEED_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
+MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = round(
+    TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
@@ -342,9 +356,11 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
     and a host slower than real time lowered the figure by as much; the
     simulation clock is read from the true pose record, whose rows carry both
     clocks, and the wall-clock figure is printed beside it."""
-    minimum_speed_mps = (MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS
-                         if navigation_sensor_profile == "stereo_tof"
+    stereo = navigation_sensor_profile == "stereo_tof"
+    minimum_speed_mps = (MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS if stereo
                          else MINIMUM_MEAN_FLIGHT_SPEED_MPS)
+    target_speed_mps = (TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS if stereo
+                        else TARGET_MEAN_FLIGHT_SPEED_MPS)
     readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
     result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
     if readiness is None or result is None:
@@ -398,8 +414,13 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
             "FAIL: mean flight speed exceeds "
             f"{minimum_speed_mps:.3g} m/s ({detail})"
         )
-    else:
-        print(f"OK: mean flight speed is {detail}")
+        return
+    print(f"OK: mean flight speed is {detail}")
+    if speed_mps < target_speed_mps:
+        shortfall = 100.0 * (1.0 - speed_mps / target_speed_mps)
+        print(f"NOTE: mean flight speed is {shortfall:.1f} % under the target "
+              f"{target_speed_mps:.3g} m/s (R3): a series under the target goes "
+              "to the technical debt as an attempt to return to it")
 
 
 def parse_latest_production_summary(ros_log: str) -> dict[str, str] | None:

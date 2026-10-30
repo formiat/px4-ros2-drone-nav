@@ -214,6 +214,23 @@ laid out on 2026-09-25, with the effort and the quality each was given.
   because it certifies the physical passage through the observed 3D volume
   of a scenario. Chosen: the first.
 
+## Attempts To Return To The Target Mean Speed
+
+The project owner's rule of 2026-10-30 (specification R3): the programme
+targets the mean flight speed the acceptance configuration measured (1.16 m/s
+on the stereo set, 2.28 m/s on the lidar, under the imperfections profile);
+during work a series may run up to 20 percent under the target, and every
+such series is written here as an attempt to return to the target: the
+flights, the measured mean, the deviation, the cause as far as it is known
+and the plan. An entry leaves when a series on the same configuration is back
+at the target; the mission check notes every counted flight under the target
+(`NOTE: mean flight speed is N % under the target`).
+
+| Series | Sensor set, configuration | Mean, m/s (target) | Deviation | Cause, plan |
+|---|---|---|---|---|
+| r2484 to r2489, 2026-10-30 (five counted) | stereo, the profile, the Vulkan engine at 2048 rollouts | 1.227 (1.16) | above the target | none needed: the first series under the new rule, on the record |
+| r2497 to r2513, 2026-10-30 (eight counted) | stereo, the clean vehicle, the Vulkan engine at 2048 | 1.223 (the clean reference 1.331 the same day on CUDA, r2514 to r2520) | 8 percent under the clean reference, not a target | the Vulkan engine's cost (the debt row below: an `image3D` ESDF, one submit a tick); a longer series on a quiet host; suggestive, not proven |
+
 ## Localization
 
 | Debt | Measured | Class | Found by |
