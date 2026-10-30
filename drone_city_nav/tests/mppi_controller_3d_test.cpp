@@ -68,8 +68,10 @@ holdRequest(const MppiNominalReseedObservation reseed = MppiNominalReseedObserva
   };
 }
 
+// The controller's lifecycle on the CPU engine (roadmap item 28, way A): the
+// same stages as the CUDA engine's, and the test holds in a build without CUDA.
 TEST(MppiController3DTest, OwnsStationaryHoldAndExactNominalReseedInput) {
-  MppiController3D controller{controllerConfig()};
+  MppiController3D controller{controllerConfig(), mppi::MppiEngineKind::kCpu};
 
   const MppiControllerResult3D result = controller.run(holdRequest());
 
@@ -116,7 +118,7 @@ TEST(MppiController3DTest, RejectsInvalidOrSupersededControllerWorlds) {
 }
 
 TEST(MppiController3DTest, RetainsTheSoleNominalReseedLifecycleAcrossTicks) {
-  MppiController3D controller{controllerConfig()};
+  MppiController3D controller{controllerConfig(), mppi::MppiEngineKind::kCpu};
 
   const MppiControllerResult3D first = controller.run(holdRequest());
   const MppiControllerResult3D unchanged = controller.run(holdRequest());
@@ -132,7 +134,7 @@ TEST(MppiController3DTest, RetainsTheSoleNominalReseedLifecycleAcrossTicks) {
 }
 
 TEST(MppiController3DTest, SerializesConcurrentControllerStateTransitions) {
-  MppiController3D controller{controllerConfig()};
+  MppiController3D controller{controllerConfig(), mppi::MppiEngineKind::kCpu};
   constexpr std::size_t kThreadCount{8U};
   std::array<std::uint64_t, kThreadCount> generations{};
   std::vector<std::thread> threads;
@@ -155,7 +157,7 @@ TEST(MppiController3DTest, SerializesConcurrentControllerStateTransitions) {
 }
 
 TEST(MppiController3DTest, ReportsUnavailableBackendWithoutAnExecutableResult) {
-  MppiController3D controller{controllerConfig()};
+  MppiController3D controller{controllerConfig(), mppi::MppiEngineKind::kCpu};
   ASSERT_FALSE(controller.ready());
 
   MppiControllerRequest3D request;
