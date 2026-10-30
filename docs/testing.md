@@ -317,11 +317,11 @@ the same check:
 | lidar r662 to r666 | a56bfc91 | 2.456, 2.827, 2.732, 2.759, 2.700 (mean 2.695) | 2.458, 2.829, 2.732, 2.759, 2.708 (mean 2.697) |
 
 Whatever the clock, a flight under foreign host load is not counted:
-`scripts/quiet_host_gate.sh`, run by the simulation wrapper before every
-flight and by `tools/series2.sh` on the host, waits until the host has been
+`scripts/quiet_host_gate.sh`, run by `tools/series2.sh` (and so by every
+series tool) before every counted flight, waits until the host has been
 quiet for a minute (no `rustc`, `cargo` or `clippy` above 5 percent of a
 core, a one-minute load under 3, no other `gz sim`), foreign processes are
-never touched, and a flight the load reaches anyway is replayed. On a
+never touched, and a flight the load reaches anyway is replayed. A run the user starts (`./scripts/sim_*.sh`, the Makefile's `sim-*` targets) never waits for the host: the gate guards the counted series alone (the owner, 2026-10-30). On a
 flight's core set (`FLIGHT_CPUSET`, specification A4; the series fly on
 `0-13` of this host since 2026-10-25) the gate reads the set's own CPUs
 instead of the host's load: its CPUs at most 15 percent busy on average

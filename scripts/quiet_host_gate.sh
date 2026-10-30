@@ -38,6 +38,7 @@ set_busy_percent() {
     END { printf "%d\n", (n > 0 ? sum / n : 0) }' "$1" "$2"
 }
 
+echo "quiet_host_gate: the host has to be quiet for 60 s before the flight (no busy rustc/cargo, load under 3 or the core set under 15 percent, no other gz sim); waiting is reported every 10 s" >&2
 quiet_s=0
 while [[ "${quiet_s}" -lt 60 ]]; do
   stat_before="$(cat /proc/stat)"

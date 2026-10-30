@@ -59,6 +59,9 @@ class ContainerEntrypointTest(unittest.TestCase):
             "trap '\"${repo_root}/scripts/cleanup_sim_processes.sh\" || true' EXIT"
         )
         container_index = runner.index('"${repo_root}/scripts/container_run.sh" "$@"')
+        # The user's run starts at once (the owner, 2026-10-30): the quiet-host
+        # gate belongs to the acceptance series' tools, never to the wrapper.
+        self.assertNotIn("quiet_host_gate", runner)
         self.assertLess(cleanup_index, trap_index)
         self.assertLess(trap_index, container_index)
         self.assertNotIn("exec ", runner.split("container_run.sh")[0].split("trap")[1])
