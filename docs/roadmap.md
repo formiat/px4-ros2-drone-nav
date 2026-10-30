@@ -688,116 +688,6 @@ mission in total darkness, with no illumination and the time-of-flight
 sensors the only emitters, reach the goal in truth without a collision; the
 mean speed they fly is recorded as this sensor set's figure.
 
-## 25. The Estimator On Real Recordings
-
-**Type:** validation without a vehicle. Discussed with the project owner on
-2026-10-09 and recorded; begun on 2026-10-10 by the owner's word, the first
-step done on 2026-10-11 (below).
-
-**Hard prerequisites:** none. It needs no hardware and no simulator.
-
-The offline replay of the visual-inertial estimator (`tools/vio/replay_vio.cpp`,
-`tools/vio/dark_drift.py`) runs the filter over a flight's record (frames, IMU,
-truth) with no simulator. The records come from Gazebo today; the same replay
-can take a public recording from a real vehicle, and that is the only way,
-without a vehicle, to learn how the estimator behaves on real sensor noise
-and whether anything in it is fitted to Gazebo. It also carries the debt of
-the reference visual-inertial system ([technical_debt.md](technical_debt.md),
-Localization): the reference and ours can be compared on the same record.
-
-Candidate recordings, all public, each with a calibration and a reference
-trajectory in the role Gazebo's truth plays here:
-
-- EuRoC MAV (ETH): stereo and IMU on a drone, a machine hall and a room,
-  reference from a laser tracker and motion capture. The first check and the
-  industry's common one. 752 x 480 global-shutter stereo with radial and
-  tangential distortion.
-- TUM-VI, UZH-FPV: wide-angle stereo and IMU, corridors; aggressive flights.
-  Drift over a first pass, the tracker's limits.
-- Hilti SLAM Challenge, NTU VIRAL: 3D lidar and IMU, for the lidar-inertial
-  estimator.
-- SubT-MRS: underground, darkness, smoke, dust, with lidar, cameras and a
-  thermal camera: the material of items 17, 18, 22 and 23.
-
-What it takes, in order:
-
-1. A converter from the recording's layout (images, IMU CSV, reference CSV)
-   to the replay's record. Small for EuRoC.
-2. The camera model as configuration, not geometry derived from the field of
-   view: `stereo_depth_node` and the estimator take the intrinsics from
-   `horizontal_fov_rad` and the image size (1280 x 960) and treat the pair as
-   ideal and rectified, which Gazebo's cameras are and real ones are not.
-   Intrinsics, distortion, the baseline, the camera-to-IMU extrinsics, the
-   IMU's noise and the time offset come from the recording's calibration,
-   and the frames are rectified first.
-3. The comparison with the reference the way `dark_drift.py` compares with
-   the truth.
-
-The same path serves the stereo depth and the obstacle memory, fed with the
-recording's frames, and the lidar-inertial estimator with the recording's
-clouds.
-
-What it cannot show: the loop is open. The vehicle in the recording flew as
-it flew and does not answer to the stack, so the planner, the control and the
-braking contract stay in the simulator. A first step that fits in a day: one
-EuRoC sequence through the replay; the drift against the reference beside the
-0.1 to 0.4 percent of the path the simulator shows.
-
-### The first step, done (2026-10-11, specification K33)
-
-The three steps above for EuRoC: the pair is configured by its calibration
-and rectified in both camera nodes (the simulated pair passes untouched),
-`tools/vio/euroc_to_replay.py` converts a sequence, `tools/vio/euroc_report.py`
-measures a replay against the reference. Vicon room 1 from the ETH Research
-Collection (DOI 10.3929/ethz-b-000690084), the data outside the tree:
-
-| Sequence | Path | ATE (4-DOF aligned) | RTE over 10 m | At the end |
-| --- | --- | --- | --- | --- |
-| V1_01_easy | 58.6 m | 0.050 m | 0.183 m | 0.11 % of the path |
-| V1_02_medium | 75.9 m | 0.046 m | 0.111 m | 0.17 % |
-| V1_03_difficult | 78.9 m | 0.115 m | 0.165 m | 0.42 % |
-
-Beside the simulator's first passes (0.1 to 0.4 % of the path) the real
-recordings drift alike; the details are in
-[localization.md](localization.md). Not done yet: the machine hall
-sequences, TUM-VI (its fisheye pair needs another camera model; the archive
-of room 1 is downloaded), the stereo depth and the memory on the
-recordings, the lidar recordings, a reference system on the same records.
-
-**Done on 2026-10-27 (the root goal's part 5; specification K50;
-`docs/localization.md`):** the two steps below. OpenVINS beside ours on
-V1_01, V1_02 and V1_03 (the machine hall's server answered nothing): ATE
-0.057 / 0.080 / 0.058 m against ours 0.050 / 0.046 / 0.115, the relative
-error over 10 m 0.082 / 0.092 / 0.083 against 0.065 / 0.047 / 0.130, the end
-0.31 / 0.23 / 0.08 % against 0.11 / 0.17 / 0.42 %: ours the reference's equal
-or better but on the difficult sequence. NTU VIRAL's eee_01 (an OS1-16 sweep
-that moves) through ours and through FAST-LIO: stamped at the sweep's start
-ours loses its map at 228 s; stamped at the sweep's middle (the one probe)
-it drifts 0.20 % of 237 m (ATE 0.255 m, the registration p95 32 ms);
-FAST-LIO with per-point compensation 0.42 % (ATE 0.379 m). The board's
-driver needs the stamp at the sweep's middle at least; the tool image is
-`docker/Dockerfile.tools` (`tools/tools_image.sh`), nothing of it in the
-flight. TUM-VI stays not done.
-
-### What came next (recommended on 2026-10-13, done on 2026-10-27)
-
-The owner's question whether ready estimators would have served better
-([design_questions.md](design_questions.md): not in vain, not to be redone,
-to be added to) ends in two steps here, both on recordings and both before
-any hardware:
-
-1. A reference estimator, OpenVINS, over the same EuRoC sequences beside
-   ours: the cheapest measure of how good ours is. It needs Ceres and
-   Boost.Filesystem in a tool image apart from the flight image. The owner
-   set it aside on 2026-09-25 until the drift rework
-   ([technical_debt.md](technical_debt.md)); this recommends it before the
-   hardware instead, and the decision stays the owner's.
-2. One public lidar recording (Hilti or NTU VIRAL) through the
-   lidar-inertial estimator and through FAST-LIO2: a real sweep moves during
-   its 100 ms and ours does not compensate it, and the replay decides
-   between writing the compensation and adopting FAST-LIO2 for the lidar
-   build ([hardware_builds.md](hardware_builds.md)).
-
 ## 26. GPU Offload
 
 **Type:** decision, recorded 2026-10-09: not now, not before a target
@@ -1322,254 +1212,6 @@ XL.
 
 Complete when the chosen airframe flies the camera and the lidar series and
 the light scenarios with no contact, its speeds measured against the x500's.
-
-## 31. Flight Through The Dark Void
-
-**Type:** new capability; decided by the project owner on 2026-10-17 after
-the dark hall's recording (r1488): "complete darkness" means an empty dark
-volume with nothing within the carried light's reach, not a floor lit a few
-metres below. Built on 2026-10-25 in the root goal of 2026-10-24 (part 2);
-the commits 96dea606, 7edd38eb, e5ce373c, 1f4e1eec, ecc12e03, affcd811 and the documents.
-
-**Hard prerequisites:** items 17, 29 and 18 (the light judged by its driver,
-F18; the blind frame, K12; the ladder's hold and descent, K19; the rotors'
-drag as a velocity, K21).
-
-What is settled: a black frame under a working light is a measurement of
-emptiness to the light's reach, not an absence of guarantee; in the void the
-safety rests on the light and the braking contract (K9) and the position on
-dead reckoning, whose drift is the physics of the IMU; so the 2 m capture
-radius is not required in the void: a goal there is reached when the true
-error is within the estimator's own published uncertainty (two sigma) plus
-2 m, and a goal with a surface within the light's reach at its end is reached
-within 2 m as always. No GNSS in any flight.
-
-**Stage 0, the light's reach (done).** On the rig (`tools/smoke_rig.py`
-levels `height=Z,wall=60,record=20`, `tools/smoke_rig_report.py --reach`,
-`log/tools/void/reach`): over a textured floor the pair is blind to the
-braking contract from 5 m below (matched 0.062 of the frame), matches
-nothing from 13 m; the tracker holds 20 features or more in 97 percent of
-frames at 11 m and in none at 13 m (the 10 it holds there are the imager's
-noise, which `minimum_frame_features` refuses, r933); the frame's raw
-brightness at the 95th percentile 67, 40, 25, 14, 9, 7 levels at 3, 5, 7, 9,
-11, 13 m; a facing matte panel of the location's darkest albedo (0.07) at the
-pair's confident depth, 5.2 m, 52 levels, of the mean (0.10) at 7 m 46, at
-9 m 33. The void's radius is the confident depth (K7); the tracker's reach
-over a floor 11 m; both in K46.
-
-**Stage 1, the void (done; K46, K13 and K19 amended).** The stereo node
-judges a frame a void frame when the light's reading is sound (K12's 0.25),
-the frame's raw brightness is under 46 levels at the 95th percentile (what a
-surface of the mean albedo gives from beyond the reach), the pair's hits
-within the confident depth cover under 1 percent of it, and no surface of the
-time-of-flight ring lies in the camera's field, and publishes the confident
-depth on `/stereo_depth/void_range` (`stereo_void_frame.hpp`). The planner
-lifts the braking contract's frame range to it: the vehicle crosses the void
-at the speed the depth admits, 1.8 m/s (0.5 before, on the memory's range,
-K15). The camera estimator enters the void with such a frame
-(`visual_inertial_void.hpp`): past its unaided second it is in the void, not
-dead reckoning, the height held and the drag fused as on dead reckoning, the
-pose given to the autopilot as a sound one (so that the offboard flies the
-plan and the descent of K19 is not due), the ten seconds of K13 not spent;
-the void ends with the next update or, the witness gone (a failed light),
-with dead reckoning from that moment. The memory marks nothing (K14, as
-before). The first lines (24 levels, any match) refused the hall at 14 m,
-whose floor 14 m below and plain ceiling 6 m above, both beyond the reach,
-lift the frame to 18 to 39 levels and give 5 percent of matches 12 to 20 m
-away (r2174: the estimator flickering, 28 holds, two descents of K19 to
-11 m); the lines are what surfaces beyond the reach can give.
-
-**Stage 2, the drift and the stitch (done).** Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
-
-**Stage 3, the scenario and the acceptance (done).** `sim-dark-void-headless`
-and `-gui` (`dark_void_point_to_point_scenario.json`: a climb straight up
-over the pad to 14 m, then the goal 4.5 m from the east wall at 14 m, the
-wall within the reach at the end; `dark_void_mid_point_to_point_scenario.json`
-by `DARK_VOID_SCENARIO_PATH`: the hall's middle, an arrival on dead reckoning
-alone, judged within two sigma plus 2 m by the mission check), the row in
-[`scenarios.md`](scenarios.md), `tools/render_flight.sh dark-void`. A single
-goal at height was flown as the straight route, a ramp 2 to 10 m over a floor
-the light still reached (r2173), hence the climb first.
-
-| Flight | Run | Result |
-|---|---|---|
-| The reach by height, the rig | log/tools/void/reach | the floor matched 0.179 of the frame at 3 m, nothing at 13 m; the tracker 91, 62, 49, 32, 23, 10 features at 3, 5, 7, 9, 11, 13 m; raw brightness 67 to 7 at p95 |
-| The probes | r2173, r2174, r2175 | r2173 a ramp at 2 to 10 m, no void (one goal at height); r2174 at 14 m with the first lines, no void, 28 holds, two descents to 11 m; r2175 the first crossing in the void, 0.52 m by the truth, drift 0.19 m/s |
-| The drift, three crossings and the coefficient | r2176, r2177, r2178 | 0.84, 0.27, 0.38 m by the truth; the drift 0.13 to 0.23 m/s with 0.106, the estimate 8 to 13 percent fast along the track; K21 re-fitted to 0.118 |
-| The wall's goal, eight | r2180 to r2187 | 0.39, 0.80, 0.44, 0.42, 0.90, 0.31, 0.26, 0.36 m at the climb goal and 0.99, 0.38, 0.24, 0.94, 0.73, 0.76, 1.59, 1.27 m at the wall's by the truth; the drift 0.7 to 3.6 percent of 29 to 53 m of void; one hold a flight at the aided-void boundary, no descent, no contact |
-| The hall's middle, three | r2188, r2189, r2190 | 0.65, 1.00, 1.21 m by the truth against two sigma plus 2 m of 5.59, 6.00, 6.55; the drift 1.0 to 2.6 percent |
-| The lidar reference | r2179; r2367 | r2179 not flown: the lidar-inertial estimator unhealthy at the pad (matched 0.18 under 0.3), no pose, arming denied. Repaired on 2026-10-29 (K51, the count of matched points beside their share): r2367 crossed the hall on the lidar, the climb goal 0.34 m and the wall's 0.53 m by the truth, no contact, max speed 6.21 m/s, the height error within 0.08 m over 82 m, 70 of 71 scans healthy; r2366 with a floor of 500 points came down on the pad and set the floor at 200 |
-
-**Measurement:** `log/tools/journal/goal_journal_dark_void.md`,
-`log/tools/void/` (the rig's reach table, the crossings' void episodes with
-their drift against the published sigma, the along-track scale of the drag's
-velocity), the flights under `.keep`.
-
-**Completion:** the void frame and the void state built and registered
-(K46), the hall crossed at 14 m in the void without a hold, a descent or a
-contact, the wall's goal reached within 2 m by the truth five times, the
-middle's within the published uncertainty plus 2 m three times, the drift
-budget and the arrival rule registered. Open: the lidar cannot start in the
-hall (its estimator matches 0.18 of its own first scan, under its 0.3 line,
-where the far walls and the ceiling give sparse points without planes), so
-the lidar reference was flown on 2026-10-29 after the repair (K51: the health
-reads the count of matched points beside their share; r2367 above); a real barometer drifts with the weather (item 35); a plain
-surface darker than the location's albedo within the reach is the ring's
-2.8 m to catch.
-
-## 32. Hot Smoke: A Heat Source In The Plume
-
-**Type:** new capability; proposed by the project owner on 2026-10-17, when
-the thermal core of item 18 stage 3 was taken off the vehicle (F4): a sensor
-earns its place with a decision that reads it, and this is the item that
-gives the core its decision.
-
-**Hard prerequisites:** items 18 and 23 (smoke in the simulator, A13; dense
-dense smoke detected, K37, K38; moderate smoke crossed, K43);
-item 18 stage 3 as the measurement of what a thermal frame carries (K39).
-Item 27 (a real vehicle) comes after.
-
-**Validation environment:** the urban location with its smoky places (F4),
-some of them carrying a heat source.
-
-Smoke the vehicle meets is cold or hot: fog, dust and smoke that has cooled
-are crossed when moderate and avoided when dense (items 18 and 23); a plume
-with a fire or a smouldering source in it is not entered at any density,
-and the source is kept at a distance. Neither the stereo pair, the
-time-of-flight ring nor the lidar can tell the two apart: they read density.
-A thermal core does, through the smoke, which long-wave infrared crosses
-almost untouched (K39: through 1/m the thermal frames are identical to the
-clear ones).
-
-The order:
-
-1. **The simulator's heat.** A heat source as an object of the world with a
-   temperature (the thermal camera of the exploration already renders the
-   world's surfaces by temperature, `thermal_camera`); a smoke zone may carry
-   one (`SMOKE_ZONES` gains a temperature, or a separate `HEAT_SOURCES`
-   string, whichever is the smaller change), and the smoke relay passes the
-   thermal frame through the smoke untouched (K39).
-2. **The core back on the stereo set, with its reading.** The FLIR Lepton
-   3.5 class core (160 x 120, 9 Hz) on the camera link, as mounted in stage
-   3; its frame read for the share of pixels warmer than the frame's median
-   by a threshold measured on the rig, and for their direction in the frame;
-   the reading published with its direction, as the ring's smoke share is
-   (K38), and recorded in the memory as a heat mark with a radius.
-3. **The rule.** A heat mark is a prohibition with a standoff: the route
-   keeps a measured distance from the source, the plume that carries it is
-   not entered whatever its density (the moderate room's crossing of item 23
-   is refused when the room is hot), and the mission events say so ("HEAT
-   SOURCE", the overlay's words). The lidar vehicle, which carries no core,
-   either takes the same core or records that it cannot tell hot smoke from
-   cold: the owner's call, taken with the measurement of step 2.
-4. **Scenarios and acceptance.** A hot plume on the way (gone round at the
-   standoff), a hot moderate room on the way (not entered: round it, or home
-   when there is no way round), and the cold moderate room of item 23 as
-   the control (crossed as before); five flights each on the stereo set, and
-   on the lidar as step 3 decides; no contact, B in truth within 2 m where B
-   is reachable, home otherwise.
-
-Size: M for steps 1 and 2, M for step 3, L with the series.
-
-**Built on 2026-10-26 (steps 1 to 3, the root goal's part 4; specification
-K49):** `HEAT_SOURCES` ("x,y,z,r,T") rides with `SMOKE_ZONES`, the smoke
-model's relay creating each source in the running world as a static body
-tagged with its temperature (A13); the Lepton-class core is back on the
-stereo set with its cap at 650 K (K39), its frame relayed as the pair's and
-read by the depth node (`thermal_reading.hpp`): a source is four pixels or
-more at 30 K over the frame's median, the threshold set on the rig against
-the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
-the tag is binary); its range the nearer of the hits in the hot cone and the
-source's bearing-only fix over the motion, else the body's apparent size
-(7000 pixel-metres squared for the 0.3 m body the rule assumes); the
-standoff 4.0 m, laid as the ball round the range point (observed
-unobservable, every half second while the core reads the source, a fifth
-of the range wider for the size's error; the near half alone until
-2026-10-28), the motion bounded before it, every return through the ball
-dropped, the words
-`HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
-overlay; the truth judged never within the standoff
-(`validate_standoff_from_heat_sources`). The scenarios: `sim-urban-hot-smoke-plume-*`
-(the location's plume at (12,22,11) with a source at its centre) and
-`sim-urban-hot-smoke-room-*` (the moderate rooms with a source on the west
-hall's crossing), the cold room the rooms scenario as it is; flown only for
-this item's acceptance (the owner, 2026-10-24).
-
-**Accepted on 2026-10-27 (step 4; the stereo set; specification K49):**
-
-| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
-|---|---|---|---|---|
-| The hot plume, 5 of 5 | r2257 to r2261 | 4.97, 4.21, 5.52, 5.82, 5.79 | B at 1.31, 1.63, 1.32, 1.03, 1.59 m | 1.279, 1.424, 1.407, 1.354, 1.310 |
-| The hot room, 5 of 5 | r2262 to r2266 | 10.73, 12.37, 11.51, 10.84, 11.48 | home every time, by the light's charge (the battery trigger at about 250 s), within 0.3 m of the start | — |
-| The cold room, the control, 5 of 5 | r2271 to r2275 | no source | B at 0.52, 0.40, 1.30, 0.71, 1.80 m | 1.305, 1.137, 1.292, 1.273, 1.185 (K43's 1.1) |
-| The lidar on the hot room, no core | r2276 | 1.30: crossed | B at 0.25 m | 2.343 |
-| The clear location, the stereo set, 5 of 5 | r2277, r2279 to r2281, r2288 (r2282 acknowledged B at 2.09 m, the estimate's drift) | the core silent | B at 0.9 to 1.6 m | 1.268, 1.277, 1.395, 1.345, 1.291 |
-| The clear location, the lidar, 5 of 5 | r2283 to r2287 | no core | B at 0.3 to 0.7 m | 2.207, 2.647, 2.249, 2.656, 2.467 |
-
-No contact in any flight, the dense plume never entered (R7), the core's
-reading in the log of every hot flight (`HEAT_SOURCE_MARKS`, the
-`HEAT_SOURCE seen=true` event). Nineteen probe flights preceded the
-groups (r2235 to r2253; `log/tools/journal/goal_journal_hot_smoke.md`):
-the mark's shell had holes the vehicle flew through, the braking contract
-let the memory's observed range override the sensor's bound, a range
-guessed ahead moved with the vehicle, a gaze held on the source froze the
-flight; what stands is in K49. The lidar set, which carries no core,
-crosses the hot room (r2276): by the measurement the lidar build takes
-the same core (`docs/hardware_builds.md`, L1), read on the lidar set as
-below.
-
-**Accepted on the lidar set on 2026-10-28 (step 4; specification K49):**
-the core on `lidar_3d_v1`'s link, read by `thermal_core_node`: the range
-from the scan's hits in the hot cone without the lidar's weak returns
-(K37: the hot room's smoke answered in the cone at 4.6 to 4.9 m whatever
-the source's range), the fix or the body's size otherwise; the source held
-in the map until the core looks at the place and reads no heat for a
-second (the lidar sees all round and carved a ball the core had turned
-from); the memory reads the scan through the node, every ray that enters
-the held ball ending at its surface; the bearings turned with the
-lidar-inertial estimate's full orientation at their own stamps; the
-heading follows the motion while the core is carried, at 0.8 rad/s at
-most, inside what the estimate, which registers each sweep whole, has
-kept up with (at 2 rad/s it lost 2.3 m of height in smoke and the vehicle
-met the floor, r2297). Ten probes (r2289 to r2298) found and repaired
-what K49's change log lists. The node costs 0.08 cores at p50 and 0.10
-at p95 (r2299, `tools/process_cores.py`).
-
-| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
-|---|---|---|---|---|
-| The hot room, the lidar, 5 of 5 | r2299 to r2303 | 8.55, 8.55, 10.30, 8.50, 9.00 | home every time, by the topological proof, within 0.34 m of the start | — |
-| The hot plume, the lidar, 5 of 5 | r2304 to r2308 | 5.30, 5.46, 4.75, 5.80, 4.74 | B at 0.32, 0.42, 0.34, 0.73, 0.21 m | 2.401, 2.108, 2.479, 2.518, 2.299 |
-| The clear location, the lidar, 5 of 5 | r2309 to r2313 | no source | B at 0.25 to 0.57 m | 2.273, 2.008, 2.441, 2.478, 2.264 (R3's 2.0) |
-| The hot plume, the stereo set, the whole ball, 5 of 5 | r2322 to r2326 (r2321 on the half ball: 3.66 m) | 7.15, 7.74, 5.78, 8.00, 7.31 | B at 0.89, 1.23, 1.72, 1.37, 0.87 m | 1.305, 1.339, 1.278, 1.357, 1.289 |
-| The hot room, the stereo set, the whole ball, 5 of 5 | r2327 to r2331 | 9.38, 11.10, 9.20, 10.71, 9.35 | home every time, by the light's charge, within 0.4 m of the start | — |
-| The clear location, the stereo set, 5 of 5 | r2333 to r2335, r2337, r2338 (r2336 at 1.179 m/s, under R3; r2314 to r2320 before the whole ball) | the core silent | B at 0.69 to 1.44 m | 1.248, 1.282, 1.286, 1.345, 1.336 |
-
-The whole ball changed the code after the lidar's groups above, so they were
-flown again on the final code (2d794294; the commits after it change
-documents and tools alone), with the cold room as the control:
-
-| Group, the final code | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
-|---|---|---|---|---|
-| The hot room, the lidar, 5 of 5 | r2339 to r2343 | 10.17, 10.38, 9.55, 7.90, 10.93 | home every time, by the topological proof, within 0.31 m | — |
-| The hot plume, the lidar, 5 of 5 | r2344 to r2348 | 5.38, 5.66, 5.34, 4.50, 5.38 | B at 0.33, 0.30, 0.95, 0.49, 0.98 m | 2.438, 2.198, 2.385, 1.991, 2.020 (r2347 under R3's 2.0 by 0.009: a finding, the hot scenarios' criteria are the standoff, the arrival and no contact) |
-| The clear location, the lidar, 5 of 5 | r2349 to r2353 | no source | B at 0.22 to 0.49 m | 2.493, 2.306, 2.052, 2.441, 2.029 |
-| The cold room, the stereo set, the control, 5 of 5 | r2354, r2355, r2358, r2360, r2365 (r2356, r2357, r2359, r2361 to r2363 stopped by the watchdog under the host's load) | no source | B at 1.17, 0.53, 1.01, 1.28, 1.37 m | 1.310, 1.297, 1.263, 1.109, 1.239 (K43's 1.1) |
-
-No contact in any flight. The core read the source in every hot room
-flight on the lidar (`HEAT_SOURCE seen=true`, `HEAT_SOURCE_MARKS`), and in
-no hot plume flight on it: the lidar never enters the dense plume (K37,
-R7), it went round it with its heading along its way, and the source at the
-plume's centre stayed outside the core's 57 degrees; there the standoff is
-the plume's own reading's. The stereo set's regression after this work
-found the half ball's open side (r2321: the vehicle lost the source, went
-round the half and came within 3.66 m from behind, as r2250): the whole
-ball is laid from every stand now and the stereo set's three groups were
-flown again on it (above).
-
-This item is complete when the hot plume and the hot room are kept out of
-in five of five flights on the stereo set with no contact, the cold room is
-still crossed, the standoff is a measured number in the specification, and
-the thermal core's reading is the decision's evidence in every flight.
 
 ## 33. Held-Out Worlds: Point-To-Point Flights On The Cave Circuit And The Finals World
 
@@ -2172,15 +1814,38 @@ The stages:
    speed profile's ceiling (10 m/s, V3) raised with the airframe's
    envelope measured (item 30). Size L; this is where R8 is measured.
 
+The signal's ways of failing, all of which the vehicle handles (the
+owner, 2026-10-30), and all read by one measurement, the disagreement
+between the signal and the estimator over time, never a latch:
+
+| Variant | What the vehicle sees | Where it is flown |
+|---|---|---|
+| Lost | no fix, or a fix flagged invalid | stage 1 |
+| Flapping | the fix lost and back every few seconds | stage 1 |
+| Jammed | no fix, or a fix with a reported error of tens of metres | stage 1 (jamming is a loss with noise) |
+| Degraded | an honest fix with a large, varying error (multipath, few satellites) | stage 2 |
+| Spoofed, slow walk | the fix drifts from the truth at a walking pace, the reported error small | stage 2 |
+| Spoofed, jump | the fix leaps tens or hundreds of metres at once | stage 2 |
+| Spoofed, replayed or delayed | a fix consistent with itself but late, so its velocity and position disagree with the estimator's | stage 2 |
+| Spoofed velocity or time | the fix's velocity or clock inconsistent with its own positions | stage 2 |
+| Back but wrong | the fix returns after an outage at an offset | stage 2 |
+
+The relay of stages 1 and 2 (`GNSS_FAULTS`, a list of these with their
+times and magnitudes, the seed the run's) plays every one of them; each
+has a mission check of its own (the vehicle arrives by the truth within the
+rule, the signal distrusted and taken back at measured times) and the
+acceptance of the stage flies them all.
+
 Stages 1 and 2 are cheap, made of parts in place, and give the strongest
-demonstration of the direction (the signal jammed or spoofed, the vehicle
-knows it and arrives); stages 3 to 5 are a second product of the size of
-the roadmap behind this one. The invariants stay: unknown space free, every
+demonstration of the direction (the signal lost, jammed or spoofed in any
+of the ways above, the vehicle knows it and arrives); stages 3 to 5 are a
+second product of the size of the roadmap behind this one. The invariants stay: unknown space free, every
 prohibition a measurement, no history latch, and the signal's trust a
 measurement too.
 
 This item is complete when the vehicle flies a point-to-point mission of
-kilometres over the open-sky world through a jammed and a spoofed signal,
+kilometres over the open-sky world through every variant of the signal's
+failure in the table above,
 arrives by the truth within the rule written for it, keeps the cave's
 acceptance unchanged on the same code, and R8 is a measured figure.
 
@@ -4373,6 +4038,123 @@ it cannot see into, so no closure stands in its memory. The ladder was
 withdrawn on 2026-10-18 (the owner), the scenario admits the proof's trigger
 alone, and on the stereo set it is open.
 
+### 25. The Estimator On Real Recordings (Completed)
+
+Not yet in a release (after v0.6.0); closed on 2026-10-27 (dba0daff, the root goal's part 5;
+specification K50): the visual-inertial estimator replayed on EuRoC V1 beside OpenVINS (ours its equal or better but
+on the hard sequence), the lidar-inertial one on NTU VIRAL's eee_01 beside FAST-LIO (0.20 against 0.42 percent, the
+sweep stamped at its middle), the tool image `docker/Dockerfile.tools` apart from the flight; TUM-VI stays not done. What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+
+**Type:** validation without a vehicle. Discussed with the project owner on
+2026-10-09 and recorded; begun on 2026-10-10 by the owner's word, the first
+step done on 2026-10-11 (below).
+
+**Hard prerequisites:** none. It needs no hardware and no simulator.
+
+The offline replay of the visual-inertial estimator (`tools/vio/replay_vio.cpp`,
+`tools/vio/dark_drift.py`) runs the filter over a flight's record (frames, IMU,
+truth) with no simulator. The records come from Gazebo today; the same replay
+can take a public recording from a real vehicle, and that is the only way,
+without a vehicle, to learn how the estimator behaves on real sensor noise
+and whether anything in it is fitted to Gazebo. It also carries the debt of
+the reference visual-inertial system ([technical_debt.md](technical_debt.md),
+Localization): the reference and ours can be compared on the same record.
+
+Candidate recordings, all public, each with a calibration and a reference
+trajectory in the role Gazebo's truth plays here:
+
+- EuRoC MAV (ETH): stereo and IMU on a drone, a machine hall and a room,
+  reference from a laser tracker and motion capture. The first check and the
+  industry's common one. 752 x 480 global-shutter stereo with radial and
+  tangential distortion.
+- TUM-VI, UZH-FPV: wide-angle stereo and IMU, corridors; aggressive flights.
+  Drift over a first pass, the tracker's limits.
+- Hilti SLAM Challenge, NTU VIRAL: 3D lidar and IMU, for the lidar-inertial
+  estimator.
+- SubT-MRS: underground, darkness, smoke, dust, with lidar, cameras and a
+  thermal camera: the material of items 17, 18, 22 and 23.
+
+What it takes, in order:
+
+1. A converter from the recording's layout (images, IMU CSV, reference CSV)
+   to the replay's record. Small for EuRoC.
+2. The camera model as configuration, not geometry derived from the field of
+   view: `stereo_depth_node` and the estimator take the intrinsics from
+   `horizontal_fov_rad` and the image size (1280 x 960) and treat the pair as
+   ideal and rectified, which Gazebo's cameras are and real ones are not.
+   Intrinsics, distortion, the baseline, the camera-to-IMU extrinsics, the
+   IMU's noise and the time offset come from the recording's calibration,
+   and the frames are rectified first.
+3. The comparison with the reference the way `dark_drift.py` compares with
+   the truth.
+
+The same path serves the stereo depth and the obstacle memory, fed with the
+recording's frames, and the lidar-inertial estimator with the recording's
+clouds.
+
+What it cannot show: the loop is open. The vehicle in the recording flew as
+it flew and does not answer to the stack, so the planner, the control and the
+braking contract stay in the simulator. A first step that fits in a day: one
+EuRoC sequence through the replay; the drift against the reference beside the
+0.1 to 0.4 percent of the path the simulator shows.
+
+### The first step, done (2026-10-11, specification K33)
+
+The three steps above for EuRoC: the pair is configured by its calibration
+and rectified in both camera nodes (the simulated pair passes untouched),
+`tools/vio/euroc_to_replay.py` converts a sequence, `tools/vio/euroc_report.py`
+measures a replay against the reference. Vicon room 1 from the ETH Research
+Collection (DOI 10.3929/ethz-b-000690084), the data outside the tree:
+
+| Sequence | Path | ATE (4-DOF aligned) | RTE over 10 m | At the end |
+| --- | --- | --- | --- | --- |
+| V1_01_easy | 58.6 m | 0.050 m | 0.183 m | 0.11 % of the path |
+| V1_02_medium | 75.9 m | 0.046 m | 0.111 m | 0.17 % |
+| V1_03_difficult | 78.9 m | 0.115 m | 0.165 m | 0.42 % |
+
+Beside the simulator's first passes (0.1 to 0.4 % of the path) the real
+recordings drift alike; the details are in
+[localization.md](localization.md). Not done yet: the machine hall
+sequences, TUM-VI (its fisheye pair needs another camera model; the archive
+of room 1 is downloaded), the stereo depth and the memory on the
+recordings, the lidar recordings, a reference system on the same records.
+
+**Done on 2026-10-27 (the root goal's part 5; specification K50;
+`docs/localization.md`):** the two steps below. OpenVINS beside ours on
+V1_01, V1_02 and V1_03 (the machine hall's server answered nothing): ATE
+0.057 / 0.080 / 0.058 m against ours 0.050 / 0.046 / 0.115, the relative
+error over 10 m 0.082 / 0.092 / 0.083 against 0.065 / 0.047 / 0.130, the end
+0.31 / 0.23 / 0.08 % against 0.11 / 0.17 / 0.42 %: ours the reference's equal
+or better but on the difficult sequence. NTU VIRAL's eee_01 (an OS1-16 sweep
+that moves) through ours and through FAST-LIO: stamped at the sweep's start
+ours loses its map at 228 s; stamped at the sweep's middle (the one probe)
+it drifts 0.20 % of 237 m (ATE 0.255 m, the registration p95 32 ms);
+FAST-LIO with per-point compensation 0.42 % (ATE 0.379 m). The board's
+driver needs the stamp at the sweep's middle at least; the tool image is
+`docker/Dockerfile.tools` (`tools/tools_image.sh`), nothing of it in the
+flight. TUM-VI stays not done.
+
+### What came next (recommended on 2026-10-13, done on 2026-10-27)
+
+The owner's question whether ready estimators would have served better
+([design_questions.md](design_questions.md): not in vain, not to be redone,
+to be added to) ends in two steps here, both on recordings and both before
+any hardware:
+
+1. A reference estimator, OpenVINS, over the same EuRoC sequences beside
+   ours: the cheapest measure of how good ours is. It needs Ceres and
+   Boost.Filesystem in a tool image apart from the flight image. The owner
+   set it aside on 2026-09-25 until the drift rework
+   ([technical_debt.md](technical_debt.md)); this recommends it before the
+   hardware instead, and the decision stays the owner's.
+2. One public lidar recording (Hilti or NTU VIRAL) through the
+   lidar-inertial estimator and through FAST-LIO2: a real sweep moves during
+   its 100 ms and ours does not compensate it, and the replay decides
+   between writing the compensation and adopting FAST-LIO2 for the lidar
+   build ([hardware_builds.md](hardware_builds.md)).
+
 ### 29. Telling A Failing Light From A Dark Place (Completed)
 
 Shipped in [v0.6.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.6.0) on 2026-10-24; closed on 2026-10-14 (0d2141a4); the carried light judged by
@@ -4476,3 +4258,266 @@ latest scan (K35, K7 5.2 m, the noise mask by brightness; 5563787d).
 Diagnostic flights on the way, none acceptance: r1464 to r1474, r1476 to
 r1484.
 
+### 31. Flight Through The Dark Void (Completed)
+
+Not yet in a release (after v0.6.0); closed on 2026-10-25 (the root goal of 2026-10-24, part 2; specification
+K46, K47): the void frame and the void state, the hall crossed at 14 m on dead reckoning without a hold, a descent or a
+contact, the wall's goal within 2 m by the truth five times and the hall's middle within the published uncertainty
+plus 2 m three times (r2173 to r2190), the drift budget and the arrival rule registered; the lidar's start in the
+hall repaired on 2026-10-29 (K51, r2367). What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+
+**Type:** new capability; decided by the project owner on 2026-10-17 after
+the dark hall's recording (r1488): "complete darkness" means an empty dark
+volume with nothing within the carried light's reach, not a floor lit a few
+metres below. Built on 2026-10-25 in the root goal of 2026-10-24 (part 2);
+the commits 96dea606, 7edd38eb, e5ce373c, 1f4e1eec, ecc12e03, affcd811 and the documents.
+
+**Hard prerequisites:** items 17, 29 and 18 (the light judged by its driver,
+F18; the blind frame, K12; the ladder's hold and descent, K19; the rotors'
+drag as a velocity, K21).
+
+What is settled: a black frame under a working light is a measurement of
+emptiness to the light's reach, not an absence of guarantee; in the void the
+safety rests on the light and the braking contract (K9) and the position on
+dead reckoning, whose drift is the physics of the IMU; so the 2 m capture
+radius is not required in the void: a goal there is reached when the true
+error is within the estimator's own published uncertainty (two sigma) plus
+2 m, and a goal with a surface within the light's reach at its end is reached
+within 2 m as always. No GNSS in any flight.
+
+**Stage 0, the light's reach (done).** On the rig (`tools/smoke_rig.py`
+levels `height=Z,wall=60,record=20`, `tools/smoke_rig_report.py --reach`,
+`log/tools/void/reach`): over a textured floor the pair is blind to the
+braking contract from 5 m below (matched 0.062 of the frame), matches
+nothing from 13 m; the tracker holds 20 features or more in 97 percent of
+frames at 11 m and in none at 13 m (the 10 it holds there are the imager's
+noise, which `minimum_frame_features` refuses, r933); the frame's raw
+brightness at the 95th percentile 67, 40, 25, 14, 9, 7 levels at 3, 5, 7, 9,
+11, 13 m; a facing matte panel of the location's darkest albedo (0.07) at the
+pair's confident depth, 5.2 m, 52 levels, of the mean (0.10) at 7 m 46, at
+9 m 33. The void's radius is the confident depth (K7); the tracker's reach
+over a floor 11 m; both in K46.
+
+**Stage 1, the void (done; K46, K13 and K19 amended).** The stereo node
+judges a frame a void frame when the light's reading is sound (K12's 0.25),
+the frame's raw brightness is under 46 levels at the 95th percentile (what a
+surface of the mean albedo gives from beyond the reach), the pair's hits
+within the confident depth cover under 1 percent of it, and no surface of the
+time-of-flight ring lies in the camera's field, and publishes the confident
+depth on `/stereo_depth/void_range` (`stereo_void_frame.hpp`). The planner
+lifts the braking contract's frame range to it: the vehicle crosses the void
+at the speed the depth admits, 1.8 m/s (0.5 before, on the memory's range,
+K15). The camera estimator enters the void with such a frame
+(`visual_inertial_void.hpp`): past its unaided second it is in the void, not
+dead reckoning, the height held and the drag fused as on dead reckoning, the
+pose given to the autopilot as a sound one (so that the offboard flies the
+plan and the descent of K19 is not due), the ten seconds of K13 not spent;
+the void ends with the next update or, the witness gone (a failed light),
+with dead reckoning from that moment. The memory marks nothing (K14, as
+before). The first lines (24 levels, any match) refused the hall at 14 m,
+whose floor 14 m below and plain ceiling 6 m above, both beyond the reach,
+lift the frame to 18 to 39 levels and give 5 percent of matches 12 to 20 m
+away (r2174: the estimator flickering, 28 holds, two descents of K19 to
+11 m); the lines are what surfaces beyond the reach can give.
+
+**Stage 2, the drift and the stitch (done).** Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
+
+**Stage 3, the scenario and the acceptance (done).** `sim-dark-void-headless`
+and `-gui` (`dark_void_point_to_point_scenario.json`: a climb straight up
+over the pad to 14 m, then the goal 4.5 m from the east wall at 14 m, the
+wall within the reach at the end; `dark_void_mid_point_to_point_scenario.json`
+by `DARK_VOID_SCENARIO_PATH`: the hall's middle, an arrival on dead reckoning
+alone, judged within two sigma plus 2 m by the mission check), the row in
+[`scenarios.md`](scenarios.md), `tools/render_flight.sh dark-void`. A single
+goal at height was flown as the straight route, a ramp 2 to 10 m over a floor
+the light still reached (r2173), hence the climb first.
+
+| Flight | Run | Result |
+|---|---|---|
+| The reach by height, the rig | log/tools/void/reach | the floor matched 0.179 of the frame at 3 m, nothing at 13 m; the tracker 91, 62, 49, 32, 23, 10 features at 3, 5, 7, 9, 11, 13 m; raw brightness 67 to 7 at p95 |
+| The probes | r2173, r2174, r2175 | r2173 a ramp at 2 to 10 m, no void (one goal at height); r2174 at 14 m with the first lines, no void, 28 holds, two descents to 11 m; r2175 the first crossing in the void, 0.52 m by the truth, drift 0.19 m/s |
+| The drift, three crossings and the coefficient | r2176, r2177, r2178 | 0.84, 0.27, 0.38 m by the truth; the drift 0.13 to 0.23 m/s with 0.106, the estimate 8 to 13 percent fast along the track; K21 re-fitted to 0.118 |
+| The wall's goal, eight | r2180 to r2187 | 0.39, 0.80, 0.44, 0.42, 0.90, 0.31, 0.26, 0.36 m at the climb goal and 0.99, 0.38, 0.24, 0.94, 0.73, 0.76, 1.59, 1.27 m at the wall's by the truth; the drift 0.7 to 3.6 percent of 29 to 53 m of void; one hold a flight at the aided-void boundary, no descent, no contact |
+| The hall's middle, three | r2188, r2189, r2190 | 0.65, 1.00, 1.21 m by the truth against two sigma plus 2 m of 5.59, 6.00, 6.55; the drift 1.0 to 2.6 percent |
+| The lidar reference | r2179; r2367 | r2179 not flown: the lidar-inertial estimator unhealthy at the pad (matched 0.18 under 0.3), no pose, arming denied. Repaired on 2026-10-29 (K51, the count of matched points beside their share): r2367 crossed the hall on the lidar, the climb goal 0.34 m and the wall's 0.53 m by the truth, no contact, max speed 6.21 m/s, the height error within 0.08 m over 82 m, 70 of 71 scans healthy; r2366 with a floor of 500 points came down on the pad and set the floor at 200 |
+
+**Measurement:** `log/tools/journal/goal_journal_dark_void.md`,
+`log/tools/void/` (the rig's reach table, the crossings' void episodes with
+their drift against the published sigma, the along-track scale of the drag's
+velocity), the flights under `.keep`.
+
+**Completion:** the void frame and the void state built and registered
+(K46), the hall crossed at 14 m in the void without a hold, a descent or a
+contact, the wall's goal reached within 2 m by the truth five times, the
+middle's within the published uncertainty plus 2 m three times, the drift
+budget and the arrival rule registered. Open: the lidar cannot start in the
+hall (its estimator matches 0.18 of its own first scan, under its 0.3 line,
+where the far walls and the ceiling give sparse points without planes), so
+the lidar reference was flown on 2026-10-29 after the repair (K51: the health
+reads the count of matched points beside their share; r2367 above); a real barometer drifts with the weather (item 35); a plain
+surface darker than the location's albedo within the reach is the ring's
+2.8 m to catch.
+
+### 32. Hot Smoke: A Heat Source In The Plume (Completed)
+
+Not yet in a release (after v0.6.0); closed on 2026-10-28 (3fad5b09, the root goal of 2026-10-24, part 4;
+specification K49): the thermal core back on the vehicle with a decision, the hot plume and the hot room kept out of
+in five of five flights on each sensor set with no contact (the lidar r2339 to r2348, the stereo set r2322 to r2331
+on the whole ball), the cold room still crossed, the standoff a measured number, the core's reading the decision's
+evidence in every flight. What was asked for and how it was built is kept below as it was
+written; this is what came of it.
+
+
+**Type:** new capability; proposed by the project owner on 2026-10-17, when
+the thermal core of item 18 stage 3 was taken off the vehicle (F4): a sensor
+earns its place with a decision that reads it, and this is the item that
+gives the core its decision.
+
+**Hard prerequisites:** items 18 and 23 (smoke in the simulator, A13; dense
+dense smoke detected, K37, K38; moderate smoke crossed, K43);
+item 18 stage 3 as the measurement of what a thermal frame carries (K39).
+Item 27 (a real vehicle) comes after.
+
+**Validation environment:** the urban location with its smoky places (F4),
+some of them carrying a heat source.
+
+Smoke the vehicle meets is cold or hot: fog, dust and smoke that has cooled
+are crossed when moderate and avoided when dense (items 18 and 23); a plume
+with a fire or a smouldering source in it is not entered at any density,
+and the source is kept at a distance. Neither the stereo pair, the
+time-of-flight ring nor the lidar can tell the two apart: they read density.
+A thermal core does, through the smoke, which long-wave infrared crosses
+almost untouched (K39: through 1/m the thermal frames are identical to the
+clear ones).
+
+The order:
+
+1. **The simulator's heat.** A heat source as an object of the world with a
+   temperature (the thermal camera of the exploration already renders the
+   world's surfaces by temperature, `thermal_camera`); a smoke zone may carry
+   one (`SMOKE_ZONES` gains a temperature, or a separate `HEAT_SOURCES`
+   string, whichever is the smaller change), and the smoke relay passes the
+   thermal frame through the smoke untouched (K39).
+2. **The core back on the stereo set, with its reading.** The FLIR Lepton
+   3.5 class core (160 x 120, 9 Hz) on the camera link, as mounted in stage
+   3; its frame read for the share of pixels warmer than the frame's median
+   by a threshold measured on the rig, and for their direction in the frame;
+   the reading published with its direction, as the ring's smoke share is
+   (K38), and recorded in the memory as a heat mark with a radius.
+3. **The rule.** A heat mark is a prohibition with a standoff: the route
+   keeps a measured distance from the source, the plume that carries it is
+   not entered whatever its density (the moderate room's crossing of item 23
+   is refused when the room is hot), and the mission events say so ("HEAT
+   SOURCE", the overlay's words). The lidar vehicle, which carries no core,
+   either takes the same core or records that it cannot tell hot smoke from
+   cold: the owner's call, taken with the measurement of step 2.
+4. **Scenarios and acceptance.** A hot plume on the way (gone round at the
+   standoff), a hot moderate room on the way (not entered: round it, or home
+   when there is no way round), and the cold moderate room of item 23 as
+   the control (crossed as before); five flights each on the stereo set, and
+   on the lidar as step 3 decides; no contact, B in truth within 2 m where B
+   is reachable, home otherwise.
+
+Size: M for steps 1 and 2, M for step 3, L with the series.
+
+**Built on 2026-10-26 (steps 1 to 3, the root goal's part 4; specification
+K49):** `HEAT_SOURCES` ("x,y,z,r,T") rides with `SMOKE_ZONES`, the smoke
+model's relay creating each source in the running world as a static body
+tagged with its temperature (A13); the Lepton-class core is back on the
+stereo set with its cap at 650 K (K39), its frame relayed as the pair's and
+read by the depth node (`thermal_reading.hpp`): a source is four pixels or
+more at 30 K over the frame's median, the threshold set on the rig against
+the location's 288 and 311 K surfaces (23 K apart; the lamp warms nothing,
+the tag is binary); its range the nearer of the hits in the hot cone and the
+source's bearing-only fix over the motion, else the body's apparent size
+(7000 pixel-metres squared for the 0.3 m body the rule assumes); the
+standoff 4.0 m, laid as the ball round the range point (observed
+unobservable, every half second while the core reads the source, a fifth
+of the range wider for the size's error; the near half alone until
+2026-10-28), the motion bounded before it, every return through the ball
+dropped, the words
+`HEAT_SOURCE seen=true` on the mission's events and HEAT SOURCE on the
+overlay; the truth judged never within the standoff
+(`validate_standoff_from_heat_sources`). The scenarios: `sim-urban-hot-smoke-plume-*`
+(the location's plume at (12,22,11) with a source at its centre) and
+`sim-urban-hot-smoke-room-*` (the moderate rooms with a source on the west
+hall's crossing), the cold room the rooms scenario as it is; flown only for
+this item's acceptance (the owner, 2026-10-24).
+
+**Accepted on 2026-10-27 (step 4; the stereo set; specification K49):**
+
+| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot plume, 5 of 5 | r2257 to r2261 | 4.97, 4.21, 5.52, 5.82, 5.79 | B at 1.31, 1.63, 1.32, 1.03, 1.59 m | 1.279, 1.424, 1.407, 1.354, 1.310 |
+| The hot room, 5 of 5 | r2262 to r2266 | 10.73, 12.37, 11.51, 10.84, 11.48 | home every time, by the light's charge (the battery trigger at about 250 s), within 0.3 m of the start | — |
+| The cold room, the control, 5 of 5 | r2271 to r2275 | no source | B at 0.52, 0.40, 1.30, 0.71, 1.80 m | 1.305, 1.137, 1.292, 1.273, 1.185 (K43's 1.1) |
+| The lidar on the hot room, no core | r2276 | 1.30: crossed | B at 0.25 m | 2.343 |
+| The clear location, the stereo set, 5 of 5 | r2277, r2279 to r2281, r2288 (r2282 acknowledged B at 2.09 m, the estimate's drift) | the core silent | B at 0.9 to 1.6 m | 1.268, 1.277, 1.395, 1.345, 1.291 |
+| The clear location, the lidar, 5 of 5 | r2283 to r2287 | no core | B at 0.3 to 0.7 m | 2.207, 2.647, 2.249, 2.656, 2.467 |
+
+No contact in any flight, the dense plume never entered (R7), the core's
+reading in the log of every hot flight (`HEAT_SOURCE_MARKS`, the
+`HEAT_SOURCE seen=true` event). Nineteen probe flights preceded the
+groups (r2235 to r2253; `log/tools/journal/goal_journal_hot_smoke.md`):
+the mark's shell had holes the vehicle flew through, the braking contract
+let the memory's observed range override the sensor's bound, a range
+guessed ahead moved with the vehicle, a gaze held on the source froze the
+flight; what stands is in K49. The lidar set, which carries no core,
+crosses the hot room (r2276): by the measurement the lidar build takes
+the same core (`docs/hardware_builds.md`, L1), read on the lidar set as
+below.
+
+**Accepted on the lidar set on 2026-10-28 (step 4; specification K49):**
+the core on `lidar_3d_v1`'s link, read by `thermal_core_node`: the range
+from the scan's hits in the hot cone without the lidar's weak returns
+(K37: the hot room's smoke answered in the cone at 4.6 to 4.9 m whatever
+the source's range), the fix or the body's size otherwise; the source held
+in the map until the core looks at the place and reads no heat for a
+second (the lidar sees all round and carved a ball the core had turned
+from); the memory reads the scan through the node, every ray that enters
+the held ball ending at its surface; the bearings turned with the
+lidar-inertial estimate's full orientation at their own stamps; the
+heading follows the motion while the core is carried, at 0.8 rad/s at
+most, inside what the estimate, which registers each sweep whole, has
+kept up with (at 2 rad/s it lost 2.3 m of height in smoke and the vehicle
+met the floor, r2297). Ten probes (r2289 to r2298) found and repaired
+what K49's change log lists. The node costs 0.08 cores at p50 and 0.10
+at p95 (r2299, `tools/process_cores.py`).
+
+| Group | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot room, the lidar, 5 of 5 | r2299 to r2303 | 8.55, 8.55, 10.30, 8.50, 9.00 | home every time, by the topological proof, within 0.34 m of the start | — |
+| The hot plume, the lidar, 5 of 5 | r2304 to r2308 | 5.30, 5.46, 4.75, 5.80, 4.74 | B at 0.32, 0.42, 0.34, 0.73, 0.21 m | 2.401, 2.108, 2.479, 2.518, 2.299 |
+| The clear location, the lidar, 5 of 5 | r2309 to r2313 | no source | B at 0.25 to 0.57 m | 2.273, 2.008, 2.441, 2.478, 2.264 (R3's 2.0) |
+| The hot plume, the stereo set, the whole ball, 5 of 5 | r2322 to r2326 (r2321 on the half ball: 3.66 m) | 7.15, 7.74, 5.78, 8.00, 7.31 | B at 0.89, 1.23, 1.72, 1.37, 0.87 m | 1.305, 1.339, 1.278, 1.357, 1.289 |
+| The hot room, the stereo set, the whole ball, 5 of 5 | r2327 to r2331 | 9.38, 11.10, 9.20, 10.71, 9.35 | home every time, by the light's charge, within 0.4 m of the start | — |
+| The clear location, the stereo set, 5 of 5 | r2333 to r2335, r2337, r2338 (r2336 at 1.179 m/s, under R3; r2314 to r2320 before the whole ball) | the core silent | B at 0.69 to 1.44 m | 1.248, 1.282, 1.286, 1.345, 1.336 |
+
+The whole ball changed the code after the lidar's groups above, so they were
+flown again on the final code (2d794294; the commits after it change
+documents and tools alone), with the cold room as the control:
+
+| Group, the final code | Runs | Standoff (nearest, m) | B or home | Speed (m/s) |
+|---|---|---|---|---|
+| The hot room, the lidar, 5 of 5 | r2339 to r2343 | 10.17, 10.38, 9.55, 7.90, 10.93 | home every time, by the topological proof, within 0.31 m | — |
+| The hot plume, the lidar, 5 of 5 | r2344 to r2348 | 5.38, 5.66, 5.34, 4.50, 5.38 | B at 0.33, 0.30, 0.95, 0.49, 0.98 m | 2.438, 2.198, 2.385, 1.991, 2.020 (r2347 under R3's 2.0 by 0.009: a finding, the hot scenarios' criteria are the standoff, the arrival and no contact) |
+| The clear location, the lidar, 5 of 5 | r2349 to r2353 | no source | B at 0.22 to 0.49 m | 2.493, 2.306, 2.052, 2.441, 2.029 |
+| The cold room, the stereo set, the control, 5 of 5 | r2354, r2355, r2358, r2360, r2365 (r2356, r2357, r2359, r2361 to r2363 stopped by the watchdog under the host's load) | no source | B at 1.17, 0.53, 1.01, 1.28, 1.37 m | 1.310, 1.297, 1.263, 1.109, 1.239 (K43's 1.1) |
+
+No contact in any flight. The core read the source in every hot room
+flight on the lidar (`HEAT_SOURCE seen=true`, `HEAT_SOURCE_MARKS`), and in
+no hot plume flight on it: the lidar never enters the dense plume (K37,
+R7), it went round it with its heading along its way, and the source at the
+plume's centre stayed outside the core's 57 degrees; there the standoff is
+the plume's own reading's. The stereo set's regression after this work
+found the half ball's open side (r2321: the vehicle lost the source, went
+round the half and came within 3.66 m from behind, as r2250): the whole
+ball is laid from every stand now and the stereo set's three groups were
+flown again on it (above).
+
+This item is complete when the hot plume and the hot room are kept out of
+in five of five flights on the stereo set with no contact, the cold room is
+still crossed, the standoff is a measured number in the specification, and
+the thermal core's reading is the decision's evidence in every flight.
