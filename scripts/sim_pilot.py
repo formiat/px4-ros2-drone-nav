@@ -78,6 +78,11 @@ def main() -> int:
                         help="a radio heard from the start (needed for rc_loss)")
     parser.add_argument("--operator-topic", default="/drone_city_nav/operator_command")
     parser.add_argument("--output", type=Path, required=True)
+    # Roadmap item 36: under the step controller the pilot acts inside the step
+    # protocol (its ticks on the controller's steps, then its acknowledgement),
+    # so that its arming and its events fall on the same simulation stamps in
+    # every flight; the timers above are not started then.
+    parser.add_argument("--step-protocol", action="store_true")
     args = parser.parse_args()
     events = parse_events(args.events)
     import rclpy
@@ -203,9 +208,29 @@ def main() -> int:
                     vehicle.set_mode(event.action)
                 record(vehicle.name, "pilot", event.action)
 
-    node.create_timer(1.0, start_tick)
-    node.create_timer(0.05, radio_tick)
-    node.create_timer(0.1, event_tick)
+    if args.step_protocol:
+        from std_msgs.msg import UInt64
+        from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+
+        step_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10)
+        acknowledgement = node.create_publisher(UInt64, "/drone_city_nav/step_ack/pilot", step_qos)
+
+        def on_step(step: UInt64) -> None:
+            # The 20 ms steps: the events every 5 (100 ms), the start every 50 (1 s), the radio every 3 (60 ms).
+            index = int(step.data)
+            if index % 5 == 0:
+                event_tick()
+            if index % 50 == 0:
+                start_tick()
+            if index % 3 == 0:
+                radio_tick()
+            acknowledgement.publish(step)
+
+        node.create_subscription(UInt64, "/drone_city_nav/step", on_step, step_qos)
+    else:
+        node.create_timer(1.0, start_tick)
+        node.create_timer(0.05, radio_tick)
+        node.create_timer(0.1, event_tick)
     print(f"SIM_PILOT vehicles={len(vehicles)} events={len(events)} rc={args.rc}", flush=True)
     try:
         rclpy.spin(node)

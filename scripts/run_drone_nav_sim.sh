@@ -781,7 +781,9 @@ echo "CPU affinity: enabled=${enable_subsystem_cpu_affinity} control='${control_
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
+  gz_args=(--verbose="${GZ_VERBOSE:-1}" -s)
+  # Roadmap item 36: under the step controller the world starts paused and seeded, and the controller steps it.
+  if [[ "${STEP_CONTROLLER:-off}" == on ]]; then gz_args+=(--seed "${IMPERFECTION_SEED:-0}"); else gz_args+=(-r); fi
   if [[ -n "${headless}" ]]; then
     gz_args+=(--headless-rendering)
   fi

@@ -82,6 +82,7 @@ start_runtime_evidence_capture() {
   fi
   python3 "${repo_root}/scripts/sim_pilot.py" --namespaces "${pilot_namespaces}" \
     --events "${PILOT_EVENTS:-}" $(bool_is_true "${PILOT_RC:-false}" && echo --rc) \
+    $([[ "${STEP_CONTROLLER:-off}" == on ]] && echo --step-protocol) \
     --output "${runtime_artifact_dir}/pilot.csv" \
     > "${runtime_artifact_dir}/pilot.log" 2>&1 &
   # Roadmap item 17 stage 5: the light the camera vehicle carries, its
@@ -143,8 +144,8 @@ start_runtime_evidence_capture() {
     fi
     # Roadmap item 36: the simulator waits for the onboard loop (the step controller, a simulation process).
     if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
-      local step_nodes=offboard,mission_monitor,memory,planner,visual_inertial
-      [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]] && step_nodes=offboard,mission_monitor,memory,planner,lidar_inertial
+      local step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial
+      [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]] && step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial
       python3 "${repo_root}/scripts/step_controller.py" --world "${world_name}" \
         --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" \
         --output "${runtime_artifact_dir}/step_controller.csv" \

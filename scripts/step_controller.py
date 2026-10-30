@@ -71,7 +71,11 @@ def main() -> int:
     log = args.output.open("w", newline="")
     writer = csv.writer(log)
     writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "stalls", "timeouts", "missing", "wall_speed"])
-    # The stack is up when every expected node publishes its acknowledgement.
+    # The world stays paused from the start (the runtime starts it without -r); said again here for a world
+    # that runs. The stack is up when every expected node publishes its acknowledgement.
+    if not control(pause=True):
+        print("STEP_CONTROLLER the world did not pause", flush=True)
+        return 1
     started = time.monotonic()
     while time.monotonic() - started < args.startup_wait_s:
         rclpy.spin_once(node, timeout_sec=0.2)
@@ -81,9 +85,6 @@ def main() -> int:
     else:
         print(f"STEP_CONTROLLER no acknowledgement publisher from {missing} within {args.startup_wait_s:.0f} s",
               flush=True)
-        return 1
-    if not control(pause=True):
-        print("STEP_CONTROLLER the world did not pause", flush=True)
         return 1
     print(f"STEP_CONTROLLER paused at sim {sim_ns() * 1e-9:.3f} s; stepping {iterations} iterations "
           f"({args.step_ms} ms) a step, waiting for {expected}", flush=True)
