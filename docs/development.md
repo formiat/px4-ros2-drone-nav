@@ -10,6 +10,7 @@ Follow:
 
 - `cpp_best_practices.md` (this folder)
 - `autonomous_development.md` (this folder: how the work is run without people)
+- `goal_writing.md` (this folder: the brief an unattended session works from)
 - `AGENTS.md`
 - `README.md`
 - `CONTRIBUTING.md`

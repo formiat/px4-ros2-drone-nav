@@ -39,9 +39,9 @@ a purchase, a direction) is outside the goal and named as such.
 
 The agent's working memory does not survive a long session: the context is
 compacted every few hours. The goal file is what the agent has when it wakes
-up, so it is written to be read cold (the `write-goal` method; the files of
-2026-10-24, 2026-10-29 and 2026-10-30 are the examples, under the owner's
-`goals_done/`).
+up, so it is written to be read cold. The method, section by section, is
+[`goal_writing.md`](goal_writing.md); the files of 2026-10-24, 2026-10-29
+and 2026-10-30 are the examples, kept by the owner outside the repository.
 
 - One root file with the common rules, the order of the parts, the recording
   and the stop section; one file a part with its own facts, decisions,

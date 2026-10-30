@@ -9,11 +9,13 @@ through the provided `Makefile` and scripts, not ad-hoc top-level CMake
 commands.
 
 Use only the container workflow for build, test, quality checks, and simulation.
-Use `./scripts/build.sh`, `./scripts/test.sh`, `./scripts/sim_headless.sh`, and
-`./scripts/sim_gui.sh` for common workflows. Start `./scripts/dev_shell.sh`
+Use `./scripts/build.sh`, `./scripts/test.sh`,
+`./scripts/sim_urban_point_to_point_headless.sh`, and
+`./scripts/sim_urban_point_to_point_gui.sh` for common workflows. Start `./scripts/dev_shell.sh`
 only when an interactive container shell is needed; inside the container, use
 `make build`, `make test`, `make test-scripts`, `make quality`,
-`make sim-headless`, and `make sim-gui`. Do not run workspace-writing scripts
+`make sim-urban-point-to-point-headless`, and
+`make sim-urban-point-to-point-gui`. Do not run workspace-writing scripts
 as root unless doing intentional maintenance with `ALLOW_ROOT_WORKSPACE_WRITE=1`.
 
 Before committing after file changes:
@@ -22,7 +24,17 @@ Before committing after file changes:
 2. Run `make quality`.
 3. Commit the completed file changes.
 
+The whole gate is `./tools/gates.sh` (format, build, unit tests, script
+tests, quality; `X=0` in `log/tools/gate_flag.txt`). A commit that changes
+Markdown files alone needs only `./tools/gates.sh --docs` (the script tests,
+which read the documents).
+
 Keep code comments and repository documentation in English.
+
+An agent working here follows [docs/autonomous_development.md](docs/autonomous_development.md):
+the goal file, the registers, the flight rules, the reports, and what is the
+owner's alone. The brief of an unattended session is written by
+[docs/goal_writing.md](docs/goal_writing.md).
 
 Logs are pruned after a week (`scripts/prune_sim_logs.sh`: `log/`,
 `log/runs/`, `log/tools/` and the PX4 logs), before every simulation run.

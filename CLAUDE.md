@@ -33,7 +33,8 @@ Keep code comments and repository documentation in English.
 
 An agent working here follows [docs/autonomous_development.md](docs/autonomous_development.md):
 the goal file, the registers, the flight rules, the reports, and what is the
-owner's alone.
+owner's alone. The brief of an unattended session is written by
+[docs/goal_writing.md](docs/goal_writing.md).
 
 Logs are pruned after a week (`scripts/prune_sim_logs.sh`: `log/`,
 `log/runs/`, `log/tools/` and the PX4 logs), before every simulation run.

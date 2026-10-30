@@ -782,6 +782,7 @@ Key pages:
 - `docs/autonomous_development.md` (how agents develop and debug this
   project with the least call on people: the goal, the registers, the
   flights, the reports)
+- `docs/goal_writing.md` (how the brief for an unattended session is written)
 - `tools/README.md` (the scripts the acceptance flights are launched and
   read with)
 
