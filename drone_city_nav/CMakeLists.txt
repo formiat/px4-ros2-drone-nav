@@ -1415,6 +1415,12 @@ if(BUILD_TESTING)
     GLOB_RECURSE drone_city_nav_private_headers
     CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+  # The Vulkan path's headers need the loader's header, absent where the
+  # path is off (the onboard image).
+  if(NOT DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
+    list(FILTER drone_city_nav_private_headers EXCLUDE
+         REGEX "src/mppi/(vulkan_compute|mppi_vulkan_noise)\\.hpp$")
+  endif()
   drone_city_nav_header_check_sources(
     drone_city_nav_header_check_sources_list
     ${drone_city_nav_private_headers} ${DRONE_CITY_NAV_ROS_HEADERS})
