@@ -107,7 +107,8 @@ def main() -> int:
                 rclpy.spin_once(node, timeout_sec=0.05)
             target_ns = sim_ns() + step_ns
             expected_ns = target_ns
-            if not control(multi_step=iterations):
+            # pause=True in the same request: the message's default (false) would set the world running.
+            if not control(pause=True, multi_step=iterations):
                 stalls += 1
             # The world's iterations done: the clock has reached the step's end.
             deadline = time.monotonic() + 5.0
