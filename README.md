@@ -779,6 +779,9 @@ Key pages:
 - `docs/hardware_builds.md`
 - `docs/design_questions.md`
 - `docs/technical_debt.md`
+- `docs/autonomous_development.md` (how agents develop and debug this
+  project with the least call on people: the goal, the registers, the
+  flights, the reports)
 - `tools/README.md` (the scripts the acceptance flights are launched and
   read with)
 

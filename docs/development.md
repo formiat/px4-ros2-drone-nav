@@ -9,6 +9,7 @@ offboard runtime decisions.
 Follow:
 
 - `cpp_best_practices.md` (this folder)
+- `autonomous_development.md` (this folder: how the work is run without people)
 - `AGENTS.md`
 - `README.md`
 - `CONTRIBUTING.md`
