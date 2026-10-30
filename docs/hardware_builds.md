@@ -105,6 +105,7 @@ replaces the assumption with a measurement.
 | An x86 board with a discrete NVIDIA GPU | Fits | The mass and the power, not the compute |
 | Orin NX 16GB | The lidar nearly, the stereo set not | The GPU: 8192 rollouts take 30 to 40 ms, so about 2 000 or fewer fit the tick (item 28 step 1 measures what the flight loses); the CPU: the lidar's 7 to 8 cores at p50 against 8, short at p95; the stereo set's 9 to 11 against 8, about 40 percent short while the matcher is on the CPU |
 | Orin NX 8GB | No | Six cores: 1.5 times short on the lidar, 1.8 on the stereo set |
+| The CPU alone (item 28, way A, 2026-10-30) | No | The CPU engine on one thread does 0.39 ms a rollout of 80 steps: 256 rollouts take 114 ms a tick on a Zen 3 core (r2482, the clear location flown at 1.474 m/s), so the tick's 150 ms holds a few hundred rollouts, not the 2048 of K48; a board without a GPU needs the Vulkan engine (way B) or a many-core CPU with the rollouts spread over threads |
 | Orin Nano 8GB, the Super kit | No; the bench | Six cores at up to 1.7 GHz, another 15 percent behind the NX 8GB; the GPU of the NX's class at a lower clock |
 | VOXL 2 | No | No CUDA (item 28); by CPU it would stand with the NX 16GB |
 | Raspberry Pi 5, RK3588 | No | No CUDA; four to eight cores |

@@ -347,6 +347,14 @@ so its window (`SMOKE_DURATION_S`, wall seconds) is set three times the
 usual, and the host verdict A7, which reads the real-time factor, voids it:
 such flights are flown through `tools/series2.sh` and read by hand.
 
+The MPPI engine of a flight is chosen by `MPPI_ENGINE` (roadmap item 28,
+specification K54): `cuda`, the default, or `cpu`, the host engine on the same
+rollout body, which flies the clear location at 256 rollouts (`MPPI_ROLLOUTS`)
+with a tick of 114 ms (r2482) and exists for the build and the tests without
+CUDA (`-DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF`), not for the acceptance. The
+unit test `mppi_engine_parity_test` holds the two engines to the measured
+spread on the same inputs and runs in the CUDA build alone.
+
 ### Resource record
 
 Every flight, headless or not, records what its processes consume

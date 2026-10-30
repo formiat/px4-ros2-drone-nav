@@ -1164,6 +1164,31 @@ built and its unit tests run on a machine without CUDA, the parity tests
 holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
 series on the board.
 
+**Step 2, way A, done on 2026-10-30** (the goal of 2026-10-29, part 3;
+code f60c2928 to fa16e3af; specification K54). The rollout model is one
+host-and-device body, `src/mppi/mppi_rollout_body.hpp` (the sampled noise,
+the dynamics, the body's ESDF query through a lookup functor, the costs of a
+rollout, the sequence limiter); the CUDA kernels are shells around it (the
+texture read, the thread indexing and the block reductions stay the device's)
+and the CUDA path flies as before (r2483: the tick 22.7 / 32.0 ms against
+K53's 23.1 / 31.1). `MppiCpuEngine` runs the same stages on the host in plain
+loops behind the engine interface `MppiEngine`; the controller makes the
+engine by `mppi_engine` (cuda, the default, or cpu; `MPPI_ENGINE` of a flight).
+The host library `drone_city_nav_mppi` and the planner's component build
+with `DRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF` (156 unit tests there, the
+controller's lifecycle test on the CPU engine); the parity test holds the
+two engines to the measured spread on the same inputs: 3.4e-6 m/s^2 on the
+controls, 2.4e-6 relative on the weight sum and the sample fraction, 1.7e-6
+on the selected cost (bounds 1e-5). The CPU engine in flight at 256 rollouts
+(r2482, cameras): 1.474 m/s, B 1.48 m, no contact; the tick 113.6 / 144.4 ms
+(the MPPI update 98.9 / 127.2 ms, 0.39 ms a rollout of 80 steps on one
+thread), the planner node 1.90 cores against 1.48 on CUDA: a number, not the
+flight's engine. Not in the CPU engine: the cooperative candidates and the
+separation acquisition of item 15's missions. The host evaluator
+`simulateReference` stays what it was (it reads the footprint through the
+known-clearance evidence and tracks peer separation, which the sampler's body
+does not): the one body is the sampler's, on both backends.
+
 ## 30. The Airframe's Size
 
 **Type:** new capability, deferred; weighed on 2026-10-13 at the project
