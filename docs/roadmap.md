@@ -1250,8 +1250,26 @@ passes five of five on Vulkan as on CUDA. The ways out are the register
 row's: a heading reference where one exists, registration of the depth
 against the long-lived map along the way, or online camera-to-IMU rotation
 and bias; until one is built the stereo set's acceptance under the profile
-is not guaranteed on any engine, and the owner may fly the clean vehicle
-(`IMPERFECTIONS=`) to judge an engine alone, as r2497, r2498 and r2505 did.
+is not guaranteed on any engine. The clean vehicle, which judges an engine
+alone (K48's camera flights were clean), was flown the same day on both:
+eight camera flights on Vulkan at 2048 (r2497, r2498, r2505, r2507, r2509,
+r2511, r2512, r2513) 1.190, 1.209, 1.424, 1.242, 1.197, 1.144, 1.099 and
+1.280 m/s (mean 1.223, four under R3), B 0.42 to 1.89 m, no contact; five on
+CUDA (r2514 to r2517, r2520) 1.397, 1.395, 1.192, 1.278 and 1.394 (mean
+1.331, one under R3), B 0.68 to 1.09 m, no contact. R3 for the stereo set
+at 1.2 m/s is marginal on both engines on this day's host (K48's 2048 group
+gave 1.418 on 2026-10-26, part 1's clean base 1.248 to 1.345), and the 8
+percent between the engines is suggestive, not proven (eight against five
+flights, a spread of 0.10 m/s each; the paths part by the noise's last bits
+as the twins of item 36 do): the holds are alike (0.5 to 2.0 against 0.3 to
+1.0 percent), the sensor-braking limiter rules both, the route-clearance
+limit's median sits lower on Vulkan (1.3 to 3.0 against 2.0 to 2.7 m/s),
+the planner's tick 25 to 27 against 22 to 23 ms, the GPU 34 to 40 against
+27 to 32 percent. The stage's camera clauses are therefore closed by record
+with these numbers; the ways to settle the 8 percent are a longer series on
+a quiet host, the tick's cost taken out of the Vulkan engine (the debt row:
+an `image3D`, a timeline semaphore), and the board itself, where no camera
+rendering shares the GPU.
 Not done: the Adreno 650's rollout count (no board; `shaderInt64`
 unconfirmed there), the cooperative candidates (the CPU engine's limits).
 
