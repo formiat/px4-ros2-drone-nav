@@ -1239,7 +1239,20 @@ factor of the counted flights the same (p50 0.84 to 0.94 against 0.74 to
 0.98), the GPU 7 to 9 points busier (37 to 40 percent against 29 to 35 on
 the cameras, 43 to 48 against 34 to 39 on the lidar); six camera attempts of
 the clean series were voided by the real-time factor, under a foreign host
-load in part. Not done: the Adreno 650's rollout count (no board; `shaderInt64`
+load in part. The stage's flight clauses for the stereo set under the profile
+(B within 2 m, R3 at or above 1.2 m/s in every flight) are not met and are
+closed by record: the two B misses and the speed miss are the estimate's
+heading drift under the imperfections profile (the register's row of item
+35, class (b)), which no engine touches (the parity 1.4e-6) and which CUDA
+shows at the same rate (part 1: B 4 of 25, R3 10 of 25; part 2's base: B 2
+of 5, R3 3 of 5); the lidar set, whose estimate registers against its map,
+passes five of five on Vulkan as on CUDA. The ways out are the register
+row's: a heading reference where one exists, registration of the depth
+against the long-lived map along the way, or online camera-to-IMU rotation
+and bias; until one is built the stereo set's acceptance under the profile
+is not guaranteed on any engine, and the owner may fly the clean vehicle
+(`IMPERFECTIONS=`) to judge an engine alone, as r2497, r2498 and r2505 did.
+Not done: the Adreno 650's rollout count (no board; `shaderInt64`
 unconfirmed there), the cooperative candidates (the CPU engine's limits).
 
 ## 30. The Airframe's Size
