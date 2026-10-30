@@ -88,7 +88,8 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             for path in sorted(ROS_RUNTIME.glob("production_mppi_config_ros*"))
         )
         cpu_dynamics = (PACKAGE / "src/motion_dynamics_3d.cpp").read_text()
-        cuda_dynamics = (PACKAGE / "src/mppi/mppi_engine_kernels.cuh").read_text()
+        # The rollout model shared by the CUDA kernels and the CPU engine (roadmap item 28, way A).
+        cuda_dynamics = (PACKAGE / "src/mppi/mppi_rollout_body.hpp").read_text()
 
         self.assertGreater(guaranteed_range_m, physical_margin_m)
         self.assertLessEqual(guaranteed_range_m, physical_range_m)

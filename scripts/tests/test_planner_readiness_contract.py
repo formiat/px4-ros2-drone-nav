@@ -48,7 +48,8 @@ STOPPING_CAPABILITY = (
     PACKAGE / "include" / "drone_city_nav" / "stopping_capability.hpp"
 )
 MPPI_REFERENCE = SOURCE / "mppi" / "mppi_reference.cpp"
-MPPI_KERNELS = SOURCE / "mppi" / "mppi_engine_kernels.cuh"
+# The rollout model shared by the CUDA kernels and the CPU engine (roadmap item 28, way A).
+MPPI_KERNELS = SOURCE / "mppi" / "mppi_rollout_body.hpp"
 FINITE_HORIZON = SOURCE / "finite_motion_horizon_3d.cpp"
 FINITE_EXECUTION_PATH = SOURCE / "finite_execution_path_3d.cpp"
 REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"

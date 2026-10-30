@@ -28,6 +28,7 @@
 #include "mppi_cuda_resources.cuh"
 #include "mppi_device_route_window.hpp"
 #include "mppi_engine_host_evaluation.hpp"
+#include "mppi_rollout_body.hpp"
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -400,27 +401,50 @@ public:
     const auto launch_simulate = [&](const int blocks, const std::size_t rollouts,
                                      const Control* const direct_controls,
                                      RolloutCostTerms* const cost_terms) {
-      simulate<<<blocks, kThreadsPerBlock, 0U, stream_>>>(
-          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
-          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
-          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-          buffers_.collision_violation.get(), buffers_.worst_tier.get(), rollouts,
-          config_.steps, input.initial_state, input.target, config_.dynamics,
-          config_.risk, config_.footprint, config_.altitude_envelope, config_.costs,
-          config_.horizon_sampling, textures_[active_texture_].grid(),
-          textures_[active_texture_].texture(), buffers_.route_points.get(),
+      // The body's inputs in its declaration order (mppi_rollout_body.hpp).
+      const rollout::RolloutInputs inputs{
+          buffers_.noise_ax.get(),
+          buffers_.noise_ay.get(),
+          buffers_.noise_az.get(),
+          buffers_.noise_yaw.get(),
+          buffers_.nominal.get(),
+          config_.steps,
+          input.initial_state,
+          input.target,
+          config_.dynamics,
+          config_.risk,
+          config_.footprint,
+          config_.altitude_envelope,
+          config_.costs,
+          config_.horizon_sampling,
+          textures_[active_texture_].grid(),
+          buffers_.route_points.get(),
           route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
           buffers_.dynamic_aircraft_samples.get(),
           buffers_.dynamic_aircraft_radii.get(),
-          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-          dynamic_aircraft_cost_policy, config_.cooperative,
-          cooperative_preferred_acceleration, cooperative_preference_steps,
-          input.cooperative_maneuver.has_value(), previous_applied_control,
-          first_control_interval_s, input.reference_speed_mps,
-          config_.early_exit_on_altitude_envelope_violation, direct_controls,
-          cost_terms);
+          buffers_.dynamic_aircraft_active_steps.get(),
+          dynamic_aircraft_count,
+          dynamic_aircraft_cost_policy,
+          config_.cooperative,
+          cooperative_preferred_acceleration,
+          cooperative_preference_steps,
+          input.cooperative_maneuver.has_value(),
+          previous_applied_control,
+          first_control_interval_s,
+          input.reference_speed_mps,
+          config_.early_exit_on_altitude_envelope_violation,
+          direct_controls};
+      const rollout::RolloutOutputs outputs{buffers_.soft_cost.get(),
+                                            buffers_.critical_exposure.get(),
+                                            buffers_.planning_exposure.get(),
+                                            buffers_.minimum_clearance.get(),
+                                            buffers_.altitude_envelope_violation.get(),
+                                            buffers_.collision_violation.get(),
+                                            buffers_.worst_tier.get(),
+                                            cost_terms};
+      simulate<<<blocks, kThreadsPerBlock, 0U, stream_>>>(
+          inputs, outputs, textures_[active_texture_].texture(), rollouts);
     };
     launch_simulate(rollout_blocks, active_rollouts, nullptr, nullptr);
     simulation_done_.record(stream_);
@@ -459,32 +483,26 @@ public:
     unsigned int feasible_count = 0U;
     float minimum_soft_cost = 0.0F;
     float feasible_weight_square_sum = 0.0F;
+    // One scalar of the device's summary to the host, on the stream.
+    const auto fetchScalar = [&](auto* const host, const auto* const device,
+                                 const char* const what) {
+      checkCuda(
+          cudaMemcpyAsync(host, device, sizeof(*host), cudaMemcpyDeviceToHost, stream_),
+          what);
+    };
     const auto fetch_weighting_summary = [&]() {
-      checkCuda(cudaMemcpyAsync(&feasible_weight_sum, buffers_.weight_sum.get(),
-                                sizeof(feasible_weight_sum), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy feasible weight sum");
-      checkCuda(cudaMemcpyAsync(&feasible_weight_square_sum,
-                                buffers_.weight_square_sum.get(),
-                                sizeof(feasible_weight_square_sum),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy feasible weight square sum");
-      checkCuda(cudaMemcpyAsync(
-                    &effective_temperature, buffers_.effective_temperature.get(),
-                    sizeof(effective_temperature), cudaMemcpyDeviceToHost, stream_),
-                "copy effective temperature");
-      checkCuda(cudaMemcpyAsync(
-                    &feasible_cost_excess_sum, buffers_.feasible_cost_sum.get(),
-                    sizeof(feasible_cost_excess_sum), cudaMemcpyDeviceToHost, stream_),
-                "copy feasible cost sum");
-      checkCuda(cudaMemcpyAsync(&feasible_count, buffers_.feasible_count.get(),
-                                sizeof(feasible_count), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy feasible count");
-      checkCuda(cudaMemcpyAsync(&minimum_soft_cost, buffers_.minimum_soft.get(),
-                                sizeof(minimum_soft_cost), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy minimum soft cost");
+      fetchScalar(&feasible_weight_sum, buffers_.weight_sum.get(),
+                  "copy feasible weight sum");
+      fetchScalar(&feasible_weight_square_sum, buffers_.weight_square_sum.get(),
+                  "copy feasible weight square sum");
+      fetchScalar(&effective_temperature, buffers_.effective_temperature.get(),
+                  "copy effective temperature");
+      fetchScalar(&feasible_cost_excess_sum, buffers_.feasible_cost_sum.get(),
+                  "copy feasible cost sum");
+      fetchScalar(&feasible_count, buffers_.feasible_count.get(),
+                  "copy feasible count");
+      fetchScalar(&minimum_soft_cost, buffers_.minimum_soft.get(),
+                  "copy minimum soft cost");
       checkCuda(cudaStreamSynchronize(stream_), "synchronize MPPI weighting");
     };
     const bool body_collision_gate = config_.costs.body_collision_gate_enabled;
@@ -537,38 +555,22 @@ public:
                               cudaMemcpyDeviceToHost, stream_),
               "copy best feasible controls");
     if (deterministic_candidate_enabled) {
-      checkCuda(cudaMemcpyAsync(&best_rollout_index, buffers_.best_rollout.get(),
-                                sizeof(best_rollout_index), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy best rollout index");
-      checkCuda(cudaMemcpyAsync(&reacquisition_altitude_envelope_violation,
-                                buffers_.altitude_envelope_violation.get(),
-                                sizeof(reacquisition_altitude_envelope_violation),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy deterministic candidate altitude envelope status");
-      checkCuda(cudaMemcpyAsync(&reacquisition_collision_violation,
-                                buffers_.collision_violation.get(),
-                                sizeof(reacquisition_collision_violation),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy deterministic candidate collision status");
-      checkCuda(cudaMemcpyAsync(&reacquisition_weight, buffers_.weights.get(),
-                                sizeof(reacquisition_weight), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy target-directed weight");
-      checkCuda(cudaMemcpyAsync(&reacquisition_soft_cost, buffers_.soft_cost.get(),
-                                sizeof(reacquisition_soft_cost), cudaMemcpyDeviceToHost,
-                                stream_),
-                "copy deterministic candidate soft cost");
-      checkCuda(cudaMemcpyAsync(&reacquisition_critical_exposure_m,
-                                buffers_.critical_exposure.get(),
-                                sizeof(reacquisition_critical_exposure_m),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy deterministic candidate critical exposure");
-      checkCuda(cudaMemcpyAsync(&reacquisition_minimum_clearance_m,
-                                buffers_.minimum_clearance.get(),
-                                sizeof(reacquisition_minimum_clearance_m),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy deterministic candidate minimum clearance");
+      fetchScalar(&best_rollout_index, buffers_.best_rollout.get(),
+                  "copy best rollout index");
+      fetchScalar(&reacquisition_altitude_envelope_violation,
+                  buffers_.altitude_envelope_violation.get(),
+                  "copy deterministic candidate altitude envelope status");
+      fetchScalar(&reacquisition_collision_violation,
+                  buffers_.collision_violation.get(),
+                  "copy deterministic candidate collision status");
+      fetchScalar(&reacquisition_weight, buffers_.weights.get(),
+                  "copy target-directed weight");
+      fetchScalar(&reacquisition_soft_cost, buffers_.soft_cost.get(),
+                  "copy deterministic candidate soft cost");
+      fetchScalar(&reacquisition_critical_exposure_m, buffers_.critical_exposure.get(),
+                  "copy deterministic candidate critical exposure");
+      fetchScalar(&reacquisition_minimum_clearance_m, buffers_.minimum_clearance.get(),
+                  "copy deterministic candidate minimum clearance");
     }
     completed_.record(stream_);
     completed_.synchronize();
