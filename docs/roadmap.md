@@ -1444,7 +1444,8 @@ and it is in the register (class (b), the remedies named), not a reason to
 soften the profile. The cost: the onboard set within the clean figures
 (cameras 4.28 to 4.42 cores at p50, lidar 3.41 to 3.72), the relays 0.27 cores
 outside it. What remains of the item: the stereo set's five of five under the
-profile, through the register's row.
+profile, through the register's row, which item 40 takes up (the depth
+registered against the vehicle's own map along the way).
 
 ## 36. The Simulator Waits For The Onboard Loop: Deterministic Flights
 
@@ -1807,7 +1808,10 @@ The stages:
    vehicle model and the estimator tuned again. Size L.
 4. **Absolute correction without the signal.** Terrain against a height
    model, or frames against an orthophoto, deterministic; or an external
-   absolute source modelled as a noisy coordinate. Size L.
+   absolute source modelled as a noisy coordinate. Size L. The cave's
+   correction without any external source is item 40 (the depth registered
+   against the vehicle's own map along the way); the two share the way a
+   correction is applied and bounded.
 5. **The speed and the obstacles.** The braking contract on the pair's
    6.4 m gives about 2.4 m/s; the open sky asks 10 to 20. Either the route
    above the obstacles (the planner nearly idle) or a lidar of 40 m; the
@@ -1848,6 +1852,67 @@ kilometres over the open-sky world through every variant of the signal's
 failure in the table above,
 arrives by the truth within the rule written for it, keeps the cave's
 acceptance unchanged on the same code, and R8 is a measured figure.
+
+## 40. The Stereo Estimate Registered Against Its Own Map Along The Way
+
+**Type:** localization, the stereo set; decided on 2026-10-30 after the
+owner's direction to settle the register's row on the heading drift as a
+roadmap item (the cave's own problem, with no signal to lean on; the open
+sky's absolute sources are item 39 stage 4).
+
+**Hard prerequisites:** item 19's relocalisation on the vehicle's own map
+(the offset moved on return) and the long-lived map of the obstacle memory;
+item 35's profile (K52, F21) as the measurement that shows the drift.
+
+**Validation environment:** Urban Circuit Practice 01, the acceptance
+configuration under the imperfections profile.
+
+The finding (item 35, the register's Localization row): under the real
+vehicle's imperfections the visual-inertial estimate's frame turns 0.2 to
+2.0 degrees over the 440 to 510 m of the acceptance path (0.3 to 0.7 clean,
+the lidar 0.2 at most), the residual after the turn 0.2 m, so the goal is
+acknowledged 2 to 3.6 m from B in two flights of five and the mean speed
+falls under the target in half of them (r2420 to r2428 on CUDA, r2484 to
+r2489 on Vulkan: the same on every engine, the parity 1e-6). Heading is
+unobservable to an odometry; the lidar set does not drift because its
+estimator registers every sweep against its map. The stereo set's depth
+reaches the same map and is registered against it today only on return
+(item 19). This item registers it along the way.
+
+What is built:
+
+1. **The registration.** The depth node's surfaces of the current frame
+   against the long-lived map's surfaces around the vehicle (the voxels the
+   memory holds as occupied with their evidence), a rigid fit (a point-to-
+   plane step as the lidar's, K45's priors for the level and the height kept),
+   run at the depth's rate or every few frames; its result a correction of
+   the estimate's frame (heading first, then position and scale), applied
+   as the relocalisation applies its offset: deterministic, a measurement,
+   no latch, the correction's size and residual published every time.
+2. **When it may act.** Only where the map has surfaces the frame sees
+   (the fit's residual and its point count the measurement; a fit over few
+   points or a flat residual does nothing), never in the void (K46) or
+   unknown space (the invariants); the correction bounded per step by what
+   the estimate's own uncertainty admits, so a wrong fit cannot throw the
+   vehicle.
+3. **The measurement.** `tools/estimate_error.py`'s frame turn and scale
+   per flight, the correction's history per flight (how often, how much,
+   the residual), the estimate's error against the truth before and after
+   the correction, and the cost in the onboard set (the depth node's and the
+   estimator's cores and the frame's latency).
+4. **The series.** The stereo set under the profile, five flights at the
+   acceptance configuration, then the clean vehicle, then the lidar set
+   unchanged on the same code; item 31's void crossings flown again (the
+   registration must stay silent there).
+
+Size: L (the estimator's core and the depth node; the fit itself is the
+lidar's, the gating is new).
+
+This item is complete when the stereo set under the imperfections profile
+reaches B within 2 m in five of five flights with the series' mean speed at
+R3's target, the frame turn per flight is within the clean vehicle's 0.7
+degrees, the lidar set and the void crossings are unchanged on the same
+code, and the register's row on the heading drift leaves.
 
 ## Completed
 
