@@ -348,12 +348,18 @@ usual, and the host verdict A7, which reads the real-time factor, voids it:
 such flights are flown through `tools/series2.sh` and read by hand.
 
 The MPPI engine of a flight is chosen by `MPPI_ENGINE` (roadmap item 28,
-specification K54): `cuda`, the default, or `cpu`, the host engine on the same
+specification K54): `cuda`, the default; `cpu`, the host engine on the same
 rollout body, which flies the clear location at 256 rollouts (`MPPI_ROLLOUTS`)
 with a tick of 114 ms (r2482) and exists for the build and the tests without
-CUDA (`-DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF`), not for the acceptance. The
-unit test `mppi_engine_parity_test` holds the two engines to the measured
-spread on the same inputs and runs in the CUDA build alone.
+CUDA (`-DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF`), not for the acceptance; or
+`vulkan`, the engine on Vulkan compute (way B), which flies both sensor sets
+(r2484 to r2505: the lidar five of five, the cameras without contact) with
+the population at 1.4 to 1.6 times CUDA's time, built where the loader and
+`glslc` are (`DRONE_CITY_NAV_ENABLE_VULKAN_MPPI`, on in the dev image). The
+unit tests `mppi_engine_parity_test` (CUDA against CPU, in the CUDA build) and
+`mppi_vulkan_engine_parity_test` (Vulkan against CPU and CUDA, skipped without
+a device) hold the engines to the measured spread on the same inputs;
+`mppi_engine_benchmark ENGINE ROLLOUTS [TICKS]` measures the tick on each.
 
 ### Resource record
 

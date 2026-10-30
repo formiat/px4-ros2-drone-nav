@@ -1192,31 +1192,55 @@ The arm64 onboard image (item 27 block 2) rebuilt with the CPU engine as the
 node's engine: 154 of 156 unit tests under qemu on 2026-10-30 (3b5746c3), the
 two failures those of 2026-10-26 (`log/tools/board/onboard_arm64.log`).
 
-**Step 2, way B, begun on 2026-10-30 and closed by record** (the same goal,
-part 3; code baca86d5). Vulkan compute runs in the dev container after one
-change (`scripts/container_run.sh`: the driver's graphics capability and the
-host's ICD file mounted where the loader looks; the toolkit already injects
+**Step 2, way B, done on 2026-10-30** (the same goal, part 3; code baca86d5
+and 4de27c60). Vulkan compute runs in the dev container after one change
+(`scripts/container_run.sh`: the driver's graphics capability and the host's
+ICD file mounted where the loader looks; the toolkit already injects
 `libGLX_nvidia` with the GPU): `vulkan_probe` sees the RTX 3060 (API 1.4,
 two compute families, 1024 invocations a work group, 48 KB shared, 64-bit
-integers), and `glslc` was in the image. The first kernel is built and held
-to the shared body: `src/mppi/shaders/mppi_noise.comp` (the body's hash on
-64-bit integers and its Box-Muller draw), compiled by glslc at build time,
-run through a small compute runtime (`src/mppi/vulkan_compute.hpp`: a device
-with a compute queue, host-visible buffers, a pipeline from SPIR-V, a dispatch
-with its fence) and read back: 40000 samples within 8.7e-6 of
-`rollout::noiseSample` (the hash exact, `log` and `cos` by ulps; bound 1e-4),
-behind `DRONE_CITY_NAV_ENABLE_VULKAN_MPPI` (on where the loader and glslc
-are). What remains, by the kernel map of part 3's stage 3.0: the rollout
-kernel and every helper it calls in GLSL (the integration, the limiter, the
-footprint query over an `image3D`, the route projection, the horizon
-sampling, the altitude envelope, the clearance and stopping laws, the dynamic
-aircraft; about 1500 lines that cannot share the C++ body, so way B keeps a
-second copy of the model against the parity test), the reductions as subgroup
-operations, the control update, and the host engine behind `MppiEngine`;
-hours in the tens, not reached in this goal, so the Vulkan series and the
-RTX benchmark are not flown. A risk for the Adreno: the hash needs
-`shaderInt64` (the RTX has it; the Adreno 650's support is not in the
-documentation read), or the mix in two 32-bit halves.
+integers), and `glslc` was in the image. The engine: the rollout body once
+more in GLSL (`src/mppi/shaders/mppi_rollout.comp`, every law of
+`mppi_rollout_body.hpp` line for line, since a shader cannot share C++; the
+ESDF a storage buffer read by cell), the noise (`mppi_noise.comp`, the body's
+hash on 64-bit integers) and the weighted update (`mppi_update.comp`, a work
+group a step), compiled by glslc at build time and carried in the library as
+SPIR-V words (`cmake/embed_spirv.cmake`); a small compute runtime
+(`src/mppi/vulkan_compute.hpp`); the CPU engine's tick on a population device
+(`src/mppi/mppi_population_device.hpp`: the host loops, or the Vulkan device
+with the noise, the rollouts and the weighted sum on the GPU and the
+reductions, the repair and the evaluation on the host, one code);
+`MppiVulkanEngine` behind `mppi_engine` and `MPPI_ENGINE=vulkan`, built where
+the loader and glslc are (`DRONE_CITY_NAV_ENABLE_VULKAN_MPPI`). Parity
+(`tests/mppi_vulkan_engine_parity_test.cpp`, a wall and a pillar, without and
+with a route and the route-directed candidate): against the CPU engine
+4.4e-6 m/s^2 on the controls, 2.4e-6 and 3.1e-6 relative on the weights and
+the cost; against the CUDA engine 1.4e-6, 1.4e-6 and 8.1e-7; the noise alone
+8.7e-6 against `rollout::noiseSample` (bounds 1e-5 and 1e-4, the measured
+spread, never loosened). The benchmark (`mppi_engine_benchmark`, the corridor
+scene, 120 steps, the urban body, RTX 3060; `log/tools/ilv/part3/vulkan_bench.txt`):
+the population's milliseconds p50 / p95 at 8192, 4096, 2048 and 1024 rollouts
+are CUDA 6.8 / 7.4, 6.2 / 6.9, 6.2 / 6.7, 6.0 / 6.8; Vulkan 10.8 / 11.5,
+9.4 / 10.2, 8.9 / 9.9, 8.7 / 9.7; CPU 3143 / 3191, 1563 / 1601, 776 / 805,
+397 / 404: Vulkan 1.4 to 1.6 times CUDA on the same GPU (the storage-buffer
+ESDF against CUDA's texture, no fast math, a fence wait a dispatch). In flight
+(r2484 to r2494, the acceptance location under the imperfections profile):
+the lidar at 8192 five of five, no contact, 2.197 to 2.689 m/s, B 0.33 to
+1.40 m; the cameras at 2048 (K48's rule) five of five without contact, the
+speed 1.183 to 1.296 m/s, B 0.91 to 3.60 m, two B misses and one speed under
+R3, the estimate's heading drift under the profile (the frame turn -2.5 and
+-2.1 degrees on the misses against 0.2 to 1.2 on the hits; item 35's register
+row), the same rate as on CUDA (B 4 of 25, R3 10 of 25); the clean vehicle on
+the cameras (r2497, r2498, r2505) 1.190, 1.209, 1.424 m/s, B 0.70 to 1.89 m,
+no contact. The planner's tick on Vulkan is 25.4 / 34.4 ms on the cameras
+against CUDA's 22.7 / 32.0 and 31.5 to 32.7 / 65.8 to 78.2 on the lidar
+against 25.9 to 27.3 / 32.8 to 58.8; the planner's process takes less CPU
+(1.31 against 1.55 cores: no CUDA spin on the host); the flight's real-time
+factor of the counted flights the same (p50 0.84 to 0.94 against 0.74 to
+0.98), the GPU 7 to 9 points busier (37 to 40 percent against 29 to 35 on
+the cameras, 43 to 48 against 34 to 39 on the lidar); six camera attempts of
+the clean series were voided by the real-time factor, under a foreign host
+load in part. Not done: the Adreno 650's rollout count (no board; `shaderInt64`
+unconfirmed there), the cooperative candidates (the CPU engine's limits).
 
 ## 30. The Airframe's Size
 
@@ -1984,7 +2008,7 @@ answered 404 that day.
 
 | Point | Done | By the documentation (2026-10-30) | Requires the board |
 |---|---|---|---|
-| 1. The controller without CUDA | Way A (one body, the CPU engine, parity) and way B's toolchain and first kernel (above) | The Adreno 650 is "1024 ALU" on the product page, no FLOPS given; Vulkan's version and `shaderInt64` not in the pages read | The rollout count the Adreno carries in the tick, the Vulkan port's remaining kernels first |
+| 1. The controller without CUDA | Way A (one body, the CPU engine, parity) and way B (the Vulkan engine, parity with CUDA 1.4e-6, ten flights; above) | The Adreno 650 is "1024 ALU" on the product page, no FLOPS given; Vulkan's version and `shaderInt64` not in the pages read | The rollout count the Adreno carries in the tick (the RTX 3060 carries 8192 in 10.8 ms); `shaderInt64`, or the hash in two 32-bit halves |
 | 2. The CPU | The flight's core set takes a CPU list (`FLIGHT_CPUSET`, A4), so the A77 cores can be named; the CPU engine is not the controller for the board (0.39 ms a rollout) | "8 cores up to 3.091 GHz", 8 GB LPDDR5, 128 GB, 0.1 to 7 W, 16 g, 70 x 36 mm (product page) | The big.LITTLE numbering, the thermal behaviour under four busy cores, the stereo matcher's place |
 | 3. OS and middleware | - | Ubuntu 18.04.5 LTS on kernel 4.19 (a console log on the user guide; the product page says 18.04, kernel 4.19); voxl-suite as a meta-package, releases `sdk-1.8.0` (SDK 1.8 the latest, 1.6.8 before); MPA on POSIX pipes with `libmodal_pipe`, services as systemd units; ROS 2 Foxy native (`voxl-ros2-foxy`), "for a newer ROS 2 version you must use Docker": the stack's Jazzy nodes run in a container of ours; `voxl-mpa-to-ros2` bridges IMU (`/imu_apps`, `sensor_msgs/Imu`), images (`sensor_msgs/Image`), `/tof_pc` (`PointCloud2`) and VIO (`/qvio`, `PoseStamped` or `Odometry`) | Whether Jazzy's `rclcpp` and the stack's messages build in that container on kernel 4.19; DDS between the bridge's Foxy and our Jazzy |
 | 3. The autopilot link | The stack's path exists on the board: `voxl-microdds-agent` "connects ROS 2 to a PX4 instance on the board over UDP port 8888, which exposes `/fmu/...` topics" (topic names differ between SDK 1.6 and 1.8) | PX4 runs "as a Linux service on QRB5165" (voxl-px4), the product page says "on the sensors DSP"; SDK 1.8 carries PX4 1.18 (`voxl-dev-1.18.0`); VIO reaches PX4 as MAVLink `ODOMETRY` through `voxl-vision-hub` and `voxl-mavlink-server`; MAVROS and MAVSDK on UDP 14551 | The `px4_msgs` of PX4 1.18 against the stack's, the agent's rate and the versioned topic names (K-row on the `_v1` suffixes) |

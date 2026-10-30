@@ -38,7 +38,7 @@ in July 2026) and are an order of magnitude, not a quote.
 | NVIDIA Jetson Orin Nano 8GB | 6 cores at up to 1.7 GHz, 1024 CUDA cores, 8 GiB | $399 the module ($299 before) [1]; the Super developer kit $399 ($249 before) [2] | Bench only | Six slower cores against the stack's 3.4 to 5.7 Zen 3 cores at p95; the cheapest way to build for arm64 and run the stack on recorded data and on a bench (roadmap item 27's first steps) |
 | NVIDIA Jetson AGX Orin 32GB / 64GB | 8 / 12 cores at 2.2 GHz, 1792 / 2048 CUDA cores, 32 / 64 GiB | $1 799 the 32GB module ($899 before) [2] | Compute yes, airframe no | The margin the NX lacks; 15 to 60 W and a larger heatsink and carrier push a 500 mm quadcopter to its payload; a larger airframe |
 | NVIDIA Jetson AGX Thor | Blackwell GPU | $5 499 the developer kit [2] | No | Out of proportion to the stack's measured need and to the airframe |
-| ModalAI VOXL 2 | Qualcomm QRB5165, 8 cores up to 3.09 GHz, 8 GiB, PX4 on board, 16 g | $1 249.99 [3] | No | No CUDA: the MPPI cannot run as written ([resource_budget.md](resource_budget.md)); otherwise the most integrated option (autopilot and computer in one, very light). A backend without CUDA would open it (below and roadmap item 28) |
+| ModalAI VOXL 2 | Qualcomm QRB5165, 8 cores up to 3.09 GHz, 8 GiB, PX4 on board, 16 g | $1 249.99 [3] | Perhaps | No CUDA, but the MPPI runs on Vulkan since 2026-10-30 (roadmap item 28 way B: parity with CUDA, ten flights on the RTX 3060; the Adreno 650's rollout count unmeasured); otherwise the most integrated option (autopilot and computer in one, very light) |
 | Raspberry Pi 5 | 4 Cortex-A76, no CUDA | not priced | No | No CUDA, four cores |
 | An x86 board with a discrete NVIDIA GPU | the development host's class | not priced | No | Fits the compute, not a 500 mm quadcopter's mass and power |
 
@@ -107,7 +107,7 @@ replaces the assumption with a measurement.
 | Orin NX 8GB | No | Six cores: 1.5 times short on the lidar, 1.8 on the stereo set |
 | The CPU alone (item 28, way A, 2026-10-30) | No | The CPU engine on one thread does 0.39 ms a rollout of 80 steps: 256 rollouts take 114 ms a tick on a Zen 3 core (r2482, the clear location flown at 1.474 m/s), so the tick's 150 ms holds a few hundred rollouts, not the 2048 of K48; a board without a GPU needs the Vulkan engine (way B) or a many-core CPU with the rollouts spread over threads |
 | Orin Nano 8GB, the Super kit | No; the bench | Six cores at up to 1.7 GHz, another 15 percent behind the NX 8GB; the GPU of the NX's class at a lower clock |
-| VOXL 2 | No | No CUDA (item 28); by CPU it would stand with the NX 16GB |
+| VOXL 2 | Perhaps | No CUDA, the MPPI on Vulkan (item 28 way B, 2026-10-30; the Adreno's count unmeasured); by CPU it would stand with the NX 16GB |
 | Raspberry Pi 5, RK3588 | No | No CUDA; four to eight cores |
 
 What could close the gap, by the size of the lever:
@@ -219,7 +219,7 @@ fewer rollouts than 8192, and how many are enough is item 28's first step.
 | Computer | CPU | GPU | Price, mass | Would fit | Why |
 |---|---|---|---|---|---|
 | An x86 board with a strong CPU and an integrated GPU, e.g. LattePanda Sigma (Core i5-1340P) | 12 cores, 16 threads, near the development host | Iris Xe, about 1.9 TFLOPS (80 execution units at 1.45 GHz, by arithmetic), the Orin NX's level | A$1 240 to 1 310; 438 g; 7 W headless to a 44 W processor [16] | In compute yes, with Vulkan or OpenCL | Heavy for the X500 V2's payload of about 1 kg |
-| ModalAI VOXL 2 (QRB5165) | 1 Cortex-A77 at 3.09 GHz, 3 at 2.42, 4 Cortex-A55 | Adreno 650, OpenCL 2.0 and Vulkan 1.1 [17]; its FP32 rate not found, about 1 TFLOPS is a guess | $1 249.99 with the autopilot; 16 g [3] | Perhaps, with work | Fewer rollouts, the stereo depth on its own accelerators; four large cores against the stack's 3.4 to 5.7 Zen 3 cores at p95, to measure |
+| ModalAI VOXL 2 (QRB5165) | 1 Cortex-A77 at 3.09 GHz, 3 at 2.42, 4 Cortex-A55 | Adreno 650, OpenCL 2.0 and Vulkan 1.1 [17]; its FP32 rate not found, about 1 TFLOPS is a guess | $1 249.99 with the autopilot; 16 g [3] | Perhaps, with work | The Vulkan backend exists (item 28 way B; the RTX 3060 carries 8192 rollouts in 10.8 ms on it, 1.4 to 1.6 times CUDA's time): fewer rollouts on the Adreno, the stereo depth on its own accelerators; four large cores against the stack's 3.4 to 5.7 Zen 3 cores at p95, to measure |
 | Rockchip RK3588 (Radxa ROCK 5B+, 16 GiB) | 4 Cortex-A76 at 2.4 GHz, 4 Cortex-A55 | Mali-G610 MP4, 0.25 to 0.45 TFLOPS as measured [18] | about $120 to $190 [18] | Not for flight | A GPU four to eight times smaller than the Orin NX's and four large cores; a cheap bench or a machine for continuous integration |
 | Raspberry Pi 5 | 4 Cortex-A76 | small | — | No | Neither the CPU nor the GPU |
 | AMD Ryzen mini boards (Radeon 780M) | 8 Zen 4 cores | larger than the Iris Xe | not priced | In compute yes | Heavy and power-hungry |
@@ -231,7 +231,7 @@ The computer and the autopilot are where the builds differ:
 | Computer and autopilot | Parts | Price | Mass | Flies the stack? |
 |---|---|---|---|---|
 | Jetson (today's builds) | Orin NX 16GB $999, an A603 carrier €165 to $309 [19], a Pixhawk 6C $212 | about $1 380 to $1 520 | the module, carrier, heatsink and Pixhawk, not weighed | Yes; an arm64 build and fewer rollouts to come |
-| VOXL 2 | one board, PX4 on it | $1 250 | 16 g the board | Perhaps: a Vulkan backend (item 28 way B: the toolchain and the first kernel built on the RTX 3060, the rest open), the CPU tight; its PX4 carries the uXRCE-DDS path the stack uses (`voxl-microdds-agent`, UDP 8888, `/fmu/...` topics; docs.modalai.com, 2026-10-30), PX4 1.18 in SDK 1.8; ROS 2 Foxy native, a newer ROS 2 in Docker (roadmap item 37's table) |
+| VOXL 2 | one board, PX4 on it | $1 250 | 16 g the board | Perhaps: the Vulkan backend flies on the RTX 3060 (item 28 way B, 2026-10-30: parity with CUDA, the population 1.4 to 1.6 times CUDA's time; the Adreno 650's count unmeasured), the CPU tight; its PX4 carries the uXRCE-DDS path the stack uses (`voxl-microdds-agent`, UDP 8888, `/fmu/...` topics; docs.modalai.com, 2026-10-30), PX4 1.18 in SDK 1.8; ROS 2 Foxy native, a newer ROS 2 in Docker (roadmap item 37's table) |
 | x86 with an integrated GPU (LattePanda Sigma) | the board A$1 240 to 1 310 (about $810 to $860), a Pixhawk 6C $212 | about $1 020 to $1 070 | 438 g, 7 to 44 W | In compute yes, with a Vulkan or OpenCL backend |
 | RK3588 (ROCK 5B+) | the board $120 to $190, a Pixhawk 6C $212 | about $330 to $400 | light | No: the GPU and the CPU too small; a bench |
 
