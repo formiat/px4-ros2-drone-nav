@@ -23,6 +23,15 @@ if ! command -v nvidia-smi >/dev/null 2>&1 ||
   exit 2
 fi
 gpu_args=(--gpus all)
+# Roadmap item 28 way B: Vulkan compute in the container. The toolkit injects
+# the driver's libraries (libGLX_nvidia) with the GPU; the capabilities ask
+# for the graphics ones too, and the loader's ICD file, which the toolkit
+# does not carry, is the host's, mounted read-only where the loader looks.
+env_args_vulkan=(--env NVIDIA_DRIVER_CAPABILITIES=all)
+vulkan_icd_args=()
+if [[ -r /usr/share/vulkan/icd.d/nvidia_icd.json ]]; then
+  vulkan_icd_args=(--volume /usr/share/vulkan/icd.d/nvidia_icd.json:/usr/share/vulkan/icd.d/nvidia_icd.json:ro)
+fi
 # The flight's core set (specification A4): the whole container, simulator and
 # onboard nodes alike, confined to these CPUs, the rest of the host left to
 # its owner. Empty: the container runs on every CPU, as before.
@@ -217,7 +226,7 @@ docker run --rm "${tty_args[@]}" \
   --privileged \
   --network host \
   --user "${user_uid}:${user_gid}" \
-  "${gpu_args[@]}" \
+  "${gpu_args[@]}" "${env_args_vulkan[@]}" "${vulkan_icd_args[@]}" \
   "${cpuset_args[@]}" \
   "${group_args[@]}" \
   "${env_args[@]}" \

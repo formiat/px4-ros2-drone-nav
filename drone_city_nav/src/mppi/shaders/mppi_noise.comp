@@ -1,0 +1,57 @@
+// The population's noise on Vulkan compute (roadmap item 28, way B): the hash
+// of the seed, the tick and the sample's index and the Box-Muller draw, as
+// rollout::noiseSample in mppi_rollout_body.hpp writes them, so that every
+// backend samples the same population. 64-bit integers (shaderInt64) carry the
+// hash as the C++ does; a board without them would emulate the mix in two
+// 32-bit halves.
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform Push {
+  uint64_t seed;
+  uint64_t tick;
+  uint count;
+  float horizontal_sigma;
+  float vertical_sigma;
+  float yaw_sigma;
+} push;
+
+layout(std430, binding = 0) writeonly buffer NoiseAx { float values[]; } noise_ax;
+layout(std430, binding = 1) writeonly buffer NoiseAy { float values[]; } noise_ay;
+layout(std430, binding = 2) writeonly buffer NoiseAz { float values[]; } noise_az;
+layout(std430, binding = 3) writeonly buffer NoiseYaw { float values[]; } noise_yaw;
+
+const float kPi = 3.14159265358979323846;
+
+uint64_t mixBits(uint64_t value) {
+  value += 0x9e3779b97f4a7c15UL;
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9UL;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebUL;
+  return value ^ (value >> 31);
+}
+
+float uniform01(uint64_t value) {
+  return float(uint(mixBits(value) >> 40) + 1u) * (1.0 / 16777217.0);
+}
+
+float gaussian(uint64_t first, uint64_t second) {
+  float u1 = max(uniform01(first), 1.0e-7);
+  return sqrt(-2.0 * log(u1)) * cos(2.0 * kPi * uniform01(second));
+}
+
+void main() {
+  uint index = gl_GlobalInvocationID.x;
+  if (index >= push.count) {
+    return;
+  }
+  uint64_t base = push.seed ^ (push.tick * 0xd1342543de82ef95UL) ^ uint64_t(index);
+  noise_ax.values[index] = push.horizontal_sigma * gaussian(base, base ^ 0xa0761d6478bd642fUL);
+  noise_ay.values[index] =
+      push.horizontal_sigma * gaussian(base ^ 0xe7037ed1a0b428dbUL, base ^ 0x8ebc6af09c88c6e3UL);
+  noise_az.values[index] =
+      push.vertical_sigma * gaussian(base ^ 0x589965cc75374cc3UL, base ^ 0x1d8e4e27c47d124fUL);
+  noise_yaw.values[index] =
+      push.yaw_sigma * gaussian(base ^ 0xeb44accab455d165UL, base ^ 0x9e3779b97f4a7c15UL);
+}

@@ -58,6 +58,19 @@ endif()
 find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
 find_package(PkgConfig REQUIRED)
+# Roadmap item 28 way B: the MPPI engine's Vulkan compute path builds where
+# the loader and glslc are (the dev image; a board without them leaves it out).
+find_package(Vulkan QUIET)
+option(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI
+       "Build the Vulkan compute path of the MPPI engine" ${Vulkan_FOUND})
+if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI AND NOT Vulkan_FOUND)
+  message(WARNING "Vulkan unavailable; the Vulkan MPPI path disabled")
+  set(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI OFF)
+endif()
+if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI AND NOT Vulkan_GLSLC_EXECUTABLE)
+  message(WARNING "glslc unavailable; the Vulkan MPPI path disabled")
+  set(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI OFF)
+endif()
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -138,6 +151,43 @@ target_include_directories(
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 enable_project_warnings(drone_city_nav_mppi)
+
+if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
+  # The shaders compiled by glslc at build time into the build tree; the
+  # compiled modules installed beside the configuration.
+  set(DRONE_CITY_NAV_MPPI_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+  add_custom_command(
+    OUTPUT "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DRONE_CITY_NAV_MPPI_SHADER_DIR}"
+    COMMAND ${Vulkan_GLSLC_EXECUTABLE} --target-env=vulkan1.1 -O
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/mppi/shaders/mppi_noise.comp"
+            -o "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
+    DEPENDS src/mppi/shaders/mppi_noise.comp
+    COMMENT "glslc mppi_noise.comp")
+  add_custom_target(drone_city_nav_mppi_shaders
+                    DEPENDS "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv")
+  add_library(drone_city_nav_mppi_vulkan src/mppi/vulkan_compute.cpp
+                                         src/mppi/mppi_vulkan_noise.cpp)
+  add_dependencies(drone_city_nav_mppi_vulkan drone_city_nav_mppi_shaders)
+  target_compile_features(drone_city_nav_mppi_vulkan PUBLIC cxx_std_20)
+  set_target_properties(drone_city_nav_mppi_vulkan PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(
+    drone_city_nav_mppi_vulkan PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/mppi>)
+  target_link_libraries(drone_city_nav_mppi_vulkan PUBLIC drone_city_nav_control Vulkan::Vulkan)
+  enable_project_warnings(drone_city_nav_mppi_vulkan)
+  add_executable(vulkan_probe tools/vulkan_probe.cpp)
+  target_compile_features(vulkan_probe PRIVATE cxx_std_20)
+  target_link_libraries(vulkan_probe Vulkan::Vulkan)
+  enable_project_warnings(vulkan_probe)
+  install(FILES "${DRONE_CITY_NAV_MPPI_SHADER_DIR}/mppi_noise.spv"
+          DESTINATION share/${PROJECT_NAME}/shaders)
+  install(TARGETS drone_city_nav_mppi_vulkan vulkan_probe
+          ARCHIVE DESTINATION lib
+          LIBRARY DESTINATION lib
+          RUNTIME DESTINATION lib/${PROJECT_NAME})
+endif()
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(drone_city_nav_mppi_cuda src/mppi/mppi_engine.cu)
@@ -1467,6 +1517,16 @@ if(BUILD_TESTING)
     route_execution_selector_3d_test
     tests/route_execution_selector_3d_test.cpp drone_city_nav_route_runtime)
   add_drone_city_nav_core_gtest(budget_relay_test tests/budget_relay_test.cpp)
+  if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI)
+    ament_add_gtest(mppi_vulkan_noise_test tests/mppi_vulkan_noise_test.cpp)
+    target_compile_features(mppi_vulkan_noise_test PRIVATE cxx_std_20)
+    target_include_directories(mppi_vulkan_noise_test PRIVATE src/mppi)
+    target_compile_definitions(
+      mppi_vulkan_noise_test
+      PRIVATE DRONE_CITY_NAV_MPPI_SHADER_DIR="${DRONE_CITY_NAV_MPPI_SHADER_DIR}")
+    target_link_libraries(mppi_vulkan_noise_test drone_city_nav_mppi_vulkan)
+    enable_project_warnings(mppi_vulkan_noise_test)
+  endif()
   target_include_directories(budget_relay_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_drone_city_nav_core_gtest(px4_ros_time_mapper_test
                                 tests/px4_ros_time_mapper_test.cpp)
