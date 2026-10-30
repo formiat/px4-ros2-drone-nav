@@ -1189,6 +1189,32 @@ separation acquisition of item 15's missions. The host evaluator
 known-clearance evidence and tracks peer separation, which the sampler's body
 does not): the one body is the sampler's, on both backends.
 
+**Step 2, way B, begun on 2026-10-30 and closed by record** (the same goal,
+part 3; code baca86d5). Vulkan compute runs in the dev container after one
+change (`scripts/container_run.sh`: the driver's graphics capability and the
+host's ICD file mounted where the loader looks; the toolkit already injects
+`libGLX_nvidia` with the GPU): `vulkan_probe` sees the RTX 3060 (API 1.4,
+two compute families, 1024 invocations a work group, 48 KB shared, 64-bit
+integers), and `glslc` was in the image. The first kernel is built and held
+to the shared body: `src/mppi/shaders/mppi_noise.comp` (the body's hash on
+64-bit integers and its Box-Muller draw), compiled by glslc at build time,
+run through a small compute runtime (`src/mppi/vulkan_compute.hpp`: a device
+with a compute queue, host-visible buffers, a pipeline from SPIR-V, a dispatch
+with its fence) and read back: 40000 samples within 8.7e-6 of
+`rollout::noiseSample` (the hash exact, `log` and `cos` by ulps; bound 1e-4),
+behind `DRONE_CITY_NAV_ENABLE_VULKAN_MPPI` (on where the loader and glslc
+are). What remains, by the kernel map of part 3's stage 3.0: the rollout
+kernel and every helper it calls in GLSL (the integration, the limiter, the
+footprint query over an `image3D`, the route projection, the horizon
+sampling, the altitude envelope, the clearance and stopping laws, the dynamic
+aircraft; about 1500 lines that cannot share the C++ body, so way B keeps a
+second copy of the model against the parity test), the reductions as subgroup
+operations, the control update, and the host engine behind `MppiEngine`;
+hours in the tens, not reached in this goal, so the Vulkan series and the
+RTX benchmark are not flown. A risk for the Adreno: the hash needs
+`shaderInt64` (the RTX has it; the Adreno 650's support is not in the
+documentation read), or the mix in two 32-bit halves.
+
 ## 30. The Airframe's Size
 
 **Type:** new capability, deferred; weighed on 2026-10-13 at the project
@@ -1943,6 +1969,34 @@ VOXL 2 vehicle of its class with the camera profile, through the pilot's
 authority and the mission's end as item 27 block 1 asks, the acceptance of
 A1 flown on the vehicle itself, and every point of layer 3 is written as
 checked, with what was adapted and what was taken from the board.
+
+**Layers 1 to 4 on 2026-10-30, by the documentation read that day and
+without the board** (the goal of 2026-10-29, part 3; closed by record under
+K6). Sources: docs.modalai.com pages voxl-suite, voxl-px4, voxl-camera-server,
+voxl-imu-server, voxl-vision-hub, voxl2-connectors, voxl2-camera-configs,
+ros2-installation-voxl2, mpa, M0040, calibrate-imu, voxl2-linux-user-guide and
+the product page modalai.com/products/voxl-2; the pages voxl2-datasheet,
+ros2-on-voxl2, voxl-tof, opencl-guide, voxl-microdds-agent and voxl-gpio
+answered 404 that day.
+
+| Point | Done | By the documentation (2026-10-30) | Requires the board |
+|---|---|---|---|
+| 1. The controller without CUDA | Way A (one body, the CPU engine, parity) and way B's toolchain and first kernel (above) | The Adreno 650 is "1024 ALU" on the product page, no FLOPS given; Vulkan's version and `shaderInt64` not in the pages read | The rollout count the Adreno carries in the tick, the Vulkan port's remaining kernels first |
+| 2. The CPU | The flight's core set takes a CPU list (`FLIGHT_CPUSET`, A4), so the A77 cores can be named; the CPU engine is not the controller for the board (0.39 ms a rollout) | "8 cores up to 3.091 GHz", 8 GB LPDDR5, 128 GB, 0.1 to 7 W, 16 g, 70 x 36 mm (product page) | The big.LITTLE numbering, the thermal behaviour under four busy cores, the stereo matcher's place |
+| 3. OS and middleware | - | Ubuntu 18.04.5 LTS on kernel 4.19 (a console log on the user guide; the product page says 18.04, kernel 4.19); voxl-suite as a meta-package, releases `sdk-1.8.0` (SDK 1.8 the latest, 1.6.8 before); MPA on POSIX pipes with `libmodal_pipe`, services as systemd units; ROS 2 Foxy native (`voxl-ros2-foxy`), "for a newer ROS 2 version you must use Docker": the stack's Jazzy nodes run in a container of ours; `voxl-mpa-to-ros2` bridges IMU (`/imu_apps`, `sensor_msgs/Imu`), images (`sensor_msgs/Image`), `/tof_pc` (`PointCloud2`) and VIO (`/qvio`, `PoseStamped` or `Odometry`) | Whether Jazzy's `rclcpp` and the stack's messages build in that container on kernel 4.19; DDS between the bridge's Foxy and our Jazzy |
+| 3. The autopilot link | The stack's path exists on the board: `voxl-microdds-agent` "connects ROS 2 to a PX4 instance on the board over UDP port 8888, which exposes `/fmu/...` topics" (topic names differ between SDK 1.6 and 1.8) | PX4 runs "as a Linux service on QRB5165" (voxl-px4), the product page says "on the sensors DSP"; SDK 1.8 carries PX4 1.18 (`voxl-dev-1.18.0`); VIO reaches PX4 as MAVLink `ODOMETRY` through `voxl-vision-hub` and `voxl-mavlink-server`; MAVROS and MAVSDK on UDP 14551 | The `px4_msgs` of PX4 1.18 against the stack's, the agent's rate and the versioned topic names (K-row on the `_v1` suffixes) |
+| 3. The cameras | - | `voxl-camera-server` (HAL3) publishes MPA frames, preview "NV12 or RAW8"; stereo pairs OV7251 640 x 480 at 30 (M0015) or OV9782 1280 x 800 at 30 (M0113) with frame-sync pins, `independent_exposure`; the configurations C-01 to C-17 are fixed ("not mix-and-match"); the baseline is not on the pages read (the 8 cm of this item's first text stays unverified) | The pair's baseline and a calibration of ours (K33) at 1280 x 800, the frame adapter from MPA to the depth node's input, the braking contract at that baseline |
+| 3. The time of flight | - | PMD M0040 (IRS1645, 224 x 171, 5 to 45 FPS, 850 nm, "indoors up to 6 m", 3 g) is EOL, the M0178 current; mutually exclusive with the stereo pair on the same connector group; published as `/tof_pc` | One forward unit against the ring of six: K19's reflex and K30's landing read on one unit; or the ring's VL53L5CX on the board's I2C (J3 I2C9/I2C10 and J5's, 1.8 V) with a driver of ours |
+| 3. The IMU | - | `voxl-imu-server`, pipe `imu#`, `imu_data_t` (m/s^2, rad/s, `timestamp_ns` on `clock_monotonic`), `imu_sample_rate_hz` 1000; the product page says two ICM-42688-P, the calibration page one IMU ("IMU0") on VOXL 2; PX4's own IMU reaches the stack as `sensor_combined` through the agent | Which IMU the autopilot reads and at what rate over the agent; the vibration profile of the airframe (K52's figures came from a VN100) |
+| 3. GPIO, the light | - | Numbered GPIOs on J3 and J5 (1.8 V CMOS) and on J6 to J8; J10 at 3.3 V (SPI or UART); the GPIO access page answered 404 | The light's driver on 1.8 V lines (a level shifter) and its reading (K29) |
+| 3. The power | - | J4 +5 V +-5 %, about 6 A of in-rush; 0.1 to 7 W | The budget with the cameras, the light and the ring |
+| 4. The parts around the board | - | Starling 2 (280 g, over 40 min, VOXL 2, three tracking cameras, a colour camera, a time-of-flight camera, PX4, $2 949.99) and Starling 2 Max (322 mm, 500 g, 500 g of payload, over 55 min, $2 999.99) in the registry | A buyer's rules (R6): no decision here |
+
+Recommendation: a Starling 2 Max as the vehicle of the class (the board,
+PX4, the cameras and the ToF in one listed airframe with the payload for the
+light and the ring), and, before any board, a bench of recorded data (the
+board's camera frames, IMU and `/fmu` topics replayed into the stack) to
+settle the adapters; the register's row (c) names it.
 
 ## 38. Faster Than Real Time On A Stronger Host
 

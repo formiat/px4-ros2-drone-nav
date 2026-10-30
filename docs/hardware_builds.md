@@ -231,7 +231,7 @@ The computer and the autopilot are where the builds differ:
 | Computer and autopilot | Parts | Price | Mass | Flies the stack? |
 |---|---|---|---|---|
 | Jetson (today's builds) | Orin NX 16GB $999, an A603 carrier €165 to $309 [19], a Pixhawk 6C $212 | about $1 380 to $1 520 | the module, carrier, heatsink and Pixhawk, not weighed | Yes; an arm64 build and fewer rollouts to come |
-| VOXL 2 | one board, PX4 on it | $1 250 | 16 g the board | Perhaps: a Vulkan or OpenCL backend, the CPU tight; whether its PX4 carries the uXRCE-DDS bridge the stack uses is not checked [21] |
+| VOXL 2 | one board, PX4 on it | $1 250 | 16 g the board | Perhaps: a Vulkan backend (item 28 way B: the toolchain and the first kernel built on the RTX 3060, the rest open), the CPU tight; its PX4 carries the uXRCE-DDS path the stack uses (`voxl-microdds-agent`, UDP 8888, `/fmu/...` topics; docs.modalai.com, 2026-10-30), PX4 1.18 in SDK 1.8; ROS 2 Foxy native, a newer ROS 2 in Docker (roadmap item 37's table) |
 | x86 with an integrated GPU (LattePanda Sigma) | the board A$1 240 to 1 310 (about $810 to $860), a Pixhawk 6C $212 | about $1 020 to $1 070 | 438 g, 7 to 44 W | In compute yes, with a Vulkan or OpenCL backend |
 | RK3588 (ROCK 5B+) | the board $120 to $190, a Pixhawk 6C $212 | about $330 to $400 | light | No: the GPU and the CPU too small; a bench |
 
