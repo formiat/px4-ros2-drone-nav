@@ -127,6 +127,7 @@ class HeldOutScenariosTest(unittest.TestCase):
                 "schema": "drone_city_nav_runtime_manifest_v1",
                 "repository": {"commit": "0" * 40, "dirty": False},
                 "mission": {"type": "point_to_point"},
+                "raw_snapshot": {"status": "pending"},
             }), encoding="utf-8")
             errors: list[str] = []
             evidence.validate_runtime_manifest(manifest, None, True, errors)
