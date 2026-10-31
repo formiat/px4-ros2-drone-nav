@@ -4,6 +4,35 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## Unreleased
+
+- The held-out worlds (roadmap item 33, N2 closed): the cave circuit and the
+  finals world flown by the urban code with nothing adapted, twenty flights on
+  one commit, every failure read to its rule. The scenarios drawn from each
+  world's truth grid by `tools/heldout_scenario.py` with a recorded seed (the
+  reachable free component at the body's radius plus 0.5 m under a ceiling,
+  the start on a pad over a flat patch, the goal over a landing patch 300 to
+  600 m away along the grid, or the longest such pair); each world's canonical
+  file places the obstacle memory's fixed box over the world (the box is a
+  location constant of `urban_mvp.yaml`); the `sim-cave-*` and `sim-finals-*`
+  targets and scripts; the true pose recorded in the map frame; the mission
+  check judged without the urban route volume (the acceptance metrics, the
+  mean speed and the dynamics with every single-vehicle mission check, the
+  memory snapshot only where a volume is stated); the preparer finds a bundle
+  whose world sits under `source/`. The finals world: the stereo set five of
+  five at B, the lidar nine of ten, every landing a contact on the round
+  tunnel floor (K30 knows a flat floor); the cave: the stereo estimate 3 to
+  12 percent off in scale and the autopilot's resets closing the navigation
+  (K1), the lidar set lost to the open air above the entrance (no void for
+  the lidar set) — the register's rows of 2026-10-31, the owner's calls.
+- Navigation (K1): a frame reset the stack cannot repair revokes the resident
+  horizon at once and the offboard brakes at the stack's deceleration; before,
+  the navigation closed silently and the horizon ran to the end of its lease
+  (r2584 met a tunnel wall at 8.6 m/s 2.3 s after a 7.5 m reset at cruise).
+  The urban acceptance on the repaired code: stereo five of five without
+  contact (B 1.75 to 3.80 m, four misses the estimate's), lidar five of five
+  (B 0.14 to 0.76 m).
+
 ## v0.7.0 (2026-10-31)
 
 The MPPI engine beyond CUDA: the rollout model is one body for every backend
