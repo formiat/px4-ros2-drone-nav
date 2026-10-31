@@ -251,8 +251,10 @@ sim-finals-point-to-point-gui: build
 # low over the ground through a sequence of goals drawn by
 # tools/open_sky_scenario.py; the cameras fly the world under its sun with its
 # textures (the gui world, never the dark one: the sensor world carries no
-# texture and is the lidar's), the mission window the kilometres' own. Nothing
-# of the urban location is set.
+# texture and is the lidar's), the carried light's flicker off (A10 is the dark
+# location's: under the sun the lamp's outage read 3.6 s and K12 sent r2614
+# home), the mission window the kilometres' own. Nothing of the urban
+# location is set.
 OPEN_SKY_SCENARIO_PATH := drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json
 OPEN_SKY_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/open_sky_baylands_r050.occupancy3d
 
@@ -264,7 +266,7 @@ sim-open-sky-point-to-point-headless: build
 	. external/environment-artifacts/derived/open_sky_baylands/runtime/environment.env; \
 		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_GUI_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=$(OPEN_SKY_SCENARIO_PATH) \
-		$(ORDINARY_FLIGHT) \
+		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(OPEN_SKY_TRUTH_OCCUPANCY_3D)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
@@ -282,7 +284,7 @@ sim-open-sky-point-to-point-gui: build
 	. external/environment-artifacts/derived/open_sky_baylands/runtime/environment.env; \
 		SIM_WORLD_SDF_PATH="$$SIM_GUI_WORLD_SDF_PATH" \
 		POINT_TO_POINT_SCENARIO_PATH=$(OPEN_SKY_SCENARIO_PATH) \
-		$(ORDINARY_FLIGHT) \
+		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \

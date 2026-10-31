@@ -57,24 +57,25 @@ GnssInputConfig gnssInputConfig(rclcpp::Node& node) {
   };
 }
 
-GnssFixSample gnssFixSample(const px4_msgs::msg::SensorGps& fix,
+GnssFixSample gnssFixSample(const AutopilotGnssFix& fix,
                             const std::int64_t stamp_ns) noexcept {
   return GnssFixSample{
       .stamp_ns = stamp_ns,
-      .valid = fix.fix_type >= px4_msgs::msg::SensorGps::FIX_TYPE_3D,
+      .valid = fix.fix_3d,
       .latitude_deg = fix.latitude_deg,
       .longitude_deg = fix.longitude_deg,
       .altitude_m = fix.altitude_msl_m,
-      .velocity_ned_mps = Eigen::Vector3d{fix.vel_n_m_s, fix.vel_e_m_s, fix.vel_d_m_s},
-      .horizontal_sigma_m = fix.eph,
-      .vertical_sigma_m = fix.epv,
-      .speed_sigma_mps = fix.s_variance_m_s,
+      .velocity_ned_mps =
+          Eigen::Vector3d{fix.velocity_ned_mps.x, fix.velocity_ned_mps.y,
+                          fix.velocity_ned_mps.z},
+      .horizontal_sigma_m = fix.horizontal_accuracy_m,
+      .vertical_sigma_m = fix.vertical_accuracy_m,
+      .speed_sigma_mps = fix.speed_accuracy_mps,
   };
 }
 
 std::string GnssInput::summary(const GnssInputDecision& decision,
-                               const px4_msgs::msg::SensorGps& fix,
-                               const std::uint64_t fused) {
+                               const AutopilotGnssFix& fix, const std::uint64_t fused) {
   char line[512];
   std::snprintf(
       line, sizeof line,
@@ -89,7 +90,7 @@ std::string GnssInput::summary(const GnssInputDecision& decision,
       decision.reading.velocity_residual_normalised,
       decision.reading.self_disagreement_mps, decision.reading.position_step_m,
       decision.reading.clock_step_s, static_cast<unsigned>(fix.fix_type),
-      static_cast<double>(fix.eph), static_cast<unsigned long long>(fused));
+      fix.horizontal_accuracy_m, static_cast<unsigned long long>(fused));
   return line;
 }
 

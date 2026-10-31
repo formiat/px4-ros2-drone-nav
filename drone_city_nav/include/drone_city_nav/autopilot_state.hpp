@@ -61,6 +61,22 @@ struct AutopilotImuSample {
   Vec3 accelerometer_mps2{};
 };
 
+// One fix of the autopilot's satellite receiver (roadmap item 39): what the
+// visual-inertial estimator reads on the hybrid profile. The receiver's own
+// accuracy figures ride with it; a fix without a 3D solution is no fix.
+struct AutopilotGnssFix {
+  std::uint64_t timestamp_us{0U};
+  bool fix_3d{false};
+  std::uint8_t fix_type{0U};
+  double latitude_deg{0.0};
+  double longitude_deg{0.0};
+  double altitude_msl_m{0.0};
+  Vec3 velocity_ned_mps{};
+  double horizontal_accuracy_m{0.0}; // eph
+  double vertical_accuracy_m{0.0};   // epv
+  double speed_accuracy_mps{0.0};
+};
+
 // One sample of the autopilot clock against the stack's clock.
 struct AutopilotClockSync {
   std::uint64_t timestamp_us{0U};

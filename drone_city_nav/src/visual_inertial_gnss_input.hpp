@@ -6,10 +6,10 @@
 // measurement (gnss_trust.hpp), and the fix handed to the filter only while
 // the signal is trusted. ROS-free: the node feeds it plain numbers.
 
+#include "drone_city_nav/autopilot_state.hpp"
 #include "drone_city_nav/gnss_trust.hpp"
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 
-#include <px4_msgs/msg/sensor_gps.hpp>
 #include <rclcpp/node.hpp>
 
 #include <Eigen/Core>
@@ -53,8 +53,9 @@ struct GnssInputDecision {
 // (urban_mvp.yaml, the open sky); 1e300 is no gate.
 [[nodiscard]] GnssInputConfig gnssInputConfig(rclcpp::Node& node);
 
-// The autopilot's fix as the input's sample, at the stamp the node mapped.
-[[nodiscard]] GnssFixSample gnssFixSample(const px4_msgs::msg::SensorGps& fix,
+// The autopilot's fix (through its adapter) as the input's sample, at the stamp the
+// node mapped.
+[[nodiscard]] GnssFixSample gnssFixSample(const AutopilotGnssFix& fix,
                                           std::int64_t stamp_ns) noexcept;
 
 class GnssInput {
@@ -76,7 +77,7 @@ public:
 
   // The log line of a fix: the trust's state and every reading behind it.
   [[nodiscard]] static std::string summary(const GnssInputDecision& decision,
-                                           const px4_msgs::msg::SensorGps& fix,
+                                           const AutopilotGnssFix& fix,
                                            std::uint64_t fused);
 
 private:

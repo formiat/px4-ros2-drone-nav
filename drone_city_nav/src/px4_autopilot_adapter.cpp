@@ -135,6 +135,24 @@ px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) no
   };
 }
 
+AutopilotGnssFix
+px4SensorGpsToAutopilotGnssFix(const px4_msgs::msg::SensorGps& message) noexcept {
+  return AutopilotGnssFix{
+      .timestamp_us = message.timestamp,
+      .fix_3d = message.fix_type >= px4_msgs::msg::SensorGps::FIX_TYPE_3D,
+      .fix_type = message.fix_type,
+      .latitude_deg = message.latitude_deg,
+      .longitude_deg = message.longitude_deg,
+      .altitude_msl_m = message.altitude_msl_m,
+      .velocity_ned_mps = Vec3{static_cast<double>(message.vel_n_m_s),
+                               static_cast<double>(message.vel_e_m_s),
+                               static_cast<double>(message.vel_d_m_s)},
+      .horizontal_accuracy_m = static_cast<double>(message.eph),
+      .vertical_accuracy_m = static_cast<double>(message.epv),
+      .speed_accuracy_mps = static_cast<double>(message.s_variance_m_s),
+  };
+}
+
 namespace {
 
 // Both estimators report the same quantities under the same names.

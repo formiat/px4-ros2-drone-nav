@@ -8,6 +8,7 @@
 #include <px4_msgs/msg/battery_status.hpp>
 #include <px4_msgs/msg/failsafe_flags.hpp>
 #include <px4_msgs/msg/sensor_combined.hpp>
+#include <px4_msgs/msg/sensor_gps.hpp>
 #include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
@@ -31,6 +32,9 @@ px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) no
 
 [[nodiscard]] AutopilotClockSync
 px4TimesyncToAutopilotClockSync(const px4_msgs::msg::TimesyncStatus& message) noexcept;
+
+[[nodiscard]] AutopilotGnssFix
+px4SensorGpsToAutopilotGnssFix(const px4_msgs::msg::SensorGps& message) noexcept;
 
 // The lidar-inertial estimate as PX4's external odometry: NED pose, NED
 // velocity, the estimator's variances, and its health as the quality.

@@ -74,6 +74,9 @@ class OpenSkyScenarioTest(unittest.TestCase):
             self.assertIn("--environment open_sky_baylands --runtime-map-mode no-static", recipe)
             for constant in URBAN_CONSTANTS:
                 self.assertNotIn(constant, recipe)
+            # The sun lights the world: no flicker of the carried light (A10 is the dark location's).
+            self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-none}"', recipe)
+            self.assertNotIn("$(ORDINARY_FLIGHT)", recipe)
             wrapper = REPOSITORY / f"scripts/sim_open_sky_point_to_point_{mode}.sh"
             self.assertIn(f"make {target}\n", wrapper.read_text(encoding="utf-8"))
             lidar = REPOSITORY / f"scripts/sim_open_sky_point_to_point_lidar_{mode}.sh"
