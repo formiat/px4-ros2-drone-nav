@@ -26,7 +26,9 @@ the seed cell), the launch pad 3 x 3 x 1 m with its top 0.5 m over the floor vox
 (the takeoff climb, urban_mvp.yaml takeoff_climb_m). The goal: a flyable cell 300 to 600 m from the seed cell along
 the grid (a 26-neighbour path through flyable voxels with Euclidean steps: the urban mission's band of route lengths),
 1.5 to 3 m over its floor voxel's top (the floor inside the box: a floor under the memory's bottom is never mapped),
-a ceiling within 15 m, the plain free space four cells wide either way (not a shaft). On the finals world a goal under a flat ceiling over a flat floor (five by five cells each: the built part of
+a ceiling within 15 m, the plain free space four cells wide either way (not a shaft), and across 4.5 x 4.5 m under
+it nothing occupied more than 1 m over the goal's own floor (no wall the landing can touch: the landing after the goal
+descends on the estimate, a metre or two off, specification K30). On the finals world a goal under a flat ceiling over a flat floor (five by five cells each: the built part of
 the world) is preferred when one is in the band. Start and goal are drawn uniformly with the seed; a seed whose start
 reaches no goal in the band is counted and the next seed drawn, up to --seeds; when none finds one, the longest pair
 found is written (the part's rule). The yaw faces the path's point 10 m along it. The seed, the attempts and the
@@ -60,6 +62,7 @@ ROUTE_BAND_M = (300.0, 600.0)
 GOAL_OVER_FLOOR_M = (1.5, 3.0)
 CEILING_WITHIN_M = 15.0
 WIDTH_CELLS = 4  # plain free cells either way of the goal, horizontally
+LANDING_CELLS = 4  # one flat floor under the goal, this many cells either way (4.5 m across), free up to the goal
 YAW_ALONG_M = 10.0
 NEIGHBOURS = [(dx, dy, dz) for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)
               if (dx, dy, dz) > (0, 0, 0)]  # one half of the 26: the graph is undirected
@@ -183,6 +186,23 @@ def select(args):
     goal_ok &= (ceiling < shape[2]) & ((ceiling - k_index) * resolution <= CEILING_WITHIN_M) & free_x & free_y
     # The goal's floor in the box: a floor under the memory's bottom is never mapped.
     goal_ok &= (floor + 1) >= max(box_low_cell[2], 0)
+    # The landing: after the goal the vehicle holds its position and descends (specification K30), on its
+    # estimate, which is off by a metre or two; under the goal, across 4.5 x 4.5 m, nothing occupied stands
+    # more than 1 m over the goal's own floor (no wall, pillar or ledge the descent can touch; r2549 to
+    # r2552: four lidar flights reached the cave goal and touched the corner wall 2.4 m below it on the way
+    # down).
+    landing = np.ones(shape, dtype=bool)
+    for dx in range(-LANDING_CELLS, LANDING_CELLS + 1):
+        for dy in range(-LANDING_CELLS, LANDING_CELLS + 1):
+            # A wall is a column whose highest occupied voxel under the goal's height stands more than
+            # 1 m over the goal's own floor; a floor lower or a little higher is a floor (the cave's floors
+            # are bumpy and sloped, and no 4.5 m patch of them is level to a voxel).
+            landing &= (np.roll(np.roll(floor, -dx, axis=0), -dy, axis=1) - floor) <= 2
+    landing[:LANDING_CELLS, :, :] = False
+    landing[-LANDING_CELLS:, :, :] = False
+    landing[:, :LANDING_CELLS, :] = False
+    landing[:, -LANDING_CELLS:, :] = False
+    goal_ok &= landing
     built = np.ones(shape, dtype=bool)
     for dx in (-2, -1, 0, 1, 2):
         for dy in (-2, -1, 0, 1, 2):
@@ -316,6 +336,7 @@ def select(args):
             "straight_distance_m": round(straight_m, 1),
             "goal_over_floor_m": round(float(goal_sdf[2] - goal_floor_top_sdf), 2),
             "goal_under_ceiling_m": round(float(goal_ceiling_sdf - goal_sdf[2]), 2),
+            "landing_patch_m": (2 * LANDING_CELLS + 1) * resolution,
             "component_voxels": int(sizes[component_label]),
             "memory_box_in_world_m": [box_low_sdf.round(1).tolist(), box_high_sdf.round(1).tolist()],
         },

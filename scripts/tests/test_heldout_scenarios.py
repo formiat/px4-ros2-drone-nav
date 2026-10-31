@@ -57,8 +57,16 @@ class HeldOutScenariosTest(unittest.TestCase):
                 self.assertEqual(selection["tool"], "tools/heldout_scenario.py")
                 self.assertTrue(selection["grid"].endswith(grid))
                 self.assertIsInstance(selection["seed"], int)
-                self.assertGreaterEqual(selection["route_length_m"], 300.0)
+                # The urban mission's band, or, when no start of 200 seeds reaches a goal in
+                # it, the longest pair found (the finals world: no landing patch 300 m from a
+                # flat start).
+                if len(selection["attempts"]) < 200:
+                    self.assertGreaterEqual(selection["route_length_m"], 300.0)
+                else:
+                    self.assertEqual(selection["route_length_m"],
+                                     max(attempt["farthest_goal_m"] for attempt in selection["attempts"]))
                 self.assertLessEqual(selection["route_length_m"], 600.0)
+                self.assertEqual(selection["landing_patch_m"], 4.5)
                 self.assertLessEqual(selection["straight_distance_m"], selection["route_length_m"])
                 self.assertGreaterEqual(selection["goal_over_floor_m"], 1.5)
                 self.assertLessEqual(selection["goal_over_floor_m"], 3.0)

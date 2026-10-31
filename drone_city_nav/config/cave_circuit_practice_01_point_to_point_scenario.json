@@ -5,17 +5,17 @@
     "px4_model_target": "gz_x500_lidar_3d",
     "gazebo_model_name": "x500_lidar_3d_0",
     "map_start_m": [
-      -17.25,
-      260.25,
-      11.73
+      -12.25,
+      235.25,
+      8.73
     ],
     "yaw_rad": 1.570796
   },
   "mission_goal_sequence_m": [
     [
-      188.25,
-      268.25,
-      16.75
+      128.25,
+      275.75,
+      38.25
     ]
   ],
   "launch_platforms": [
@@ -29,13 +29,13 @@
         3.0,
         1.0
       ],
-      "top_z_m": 11.5
+      "top_z_m": 8.5
     }
   ],
   "selection": {
     "tool": "tools/heldout_scenario.py",
     "grid": "external/environment-candidates/work/cave_practice_01_r050.occupancy3d",
-    "seed": 1,
+    "seed": 3,
     "attempts": [
       {
         "seed": 1,
@@ -44,14 +44,35 @@
           580,
           59
         ],
-        "goals_in_band": 124,
-        "farthest_goal_m": 438.6
+        "goals_in_band": 0,
+        "farthest_goal_m": 297.9
+      },
+      {
+        "seed": 2,
+        "start_cell": [
+          24,
+          603,
+          60
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 286.2
+      },
+      {
+        "seed": 3,
+        "start_cell": [
+          38,
+          530,
+          53
+        ],
+        "goals_in_band": 40,
+        "farthest_goal_m": 325.9
       }
     ],
-    "route_length_m": 341.7,
-    "straight_distance_m": 205.7,
-    "goal_over_floor_m": 2.75,
-    "goal_under_ceiling_m": 12.75,
+    "route_length_m": 325.5,
+    "straight_distance_m": 149.2,
+    "goal_over_floor_m": 2.25,
+    "goal_under_ceiling_m": 14.25,
+    "landing_patch_m": 4.5,
     "component_voxels": 7645080,
     "memory_box_in_world_m": [
       [
