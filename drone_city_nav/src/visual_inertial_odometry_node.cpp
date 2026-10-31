@@ -16,6 +16,7 @@
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <px4_msgs/msg/sensor_gps.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -45,6 +46,7 @@
 
 #include "stereo_calibration_ros.hpp"
 #include "stereo_feature_tracker.hpp"
+#include "visual_inertial_gnss_input.hpp"
 #include "visual_inertial_odometry_node_internal.hpp"
 
 namespace drone_city_nav {
@@ -254,6 +256,16 @@ public:
         },
         in_group);
     const auto image_qos = rclcpp::SensorDataQoS{}.keep_last(3);
+    // The satellite signal (roadmap item 39): read against the estimator for
+    // its trust, fused while trusted; off unless a topic is named (the cave
+    // profiles name none and pay nothing here).
+    const std::string gnss_topic = declare_parameter<std::string>("gnss_topic", "");
+    if (!gnss_topic.empty()) {
+      gnss_input_ = std::make_unique<GnssInput>(gnssInputConfig(*this));
+      gnss_sub_ = create_subscription<px4_msgs::msg::SensorGps>(
+          gnss_topic, px4_qos,
+          [this](const px4_msgs::msg::SensorGps& fix) { onGnss(fix); }, in_group);
+    }
     left_sub_ = create_subscription<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("left_image_topic", "/stereo/left/image"),
         image_qos,
@@ -498,6 +510,40 @@ private:
   // minutes, its height ran to 380 m, a hole in the IMU stream restarted it
   // on the autopilot's pose 16 m off, and the vehicle took off on it and
   // struck a wall (r1466).
+  void onGnss(const px4_msgs::msg::SensorGps& fix) {
+    const std::optional<std::int64_t> stamp_ns = time_mapper_.px4LocalToRosTimeNs(
+        static_cast<std::int64_t>(fix.timestamp) * 1000);
+    const GnssFixSample sample =
+        gnssFixSample(fix, stamp_ns.value_or(get_clock()->now().nanoseconds()));
+    const bool initialized = odometry_->initialized();
+    std::optional<VisualInertialEstimate> predicted;
+    if (initialized) {
+      predicted = odometry_->predicted(sample.stamp_ns);
+    }
+    const GnssInputDecision decision =
+        gnss_input_->fix(sample, initialized, predicted ? &*predicted : nullptr);
+    if (!decision.reference_ready) {
+      return;
+    }
+    if (decision.fuse) {
+      odometry_->addAbsolutePosition(decision.position_ned_m, decision.sigma_m);
+      ++gnss_fused_;
+    }
+    if (decision.verdict.trusted != gnss_trusted_declared_) {
+      RCLCPP_WARN(
+          get_logger(), "GNSS_TRUST changed trusted=%s reason=%s residual_m=%.2f",
+          decision.verdict.trusted ? "true" : "false",
+          std::string{decision.verdict.reason}.c_str(), decision.position_residual_m);
+      std_msgs::msg::String event;
+      event.data = std::string{"GNSS_TRUST trusted="} +
+                   (decision.verdict.trusted ? "true" : "false");
+      mission_event_pub_->publish(event);
+      gnss_trusted_declared_ = decision.verdict.trusted;
+    }
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "%s",
+                         GnssInput::summary(decision, fix, gnss_fused_).c_str());
+  }
+
   void startAfresh(const char* reason) {
     odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
     imu_samples_at_start_ = imu_samples_;
@@ -943,6 +989,10 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr void_range_sub_;
   bool void_declared_{false};
+  rclcpp::Subscription<px4_msgs::msg::SensorGps>::SharedPtr gnss_sub_;
+  std::unique_ptr<GnssInput> gnss_input_;
+  bool gnss_trusted_declared_{false};
+  std::uint64_t gnss_fused_{0U};
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;

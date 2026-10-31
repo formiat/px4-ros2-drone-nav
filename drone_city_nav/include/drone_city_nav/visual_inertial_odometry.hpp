@@ -248,6 +248,13 @@ public:
   // stretch the filter holds its height to the change the barometer saw.
   void addBarometricHeight(double height_m);
 
+  // An absolute position in the estimator's NED frame with its standard
+  // deviation per axis, fused at the filter's current time (the satellite
+  // fix the open sky gives, roadmap item 39, when its trust is measured:
+  // visual_inertial_gnss.cpp). Nothing before the estimator is initialized.
+  void addAbsolutePosition(const Eigen::Vector3d& position_ned_m,
+                           const Eigen::Vector3d& sigma_m);
+
   // The pair's judgment of its latest frame (specification K46): a void
   // frame, empty to the light's reach under a sound light, or not. Read at
   // the next frame while younger than 0.6 s (a few periods of the pair).

@@ -53,6 +53,7 @@ prepare_runtime_evidence() {
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
     IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
+    GNSS_FAULTS GNSS_FAULT_SEED \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -123,6 +124,15 @@ start_runtime_evidence_capture() {
         --profile "${IMU_FAULTS}" --seed "${IMU_FAULT_SEED:-0}" \
         --output "${runtime_artifact_dir}/imu_stream.csv" \
         > "${runtime_artifact_dir}/imu_stream.log" 2>&1 &
+    fi
+    # Roadmap item 39: the satellite signal failing in every way its table
+    # names, a relay the estimator reads the fixes through on the hybrid
+    # profile (GNSS_FAULTS, empty for the honest signal; the seed the run's).
+    if [[ "${LOCALIZATION_PROFILE:-}" == hybrid ]]; then
+      python3 "${repo_root}/scripts/gnss_fault_relay.py" \
+        --faults "${GNSS_FAULTS:-}" --seed "${GNSS_FAULT_SEED:-${IMPERFECTION_SEED:-0}}" \
+        --output "${runtime_artifact_dir}/gnss_relay.csv" \
+        > "${runtime_artifact_dir}/gnss_relay.log" 2>&1 &
     fi
     # Roadmap item 35 (K52): the lidar's sweeps delivered with a real driver's
     # cadence spread; the bridge reads the relay (run_drone_nav_sim.sh).

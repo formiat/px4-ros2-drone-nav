@@ -1,0 +1,94 @@
+#include "drone_city_nav/gnss_trust.hpp"
+
+#include <gtest/gtest.h>
+
+namespace drone_city_nav {
+namespace {
+
+constexpr std::int64_t kSecond{1'000'000'000};
+
+[[nodiscard]] GnssFixReading agreeingFix(const std::int64_t stamp_ns) {
+  return {.stamp_ns = stamp_ns,
+          .valid = true,
+          .position_residual_normalised = 0.5,
+          .velocity_residual_normalised = 0.5,
+          .self_disagreement_mps = 0.1,
+          .position_step_m = 0.1,
+          .clock_step_s = 0.033};
+}
+
+[[nodiscard]] GnssTrustConfig gates() {
+  return {.window_s = 5.0,
+          .position_gate = 3.0,
+          .velocity_gate = 3.0,
+          .self_gate_mps = 1.0,
+          .jump_gate_m = 5.0,
+          .clock_step_gate_s = 1.0};
+}
+
+TEST(GnssTrustTest, TheSignalIsTrustedOnceItHasAgreedForTheWindowAndNotBefore) {
+  GnssTrust trust{gates()};
+  for (int i = 0; i < 149; ++i) {
+    const GnssTrustVerdict verdict = trust.read(agreeingFix(i * kSecond / 30));
+    EXPECT_TRUE(verdict.agreeing);
+    EXPECT_FALSE(verdict.trusted) << i;
+  }
+  const GnssTrustVerdict verdict = trust.read(agreeingFix(150 * kSecond / 30));
+  EXPECT_TRUE(verdict.trusted);
+  EXPECT_NEAR(verdict.agreeing_s, 5.0, 1.0e-9);
+}
+
+TEST(GnssTrustTest, ADisagreeingFixEndsTheTrustAtOnceAndNamesItsGate) {
+  GnssTrust trust{gates()};
+  for (int i = 0; i <= 150; ++i) {
+    static_cast<void>(trust.read(agreeingFix(i * kSecond / 30)));
+  }
+  ASSERT_TRUE(trust.trusted());
+  GnssFixReading walked = agreeingFix(151 * kSecond / 30);
+  walked.position_residual_normalised = 3.5;
+  const GnssTrustVerdict verdict = trust.read(walked);
+  EXPECT_FALSE(verdict.agreeing);
+  EXPECT_FALSE(verdict.trusted);
+  EXPECT_EQ(verdict.reason, "position");
+  GnssFixReading jumped = agreeingFix(152 * kSecond / 30);
+  jumped.position_step_m = 80.0;
+  EXPECT_EQ(trust.read(jumped).reason, "jump");
+  GnssFixReading lost = agreeingFix(153 * kSecond / 30);
+  lost.valid = false;
+  EXPECT_EQ(trust.read(lost).reason, "no_fix");
+  GnssFixReading late = agreeingFix(154 * kSecond / 30);
+  late.clock_step_s = -0.5;
+  EXPECT_EQ(trust.read(late).reason, "clock");
+  GnssFixReading inconsistent = agreeingFix(155 * kSecond / 30);
+  inconsistent.self_disagreement_mps = 4.0;
+  EXPECT_EQ(trust.read(inconsistent).reason, "self");
+}
+
+TEST(GnssTrustTest, TheTrustReturnsAfterTheWindowOfAgreementAndRemembersNoLie) {
+  GnssTrust trust{gates()};
+  for (int i = 0; i <= 150; ++i) {
+    static_cast<void>(trust.read(agreeingFix(i * kSecond / 30)));
+  }
+  GnssFixReading walked = agreeingFix(151 * kSecond / 30);
+  walked.position_residual_normalised = 10.0;
+  static_cast<void>(trust.read(walked));
+  // Back in agreement: the window counts from the first agreeing fix after the lie.
+  const std::int64_t back_ns = 152 * kSecond / 30;
+  for (int i = 0; i < 149; ++i) {
+    EXPECT_FALSE(trust.read(agreeingFix(back_ns + i * kSecond / 30)).trusted) << i;
+  }
+  EXPECT_TRUE(trust.read(agreeingFix(back_ns + 150 * kSecond / 30)).trusted);
+}
+
+TEST(GnssTrustTest, AGateAtInfinityNeverFails) {
+  GnssTrust trust{GnssTrustConfig{.window_s = 1.0}};
+  GnssFixReading wild = agreeingFix(0);
+  wild.position_residual_normalised = 1.0e6;
+  wild.position_step_m = 1.0e6;
+  EXPECT_TRUE(trust.read(wild).agreeing);
+  wild.stamp_ns = kSecond;
+  EXPECT_TRUE(trust.read(wild).trusted);
+}
+
+} // namespace
+} // namespace drone_city_nav

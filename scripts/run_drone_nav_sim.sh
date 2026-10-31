@@ -248,15 +248,14 @@ else
 fi
 case "${localization_profile}" in
   gnss | gnss_shadow) ;;
-  visual_inertial_shadow | visual_inertial)
-    # The visual-inertial estimator reads the pair's frames: beside GNSS, or
-    # alone, fed to the autopilot with GNSS, the magnetometer and the
-    # simulation heading source, which is the simulator's truth, off.
+  visual_inertial_shadow | visual_inertial | hybrid)
+    # The visual-inertial estimator reads the pair's frames: beside GNSS, or alone, fed to the autopilot with
+    # GNSS, the magnetometer and the simulation heading source (the truth) off; hybrid (item 39) reads the fixes too.
     if [[ "${camera_profile}" != "stereo_tof" ]]; then
       echo "LOCALIZATION_PROFILE=${localization_profile} requires CAMERA_PROFILE=stereo_tof" >&2
       exit 1
     fi
-    if [[ "${localization_profile}" == "visual_inertial" ]]; then
+    if [[ "${localization_profile}" == "visual_inertial" || "${localization_profile}" == "hybrid" ]]; then
       enable_simulation_heading_source=false
     fi
     ;;
@@ -974,6 +973,7 @@ else
   [[ -n "${MPPI_ROLLOUTS:-}" ]] && ros_launch_args+=(mppi_rollouts:="${MPPI_ROLLOUTS}")  # item 28 step 1: the rollouts the flight needs
   # K28: the IMU stream failing, injected by a relay the camera estimator reads from.
   [[ -n "${IMU_FAULTS:-}" && "${IMU_FAULTS}" != none ]] && ros_launch_args+=(imu_topic_suffix:=/relayed)
+  [[ "${localization_profile}" == "hybrid" ]] && ros_launch_args+=(gnss_topic:=/drone_city_nav/simulation/gnss)  # item 39: the fixes through the fault relay (GNSS_FAULTS, runtime_evidence_runtime.sh)
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")

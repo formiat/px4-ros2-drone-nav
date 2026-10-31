@@ -69,7 +69,7 @@ export_px4_estimator_parameters() {
     export PX4_PARAM_EKF2_DELAY_MAX=300
     export PX4_PARAM_EKF2_EV_NOISE_MD=0
   fi
-  if [[ "${localization_profile}" == "visual_inertial" ]]; then
+  if [[ "${localization_profile}" == "visual_inertial" || "${localization_profile}" == "hybrid" ]]; then
     # The visual-inertial estimator is the position and the heading, fused as
     # the lidar-inertial one is: GNSS off, magnetometer off, the vision the
     # height reference, position and yaw from the external odometry and not
@@ -126,7 +126,8 @@ px4_parameter_stream() {
   echo "param set CBRK_SUPPLY_CHK 894281"
   echo "param set NAV_DLL_ACT 0"
   if [[ "${localization_profile}" == "lidar_inertial" ||
-    "${localization_profile}" == "visual_inertial" ]]; then
+    "${localization_profile}" == "visual_inertial" ||
+    "${localization_profile}" == "hybrid" ]]; then
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"
     echo "param show EKF2_EV_CTRL"

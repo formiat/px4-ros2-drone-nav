@@ -308,9 +308,14 @@ class NavigationDependencyContractTest(unittest.TestCase):
                 [name for name in LOCAL_INCLUDE_PATTERN.findall(text)
                  if name not in ("drone_city_nav/visual_inertial_odometry.hpp",
                                  "drone_city_nav/visual_inertial_void.hpp",
-                                 "visual_inertial_math.hpp")],
+                                 "visual_inertial_math.hpp",
+                                 "visual_inertial_odometry_impl.hpp")],
                 [], path.name)
-        for path in (INCLUDE / "visual_inertial_void.hpp", SOURCE / "visual_inertial_math.hpp"):
+        # The filter's private state (visual_inertial_odometry_impl.hpp, shared
+        # with the module that fuses the satellite fix) and its helpers read
+        # Eigen and the standard library alike.
+        for path in (INCLUDE / "visual_inertial_void.hpp", SOURCE / "visual_inertial_math.hpp",
+                     SOURCE / "visual_inertial_odometry_impl.hpp", SOURCE / "visual_inertial_gnss.cpp"):
             text = path.read_text(encoding="utf-8")
             for include in re.findall(r"^\s*#\s*include\s*<([^>]+)>", text, re.MULTILINE):
                 self.assertTrue(

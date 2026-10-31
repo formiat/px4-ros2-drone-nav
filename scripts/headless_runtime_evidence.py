@@ -651,8 +651,12 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     # (REAL_TIME_FACTOR) publishes at its rate per second of simulation.
     real_time_factor = float(manifest.get("effective_overrides", {}).get("REAL_TIME_FACTOR",
                                                                           1.0))
-    if profile == "visual_inertial":
+    if profile in ("visual_inertial", "hybrid"):
         validate_visual_inertial_profile(ros_log, px4_log, errors, notes, real_time_factor)
+        if profile == "hybrid":
+            from gnss_trust_evidence import report_gnss_trust  # noqa: PLC0415
+
+            report_gnss_trust(ros_log, notes)
         return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")

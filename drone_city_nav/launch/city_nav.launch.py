@@ -27,6 +27,10 @@ from launch_overrides import (
 from point_to_point_scenario import load_point_to_point_scenario
 from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
+from localization_profile import (
+    validate_localization_profile,
+    visual_inertial_overrides as compute_visual_inertial_overrides,
+)
 from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
     DEFAULT_CAMERA_PROFILE,
@@ -179,6 +183,7 @@ def generate_launch_description():
     mppi_rollouts = LaunchConfiguration("mppi_rollouts")
     mppi_engine = LaunchConfiguration("mppi_engine")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
+    gnss_topic = LaunchConfiguration("gnss_topic")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
     step_ack = LaunchConfiguration("step_ack")
@@ -266,23 +271,13 @@ def generate_launch_description():
             localization_profile.perform(context).strip()
             or DEFAULT_LOCALIZATION_PROFILES[navigation_sensors]
         )
-        if localization not in (
-            "gnss",
-            "gnss_shadow",
-            "lidar_inertial",
-            "visual_inertial_shadow",
-            "visual_inertial",
-        ):
-            raise ValueError(f"unsupported localization profile: {localization}")
+        validate_localization_profile(localization)
         lidar_inertial_overrides = {
             "use_sim_time": True,
             "publish_to_autopilot": localization == "lidar_inertial",
         }
-        visual_inertial_overrides = (
-            {"publish_to_autopilot": localization == "visual_inertial"}
-            if localization in ("visual_inertial_shadow", "visual_inertial")
-            else None
-        )
+        visual_inertial_overrides = compute_visual_inertial_overrides(
+            localization, gnss_topic.perform(context))
         imu_suffix = imu_topic_suffix.perform(context).strip()
         if visual_inertial_overrides is not None and imu_suffix:
             visual_inertial_overrides["px4_sensor_combined_topic"] = (
@@ -805,6 +800,11 @@ def generate_launch_description():
                 "enable_mission_monitor",
                 default_value="true",
                 description="Start the simulation-only mission verification node.",
+            ),
+            DeclareLaunchArgument(
+                "gnss_topic",
+                default_value="",
+                description="The satellite fixes the estimator reads on the hybrid profile (item 39).",
             ),
             DeclareLaunchArgument(
                 "localization_profile",

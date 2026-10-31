@@ -307,8 +307,10 @@ target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_mod
 # pair: Eigen for the geometry, nothing of the world, the planner or the
 # controller, and no image library: the features arrive as coordinates.
 add_drone_city_nav_layer(drone_city_nav_localization
+                         src/gnss_trust.cpp
                          src/lidar_inertial_odometry.cpp
                          src/point_plane_map_3d.cpp
+                         src/visual_inertial_gnss.cpp
                          src/visual_inertial_odometry.cpp
                          src/visual_inertial_void.cpp)
 target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
@@ -540,6 +542,7 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/world_generation.hpp)
 
 set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
+    include/drone_city_nav/gnss_trust.hpp
     include/drone_city_nav/lidar_inertial_odometry.hpp
     include/drone_city_nav/point_plane_map_3d.hpp
     include/drone_city_nav/visual_inertial_odometry.hpp
@@ -1139,6 +1142,7 @@ foreach(stereo_depth_process ${stereo_depth_processes})
                                          src/stereo_feature_tracker.cpp
                                          src/stereo_frame_brightness.cpp
                                          src/stereo_rectifier.cpp
+                                         src/visual_inertial_gnss_input.cpp
                                          src/visual_inertial_odometry_node.cpp)
   target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
   target_include_directories(${stereo_depth_process} SYSTEM
@@ -1789,6 +1793,9 @@ if(BUILD_TESTING)
   target_include_directories(json_output_test PRIVATE include)
   enable_project_warnings(json_output_test)
 
+  ament_add_gtest(gnss_trust_test tests/gnss_trust_test.cpp)
+  target_compile_features(gnss_trust_test PRIVATE cxx_std_20)
+  target_link_libraries(gnss_trust_test drone_city_nav_localization)
   ament_add_gtest(navigation_angular_derivative_test
                   tests/navigation_angular_derivative_test.cpp)
   target_compile_features(navigation_angular_derivative_test PRIVATE cxx_std_20)
