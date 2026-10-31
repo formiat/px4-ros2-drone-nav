@@ -661,8 +661,14 @@ def main() -> None:
             environment["source"].get("visual_dependencies", []),
         )
     )
+    # A repository world may include Fuel models the candidates' cache holds
+    # (`gz fuel download` into external/environment-candidates/fuel: the open
+    # sky world of roadmap item 39); a release bundle carries its own.
+    candidates_cache = repository / "external/environment-candidates/fuel"
     resolver = ResourceResolver(
-        [source_root / "fuel", visual_cache], source_model_paths(source_root)
+        [source_root / "fuel", visual_cache]
+        + ([candidates_cache] if candidates_cache.is_dir() else []),
+        source_model_paths(source_root),
     )
     for legacy_output in (runtime_root / "world.sdf", runtime_root / "materialization.json"):
         legacy_output.unlink(missing_ok=True)

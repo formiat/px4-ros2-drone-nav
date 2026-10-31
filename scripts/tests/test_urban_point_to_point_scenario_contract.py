@@ -80,10 +80,11 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertNotIn(
             'SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile
         )
-        # Urban's four targets, the dark hall's two (roadmap item 29) and
-        # the held-out worlds' four (roadmap item 33).
-        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 10)
-        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 10)
+        # Urban's four targets, the dark hall's two (roadmap item 29), the
+        # held-out worlds' four (roadmap item 33) and the open sky's two
+        # (roadmap item 39).
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 12)
+        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 12)
         self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", makefile)
         self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertIn("sim-urban-point-to-point-headless", headless_wrapper)
@@ -124,8 +125,13 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # The ordinary flight of roadmap item 17 (specification A10) is the
         # dark location and the moderate flicker.
         # The location's own light never comes back (the owner's rule of
-        # 2026-10-03): no target selects the lit world.
-        self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", makefile)
+        # 2026-10-03): no urban or dark-hall target selects the lit world; the
+        # open sky (roadmap item 39) flies under its sun, in its two targets.
+        self.assertEqual(makefile.count("SIM_GUI_WORLD_SDF_PATH"), 2)
+        for target in ("sim-urban-point-to-point-headless", "sim-urban-point-to-point-gui",
+                       "sim-dark-hall-headless", "sim-dark-hall-gui"):
+            recipe = makefile[makefile.index(f"{target}: build"):]
+            self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", recipe[:recipe.index("\n\n")])
         self.assertNotIn("WORLD_ILLUMINATION", makefile)
         self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
         # The owner's rule of 2026-10-24 (specification F4): the ordinary

@@ -53,6 +53,7 @@ class EnvironmentManifestTest(unittest.TestCase):
                 "urban_circuit_practice_01",
                 "compact_3d_passage_fixture",
                 "dark_hall_fixture",
+                "open_sky_baylands",
             },
             {environment["id"] for environment in manifest["environments"]},
         )
@@ -106,7 +107,9 @@ class EnvironmentManifestTest(unittest.TestCase):
         verified = verify_repository_files(manifest, MANIFEST_PATH)
 
         # Three licence inventories, the compact passage's six files and the dark hall's eight.
-        self.assertEqual(14 + 3, len(verified))
+        # The dark hall's files, the three of the fixture set, and the open
+        # sky's two (roadmap item 39).
+        self.assertEqual(14 + 3 + 2, len(verified))
 
     def test_environments_select_their_immutable_release(self) -> None:
         manifest = load_manifest(MANIFEST_PATH)

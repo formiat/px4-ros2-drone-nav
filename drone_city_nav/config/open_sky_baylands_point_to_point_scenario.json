@@ -1,0 +1,113 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/open_sky_baylands.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [
+      55.25,
+      28.25,
+      11.23
+    ],
+    "yaw_rad": 2.70175
+  },
+  "mission_goal_sequence_m": [
+    [
+      312.25,
+      440.25,
+      14.75
+    ],
+    [
+      62.75,
+      18.25,
+      16.25
+    ],
+    [
+      213.75,
+      462.25,
+      14.75
+    ]
+  ],
+  "launch_platforms": [
+    {
+      "id": "pad",
+      "vehicle_ids": [
+        "point_to_point_vehicle"
+      ],
+      "size_m": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "top_z_m": 11.0
+    }
+  ],
+  "selection": {
+    "tool": "tools/open_sky_scenario.py",
+    "grid": "external/environment-candidates/work/open_sky_baylands_r050.occupancy3d",
+    "seed": 3,
+    "attempts": [
+      {
+        "seed": 1,
+        "start_cell": [
+          89,
+          227,
+          31
+        ],
+        "legs_m": []
+      },
+      {
+        "seed": 2,
+        "start_cell": [
+          672,
+          307,
+          31
+        ],
+        "legs_m": []
+      },
+      {
+        "seed": 3,
+        "start_cell": [
+          173,
+          119,
+          34
+        ],
+        "legs_m": [
+          535.8,
+          547.6,
+          528.8
+        ]
+      }
+    ],
+    "legs_m": [
+      535.8,
+      547.6,
+      528.8
+    ],
+    "route_length_m": 1612.1,
+    "straight_distances_m": [
+      485.6,
+      490.2,
+      469.0
+    ],
+    "flight_over_ground_m": [
+      4.0,
+      8.0
+    ],
+    "goal_over_ground_m": 6.0,
+    "landing_patch_m": 4.5,
+    "component_voxels": 4204543,
+    "memory_box_in_world_m": [
+      [
+        -65.0,
+        -209.5,
+        -9.5
+      ],
+      [
+        280.0,
+        315.5,
+        30.5
+      ]
+    ]
+  }
+}

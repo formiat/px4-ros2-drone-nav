@@ -280,3 +280,33 @@ environments:
         regions: 2
         portals: 2
         segments: 1
+- id: open_sky_baylands
+  display_name: Open Sky Baylands
+  role: open_sky_mission
+  classification: test_fixture
+  distribution: repository
+  source:
+    provider: repository
+    url: repository:environments/fixtures/open_sky_baylands/world.sdf
+    version: 1
+    license:
+      spdx: CC-BY-4.0
+      url: https://creativecommons.org/licenses/by/4.0/
+      attribution: Open Robotics (the baylands and Coast Water models of Fuel); the world file the PX4 project's, BSD-3-Clause
+    visual_dependencies:
+    - provider: gazebo_fuel
+      owner: OpenRobotics
+      model: baylands
+      version: 3
+    - provider: gazebo_fuel
+      owner: OpenRobotics
+      model: Coast Water
+      version: 3
+  repository_files:
+  - path: environments/fixtures/open_sky_baylands/README.md
+    sha256: 71b8003f5255057c8ac34a27178fa005af5e10f88792b4e2ff2ed44d88c86416
+    size_bytes: 953
+  - path: environments/fixtures/open_sky_baylands/world.sdf
+    sha256: 93ebe40a3373c85d34660149cb4216684e96d2a066f347f99f27c061c60068de
+    size_bytes: 2041
+  static_maps: []
