@@ -194,5 +194,16 @@ TEST(ProductionMppiExecutionControlTest,
                 kPersistentRawFiniteExecutionInvalidated);
 }
 
+TEST(ProductionMppiExecutionControlTest,
+     AFrameResetTheStackCannotRepairRevokesTheExecutionWhateverTheSwitch) {
+  // K1: a reset beyond the tolerance closes the navigation, and closing it is
+  // revoking the resident horizon at once; the planner passes the unresolved
+  // frame reset as the physical invalidation it is (r2584, r2567).
+  EXPECT_FALSE(executionRevocationAllowed(false, false));
+  EXPECT_TRUE(executionRevocationAllowed(true, false));
+  EXPECT_TRUE(executionRevocationAllowed(false, true));
+  EXPECT_TRUE(executionRevocationAllowed(true, true));
+}
+
 } // namespace
 } // namespace drone_city_nav

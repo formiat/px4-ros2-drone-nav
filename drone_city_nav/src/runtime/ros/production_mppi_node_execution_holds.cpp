@@ -765,7 +765,22 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
 
 void ProductionMppiNode::publishFailClosedExecutionRevocation(
     const ProductionMppiExecutionReason reason, const std::int64_t now_ns) {
-  if (!config_.planning.optional_constraints.nonphysical_execution_revocation_enabled) {
+  // A frame the stack cannot repair (the autopilot's estimate reset beyond
+  // K1's tolerance) is a physical discontinuity: the resident horizon was
+  // certified in a frame the vehicle no longer flies in, so it is revoked at
+  // once whatever the optional nonphysical revocation says, and the offboard
+  // brakes at the stack's deceleration. Before, the navigation closed
+  // silently and the horizon ran to the end of its lease: r2584 met a tunnel
+  // wall at 8.6 m/s 2.3 s after a 7.5 m reset at cruise, r2567 a cave tile at
+  // 4.1 m/s after a 3.5 m one (the held-out worlds, roadmap item 33).
+  bool frame_reset_unresolved{false};
+  {
+    const auto lock = evidence_boundary_.input();
+    frame_reset_unresolved = navigation_frame_reset_unresolved_;
+  }
+  if (!executionRevocationAllowed(frame_reset_unresolved,
+                                  config_.planning.optional_constraints
+                                      .nonphysical_execution_revocation_enabled)) {
     return;
   }
   const std::shared_ptr<const ExecutionPlan3D> snapshot = execution_supervisor_.plan();
@@ -775,7 +790,8 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
        snapshot->finiteExecution() != nullptr || snapshot->stopExecution() != nullptr ||
        snapshot->stationaryHold() != nullptr);
   if (authority_present) {
-    static_cast<void>(publishExecutionRevocation(reason, now_ns));
+    static_cast<void>(
+        publishExecutionRevocation(reason, now_ns, frame_reset_unresolved));
   }
 }
 
