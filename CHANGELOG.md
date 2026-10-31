@@ -4,7 +4,64 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
-## Unreleased
+## v0.7.0 (2026-10-31)
+
+The MPPI engine beyond CUDA: the rollout model is one body for every backend
+(`src/mppi/mppi_rollout_body.hpp`), the CUDA kernels wrap it, a CPU engine runs
+it in plain loops and a Vulkan engine runs it as compute shaders (the body
+written once more in GLSL, since a shader cannot share C++), the three held to
+each other by parity tests on the same inputs (CPU against CUDA 3.4e-6 m/s^2
+on the controls, Vulkan against CUDA 1.4e-6; the bounds the measured spread,
+never loosened). `MPPI_ENGINE=cuda|cpu|vulkan` chooses the engine of a flight;
+CUDA stays the flight's default and its tick is unchanged (22.7 / 32.0 ms
+against 23.1 / 31.1 before). On the RTX 3060 the Vulkan population costs 1.4 to
+1.6 times CUDA's (10.8 against 6.8 ms at 8192 rollouts) and flies both sensor
+sets (the lidar five of five, the cameras five of five without contact, r2484
+to r2494); the CPU engine is a measurement, not a flight engine (114 ms a tick
+at 256 rollouts). The package builds without Gazebo and without CUDA, and the
+arm64 onboard image passes 154 of 156 unit tests under emulation. The ModalAI
+VOXL 2 (roadmap item 37) is checked layer by layer against ModalAI's
+documentation, with what needs the board registered: its PX4 carries the
+uXRCE-DDS path the stack uses, ROS 2 Foxy is native and a newer ROS 2 runs in
+Docker, the Adreno 650's rollout count and its 64-bit integers are unmeasured.
+This is readiness by documentation, not support of the board: no VOXL 2 has
+run the stack.
+
+Beside it: the real vehicle's imperfections fly in every acceptance flight
+(the IMU's bias walk, the rotors' vibration, the calibration's residual, a
+driver's stamps; item 35), and under them the stereo set's estimate turns 0.2
+to 2.0 degrees a flight and misses the goal's 2 m in about one flight of five
+(the register's row; roadmap item 40 is its repair); the simulator can wait for
+the onboard loop (a budget relay and a step controller, item 36; two flights
+with the same seeds still part at 9 s); the lidar-inertial estimator starts in
+a very large hall (K51); the heat source on the lidar set (item 32); the dark
+void (item 31); the reference estimators on real recordings (item 25); the
+lidar estimate held level and in height (K45); the flight on a core set of the
+host (A4). The speed requirement became a target mean, the measured one of the
+acceptance configuration under the imperfections profile, 1.16 m/s on the
+stereo set and 2.28 m/s on the lidar, with 20 percent of room for work and a
+record in the technical debt for every series under it (R3, the owner's rule
+of 2026-10-30).
+
+Validated on Urban Circuit Practice 01 (`environment-assets-urban-v1`) on
+9709503f, without GNSS, no static map, the clear location, the imperfections
+profile on, the CUDA engine at 8192 rollouts: the 3D lidar five of five,
+complete and collision-free, 2.155, 2.397, 2.369, 2.523 and 2.284 m/s (mean
+2.346, above the target 2.28) with the true position 0.38 to 0.58 m from the
+goal (r2531 to r2535); the stereo set five of five collision-free and complete
+(r2521, r2523, r2524, r2526, r2539), 0.996, 1.279, 1.163, 1.359 and 1.310 m/s
+(mean 1.221, above the target 1.16; r2521 14 percent under it, within the 20
+percent of R3), the true position at the goal 2.56, 1.18, 1.72, 3.05 and 1.33
+m: two of five beyond the 2 m, the estimate's heading drift under the profile
+(the register's row, item 40), not a contact. Nine attempts were voided on the way by the
+real-time factor under the verdict's floor (A7: r2522 at 0.79; r2525, r2527 to
+r2530, r2536 to r2538 stopped by the watchdog at 0.64 to 0.69) and flown again;
+the series is in `log/tools/release_v070/series.txt`. The package version is 0.7.0 (0.6.0 was
+never written into `package.xml`). No recording and no post go with this
+release.
+
+The goals of 2026-10-24 (six parts) and 2026-10-29 (four parts), on main from
+v0.6.0 to this tag:
 
 - **The target mean speed** (specification R3, the owner's rule of 2026-10-30): the programme targets the measured mean of the acceptance configuration, 1.16 m/s on the stereo set and 2.28 m/s on the lidar under the imperfections profile, in place of the floors 1.2 and 2.0; during work a flight may fall up to 20 percent under the target (the mission check fails under 0.93 and 1.82 m/s and notes every flight under the target), and a series under the target is recorded in the technical debt as an attempt to return ("Attempts To Return To The Target Mean Speed").
 - **The MPPI engine beyond CUDA, way B** (roadmap item 28 step 2; specification K54): the Vulkan engine, `MPPI_ENGINE=vulkan` and `mppi_engine`: the rollout body once more in GLSL (`src/mppi/shaders/mppi_rollout.comp`), the noise and the weighted update as shaders compiled by `glslc` at build time and carried in the library as SPIR-V words, the CPU engine's tick on a population device (the host loops or the Vulkan device), the container seeing the host's Vulkan ICD (`scripts/container_run.sh`), `vulkan_probe` and `mppi_engine_benchmark`. Parity against the CPU and CUDA engines within 4.4e-6 and 1.4e-6 m/s^2 (`mppi_vulkan_engine_parity_test`); the population 1.4 to 1.6 times CUDA's time on the RTX 3060; ten flights (the lidar five of five at 8192, the cameras five of five without contact at 2048, the misses the estimate's under the imperfections profile). Roadmap item 37 (VOXL 2) checked by ModalAI's documentation layer by layer, what needs the board registered.

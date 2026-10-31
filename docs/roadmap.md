@@ -4105,7 +4105,7 @@ alone, and on the stereo set it is open.
 
 ### 25. The Estimator On Real Recordings (Completed)
 
-Not yet in a release (after v0.6.0); closed on 2026-10-27 (dba0daff, the root goal's part 5;
+Shipped in [v0.7.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.7.0) on 2026-10-31; closed on 2026-10-27 (dba0daff, the root goal's part 5;
 specification K50): the visual-inertial estimator replayed on EuRoC V1 beside OpenVINS (ours its equal or better but
 on the hard sequence), the lidar-inertial one on NTU VIRAL's eee_01 beside FAST-LIO (0.20 against 0.42 percent, the
 sweep stamped at its middle), the tool image `docker/Dockerfile.tools` apart from the flight; TUM-VI stays not done. What was asked for and how it was built is kept below as it was
@@ -4325,7 +4325,7 @@ r1484.
 
 ### 31. Flight Through The Dark Void (Completed)
 
-Not yet in a release (after v0.6.0); closed on 2026-10-25 (the root goal of 2026-10-24, part 2; specification
+Shipped in [v0.7.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.7.0) on 2026-10-31; closed on 2026-10-25 (the root goal of 2026-10-24, part 2; specification
 K46, K47): the void frame and the void state, the hall crossed at 14 m on dead reckoning without a hold, a descent or a
 contact, the wall's goal within 2 m by the truth five times and the hall's middle within the published uncertainty
 plus 2 m three times (r2173 to r2190), the drift budget and the arrival rule registered; the lidar's start in the
@@ -4427,7 +4427,7 @@ surface darker than the location's albedo within the reach is the ring's
 
 ### 32. Hot Smoke: A Heat Source In The Plume (Completed)
 
-Not yet in a release (after v0.6.0); closed on 2026-10-28 (3fad5b09, the root goal of 2026-10-24, part 4;
+Shipped in [v0.7.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.7.0) on 2026-10-31; closed on 2026-10-28 (3fad5b09, the root goal of 2026-10-24, part 4;
 specification K49): the thermal core back on the vehicle with a decision, the hot plume and the hot room kept out of
 in five of five flights on each sensor set with no contact (the lidar r2339 to r2348, the stereo set r2322 to r2331
 on the whole ball), the cold room still crossed, the standoff a measured number, the core's reading the decision's

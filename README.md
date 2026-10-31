@@ -83,13 +83,16 @@ the numbers the work relies on, each with who set it and why, are in
 
 Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
 [`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
-`environment-assets-*` tags. The current release is `v0.6.0`: smoke in the
-simulator, read by every sensor; detected on the 3D lidar by the sensor's own
-weak echo and handled by measurement (a plume flown round, a smoky hall
-crossed, a closed corridor proven and the vehicle home); on the stereo set a
-detector of smoke itself not reached, a near-silence detector in its place,
-off by default. The ordinary flight is the clear location, without GNSS and
-with no static map. Each flight's runtime manifest records the package
+`environment-assets-*` tags. The current release is `v0.7.0`: the MPPI
+engine beyond CUDA, one rollout body for every backend with a CPU engine and
+a Vulkan engine held to the CUDA engine by parity (`MPPI_ENGINE`), the
+package built without Gazebo and without CUDA and the arm64 onboard image,
+the VOXL 2 checked against its documentation (readiness, not support: no
+board has run the stack); the real vehicle's imperfections in every
+acceptance flight, the simulator able to wait for the onboard loop, the dark
+void, the heat source on the lidar, the reference estimators on real
+recordings. The ordinary flight is the clear location, without GNSS and
+with no static map, under the imperfections profile. Each flight's runtime manifest records the package
 version and `git describe`.
 
 ## Status And Safety
