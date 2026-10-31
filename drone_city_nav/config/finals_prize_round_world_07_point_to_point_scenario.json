@@ -5,17 +5,17 @@
     "px4_model_target": "gz_x500_lidar_3d",
     "gazebo_model_name": "x500_lidar_3d_0",
     "map_start_m": [
-      74.75,
-      295.25,
+      73.75,
+      296.25,
       21.23
     ],
     "yaw_rad": 3.141593
   },
   "mission_goal_sequence_m": [
     [
-      109.25,
-      156.25,
-      19.75
+      189.75,
+      267.25,
+      23.25
     ]
   ],
   "launch_platforms": [
@@ -35,2013 +35,2013 @@
   "selection": {
     "tool": "tools/heldout_scenario.py",
     "grid": "external/environment-candidates/work/final_event_07_r050.occupancy3d",
-    "seed": 79,
+    "seed": 85,
     "attempts": [
       {
         "seed": 1,
-        "start_cell": [
-          200,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 239.6
-      },
-      {
-        "seed": 2,
-        "start_cell": [
-          131,
-          641,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 213.1
-      },
-      {
-        "seed": 3,
-        "start_cell": [
-          267,
-          568,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 137.1
-      },
-      {
-        "seed": 4,
-        "start_cell": [
-          266,
-          665,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 183.5
-      },
-      {
-        "seed": 5,
-        "start_cell": [
-          273,
-          716,
-          67
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 191.3
-      },
-      {
-        "seed": 6,
-        "start_cell": [
-          145,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 215.7
-      },
-      {
-        "seed": 7,
-        "start_cell": [
-          277,
-          739,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 202.0
-      },
-      {
-        "seed": 8,
-        "start_cell": [
-          265,
-          575,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 135.6
-      },
-      {
-        "seed": 9,
-        "start_cell": [
-          407,
-          658,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 202.7
-      },
-      {
-        "seed": 10,
-        "start_cell": [
-          123,
-          650,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 224.3
-      },
-      {
-        "seed": 11,
-        "start_cell": [
-          380,
-          652,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 195.5
-      },
-      {
-        "seed": 12,
-        "start_cell": [
-          442,
-          601,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 209.7
-      },
-      {
-        "seed": 13,
-        "start_cell": [
-          274,
-          654,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.8
-      },
-      {
-        "seed": 14,
-        "start_cell": [
-          172,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 225.7
-      },
-      {
-        "seed": 15,
-        "start_cell": [
-          262,
-          665,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.6
-      },
-      {
-        "seed": 16,
-        "start_cell": [
-          287,
-          651,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.7
-      },
-      {
-        "seed": 17,
-        "start_cell": [
-          448,
-          588,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 217.6
-      },
-      {
-        "seed": 18,
-        "start_cell": [
-          258,
-          575,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 132.1
-      },
-      {
-        "seed": 19,
-        "start_cell": [
-          127,
-          650,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 222.3
-      },
-      {
-        "seed": 20,
-        "start_cell": [
-          222,
-          651,
-          76
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 168.7
-      },
-      {
-        "seed": 21,
-        "start_cell": [
-          240,
-          647,
-          70
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 161.2
-      },
-      {
-        "seed": 22,
-        "start_cell": [
-          206,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 242.6
-      },
-      {
-        "seed": 23,
-        "start_cell": [
-          275,
-          746,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 205.9
-      },
-      {
-        "seed": 24,
-        "start_cell": [
-          290,
-          679,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.5
-      },
-      {
-        "seed": 25,
-        "start_cell": [
-          289,
-          679,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.3
-      },
-      {
-        "seed": 26,
-        "start_cell": [
-          261,
-          673,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 187.6
-      },
-      {
-        "seed": 27,
-        "start_cell": [
-          442,
-          626,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 211.4
-      },
-      {
-        "seed": 28,
-        "start_cell": [
-          178,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 228.6
-      },
-      {
-        "seed": 29,
-        "start_cell": [
-          141,
-          650,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 217.5
-      },
-      {
-        "seed": 30,
-        "start_cell": [
-          275,
-          743,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 204.4
-      },
-      {
-        "seed": 31,
-        "start_cell": [
-          115,
-          600,
-          87
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 202.2
-      },
-      {
-        "seed": 32,
-        "start_cell": [
-          142,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 216.4
-      },
-      {
-        "seed": 33,
-        "start_cell": [
-          240,
-          664,
-          70
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 176.1
-      },
-      {
-        "seed": 34,
-        "start_cell": [
-          286,
-          663,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 188.6
-      },
-      {
-        "seed": 35,
-        "start_cell": [
-          278,
-          721,
-          67
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 192.7
-      },
-      {
-        "seed": 36,
-        "start_cell": [
-          277,
-          759,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 212.0
-      },
-      {
-        "seed": 37,
-        "start_cell": [
-          157,
-          650,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 218.6
-      },
-      {
-        "seed": 38,
-        "start_cell": [
-          354,
-          656,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 196.1
-      },
-      {
-        "seed": 39,
-        "start_cell": [
-          262,
-          675,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 187.8
-      },
-      {
-        "seed": 40,
-        "start_cell": [
-          383,
-          653,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.7
-      },
-      {
-        "seed": 41,
-        "start_cell": [
-          290,
-          665,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 188.8
-      },
-      {
-        "seed": 42,
         "start_cell": [
           177,
           651,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 228.4
+        "farthest_goal_m": 195.7
       },
       {
-        "seed": 43,
+        "seed": 2,
         "start_cell": [
-          126,
-          636,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 212.5
-      },
-      {
-        "seed": 44,
-        "start_cell": [
-          349,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.1
-      },
-      {
-        "seed": 45,
-        "start_cell": [
-          274,
-          747,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 206.6
-      },
-      {
-        "seed": 46,
-        "start_cell": [
-          141,
+          134,
           651,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 217.0
+        "farthest_goal_m": 185.9
       },
       {
-        "seed": 47,
+        "seed": 3,
         "start_cell": [
-          285,
-          672,
+          262,
+          650,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 183.2
+        "farthest_goal_m": 115.9
       },
       {
-        "seed": 48,
+        "seed": 4,
         "start_cell": [
-          277,
+          262,
+          648,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 115.6
+      },
+      {
+        "seed": 5,
+        "start_cell": [
+          443,
+          600,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 209.4
+      },
+      {
+        "seed": 6,
+        "start_cell": [
+          353,
+          650,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 154.5
+      },
+      {
+        "seed": 7,
+        "start_cell": [
+          275,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.2
+      },
+      {
+        "seed": 8,
+        "start_cell": [
+          261,
           664,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 186.4
+        "farthest_goal_m": 116.3
       },
       {
-        "seed": 49,
+        "seed": 9,
         "start_cell": [
-          134,
-          593,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.1
-      },
-      {
-        "seed": 50,
-        "start_cell": [
-          444,
-          601,
+          278,
+          664,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 210.1
+        "farthest_goal_m": 123.1
       },
       {
-        "seed": 51,
+        "seed": 10,
         "start_cell": [
-          268,
-          662,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.4
-      },
-      {
-        "seed": 52,
-        "start_cell": [
-          274,
-          733,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 199.6
-      },
-      {
-        "seed": 53,
-        "start_cell": [
-          263,
-          672,
+          353,
+          648,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 187.7
+        "farthest_goal_m": 154.2
       },
       {
-        "seed": 54,
+        "seed": 11,
         "start_cell": [
-          204,
-          650,
+          276,
+          757,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 152.1
+      },
+      {
+        "seed": 12,
+        "start_cell": [
+          282,
+          664,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 242.1
+        "farthest_goal_m": 125.1
       },
       {
-        "seed": 55,
+        "seed": 13,
         "start_cell": [
-          155,
-          653,
+          263,
+          674,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.1
+      },
+      {
+        "seed": 14,
+        "start_cell": [
+          163,
+          651,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 217.1
+        "farthest_goal_m": 188.7
       },
       {
-        "seed": 56,
+        "seed": 15,
         "start_cell": [
-          115,
-          592,
-          88
+          260,
+          570,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 132.3
+      },
+      {
+        "seed": 16,
+        "start_cell": [
+          275,
+          734,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 140.4
+      },
+      {
+        "seed": 17,
+        "start_cell": [
+          288,
+          678,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.9
+      },
+      {
+        "seed": 18,
+        "start_cell": [
+          201,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 207.7
+      },
+      {
+        "seed": 19,
+        "start_cell": [
+          444,
+          622,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 200.2
+      },
+      {
+        "seed": 20,
+        "start_cell": [
+          444,
+          631,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.4
+      },
+      {
+        "seed": 21,
+        "start_cell": [
+          192,
+          652,
+          78
         ],
         "goals_in_band": 0,
         "farthest_goal_m": 203.0
       },
       {
-        "seed": 57,
+        "seed": 22,
         "start_cell": [
-          127,
-          640,
-          71
+          180,
+          651,
+          78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 213.4
+        "farthest_goal_m": 197.2
       },
       {
-        "seed": 58,
-        "start_cell": [
-          261,
-          566,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 134.5
-      },
-      {
-        "seed": 59,
+        "seed": 23,
         "start_cell": [
           265,
-          565,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 136.7
-      },
-      {
-        "seed": 60,
-        "start_cell": [
-          276,
-          744,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 204.7
-      },
-      {
-        "seed": 61,
-        "start_cell": [
-          443,
-          638,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 214.7
-      },
-      {
-        "seed": 62,
-        "start_cell": [
-          249,
-          660,
-          76
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 170.6
-      },
-      {
-        "seed": 63,
-        "start_cell": [
-          377,
-          650,
+          653,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 196.6
+        "farthest_goal_m": 117.0
       },
       {
-        "seed": 64,
+        "seed": 24,
         "start_cell": [
-          442,
-          611,
+          275,
+          756,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 151.4
+      },
+      {
+        "seed": 25,
+        "start_cell": [
+          275,
+          750,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 148.4
+      },
+      {
+        "seed": 26,
+        "start_cell": [
+          223,
+          652,
+          76
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 140.5
+      },
+      {
+        "seed": 27,
+        "start_cell": [
+          443,
+          630,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 204.7
+        "farthest_goal_m": 198.1
       },
       {
-        "seed": 65,
+        "seed": 28,
         "start_cell": [
-          352,
+          166,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 190.2
+      },
+      {
+        "seed": 29,
+        "start_cell": [
+          290,
+          675,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.2
+      },
+      {
+        "seed": 30,
+        "start_cell": [
+          290,
           648,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 194.4
+        "farthest_goal_m": 127.5
       },
       {
-        "seed": 66,
-        "start_cell": [
-          135,
-          634,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 208.8
-      },
-      {
-        "seed": 67,
-        "start_cell": [
-          139,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 216.7
-      },
-      {
-        "seed": 68,
-        "start_cell": [
-          439,
-          590,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 214.5
-      },
-      {
-        "seed": 69,
-        "start_cell": [
-          125,
-          651,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 223.1
-      },
-      {
-        "seed": 70,
-        "start_cell": [
-          184,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 231.7
-      },
-      {
-        "seed": 71,
-        "start_cell": [
-          277,
-          739,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 202.0
-      },
-      {
-        "seed": 72,
-        "start_cell": [
-          138,
-          651,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 217.5
-      },
-      {
-        "seed": 73,
-        "start_cell": [
-          275,
-          664,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.4
-      },
-      {
-        "seed": 74,
-        "start_cell": [
-          445,
-          635,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 215.1
-      },
-      {
-        "seed": 75,
-        "start_cell": [
-          379,
-          655,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 196.4
-      },
-      {
-        "seed": 76,
-        "start_cell": [
-          288,
-          676,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 181.7
-      },
-      {
-        "seed": 77,
-        "start_cell": [
-          273,
-          701,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 186.4
-      },
-      {
-        "seed": 78,
-        "start_cell": [
-          259,
-          653,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 179.6
-      },
-      {
-        "seed": 79,
-        "start_cell": [
-          212,
-          650,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 246.1
-      },
-      {
-        "seed": 80,
-        "start_cell": [
-          274,
-          746,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 206.1
-      },
-      {
-        "seed": 81,
-        "start_cell": [
-          445,
-          579,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 217.9
-      },
-      {
-        "seed": 82,
-        "start_cell": [
-          211,
-          651,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 245.4
-      },
-      {
-        "seed": 83,
-        "start_cell": [
-          444,
-          596,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 212.6
-      },
-      {
-        "seed": 84,
-        "start_cell": [
-          275,
-          702,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.9
-      },
-      {
-        "seed": 85,
-        "start_cell": [
-          261,
-          648,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 179.1
-      },
-      {
-        "seed": 86,
-        "start_cell": [
-          121,
-          657,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 223.1
-      },
-      {
-        "seed": 87,
-        "start_cell": [
-          212,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 245.7
-      },
-      {
-        "seed": 88,
-        "start_cell": [
-          313,
-          667,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 175.5
-      },
-      {
-        "seed": 89,
-        "start_cell": [
-          146,
-          651,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 216.2
-      },
-      {
-        "seed": 90,
-        "start_cell": [
-          262,
-          566,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 135.0
-      },
-      {
-        "seed": 91,
-        "start_cell": [
-          148,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 215.9
-      },
-      {
-        "seed": 92,
-        "start_cell": [
-          354,
-          656,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 196.1
-      },
-      {
-        "seed": 93,
-        "start_cell": [
-          443,
-          637,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 214.5
-      },
-      {
-        "seed": 94,
-        "start_cell": [
-          258,
-          665,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.3
-      },
-      {
-        "seed": 95,
-        "start_cell": [
-          445,
-          629,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 213.6
-      },
-      {
-        "seed": 96,
-        "start_cell": [
-          288,
-          676,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 181.7
-      },
-      {
-        "seed": 97,
-        "start_cell": [
-          260,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.0
-      },
-      {
-        "seed": 98,
-        "start_cell": [
-          286,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 186.4
-      },
-      {
-        "seed": 99,
-        "start_cell": [
-          325,
-          660,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 177.1
-      },
-      {
-        "seed": 100,
-        "start_cell": [
-          212,
-          651,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 245.9
-      },
-      {
-        "seed": 101,
-        "start_cell": [
-          260,
-          655,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.2
-      },
-      {
-        "seed": 102,
-        "start_cell": [
-          219,
-          653,
-          76
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 170.6
-      },
-      {
-        "seed": 103,
-        "start_cell": [
-          382,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.4
-      },
-      {
-        "seed": 104,
+        "seed": 31,
         "start_cell": [
           116,
-          639,
+          591,
+          88
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 200.9
+      },
+      {
+        "seed": 32,
+        "start_cell": [
+          148,
+          651,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 219.3
+        "farthest_goal_m": 183.8
       },
       {
-        "seed": 105,
+        "seed": 33,
         "start_cell": [
-          285,
-          648,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.9
-      },
-      {
-        "seed": 106,
-        "start_cell": [
-          442,
-          623,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 209.9
-      },
-      {
-        "seed": 107,
-        "start_cell": [
-          271,
-          662,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 183.0
-      },
-      {
-        "seed": 108,
-        "start_cell": [
-          196,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 237.6
-      },
-      {
-        "seed": 109,
-        "start_cell": [
-          275,
-          663,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.2
-      },
-      {
-        "seed": 110,
-        "start_cell": [
-          292,
-          648,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 184.2
-      },
-      {
-        "seed": 111,
-        "start_cell": [
-          263,
-          647,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 179.7
-      },
-      {
-        "seed": 112,
-        "start_cell": [
-          442,
-          632,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 213.4
-      },
-      {
-        "seed": 113,
-        "start_cell": [
-          121,
-          648,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 225.7
-      },
-      {
-        "seed": 114,
-        "start_cell": [
-          267,
+          352,
           653,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 181.2
+        "farthest_goal_m": 154.8
       },
       {
-        "seed": 115,
-        "start_cell": [
-          275,
-          701,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.4
-      },
-      {
-        "seed": 116,
-        "start_cell": [
-          276,
-          664,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 185.9
-      },
-      {
-        "seed": 117,
-        "start_cell": [
-          267,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.7
-      },
-      {
-        "seed": 118,
-        "start_cell": [
-          258,
-          665,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.3
-      },
-      {
-        "seed": 119,
-        "start_cell": [
-          275,
-          730,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 197.9
-      },
-      {
-        "seed": 120,
-        "start_cell": [
-          445,
-          634,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 215.0
-      },
-      {
-        "seed": 121,
-        "start_cell": [
-          152,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 216.7
-      },
-      {
-        "seed": 122,
-        "start_cell": [
-          445,
-          614,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 206.1
-      },
-      {
-        "seed": 123,
-        "start_cell": [
-          130,
-          639,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 212.3
-      },
-      {
-        "seed": 124,
-        "start_cell": [
-          275,
-          655,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 183.5
-      },
-      {
-        "seed": 125,
-        "start_cell": [
-          267,
-          673,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 188.8
-      },
-      {
-        "seed": 126,
-        "start_cell": [
-          132,
-          639,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 211.9
-      },
-      {
-        "seed": 127,
-        "start_cell": [
-          128,
-          635,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 211.3
-      },
-      {
-        "seed": 128,
-        "start_cell": [
-          266,
-          674,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 188.5
-      },
-      {
-        "seed": 129,
-        "start_cell": [
-          448,
-          581,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 219.2
-      },
-      {
-        "seed": 130,
-        "start_cell": [
-          448,
-          579,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 218.8
-      },
-      {
-        "seed": 131,
-        "start_cell": [
-          277,
-          664,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 186.4
-      },
-      {
-        "seed": 132,
-        "start_cell": [
-          351,
-          648,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.2
-      },
-      {
-        "seed": 133,
-        "start_cell": [
-          443,
-          635,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 214.1
-      },
-      {
-        "seed": 134,
-        "start_cell": [
-          443,
-          581,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 217.9
-      },
-      {
-        "seed": 135,
+        "seed": 34,
         "start_cell": [
           289,
-          653,
+          652,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 185.6
+        "farthest_goal_m": 127.6
       },
       {
-        "seed": 136,
+        "seed": 35,
         "start_cell": [
-          366,
-          649,
-          77
+          290,
+          675,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.2
+      },
+      {
+        "seed": 36,
+        "start_cell": [
+          275,
+          657,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.2
+      },
+      {
+        "seed": 37,
+        "start_cell": [
+          444,
+          627,
+          78
         ],
         "goals_in_band": 0,
         "farthest_goal_m": 199.2
       },
       {
-        "seed": 137,
-        "start_cell": [
-          135,
-          640,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 211.8
-      },
-      {
-        "seed": 138,
-        "start_cell": [
-          260,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 179.2
-      },
-      {
-        "seed": 139,
-        "start_cell": [
-          111,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 226.4
-      },
-      {
-        "seed": 140,
-        "start_cell": [
-          160,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 219.7
-      },
-      {
-        "seed": 141,
-        "start_cell": [
-          446,
-          585,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 218.7
-      },
-      {
-        "seed": 142,
+        "seed": 38,
         "start_cell": [
           443,
-          607,
+          620,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 206.9
+        "farthest_goal_m": 201.0
       },
       {
-        "seed": 143,
+        "seed": 39,
         "start_cell": [
-          259,
-          566,
+          260,
+          571,
           81
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 134.1
+        "farthest_goal_m": 132.2
       },
       {
-        "seed": 144,
+        "seed": 40,
         "start_cell": [
-          378,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 196.8
-      },
-      {
-        "seed": 145,
-        "start_cell": [
-          355,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 196.0
-      },
-      {
-        "seed": 146,
-        "start_cell": [
-          199,
-          653,
+          277,
+          665,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 239.1
+        "farthest_goal_m": 122.8
       },
       {
-        "seed": 147,
+        "seed": 41,
         "start_cell": [
-          220,
-          651,
-          76
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 169.7
-      },
-      {
-        "seed": 148,
-        "start_cell": [
-          324,
-          665,
-          74
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 178.1
-      },
-      {
-        "seed": 149,
-        "start_cell": [
-          135,
-          635,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 209.3
-      },
-      {
-        "seed": 150,
-        "start_cell": [
-          277,
-          749,
+          275,
+          754,
           68
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 207.0
+        "farthest_goal_m": 150.4
       },
       {
-        "seed": 151,
-        "start_cell": [
-          349,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 194.9
-      },
-      {
-        "seed": 152,
-        "start_cell": [
-          292,
-          674,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 183.3
-      },
-      {
-        "seed": 153,
+        "seed": 42,
         "start_cell": [
           443,
-          622,
+          620,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 209.6
+        "farthest_goal_m": 201.0
       },
       {
-        "seed": 154,
-        "start_cell": [
-          261,
-          675,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 187.6
-      },
-      {
-        "seed": 155,
-        "start_cell": [
-          444,
-          626,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 211.9
-      },
-      {
-        "seed": 156,
-        "start_cell": [
-          443,
-          610,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 205.4
-      },
-      {
-        "seed": 157,
-        "start_cell": [
-          443,
-          623,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 210.1
-      },
-      {
-        "seed": 158,
-        "start_cell": [
-          264,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 180.1
-      },
-      {
-        "seed": 159,
-        "start_cell": [
-          304,
-          656,
-          70
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 170.7
-      },
-      {
-        "seed": 160,
-        "start_cell": [
-          188,
-          652,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 233.7
-      },
-      {
-        "seed": 161,
-        "start_cell": [
-          447,
-          581,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 218.9
-      },
-      {
-        "seed": 162,
+        "seed": 43,
         "start_cell": [
           130,
           650,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 220.8
+        "farthest_goal_m": 188.1
       },
       {
-        "seed": 163,
+        "seed": 44,
         "start_cell": [
-          382,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 195.1
-      },
-      {
-        "seed": 164,
-        "start_cell": [
-          160,
-          653,
+          276,
+          669,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 219.6
+        "farthest_goal_m": 121.7
       },
       {
-        "seed": 165,
+        "seed": 45,
         "start_cell": [
-          116,
-          588,
-          88
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 204.1
-      },
-      {
-        "seed": 166,
-        "start_cell": [
-          258,
-          565,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 134.4
-      },
-      {
-        "seed": 167,
-        "start_cell": [
-          265,
-          662,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 181.7
-      },
-      {
-        "seed": 168,
-        "start_cell": [
-          180,
-          653,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 229.6
-      },
-      {
-        "seed": 169,
-        "start_cell": [
-          273,
-          716,
-          67
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 191.3
-      },
-      {
-        "seed": 170,
-        "start_cell": [
-          284,
-          663,
-          78
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 189.0
-      },
-      {
-        "seed": 171,
-        "start_cell": [
-          291,
-          673,
+          264,
+          652,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 183.6
+        "farthest_goal_m": 116.6
       },
       {
-        "seed": 172,
+        "seed": 46,
         "start_cell": [
-          285,
-          674,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 182.2
-      },
-      {
-        "seed": 173,
-        "start_cell": [
-          277,
-          740,
-          68
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 202.5
-      },
-      {
-        "seed": 174,
-        "start_cell": [
-          113,
-          650,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 226.2
-      },
-      {
-        "seed": 175,
-        "start_cell": [
-          376,
-          654,
-          71
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 197.8
-      },
-      {
-        "seed": 176,
-        "start_cell": [
-          120,
-          648,
+          147,
+          652,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 226.2
+        "farthest_goal_m": 183.2
       },
       {
-        "seed": 177,
+        "seed": 47,
         "start_cell": [
-          263,
+          275,
+          704,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.7
+      },
+      {
+        "seed": 48,
+        "start_cell": [
+          290,
           675,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 188.0
+        "farthest_goal_m": 129.2
       },
       {
-        "seed": 178,
+        "seed": 49,
+        "start_cell": [
+          142,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.7
+      },
+      {
+        "seed": 50,
+        "start_cell": [
+          287,
+          650,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 126.3
+      },
+      {
+        "seed": 51,
+        "start_cell": [
+          262,
+          674,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.8
+      },
+      {
+        "seed": 52,
+        "start_cell": [
+          264,
+          648,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.0
+      },
+      {
+        "seed": 53,
+        "start_cell": [
+          442,
+          596,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 211.2
+      },
+      {
+        "seed": 54,
         "start_cell": [
           178,
           652,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 228.7
+        "farthest_goal_m": 196.0
       },
       {
-        "seed": 179,
+        "seed": 55,
         "start_cell": [
-          261,
-          570,
-          81
-        ],
-        "goals_in_band": 0,
-        "farthest_goal_m": 133.8
-      },
-      {
-        "seed": 180,
-        "start_cell": [
-          210,
-          653,
+          154,
+          652,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 244.6
+        "farthest_goal_m": 184.3
       },
       {
-        "seed": 181,
+        "seed": 56,
         "start_cell": [
-          171,
-          650,
-          78
+          351,
+          648,
+          71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 225.6
+        "farthest_goal_m": 153.8
       },
       {
-        "seed": 182,
+        "seed": 57,
         "start_cell": [
-          380,
+          131,
+          638,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 182.2
+      },
+      {
+        "seed": 58,
+        "start_cell": [
+          374,
           651,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 195.3
+        "farthest_goal_m": 164.3
       },
       {
-        "seed": 183,
+        "seed": 59,
         "start_cell": [
-          173,
-          653,
+          261,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.0
+      },
+      {
+        "seed": 60,
+        "start_cell": [
+          273,
+          663,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 226.1
+        "farthest_goal_m": 120.4
       },
       {
-        "seed": 184,
+        "seed": 61,
         "start_cell": [
-          275,
-          648,
-          78
+          286,
+          680,
+          71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 182.3
+        "farthest_goal_m": 126.6
       },
       {
-        "seed": 185,
+        "seed": 62,
         "start_cell": [
-          179,
-          650,
-          78
+          353,
+          652,
+          71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 229.6
+        "farthest_goal_m": 154.8
       },
       {
-        "seed": 186,
+        "seed": 63,
+        "start_cell": [
+          276,
+          749,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 148.1
+      },
+      {
+        "seed": 64,
         "start_cell": [
           283,
-          665,
+          664,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 188.5
+        "farthest_goal_m": 125.6
       },
       {
-        "seed": 187,
+        "seed": 65,
+        "start_cell": [
+          276,
+          675,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.7
+      },
+      {
+        "seed": 66,
+        "start_cell": [
+          144,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.3
+      },
+      {
+        "seed": 67,
+        "start_cell": [
+          146,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.0
+      },
+      {
+        "seed": 68,
+        "start_cell": [
+          278,
+          704,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 130.3
+      },
+      {
+        "seed": 69,
+        "start_cell": [
+          444,
+          629,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.8
+      },
+      {
+        "seed": 70,
+        "start_cell": [
+          169,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 191.7
+      },
+      {
+        "seed": 71,
+        "start_cell": [
+          275,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.2
+      },
+      {
+        "seed": 72,
+        "start_cell": [
+          146,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.5
+      },
+      {
+        "seed": 73,
+        "start_cell": [
+          265,
+          569,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 135.0
+      },
+      {
+        "seed": 74,
+        "start_cell": [
+          380,
+          648,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 166.8
+      },
+      {
+        "seed": 75,
+        "start_cell": [
+          276,
+          755,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 151.1
+      },
+      {
+        "seed": 76,
+        "start_cell": [
+          275,
+          743,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 144.9
+      },
+      {
+        "seed": 77,
+        "start_cell": [
+          263,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 115.9
+      },
+      {
+        "seed": 78,
+        "start_cell": [
+          204,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 209.0
+      },
+      {
+        "seed": 79,
+        "start_cell": [
+          182,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.0
+      },
+      {
+        "seed": 80,
+        "start_cell": [
+          264,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.6
+      },
+      {
+        "seed": 81,
+        "start_cell": [
+          287,
+          677,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 128.0
+      },
+      {
+        "seed": 82,
+        "start_cell": [
+          182,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.0
+      },
+      {
+        "seed": 83,
+        "start_cell": [
+          287,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 126.2
+      },
+      {
+        "seed": 84,
+        "start_cell": [
+          265,
+          573,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 134.3
+      },
+      {
+        "seed": 85,
+        "start_cell": [
+          210,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 212.0
+      },
+      {
+        "seed": 86,
+        "start_cell": [
+          128,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 188.9
+      },
+      {
+        "seed": 87,
+        "start_cell": [
+          183,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.7
+      },
+      {
+        "seed": 88,
+        "start_cell": [
+          276,
+          658,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.9
+      },
+      {
+        "seed": 89,
+        "start_cell": [
+          150,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 184.2
+      },
+      {
+        "seed": 90,
+        "start_cell": [
+          228,
+          652,
+          76
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 140.3
+      },
+      {
+        "seed": 91,
+        "start_cell": [
+          151,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 184.3
+      },
+      {
+        "seed": 92,
+        "start_cell": [
+          276,
+          725,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 136.1
+      },
+      {
+        "seed": 93,
+        "start_cell": [
+          286,
+          680,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 126.6
+      },
+      {
+        "seed": 94,
+        "start_cell": [
+          290,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.1
+      },
+      {
+        "seed": 95,
+        "start_cell": [
+          289,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 128.6
+      },
+      {
+        "seed": 96,
+        "start_cell": [
+          275,
+          743,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 144.9
+      },
+      {
+        "seed": 97,
+        "start_cell": [
+          208,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 211.2
+      },
+      {
+        "seed": 98,
+        "start_cell": [
+          275,
+          728,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 137.4
+      },
+      {
+        "seed": 99,
+        "start_cell": [
+          276,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 122.1
+      },
+      {
+        "seed": 100,
+        "start_cell": [
+          183,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.7
+      },
+      {
+        "seed": 101,
+        "start_cell": [
+          374,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 164.4
+      },
+      {
+        "seed": 102,
+        "start_cell": [
+          184,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 199.2
+      },
+      {
+        "seed": 103,
+        "start_cell": [
+          277,
+          663,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 122.4
+      },
+      {
+        "seed": 104,
+        "start_cell": [
+          117,
+          635,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 191.2
+      },
+      {
+        "seed": 105,
+        "start_cell": [
+          376,
+          650,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 165.1
+      },
+      {
+        "seed": 106,
         "start_cell": [
           285,
           663,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 188.8
+        "farthest_goal_m": 126.4
       },
       {
-        "seed": 188,
+        "seed": 107,
         "start_cell": [
-          264,
+          263,
+          569,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 134.0
+      },
+      {
+        "seed": 108,
+        "start_cell": [
+          175,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 194.7
+      },
+      {
+        "seed": 109,
+        "start_cell": [
+          265,
+          569,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 135.0
+      },
+      {
+        "seed": 110,
+        "start_cell": [
+          276,
+          648,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.1
+      },
+      {
+        "seed": 111,
+        "start_cell": [
+          260,
+          674,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.4
+      },
+      {
+        "seed": 112,
+        "start_cell": [
+          286,
+          648,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 125.5
+      },
+      {
+        "seed": 113,
+        "start_cell": [
+          128,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 188.9
+      },
+      {
+        "seed": 114,
+        "start_cell": [
+          262,
           653,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 180.5
+        "farthest_goal_m": 116.3
+      },
+      {
+        "seed": 115,
+        "start_cell": [
+          265,
+          573,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 134.3
+      },
+      {
+        "seed": 116,
+        "start_cell": [
+          377,
+          653,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 166.1
+      },
+      {
+        "seed": 117,
+        "start_cell": [
+          262,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.2
+      },
+      {
+        "seed": 118,
+        "start_cell": [
+          443,
+          613,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 202.9
+      },
+      {
+        "seed": 119,
+        "start_cell": [
+          265,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.3
+      },
+      {
+        "seed": 120,
+        "start_cell": [
+          288,
+          653,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.3
+      },
+      {
+        "seed": 121,
+        "start_cell": [
+          153,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 184.6
+      },
+      {
+        "seed": 122,
+        "start_cell": [
+          288,
+          648,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 126.5
+      },
+      {
+        "seed": 123,
+        "start_cell": [
+          132,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 186.9
+      },
+      {
+        "seed": 124,
+        "start_cell": [
+          264,
+          676,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.6
+      },
+      {
+        "seed": 125,
+        "start_cell": [
+          262,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.3
+      },
+      {
+        "seed": 126,
+        "start_cell": [
+          353,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 154.4
+      },
+      {
+        "seed": 127,
+        "start_cell": [
+          131,
+          650,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 187.6
+      },
+      {
+        "seed": 128,
+        "start_cell": [
+          262,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 115.7
+      },
+      {
+        "seed": 129,
+        "start_cell": [
+          375,
+          651,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 164.8
+      },
+      {
+        "seed": 130,
+        "start_cell": [
+          288,
+          676,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 128.3
+      },
+      {
+        "seed": 131,
+        "start_cell": [
+          274,
+          665,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.3
+      },
+      {
+        "seed": 132,
+        "start_cell": [
+          276,
+          673,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.0
+      },
+      {
+        "seed": 133,
+        "start_cell": [
+          286,
+          679,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.1
+      },
+      {
+        "seed": 134,
+        "start_cell": [
+          286,
+          651,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 126.0
+      },
+      {
+        "seed": 135,
+        "start_cell": [
+          444,
+          614,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 202.9
+      },
+      {
+        "seed": 136,
+        "start_cell": [
+          353,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 154.8
+      },
+      {
+        "seed": 137,
+        "start_cell": [
+          145,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.2
+      },
+      {
+        "seed": 138,
+        "start_cell": [
+          207,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 210.5
+      },
+      {
+        "seed": 139,
+        "start_cell": [
+          115,
+          590,
+          88
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 201.5
+      },
+      {
+        "seed": 140,
+        "start_cell": [
+          157,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 185.7
+      },
+      {
+        "seed": 141,
+        "start_cell": [
+          288,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 128.1
+      },
+      {
+        "seed": 142,
+        "start_cell": [
+          374,
+          653,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 164.6
+      },
+      {
+        "seed": 143,
+        "start_cell": [
+          202,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 208.0
+      },
+      {
+        "seed": 144,
+        "start_cell": [
+          276,
+          753,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 150.1
+      },
+      {
+        "seed": 145,
+        "start_cell": [
+          276,
+          726,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 136.6
+      },
+      {
+        "seed": 146,
+        "start_cell": [
+          176,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 195.0
+      },
+      {
+        "seed": 147,
+        "start_cell": [
+          378,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 166.4
+      },
+      {
+        "seed": 148,
+        "start_cell": [
+          276,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 122.1
+      },
+      {
+        "seed": 149,
+        "start_cell": [
+          144,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 183.3
+      },
+      {
+        "seed": 150,
+        "start_cell": [
+          275,
+          655,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.8
+      },
+      {
+        "seed": 151,
+        "start_cell": [
+          276,
+          670,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.5
+      },
+      {
+        "seed": 152,
+        "start_cell": [
+          276,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.5
+      },
+      {
+        "seed": 153,
+        "start_cell": [
+          286,
+          676,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.3
+      },
+      {
+        "seed": 154,
+        "start_cell": [
+          228,
+          652,
+          76
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 140.3
+      },
+      {
+        "seed": 155,
+        "start_cell": [
+          374,
+          651,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 164.3
+      },
+      {
+        "seed": 156,
+        "start_cell": [
+          286,
+          664,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.1
+      },
+      {
+        "seed": 157,
+        "start_cell": [
+          380,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 167.0
+      },
+      {
+        "seed": 158,
+        "start_cell": [
+          444,
+          629,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.8
+      },
+      {
+        "seed": 159,
+        "start_cell": [
+          276,
+          654,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.1
+      },
+      {
+        "seed": 160,
+        "start_cell": [
+          171,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 192.7
+      },
+      {
+        "seed": 161,
+        "start_cell": [
+          288,
+          674,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 128.3
+      },
+      {
+        "seed": 162,
+        "start_cell": [
+          132,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 186.7
+      },
+      {
+        "seed": 163,
+        "start_cell": [
+          290,
+          650,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 127.8
+      },
+      {
+        "seed": 164,
+        "start_cell": [
+          157,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 185.7
+      },
+      {
+        "seed": 165,
+        "start_cell": [
+          116,
+          637,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 191.4
+      },
+      {
+        "seed": 166,
+        "start_cell": [
+          200,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 207.2
+      },
+      {
+        "seed": 167,
+        "start_cell": [
+          261,
+          675,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.8
+      },
+      {
+        "seed": 168,
+        "start_cell": [
+          167,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 190.7
+      },
+      {
+        "seed": 169,
+        "start_cell": [
+          263,
+          652,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 116.4
+      },
+      {
+        "seed": 170,
+        "start_cell": [
+          275,
+          674,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.4
+      },
+      {
+        "seed": 171,
+        "start_cell": [
+          351,
+          650,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 154.1
+      },
+      {
+        "seed": 172,
+        "start_cell": [
+          275,
+          704,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.7
+      },
+      {
+        "seed": 173,
+        "start_cell": [
+          275,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 119.2
+      },
+      {
+        "seed": 174,
+        "start_cell": [
+          115,
+          634,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 192.3
+      },
+      {
+        "seed": 175,
+        "start_cell": [
+          276,
+          748,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 147.6
+      },
+      {
+        "seed": 176,
+        "start_cell": [
+          128,
+          650,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 189.1
+      },
+      {
+        "seed": 177,
+        "start_cell": [
+          261,
+          570,
+          81
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 132.8
+      },
+      {
+        "seed": 178,
+        "start_cell": [
+          166,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 190.2
+      },
+      {
+        "seed": 179,
+        "start_cell": [
+          209,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 211.5
+      },
+      {
+        "seed": 180,
+        "start_cell": [
+          182,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 198.2
+      },
+      {
+        "seed": 181,
+        "start_cell": [
+          374,
+          651,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 164.3
+      },
+      {
+        "seed": 182,
+        "start_cell": [
+          276,
+          756,
+          68
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 151.6
+      },
+      {
+        "seed": 183,
+        "start_cell": [
+          163,
+          652,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 188.5
+      },
+      {
+        "seed": 184,
+        "start_cell": [
+          264,
+          674,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 121.3
+      },
+      {
+        "seed": 185,
+        "start_cell": [
+          166,
+          651,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 190.2
+      },
+      {
+        "seed": 186,
+        "start_cell": [
+          275,
+          671,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 120.9
+      },
+      {
+        "seed": 187,
+        "start_cell": [
+          275,
+          703,
+          78
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 129.3
+      },
+      {
+        "seed": 188,
+        "start_cell": [
+          261,
+          649,
+          71
+        ],
+        "goals_in_band": 0,
+        "farthest_goal_m": 115.5
       },
       {
         "seed": 189,
         "start_cell": [
-          443,
-          579,
+          286,
+          651,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 217.5
+        "farthest_goal_m": 126.0
       },
       {
         "seed": 190,
         "start_cell": [
-          139,
+          146,
           652,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 216.9
+        "farthest_goal_m": 183.0
       },
       {
         "seed": 191,
         "start_cell": [
-          445,
-          627,
-          78
+          289,
+          651,
+          71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 212.6
+        "farthest_goal_m": 127.5
       },
       {
         "seed": 192,
         "start_cell": [
-          289,
-          652,
-          71
+          275,
+          746,
+          68
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 185.4
+        "farthest_goal_m": 146.4
       },
       {
         "seed": 193,
         "start_cell": [
-          404,
-          662,
+          351,
+          650,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 202.3
+        "farthest_goal_m": 154.1
       },
       {
         "seed": 194,
         "start_cell": [
-          134,
-          634,
+          378,
+          650,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 209.0
+        "farthest_goal_m": 166.1
       },
       {
         "seed": 195,
         "start_cell": [
-          304,
-          675,
-          70
+          377,
+          648,
+          71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 174.8
+        "farthest_goal_m": 165.3
       },
       {
         "seed": 196,
         "start_cell": [
-          445,
-          600,
+          443,
+          630,
           78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 210.8
+        "farthest_goal_m": 198.1
       },
       {
         "seed": 197,
         "start_cell": [
-          115,
-          657,
+          290,
+          648,
           71
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 226.1
+        "farthest_goal_m": 127.5
       },
       {
         "seed": 198,
         "start_cell": [
-          130,
-          642,
-          71
+          132,
+          652,
+          78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 213.8
+        "farthest_goal_m": 186.7
       },
       {
         "seed": 199,
         "start_cell": [
-          284,
-          654,
-          71
+          275,
+          673,
+          78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 187.0
+        "farthest_goal_m": 120.5
       },
       {
         "seed": 200,
         "start_cell": [
-          128,
-          639,
-          71
+          131,
+          651,
+          78
         ],
         "goals_in_band": 0,
-        "farthest_goal_m": 212.7
+        "farthest_goal_m": 187.4
       }
     ],
-    "route_length_m": 246.1,
-    "straight_distance_m": 143.2,
-    "goal_over_floor_m": 1.75,
-    "goal_under_ceiling_m": 1.25,
+    "route_length_m": 212.0,
+    "straight_distance_m": 119.6,
+    "goal_over_floor_m": 2.75,
+    "goal_under_ceiling_m": 2.75,
     "landing_patch_m": 4.5,
     "component_voxels": 3169003,
     "memory_box_in_world_m": [

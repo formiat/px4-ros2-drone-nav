@@ -26,9 +26,10 @@ the seed cell), the launch pad 3 x 3 x 1 m with its top 0.5 m over the floor vox
 (the takeoff climb, urban_mvp.yaml takeoff_climb_m). The goal: a flyable cell 300 to 600 m from the seed cell along
 the grid (a 26-neighbour path through flyable voxels with Euclidean steps: the urban mission's band of route lengths),
 1.5 to 3 m over its floor voxel's top (the floor inside the box: a floor under the memory's bottom is never mapped),
-a ceiling within 15 m, the plain free space four cells wide either way (not a shaft), and across 4.5 x 4.5 m under
-it nothing occupied more than 1 m over the goal's own floor (no wall the landing can touch: the landing after the goal
-descends on the estimate, a metre or two off, specification K30). On the finals world a goal under a flat ceiling over a flat floor (five by five cells each: the built part of
+a ceiling within 15 m, the plain free space four cells wide either way (not a shaft), and a landing patch under it:
+across 4.5 x 4.5 m the floor within a metre of the goal's own floor, up and down (no wall, slope or pit the landing
+can touch: the landing after the goal descends on the estimate, a metre or two off, specification K30). The start's
+pad has the same patch around it. On the finals world a goal under a flat ceiling over a flat floor (five by five cells each: the built part of
 the world) is preferred when one is in the band. Start and goal are drawn uniformly with the seed; a seed whose start
 reaches no goal in the band is counted and the next seed drawn, up to --seeds; when none finds one, the longest pair
 found is written (the part's rule). The yaw faces the path's point 10 m along it. The seed, the attempts and the
@@ -62,7 +63,8 @@ ROUTE_BAND_M = (300.0, 600.0)
 GOAL_OVER_FLOOR_M = (1.5, 3.0)
 CEILING_WITHIN_M = 15.0
 WIDTH_CELLS = 4  # plain free cells either way of the goal, horizontally
-LANDING_CELLS = 4  # one flat floor under the goal, this many cells either way (4.5 m across), free up to the goal
+LANDING_CELLS = 4  # the landing patch: this many cells either way of the goal (4.5 m across)
+LANDING_STEP_CELLS = 2  # the floor within this many cells (1 m) of the goal's own floor across the patch, up and down
 YAW_ALONG_M = 10.0
 NEIGHBOURS = [(dx, dy, dz) for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)
               if (dx, dy, dz) > (0, 0, 0)]  # one half of the 26: the graph is undirected
@@ -161,6 +163,20 @@ def select(args):
     ceiling = np.minimum.accumulate(np.where(sub, k_index, shape[2])[:, :, ::-1], axis=2)[:, :, ::-1]
     height_cells = k_index - floor  # the cell's index over the floor voxel's (0.5 m over it = 1)
 
+    # The landing patch: under a cell, across 4.5 x 4.5 m, the floor within a metre of the cell's own
+    # floor, up and down: a column standing higher is a wall, one lying lower is a slope or a pit (the
+    # cave goal of 4a1268eb sat on a funnel's slope, the floor 7 m lower across 8.5 m, and r2556, r2557 and
+    # r2559 touched it on the way down; r2554 fell into a pit 2 m from a flat 3 x 3 start). The landing
+    # after the goal descends on the estimate, a metre or two off (specification K30).
+    landing = np.ones(shape, dtype=bool)
+    for dx in range(-LANDING_CELLS, LANDING_CELLS + 1):
+        for dy in range(-LANDING_CELLS, LANDING_CELLS + 1):
+            landing &= np.abs(np.roll(np.roll(floor, -dx, axis=0), -dy, axis=1) - floor) <= LANDING_STEP_CELLS
+    landing[:LANDING_CELLS, :, :] = False
+    landing[-LANDING_CELLS:, :, :] = False
+    landing[:, :LANDING_CELLS, :] = False
+    landing[:, -LANDING_CELLS:, :] = False
+
     # The start cells: the seed cell of the flood over a flat 3 x 3 patch.
     seed_cells_over_floor = int(round((PAD_TOP_OVER_FLOOR_M + LEGS_M + climb) / resolution)) + 1
     flat = np.ones(shape, dtype=bool)
@@ -171,6 +187,9 @@ def select(args):
     flat[[0, -1], :, :] = False
     flat[:, [0, -1], :] = False
     start_ok = component & flat & (floor >= 0) & (height_cells == seed_cells_over_floor)
+    # The landing patch's floor around the start too: the first step off the pad goes where the pair has
+    # not looked (r2554: a slope and a 7 m pit 2 m from a flat 3 x 3 start).
+    start_ok &= landing
     # The pad and the vehicle inside the box too.
     start_ok &= (floor + 1) >= max(box_low_cell[2], 0)
     start_cells = np.argwhere(start_ok)
@@ -186,22 +205,8 @@ def select(args):
     goal_ok &= (ceiling < shape[2]) & ((ceiling - k_index) * resolution <= CEILING_WITHIN_M) & free_x & free_y
     # The goal's floor in the box: a floor under the memory's bottom is never mapped.
     goal_ok &= (floor + 1) >= max(box_low_cell[2], 0)
-    # The landing: after the goal the vehicle holds its position and descends (specification K30), on its
-    # estimate, which is off by a metre or two; under the goal, across 4.5 x 4.5 m, nothing occupied stands
-    # more than 1 m over the goal's own floor (no wall, pillar or ledge the descent can touch; r2549 to
-    # r2552: four lidar flights reached the cave goal and touched the corner wall 2.4 m below it on the way
-    # down).
-    landing = np.ones(shape, dtype=bool)
-    for dx in range(-LANDING_CELLS, LANDING_CELLS + 1):
-        for dy in range(-LANDING_CELLS, LANDING_CELLS + 1):
-            # A wall is a column whose highest occupied voxel under the goal's height stands more than
-            # 1 m over the goal's own floor; a floor lower or a little higher is a floor (the cave's floors
-            # are bumpy and sloped, and no 4.5 m patch of them is level to a voxel).
-            landing &= (np.roll(np.roll(floor, -dx, axis=0), -dy, axis=1) - floor) <= 2
-    landing[:LANDING_CELLS, :, :] = False
-    landing[-LANDING_CELLS:, :, :] = False
-    landing[:, :LANDING_CELLS, :] = False
-    landing[:, -LANDING_CELLS:, :] = False
+    # The landing patch under the goal (r2549 to r2552: four lidar flights reached the cave goal and touched
+    # the corner wall 2.4 m below it on the way down).
     goal_ok &= landing
     built = np.ones(shape, dtype=bool)
     for dx in (-2, -1, 0, 1, 2):
