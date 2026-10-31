@@ -315,7 +315,11 @@ def validate_runtime_manifest(
     manifest_bounds = manifest.get("constrained_route_volume_bounds_m")
     if expected_bounds is not None and manifest_bounds != list(expected_bounds):
         errors.append("FAIL: runtime manifest records the constrained route volume")
-    if require_raw_snapshot:
+    # The snapshot is the route volume's (the urban targets state both); a
+    # flight that states no volume and took no snapshot (the dark hall, the
+    # held-out worlds of roadmap item 33) is judged without one.
+    if require_raw_snapshot and (expected_bounds is not None
+                                 or manifest.get("raw_snapshot") is not None):
         validate_raw_snapshot_artifact(
             manifest.get("raw_snapshot"), expected_bounds, errors
         )

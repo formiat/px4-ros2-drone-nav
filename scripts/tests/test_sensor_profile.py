@@ -106,7 +106,9 @@ class SensorProfileTest(unittest.TestCase):
         makefile = (REPO_ROOT / "Makefile").read_text()
         # Cameras need the textured world; every headless target chooses it
         # (Urban's two and the dark hall's).
-        self.assertEqual(3, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
+        # The urban, the dark hall and the two held-out worlds' headless
+        # targets, and the cooperative one.
+        self.assertEqual(5, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
 
 
 if __name__ == "__main__":

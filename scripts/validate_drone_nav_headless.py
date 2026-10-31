@@ -490,19 +490,16 @@ def main() -> int:
         lidar_navigation = overrides.get("NAVIGATION_SENSOR_PROFILE", "") == "lidar"
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, notes)
-        manifest_overrides = json.loads(
-            args.runtime_manifest.read_text(encoding="utf-8")
-        ).get("effective_overrides", {})
         # An injected flight flies out and back to a proof, not to a speed:
         # the mean speed is no requirement of it.
         validate_mean_flight_speed(
             ros_log, notes if return_home_expected or vehicle_intact_expected else errors,
-            manifest_overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
+            overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
         )
         validate_controller_dynamics(
             args.runtime_manifest.parent, ros_log, notes,
-            manifest_overrides.get("LOCALIZATION_PROFILE", "lidar_inertial"),
+            overrides.get("LOCALIZATION_PROFILE", "lidar_inertial"),
         )
     if args.runtime_manifest is not None:
         validate_resource_budget(args.runtime_manifest.parent, ros_log, notes)
@@ -517,11 +514,14 @@ def main() -> int:
             void_goal=Path(str(manifest_mission.get("scenario", {}).get("path", ""))).name
             in VOID_GOAL_SCENARIOS)
         # Dense smoke is never entered, whatever the flight was asked (R7).
+        # (The overrides are the manifest's, read above: a flight checked
+        # without the acceptance metrics, the held-out worlds' probe, crashed
+        # here on a name bound only under them.)
         validate_no_entry_into_dense_smoke(args.runtime_manifest.parent / "gz_pose.csv",
-                                           manifest_overrides, errors)
+                                           overrides, errors)
         # A heat source is kept at the standoff, whatever the flight was asked (K49).
         validate_standoff_from_heat_sources(args.runtime_manifest.parent / "gz_pose.csv",
-                                            manifest_overrides, errors)
+                                            overrides, errors)
     require(
         "production offboard is ready",
         ros_log,

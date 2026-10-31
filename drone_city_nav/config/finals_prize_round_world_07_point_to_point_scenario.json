@@ -1,0 +1,69 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/finals_prize_round_world_07.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [
+      68.75,
+      296.75,
+      21.23
+    ],
+    "yaw_rad": 3.141593
+  },
+  "mission_goal_sequence_m": [
+    [
+      157.25,
+      70.25,
+      7.25
+    ]
+  ],
+  "launch_platforms": [
+    {
+      "id": "pad",
+      "vehicle_ids": [
+        "point_to_point_vehicle"
+      ],
+      "size_m": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "top_z_m": 21.0
+    }
+  ],
+  "selection": {
+    "tool": "tools/heldout_scenario.py",
+    "grid": "external/environment-candidates/work/final_event_07_r050.occupancy3d",
+    "seed": 1,
+    "attempts": [
+      {
+        "seed": 1,
+        "start_cell": [
+          200,
+          653,
+          78
+        ],
+        "goals_in_band": 22,
+        "farthest_goal_m": 345.8
+      }
+    ],
+    "route_length_m": 345.2,
+    "straight_distance_m": 243.6,
+    "goal_over_floor_m": 2.75,
+    "goal_under_ceiling_m": 3.25,
+    "component_voxels": 3169003,
+    "memory_box_in_world_m": [
+      [
+        -23.5,
+        -263.0,
+        -37.5
+      ],
+      [
+        321.5,
+        262.0,
+        2.5
+      ]
+    ]
+  }
+}

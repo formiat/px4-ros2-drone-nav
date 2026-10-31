@@ -595,6 +595,11 @@ def main() -> None:
         source_root = ensure_release_artifact(
             repository, manifest_path, environment, source_artifact_id, install_root
         )
+        # A bundle may hold its world under a `source/` directory (the cave
+        # bundle v2 does), as the demo's preparer already allows.
+        entrypoint = environment["source"]["entrypoint"]
+        if not (source_root / entrypoint).is_file() and (source_root / "source" / entrypoint).is_file():
+            source_root = source_root / "source"
     static_map: dict | None = None
     occupancy: Path | None = None
     esdf: Path | None = None

@@ -5,7 +5,13 @@ position-estimate check of the headless mission check. The wall time is what a
 log-stamped estimate is held against when the simulation runs slower than the
 wall clock. The file is rewritten atomically every few seconds.
 
-  capture_gazebo_pose.py OUTPUT.csv --world WORLD --model MODEL
+  capture_gazebo_pose.py OUTPUT.csv --world WORLD --model MODEL [--sdf-to-map-offset X,Y,Z]
+
+The position is written in the map frame: the canonical world's map_to_sdf
+offset, taken back (the start's map coordinates less its Gazebo spawn), so
+that a world whose map frame is placed over it (the held-out worlds of roadmap
+item 33) is judged in the frame the goals are stated in; the worlds whose map
+frame is the SDF frame record what they always did.
 """
 
 from __future__ import annotations
@@ -27,7 +33,12 @@ def main() -> int:
     parser.add_argument("--world", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--save-period-s", type=float, default=2.0)
+    parser.add_argument("--sdf-to-map-offset", default="0,0,0",
+                        help="added to the SDF position: the map frame's offset")
     args = parser.parse_args()
+    offset = tuple(float(value) for value in args.sdf_to_map_offset.split(","))
+    if len(offset) != 3:
+        parser.error("--sdf-to-map-offset takes X,Y,Z")
 
     rows: list[tuple[float, ...]] = []
     lock = threading.Lock()
@@ -38,7 +49,8 @@ def main() -> int:
                 continue
             stamp = message.header.stamp.sec + message.header.stamp.nsec * 1e-9
             with lock:
-                rows.append((stamp, pose.position.x, pose.position.y, pose.position.z,
+                rows.append((stamp, pose.position.x + offset[0], pose.position.y + offset[1],
+                             pose.position.z + offset[2],
                              pose.orientation.w, pose.orientation.x, pose.orientation.y,
                              pose.orientation.z, time.time()))
             break

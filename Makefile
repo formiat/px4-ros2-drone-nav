@@ -170,6 +170,82 @@ sim-dark-hall-gui: build
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
+# Roadmap item 33: the held-out worlds, flown by the point-to-point mission with
+# nothing adapted to them; the scenarios are drawn from each world's truth grid
+# by tools/heldout_scenario.py. The urban targets' route volume and snapshot
+# bounds are the urban location's and are not set here; the world's truth grid
+# is named for the checks that read one.
+CAVE_SCENARIO_PATH := drone_city_nav/config/cave_circuit_practice_01_point_to_point_scenario.json
+CAVE_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/cave_practice_01_r050.occupancy3d
+FINALS_SCENARIO_PATH := drone_city_nav/config/finals_prize_round_world_07_point_to_point_scenario.json
+FINALS_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/final_event_07_r050.occupancy3d
+
+.PHONY: sim-cave-point-to-point-headless
+sim-cave-point-to-point-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment cave_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(CAVE_SCENARIO_PATH)
+	. external/environment-artifacts/derived/cave_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(CAVE_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(CAVE_TRUTH_OCCUPANCY_3D)}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cave-point-to-point-gui
+sim-cave-point-to-point-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment cave_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(CAVE_SCENARIO_PATH)
+	. external/environment-artifacts/derived/cave_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(CAVE_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-finals-point-to-point-headless
+sim-finals-point-to-point-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment finals_prize_round_world_07 --runtime-map-mode no-static \
+		--scenario $(FINALS_SCENARIO_PATH)
+	. external/environment-artifacts/derived/finals_prize_round_world_07/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(FINALS_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(FINALS_TRUTH_OCCUPANCY_3D)}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-finals-point-to-point-gui
+sim-finals-point-to-point-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment finals_prize_round_world_07 --runtime-map-mode no-static \
+		--scenario $(FINALS_SCENARIO_PATH)
+	. external/environment-artifacts/derived/finals_prize_round_world_07/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(FINALS_SCENARIO_PATH) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
 # Named scenarios over the point-to-point mission: each sets what makes it
 # that scenario and runs the mission's target, so that every flight the
 # repository offers is one command (docs/scenarios.md).
@@ -281,6 +357,20 @@ sim-urban-point-to-point-lidar-headless:
 .PHONY: sim-urban-point-to-point-lidar-gui
 sim-urban-point-to-point-lidar-gui:
 	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-cave-point-to-point-lidar-headless sim-cave-point-to-point-lidar-gui
+sim-cave-point-to-point-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-cave-point-to-point-headless
+
+sim-cave-point-to-point-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-cave-point-to-point-gui
+
+.PHONY: sim-finals-point-to-point-lidar-headless sim-finals-point-to-point-lidar-gui
+sim-finals-point-to-point-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-finals-point-to-point-headless
+
+sim-finals-point-to-point-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-finals-point-to-point-gui
 
 .PHONY: sim-urban-point-to-point-gnss-headless
 sim-urban-point-to-point-gnss-headless:

@@ -173,10 +173,15 @@ check_headless_run() {
       # the parser would read as an option (the smoke-rooms scenario).
       "--observed-3d-route-volume-bounds-m=${observed_3d_route_volume_bounds_m}"
     )
-    if ! bool_is_true "${multi_vehicle_mission}" &&
-      ! bool_is_true "${active_static_map}"; then
-      validation_args+=(--require-persistent-3d-acceptance)
-    fi
+  fi
+  # The persistent 3D acceptance (its metrics, the mean flight speed of R3,
+  # the controller dynamics) belongs to every single-vehicle no-static
+  # mission check, whatever world it flies: until roadmap item 33 it came
+  # with the urban route volume, and a world that states none (the dark
+  # hall, the held-out worlds) measured no speed.
+  if [[ -n "${mission_check}" ]] && ! bool_is_true "${multi_vehicle_mission}" &&
+    ! bool_is_true "${active_static_map}"; then
+    validation_args+=(--require-persistent-3d-acceptance)
   fi
   if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \
     "${validation_args[@]}"; then
