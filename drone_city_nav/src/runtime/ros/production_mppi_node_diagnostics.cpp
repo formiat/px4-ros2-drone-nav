@@ -158,6 +158,10 @@ void ProductionMppiNode::processDiagnostics(
        << " route_station_m=" << snapshot.route_station_m
        << " route_remaining_m=" << snapshot.route_remaining_m
        << " route_cross_track_m=" << snapshot.route_cross_track_m
+       << " route_progress_retry="
+       << executionRouteTransitionStatus3DName(snapshot.route_progress_retry_status)
+       << '/'
+       << executionRouteTransitionDetail3DName(snapshot.route_progress_retry_detail)
        << " route_constraint_phase="
        << constrainedRoutePhaseName(route_constraint.phase)
        << " route_constraint_passage="
@@ -510,7 +514,11 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"route_station_m\":" << snapshot.route_station_m
         << ",\"route_remaining_m\":" << snapshot.route_remaining_m
         << ",\"route_cross_track_m\":" << snapshot.route_cross_track_m
-        << ",\"route_constraint_phase\":\""
+        << ",\"route_progress_retry\":\""
+        << executionRouteTransitionStatus3DName(snapshot.route_progress_retry_status)
+        << '/'
+        << executionRouteTransitionDetail3DName(snapshot.route_progress_retry_detail)
+        << '"' << ",\"route_constraint_phase\":\""
         << constrainedRoutePhaseName(route_constraint.phase) << '"'
         << ",\"route_constraint_passage\":\""
         << (route_constraint.passage_traversal_id.empty()

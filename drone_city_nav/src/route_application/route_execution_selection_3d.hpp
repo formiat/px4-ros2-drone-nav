@@ -3,6 +3,7 @@
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
@@ -28,6 +29,15 @@ struct ProductionRouteExecutionSelection3D {
   TrackingErrorTubeExecutionAssessment3D tracking_error_tube{};
   TrackingErrorTubeHandoffAssessment3D tracking_error_tube_handoff{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
+  // Why the progress transition of a usable route was not applied this tick
+  // and is retried (kApplied: it was, or none was attempted). A retry that
+  // never ends leaves the credited station where it was while the vehicle
+  // flies the route: r2629 stood 42 m short of its goal for 1400 s with the
+  // station at 0, and the tick named nothing (roadmap item 39).
+  ExecutionRouteTransitionStatus3D progress_retry_status{
+      ExecutionRouteTransitionStatus3D::kApplied};
+  ExecutionRouteTransitionDetail3D progress_retry_detail{
+      ExecutionRouteTransitionDetail3D::kNone};
   std::optional<RouteLifecycleEvent3D> lifecycle_event;
   Point3 hold_position{};
   double station_m{0.0};

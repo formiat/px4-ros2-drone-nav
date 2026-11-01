@@ -608,6 +608,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           // is not physical evidence and must never synthesize a raw collision.
           active_usable = true;
           result.status = RouteExecutionStatus3D::kUsable;
+          result.progress_retry_status = advanced.status;
+          result.progress_retry_detail = advanced.detail;
         } else {
           result.status = diagnostic_assessment.status;
           const std::uint64_t generation = active_route.identity.generation;

@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
@@ -96,6 +97,10 @@ struct ProductionMppiDiagnosticsSnapshot {
   double route_station_m{0.0};
   double route_remaining_m{0.0};
   double route_cross_track_m{0.0};
+  ExecutionRouteTransitionStatus3D route_progress_retry_status{
+      ExecutionRouteTransitionStatus3D::kApplied};
+  ExecutionRouteTransitionDetail3D route_progress_retry_detail{
+      ExecutionRouteTransitionDetail3D::kNone};
   ProductionMppiTickPhaseTimings phases{};
   double stability_ms{0.0};
   RollingRouteTelemetryObservation3D rolling_route{};

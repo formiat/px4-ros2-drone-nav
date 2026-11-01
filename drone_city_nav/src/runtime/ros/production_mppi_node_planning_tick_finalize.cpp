@@ -299,6 +299,8 @@ void ProductionMppiNode::finalizePlanningTick(
       .route_station_m = route_projection.station_m,
       .route_remaining_m = route_projection.remaining_m,
       .route_cross_track_m = route_projection.cross_track_m,
+      .route_progress_retry_status = route_execution.progress_retry_status,
+      .route_progress_retry_detail = route_execution.progress_retry_detail,
       .phases = phases,
       .stability_ms = stability_ms,
       .rolling_route = rolling_route,
