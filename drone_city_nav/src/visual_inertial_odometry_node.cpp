@@ -335,7 +335,8 @@ private:
     }
     last_imu_stamp_ns_ = std::max(last_imu_stamp_ns_, stamp_ns);
     if (gnss_input_ != nullptr) {
-      if (const std::optional<GnssTrustVerdict> gone = gnss_input_->expire(stamp_ns)) {
+      if (const std::optional<GnssTrustVerdict> gone =
+              gnss_input_->expire(get_clock()->now().nanoseconds())) {
         declareGnssTrust(get_logger(), *mission_event_pub_, *gone, 0.0,
                          gnss_trusted_declared_);
       }
@@ -520,8 +521,9 @@ private:
     const AutopilotGnssFix fix = px4SensorGpsToAutopilotGnssFix(message);
     const std::optional<std::int64_t> stamp_ns = time_mapper_.px4LocalToRosTimeNs(
         static_cast<std::int64_t>(fix.timestamp_us) * 1000);
-    const GnssFixSample sample =
+    GnssFixSample sample =
         gnssFixSample(fix, stamp_ns.value_or(get_clock()->now().nanoseconds()));
+    sample.arrival_ns = get_clock()->now().nanoseconds();
     const bool initialized = odometry_->initialized();
     std::optional<VisualInertialEstimate> predicted;
     if (initialized) {

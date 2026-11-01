@@ -172,8 +172,7 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
 
 std::optional<GnssTrustVerdict> GnssInput::expire(const std::int64_t now_ns) noexcept {
   if (expired_ || !previous_.has_value() ||
-      static_cast<double>(now_ns - previous_->stamp_ns) * 1.0e-9 <=
-          config_.trust.clock_step_gate_s) {
+      static_cast<double>(now_ns - previous_->arrival_ns) * 1.0e-9 <= kOutageS) {
     return std::nullopt;
   }
   expired_ = true;

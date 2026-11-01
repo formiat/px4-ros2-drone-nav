@@ -22,7 +22,8 @@ namespace drone_city_nav {
 
 struct GnssFixSample {
   std::int64_t stamp_ns{0};
-  bool valid{false}; // a 3D fix
+  std::int64_t arrival_ns{0}; // the node's clock when the fix came in
+  bool valid{false};          // a 3D fix
   double latitude_deg{0.0};
   double longitude_deg{0.0};
   double altitude_m{0.0};
@@ -75,10 +76,16 @@ public:
     return trust_.trusted();
   }
 
-  // No fix within the clock gate of the last one is the signal gone: the
-  // trust is read with no fix at `now_ns` and ends, once per outage (the
-  // law is read per fix, and an outage brings none: r2637 flew 90 s of
-  // "lost" with the trust still declared). The verdict when it changes.
+  // No fix arriving for kOutageS after the last one is the signal gone: the
+  // trust is read with no fix at `now_ns` (the node's clock, the fixes'
+  // arrival clock) and ends, once per outage; the law is read per fix, and
+  // an outage brings none (r2637 flew 90 s of "lost" with the trust still
+  // declared). The arrival clock, not the fix's stamp: the fix comes through
+  // the relay later than the IMU's sample of the same moment, and 0.5 s is
+  // fifteen periods of the 30 Hz fix, over the relay's jitter and under the
+  // 1 s the loss of trust is held to (r2639 tripped on 0.072 s of the fix's
+  // stamp against the IMU's). The verdict when it changes.
+  static constexpr double kOutageS{0.5};
   [[nodiscard]] std::optional<GnssTrustVerdict> expire(std::int64_t now_ns) noexcept;
 
   // The log line of a fix: the trust's state and every reading behind it.

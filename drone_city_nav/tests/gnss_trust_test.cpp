@@ -103,11 +103,12 @@ TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
                        .speed_sigma_mps = 0.3};
   for (int i = 0; i <= 160; ++i) {
     sample.stamp_ns = i * kSecond / 30;
+    sample.arrival_ns = sample.stamp_ns + kSecond / 10; // the relay's latency
     static_cast<void>(input.fix(sample, false, nullptr));
   }
   ASSERT_TRUE(input.trusted());
-  const std::int64_t last_ns = 160 * kSecond / 30;
-  EXPECT_FALSE(input.expire(last_ns + kSecond / 2).has_value());
+  const std::int64_t last_ns = sample.arrival_ns;
+  EXPECT_FALSE(input.expire(last_ns + kSecond / 4).has_value());
   const std::optional<GnssTrustVerdict> gone = input.expire(last_ns + 2 * kSecond);
   ASSERT_TRUE(gone.has_value());
   EXPECT_FALSE(gone->trusted);
@@ -118,13 +119,14 @@ TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
   // trust returns after the window, and a new outage is read again.
   for (int i = 0; i <= 151; ++i) {
     sample.stamp_ns = last_ns + 90 * kSecond + i * kSecond / 30;
+    sample.arrival_ns = sample.stamp_ns + kSecond / 10;
     const GnssInputDecision decision = input.fix(sample, false, nullptr);
     if (i == 0) {
       EXPECT_EQ(decision.verdict.reason, "clock");
     }
     EXPECT_EQ(decision.verdict.trusted, i >= 151) << i;
   }
-  EXPECT_TRUE(input.expire(sample.stamp_ns + 2 * kSecond).has_value());
+  EXPECT_TRUE(input.expire(sample.arrival_ns + 2 * kSecond).has_value());
 }
 
 TEST(GnssTrustTest, AGateAtInfinityNeverFails) {
