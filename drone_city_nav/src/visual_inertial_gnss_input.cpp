@@ -82,7 +82,7 @@ std::string GnssInput::summary(const GnssInputDecision& decision,
       "GNSS_TRUST trusted=%s agreeing=%s agreeing_s=%.1f reason=%s residual_m=%.2f "
       "normalised=%.2f velocity_mps=%.2f velocity_normalised=%.2f self_mps=%.2f "
       "step_m=%.2f "
-      "clock_s=%.3f fix_type=%u eph=%.2f fused=%llu",
+      "clock_s=%.3f fix_type=%u eph=%.2f fused=%llu drift_m=%.2f",
       decision.verdict.trusted ? "true" : "false",
       decision.verdict.agreeing ? "true" : "false", decision.verdict.agreeing_s,
       std::string{decision.verdict.reason}.c_str(), decision.position_residual_m,
@@ -90,7 +90,8 @@ std::string GnssInput::summary(const GnssInputDecision& decision,
       decision.reading.velocity_residual_normalised,
       decision.reading.self_disagreement_mps, decision.reading.position_step_m,
       decision.reading.clock_step_s, static_cast<unsigned>(fix.fix_type),
-      fix.horizontal_accuracy_m, static_cast<unsigned long long>(fused));
+      fix.horizontal_accuracy_m, static_cast<unsigned long long>(fused),
+      decision.unaided_drift_m);
   return line;
 }
 
@@ -137,14 +138,25 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
   } else {
     decision.reading.clock_step_s = 0.0;
   }
+  if (estimator_initialized && predicted != nullptr) {
+    if (last_predicted_position_m_.has_value()) {
+      unaided_path_m_ +=
+          (predicted->position_ned_m - *last_predicted_position_m_).norm();
+    }
+    last_predicted_position_m_ = predicted->position_ned_m;
+  }
   if (decision.reading.valid && estimator_initialized && predicted != nullptr) {
     const Eigen::Vector3d position_residual = ned - predicted->position_ned_m;
     const Eigen::Vector3d fix_variance{horizontal_sigma * horizontal_sigma,
                                        horizontal_sigma * horizontal_sigma,
                                        vertical_sigma * vertical_sigma};
+    decision.unaided_drift_m = kUnaidedDriftShare * unaided_path_m_;
+    const Eigen::Vector3d drift_variance =
+        Eigen::Vector3d::Constant(decision.unaided_drift_m * decision.unaided_drift_m);
     decision.position_residual_m = position_residual.norm();
     decision.reading.position_residual_normalised =
-        normalised(position_residual, predicted->position_variance_m2 + fix_variance);
+        normalised(position_residual,
+                   predicted->position_variance_m2 + fix_variance + drift_variance);
     const Eigen::Vector3d velocity_residual =
         sample.velocity_ned_mps - predicted->velocity_ned_mps;
     const double speed_sigma = std::max(sample.speed_sigma_mps, 0.1);
@@ -160,6 +172,9 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
   decision.verdict = trust_.read(decision.reading);
   decision.fuse =
       decision.verdict.trusted && estimator_initialized && predicted != nullptr;
+  if (decision.fuse) {
+    unaided_path_m_ = 0.0;
+  }
   if (decision.reading.valid) {
     previous_ = sample;
     previous_ned_m_ = ned;

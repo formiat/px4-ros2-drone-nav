@@ -48,6 +48,7 @@ struct GnssInputDecision {
   GnssTrustVerdict verdict;
   double position_residual_m{0.0};
   double velocity_residual_mps{0.0};
+  double unaided_drift_m{0.0}; // the drift allowance in the normalisation
 };
 
 // The node's parameters: the gates' numbers are the measured flights'
@@ -86,6 +87,17 @@ public:
   // 1 s the loss of trust is held to (r2639 tripped on 0.072 s of the fix's
   // stamp against the IMU's). The verdict when it changes.
   static constexpr double kOutageS{0.5};
+  // The estimator's drift while no fix is fused, as a share of the path it
+  // flew since the last fused fix (the straight line between the fixes'
+  // predictions), added to its own uncertainty in the position residual's
+  // normalisation: its filter believes itself to 0.06 m while it drifts 1.1
+  // to 3.8 percent of the path on the open sky (r2634 to r2636, the stereo
+  // set alone), and after the walked fix of r2645 ended, the honest fix
+  // stood 2.7 m from the drifted estimate, read as 1.0 normalised, and the
+  // trust never returned (560 readings "position", a goal missed by 7 m).
+  // A fix back at an offset beyond that drift stays rejected (return_offset,
+  // 50 m, against 4 percent of the path since the outage).
+  static constexpr double kUnaidedDriftShare{0.04};
   [[nodiscard]] std::optional<GnssTrustVerdict> expire(std::int64_t now_ns) noexcept;
 
   // The log line of a fix: the trust's state and every reading behind it.
@@ -103,6 +115,9 @@ private:
   std::optional<GnssFixSample> previous_;
   std::optional<Eigen::Vector3d> previous_ned_m_;
   bool expired_{false};
+  // The path since the last fused fix, by the estimator's predictions at the fixes.
+  std::optional<Eigen::Vector3d> last_predicted_position_m_;
+  double unaided_path_m_{0.0};
 };
 
 } // namespace drone_city_nav

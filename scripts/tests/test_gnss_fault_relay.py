@@ -48,8 +48,8 @@ class GnssFaultRelayTest(unittest.TestCase):
             "replay@80:10:5; bad_velocity@100:5; bad_time@110:5; return_offset@120:5:50"), random.Random(7))
         self.assertFalse(player.play(5.0, fix(5.0)).dropped)  # before every fault
         self.assertTrue(player.play(12.0, fix(12.0)).dropped)  # lost
-        self.assertFalse(player.play(21.0, fix(21.0)).dropped)  # flap: on for two seconds
-        self.assertTrue(player.play(23.0, fix(23.0)).dropped)  # then off for two
+        self.assertTrue(player.play(21.0, fix(21.0)).dropped)  # flap: off for two seconds first
+        self.assertFalse(player.play(23.0, fix(23.0)).dropped)  # then on for two
         jammed = player.play(31.0, fix(31.0))
         self.assertEqual(jammed.fix_type, RELAY.FIX_TYPE_NONE)
         self.assertEqual(jammed.jamming_state, RELAY.JAMMING_STATE_DETECTED)

@@ -10,7 +10,7 @@ moment the vehicle is airborne and seeded by the run's number:
   variant@start:duration[:magnitude] ; ...
 
   lost           no fix for the duration (nothing relayed)
-  flap           the fix lost and back every two seconds
+  flap           the fix lost and back every two seconds, the loss first
   jam            no fix flagged: fix_type none, a reported error of 50 m, the
                  jamming state detected, the position noised by that error
   degraded       an honest fix with a large, varying error: gaussian noise of
@@ -140,7 +140,7 @@ class FaultPlayer:
             if fault.variant == "lost" or fault.variant == "return_offset":
                 fix.dropped = True
             elif fault.variant == "flap":
-                if int((t_s - fault.start_s) // 2.0) % 2 == 1:
+                if int((t_s - fault.start_s) // 2.0) % 2 == 0:  # the loss first: the fault begins with it
                     fix.dropped = True
             elif fault.variant == "jam":
                 fix.fix_type = FIX_TYPE_NONE

@@ -129,6 +129,62 @@ TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
   EXPECT_TRUE(input.expire(sample.arrival_ns + 2 * kSecond).has_value());
 }
 
+TEST(GnssTrustTest, TheEstimatorsDriftWhileUnaidedWidensTheResidualsGate) {
+  // After a walked fix ended (r2645) the honest fix stood 2.7 m from the
+  // estimate that had drifted while unaided, 1.0 normalised against the
+  // filter's 0.06 m, and the trust never returned: the path flown since the
+  // last fused fix lends the normalisation the measured drift, and a fix back
+  // at an offset beyond it (return_offset) stays rejected.
+  GnssInputConfig config;
+  config.trust = gates();
+  config.trust.position_gate = 0.70;
+  config.reference_fixes = 1U;
+  GnssInput input{config};
+  VisualInertialEstimate predicted;
+  predicted.position_variance_m2 = Eigen::Vector3d::Constant(0.06 * 0.06);
+  GnssFixSample sample{.stamp_ns = 0,
+                       .valid = true,
+                       .latitude_deg = 37.4,
+                       .longitude_deg = -121.9,
+                       .altitude_m = 40.0,
+                       .horizontal_sigma_m = 0.9,
+                       .vertical_sigma_m = 1.5,
+                       .speed_sigma_mps = 0.3};
+  static_cast<void>(input.fix(sample, false, nullptr)); // the reference
+  for (int i = 1; i <= 160; ++i) {
+    sample.stamp_ns = i * kSecond / 30;
+    sample.arrival_ns = sample.stamp_ns;
+    predicted.stamp_ns = sample.stamp_ns;
+    static_cast<void>(input.fix(sample, true, &predicted));
+  }
+  ASSERT_TRUE(input.trusted());
+  // An outage of 90 s over 135 m of flight: the estimate drifted 2 m against
+  // the honest fix that returns (the fix at the origin's reference, the
+  // estimate 2 m north of it).
+  ASSERT_TRUE(input.expire(sample.arrival_ns + 2 * kSecond).has_value());
+  predicted.position_ned_m = Eigen::Vector3d{137.0, 0.0, 0.0};
+  sample.latitude_deg = 37.4 + 135.0 / 111'000.0; // 135 m north
+  for (int i = 0; i <= 151; ++i) {
+    sample.stamp_ns = 160 * kSecond / 30 + 90 * kSecond + i * kSecond / 30;
+    sample.arrival_ns = sample.stamp_ns;
+    predicted.stamp_ns = sample.stamp_ns;
+    const GnssInputDecision decision = input.fix(sample, true, &predicted);
+    if (i == 1) {
+      EXPECT_NEAR(decision.unaided_drift_m, 0.04 * 137.0, 1.0e-6);
+      EXPECT_LT(decision.reading.position_residual_normalised, 0.70);
+      EXPECT_TRUE(decision.verdict.agreeing);
+    }
+    EXPECT_EQ(decision.verdict.trusted, i >= 151) << i;
+  }
+  // Fused again: the allowance is spent, and a fix 50 m off is a disagreement.
+  sample.stamp_ns += kSecond / 30;
+  sample.arrival_ns = sample.stamp_ns;
+  sample.latitude_deg += 50.0 / 111'000.0;
+  const GnssInputDecision offset = input.fix(sample, true, &predicted);
+  EXPECT_FALSE(offset.verdict.agreeing);
+  EXPECT_LT(offset.unaided_drift_m, 0.01);
+}
+
 TEST(GnssTrustTest, AGateAtInfinityNeverFails) {
   GnssTrust trust{GnssTrustConfig{.window_s = 1.0}};
   GnssFixReading wild = agreeingFix(0);
