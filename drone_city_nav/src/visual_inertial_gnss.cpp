@@ -16,8 +16,17 @@ void VisualInertialOdometry::addAbsolutePosition(const Eigen::Vector3d& position
     return;
   }
   if (unaided_drift_m > 0.0) {
-    impl_->covariance.block(kPosition, kPosition, 3, 3) +=
-        unaided_drift_m * unaided_drift_m * Eigen::Matrix3d::Identity();
+    // The drift of an odometry is a translation of its whole window: the
+    // position and every clone's, together, not the position alone — the
+    // features seen from the clones held the window and undid a shift of the
+    // position by the next frame (r2650: the trust flapped four times more).
+    Eigen::MatrixXd shift = Eigen::MatrixXd::Zero(impl_->covariance.rows(), 3);
+    shift.block(kPosition, 0, 3, 3) = Eigen::Matrix3d::Identity();
+    for (std::size_t i = 0U; i < impl_->clones.size(); ++i) {
+      shift.block(kImuStates + kCloneStates * static_cast<Eigen::Index>(i) + kPosition,
+                  0, 3, 3) = Eigen::Matrix3d::Identity();
+    }
+    impl_->covariance += unaided_drift_m * unaided_drift_m * shift * shift.transpose();
   }
   Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(3, impl_->covariance.rows());
   Eigen::VectorXd residual{3};

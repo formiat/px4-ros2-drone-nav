@@ -454,6 +454,24 @@ TEST(VisualInertialOdometry,
     } else {
       EXPECT_LT(pulled, 0.2) << drift_m;
     }
+    // The frames that follow, with their features, keep the shift: the window
+    // moved as one (r2650: the features undid a shift of the position alone).
+    for (std::int64_t frame = 41; frame <= 60; ++frame) {
+      stamp = frame * kFramePeriodNs;
+      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+        odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      }
+      static_cast<void>(odometry.addFrame(
+          stamp, observe(config, static_cast<double>(stamp) * 1.0e-9, points,
+                         config.observation_noise, generator)));
+    }
+    const double held = (odometry.predicted(stamp + 1'000'000).position_ned_m -
+                         Motion::position(static_cast<double>(stamp) * 1.0e-9))
+                            .x() /
+                        3.0;
+    if (drift_m > 0.0) {
+      EXPECT_GT(held, 0.7) << drift_m;
+    }
   }
 }
 
