@@ -1790,6 +1790,75 @@ failure in the table above,
 arrives by the truth within the rule written for it, keeps the cave's
 acceptance unchanged on the same code, and R8 is a measured figure.
 
+**Stages 0 to 2 done (2026-11-01, the commits 8c3c4974 to 2d6a5f1c):** the
+open-sky world `open_sky_baylands` (the autopilot's baylands park as a
+fixture of the environment pipeline, its truth grid at 0.5 m, the
+point-to-point scenario of three goals 500 to 700 m apart, 1.6 km, drawn by
+`tools/open_sky_scenario.py`); the `hybrid` localization profile — the
+visual-inertial estimator reading the satellite fixes through the
+autopilot's adapter, every fix read against the estimator's prediction for
+one measurement of trust (`gnss_trust.hpp`: agreeing while inside every
+gate, trusted once the agreement has lasted 5 s, ended by one disagreeing
+fix or by half a second without a fix, back after the window again, nothing
+remembered), the fix fused as an absolute position while trusted; the
+simulation's fault relay (`scripts/gnss_fault_relay.py`, `GNSS_FAULTS`)
+playing the ten variants of the table. The gates are twice the 99th
+percentile of three honest flights (r2626 to r2628): position residual
+normalised 0.70, velocity 1.26, the fix against itself 2.0 m/s, the
+position's step 0.16 m, the clock's step 0.072 s; the reaction time replayed
+over the recorded readings by `gnss_trust_replay`: the trust lost on the
+next reading, back 5.5 s after a fault ends. Measured over 1.6 km at 1.42 to
+1.54 m/s: `hybrid` six of six at every goal within 0.3 to 1.5 m, the estimate
+0.6 to 0.7 m from the truth at p50 and 3.5 m at most; `visual_inertial`
+alone on the same route drifts 1.1 to 3.8 percent of the path (20 to 47 m),
+8.6 m in height at worst, two flights of three ending in a contact (a canopy
+under a hold on the drifting estimate, the ground under the vertical drift)
+— the measurement item 40 repairs. Under the faults (stage 1.3, eleven
+flights on e6b6d563, each fault 90 s in the middle of the route): lost, flap,
+jam, degraded, walk, jump, replay, bad_time and the four faults of one flight
+were each read on the next fix or within the half second the trust expires
+in without a fix (0.0 to 0.6 s), the trust back 5.2 to 5.4 s after the fault
+ended, the estimate 0.3 to 1.5 m from the truth at p50 inside the windows,
+every goal within 0.2 to 1.6 m of the truth; bad_velocity was read on the
+first fix and taken back 5 s before the end while the vehicle moved at
+0.65 m/s, a lie under what the velocity gate reads, and lost again 0.2 s
+later; return_offset (50 m) was rejected for 525 s and taken back once the
+estimator's own drift allowance since the outage (33 m after 700 m without a
+fix) could explain it, after which the vehicle followed the offset and missed
+its last goal — the limit of one measurement without a second absolute
+source (stage 4). One landing after a completed mission (jam) ended in a
+flip and a rotor's contact with the terrain mesh (K30's descent at 0.5 m/s,
+the autopilot's landing undetected for 2 s), one of nine hybrid landings on
+the park. The cave's acceptance on the final code (Urban under the
+imperfections profile): stereo set five counted, four at B within 0.43 to
+1.65 m and one at 2.46 m (the register's row on the stereo B), 1.26 m/s mean,
+no contact, the budget within K53 (the tick 22.9 / 30.9 ms); lidar set five
+of five on a quiet host (r2681 to r2685: B 0.24 to 0.90 m, 2.44 m/s mean, no
+contact, the tick's median 26.2 ms against K53's 26.4, its 95th percentile 34
+and 37 ms on the two flights with nothing else on the host and 43 to 58 ms
+with the owner's browser active) — the first lidar series, flown while a
+second session and the desktop shared the host, lost one flight to a
+feasibility loop on the upper floor 30 m short of B (r2676) and one to a
+contact with the service room at 1 m of height (r2678), every CPU-side phase
+of the planner's tick 20 to 40 percent longer in its tail and the medians
+unchanged: the host's, read as foreign load (A4), the series replayed. R8
+measured: the open-sky series flies at the cave's speed law (the pair's
+braking contract, 2.1 m/s at 5.2 m of guaranteed range), 1.42 to 1.54 m/s
+mean; the 10 m/s of R8 waits for stage 5's range. Found on the way and read
+to their rules: the park's foliage rendered black by an emptied material
+element (the pipeline repaired, 5d071431); K12 under daylight reads the lamp,
+not the scene (`LIGHT_FAULTS=none` on the open sky); a route whose progress
+credit never applied held r2629 42 m short of its goal for 1400 s (the retry
+branch of the route execution selector named nothing; the tick names it
+now, the repair waits for the first recurrence with the diagnostic); the
+trust law read per fix missed an outage (the expiry without a fix, 262dadbb)
+and a frozen clock (ca7d898d); a fused fix against the filter's own 0.06 m
+moved it by a percent of the residual after an outage, so the estimator's
+drift while unaided (4 percent of the path, the worst measured) lends the
+trust's normalisation its allowance and inflates the whole window's
+translation before the fix is fused (584d4341, 4c8ca7eb, e6b6d563). Stages
+3 to 5 remain.
+
 ## 40. The Stereo Estimate Registered Against Its Own Map Along The Way
 
 **Type:** localization, the stereo set; decided on 2026-10-30 after the

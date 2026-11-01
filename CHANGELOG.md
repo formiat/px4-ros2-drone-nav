@@ -6,6 +6,24 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The open sky (roadmap item 39, stages 0 to 2): the `open_sky_baylands` world
+  and its point-to-point scenario; the `hybrid` localization profile — the
+  visual-inertial estimator reading the satellite fixes, every fix one
+  measurement of trust (the residuals against the estimator's prediction, the
+  fix's agreement with itself, its position and clock steps; trusted after 5 s
+  of agreement, ended by one disagreeing fix or by half a second without a
+  fix, back after the window, no latch), the fix fused while trusted, the
+  estimator's drift while unaided lent to the measurement and to the fusion;
+  the simulation's fault relay (`GNSS_FAULTS`: lost, flap, jam, degraded, walk,
+  jump, replay, bad_velocity, bad_time, return_offset) and the mission check
+  that holds every fault to the trust's loss and return and every goal to the
+  estimator's published uncertainty (F22). The gates measured (p99 x 2 over
+  three honest flights), the reaction time replayed by `gnss_trust_replay`.
+  Measured: hybrid at every goal within 1.5 m over 1.6 km on twelve flights;
+  the estimator alone drifts 1 to 4 percent there; the ten variants and a
+  flight of four faults read on the next fix; a returned offset within the
+  estimator's own possible drift is the one failure the measurement cannot
+  tell apart (K56, R8 measured).
 - The environment pipeline drops a visual's material element that the removal
   of its OGRE script leaves empty: the simulator read the empty element as a
   material of its defaults, black, over the mesh's own materials, and the

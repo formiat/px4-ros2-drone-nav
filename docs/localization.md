@@ -35,6 +35,7 @@ require `CAMERA_PROFILE=stereo_tof`.
 | `lidar_inertial` (default on the lidar) | IMU and the estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`; the heading source is forced off |
 | `visual_inertial_shadow` | as `gnss` | as `gnss` | the visual-inertial estimator runs inside the stereo process and publishes its estimate to the diagnostic topic only; the mission check compares it with the true pose |
 | `visual_inertial` (default on the stereo set) | IMU and the visual-inertial estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity), with a fixed noise (`EKF2_EV_NOISE_MD 1`, 0.3 m, 0.05 rad); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run inside the stereo process, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry` every 40 ms |
+| `hybrid` | as `visual_inertial` | the estimator's | the visual-inertial estimator with the satellite fixes read through the autopilot's adapter from the topic `gnss_topic` names (the simulation's fault relay on the open sky), each fix one measurement of trust (K56), fused as an absolute position while trusted |
 
 The magnetometer is not fused in any profile: the simulated one sits five to
 six degrees off. In `lidar_inertial` and `visual_inertial` nothing the
@@ -453,6 +454,60 @@ reckoning from that moment with its whole budget. The planner lifts the
 braking contract's frame range to the void range, and the vehicle crosses
 the void at the speed the confident depth admits, 1.8 m/s. Measured on the crossings of 2026-10-25 (K47): through the void the camera estimator's horizontal error grows by 0.01 to 0.06 m/s at 1.8 m/s, 0.7 to 3.6 percent of the distance flown (eight crossings of 16 to 31 s and 29 to 53 m, r2180 to r2187), the estimate's speed 1 to 3.5 percent above the truth's along the track, the height within 0.6 m on the barometer; the published horizontal sigma after 25 to 31 s is 2.3 to 3.2 m and the error at the void's end 0.2 to 0.97 of it. The drift was the drag model's velocity: with K21's 0.106 1/s the estimate ran 8 to 13 percent fast and drifted 0.13 to 0.23 m/s, 8 to 14 percent of the distance, 2.8 sigma on one crossing (r2175 to r2178); re-fitted on those crossings to 0.118 the drift fell tenfold. The east wall's features take the estimate back within 2 m before the wall's goal is acknowledged; the memory maps the wall where the estimate stood (1 to 25 phantom voxels in the wall's band of five crossings, 0.0 to 0.5 percent of the hall's occupied voxels), and the map registration never applies at 14 m.
 Accepted on 2026-10-25: the wall's goal eight times (r2180 to r2187, 0.24 to 1.59 m by the truth), the hall's middle three times on dead reckoning alone (r2188 to r2190, 0.65 to 1.21 m against the allowance of 5.6 to 6.6 m), no contact, no hold through the void, no descent; the lidar cannot start in the hall (its estimator matches 0.18 of its first scan, under its 0.3 line) and was not flown.
+
+### The Satellite Signal On The Hybrid Profile (Roadmap Item 39)
+
+On `hybrid` the estimator owns the autopilot's truth as on `visual_inertial`
+and reads the satellite fixes too (`src/visual_inertial_gnss_input.cpp`): the
+fix's frame is aligned on the pad (the origin the mean of the first 30 fixes,
+flat earth), and every fix is read against the estimator's prediction at the
+fix's moment for one measurement of trust (`include/drone_city_nav/gnss_trust.hpp`,
+specification K56): the position and velocity residuals normalised by both
+uncertainties together, the fix's agreement with itself (its velocity against
+the difference of its positions), the step of its position and the step of
+its clock (back, frozen or leaping). A fix agrees when every reading stands
+inside its gate; the signal is trusted once the agreement has lasted the
+window (5 s) and not for one fix less; a disagreeing fix ends the trust at
+once, as does half a second without a fix (the outage is read from the IMU
+stream on the fixes' arrival clock, since a fix comes through the relay later
+than the IMU's sample of the same moment); the trust returns when the
+agreement has lasted the window again. Nothing is remembered beyond the
+window (I3). While trusted the fix is fused as an absolute position with the
+receiver's own sigma, floored at 0.5 m. The gates are measured
+(`urban_mvp.yaml`, the source in its comment; `tools/gnss_gates.py` over the
+honest flights r2626 to r2628): position residual normalised 0.70, velocity
+residual normalised 1.26, the fix's disagreement with itself 2.0 m/s, the
+position's step 0.16 m, the clock's step 0.072 s.
+
+The estimator's own drift while no fix is fused is part of the measurement:
+its filter believes itself to 0.06 m while the stereo set alone drifts 1.1 to
+3.8 percent of the path on the open sky (r2634 to r2636), so the normalisation
+of the position residual lends it 4 percent of the path since the last fused
+fix, and the first fix fused after such a stretch inflates the translation of
+the filter's whole window — the position and every clone's together — by that
+allowance before the update, so that the fix pulls the estimate as far as the
+drift allows (a shift of the position alone was undone by the next frame's
+features). Without the allowance an honest fix after a 90 s outage stood 2.7 m
+from the drifted estimate, 1.0 normalised, and the trust never returned
+(r2645); without the inflation the trust flapped once a minute after the
+outage (r2648, r2650). A fix back at an offset is rejected until that drift
+could explain it (r2661: 50 m rejected for 525 s and 700 m of flight, then
+taken back — the limit of one measurement without a second absolute source,
+roadmap item 39 stage 4). The reaction time, replayed over recorded readings
+by the production law (`gnss_trust_replay`): lost on the next reading, back
+5.2 to 5.6 s after a fault ends. The cave profiles name no topic and pay
+nothing. The log line `GNSS_TRUST` (1 Hz, with `drift_m`) and `GNSS_TRUST
+changed` carry the readings and the changes; the mission check reports them
+and, under `GNSS_FAULTS`, holds each fault's window to the loss and the
+return of the trust (F22).
+
+Measured on the open sky, 1.6 km at 1.5 m/s: with the honest signal the
+estimate is 0.6 to 0.7 m from the truth at p50 (the signal's own noise, eph
+0.9 m) and 3.5 m at most, every goal within 1.5 m of the truth over twelve
+flights; the visual-inertial estimator alone drifts 1.1 to 3.8 percent of the
+path (20 to 47 m) and up to 8.6 m in height (r2634 to r2636), the measurement
+roadmap item 40 repairs; the estimator's frame costs the same on both
+(53.7 against 53.2 ms at the median).
 
 ### Relocalization Against Its Own Map (Visual-Inertial SLAM)
 

@@ -475,6 +475,24 @@ name and gate nothing; a manifest without a profile is read as
 `lidar_inertial`, the default. [localization.md](localization.md) describes the
 estimator and the profiles.
 
+On `hybrid` the check is `visual_inertial`'s and then the trust in the
+satellite signal (`scripts/gnss_trust_evidence.py`): the readings' percentiles
+over the flight, the fixes fused and every change of the trust with its
+reason; with `GNSS_FAULTS` set it reads each fault's window from the relay's
+record (the airborne moment from its log, the simulation clock against the
+wall from the true pose's record) and fails the flight unless the trust is
+lost within 2 s of the fault's start and not back before its end (never after
+the offset `return_offset` leaves), naming as notes the two returns the law
+allows — a velocity lie under the gate while the vehicle moves under 1 m/s,
+and an offset the estimator's own drift since the outage could explain;
+every goal of such a flight is judged within the estimator's published
+uncertainty, two sigma, plus the capture radius, as the goal in the void is.
+`scripts/tests/test_hybrid_profile.py` holds the gates to their measurement
+and the checks to synthetic records; `gnss_trust_test` the law (the window,
+each gate, the return, the outage, the drift allowance) and
+`visual_inertial_odometry_test` the fused fix's pull with the window's
+inflation.
+
 ## Adding Tests
 
 Use:
