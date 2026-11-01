@@ -6,6 +6,13 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The environment pipeline drops a visual's material element that the removal
+  of its OGRE script leaves empty: the simulator read the empty element as a
+  material of its defaults, black, over the mesh's own materials, and the
+  open-sky park's foliage rendered black (the vehicle read it as unlit
+  surfaces under a working light, K12). Found by an isolated render of the
+  park mesh under the stereo set's camera; the other environments carried no
+  such element and look as before.
 - The held-out worlds (roadmap item 33, N2 closed): the cave circuit and the
   finals world flown by the urban code with nothing adapted, twenty flights on
   one commit, every failure read to its rule. The scenarios drawn from each

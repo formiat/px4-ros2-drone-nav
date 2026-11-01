@@ -645,6 +645,48 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
 
             self.assertGreaterEqual(validate_visual_resource_uris(output), 2)
 
+    def test_gui_world_drops_a_material_the_script_removal_leaves_empty(self) -> None:
+        # An empty material element is read by the simulator as a material of
+        # its defaults, black, over the mesh's own materials (the open-sky
+        # park's foliage, roadmap item 39).
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            models = root / "models"
+            park = models / "park"
+            mesh = park / "meshes" / "trees.dae"
+            mesh.parent.mkdir(parents=True)
+            mesh.write_text(
+                '<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema"></COLLADA>',
+                encoding="utf-8",
+            )
+            (park / "model.sdf").write_text(
+                '<sdf version="1.10"><model name="park"><static>true</static>'
+                '<link name="link"><visual name="trees"><geometry><mesh>'
+                "<uri>meshes/trees.dae</uri></mesh></geometry><material><script>"
+                "<uri>materials/scripts</uri><name>Park/Branch</name></script>"
+                "</material></visual></link></model></sdf>",
+                encoding="utf-8",
+            )
+            world = root / "world.sdf"
+            world.write_text(
+                '<sdf version="1.10"><world name="candidate"><include>'
+                "<uri>model://park</uri></include></world></sdf>",
+                encoding="utf-8",
+            )
+            output = root / "runtime" / "world_gui.sdf"
+            materializer = CollisionWorldMaterializer(
+                ResourceResolver([], [models]),
+                mode=MaterializationMode.GUI,
+                localized_mesh_root=output.parent / "assets" / "meshes",
+            )
+
+            tree, _ = materializer.materialize(world)
+            write_materialized_world(tree, output)
+
+            visual = ET.parse(output).getroot().find(".//visual")
+            self.assertIsNotNone(visual)
+            self.assertIsNone(visual.find("material"))
+
     def test_remote_visual_resources_exclude_legacy_material_scripts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -722,6 +722,14 @@ class CollisionWorldMaterializer:
         script = material.find("script")
         if script is not None:
             material.remove(script)
+        if len(material) == 0:
+            # A material element left empty is not "no material": the
+            # simulator reads it as a material of its defaults, black, over
+            # the mesh's own materials. The foliage of the open-sky park
+            # rendered black that way, and the vehicle read it as unlit
+            # surfaces under a working light (K12, r2616, roadmap item 39).
+            visual.remove(material)
+            return
         for element in material.iter():
             if _local_tag(element.tag) not in _MATERIAL_RESOURCE_TAGS:
                 continue
