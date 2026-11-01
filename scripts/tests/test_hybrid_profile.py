@@ -5,8 +5,12 @@ trust a measurement; the cave profiles untouched by it."""
 
 from __future__ import annotations
 
+import io
 import re
+import sys
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import yaml
@@ -35,7 +39,7 @@ class HybridProfileTest(unittest.TestCase):
         self.assertIn("\n  GNSS_FAULTS\n  GNSS_FAULT_SEED\n", whitelist)
         check = (REPOSITORY / "scripts/headless_runtime_evidence.py").read_text(encoding="utf-8")
         self.assertIn('if profile in ("visual_inertial", "hybrid"):', check)
-        self.assertIn("from gnss_trust_evidence import report_gnss_trust", check)
+        self.assertIn("from gnss_trust_evidence import report_gnss_faults, report_gnss_trust", check)
         self.assertIn("def report_gnss_trust", (REPOSITORY / "scripts/gnss_trust_evidence.py").read_text(encoding="utf-8"))
 
     def test_the_cave_profiles_subscribe_no_signal(self) -> None:
@@ -70,3 +74,91 @@ class HybridProfileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def write_run(directory: Path, active: list[str], changes: list[tuple[float, str]]) -> str:
+    """A run's records: the relay's row per airborne second (`active`), its log
+    with the airborne moment at 30 s of simulation, the true pose with the wall
+    clock at 1000 s plus the simulation second, and the estimator's trust
+    changes on that wall clock."""
+    with (directory / "gnss_relay.csv").open("w", encoding="utf-8") as stream:
+        stream.write("t_airborne_s,active,relayed,dropped,latitude_deg,longitude_deg,altitude_m,fix_type,eph_m\n")
+        for second, name in enumerate(active):
+            stream.write(f"{second}.0,{name},30,0,37.4,-121.9,39.0,3,0.9\n")
+    (directory / "gnss_relay.log").write_text("GNSS_FAULT_RELAY airborne_at_us=30000000 faults=''\n",
+                                              encoding="utf-8")
+    with (directory / "gz_pose.csv").open("w", encoding="utf-8") as stream:
+        for second in range(0, 400):
+            stream.write(f"{second}.0,1,2,3,0,0,0,1,{1000 + second}.0\n")
+    return "".join(f"[INFO] [{stamp:.3f}] [visual_inertial_odometry_node]: GNSS_TRUST changed "
+                   f"trusted={state} reason=x\n" for stamp, state in changes)
+
+
+class GnssFaultEvidenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        sys.path.insert(0, str(REPOSITORY / "scripts"))
+        import gnss_trust_evidence  # noqa: PLC0415
+
+        self.evidence = gnss_trust_evidence
+
+    def report(self, active: list[str], changes: list[tuple[float, str]]) -> tuple[list[str], str]:
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            log = write_run(run, active, changes)
+            errors: list[str] = []
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.evidence.report_gnss_faults(run, log, errors, [])
+            return errors, out.getvalue()
+
+    def test_a_fault_met_in_time_and_held_to_its_end_passes(self) -> None:
+        # lost from airborne second 100 to 160: simulation 130 to 190, wall 1130 to 1190.
+        active = ["none"] * 100 + ["lost"] * 60 + ["none"] * 40
+        errors, out = self.report(active, [(1040.0, "true"), (1130.5, "false"), (1196.0, "true")])
+        self.assertEqual(errors, [])
+        self.assertIn("OK: under the fault lost from 1130.0 to 1190.0: lost 0.5 s after the start, "
+                      "back 6.0 s after the end", out)
+
+    def test_a_late_loss_and_an_early_return_fail(self) -> None:
+        active = ["none"] * 100 + ["walk"] * 60 + ["none"] * 40
+        errors, _ = self.report(active, [(1040.0, "true"), (1135.0, "false"), (1196.0, "true")])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("FAIL: the trust is lost within 2 s of the fault walk from 1130.0 to 1190.0 "
+                      "(lost 5.0 s after)", errors[0])
+        errors, _ = self.report(active, [(1040.0, "true"), (1130.2, "false"), (1170.0, "true")])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("FAIL: the trust stays lost until the fault walk from 1130.0 to 1190.0 ends "
+                      "(back 20.0 s before the end)", errors[0])
+
+    def test_the_offset_a_fault_leaves_behind_keeps_the_trust_away(self) -> None:
+        active = ["none"] * 100 + ["return_offset"] * 60 + ["returned_offset"] * 40
+        errors, out = self.report(active, [(1040.0, "true"), (1130.3, "false")])
+        self.assertEqual(errors, [])
+        self.assertIn("OK: under the fault return_offset from 1130.0 on: lost 0.3 s after the start, "
+                      "not back, as the fault stays", out)
+        errors, _ = self.report(active, [(1040.0, "true"), (1130.3, "false"), (1200.0, "true")])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("back although the fault stays", errors[0])
+
+    def test_a_faulted_flight_arrives_within_the_published_uncertainty(self) -> None:
+        import headless_runtime_evidence as check  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as directory:
+            truth = Path(directory) / "gz_pose.csv"
+            truth.write_text("10.0,0,0,0,0,0,0,1,1010.0\n11.0,3,0,0,0,0,0,1,1011.0\n", encoding="utf-8")
+            log = ("[INFO] [1010.500] [visual_inertial_odometry_node]: VISUAL_INERTIAL_ODOMETRY healthy=true "
+                   "position_sigma_m=(0.60,0.80,0.10)\n"
+                   "[INFO] [1011.000] [production_mppi_node]: MISSION_WAYPOINT_ACKNOWLEDGED index=0 "
+                   "goal=(0.0,0.0,0.0)\n")
+            errors: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                check.validate_goal_reached_in_truth(truth, log, errors)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("inside the goal's capture radius", errors[0])
+            errors = []
+            out = io.StringIO()
+            with redirect_stdout(out):
+                check.validate_goal_reached_in_truth(truth, log, errors, faulted_signal=True)
+            self.assertEqual(errors, [])
+            self.assertIn("OK: the true position is 3.00 m from the goal under the signal's faults at its "
+                          "acknowledgement (allowed two sigma 1.00 plus 2.0 m = 4.00 m)", out.getvalue())

@@ -512,7 +512,8 @@ def main() -> int:
             args.runtime_manifest.parent / "gz_pose.csv", ros_log,
             notes if vehicle_intact_expected else errors,
             void_goal=Path(str(manifest_mission.get("scenario", {}).get("path", ""))).name
-            in VOID_GOAL_SCENARIOS)
+            in VOID_GOAL_SCENARIOS,
+            faulted_signal=bool(overrides.get("GNSS_FAULTS", "")))
         # Dense smoke is never entered, whatever the flight was asked (R7).
         # (The overrides are the manifest's, read above: a flight checked
         # without the acceptance metrics, the held-out worlds' probe, crashed

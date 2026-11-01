@@ -11,7 +11,8 @@ namespace drone_city_nav {
 // position and the velocity residuals against the estimator's prediction,
 // each normalised by the two uncertainties together; the fix's agreement
 // with itself (its velocity against the difference of its positions); the
-// step of its position from the previous fix; the step of its clock. The
+// step of its position from the previous fix; the step of its clock (back,
+// frozen or leaping). The
 // signal is trusted once it has agreed for the window, and not for one fix
 // less; a disagreeing fix ends the trust at once; the trust returns when the
 // agreement has lasted the window again. No reading is remembered beyond

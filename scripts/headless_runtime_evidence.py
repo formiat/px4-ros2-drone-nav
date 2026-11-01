@@ -654,9 +654,11 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
     if profile in ("visual_inertial", "hybrid"):
         validate_visual_inertial_profile(ros_log, px4_log, errors, notes, real_time_factor)
         if profile == "hybrid":
-            from gnss_trust_evidence import report_gnss_trust  # noqa: PLC0415
+            from gnss_trust_evidence import report_gnss_faults, report_gnss_trust  # noqa: PLC0415
 
             report_gnss_trust(ros_log, notes)
+            if manifest.get("effective_overrides", {}).get("GNSS_FAULTS", ""):
+                report_gnss_faults(manifest_path.parent, ros_log, errors, notes)
         return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")
@@ -821,7 +823,12 @@ def published_position_sigma_m(ros_log: str, at_s: float) -> float | None:
 
 def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                                    errors: list[str],
-                                   void_goal: bool = False) -> None:
+                                   void_goal: bool = False,
+                                   faulted_signal: bool = False) -> None:
+    """Every goal within the capture radius of the truth (R2); the goal in the
+    void (roadmap item 31) and every goal of a flight whose satellite signal
+    the relay faulted (roadmap item 39, Р1.6) within the estimator's published
+    uncertainty, two sigma, plus that radius."""
     acknowledgements = list(GOAL_ACKNOWLEDGED_PATTERN.finditer(ros_log))
     if not acknowledgements:
         errors.append("FAIL: a goal acknowledgement names its goal")
@@ -846,22 +853,23 @@ def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                           f"({abs(nearest[0] - at_s):.1f} s apart)")
             continue
         distance_m = math.dist(goal, nearest[1:])
-        if void_goal and acknowledgement is acknowledgements[-1]:
+        if (void_goal and acknowledgement is acknowledgements[-1]) or faulted_signal:
+            where = "in the void" if void_goal and not faulted_signal else "under the signal's faults"
             sigma_m = published_position_sigma_m(ros_log, at_s)
             if sigma_m is None:
                 errors.append("FAIL: the estimator published its position sigma before "
-                              "the goal in the void was acknowledged")
+                              f"the goal {where} was acknowledged")
                 continue
             allowed_m = 2.0 * sigma_m + GOAL_CAPTURE_RADIUS_M
             if distance_m > allowed_m:
                 errors.append(
                     "FAIL: the true position is within the published uncertainty of "
-                    f"the goal in the void ({distance_m:.2f} m from the goal, allowed "
+                    f"the goal {where} ({distance_m:.2f} m from the goal, allowed "
                     f"two sigma {sigma_m:.2f} plus {GOAL_CAPTURE_RADIUS_M:.1f} m = "
                     f"{allowed_m:.2f} m)")
             else:
-                print(f"OK: the true position is {distance_m:.2f} m from the goal in "
-                      f"the void at its acknowledgement (allowed two sigma "
+                print(f"OK: the true position is {distance_m:.2f} m from the goal "
+                      f"{where} at its acknowledgement (allowed two sigma "
                       f"{sigma_m:.2f} plus {GOAL_CAPTURE_RADIUS_M:.1f} m = {allowed_m:.2f} m)")
             continue
         if distance_m > GOAL_CAPTURE_RADIUS_M:

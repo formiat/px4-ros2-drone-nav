@@ -59,6 +59,9 @@ TEST(GnssTrustTest, ADisagreeingFixEndsTheTrustAtOnceAndNamesItsGate) {
   GnssFixReading late = agreeingFix(154 * kSecond / 30);
   late.clock_step_s = -0.5;
   EXPECT_EQ(trust.read(late).reason, "clock");
+  GnssFixReading frozen = agreeingFix(154 * kSecond / 30 + 1);
+  frozen.clock_step_s = 0.0;
+  EXPECT_EQ(trust.read(frozen).reason, "clock");
   GnssFixReading inconsistent = agreeingFix(155 * kSecond / 30);
   inconsistent.self_disagreement_mps = 4.0;
   EXPECT_EQ(trust.read(inconsistent).reason, "self");

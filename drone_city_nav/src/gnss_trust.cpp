@@ -12,7 +12,10 @@ GnssTrustVerdict GnssTrust::read(const GnssFixReading& reading) noexcept {
   if (!reading.valid) {
     verdict.reason = "no_fix";
   } else if (fails(reading.clock_step_s, config_.clock_step_gate_s) ||
-             reading.clock_step_s < 0.0) {
+             reading.clock_step_s <= 0.0) {
+    // A clock that steps back, or does not advance at all (the bad_time
+    // variant: a fix whose clock froze is stale by its own account, its
+    // position still moving), is a clock step as much as one that leaps.
     verdict.reason = "clock";
   } else if (fails(reading.position_step_m, config_.jump_gate_m)) {
     verdict.reason = "jump";

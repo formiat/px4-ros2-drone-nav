@@ -201,6 +201,7 @@ def main() -> int:
     player = FaultPlayer(faults, random.Random(args.seed))
 
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from px4_msgs.msg import SensorGps, VehicleLandDetected
     from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
@@ -302,7 +303,7 @@ def main() -> int:
             if time.monotonic() - last_save > 2.0:
                 save()
                 last_save = time.monotonic()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         save()
