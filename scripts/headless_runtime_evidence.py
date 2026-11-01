@@ -657,8 +657,9 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
             from gnss_trust_evidence import report_gnss_faults, report_gnss_trust  # noqa: PLC0415
 
             report_gnss_trust(ros_log, notes)
-            if manifest.get("effective_overrides", {}).get("GNSS_FAULTS", ""):
-                report_gnss_faults(manifest_path.parent, ros_log, errors, notes)
+            faults = manifest.get("effective_overrides", {}).get("GNSS_FAULTS", "")
+            if faults:
+                report_gnss_faults(manifest_path.parent, ros_log, errors, notes, faults)
         return
     if profile != "lidar_inertial":
         errors.append(f"FAIL: localization profile is known ({profile})")

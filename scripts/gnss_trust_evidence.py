@@ -6,6 +6,7 @@ check (headless_runtime_evidence.py)."""
 from __future__ import annotations
 
 import csv
+import math
 import re
 from pathlib import Path
 
@@ -16,6 +17,20 @@ from pathlib import Path
 # r2626 to r2628, replayed; plus the two records' granularity).
 TRUST_LOSS_ALLOWANCE_S = 2.0
 AIRBORNE_PATTERN = re.compile(r"GNSS_FAULT_RELAY airborne_at_us=(\d+)")
+# A fix lying about its velocity lies by the vehicle's speed: under this speed
+# the lie stays inside the velocity gate (1.26 normalised over the fix's and
+# the estimator's uncertainties, 0.4 to 1.1 m/s), and the law has nothing to
+# read (r2659: the trust returned at 0.6 to 0.8 m/s and left again at 1.1).
+BAD_VELOCITY_READABLE_MPS = 1.0
+# A fix back at an offset is taken back once the estimator's own drift since
+# the outage could explain it: the residual read against the position gate
+# (0.70) over the three axes' mean (one axis counts 1/sqrt(3)) of the drift
+# allowance the estimator lends itself, and the estimator may have drifted
+# toward the offset by that allowance — an offset of up to (0.70 sqrt(3) + 1)
+# allowances is the law's own limit (r2661: 50 m taken back at 33 m of
+# allowance, the residual 40 m).
+POSITION_GATE = 0.70
+DRIFT_PATTERN = re.compile(r"\[(\d+\.\d+)\].*GNSS_TRUST trusted=.* drift_m=([0-9.]+)")
 
 GNSS_TRUST_PATTERN = re.compile(
     r"GNSS_TRUST trusted=(true|false) agreeing=(true|false) agreeing_s=([0-9.]+) reason=(\w+) "
@@ -107,11 +122,56 @@ def fault_windows(run_directory: Path) -> list[tuple[str, float, float, bool]] |
     return windows
 
 
+def truth_speed_mps(run_directory: Path, wall_s: float) -> float | None:
+    """The vehicle's true speed over the second before `wall_s` (gz_pose.csv)."""
+    rows = []
+    with (run_directory / "gz_pose.csv").open(newline="", encoding="utf-8") as stream:
+        for row in csv.reader(stream):
+            if len(row) >= 9 and wall_s - 1.2 <= float(row[8]) <= wall_s:
+                rows.append((float(row[8]), float(row[1]), float(row[2])))
+    if len(rows) < 2:
+        return None
+    (t0, x0, y0), (t1, x1, y1) = rows[0], rows[-1]
+    return math.hypot(x1 - x0, y1 - y0) / (t1 - t0) if t1 > t0 else None
+
+
+def fault_magnitude(faults: str, variant: str) -> float:
+    """The variant's magnitude in the schedule (its default when not given)."""
+    defaults = {"return_offset": 50.0, "walk": 1.0, "jump": 100.0, "degraded": 10.0, "replay": 10.0}
+    for item in faults.split(";"):
+        name, _, rest = item.strip().partition("@")
+        fields = rest.split(":")
+        if name == variant:
+            return float(fields[2]) if len(fields) > 2 else defaults.get(variant, 0.0)
+    return defaults.get(variant, 0.0)
+
+
+def allowed_return(run_directory: Path, ros_log: str, variant: str, at_s: float,
+                   faults: str) -> str | None:
+    """Why the law may take the signal back before the fault ends, or None."""
+    if variant == "bad_velocity":
+        speed = truth_speed_mps(run_directory, at_s)
+        if speed is not None and speed < BAD_VELOCITY_READABLE_MPS:
+            return (f"the fix lies about a motion of {speed:.2f} m/s, under the "
+                    f"{BAD_VELOCITY_READABLE_MPS:.1f} m/s the velocity gate reads")
+    if variant == "return_offset":
+        drift = [float(d) for stamp, d in DRIFT_PATTERN.findall(ros_log) if float(stamp) <= at_s]
+        offset = fault_magnitude(faults, variant)
+        if drift and offset <= (POSITION_GATE * math.sqrt(3.0) + 1.0) * drift[-1]:
+            return (f"the offset of {offset:.0f} m is within the drift the estimator could have accrued "
+                    f"since the outage ({drift[-1]:.1f} m of allowance, the gate {POSITION_GATE} over "
+                    f"the three axes plus the allowance itself): no second absolute source tells them apart")
+    return None
+
+
 def report_gnss_faults(run_directory: Path, ros_log: str, errors: list[str],
-                       notes: list[str] | None) -> None:
+                       notes: list[str] | None, faults: str = "") -> None:
     """Р1.6 of roadmap item 39: under every fault the relay played, the trust
     is lost no later than the allowance after the fault's start and not
-    regained before its end (never, after a fault whose effect stays)."""
+    regained before its end (never, after a fault whose effect stays). Two
+    returns the law allows are notes, not failures: a velocity lie under the
+    gate while the vehicle is slow, and an offset the estimator's own drift
+    since the outage could explain."""
     windows = fault_windows(run_directory)
     if windows is None:
         errors.append("FAIL: the relay's record, its log and the true pose's record name the "
@@ -136,13 +196,19 @@ def report_gnss_faults(run_directory: Path, ros_log: str, errors: list[str],
             continue
         early = [stamp for stamp in returns if stamp < end_s]
         if early:
-            errors.append(f"FAIL: the trust stays lost until the fault {span} ends (back "
-                          + ("although the fault stays" if stays else
-                             f"{end_s - early[0]:.1f} s before the end") + ")")
-            continue
+            allowed = allowed_return(run_directory, ros_log, name, early[0], faults)
+            if allowed is None:
+                errors.append(f"FAIL: the trust stays lost until the fault {span} ends (back "
+                              + ("although the fault stays" if stays else
+                                 f"{end_s - early[0]:.1f} s before the end") + ")")
+                continue
+            if notes is not None:
+                notes.append(f"NOTE: under the fault {span} the trust came back at {early[0]:.1f}: {allowed}")
         lost = (f"lost {losses[0] - start_s:.1f} s after the start" if trusted_at_start
                 else "untrusted already at the start")
-        back = ("not back, as the fault stays" if stays else
+        back = ("not back, as the fault stays" if stays and not early else
+                f"back {end_s - early[0]:.1f} s before the end, as the law allows" if early and not stays else
+                "back although the fault stays, as the law allows" if early else
                 f"back {returns[0] - end_s:.1f} s after the end" if returns else
                 "not back by the flight's end")
         print(f"OK: under the fault {span}: {lost}, {back}")

@@ -140,6 +140,40 @@ class GnssFaultEvidenceTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("back although the fault stays", errors[0])
 
+    def test_the_returns_the_law_allows_are_notes(self) -> None:
+        # A velocity lie while the vehicle is slow is under the gate; an offset
+        # the estimator's own drift since the outage could explain is taken
+        # back by the law's limit (r2659, r2661).
+        active = ["none"] * 100 + ["bad_velocity"] * 60 + ["none"] * 40
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            log = write_run(run, active, [(1040.0, "true"), (1130.1, "false"), (1185.0, "true")])
+            # The truth stands still: the written record moves nowhere.
+            errors: list[str] = []
+            notes: list[str] = []
+            with redirect_stdout(io.StringIO()):
+                self.evidence.report_gnss_faults(run, log, errors, notes, "bad_velocity@100:60")
+            self.assertEqual(errors, [])
+            self.assertEqual(len(notes), 1)
+            self.assertIn("lies about a motion of 0.00 m/s", notes[0])
+        active = ["none"] * 100 + ["return_offset"] * 60 + ["returned_offset"] * 40
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            log = write_run(run, active, [(1040.0, "true"), (1130.3, "false"), (1190.0, "true")])
+            log += ("[INFO] [1189.000] [visual_inertial_odometry_node]: GNSS_TRUST trusted=false agreeing=true "
+                    "reason=agreeing drift_m=45.00\n")
+            errors, notes = [], []
+            with redirect_stdout(io.StringIO()):
+                self.evidence.report_gnss_faults(run, log, errors, notes, "return_offset@100:60")
+            self.assertEqual(errors, [])
+            self.assertIn("offset of 50 m is within the drift", notes[0])
+            log = log.replace("drift_m=45.00", "drift_m=10.00")
+            errors, notes = [], []
+            with redirect_stdout(io.StringIO()):
+                self.evidence.report_gnss_faults(run, log, errors, notes, "return_offset@100:60")
+            self.assertEqual(len(errors), 1)
+            self.assertIn("back although the fault stays", errors[0])
+
     def test_a_faulted_flight_arrives_within_the_published_uncertainty(self) -> None:
         import headless_runtime_evidence as check  # noqa: PLC0415
 
