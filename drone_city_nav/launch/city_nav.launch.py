@@ -184,6 +184,7 @@ def generate_launch_description():
     mppi_engine = LaunchConfiguration("mppi_engine")
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     gnss_topic = LaunchConfiguration("gnss_topic")
+    map_registration = LaunchConfiguration("map_registration")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
     step_ack = LaunchConfiguration("step_ack")
@@ -277,7 +278,7 @@ def generate_launch_description():
             "publish_to_autopilot": localization == "lidar_inertial",
         }
         visual_inertial_overrides = compute_visual_inertial_overrides(
-            localization, gnss_topic.perform(context))
+            localization, gnss_topic.perform(context), map_registration.perform(context))
         imu_suffix = imu_topic_suffix.perform(context).strip()
         if visual_inertial_overrides is not None and imu_suffix:
             visual_inertial_overrides["px4_sensor_combined_topic"] = (
@@ -806,6 +807,8 @@ def generate_launch_description():
                 default_value="",
                 description="The satellite fixes the estimator reads on the hybrid profile (item 39).",
             ),
+            DeclareLaunchArgument("map_registration", default_value="",
+                                  description="The estimator's map registration: act or measure (item 40)."),
             DeclareLaunchArgument(
                 "localization_profile",
                 default_value="",

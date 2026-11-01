@@ -42,6 +42,26 @@ class HybridProfileTest(unittest.TestCase):
         self.assertIn("from gnss_trust_evidence import report_gnss_faults, report_gnss_trust", check)
         self.assertIn("def report_gnss_trust", (REPOSITORY / "scripts/gnss_trust_evidence.py").read_text(encoding="utf-8"))
 
+    def test_the_map_registration_is_measured_on_request(self) -> None:
+        # Roadmap item 40: MAP_REGISTRATION=measure reaches the estimator's
+        # parameter through the launch, on every profile that runs it.
+        import importlib.util  # noqa: PLC0415
+        spec = importlib.util.spec_from_file_location(
+            "localization_profile", REPOSITORY / "drone_city_nav/launch/localization_profile.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(module.visual_inertial_overrides("visual_inertial", "", "measure"),
+                         {"publish_to_autopilot": True, "map_registration": "measure"})
+        self.assertNotIn("map_registration", module.visual_inertial_overrides("hybrid", "/g", ""))
+        self.assertIsNone(module.visual_inertial_overrides("lidar_inertial", "", "measure"))
+        run = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn('ros_launch_args+=(map_registration:="${MAP_REGISTRATION}")', run)
+        self.assertIn("  MAP_REGISTRATION\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('"map_registration",', launch)
+        node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
+        self.assertIn('declare_parameter<std::string>("map_registration", "act") != "measure"', node)
+
     def test_the_cave_profiles_subscribe_no_signal(self) -> None:
         # The topic is empty in the configuration: the estimator subscribes
         # nothing and pays nothing; only the hybrid launch names one.

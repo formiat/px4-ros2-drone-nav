@@ -966,8 +966,8 @@ else
   fi
   # Item 17 stage 5's stream relay and item 35's imperfections (K52): simulation_resource_runtime.sh.
   append_sensor_relay_launch_args
-  # Roadmap item 18 stage 1: smoke in the location, every sensor read through it (the launch starts its relay).
-  [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")
+  [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")  # item 18 stage 1: smoke, every sensor read through it (the launch starts its relay)
+  [[ -n "${MAP_REGISTRATION:-}" ]] && ros_launch_args+=(map_registration:="${MAP_REGISTRATION}")  # item 40: the estimator's map registration measured without acting
   [[ -n "${HEAT_SOURCES:-}" ]] && ros_launch_args+=(heat_sources:="${HEAT_SOURCES}")  # item 32: the heat sources ride with the smoke (an empty value is a malformed argument, r2267)
   [[ -n "${SMOKE_FACE:-}" ]] && ros_launch_args+=(smoke_face:="${SMOKE_FACE}")  # K44's face, off unless asked for (the owner, 2026-10-24)
   [[ -n "${MPPI_ROLLOUTS:-}" ]] && ros_launch_args+=(mppi_rollouts:="${MPPI_ROLLOUTS}")  # item 28 step 1: the rollouts the flight needs

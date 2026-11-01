@@ -1148,6 +1148,7 @@ foreach(stereo_depth_process ${stereo_depth_processes})
   add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
                                          src/stereo_feature_tracker.cpp
                                          src/stereo_frame_brightness.cpp
+                                         src/stereo_map_registration.cpp
                                          src/stereo_rectifier.cpp
                                          src/visual_inertial_gnss_input.cpp
                                          src/visual_inertial_odometry_node.cpp)
@@ -1800,6 +1801,12 @@ if(BUILD_TESTING)
   target_include_directories(json_output_test PRIVATE include)
   enable_project_warnings(json_output_test)
 
+  # The stereo estimate's registration against its own map (roadmap items 19 and 40).
+  ament_add_gtest(stereo_map_registration_test tests/stereo_map_registration_test.cpp
+                  src/stereo_map_registration.cpp)
+  target_compile_features(stereo_map_registration_test PRIVATE cxx_std_20)
+  target_include_directories(stereo_map_registration_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(stereo_map_registration_test drone_city_nav_localization)
   # The trust law and the input that reads it per fix and expires it without one
   # (the input's parameter reading names the node, hence rclcpp).
   ament_add_gtest(gnss_trust_test tests/gnss_trust_test.cpp

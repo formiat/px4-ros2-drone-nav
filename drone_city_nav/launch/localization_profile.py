@@ -22,11 +22,13 @@ def validate_localization_profile(localization: str) -> str:
     return localization
 
 
-def visual_inertial_overrides(localization: str, gnss_topic: str) -> dict | None:
+def visual_inertial_overrides(localization: str, gnss_topic: str,
+                              map_registration: str = "") -> dict | None:
     """The visual-inertial estimator's parameters for the profile, None where
     the estimator does not run: beside GNSS and compared (the shadow), alone
     in the autopilot's place (visual_inertial), or alone with the satellite
-    fixes read from gnss_topic (hybrid)."""
+    fixes read from gnss_topic (hybrid). map_registration "measure" has the
+    estimator read its map registration without applying it (roadmap item 40)."""
     if localization not in ("visual_inertial_shadow", "visual_inertial", "hybrid"):
         return None
     overrides: dict = {"publish_to_autopilot": localization in ("visual_inertial", "hybrid")}
@@ -34,4 +36,6 @@ def visual_inertial_overrides(localization: str, gnss_topic: str) -> dict | None
         if not gnss_topic.strip():
             raise ValueError("the hybrid localization profile needs gnss_topic")
         overrides["gnss_topic"] = gnss_topic.strip()
+    if map_registration.strip():
+        overrides["map_registration"] = map_registration.strip()
     return overrides
