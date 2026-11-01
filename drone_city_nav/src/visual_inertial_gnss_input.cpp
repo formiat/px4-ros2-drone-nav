@@ -98,6 +98,7 @@ GnssInputDecision
 GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
                const VisualInertialEstimate* const predicted) noexcept {
   GnssInputDecision decision;
+  expired_ = false;
   const Eigen::Vector3d llh{sample.latitude_deg, sample.longitude_deg,
                             sample.altitude_m};
   if (!reference_llh_.has_value()) {
@@ -167,6 +168,16 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
     previous_ned_m_.reset();
   }
   return decision;
+}
+
+std::optional<GnssTrustVerdict> GnssInput::expire(const std::int64_t now_ns) noexcept {
+  if (expired_ || !previous_.has_value() ||
+      static_cast<double>(now_ns - previous_->stamp_ns) * 1.0e-9 <=
+          config_.trust.clock_step_gate_s) {
+    return std::nullopt;
+  }
+  expired_ = true;
+  return trust_.read(GnssFixReading{.stamp_ns = now_ns, .valid = false});
 }
 
 } // namespace drone_city_nav

@@ -334,6 +334,12 @@ private:
       imu_gap_max_ns_ = std::max(imu_gap_max_ns_, stamp_ns - last_imu_stamp_ns_);
     }
     last_imu_stamp_ns_ = std::max(last_imu_stamp_ns_, stamp_ns);
+    if (gnss_input_ != nullptr) {
+      if (const std::optional<GnssTrustVerdict> gone = gnss_input_->expire(stamp_ns)) {
+        declareGnssTrust(get_logger(), *mission_event_pub_, *gone, 0.0,
+                         gnss_trusted_declared_);
+      }
+    }
     const Eigen::Vector3d gyro{sample.gyro_radps.x, sample.gyro_radps.y,
                                sample.gyro_radps.z};
     odometry_->addImu(VisualInertialImuSample{
@@ -530,17 +536,8 @@ private:
       odometry_->addAbsolutePosition(decision.position_ned_m, decision.sigma_m);
       ++gnss_fused_;
     }
-    if (decision.verdict.trusted != gnss_trusted_declared_) {
-      RCLCPP_WARN(
-          get_logger(), "GNSS_TRUST changed trusted=%s reason=%s residual_m=%.2f",
-          decision.verdict.trusted ? "true" : "false",
-          std::string{decision.verdict.reason}.c_str(), decision.position_residual_m);
-      std_msgs::msg::String event;
-      event.data = std::string{"GNSS_TRUST trusted="} +
-                   (decision.verdict.trusted ? "true" : "false");
-      mission_event_pub_->publish(event);
-      gnss_trusted_declared_ = decision.verdict.trusted;
-    }
+    declareGnssTrust(get_logger(), *mission_event_pub_, decision.verdict,
+                     decision.position_residual_m, gnss_trusted_declared_);
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "%s",
                          GnssInput::summary(decision, fix, gnss_fused_).c_str());
   }

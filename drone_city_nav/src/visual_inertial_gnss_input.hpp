@@ -75,6 +75,12 @@ public:
     return trust_.trusted();
   }
 
+  // No fix within the clock gate of the last one is the signal gone: the
+  // trust is read with no fix at `now_ns` and ends, once per outage (the
+  // law is read per fix, and an outage brings none: r2637 flew 90 s of
+  // "lost" with the trust still declared). The verdict when it changes.
+  [[nodiscard]] std::optional<GnssTrustVerdict> expire(std::int64_t now_ns) noexcept;
+
   // The log line of a fix: the trust's state and every reading behind it.
   [[nodiscard]] static std::string summary(const GnssInputDecision& decision,
                                            const AutopilotGnssFix& fix,
@@ -89,6 +95,7 @@ private:
   std::optional<Eigen::Vector3d> reference_llh_;
   std::optional<GnssFixSample> previous_;
   std::optional<Eigen::Vector3d> previous_ned_m_;
+  bool expired_{false};
 };
 
 } // namespace drone_city_nav

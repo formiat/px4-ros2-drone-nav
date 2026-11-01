@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "visual_inertial_gnss_input.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -81,6 +83,48 @@ TEST(GnssTrustTest, TheTrustReturnsAfterTheWindowOfAgreementAndRemembersNoLie) {
     EXPECT_FALSE(trust.read(agreeingFix(back_ns + i * kSecond / 30)).trusted) << i;
   }
   EXPECT_TRUE(trust.read(agreeingFix(back_ns + 150 * kSecond / 30)).trusted);
+}
+
+TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
+  // The law is read per fix and an outage brings none (r2637 flew 90 s of
+  // "lost" with the trust still declared): the input reads the trust with no
+  // fix once the clock gate has passed since the last one.
+  GnssInputConfig config;
+  config.trust = gates();
+  config.reference_fixes = 1U;
+  GnssInput input{config};
+  GnssFixSample sample{.stamp_ns = 0,
+                       .valid = true,
+                       .latitude_deg = 37.4,
+                       .longitude_deg = -121.9,
+                       .altitude_m = 40.0,
+                       .horizontal_sigma_m = 0.9,
+                       .vertical_sigma_m = 1.5,
+                       .speed_sigma_mps = 0.3};
+  for (int i = 0; i <= 160; ++i) {
+    sample.stamp_ns = i * kSecond / 30;
+    static_cast<void>(input.fix(sample, false, nullptr));
+  }
+  ASSERT_TRUE(input.trusted());
+  const std::int64_t last_ns = 160 * kSecond / 30;
+  EXPECT_FALSE(input.expire(last_ns + kSecond / 2).has_value());
+  const std::optional<GnssTrustVerdict> gone = input.expire(last_ns + 2 * kSecond);
+  ASSERT_TRUE(gone.has_value());
+  EXPECT_FALSE(gone->trusted);
+  EXPECT_EQ(gone->reason, "no_fix");
+  EXPECT_FALSE(input.trusted());
+  EXPECT_FALSE(input.expire(last_ns + 3 * kSecond).has_value());
+  // The fixes back: the first steps the clock, the agreement restarts, the
+  // trust returns after the window, and a new outage is read again.
+  for (int i = 0; i <= 151; ++i) {
+    sample.stamp_ns = last_ns + 90 * kSecond + i * kSecond / 30;
+    const GnssInputDecision decision = input.fix(sample, false, nullptr);
+    if (i == 0) {
+      EXPECT_EQ(decision.verdict.reason, "clock");
+    }
+    EXPECT_EQ(decision.verdict.trusted, i >= 151) << i;
+  }
+  EXPECT_TRUE(input.expire(sample.stamp_ns + 2 * kSecond).has_value());
 }
 
 TEST(GnssTrustTest, AGateAtInfinityNeverFails) {

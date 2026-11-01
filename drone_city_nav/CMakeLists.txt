@@ -1800,8 +1800,13 @@ if(BUILD_TESTING)
   target_include_directories(json_output_test PRIVATE include)
   enable_project_warnings(json_output_test)
 
-  ament_add_gtest(gnss_trust_test tests/gnss_trust_test.cpp)
+  # The trust law and the input that reads it per fix and expires it without one
+  # (the input's parameter reading names the node, hence rclcpp).
+  ament_add_gtest(gnss_trust_test tests/gnss_trust_test.cpp
+                  src/visual_inertial_gnss_input.cpp)
   target_compile_features(gnss_trust_test PRIVATE cxx_std_20)
+  target_include_directories(gnss_trust_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  ament_target_dependencies(gnss_trust_test rclcpp)
   target_link_libraries(gnss_trust_test drone_city_nav_localization)
   ament_add_gtest(navigation_angular_derivative_test
                   tests/navigation_angular_derivative_test.cpp)

@@ -1,7 +1,11 @@
 #pragma once
 
+#include "drone_city_nav/gnss_trust.hpp"
+
+#include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -13,6 +17,25 @@
 
 // The camera estimator node's numbers and helpers (visual_inertial_odometry_node.cpp).
 namespace drone_city_nav::visual_inertial_odometry_node_internal {
+
+// The trust in the satellite signal announced when it changes (roadmap item
+// 39): the log line and the mission event the mission check reads.
+inline void declareGnssTrust(const rclcpp::Logger& logger,
+                             rclcpp::Publisher<std_msgs::msg::String>& events,
+                             const GnssTrustVerdict& verdict, const double residual_m,
+                             bool& declared) {
+  if (verdict.trusted == declared) {
+    return;
+  }
+  RCLCPP_WARN(logger, "GNSS_TRUST changed trusted=%s reason=%s residual_m=%.2f",
+              verdict.trusted ? "true" : "false", std::string{verdict.reason}.c_str(),
+              residual_m);
+  std_msgs::msg::String event;
+  event.data =
+      std::string{"GNSS_TRUST trusted="} + (verdict.trusted ? "true" : "false");
+  events.publish(event);
+  declared = verdict.trusted;
+}
 
 // The vehicle stands still this many IMU samples before its pose is declared:
 // roll, pitch and the gyroscope bias come from them.
