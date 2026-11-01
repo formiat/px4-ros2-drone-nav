@@ -252,8 +252,15 @@ public:
   // deviation per axis, fused at the filter's current time (the satellite
   // fix the open sky gives, roadmap item 39, when its trust is measured:
   // visual_inertial_gnss.cpp). Nothing before the estimator is initialized.
+  // `unaided_drift_m` is the drift the filter accrued while no absolute
+  // position was fused (the input's allowance, 4 percent of the path): it
+  // inflates the position's variance before the update, so that the fix
+  // pulls the estimate as far as that drift allows — against its own 0.06 m
+  // the filter moved 1 percent of a 3.8 m residual per fix and the trust
+  // flapped once a minute (r2648).
   void addAbsolutePosition(const Eigen::Vector3d& position_ned_m,
-                           const Eigen::Vector3d& sigma_m);
+                           const Eigen::Vector3d& sigma_m,
+                           double unaided_drift_m = 0.0);
 
   // The pair's judgment of its latest frame (specification K46): a void
   // frame, empty to the light's reach under a sound light, or not. Read at

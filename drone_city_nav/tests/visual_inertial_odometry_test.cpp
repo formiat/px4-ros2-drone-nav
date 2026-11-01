@@ -420,6 +420,43 @@ TEST(VisualInertialOdometry, APointThatMovesInTheWorldIsGatedOut) {
   EXPECT_LT(flight.maximum_position_error_m, clean.maximum_position_error_m + 0.03);
 }
 
+TEST(VisualInertialOdometry,
+     AnAbsolutePositionPullsTheEstimateAsFarAsTheUnaidedDriftAllows) {
+  // Against its own uncertainty the filter barely moves toward a fix 3 m
+  // away; with the drift it accrued while unaided declared, the fix pulls it
+  // most of the way (r2648: the trust flapped once a minute otherwise).
+  const VisualInertialOdometryConfig config = testConfig();
+  for (const double drift_m : {0.0, 5.0}) {
+    std::mt19937 generator{7U};
+    const std::vector<Eigen::Vector3d> points = landmarks(generator);
+    VisualInertialOdometry odometry{config};
+    odometry.initialize(0, Motion::position(0.0), 0.0);
+    std::int64_t imu_stamp = 0;
+    std::int64_t stamp = 0;
+    for (std::int64_t frame = 1; frame <= 40; ++frame) {
+      stamp = frame * kFramePeriodNs;
+      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+        odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      }
+      static_cast<void>(odometry.addFrame(
+          stamp, observe(config, static_cast<double>(stamp) * 1.0e-9, points,
+                         config.observation_noise, generator)));
+    }
+    // The prediction a millisecond on: from the filter's state, not the last
+    // frame's published estimate.
+    const std::int64_t after = stamp + 1'000'000;
+    const Eigen::Vector3d before = odometry.predicted(after).position_ned_m;
+    const Eigen::Vector3d fix = before + Eigen::Vector3d{3.0, 0.0, 0.0};
+    odometry.addAbsolutePosition(fix, Eigen::Vector3d{0.9, 0.9, 1.5}, drift_m);
+    const double pulled = (odometry.predicted(after).position_ned_m - before).x() / 3.0;
+    if (drift_m > 0.0) {
+      EXPECT_GT(pulled, 0.8) << drift_m;
+    } else {
+      EXPECT_LT(pulled, 0.2) << drift_m;
+    }
+  }
+}
+
 TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
   // No camera observes the rotation about gravity or the position of the
   // whole scene; with first-estimate Jacobians the filter's certainty about

@@ -535,7 +535,8 @@ private:
       return;
     }
     if (decision.fuse) {
-      odometry_->addAbsolutePosition(decision.position_ned_m, decision.sigma_m);
+      odometry_->addAbsolutePosition(decision.position_ned_m, decision.sigma_m,
+                                     decision.unaided_drift_m);
       ++gnss_fused_;
     }
     declareGnssTrust(get_logger(), *mission_event_pub_, decision.verdict,
