@@ -820,6 +820,13 @@ target_compile_features(mppi_cpu_rollout_benchmark PRIVATE cxx_std_20)
 target_link_libraries(mppi_cpu_rollout_benchmark drone_city_nav_control)
 enable_project_warnings(mppi_cpu_rollout_benchmark)
 
+# Roadmap item 39: the trust law replayed over a flight's recorded readings
+# with a synthetic disagreement (the reaction time T).
+add_executable(gnss_trust_replay tools/gnss_trust_replay.cpp)
+target_compile_features(gnss_trust_replay PRIVATE cxx_std_20)
+target_link_libraries(gnss_trust_replay drone_city_nav_localization)
+enable_project_warnings(gnss_trust_replay)
+
 # The stereo pair's depth against the simulator's (specification K7).
 add_executable(stereo_depth_accuracy tools/stereo_depth_accuracy.cpp)
 target_compile_features(stereo_depth_accuracy PRIVATE cxx_std_20)

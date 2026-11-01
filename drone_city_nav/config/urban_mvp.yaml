@@ -791,16 +791,24 @@ visual_inertial_odometry_node:
     # estimator reads fixes from, empty on the cave profiles (nothing is
     # subscribed, nothing is paid); the launch names the simulation relay's
     # topic on the hybrid profile. The trust is one measurement, the fix's
-    # disagreement with the estimator over a window (gnss_trust.hpp); a gate
-    # at 1e300 is no gate (the measuring flights of the law, before its gates
-    # had a source: the flights of 2026-10-31 give them).
+    # disagreement with the estimator over a window (gnss_trust.hpp). The
+    # gates are twice the 99th percentile of the readings over the three
+    # measuring flights of the open sky without faults (r2626 to r2628 on
+    # 5d071431, 1.6 km each, 3268 one-second readings, tools/gnss_gates.py):
+    # the position residual normalised p99 0.35, the velocity residual
+    # normalised p99 0.63, the fix's disagreement with itself p99 1.00 m/s,
+    # the position's step between fixes p99 0.08 m at 30 Hz (0.16 m is one
+    # fix at 4.8 m/s: a faster flight would read every fix as a jump, which
+    # the self gate catches without the speed), the clock's step p99 0.036 s
+    # (one lost fix reads 0.066 s, two read a step). A gate changes only
+    # with a new measurement of the distribution, never under a result.
     gnss_topic: ""
     gnss_window_s: 5.0
-    gnss_position_gate: 1.0e+300
-    gnss_velocity_gate: 1.0e+300
-    gnss_self_gate_mps: 1.0e+300
-    gnss_jump_gate_m: 1.0e+300
-    gnss_clock_step_gate_s: 1.0e+300
+    gnss_position_gate: 0.70
+    gnss_velocity_gate: 1.26
+    gnss_self_gate_mps: 2.0
+    gnss_jump_gate_m: 0.16
+    gnss_clock_step_gate_s: 0.072
     gnss_reference_fixes: 30
     gnss_sigma_floor_m: 0.5
     # Specification K33: the pair as its calibration states it: pinhole

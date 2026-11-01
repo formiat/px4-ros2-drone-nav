@@ -45,9 +45,13 @@ class HybridProfileTest(unittest.TestCase):
         parameters = configuration["visual_inertial_odometry_node"]["ros__parameters"]
         self.assertEqual(parameters["gnss_topic"], "")
         self.assertEqual(parameters["gnss_window_s"], 5.0)
-        for gate in ("gnss_position_gate", "gnss_velocity_gate", "gnss_self_gate_mps", "gnss_jump_gate_m",
-                     "gnss_clock_step_gate_s"):
-            self.assertGreaterEqual(parameters[gate], 1.0e300, gate)
+        # The gates are twice the 99th percentile measured over r2626 to r2628
+        # (tools/gnss_gates.py); they change only with a new measurement.
+        self.assertEqual(parameters["gnss_position_gate"], 0.70)
+        self.assertEqual(parameters["gnss_velocity_gate"], 1.26)
+        self.assertEqual(parameters["gnss_self_gate_mps"], 2.0)
+        self.assertEqual(parameters["gnss_jump_gate_m"], 0.16)
+        self.assertEqual(parameters["gnss_clock_step_gate_s"], 0.072)
         node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<std::string>("gnss_topic", "")', node)
         self.assertIn("if (!gnss_topic.empty()) {", node)
