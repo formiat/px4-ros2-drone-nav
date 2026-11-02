@@ -1958,7 +1958,8 @@ with more rays), or routes that revisit. The rest is unchanged on that
 code: the dark void three of three by K47 with no registration read in the
 void, the clean stereo set five of five (B 0.70 to 1.19 m, 1.30 m/s, the
 frame's turn -0.60 to +0.61 degrees), the lidar set five of five (B 0.19 to
-0.72 m, 2.23 m/s on a shared host — the register's attempt row); the
+0.72 m, 2.23 m/s with the tick budgets of the quiet series — the
+register's attempt row); the
 module's cost is the registration's as before (the estimator's frame 64.3 /
 81.2 ms at p50 / p95 on the six measuring flights against K53's 65.4 /
 81.7, every reading logged).
