@@ -1149,6 +1149,7 @@ foreach(stereo_depth_process ${stereo_depth_processes})
   # The process that owns the pair's images hosts the depth node and, when
   # asked, the visual-inertial estimator that reads the same frames.
   add_executable(${stereo_depth_process} src/stereo_depth_node.cpp
+                                          src/stereo_depth_node_match.cpp
                                          src/stereo_feature_tracker.cpp
                                          src/stereo_frame_brightness.cpp
                                          src/stereo_map_registration.cpp

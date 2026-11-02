@@ -93,7 +93,8 @@ class SimulationSmokeContractTest(unittest.TestCase):
         self.assertEqual(depth["thermal_gazebo_image_topic"],
                          "/world/world/model/model/link/stereo_tof_link/sensor/thermal/image")
         self.assertEqual(depth["thermal_image_topic"], "/thermal/image")
-        node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
+        node = "".join(path.read_text() for path in sorted(
+            (REPOSITORY / "drone_city_nav" / "src").glob("stereo_depth_node*.cpp")))
         self.assertIn("readThermalImage(", node)
         self.assertIn("heatStandoffCap(", node)
         self.assertIn("heatMarksText(", node)
@@ -128,7 +129,8 @@ class SimulationSmokeContractTest(unittest.TestCase):
         # The smoke face detector (K44) is the vehicle's: it reads the pair's
         # frame, never the location's zones or the run's manifest, and the
         # depth node reports its faces.
-        node = (REPOSITORY / "drone_city_nav" / "src" / "stereo_depth_node.cpp").read_text()
+        node = "".join(path.read_text() for path in sorted(
+            (REPOSITORY / "drone_city_nav" / "src").glob("stereo_depth_node*.cpp")))
         patches = (REPOSITORY / "drone_city_nav" / "src" / "stereo_silent_patches.cpp").read_text()
         for text in (node, patches):
             self.assertNotIn("SMOKE_ZONES", text)
