@@ -6,6 +6,9 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Roadmap item 28 (the MPPI engine beyond CUDA) closed by record, waiting for the
+  board: steps 1 and 2 shipped in v0.7.0, step 3 (the Adreno 650's rollout count,
+  `shaderInt64`) is item 37's point 1; the Vulkan tick's cost stays in the register.
 - The source size contract reviewed with the owner (a production source at most
   1000 non-blank lines, a test 1500, a band from 90 percent in which a file only
   shrinks or is split, never squeezed to fit) and the seven sources in the band

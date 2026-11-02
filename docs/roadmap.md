@@ -909,260 +909,6 @@ launch on recorded data; cameras on a bench; HITL with a real Pixhawk; tethered 
 net, manual first, then a hold, then a short route. Months of one person's
 work; the first two steps cost nothing.
 
-## 28. The MPPI Engine Beyond CUDA
-
-**Type:** new capability, deferred; weighed on 2026-10-13 at the project
-owner's question (can the stack do without CUDA, or carry two backends), no
-decision taken.
-
-**Hard prerequisites:** none for step 1 (flights in the simulator); a chosen
-onboard computer without an NVIDIA GPU for step 3.
-
-**Where CUDA is.** In the MPPI engine alone: six files in `src/mppi/`
-(`*.cu`, `*.cuh`, about 3 400 lines) and about twelve kernels: the sampling
-noise, the rollouts against the ESDF, the reductions of costs and weights,
-the control update. Nothing else of the stack uses CUDA. The boundary is one
-class, `MppiCudaEngine` (`updateEsdf`, `plan`), with one consumer,
-`MppiController3D`, so another implementation can stand in its place without
-touching the rest. Today the planner is not built at all without CUDA
-(`production_mppi_node` sits under `DRONE_CITY_NAV_ENABLE_CUDA_MPPI`), so the
-stack does not fly without it. Two things make a port easy: the ESDF is read
-through a texture with point sampling, not the hardware's interpolation, so
-a lookup off the GPU gives the same value; the noise is a counter hash, not
-cuRAND. Two make it harder: the kernels' functions are `__device__` only (a
-host-and-device macro exists for two helpers), and the CPU reference
-(`simulateReference`), with which the engine re-simulates the sequence it
-selected, is a second implementation of the same model, not the kernel's code.
-
-**What a CPU costs, measured.** One rollout of the CPU reference, 120 steps
-(the 6 s static horizon), the urban body (0.82 m envelope, 12 x 2 x 3
-samples, the broad phase on), a 0.25 m ESDF of 40 x 40 x 16 m
-(`drone_city_nav/tools/mppi_cpu_rollout_benchmark.cpp`, built with the
-package, on the development host's Zen 3 with the host quiet; a first
-measurement under another task's load read 101 and 1151 us):
-
-| | Open space | A corridor (walls 1.5 m either side, the floor 1.5 m below) |
-|---|---|---|
-| One rollout on one core | 61 us | 850 us |
-| Rollouts eight threads finish in 8 ms | about 1000 | about 73 |
-| On the GPU today (RTX 3060 Laptop) | 8192 in 6.4 ms | 8192 in 6.4 ms |
-
-A gap of 8 to 110 times, the corridor's the one that counts: the routes run
-within 2 m of a wall half the time (roadmap item 30). The reference is not
-written for speed and a port of the kernel with SIMD would be several times
-faster, but an Arm core (Cortex-A78) does about half of a Zen 3 core, and
-the rest of the stack already takes 3.4 to 5.7 cores at p95
-([resource_budget.md](resource_budget.md)): a CPU in flight would carry tens
-to a few hundred rollouts, another controller, tuned again from the start.
-
-**What a Jetson costs too.** The Orin NX 16GB's GPU does 1.9 to 2.4 TFLOPS
-in FP32 (1024 CUDA cores at 918 to 1173 MHz), the RTX 3060 Laptop about 11:
-the 6.4 ms of rollouts become 30 to 40 ms against the 20 ms tick, and the
-rollouts (`rollouts`, 8192) fall to about 1500 to 2000 on the Jetson the
-stack is sized for ([hardware_builds.md](hardware_builds.md)). How the
-controller flies with fewer rollouts is therefore needed whatever the
-vendor, and it is the same number that says whether a weaker GPU of another
-vendor is enough.
-
-The ways, weighed:
-
-| Way | Runs on | Size | For flight |
-|---|---|---|---|
-| A. A CPU backend: the kernels' bodies as shared host-and-device functions, the rollouts in a loop over threads | anything | M: one to two weeks, with the parity tests against the GPU | No (the table above). For continuous integration, development on a machine without NVIDIA and offline replays; the rollout model becomes one code instead of two |
-| B. A second backend in Vulkan compute or OpenCL | Vulkan: NVIDIA (the Jetson too), Qualcomm Adreno, Arm Mali, Intel and AMD integrated GPUs; OpenCL: the same but the Jetson, which ships no OpenCL | L to XL: about 1 300 lines of kernels again, the host side, parity tests, a board with such a GPU to test on | Yes, where the GPU is strong enough |
-| C. Vulkan in CUDA's place | every GPU, one code | XL: on the Jetson likely slower and harder to debug; the controller's core, long tuned, at risk | Yes |
-| D. SYCL or Kokkos, one C++ source | NVIDIA, AMD, Intel, CPUs | L | The mobile GPUs (Adreno, Mali) are poorly served, so the main case, the VOXL 2, stays closed |
-
-What a backend without CUDA would give: a free choice of vendor (the
-ModalAI VOXL 2 above all: the autopilot on board, 16 g, $1 250 with it,
-against an Orin NX at $999 since July 2026 plus a carrier board and a
-Pixhawk), independence from NVIDIA's prices, and continuous integration
-without NVIDIA (way A). Counted build by build it saves 5 to 20 percent of
-a vehicle, simplifies the hardware only on the VOXL 2 and the software
-nowhere ([hardware_builds.md](hardware_builds.md), "Cheaper Or Simpler
-Without CUDA?"); the vehicle is meant to be made in numbers
-(specification R6), so a saving per vehicle counts against a fleet and the
-backend is a candidate, not a curiosity; the larger lever is the stack's own
-appetite for compute, which step 1 starts to measure. What it would not:
-the rest of the stack needs 3.4
-to 5.7 Zen 3 cores at p95 whatever runs MPPI, so on boards with four large
-Arm cores (Raspberry Pi 5, RK3588, the VOXL 2) the CPU becomes the limit
-once MPPI has moved to their GPU. The boards that would fit are in
-[hardware_builds.md](hardware_builds.md).
-
-The order:
-
-1. Fly the controller at 8192, 4096, 2048 and 1024 rollouts in the
-   simulator (the parameter exists; camera and lidar series): the number the
-   Jetson needs anyway (item 27) and the one that decides whether a GPU of
-   the Iris Xe or Adreno class is enough. With it, the onboard budget
-   emulated on this host before any board (the discussion of 2026-10-19):
-   the onboard processes confined to a core set of the Orin's class (four
-   to six logical cores, `taskset` or a cgroup), the simulator and the
-   autopilot on the rest; the launcher's subsystem masks of today
-   (`ENABLE_SUBSYSTEM_CPU_AFFINITY`, control 0 to 7, planning 4 to 15,
-   diagnostics 12 to 15 of 16) overlap and exclude nothing. The same
-   confinement is what would let a flight share the host with the owner's
-   other work (A4, A7): on the 8 physical cores the camera flight takes
-   7.6 cores of load at the median (r2070) and keeps a real-time factor of
-   0.85 to 1.00, 3 to 18 percent above A7's floor, so a browser's two or
-   three threads void it today (r2074, r2075, r2078 at 0.78 to 0.81).
-2. Way A when continuous integration or development without NVIDIA is
-   wanted; not a way to flight.
-3. Way B only for a chosen board without NVIDIA, the VOXL 2 most likely,
-   inside item 27; CUDA stays the backend of the Jetson. **The owner's
-   emphasis of 2026-10-24:** the board way B is built for is the VOXL 2, as
-   the support of a possible entry into the United States government
-   market, where the rules on parts (NDAA section 848, the Blue UAS lists)
-   exclude Chinese-made flight controllers, cameras, radios and lidars
-   (Holybro's Pixhawk, Arducam's pair, Livox, Unitree, Rockchip) and the
-   VOXL 2 covers the computer, the autopilot and the cameras in one listed
-   board. The Jetson itself is not excluded (a compute module of a United
-   States company); what a Jetson build would have to replace for that
-   market is its autopilot and its cameras. The market is still not set
-   (specification R6); this is an emphasis, not a decision to build way B
-   now, and the lists are to be checked against the buyer's rules when the
-   market is chosen. What the board would take in full is item 37.
-
-**Step 1 done on 2026-10-26** (the root goal of 2026-10-24, part 3;
-specification K48, `MPPI_ROLLOUTS` sets the count for a flight): eight
-groups of five clear flights, r2191 to r2234, no contact in forty.
-
-| Set | Rollouts | Mean speed, m/s (min) | B by the truth, max | Holds, % | Tick p50 / p95, ms | GPU, % |
-|---|---|---|---|---|---|---|
-| stereo | 8192 | 1.390 (1.333) | 1.16 | 0.90 | 22.7 / 29.6 | 34 |
-| stereo | 4096 | 1.380 (1.324) | 1.94 | 0.82 | 22.5 / 29.3 | 33 |
-| stereo | 2048 | 1.411 (1.349) | 1.38 | 0.96 | 22.6 / 29.7 | 32 |
-| stereo | 1024 | 1.418 (1.326) | 1.13 | 0.89 | 21.6 / 28.5 | 32 |
-| lidar | 8192 | 2.375 (2.143) | 0.64 | 2.4 to 2.7 | 25.1 / 33.2 | 39 |
-| lidar | 4096 | 2.424 (2.283) | 0.74 | 2.1 to 2.7 | 24.3 / 32.1 | 37 |
-| lidar | 2048 | 2.375 (2.188) | 0.49 | 1.8 to 2.8 | 24.2 / 32.3 | 37 |
-| lidar | 1024 | 2.192 (1.900) | 0.77 | 2.3 to 2.9 | 23.8 / 31.4 | 35 |
-
-The stereo set's speed and arrival hold at 1024 as at 8192; the lidar's
-hold to 2048 and lose 8 percent at 1024, one flight under R3. The true clearance of the modelled body (0.55 m, larger than the airframe) in the middle of the flight, the pad and the landing left out: its least value touches 0.00 in every group, the 8192 ones included (a graze of the modelled body, no contact), so the clause that tells the groups apart is the seconds under 0.10 m, and it is set by one flight in five: the 8192 groups' most 1.3 s (stereo) and 0.8 s (lidar); stereo 4096 3.6 s (r2208), 2048 0.7 s, 1024 5.3 s (r2229); lidar 4096 3.7 s (r2212), 2048 3.1 s (r2220, r2222), 1024 2.5 s (r2231). By the rule read as written the stereo set's count is 2048 (1024 fails the clearance clause by one flight) and the lidar's stays 8192 (every lower count fails it by one or two flights while keeping the speed to 2048); the means of the seconds, 0.2 to 1.1 s on the stereo set and 0.5 to 1.2 s on the lidar at every count, do not separate the counts, and ten flights a group would be needed to. The tick on the development host
-barely follows the count: the MPPI's GPU share is the 6.4 ms at 8192
-measured above, the rest of the tick is the CPU's; so on this host the count
-is no lever, and on an Orin, where the 6.4 ms become 30 to 40, it is the
-lever: 2048 rollouts there cost about what 8192 cost here; the counts
-by the rule are 2048 for the stereo set and 8192 for the lidar
-([hardware_builds.md](hardware_builds.md), specification K48).
-
-Complete, step by step: (1) the series at the four counts with the mean
-speed, the holds and the closest true clearance against 8192 (done, above); (2) the engine
-built and its unit tests run on a machine without CUDA, the parity tests
-holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
-series on the board.
-
-**Step 2, way A, done on 2026-10-30** (the goal of 2026-10-29, part 3;
-code f60c2928 to fa16e3af; specification K54). The rollout model is one
-host-and-device body, `src/mppi/mppi_rollout_body.hpp` (the sampled noise,
-the dynamics, the body's ESDF query through a lookup functor, the costs of a
-rollout, the sequence limiter); the CUDA kernels are shells around it (the
-texture read, the thread indexing and the block reductions stay the device's)
-and the CUDA path flies as before (r2483: the tick 22.7 / 32.0 ms against
-K53's 23.1 / 31.1). `MppiCpuEngine` runs the same stages on the host in plain
-loops behind the engine interface `MppiEngine`; the controller makes the
-engine by `mppi_engine` (cuda, the default, or cpu; `MPPI_ENGINE` of a flight).
-The host library `drone_city_nav_mppi` and the planner's component build
-with `DRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF` (156 unit tests there, the
-controller's lifecycle test on the CPU engine); the parity test holds the
-two engines to the measured spread on the same inputs: 3.4e-6 m/s^2 on the
-controls, 2.4e-6 relative on the weight sum and the sample fraction, 1.7e-6
-on the selected cost (bounds 1e-5). The CPU engine in flight at 256 rollouts
-(r2482, cameras): 1.474 m/s, B 1.48 m, no contact; the tick 113.6 / 144.4 ms
-(the MPPI update 98.9 / 127.2 ms, 0.39 ms a rollout of 80 steps on one
-thread), the planner node 1.90 cores against 1.48 on CUDA: a number, not the
-flight's engine. Not in the CPU engine: the cooperative candidates and the
-separation acquisition of item 15's missions. The host evaluator
-`simulateReference` stays what it was (it reads the footprint through the
-known-clearance evidence and tracks peer separation, which the sampler's body
-does not): the one body is the sampler's, on both backends.
-The arm64 onboard image (item 27 block 2) rebuilt with the CPU engine as the
-node's engine: 154 of 156 unit tests under qemu on 2026-10-30 (3b5746c3), the
-two failures those of 2026-10-26 (`log/tools/board/onboard_arm64.log`).
-
-**Step 2, way B, done on 2026-10-30** (the same goal, part 3; code baca86d5
-and 4de27c60). Vulkan compute runs in the dev container after one change
-(`scripts/container_run.sh`: the driver's graphics capability and the host's
-ICD file mounted where the loader looks; the toolkit already injects
-`libGLX_nvidia` with the GPU): `vulkan_probe` sees the RTX 3060 (API 1.4,
-two compute families, 1024 invocations a work group, 48 KB shared, 64-bit
-integers), and `glslc` was in the image. The engine: the rollout body once
-more in GLSL (`src/mppi/shaders/mppi_rollout.comp`, every law of
-`mppi_rollout_body.hpp` line for line, since a shader cannot share C++; the
-ESDF a storage buffer read by cell), the noise (`mppi_noise.comp`, the body's
-hash on 64-bit integers) and the weighted update (`mppi_update.comp`, a work
-group a step), compiled by glslc at build time and carried in the library as
-SPIR-V words (`cmake/embed_spirv.cmake`); a small compute runtime
-(`src/mppi/vulkan_compute.hpp`); the CPU engine's tick on a population device
-(`src/mppi/mppi_population_device.hpp`: the host loops, or the Vulkan device
-with the noise, the rollouts and the weighted sum on the GPU and the
-reductions, the repair and the evaluation on the host, one code);
-`MppiVulkanEngine` behind `mppi_engine` and `MPPI_ENGINE=vulkan`, built where
-the loader and glslc are (`DRONE_CITY_NAV_ENABLE_VULKAN_MPPI`). Parity
-(`tests/mppi_vulkan_engine_parity_test.cpp`, a wall and a pillar, without and
-with a route and the route-directed candidate): against the CPU engine
-4.4e-6 m/s^2 on the controls, 2.4e-6 and 3.1e-6 relative on the weights and
-the cost; against the CUDA engine 1.4e-6, 1.4e-6 and 8.1e-7; the noise alone
-8.7e-6 against `rollout::noiseSample` (bounds 1e-5 and 1e-4, the measured
-spread, never loosened). The benchmark (`mppi_engine_benchmark`, the corridor
-scene, 120 steps, the urban body, RTX 3060; `log/tools/ilv/part3/vulkan_bench.txt`):
-the population's milliseconds p50 / p95 at 8192, 4096, 2048 and 1024 rollouts
-are CUDA 6.8 / 7.4, 6.2 / 6.9, 6.2 / 6.7, 6.0 / 6.8; Vulkan 10.8 / 11.5,
-9.4 / 10.2, 8.9 / 9.9, 8.7 / 9.7; CPU 3143 / 3191, 1563 / 1601, 776 / 805,
-397 / 404: Vulkan 1.4 to 1.6 times CUDA on the same GPU (the storage-buffer
-ESDF against CUDA's texture, no fast math, a fence wait a dispatch). In flight
-(r2484 to r2494, the acceptance location under the imperfections profile):
-the lidar at 8192 five of five, no contact, 2.197 to 2.689 m/s, B 0.33 to
-1.40 m; the cameras at 2048 (K48's rule) five of five without contact, the
-speed 1.183 to 1.296 m/s, B 0.91 to 3.60 m, two B misses and one speed under
-R3, the estimate's heading drift under the profile (the frame turn -2.5 and
--2.1 degrees on the misses against 0.2 to 1.2 on the hits; item 35's register
-row), the same rate as on CUDA (B 4 of 25, R3 10 of 25); the clean vehicle on
-the cameras (r2497, r2498, r2505) 1.190, 1.209, 1.424 m/s, B 0.70 to 1.89 m,
-no contact. The planner's tick on Vulkan is 25.4 / 34.4 ms on the cameras
-against CUDA's 22.7 / 32.0 and 31.5 to 32.7 / 65.8 to 78.2 on the lidar
-against 25.9 to 27.3 / 32.8 to 58.8; the planner's process takes less CPU
-(1.31 against 1.55 cores: no CUDA spin on the host); the flight's real-time
-factor of the counted flights the same (p50 0.84 to 0.94 against 0.74 to
-0.98), the GPU 7 to 9 points busier (37 to 40 percent against 29 to 35 on
-the cameras, 43 to 48 against 34 to 39 on the lidar); six camera attempts of
-the clean series were voided by the real-time factor, under a foreign host
-load in part. The stage's flight clauses for the stereo set under the profile
-(B within 2 m, R3 at or above 1.2 m/s in every flight) are not met and are
-closed by record: the two B misses and the speed miss are the estimate's
-heading drift under the imperfections profile (the register's row of item
-35, class (b)), which no engine touches (the parity 1.4e-6) and which CUDA
-shows at the same rate (part 1: B 4 of 25, R3 10 of 25; part 2's base: B 2
-of 5, R3 3 of 5); the lidar set, whose estimate registers against its map,
-passes five of five on Vulkan as on CUDA. The ways out are the register
-row's: a heading reference where one exists, registration of the depth
-against the long-lived map along the way, or online camera-to-IMU rotation
-and bias; until one is built the stereo set's acceptance under the profile
-is not guaranteed on any engine. The clean vehicle, which judges an engine
-alone (K48's camera flights were clean), was flown the same day on both:
-eight camera flights on Vulkan at 2048 (r2497, r2498, r2505, r2507, r2509,
-r2511, r2512, r2513) 1.190, 1.209, 1.424, 1.242, 1.197, 1.144, 1.099 and
-1.280 m/s (mean 1.223, four under R3), B 0.42 to 1.89 m, no contact; five on
-CUDA (r2514 to r2517, r2520) 1.397, 1.395, 1.192, 1.278 and 1.394 (mean
-1.331, one under R3), B 0.68 to 1.09 m, no contact. R3 for the stereo set
-at 1.2 m/s is marginal on both engines on this day's host (K48's 2048 group
-gave 1.418 on 2026-10-26, part 1's clean base 1.248 to 1.345), and the 8
-percent between the engines is suggestive, not proven (eight against five
-flights, a spread of 0.10 m/s each; the paths part by the noise's last bits
-as the twins of item 36 do): the holds are alike (0.5 to 2.0 against 0.3 to
-1.0 percent), the sensor-braking limiter rules both, the route-clearance
-limit's median sits lower on Vulkan (1.3 to 3.0 against 2.0 to 2.7 m/s),
-the planner's tick 25 to 27 against 22 to 23 ms, the GPU 34 to 40 against
-27 to 32 percent. The stage's camera clauses are therefore closed by record
-with these numbers; the ways to settle the 8 percent are a longer series on
-a quiet host, the tick's cost taken out of the Vulkan engine (the debt row:
-an `image3D`, a timeline semaphore), and the board itself, where no camera
-rendering shares the GPU.
-Not done: the Adreno 650's rollout count (no board; `shaderInt64`
-unconfirmed there), the cooperative candidates (the CPU engine's limits).
-
 ## 30. The Airframe's Size
 
 **Type:** new capability, deferred; weighed on 2026-10-13 at the project
@@ -1619,7 +1365,7 @@ answered 404 that day.
 
 | Point | Done | By the documentation (2026-10-30) | Requires the board |
 |---|---|---|---|
-| 1. The controller without CUDA | Way A (one body, the CPU engine, parity) and way B (the Vulkan engine, parity with CUDA 1.4e-6, ten flights; above) | The Adreno 650 is "1024 ALU" on the product page, no FLOPS given; Vulkan's version and `shaderInt64` not in the pages read | The rollout count the Adreno carries in the tick (the RTX 3060 carries 8192 in 10.8 ms); `shaderInt64`, or the hash in two 32-bit halves |
+| 1. The controller without CUDA (item 28's step 3 since 2026-11-02, item 28 closed by record) | Way A (one body, the CPU engine, parity) and way B (the Vulkan engine, parity with CUDA 1.4e-6, ten flights; item 28) | The Adreno 650 is "1024 ALU" on the product page, no FLOPS given; Vulkan's version and `shaderInt64` not in the pages read | The rollout count the Adreno carries in the tick (the RTX 3060 carries 8192 in 10.8 ms); `shaderInt64`, or the hash in two 32-bit halves |
 | 2. The CPU | The flight's core set takes a CPU list (`FLIGHT_CPUSET`, A4), so the A77 cores can be named; the CPU engine is not the controller for the board (0.39 ms a rollout) | "8 cores up to 3.091 GHz", 8 GB LPDDR5, 128 GB, 0.1 to 7 W, 16 g, 70 x 36 mm (product page) | The big.LITTLE numbering, the thermal behaviour under four busy cores, the stereo matcher's place |
 | 3. OS and middleware | - | Ubuntu 18.04.5 LTS on kernel 4.19 (a console log on the user guide; the product page says 18.04, kernel 4.19); voxl-suite as a meta-package, releases `sdk-1.8.0` (SDK 1.8 the latest, 1.6.8 before); MPA on POSIX pipes with `libmodal_pipe`, services as systemd units; ROS 2 Foxy native (`voxl-ros2-foxy`), "for a newer ROS 2 version you must use Docker": the stack's Jazzy nodes run in a container of ours; `voxl-mpa-to-ros2` bridges IMU (`/imu_apps`, `sensor_msgs/Imu`), images (`sensor_msgs/Image`), `/tof_pc` (`PointCloud2`) and VIO (`/qvio`, `PoseStamped` or `Odometry`) | Whether Jazzy's `rclcpp` and the stack's messages build in that container on kernel 4.19; DDS between the bridge's Foxy and our Jazzy |
 | 3. The autopilot link | The stack's path exists on the board: `voxl-microdds-agent` "connects ROS 2 to a PX4 instance on the board over UDP port 8888, which exposes `/fmu/...` topics" (topic names differ between SDK 1.6 and 1.8) | PX4 runs "as a Linux service on QRB5165" (voxl-px4), the product page says "on the sensors DSP"; SDK 1.8 carries PX4 1.18 (`voxl-dev-1.18.0`); VIO reaches PX4 as MAVLink `ODOMETRY` through `voxl-vision-hub` and `voxl-mavlink-server`; MAVROS and MAVSDK on UDP 14551 | The `px4_msgs` of PX4 1.18 against the stack's, the agent's rate and the versioned topic names (K-row on the `_v1` suffixes) |
@@ -4310,6 +4056,270 @@ any hardware:
    its 100 ms and ours does not compensate it, and the replay decides
    between writing the compensation and adopting FAST-LIO2 for the lidar
    build ([hardware_builds.md](hardware_builds.md)).
+
+### 28. The MPPI Engine Beyond CUDA (Completed)
+
+Closed on 2026-11-02 by record, waiting for the board: steps 1 and 2 (the rollout
+counts flown, way A the CPU engine and way B the Vulkan engine, both held to the
+CUDA engine by parity) shipped in [v0.7.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.7.0)
+on 2026-10-31; step 3, the measurement on a board without NVIDIA, is item 37's
+point 1 (the owner's decision of 2026-11-02, so that the roadmap above Completed
+holds only what can be worked on). What was asked for and how it was weighed is
+kept below as it was written.
+
+**Type:** new capability, deferred; weighed on 2026-10-13 at the project
+owner's question (can the stack do without CUDA, or carry two backends), no
+decision taken.
+
+**Hard prerequisites:** none for step 1 (flights in the simulator); a chosen
+onboard computer without an NVIDIA GPU for step 3.
+
+**Where CUDA is.** In the MPPI engine alone: six files in `src/mppi/`
+(`*.cu`, `*.cuh`, about 3 400 lines) and about twelve kernels: the sampling
+noise, the rollouts against the ESDF, the reductions of costs and weights,
+the control update. Nothing else of the stack uses CUDA. The boundary is one
+class, `MppiCudaEngine` (`updateEsdf`, `plan`), with one consumer,
+`MppiController3D`, so another implementation can stand in its place without
+touching the rest. Today the planner is not built at all without CUDA
+(`production_mppi_node` sits under `DRONE_CITY_NAV_ENABLE_CUDA_MPPI`), so the
+stack does not fly without it. Two things make a port easy: the ESDF is read
+through a texture with point sampling, not the hardware's interpolation, so
+a lookup off the GPU gives the same value; the noise is a counter hash, not
+cuRAND. Two make it harder: the kernels' functions are `__device__` only (a
+host-and-device macro exists for two helpers), and the CPU reference
+(`simulateReference`), with which the engine re-simulates the sequence it
+selected, is a second implementation of the same model, not the kernel's code.
+
+**What a CPU costs, measured.** One rollout of the CPU reference, 120 steps
+(the 6 s static horizon), the urban body (0.82 m envelope, 12 x 2 x 3
+samples, the broad phase on), a 0.25 m ESDF of 40 x 40 x 16 m
+(`drone_city_nav/tools/mppi_cpu_rollout_benchmark.cpp`, built with the
+package, on the development host's Zen 3 with the host quiet; a first
+measurement under another task's load read 101 and 1151 us):
+
+| | Open space | A corridor (walls 1.5 m either side, the floor 1.5 m below) |
+|---|---|---|
+| One rollout on one core | 61 us | 850 us |
+| Rollouts eight threads finish in 8 ms | about 1000 | about 73 |
+| On the GPU today (RTX 3060 Laptop) | 8192 in 6.4 ms | 8192 in 6.4 ms |
+
+A gap of 8 to 110 times, the corridor's the one that counts: the routes run
+within 2 m of a wall half the time (roadmap item 30). The reference is not
+written for speed and a port of the kernel with SIMD would be several times
+faster, but an Arm core (Cortex-A78) does about half of a Zen 3 core, and
+the rest of the stack already takes 3.4 to 5.7 cores at p95
+([resource_budget.md](resource_budget.md)): a CPU in flight would carry tens
+to a few hundred rollouts, another controller, tuned again from the start.
+
+**What a Jetson costs too.** The Orin NX 16GB's GPU does 1.9 to 2.4 TFLOPS
+in FP32 (1024 CUDA cores at 918 to 1173 MHz), the RTX 3060 Laptop about 11:
+the 6.4 ms of rollouts become 30 to 40 ms against the 20 ms tick, and the
+rollouts (`rollouts`, 8192) fall to about 1500 to 2000 on the Jetson the
+stack is sized for ([hardware_builds.md](hardware_builds.md)). How the
+controller flies with fewer rollouts is therefore needed whatever the
+vendor, and it is the same number that says whether a weaker GPU of another
+vendor is enough.
+
+The ways, weighed:
+
+| Way | Runs on | Size | For flight |
+|---|---|---|---|
+| A. A CPU backend: the kernels' bodies as shared host-and-device functions, the rollouts in a loop over threads | anything | M: one to two weeks, with the parity tests against the GPU | No (the table above). For continuous integration, development on a machine without NVIDIA and offline replays; the rollout model becomes one code instead of two |
+| B. A second backend in Vulkan compute or OpenCL | Vulkan: NVIDIA (the Jetson too), Qualcomm Adreno, Arm Mali, Intel and AMD integrated GPUs; OpenCL: the same but the Jetson, which ships no OpenCL | L to XL: about 1 300 lines of kernels again, the host side, parity tests, a board with such a GPU to test on | Yes, where the GPU is strong enough |
+| C. Vulkan in CUDA's place | every GPU, one code | XL: on the Jetson likely slower and harder to debug; the controller's core, long tuned, at risk | Yes |
+| D. SYCL or Kokkos, one C++ source | NVIDIA, AMD, Intel, CPUs | L | The mobile GPUs (Adreno, Mali) are poorly served, so the main case, the VOXL 2, stays closed |
+
+What a backend without CUDA would give: a free choice of vendor (the
+ModalAI VOXL 2 above all: the autopilot on board, 16 g, $1 250 with it,
+against an Orin NX at $999 since July 2026 plus a carrier board and a
+Pixhawk), independence from NVIDIA's prices, and continuous integration
+without NVIDIA (way A). Counted build by build it saves 5 to 20 percent of
+a vehicle, simplifies the hardware only on the VOXL 2 and the software
+nowhere ([hardware_builds.md](hardware_builds.md), "Cheaper Or Simpler
+Without CUDA?"); the vehicle is meant to be made in numbers
+(specification R6), so a saving per vehicle counts against a fleet and the
+backend is a candidate, not a curiosity; the larger lever is the stack's own
+appetite for compute, which step 1 starts to measure. What it would not:
+the rest of the stack needs 3.4
+to 5.7 Zen 3 cores at p95 whatever runs MPPI, so on boards with four large
+Arm cores (Raspberry Pi 5, RK3588, the VOXL 2) the CPU becomes the limit
+once MPPI has moved to their GPU. The boards that would fit are in
+[hardware_builds.md](hardware_builds.md).
+
+The order:
+
+1. Fly the controller at 8192, 4096, 2048 and 1024 rollouts in the
+   simulator (the parameter exists; camera and lidar series): the number the
+   Jetson needs anyway (item 27) and the one that decides whether a GPU of
+   the Iris Xe or Adreno class is enough. With it, the onboard budget
+   emulated on this host before any board (the discussion of 2026-10-19):
+   the onboard processes confined to a core set of the Orin's class (four
+   to six logical cores, `taskset` or a cgroup), the simulator and the
+   autopilot on the rest; the launcher's subsystem masks of today
+   (`ENABLE_SUBSYSTEM_CPU_AFFINITY`, control 0 to 7, planning 4 to 15,
+   diagnostics 12 to 15 of 16) overlap and exclude nothing. The same
+   confinement is what would let a flight share the host with the owner's
+   other work (A4, A7): on the 8 physical cores the camera flight takes
+   7.6 cores of load at the median (r2070) and keeps a real-time factor of
+   0.85 to 1.00, 3 to 18 percent above A7's floor, so a browser's two or
+   three threads void it today (r2074, r2075, r2078 at 0.78 to 0.81).
+2. Way A when continuous integration or development without NVIDIA is
+   wanted; not a way to flight.
+3. Way B only for a chosen board without NVIDIA, the VOXL 2 most likely,
+   inside item 27; CUDA stays the backend of the Jetson. **The owner's
+   emphasis of 2026-10-24:** the board way B is built for is the VOXL 2, as
+   the support of a possible entry into the United States government
+   market, where the rules on parts (NDAA section 848, the Blue UAS lists)
+   exclude Chinese-made flight controllers, cameras, radios and lidars
+   (Holybro's Pixhawk, Arducam's pair, Livox, Unitree, Rockchip) and the
+   VOXL 2 covers the computer, the autopilot and the cameras in one listed
+   board. The Jetson itself is not excluded (a compute module of a United
+   States company); what a Jetson build would have to replace for that
+   market is its autopilot and its cameras. The market is still not set
+   (specification R6); this is an emphasis, not a decision to build way B
+   now, and the lists are to be checked against the buyer's rules when the
+   market is chosen. What the board would take in full is item 37.
+
+**Step 1 done on 2026-10-26** (the root goal of 2026-10-24, part 3;
+specification K48, `MPPI_ROLLOUTS` sets the count for a flight): eight
+groups of five clear flights, r2191 to r2234, no contact in forty.
+
+| Set | Rollouts | Mean speed, m/s (min) | B by the truth, max | Holds, % | Tick p50 / p95, ms | GPU, % |
+|---|---|---|---|---|---|---|
+| stereo | 8192 | 1.390 (1.333) | 1.16 | 0.90 | 22.7 / 29.6 | 34 |
+| stereo | 4096 | 1.380 (1.324) | 1.94 | 0.82 | 22.5 / 29.3 | 33 |
+| stereo | 2048 | 1.411 (1.349) | 1.38 | 0.96 | 22.6 / 29.7 | 32 |
+| stereo | 1024 | 1.418 (1.326) | 1.13 | 0.89 | 21.6 / 28.5 | 32 |
+| lidar | 8192 | 2.375 (2.143) | 0.64 | 2.4 to 2.7 | 25.1 / 33.2 | 39 |
+| lidar | 4096 | 2.424 (2.283) | 0.74 | 2.1 to 2.7 | 24.3 / 32.1 | 37 |
+| lidar | 2048 | 2.375 (2.188) | 0.49 | 1.8 to 2.8 | 24.2 / 32.3 | 37 |
+| lidar | 1024 | 2.192 (1.900) | 0.77 | 2.3 to 2.9 | 23.8 / 31.4 | 35 |
+
+The stereo set's speed and arrival hold at 1024 as at 8192; the lidar's
+hold to 2048 and lose 8 percent at 1024, one flight under R3. The true clearance of the modelled body (0.55 m, larger than the airframe) in the middle of the flight, the pad and the landing left out: its least value touches 0.00 in every group, the 8192 ones included (a graze of the modelled body, no contact), so the clause that tells the groups apart is the seconds under 0.10 m, and it is set by one flight in five: the 8192 groups' most 1.3 s (stereo) and 0.8 s (lidar); stereo 4096 3.6 s (r2208), 2048 0.7 s, 1024 5.3 s (r2229); lidar 4096 3.7 s (r2212), 2048 3.1 s (r2220, r2222), 1024 2.5 s (r2231). By the rule read as written the stereo set's count is 2048 (1024 fails the clearance clause by one flight) and the lidar's stays 8192 (every lower count fails it by one or two flights while keeping the speed to 2048); the means of the seconds, 0.2 to 1.1 s on the stereo set and 0.5 to 1.2 s on the lidar at every count, do not separate the counts, and ten flights a group would be needed to. The tick on the development host
+barely follows the count: the MPPI's GPU share is the 6.4 ms at 8192
+measured above, the rest of the tick is the CPU's; so on this host the count
+is no lever, and on an Orin, where the 6.4 ms become 30 to 40, it is the
+lever: 2048 rollouts there cost about what 8192 cost here; the counts
+by the rule are 2048 for the stereo set and 8192 for the lidar
+([hardware_builds.md](hardware_builds.md), specification K48).
+
+Complete, step by step: (1) the series at the four counts with the mean
+speed, the holds and the closest true clearance against 8192 (done, above); (2) the engine
+built and its unit tests run on a machine without CUDA, the parity tests
+holding the CPU backend's costs to the GPU's on the same noise; (3) a flight
+series on the board.
+
+**Step 2, way A, done on 2026-10-30** (the goal of 2026-10-29, part 3;
+code f60c2928 to fa16e3af; specification K54). The rollout model is one
+host-and-device body, `src/mppi/mppi_rollout_body.hpp` (the sampled noise,
+the dynamics, the body's ESDF query through a lookup functor, the costs of a
+rollout, the sequence limiter); the CUDA kernels are shells around it (the
+texture read, the thread indexing and the block reductions stay the device's)
+and the CUDA path flies as before (r2483: the tick 22.7 / 32.0 ms against
+K53's 23.1 / 31.1). `MppiCpuEngine` runs the same stages on the host in plain
+loops behind the engine interface `MppiEngine`; the controller makes the
+engine by `mppi_engine` (cuda, the default, or cpu; `MPPI_ENGINE` of a flight).
+The host library `drone_city_nav_mppi` and the planner's component build
+with `DRONE_CITY_NAV_ENABLE_CUDA_MPPI=OFF` (156 unit tests there, the
+controller's lifecycle test on the CPU engine); the parity test holds the
+two engines to the measured spread on the same inputs: 3.4e-6 m/s^2 on the
+controls, 2.4e-6 relative on the weight sum and the sample fraction, 1.7e-6
+on the selected cost (bounds 1e-5). The CPU engine in flight at 256 rollouts
+(r2482, cameras): 1.474 m/s, B 1.48 m, no contact; the tick 113.6 / 144.4 ms
+(the MPPI update 98.9 / 127.2 ms, 0.39 ms a rollout of 80 steps on one
+thread), the planner node 1.90 cores against 1.48 on CUDA: a number, not the
+flight's engine. Not in the CPU engine: the cooperative candidates and the
+separation acquisition of item 15's missions. The host evaluator
+`simulateReference` stays what it was (it reads the footprint through the
+known-clearance evidence and tracks peer separation, which the sampler's body
+does not): the one body is the sampler's, on both backends.
+The arm64 onboard image (item 27 block 2) rebuilt with the CPU engine as the
+node's engine: 154 of 156 unit tests under qemu on 2026-10-30 (3b5746c3), the
+two failures those of 2026-10-26 (`log/tools/board/onboard_arm64.log`).
+
+**Step 2, way B, done on 2026-10-30** (the same goal, part 3; code baca86d5
+and 4de27c60). Vulkan compute runs in the dev container after one change
+(`scripts/container_run.sh`: the driver's graphics capability and the host's
+ICD file mounted where the loader looks; the toolkit already injects
+`libGLX_nvidia` with the GPU): `vulkan_probe` sees the RTX 3060 (API 1.4,
+two compute families, 1024 invocations a work group, 48 KB shared, 64-bit
+integers), and `glslc` was in the image. The engine: the rollout body once
+more in GLSL (`src/mppi/shaders/mppi_rollout.comp`, every law of
+`mppi_rollout_body.hpp` line for line, since a shader cannot share C++; the
+ESDF a storage buffer read by cell), the noise (`mppi_noise.comp`, the body's
+hash on 64-bit integers) and the weighted update (`mppi_update.comp`, a work
+group a step), compiled by glslc at build time and carried in the library as
+SPIR-V words (`cmake/embed_spirv.cmake`); a small compute runtime
+(`src/mppi/vulkan_compute.hpp`); the CPU engine's tick on a population device
+(`src/mppi/mppi_population_device.hpp`: the host loops, or the Vulkan device
+with the noise, the rollouts and the weighted sum on the GPU and the
+reductions, the repair and the evaluation on the host, one code);
+`MppiVulkanEngine` behind `mppi_engine` and `MPPI_ENGINE=vulkan`, built where
+the loader and glslc are (`DRONE_CITY_NAV_ENABLE_VULKAN_MPPI`). Parity
+(`tests/mppi_vulkan_engine_parity_test.cpp`, a wall and a pillar, without and
+with a route and the route-directed candidate): against the CPU engine
+4.4e-6 m/s^2 on the controls, 2.4e-6 and 3.1e-6 relative on the weights and
+the cost; against the CUDA engine 1.4e-6, 1.4e-6 and 8.1e-7; the noise alone
+8.7e-6 against `rollout::noiseSample` (bounds 1e-5 and 1e-4, the measured
+spread, never loosened). The benchmark (`mppi_engine_benchmark`, the corridor
+scene, 120 steps, the urban body, RTX 3060; `log/tools/ilv/part3/vulkan_bench.txt`):
+the population's milliseconds p50 / p95 at 8192, 4096, 2048 and 1024 rollouts
+are CUDA 6.8 / 7.4, 6.2 / 6.9, 6.2 / 6.7, 6.0 / 6.8; Vulkan 10.8 / 11.5,
+9.4 / 10.2, 8.9 / 9.9, 8.7 / 9.7; CPU 3143 / 3191, 1563 / 1601, 776 / 805,
+397 / 404: Vulkan 1.4 to 1.6 times CUDA on the same GPU (the storage-buffer
+ESDF against CUDA's texture, no fast math, a fence wait a dispatch). In flight
+(r2484 to r2494, the acceptance location under the imperfections profile):
+the lidar at 8192 five of five, no contact, 2.197 to 2.689 m/s, B 0.33 to
+1.40 m; the cameras at 2048 (K48's rule) five of five without contact, the
+speed 1.183 to 1.296 m/s, B 0.91 to 3.60 m, two B misses and one speed under
+R3, the estimate's heading drift under the profile (the frame turn -2.5 and
+-2.1 degrees on the misses against 0.2 to 1.2 on the hits; item 35's register
+row), the same rate as on CUDA (B 4 of 25, R3 10 of 25); the clean vehicle on
+the cameras (r2497, r2498, r2505) 1.190, 1.209, 1.424 m/s, B 0.70 to 1.89 m,
+no contact. The planner's tick on Vulkan is 25.4 / 34.4 ms on the cameras
+against CUDA's 22.7 / 32.0 and 31.5 to 32.7 / 65.8 to 78.2 on the lidar
+against 25.9 to 27.3 / 32.8 to 58.8; the planner's process takes less CPU
+(1.31 against 1.55 cores: no CUDA spin on the host); the flight's real-time
+factor of the counted flights the same (p50 0.84 to 0.94 against 0.74 to
+0.98), the GPU 7 to 9 points busier (37 to 40 percent against 29 to 35 on
+the cameras, 43 to 48 against 34 to 39 on the lidar); six camera attempts of
+the clean series were voided by the real-time factor, under a foreign host
+load in part. The stage's flight clauses for the stereo set under the profile
+(B within 2 m, R3 at or above 1.2 m/s in every flight) are not met and are
+closed by record: the two B misses and the speed miss are the estimate's
+heading drift under the imperfections profile (the register's row of item
+35, class (b)), which no engine touches (the parity 1.4e-6) and which CUDA
+shows at the same rate (part 1: B 4 of 25, R3 10 of 25; part 2's base: B 2
+of 5, R3 3 of 5); the lidar set, whose estimate registers against its map,
+passes five of five on Vulkan as on CUDA. The ways out are the register
+row's: a heading reference where one exists, registration of the depth
+against the long-lived map along the way, or online camera-to-IMU rotation
+and bias; until one is built the stereo set's acceptance under the profile
+is not guaranteed on any engine. The clean vehicle, which judges an engine
+alone (K48's camera flights were clean), was flown the same day on both:
+eight camera flights on Vulkan at 2048 (r2497, r2498, r2505, r2507, r2509,
+r2511, r2512, r2513) 1.190, 1.209, 1.424, 1.242, 1.197, 1.144, 1.099 and
+1.280 m/s (mean 1.223, four under R3), B 0.42 to 1.89 m, no contact; five on
+CUDA (r2514 to r2517, r2520) 1.397, 1.395, 1.192, 1.278 and 1.394 (mean
+1.331, one under R3), B 0.68 to 1.09 m, no contact. R3 for the stereo set
+at 1.2 m/s is marginal on both engines on this day's host (K48's 2048 group
+gave 1.418 on 2026-10-26, part 1's clean base 1.248 to 1.345), and the 8
+percent between the engines is suggestive, not proven (eight against five
+flights, a spread of 0.10 m/s each; the paths part by the noise's last bits
+as the twins of item 36 do): the holds are alike (0.5 to 2.0 against 0.3 to
+1.0 percent), the sensor-braking limiter rules both, the route-clearance
+limit's median sits lower on Vulkan (1.3 to 3.0 against 2.0 to 2.7 m/s),
+the planner's tick 25 to 27 against 22 to 23 ms, the GPU 34 to 40 against
+27 to 32 percent. The stage's camera clauses are therefore closed by record
+with these numbers; the ways to settle the 8 percent are a longer series on
+a quiet host, the tick's cost taken out of the Vulkan engine (the debt row:
+an `image3D`, a timeline semaphore), and the board itself, where no camera
+rendering shares the GPU.
+Step 3 — the rollout count the Adreno 650 carries in the tick and whether its
+Vulkan has `shaderInt64` — needs the VOXL 2 and is item 37's point 1 since
+2026-11-02; the cooperative candidates stay outside the CPU engine (not a
+flight engine); the Vulkan tick's cost over CUDA's is the register's row.
 
 ### 29. Telling A Failing Light From A Dark Place (Completed)
 
