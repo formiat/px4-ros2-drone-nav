@@ -1973,7 +1973,18 @@ frame's turn -0.60 to +0.61 degrees), the lidar set five of five (B 0.19 to
 register's attempt row); the
 module's cost is the registration's as before (the estimator's frame 64.3 /
 81.2 ms at p50 / p95 on the six measuring flights against K53's 65.4 /
-81.7, every reading logged).
+81.7, every reading logged). The part of the goal of 2026-10-30 that carried
+this item closed on the blocker its brief named: the map yields the frame no
+surface laid long enough ago on 88.4 to 99.7 percent of the registrations
+even on the clean flights (r2686 to r2688: 88.4, 92.3 and 99.5 percent; the
+profile's r2691, r2694 and r2695: 97.4, 96.5 and 94.7; the clean set of
+stage 2.3, r2702 to r2707: 95.0 to 99.7), against the brief's 80 percent —
+the map holds some 340 thousand points at a flight's end and a frame brings
+about 500 within 6 m, but what the forward pair sees was laid seconds
+before, so the density that matters, cells older than 20 s within the
+depth's reach, is what a one-way route lacks; the ways are the item's
+(above), or a surface representation of the stereo depth's own that keeps
+what the pair saw long ago within reach of a later frame.
 
 ## Completed
 
