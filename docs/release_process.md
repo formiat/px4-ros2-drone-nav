@@ -13,6 +13,17 @@ prepares everything up to the release commit on that word and stops there
 unless the word covers the tag and the push too
 ([`docs/autonomous_development.md`](autonomous_development.md)).
 
+## 0. The Roadmap First
+
+Before any work starts, a release or not, the roadmap is read above its
+`## Completed` heading: an item that is finished but still listed there as
+open is marked as done, with its closing line (the date, the commit, the
+runs), and moved below `## Completed` in its place; an item that is only
+partly done keeps its place with what remains written in it. The release
+entry and its roadmap lines (step 4) are built from the roadmap as it then
+stands, so an item that was done and not moved ships unnamed and its state
+is wrong in two places. The owner set this rule on 2026-11-02.
+
 ## 1. Decide What Ships
 
 - The version. MINOR for a release that adds capability (every release so
