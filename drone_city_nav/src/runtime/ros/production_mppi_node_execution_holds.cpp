@@ -820,28 +820,18 @@ ProductionMppiExecutionPublication
 ProductionMppiNode::publishExplicitHold(const ProductionMppiExecutionCycle& cycle,
                                         const Point3& hold_position,
                                         const ProductionMppiExecutionReason reason) {
-  const bool mission_goal_hold =
-      reason == ProductionMppiExecutionReason::kGoalCapture &&
-      cycle.route.planning_state ==
-          ProductionMppiPlanningState::kMissionGoalPositionHold;
+  // The goal's hold pins the vehicle's measured rest on every lease: a hold
+  // held to the position it pinned first could not be certified once the
+  // vehicle had moved from it (r2729: 713 leases refused as stale, no capture
+  // hold for 700 s), so a vehicle sinking under the autopilot's own altitude
+  // hold is followed (r2719), and the register carries the sink.
   const ExecutionHoldIntent3D intent =
-      mission_goal_hold
+      reason == ProductionMppiExecutionReason::kGoalCapture &&
+              cycle.route.planning_state ==
+                  ProductionMppiPlanningState::kMissionGoalPositionHold
           ? ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm
           : ExecutionHoldIntent3D::kExplicitTransfer;
-  if (!mission_goal_hold) {
-    return publishPositionHold(cycle, hold_position, reason, intent);
-  }
-  // The goal's hold keeps the rest position it pinned first for as long as the
-  // vehicle stays within the capture radius of it: each lease expires during
-  // the acknowledgement attempt, and a hold pinned again at the current rest
-  // followed a vehicle sinking under the autopilot's own altitude hold (r2719,
-  // 1.5 m in 300 s onto the roof below, the estimate steady against the truth).
-  if (!mission_goal_hold_anchor_.has_value() ||
-      distance3D(*mission_goal_hold_anchor_, hold_position) >
-          config_.execution.mission_waypoint_capture_gate.goal_radius_m) {
-    mission_goal_hold_anchor_ = hold_position;
-  }
-  return publishPositionHold(cycle, *mission_goal_hold_anchor_, reason, intent);
+  return publishPositionHold(cycle, hold_position, reason, intent);
 }
 
 } // namespace drone_city_nav

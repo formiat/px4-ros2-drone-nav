@@ -353,10 +353,6 @@ private:
 
   const ProductionMppiConfig config_;
   Point3 mission_goal_{216.0, 378.0, 18.0};
-  // The position the mission goal's hold pinned first: a hold re-leased from
-  // the vehicle's current rest followed a vehicle sinking under the
-  // autopilot's own altitude hold (r2719, 1.5 m in 300 s onto a roof).
-  std::optional<Point3> mission_goal_hold_anchor_;
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
