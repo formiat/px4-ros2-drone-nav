@@ -381,6 +381,16 @@ smoothed over half a second, moves the height the features last gave, as a
 pseudo-measurement of 0.3 m. The vertical error then stays where it was
 when the light went (0.7 to 0.9 m over the severe flights of r794).
 
+**The barometer in the light too (K58).** The features measure the height
+against what they triangulated from the same drifting pose, so under the
+imperfections profile the accelerometer's bias walk drifted the height
+1.2 m in 250 s and r2721, holding 0.8 m lower than it stood, climbed a rotor
+into an eave. Since 2026-11-02 the barometer's height since the declared
+pose is a prior on every frame (a pseudo-measurement of 0.5 m, the zero
+taken at the initialisation and at every reinitialisation), the lidar's K45
+for the stereo set: the vertical error's p95 over the profile set 0.22 to
+0.79 m against 0.72 to 1.47 before.
+
 **Lost for the flight.** When the ten seconds are spent the estimator falls
 silent and stays silent, as after an IMU hole it could not bridge: r820 lay
 landed in the dark while its unpublished state drifted 35 m, came back

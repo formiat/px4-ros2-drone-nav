@@ -16,6 +16,13 @@ release names the asset tags it was validated with.
   predicate of the payload and of the identity's time window (r2719: a terminal
   acknowledgement rejected as "invalid" left the mission holding at its goal
   for 300 s, and the hold followed the sinking vehicle onto the roof below).
+- The barometer's height since the declared pose is a prior on the stereo
+  estimate's height on every frame (K58, the lidar's K45 for the stereo set):
+  r2721's height drifted 1.2 m in 250 s under the imperfections profile and the
+  vehicle climbed into an eave; the vertical error's p95 0.22 to 0.79 m since.
+- The last waypoint's capture reports itself again on every confirmed capture
+  (K30): a terminal acknowledgement the monitor rejected left r2719 holding at
+  its goal for 300 s without its landing.
 - The open sky (roadmap item 39, stages 0 to 2): the `open_sky_baylands` world
   and its point-to-point scenario; the `hybrid` localization profile — the
   visual-inertial estimator reading the satellite fixes, every fix one

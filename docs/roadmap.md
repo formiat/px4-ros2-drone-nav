@@ -1986,6 +1986,25 @@ depth's reach, is what a one-way route lacks; the ways are the item's
 (above), or a surface representation of the stereo depth's own that keeps
 what the pair saw long ago within reach of a later frame.
 
+**Repaired after the acting series (2026-11-02, 676d0c84 and 10f08a15):**
+the two contacts' causes outside the registration. The last waypoint's
+capture reports itself again on every confirmed capture (K30), so a
+terminal acknowledgement the monitor rejects is replaced and the landing
+follows (r2719's 300 s hold); the barometer's height is a prior on the
+stereo estimate's height on every frame (K58), the lidar's K45 for the
+stereo set (r2721's 1.2 m of height drift). A hold anchored to the position
+it pinned first, tried against r2719's sink, was refused as stale once the
+vehicle had moved (r2729, the lidar: no capture hold for 700 s) and was
+reverted; the sink stays in the register. The groups flown again on
+10f08a15: the stereo set under the profile r2733 to r2738, B 2.42, 1.02,
+1.06, 1.14 and 1.64 m (four of five within 2 m), 1.284 m/s, frame turns
+-2.28 to +1.88 degrees, the vertical error's p95 0.30 to 0.79 m, no
+contact, the landing five of five; the lidar set r2739 to r2743 five of
+five, B 0.24 to 0.79 m, 2.362 m/s; the dark void r2744 to r2746 three of
+three by K47 (2.51, 4.67 and 3.04 m against 5.5 to 6.2 allowed) with no
+registration read in the void. The item's criterion (five of five) stays
+unmet by the heading's drift, which this item is about.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
