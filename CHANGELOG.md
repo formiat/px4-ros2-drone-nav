@@ -6,6 +6,15 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The source size contract reviewed with the owner (a production source at most
+  1000 non-blank lines, a test 1500, a band from 90 percent in which a file only
+  shrinks or is split, never squeezed to fit) and the seven sources in the band
+  split by theme, every member or block moved whole: the simulation runner's
+  helpers into the sourced runtimes, the mission check's estimator checks into
+  `scripts/localization_evidence.py`, the launch arguments into
+  `launch_arguments.py`, the stereo estimator's update laws, the planner's
+  diagnostics file record, the mission monitor and the stereo depth node each
+  as a header and themed sources. The acceptance flown again on that code.
 - The stereo estimate's registration against its own map as a module
   (`src/stereo_map_registration.cpp`, roadmap items 19 and 40) with a measuring
   mode (`MAP_REGISTRATION=measure`), and the measurement of roadmap item 40: on
