@@ -118,5 +118,20 @@ TEST(MissionWaypointSequenceTest, AcceptsAuthoritativeControllerCaptures) {
   EXPECT_TRUE(sequence.missionCompleted());
 }
 
+TEST(MissionWaypointSequenceTest, TheLastCaptureReportsItselfAgain) {
+  // r2719: the monitor rejected the one terminal acknowledgement and the
+  // mission never ended. A capture confirmed again after the last waypoint
+  // reports the same completion, and nothing advances.
+  MissionWaypointSequence sequence{{Point3{1.0, 2.0, 3.0}}};
+  static_cast<void>(sequence.acknowledgeGoalCapture());
+  const MissionWaypointUpdate again = sequence.acknowledgeGoalCapture();
+  EXPECT_TRUE(again.waypoint_completed);
+  EXPECT_FALSE(again.advanced);
+  EXPECT_TRUE(again.mission_completed);
+  EXPECT_EQ(again.completed_index, 0U);
+  EXPECT_EQ(sequence.completedWaypointCount(), 1U);
+  EXPECT_EQ(sequence.activeIndex(), 0U);
+}
+
 } // namespace
 } // namespace drone_city_nav

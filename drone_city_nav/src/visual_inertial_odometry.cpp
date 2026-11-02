@@ -461,6 +461,30 @@ void VisualInertialOdometry::Impl::holdHeight() {
   update(jacobian, residual);
 }
 
+// The barometer's height since the declared pose as a prior on the filter's
+// height, on every frame. The features measure the height against what they
+// triangulated from the same drifting pose, so under the imperfections
+// profile (the accelerometer's bias walk) the height drifted 1.2 m in 250 s
+// and the vehicle climbed into an eave it held 0.8 m lower (r2721); the
+// lidar's registration carries the same prior (K45). The sigma is the
+// smoothed barometer's noise with room for the pressure's own drift.
+void VisualInertialOdometry::Impl::barometricHeightPrior() {
+  constexpr double kBarometricHeightSigmaM{0.5};
+  if (!barometric_height_m.has_value()) {
+    return;
+  }
+  if (!barometric_zero_m.has_value()) {
+    barometric_zero_m = *barometric_height_m + position.z();
+    return;
+  }
+  const double weight = config.observation_noise / kBarometricHeightSigmaM;
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(1, covariance.rows());
+  jacobian(0, kPosition + 2) = weight;
+  Eigen::VectorXd residual{1};
+  residual(0) = weight * (*barometric_zero_m - *barometric_height_m - position.z());
+  update(jacobian, residual);
+}
+
 // The mean reading across the rotor axis since the last frame against the
 // drag of the body's velocity there and the accelerometer's bias. The model
 // is the hover's: the rotors' speed moves the coefficient with the thrust,
@@ -586,6 +610,10 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
     state.last_imu = sample;
   }
   state.held_barometric_height_m = state.barometric_height_m;
+  state.barometric_zero_m =
+      state.barometric_height_m.has_value()
+          ? std::optional<double>{*state.barometric_height_m + state.position.z()}
+          : std::nullopt;
   state.drag_reading_sum_mps.setZero();
   state.drag_reading_s = 0.0;
   // The biases' block sits after the IMU states, before the clones' blocks.
@@ -672,6 +700,10 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   state.covariance.block<3, 3>(kAccelerometerBias, kAccelerometerBias)
       .diagonal()
       .setConstant(square(config.initial_accelerometer_bias_sigma_mps2));
+  state.barometric_zero_m =
+      state.barometric_height_m.has_value()
+          ? std::optional<double>{*state.barometric_height_m + state.position.z()}
+          : std::nullopt;
   state.initialized = true;
 }
 
@@ -785,6 +817,9 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
              static_cast<double>(stamp_ns - state.last_update_stamp_ns) * 1.0e-9 >
                  state.config.maximum_unaided_s) {
     state.holdHeight();
+  }
+  if (!state.lost) {
+    state.barometricHeightPrior();
   }
   state.fuseRotorDrag();
   estimate.healthy =

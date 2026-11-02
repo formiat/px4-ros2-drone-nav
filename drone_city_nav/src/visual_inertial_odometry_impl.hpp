@@ -97,6 +97,10 @@ struct VisualInertialOdometry::Impl {
   double held_height_ned_m{0.0};
   std::optional<double> held_barometric_height_m;
   std::optional<double> barometric_height_m;
+  // The barometer's reading at the height the filter was declared at: the
+  // height the barometer gives since is a prior on every frame (r2721:
+  // under the imperfections profile the height drifted 1.2 m in 250 s).
+  std::optional<double> barometric_zero_m;
   // The void (K46): the pair's judgment, the void's state and its time.
   VisualInertialVoid in_void;
   // The accelerometer across the rotor axis, integrated since the last frame.
@@ -141,6 +145,7 @@ struct VisualInertialOdometry::Impl {
   void marginalizeOldestClone();
   void judgeDeadReckoning(VisualInertialEstimate& estimate) const;
   void holdHeight();
+  void barometricHeightPrior();
   void fuseRotorDrag();
 };
 

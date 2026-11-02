@@ -475,6 +475,59 @@ TEST(VisualInertialOdometry,
   }
 }
 
+TEST(VisualInertialOdometry, TheBarometerBoundsTheHeightsDrift) {
+  // r2721: a biased accelerometer walked the height 1.2 m in 250 s under the
+  // imperfections profile. With the barometer stated, a stretch on the IMU
+  // alone (frames with nothing in them, shorter than the unaided timeout)
+  // keeps the height; without it the bias walks the height away.
+  VisualInertialOdometryConfig config = testConfig();
+  // The stretch stays short of the unaided timeout, past which the height
+  // is held still anyway.
+  config.maximum_unaided_s = 5.0;
+  for (const bool with_barometer : {false, true}) {
+    std::mt19937 generator{7U};
+    const std::vector<Eigen::Vector3d> points = landmarks(generator);
+    const std::vector<Eigen::Vector3d> none;
+    VisualInertialOdometry odometry{config};
+    const auto barometer = [&](const double t) {
+      if (with_barometer) {
+        odometry.addBarometricHeight(100.0 - Motion::position(t).z());
+      }
+    };
+    barometer(0.0);
+    odometry.initialize(0, Motion::position(0.0), 0.0);
+    const Eigen::Vector3d bias_body{0.0, 0.0, -0.5};
+    std::int64_t imu_stamp = 0;
+    std::int64_t stamp = 0;
+    for (std::int64_t frame = 1; frame <= 45; ++frame) {
+      stamp = frame * kFramePeriodNs;
+      const double t = static_cast<double>(stamp) * 1.0e-9;
+      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+        VisualInertialImuSample sample =
+            Motion::imu(imu_stamp, Eigen::Vector3d::Zero());
+        // The bias walks in once the features are gone: one the features saw
+        // the filter would have learned.
+        if (frame > 20) {
+          sample.accelerometer_mps2 += bias_body;
+        }
+        odometry.addImu(sample);
+      }
+      barometer(t);
+      static_cast<void>(
+          odometry.addFrame(stamp, observe(config, t, frame <= 20 ? points : none,
+                                           config.observation_noise, generator)));
+    }
+    const double height_error_m =
+        std::abs(odometry.predicted(stamp + 1'000'000).position_ned_m.z() -
+                 Motion::position(static_cast<double>(stamp) * 1.0e-9).z());
+    if (with_barometer) {
+      EXPECT_LT(height_error_m, 0.3) << height_error_m;
+    } else {
+      EXPECT_GT(height_error_m, 0.6) << height_error_m;
+    }
+  }
+}
+
 TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
   // No camera observes the rotation about gravity or the position of the
   // whole scene; with first-estimate Jacobians the filter's certainty about

@@ -124,6 +124,13 @@ bool MissionWaypointSequence::physicalGoalHoldReady(
 MissionWaypointUpdate MissionWaypointSequence::acknowledgeGoalCapture() noexcept {
   MissionWaypointUpdate update;
   if (mission_completed_) {
+    // The last waypoint's capture reports itself again on every confirmed
+    // capture after the first: the monitor admits one acknowledgement
+    // exactly once and takes a higher sequence of the same completion in
+    // its place, so a first one it rejected (r2719: "invalid", the mission
+    // then held at its goal for 300 s without its landing) is not the last.
+    update.waypoint_completed = true;
+    update.completed_index = active_index_;
     update.mission_completed = true;
     return update;
   }
