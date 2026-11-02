@@ -554,6 +554,16 @@ to 0.4 percent of the path: nothing old lies there to register against. The
 lidar estimator is unchanged: its own submap bounds it, 0.15 to 0.30 m at the
 end of the doubled path (r727 to r731).
 
+Along the way the registration reads nothing of the heading's accumulated
+drift (roadmap item 40, measured 2026-11-01, specification K57): on six Urban
+flights read without acting (`map_registration: measure`, `MAP_REGISTRATION`
+on a flight) the readings of the acting grade averaged +0.1 to +0.7 degrees
+with a scatter of 0.7 to 1.6 against a frame turn of 0.2 to 1.8, correlation
+-0.4 to +0.4 — a cell the forward pair sees on a first pass was laid from a
+pose carrying nearly the same drift, and only cells laid long ago carry the
+difference. The registration lives in `src/stereo_map_registration.cpp` since
+then, unchanged in what it does.
+
 ### On Real Recordings (EuRoC MAV)
 
 Roadmap item 25: the camera estimator replayed on real recordings, with no

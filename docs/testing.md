@@ -491,7 +491,10 @@ uncertainty, two sigma, plus the capture radius, as the goal in the void is.
 and the checks to synthetic records; `gnss_trust_test` the law (the window,
 each gate, the return, the outage, the drift allowance) and
 `visual_inertial_odometry_test` the fused fix's pull with the window's
-inflation.
+inflation; `stereo_map_registration_test` the registration against the
+estimator's own map (a room, a frame turned and shifted read and converged
+to, the measuring mode moving nothing, the freshly laid map silent), and
+`MAP_REGISTRATION=measure` reaching the estimator's parameter.
 
 ## Adding Tests
 

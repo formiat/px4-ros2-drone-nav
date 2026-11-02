@@ -1920,6 +1920,49 @@ R3's target, the frame turn per flight is within the clean vehicle's 0.7
 degrees, the lidar set and the void crossings are unchanged on the same
 code, and the register's row on the heading drift leaves.
 
+**Measured on 2026-11-01 (stages 2.0 and 2.1 of the goal of 2026-10-30, the
+commit 15181758; Р2.6 of that goal):** the registration against the vehicle's
+own map that item 19 built is this item's registration — the depth thinned
+to surfaces within 6 m is laid into the estimator's point-plane map at the
+corrected pose and registered every 0.5 s against the cells laid more than
+20 s before (`src/stereo_map_registration.cpp`, the module the node's
+registration moved into, with a measuring mode `map_registration: measure`,
+`MAP_REGISTRATION=measure` on a flight, that reads every registration
+without moving the frame). Read without acting on six Urban flights (three
+clean, three under the imperfections profile): 611 to 796 readings a flight,
+88 to 99 percent "weak" (nothing old within the depth's reach), 2 to 80 of
+the acting grade on each flight's turns and revisits in its last minutes, and
+of those 0 to 50 inside the law's gates (the innovation within 5 degrees,
+the heading's information 0.5 a point or more); their yaw innovations
+averaged +0.1 to +0.7 degrees with a scatter of 0.7 to 1.6 (tens of degrees
+outside the gates, the fit slid into another configuration), against the
+frame's turn of 0.2 to 1.8 degrees over the flight (the profile: +1.20,
++0.80, +1.80; B at 1.17, 1.53 and 2.62 m) growing steadily along the route:
+the correlation with the correction the turn needs lies between -0.4 and
++0.4, the sign holds on two flights and not on a third, and the law's steps
+summed as if acting came to 4 to 12 times the turn on the clean flights and
+the wrong way on a profile flight. The physics: a cell the forward pair sees
+on a first pass was laid seconds to tens of seconds before from a pose
+carrying nearly the same drift, so a registration measures the drift accrued
+since (0.1 to 0.3 degrees) under the fit's own scatter (a residual of 0.05 m
+over a lever of 4 m is about a degree); the accumulated drift is observable
+only against cells laid long ago, which a one-way route on a 6.4 m forward
+pair never shows — where it does (the return of item 19; r2673's turns at
+its minutes 5 and 6) the registration moves the heading the right way.
+Acting along the way would add the scatter to the heading and nothing else,
+so the acting stage was not flown and this item stays open, its criterion
+unmet, with the ways that remain: an absolute heading source (the
+magnetometer, 5 to 6 degrees off in the simulator; item 39 stage 3), sight
+to the sides or behind dense enough for a fit (a second pair, or the ring
+with more rays), or routes that revisit. The rest is unchanged on that
+code: the dark void three of three by K47 with no registration read in the
+void, the clean stereo set five of five (B 0.70 to 1.19 m, 1.30 m/s, the
+frame's turn -0.60 to +0.61 degrees), the lidar set five of five (B 0.19 to
+0.72 m, 2.23 m/s on a shared host — the register's attempt row); the
+module's cost is the registration's as before (the estimator's frame 64.3 /
+81.2 ms at p50 / p95 on the six measuring flights against K53's 65.4 /
+81.7, every reading logged).
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;

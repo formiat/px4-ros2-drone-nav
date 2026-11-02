@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The stereo estimate's registration against its own map as a module
+  (`src/stereo_map_registration.cpp`, roadmap items 19 and 40) with a measuring
+  mode (`MAP_REGISTRATION=measure`), and the measurement of roadmap item 40: on
+  a one-way route the registration reads at most a tenth of the heading's
+  drift with no steady sign (six Urban flights), so nothing acts along the way;
+  the item stays open with the physics and the ways that remain (K57).
 - The open sky (roadmap item 39, stages 0 to 2): the `open_sky_baylands` world
   and its point-to-point scenario; the `hybrid` localization profile — the
   visual-inertial estimator reading the satellite fixes, every fix one
