@@ -37,7 +37,7 @@ class HybridProfileTest(unittest.TestCase):
         self.assertIn("GNSS_FAULTS GNSS_FAULT_SEED", runtime)
         whitelist = (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8")
         self.assertIn("\n  GNSS_FAULTS\n  GNSS_FAULT_SEED\n", whitelist)
-        check = (REPOSITORY / "scripts/headless_runtime_evidence.py").read_text(encoding="utf-8")
+        check = (REPOSITORY / "scripts/localization_evidence.py").read_text(encoding="utf-8")
         self.assertIn('if profile in ("visual_inertial", "hybrid"):', check)
         self.assertIn("from gnss_trust_evidence import report_gnss_faults, report_gnss_trust", check)
         self.assertIn("def report_gnss_trust", (REPOSITORY / "scripts/gnss_trust_evidence.py").read_text(encoding="utf-8"))
