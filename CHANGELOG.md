@@ -12,6 +12,10 @@ release names the asset tags it was validated with.
   a one-way route the registration reads at most a tenth of the heading's
   drift with no steady sign (six Urban flights), so nothing acts along the way;
   the item stays open with the physics and the ways that remain (K57).
+- The mission monitor's rejection line of a waypoint acknowledgement names every
+  predicate of the payload and of the identity's time window (r2719: a terminal
+  acknowledgement rejected as "invalid" left the mission holding at its goal
+  for 300 s, and the hold followed the sinking vehicle onto the roof below).
 - The open sky (roadmap item 39, stages 0 to 2): the `open_sky_baylands` world
   and its point-to-point scenario; the `hybrid` localization profile — the
   visual-inertial estimator reading the satellite fixes, every fix one

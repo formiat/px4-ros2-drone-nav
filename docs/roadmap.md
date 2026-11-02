@@ -1949,9 +1949,20 @@ over a lever of 4 m is about a degree); the accumulated drift is observable
 only against cells laid long ago, which a one-way route on a 6.4 m forward
 pair never shows — where it does (the return of item 19; r2673's turns at
 its minutes 5 and 6) the registration moves the heading the right way.
-Acting along the way would add the scatter to the heading and nothing else,
-so the acting stage was not flown and this item stays open, its criterion
-unmet, with the ways that remain: an absolute heading source (the
+Acting along the way (the law of item 19, the repository's default) was
+then flown on the stereo set under the profile on the same code (r2713 to
+r2721): three arrivals at B 1.48 to 1.89 m with frame turns of -0.54 to
++0.80 degrees (17, 17 and 0 steps applied), and two contacts whose causes
+lie outside the registration — r2719 held at its goal for 300 s after the
+monitor rejected the terminal waypoint acknowledgement, and the hold,
+re-leased from the vehicle's current position, followed the vehicle sinking
+0.005 m/s onto the roof below (the monitor now names the rejected
+predicate; the register's row); r2721 flew into a two-storey building's
+eave with the estimate 1.2 m off and 0.8 m low after a drift of 2.3 m over
+250 s under the profile (the register's row on the drift, now with a
+contact in Urban). The acting registration changes neither the turn nor the
+drift measurably, so this item stays open, its criterion unmet, with the
+ways that remain: an absolute heading source (the
 magnetometer, 5 to 6 degrees off in the simulator; item 39 stage 3), sight
 to the sides or behind dense enough for a fit (a second pair, or the ring
 with more rays), or routes that revisit. The rest is unchanged on that
