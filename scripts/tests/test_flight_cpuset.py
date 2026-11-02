@@ -28,7 +28,8 @@ class FlightCpusetContract(unittest.TestCase):
         self.assertIn("SMOKE_FACE FLIGHT_CPUSET; do", runtime)
 
     def test_launcher_derives_the_masks_from_the_allowed_cpus(self):
-        launcher = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text()
+        launcher = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text() + (
+            REPOSITORY / "scripts/simulation_runtime_helpers.sh").read_text()
         self.assertIn("< <(derive_subsystem_cpu_lists)", launcher)
         self.assertNotIn('control_cpu_list="${CONTROL_CPU_LIST:-0-$((cpu_count / 2 - 1))}"', launcher)
         self.assertIn("cpuset='$(taskset -pc $$ | sed 's/.*: //')'", launcher)

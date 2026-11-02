@@ -152,3 +152,30 @@ px4_parameter_stream() {
     sleep 3600
   done
 }
+
+# The PX4 SITL instances the runner starts and resets (moved whole from
+# run_drone_nav_sim.sh on 2026-11-02): px4_dir, px4_build_dir and the control
+# core list are the runner's variables at the time of the call.
+run_px4_sitl() {
+  cd "${px4_dir}"
+  exec_with_cpu_affinity "${control_cpu_list}" \
+    "${px4_build_dir}/bin/px4" -i 0
+}
+
+run_px4_instance() {
+  local instance="$1"
+  cd "${px4_dir}"
+  exec_with_cpu_affinity "${control_cpu_list}" \
+    "${px4_build_dir}/bin/px4" -i "${instance}"
+}
+
+reset_px4_instance_state() {
+  local instance="$1"
+  local rootfs_dir="${px4_build_dir}/rootfs/${instance}"
+
+  # SITL state must not carry sensor calibration or a stored mission between runs.
+  rm -f -- \
+    "${rootfs_dir}/parameters.bson" \
+    "${rootfs_dir}/parameters_backup.bson" \
+    "${rootfs_dir}/dataman"
+}

@@ -86,8 +86,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.text = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (RUNNER, PX4_PARAMETER_RUNTIME, LIDAR_PROFILE_RUNTIME,
-                         RESOURCE_RUNTIME)
+            for path in (RUNNER, RUNTIME_HELPERS, PX4_PARAMETER_RUNTIME,
+                         LIDAR_PROFILE_RUNTIME, RESOURCE_RUNTIME)
         )
         cls.makefile_text = MAKEFILE.read_text(encoding="utf-8")
         cls.lidar_profile_support_text = LIDAR_PROFILE_SUPPORT_FILE.read_text(
