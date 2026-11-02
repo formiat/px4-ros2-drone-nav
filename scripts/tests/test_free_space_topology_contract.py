@@ -28,7 +28,8 @@ class FreeSpaceTopologyContractTest(unittest.TestCase):
 
     def test_launches_forward_an_explicit_topology_path(self) -> None:
         multi_vehicle_source = MULTI_VEHICLE_LAUNCH.read_text(encoding="utf-8")
-        city_nav_source = CITY_NAV_LAUNCH.read_text(encoding="utf-8")
+        city_nav_source = CITY_NAV_LAUNCH.read_text(encoding="utf-8") + CITY_NAV_LAUNCH.with_name(
+            "launch_arguments.py").read_text(encoding="utf-8")
         self.assertIn(
             '"static_free_space_topology_3d_path": static_topology_path',
             multi_vehicle_source,
@@ -45,10 +46,9 @@ class FreeSpaceTopologyContractTest(unittest.TestCase):
         self.assertIn(
             '"static_free_space_topology_3d_path": (', city_nav_source
         )
-        self.assertIn(
-            'DeclareLaunchArgument(\n'
-            '                "static_free_space_topology_3d_path"',
+        self.assertRegex(
             city_nav_source,
+            r'DeclareLaunchArgument\(\s*"static_free_space_topology_3d_path"',
         )
         self.assertIn(
             '{"static_free_space_topology_3d_path": ""}', city_nav_source

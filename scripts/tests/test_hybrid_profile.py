@@ -25,7 +25,8 @@ class HybridProfileTest(unittest.TestCase):
         self.assertIn('[[ "${localization_profile}" == "hybrid" ]] && ros_launch_args+=(gnss_topic:=/drone_city_nav/simulation/gnss)', run)
         px4 = (REPOSITORY / "scripts/px4_parameter_runtime.sh").read_text(encoding="utf-8")
         self.assertIn('"${localization_profile}" == "visual_inertial" || "${localization_profile}" == "hybrid"', px4)
-        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8") + (
+            REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8")
         self.assertIn("from localization_profile import", launch)
         self.assertIn('"gnss_topic",', launch)
         profiles = (REPOSITORY / "drone_city_nav/launch/localization_profile.py").read_text(encoding="utf-8")
@@ -57,7 +58,8 @@ class HybridProfileTest(unittest.TestCase):
         run = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
         self.assertIn('ros_launch_args+=(map_registration:="${MAP_REGISTRATION}")', run)
         self.assertIn("  MAP_REGISTRATION\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
-        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8") + (
+            REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8")
         self.assertIn('"map_registration",', launch)
         node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<std::string>("map_registration", "act") != "measure"', node)

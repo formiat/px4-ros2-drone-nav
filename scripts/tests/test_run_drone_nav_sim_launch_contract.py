@@ -103,7 +103,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
-        cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
+        cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8") + LAUNCH_FILE.with_name(
+            "launch_arguments.py").read_text(encoding="utf-8")
         cls.multi_vehicle_launch_text = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (
@@ -317,9 +318,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn(
             'DEFAULT_LIDAR_PROFILE = "3d"', self.lidar_profile_support_text
         )
-        self.assertIn(
-            '"lidar_profile",\n                default_value=DEFAULT_LIDAR_PROFILE',
+        self.assertRegex(
             self.launch_text,
+            r'"lidar_profile",\s*default_value=DEFAULT_LIDAR_PROFILE',
         )
         self.assertIn(
             '"lidar_profile", default_value=_DEFAULT_LIDAR_PROFILE',
@@ -350,7 +351,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("load_point_to_point_sim_scenario", self.multi_vehicle_runtime_text)
         self.assertIn("point_to_point_scenario_path:=", self.text)
         self.assertIn("load_point_to_point_scenario", self.launch_text)
-        self.assertIn('DeclareLaunchArgument(\n                "point_to_point_scenario_path"', self.launch_text)
+        self.assertRegex(self.launch_text, r'DeclareLaunchArgument\(\s*"point_to_point_scenario_path"')
         self.assertIn('"px4_local_origin_x_m": start_x_m', self.launch_text)
         self.assertIn('"px4_local_origin_z_m": start_z_m', self.launch_text)
         self.assertIn('px4_to_map_matrix = scenario["px4_to_map_matrix"]', self.launch_text)

@@ -90,7 +90,8 @@ class SensorProfileTest(unittest.TestCase):
                          stereo_tof_topics("world", "model")[2]["returns_topic"])
 
     def test_both_launches_and_the_makefile_default_to_the_profile(self) -> None:
-        single = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text()
+        single = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text() + (
+            REPO_ROOT / "drone_city_nav/launch/launch_arguments.py").read_text()
         multi = (REPO_ROOT / "drone_city_nav/launch/multi_vehicle.launch.py").read_text()
         self.assertIn("default_value=DEFAULT_NAVIGATION_SENSOR_PROFILE", single)
         self.assertIn("default_value=DEFAULT_CAMERA_PROFILE", single)
