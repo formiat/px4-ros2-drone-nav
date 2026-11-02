@@ -129,6 +129,9 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         sources = {name: (REPOSITORY / "drone_city_nav/src" / name).read_text() for name in (
             "mission_monitor_node.cpp", "collision_crash_node.cpp",
             "visual_inertial_odometry_node.cpp")}
+        # The monitor's sources are three since 2026-11-02 (the source size contract).
+        sources["mission_monitor_node.cpp"] = "".join(
+            path.read_text() for path in sorted((REPOSITORY / "drone_city_nav/src").glob("mission_monitor_node*.cpp")))
         for text in sources.values():
             self.assertIn('"/drone_city_nav/mission_events"', text)
         self.assertIn('"MISSION_READINESS ready=true"', sources["mission_monitor_node.cpp"])
