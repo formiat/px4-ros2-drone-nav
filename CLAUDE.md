@@ -31,6 +31,10 @@ which read the documents).
 
 Keep code comments and repository documentation in English.
 
+A release is cut by [docs/release_process.md](docs/release_process.md), on the
+owner's word and in its order; `tools/release_check.sh X.Y.Z` reads every place the
+version lives before the release commit.
+
 An agent working here follows [docs/autonomous_development.md](docs/autonomous_development.md):
 the goal file, the registers, the flight rules, the reports, and what is the
 owner's alone. The brief of an unattended session is written by

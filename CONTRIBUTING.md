@@ -204,21 +204,15 @@ kept.
 ## Releases
 
 Code releases are annotated tags `vMAJOR.MINOR.PATCH` on `main`; environment
-assets keep their own `environment-assets-*` tags. To cut a release:
-
-1. Fly the validation series on the release commit with nothing changed
-   between flights (`tools/series2.sh` runs the urban point-to-point
-   flights one at a time and records `gz_pose.csv` and `tracking.npz`); record
-   the table in `CHANGELOG.md` with the commit, the flights, the mean speed,
-   the crashes, the route availability and the planner p95.
-2. In one commit: bump `<version>` in `drone_city_nav/package.xml`, add the
-   `CHANGELOG.md` entry (validated scenario, laws in force, known
-   limitations, compatible asset tags), and update the roadmap status.
-3. Run the gate (`./tools/gates.sh`, see Before A Commit), commit, then `git tag -a vX.Y.Z -m "..."` on that commit and push `main`
-   and the tag.
-4. Publish the GitHub release from the tag with the changelog entry as its
-   text. No build artifacts are attached: the code builds from source and the
-   assets are released separately.
+assets keep their own `environment-assets-*` tags. The procedure, in order
+and with every place the version is written, is
+[`docs/release_process.md`](docs/release_process.md): the code final, the
+acceptance series flown on it (five stereo and five lidar flights through
+`tools/fly_until_valid.sh`, the table kept under `log/tools/release_vXYZ/`),
+one release commit (`package.xml`, `CHANGELOG.md`, the README's current
+release, the roadmap's shipped items) read by `tools/release_check.sh X.Y.Z`
+and the full gate, then the tag, the push and the GitHub release page with
+the changelog entry as its text — the last three on the owner's word.
 
 Every flight's runtime manifest records the package version and
 `git describe`, so a run is attributable to a release by name.

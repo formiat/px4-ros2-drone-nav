@@ -120,6 +120,7 @@ validated with a compass-grade heading of 2 degrees and more.
 - `design_questions.md`: why the stack is built as it is, the owner's questions answered.
 - `autonomous_development.md`: the rules agents work by here, with the least call on people.
 - `goal_writing.md`: how the brief for an unattended session (a goal) is written.
+- `release_process.md`: how a release is cut, with every place the version is written.
 - `replanning.md`: persistent route repair, atomic execution plans, and liveness.
 - `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.
 - `configuration.md`: parameter groups and source-of-truth guidance.
