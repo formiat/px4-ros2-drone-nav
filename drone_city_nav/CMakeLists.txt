@@ -312,6 +312,7 @@ add_drone_city_nav_layer(drone_city_nav_localization
                          src/point_plane_map_3d.cpp
                          src/visual_inertial_gnss.cpp
                          src/visual_inertial_odometry.cpp
+                         src/visual_inertial_odometry_update.cpp
                          src/visual_inertial_void.cpp)
 target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
                                                          Eigen3::Eigen)

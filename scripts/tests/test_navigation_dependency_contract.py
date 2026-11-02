@@ -298,7 +298,8 @@ class NavigationDependencyContractTest(unittest.TestCase):
         bookkeeping (K46), which read Eigen and the standard library alike."""
         standard = re.compile(r"^[a-z_]+$")
         for path in (INCLUDE / "visual_inertial_odometry.hpp",
-                     SOURCE / "visual_inertial_odometry.cpp"):
+                     SOURCE / "visual_inertial_odometry.cpp",
+                     SOURCE / "visual_inertial_odometry_update.cpp"):
             text = path.read_text(encoding="utf-8")
             for include in re.findall(r"^\s*#\s*include\s*<([^>]+)>", text, re.MULTILINE):
                 self.assertTrue(
