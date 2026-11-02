@@ -178,8 +178,11 @@ a `.keep` file; the weekly pruning deletes the rest.
 - The container workflow only (`scripts/container_run.sh`,
   `scripts/dev_shell.sh` without `-c`); environment variables reach the
   container through its whitelist and the run's manifest, both with a test.
-- C++20 everywhere; a source stays under 1000 non-empty lines (a new theme
-  goes to a new module when a file sits at the limit); public headers compile
+- C++20 everywhere; a production source stays under 1000 non-empty lines, a
+  test under 1500, and from 90 percent of the limit a file only shrinks or is
+  split: a file at its limit is refactored by theme at once, in its own
+  commit, to under the band, never squeezed by a few lines to fit (the
+  owner, 2026-11-02; CONTRIBUTING); public headers compile
   alone (the self-containment check compiles every header under `src/`, so a
   header with an external include breaks the onboard image, 2026-10-30).
 - Git: `git add` by explicit file paths only, never `-A`, `.`, `-u`, a

@@ -31,6 +31,11 @@ which read the documents).
 
 Keep code comments and repository documentation in English.
 
+A production source holds at most 1000 non-blank lines, a test 1500, and from
+90 percent of the limit it may only shrink or be split: a file at its limit is
+refactored by theme at once, in its own commit, never squeezed to fit
+(CONTRIBUTING, "Before A Commit").
+
 A release is cut by [docs/release_process.md](docs/release_process.md), on the
 owner's word and in its order; `tools/release_check.sh X.Y.Z` reads every place the
 version lives before the release commit.

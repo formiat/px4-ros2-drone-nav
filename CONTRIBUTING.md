@@ -80,8 +80,15 @@ and commit.
 - Code, comments, documents and commit messages are in English, with the
   field's standard terms (UAV, SLAM, VIO, LIO, MSCKF, GNSS-denied, D* Lite,
   MPPI).
-- A C++, launch or runner source holds at most 1000 non-blank lines; the
-  script tests enforce it.
+- A production source (C++, CUDA, Python, shell, the launch files among them)
+  holds at most 1000 non-blank lines, a test source 1500
+  (`scripts/tests/test_cpp_source_size_contract.py`). From 90 percent of its
+  limit a file is in the band: the test names it, and from there the file
+  may only shrink or be split, never grow. A file that reaches its limit, or
+  that needs a change while in the band, is refactored by theme at once, in
+  its own commit, to under the band; lines are never joined, comments never
+  cut and arguments never compressed to fit the count (the owner's rule of
+  2026-11-02: squeezing by a few lines is what the band forbids).
 - A change of behaviour comes with its test: C++ in `drone_city_nav/tests`,
   scripts and contracts in `scripts/tests`
   ([`docs/testing.md`](docs/testing.md)). No production code exists for a

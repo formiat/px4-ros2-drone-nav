@@ -48,7 +48,9 @@ make test-scripts
 ```
 
 These tests cover scripts, contracts, Gazebo log validation, topic contracts,
-source size contracts, and telemetry contracts.
+source size contracts (a production source at most 1000 non-blank lines, a
+test 1500, a file from 90 percent of its limit only shrinking or split), and
+telemetry contracts.
 
 ## Quality Gate
 
