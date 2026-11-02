@@ -1082,7 +1082,9 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   enable_project_warnings(collision_crash_node)
 endif()
 
-add_executable(mission_monitor_node src/mission_monitor_node.cpp)
+add_executable(mission_monitor_node src/mission_monitor_node.cpp
+                                    src/mission_monitor_node_return.cpp
+                                    src/mission_monitor_node_operator.cpp)
 target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
 target_link_libraries(mission_monitor_node drone_city_nav_core
                       drone_city_nav_ros_adapters ${cpp_typesupport_target})
@@ -1308,6 +1310,7 @@ enable_project_warnings(multi_vehicle_diagnostics_mux_node)
     src/runtime/ros/production_mppi_node_route_planning.cpp
     src/runtime/ros/production_mppi_node_route_lifecycle.cpp
     src/runtime/ros/production_mppi_node_diagnostics.cpp
+    src/runtime/ros/production_mppi_node_diagnostics_record.cpp
     src/runtime/ros/production_mppi_node_diagnostics_events.cpp
     src/runtime/ros/production_mppi_node_diagnostics_runtime.cpp
     src/runtime/ros/production_mppi_node_summary.cpp

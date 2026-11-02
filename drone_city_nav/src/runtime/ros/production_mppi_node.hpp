@@ -114,6 +114,9 @@ struct RawObstacleGridUpdate3D;
 [[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
 
+struct DiagnosticsTickView;
+struct NavigationDiagnosticsFileRecordDecision;
+
 class ProductionMppiNode final : public rclcpp::Node {
 public:
   explicit ProductionMppiNode(const rclcpp::NodeOptions& options);
@@ -232,6 +235,9 @@ private:
   [[nodiscard]] std::optional<MppiControllerResult3D>
   runPlanningController(ProductionMppiControllerTick tick);
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
+  void writeDiagnosticsFileRecord(
+      const DiagnosticsTickView& view,
+      const NavigationDiagnosticsFileRecordDecision& file_record);
   void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
                             const ConstrainedRouteObservation& route_constraint);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);

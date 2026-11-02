@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_node.hpp"
@@ -237,4 +239,35 @@ trackingErrorTubeJsonFields(const CertifiedRouteSuffix3D* const execution_route)
 }
 
 } // namespace
+
+// The tick's derived values the diagnostics' writers read: built once a tick
+// by processDiagnostics, read by the file record's writer in its own source.
+struct DiagnosticsTickView {
+  const ProductionMppiDiagnosticsSnapshot& snapshot;
+  const mppi::MppiTickInput& input;
+  const mppi::MppiTickResult& result;
+  double actual_speed_mps;
+  const mppi::State& commanded_state;
+  double commanded_speed_mps;
+  const WorldSnapshot3D& world;
+  const ProductionRouteActivationResult3D& route_pipeline;
+  const MaterializedRoute3D& route_candidate;
+  const ProductionRoutePipelineTelemetry3D& route_telemetry;
+  const ProductionRouteMaterializationTelemetry3D& materialization_telemetry;
+  const ProductionPersistentPlannerTelemetry3D& planner_telemetry;
+  const RouteAdmissionReport3D& admission;
+  const CertifiedRouteSuffix3D* execution_route;
+  const ProductionMppiStability& stability;
+  const ProductionMppiPredictionError& prediction;
+  const MppiLivenessResult& liveness;
+  const MppiSpeedPolicyResult& speed_policy;
+  const SensorBrakingAssessment3D& sensor_braking;
+  const ConstrainedRouteObservation& route_constraint;
+  ProductionMppiPlanningState planning_state;
+  std::string_view target_source;
+  const char* static_route_generation_matches;
+  double rviz_ms;
+  std::int64_t now_ns;
+};
+
 } // namespace drone_city_nav
