@@ -410,12 +410,39 @@ private:
     }
     if (!admission.accept) {
       if (!admission.replay && !admission.aggregate_replay) {
-        RCLCPP_WARN(get_logger(),
-                    "MISSION_WAYPOINT_ACK_REJECTED producer=%" PRIu64
-                    " acknowledgement=%" PRIu64 " reason=%s",
-                    acknowledgement.producer_instance_id,
-                    acknowledgement.acknowledgement_sequence,
-                    acknowledgementRejectionReason(admission));
+        // A rejected terminal acknowledgement leaves the mission without its
+        // landing (r2719: a 300 s hold at the goal), so the line names every
+        // predicate of the payload and of the identity's time window.
+        RCLCPP_WARN(
+            get_logger(),
+            "MISSION_WAYPOINT_ACK_REJECTED producer=%" PRIu64
+            " acknowledgement=%" PRIu64
+            " reason=%s payload=%s frame=%s count=%s goal_m=%.3f "
+            "route_m=%.3f hold_m=%.2f identity=%s "
+            "source_after_valid_from_ms=%.1f valid_until_after_source_ms=%.1f "
+            "witness_after_valid_from_ms=%.1f source_after_witness_ms=%.1f "
+            "receive_after_source_ms=%.1f",
+            acknowledgement.producer_instance_id,
+            acknowledgement.acknowledgement_sequence,
+            acknowledgementRejectionReason(admission),
+            payload_valid ? "valid" : "invalid",
+            acknowledgement.header.frame_id == frame_id_ ? "ok" : "other",
+            acknowledgement.waypoint_count == waypoints_.size() && waypoint_index_valid
+                ? "ok"
+                : "other",
+            distance3D(completed_goal, expected_goal),
+            distance3D(route_target, expected_goal),
+            distance3D(hold_position, expected_goal),
+            candidate.identityValid() ? "valid" : "invalid",
+            static_cast<double>(source_stamp_ns - candidate.horizon_valid_from_ns) *
+                1.0e-6,
+            static_cast<double>(candidate.horizon_valid_until_ns - source_stamp_ns) *
+                1.0e-6,
+            static_cast<double>(candidate.witness_stamp_ns -
+                                candidate.horizon_valid_from_ns) *
+                1.0e-6,
+            static_cast<double>(source_stamp_ns - candidate.witness_stamp_ns) * 1.0e-6,
+            static_cast<double>(receive_stamp_ns - source_stamp_ns) * 1.0e-6);
       }
       return;
     }
