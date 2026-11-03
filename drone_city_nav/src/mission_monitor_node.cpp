@@ -438,18 +438,25 @@ void MissionMonitorNode::onWaypointAcknowledgement(
   if (survey_ && !goal_substituted_) {
     // A survey goal reached (roadmap item 34): the vehicle holds there for
     // the survey's next one; the mission ends at home.
-    RCLCPP_INFO(
-        get_logger(), "SURVEY_GOAL_REACHED goal=(%.2f,%.2f,%.2f)",
-        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
-                                                              : waypoints_.size() - 1U]
-            .x,
-        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
-                                                              : waypoints_.size() - 1U]
-            .y,
-        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
-                                                              : waypoints_.size() - 1U]
-            .z);
+    const Point3 reached =
+        waypoints_[std::min(active_waypoint_index_, waypoints_.size() - 1U)];
+    RCLCPP_INFO(get_logger(), "SURVEY_GOAL_REACHED goal=(%.2f,%.2f,%.2f)", reached.x,
+                reached.y, reached.z);
     publishMissionEvent("SURVEY_GOAL_REACHED");
+    if (!navigation_mission_ready_) {
+      // The survey's first goal is the takeoff's point: captured before the
+      // planner declares the mission ready, the planner never does, and the
+      // survey's goals would wait on readiness for good (r2813: 320 s of
+      // commands unanswered). A goal flown to and acknowledged is the
+      // navigation ready.
+      navigation_mission_ready_ = true;
+      if (latest_position_valid_) {
+        mission_ready_altitude_z_m_ = latest_map_position_.z;
+      }
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_READINESS ready=true reason=survey_first_goal");
+      publishMissionEvent("MISSION_READINESS ready=true");
+    }
     return;
   }
   if (goal_substituted_ && !survey_) {

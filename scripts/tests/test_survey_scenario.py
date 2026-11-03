@@ -108,6 +108,9 @@ class SurveyScenarioTest(unittest.TestCase):
         monitor = (REPOSITORY / "drone_city_nav/src/mission_monitor_node.cpp").read_text(encoding="utf-8")
         self.assertIn('survey_ = mission_type == "survey";', monitor)
         self.assertIn('"SURVEY_GOAL_REACHED', monitor)
+        # The survey's first goal, the takeoff's point, captured before the planner declares the mission
+        # ready, is the navigation ready (r2813: the survey's commands unanswered for 320 s).
+        self.assertIn('MISSION_READINESS ready=true reason=survey_first_goal', monitor)
         self.assertIn('(survey_ ? "survey_home" : "none")', monitor)
         core = (REPOSITORY / "drone_city_nav/src/survey_mission.cpp").read_text(encoding="utf-8")
         # A frontier disappears by measurement alone (F20, I3): no blacklist of tried frontiers.
