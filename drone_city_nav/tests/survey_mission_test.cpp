@@ -395,6 +395,28 @@ TEST(SurveyMissionTest, FrontierCellsTheFieldHeldCloseForTheDwellAreLookedAt) {
   EXPECT_EQ(away.looked().size(), 0U);
 }
 
+TEST(SurveyMissionTest, FrontierCellsWithinALooksFootprintAreTheSamePlace) {
+  // One door cell looked at: the door's other cells, within a metre of it,
+  // are the same place; a frontier a room away is not.
+  const ObservedOccupancyGrid3D grid = roomTwoDoors();
+  const SurveyReading before = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(before.frontiers.size(), 2U);
+  const SurveyFrontier& first = before.frontiers.front();
+  // The door's cell nearest its middle.
+  GridIndex3D middle = first.members.front();
+  for (const GridIndex3D cell : first.members) {
+    if (squaredDistance(grid.cellCenter(cell), first.centroid) <
+        squaredDistance(grid.cellCenter(middle), first.centroid)) {
+      middle = cell;
+    }
+  }
+  const SurveyReading after =
+      readSurvey(grid, kVehicle, config(), SurveyCellSet{middle}, {});
+  ASSERT_EQ(after.frontiers.size(), 1U);
+  EXPECT_GT(distance3D(after.frontiers.front().centroid, first.centroid), 3.0);
+  EXPECT_EQ(after.frontier_cells, before.frontier_cells - first.cells);
+}
+
 TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
   ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
                                             .origin_y = 0.0,

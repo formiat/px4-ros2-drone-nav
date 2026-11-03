@@ -36,6 +36,12 @@ constexpr double kVantageReachM{6.0};
 // surface inside the scan's minimum range (r2808: the estimate 1.0 m over
 // the truth a metre above the start's pad, the vehicle on it).
 constexpr double kVantageOpenM{1.5};
+// The footprint of a look: the field that looked at a cell looked at the
+// space round it; the boundary of what was seen creeps a cell a scan where
+// rays find no return, and the new cells within the footprint are the same
+// place looked at (r2809: places revisited up to six times, clusters of 19
+// cells at the median, the volume covered in the first minute).
+constexpr double kLookFootprintM{1.0};
 // The way through what was seen starts at the nearest observed free cell the
 // body fits in: the vehicle's own cell is often unobserved (the lidar's
 // minimum range; r2804 read one known cell outdoors).
@@ -72,6 +78,38 @@ struct Lattice {
   std::vector<std::uint8_t> known;
   std::vector<std::uint32_t> known_distance;
   std::vector<std::array<int, 3>> open_ball;
+  // Within the look's footprint of a cell looked at.
+  std::vector<std::uint8_t> looked_near;
+
+  void markLooked(const SurveyCellSet& looked) {
+    looked_near.assign(blocked.size(), 0U);
+    const double cells = kLookFootprintM / grid.bounds().resolution_m;
+    const int reach = static_cast<int>(std::ceil(cells - 1.0e-9));
+    std::vector<std::array<int, 3>> footprint;
+    for (int z = -reach; z <= reach; ++z) {
+      for (int y = -reach; y <= reach; ++y) {
+        for (int x = -reach; x <= reach; ++x) {
+          if (static_cast<double>(x * x + y * y + z * z) <= cells * cells + 1.0e-9) {
+            footprint.push_back({x, y, z});
+          }
+        }
+      }
+    }
+    for (const GridIndex3D cell : looked) {
+      for (const std::array<int, 3>& offset : footprint) {
+        const GridIndex3D near{cell.x + offset[0], cell.y + offset[1],
+                               cell.z + offset[2]};
+        if (inFlood(near)) {
+          looked_near[at(near)] = 1U;
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] bool lookedAt(const GridIndex3D cell,
+                              const SurveyCellSet& looked) const {
+    return inFlood(cell) ? looked_near[at(cell)] != 0U : looked.contains(cell);
+  }
 
   Lattice(const ObservedOccupancyGrid3D& grid_in, const SurveyConfig& config_in)
       : grid{grid_in},
@@ -355,7 +393,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
       const GridIndex3D cell{low.x + static_cast<int>(bit % kChunkSize),
                              low.y + static_cast<int>((bit / kChunkSize) % kChunkSize),
                              low.z + static_cast<int>(bit / (kChunkSize * kChunkSize))};
-      if (!lattice.inVolume(cell) || looked.contains(cell)) {
+      if (!lattice.inVolume(cell) || lattice.lookedAt(cell, looked)) {
         continue;
       }
       for (const std::array<int, 3>& face : kFaces) {
@@ -475,6 +513,7 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
   const auto started = std::chrono::steady_clock::now();
   SurveyReading reading;
   Lattice lattice{grid, config};
+  lattice.markLooked(looked);
   const std::vector<GridIndex3D> cells = frontierCells(lattice, looked, passed);
   reading.frontier_cells = cells.size();
   reading.frontier_set.insert(cells.begin(), cells.end());
