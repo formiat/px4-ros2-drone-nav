@@ -472,6 +472,7 @@ add_drone_city_nav_layer(
   src/mission_waypoint_capture_gate.cpp
   src/goal_reachability_proof_3d.cpp
   src/survey_mission.cpp
+  src/survey_reading.cpp
   src/mission_waypoint_sequence.cpp
   src/offboard_session_admission.cpp
   src/pending_certified_route_3d.cpp

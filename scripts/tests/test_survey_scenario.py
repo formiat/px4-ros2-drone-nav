@@ -112,7 +112,8 @@ class SurveyScenarioTest(unittest.TestCase):
         # ready, is the navigation ready (r2813: the survey's commands unanswered for 320 s).
         self.assertIn('MISSION_READINESS ready=true reason=survey_first_goal', monitor)
         self.assertIn('(survey_ ? "survey_home" : "none")', monitor)
-        core = (REPOSITORY / "drone_city_nav/src/survey_mission.cpp").read_text(encoding="utf-8")
+        core = "".join((REPOSITORY / f"drone_city_nav/src/{name}").read_text(encoding="utf-8")
+                       for name in ("survey_mission.cpp", "survey_reading.cpp"))
         # A frontier disappears by measurement alone (F20, I3): no blacklist of tried frontiers.
         for word in ("blacklist", "tried", "attempts"):
             self.assertNotIn(word, core)
