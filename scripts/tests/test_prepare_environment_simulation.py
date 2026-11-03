@@ -156,10 +156,17 @@ class RealTimeFactorTest(unittest.TestCase):
         self.assertEqual("1.0", tree.getroot().findtext("world/physics/real_time_factor"))
 
     def test_a_factor_outside_the_range_is_refused(self) -> None:
-        for factor in ("0", "-1", "1.5", "fast"):
+        for factor in ("0", "-1", "fast"):
             tree = ET.ElementTree(ET.fromstring(self.WORLD))
             with self.assertRaises(PREPARER.EnvironmentPreparationError):
                 PREPARER.configure_real_time_factor(tree, factor)
+
+    def test_a_factor_above_one_is_a_stress_flight(self) -> None:
+        # Roadmap item 38: faster than the wall clock, the stack gets a slower
+        # computer than the vehicle's by the factor; allowed, never acceptance.
+        tree = ET.ElementTree(ET.fromstring(self.WORLD))
+        PREPARER.configure_real_time_factor(tree, "1.5")
+        self.assertEqual("1.5", tree.getroot().findtext("world/physics/real_time_factor"))
 
 
 

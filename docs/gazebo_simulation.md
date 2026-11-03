@@ -272,7 +272,8 @@ Gazebo steps the world 4 ms at a time and throttles itself to
 `<real_time_factor>` of the wall clock; PX4 SITL runs in lockstep and its
 stamps are the simulation clock (`UXRCE_DDS_SYNCT=0`); every ROS node runs
 with `use_sim_time` and reads `/clock` from the bridge. The factor is a
-parameter of the run, `REAL_TIME_FACTOR` (1.0 unless set, at most 1), which
+parameter of the run, `REAL_TIME_FACTOR` (1.0 unless set; above 1 a stress
+flight, roadmap item 38), which
 `scripts/prepare_environment_simulation.py` writes into the worlds it
 installs ([configuration.md](configuration.md), specification K25).
 

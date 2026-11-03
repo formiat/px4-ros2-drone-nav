@@ -385,6 +385,22 @@ class RuntimeManifestTest(unittest.TestCase):
                         encoding="utf-8")
         return path
 
+    def test_a_factor_above_one_is_named_a_stress_flight(self) -> None:
+        # Roadmap item 38 (K25): the check names the flight, before anything
+        # else it reads of the manifest.
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text(json.dumps({
+                "schema": "drone_city_nav_runtime_manifest_v1",
+                "effective_overrides": {"REAL_TIME_FACTOR": "1.5"}}), encoding="utf-8")
+            errors: list[str] = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                validator.validate_runtime_manifest(manifest, None, False, errors)
+        self.assertIn("NOTE: real-time factor 1.50 above 1 (K25): a stress flight, "
+                      "counted for regression, never for the acceptance's figures",
+                      output.getvalue())
+
     def test_a_manifest_without_a_profile_is_read_as_lidar_inertial(self) -> None:
         directory = Path(tempfile.mkdtemp())
         path = directory / "manifest.json"

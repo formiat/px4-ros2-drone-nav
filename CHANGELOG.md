@@ -6,6 +6,9 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- `REAL_TIME_FACTOR` above 1 is allowed as a stress flight (roadmap item 38, K25):
+  the preparation writes it, the mission check names it, the host verdict and the
+  watchdog read their floors from it as before; never the acceptance's figures.
 - Roadmap item 28 (the MPPI engine beyond CUDA) closed by record, waiting for the
   board: steps 1 and 2 shipped in v0.7.0, step 3 (the Adreno 650's rollout count,
   `shaderInt64`) is item 37's point 1; the Vulkan tick's cost stays in the register.

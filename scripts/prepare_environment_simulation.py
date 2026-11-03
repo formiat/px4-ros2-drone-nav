@@ -375,17 +375,19 @@ def configure_real_time_factor(tree: ET.ElementTree, factor: str) -> None:
     """The rate of the simulation clock against the wall clock (roadmap item
     20 stage 1, `REAL_TIME_FACTOR`): the simulator throttles itself to it, the
     autopilot follows in lockstep and the onboard loop keeps the simulation
-    clock, so the whole flight slows together. Never above 1: a simulation
-    faster than the wall clock is not a flight the host was measured for."""
+    clock, so the whole flight slows or hurries together. Above 1 (roadmap
+    item 38) the flight is a stress flight: the stack gets a computer slower
+    than the vehicle's by the factor, counted for regression and exploration,
+    never for the acceptance's figures (specification K25)."""
     try:
         value = float(factor)
     except ValueError as error:
         raise EnvironmentPreparationError(
             f"REAL_TIME_FACTOR is not a number: {factor!r}"
         ) from error
-    if not 0.0 < value <= 1.0:
+    if not value > 0.0:
         raise EnvironmentPreparationError(
-            f"REAL_TIME_FACTOR must be above 0 and at most 1, got {factor!r}"
+            f"REAL_TIME_FACTOR must be above 0, got {factor!r}"
         )
     elements = list(tree.getroot().iter("real_time_factor"))
     if not elements:

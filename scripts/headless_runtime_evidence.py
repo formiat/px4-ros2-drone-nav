@@ -259,6 +259,13 @@ def validate_runtime_manifest(
     if manifest.get("schema") != "drone_city_nav_runtime_manifest_v1":
         errors.append("FAIL: runtime manifest has the supported schema")
         return
+    # Roadmap item 38 (K25): above 1 the flight is a stress flight, the stack
+    # on a computer slower than the vehicle's by the factor; it counts for
+    # regression and exploration, never for the acceptance's figures.
+    factor = float(manifest.get("effective_overrides", {}).get("REAL_TIME_FACTOR", 1.0))
+    if factor > 1.0:
+        print(f"NOTE: real-time factor {factor:.2f} above 1 (K25): a stress flight, "
+              "counted for regression, never for the acceptance's figures")
     repository = manifest.get("repository")
     commit = repository.get("commit") if isinstance(repository, dict) else None
     current_status = ""
