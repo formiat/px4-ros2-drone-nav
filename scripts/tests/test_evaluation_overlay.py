@@ -91,6 +91,19 @@ class StateWordsTest(unittest.TestCase):
         self.assertEqual("", OVERLAY.charge_text(float("inf")))
         self.assertEqual("CHARGE  183 s", OVERLAY.charge_text(183.2))
 
+    def test_the_satellite_signal_s_line_follows_the_estimator_s_trust(self) -> None:
+        # Roadmap item 39 (K56): nothing without a declaration; the words follow
+        # the last declaration and tell a return from a first trust.
+        self.assertEqual("", OVERLAY.gnss_text([]))
+        self.assertEqual("", OVERLAY.gnss_text(["MISSION_READINESS ready=true"]))
+        self.assertEqual("GNSS TRUSTED", OVERLAY.gnss_text(["GNSS_TRUST trusted=true"]))
+        self.assertEqual("GNSS DISTRUSTED", OVERLAY.gnss_text(
+            ["GNSS_TRUST trusted=true", "GNSS_TRUST trusted=false"]))
+        self.assertEqual("GNSS BACK", OVERLAY.gnss_text(
+            ["GNSS_TRUST trusted=true", "GNSS_TRUST trusted=false", "GNSS_TRUST trusted=true"]))
+        self.assertIn('"GNSS_TRUST trusted="', (REPOSITORY / "drone_city_nav/src"
+                                                / "visual_inertial_odometry_node_internal.hpp").read_text())
+
     def test_the_backdrop_faces_the_camera(self) -> None:
         # Straight down: the backdrop's face looks up, its orientation a unit quaternion.
         x, y, z, w = OVERLAY.facing(0.0, 1.5707)

@@ -160,6 +160,21 @@ def light_text(share: float | None, seen: float | None) -> str:
     return "   ".join(parts)
 
 
+def gnss_text(events: list[str]) -> str:
+    """The satellite signal's line on the hybrid profile (roadmap item 39,
+    K56): nothing until the estimator has declared its trust once, then
+    TRUSTED, DISTRUSTED while the signal is read as lying or lost, BACK once
+    the trust returned. The estimator's event `GNSS_TRUST trusted=` is the
+    source; a profile without the signal never declares it."""
+    verdicts = [event.endswith("trusted=true") for event in events
+                if event.startswith("GNSS_TRUST trusted=")]
+    if not verdicts:
+        return ""
+    if not verdicts[-1]:
+        return "GNSS DISTRUSTED"
+    return "GNSS BACK" if False in verdicts else "GNSS TRUSTED"
+
+
 def charge_text(charge_s: float | None) -> str:
     """The battery's line, in the scenarios that give the light one."""
     if charge_s is None or not math.isfinite(charge_s):
@@ -311,6 +326,7 @@ def main() -> int:
                                      state["ready"], landed)
             light = light_text(share, state["seen"])
             charge = charge_text(state["charge"])
+            gnss = gnss_text(state["events"])
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))
         if truth is not None:
@@ -336,7 +352,9 @@ def main() -> int:
                     (0, text, TEXT_HEIGHT_M, -0.5, 0.86, color),
                     (1, light, 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
                      AMBER if share is not None and share < 0.35 else GREY),
-                    (5, charge, 0.75 * TEXT_HEIGHT_M, -0.5, 0.71, GREY)):
+                    (5, charge, 0.75 * TEXT_HEIGHT_M, -0.5, 0.71, GREY),
+                    (6, gnss, 0.75 * TEXT_HEIGHT_M, -0.5, 0.64,
+                     AMBER if gnss == "GNSS DISTRUSTED" else GREEN)):
                 words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
                 backdrop = marker(identifier + 10, Marker.CUBE, (0.0, 0.0, 0.0), 0.6)
                 if not line.strip():
