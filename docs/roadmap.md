@@ -1382,60 +1382,6 @@ light and the ring), and, before any board, a bench of recorded data (the
 board's camera frames, IMU and `/fmu` topics replayed into the stack) to
 settle the adapters; the register's row (c) names it.
 
-## 38. Faster Than Real Time On A Stronger Host
-
-**Type:** infrastructure of the simulation, proposed by the project owner
-on 2026-10-29 at the question whether the slowed flight of K25 has an
-inverse: the same flights flown faster than the wall clock on a computer
-stronger than this host, so that a series takes fewer hours.
-
-**Hard prerequisites:** K24 (every period of the stack on the simulation
-clock; the autopilot in lockstep); the core set of A4. Item 36 supersedes
-it: a simulator that waits for the onboard loop runs as fast as the host
-allows by construction, and the factor disappears.
-
-**Validation environment:** any; Urban Circuit Practice 01 for the
-comparison with the series at 1.0.
-
-Possible, by what is in place: the factor is written into the world by the
-preparation (`scripts/prepare_environment_simulation.py`,
-`configure_real_time_factor`), PX4 SITL follows the simulation clock in
-lockstep, every period and watchdog of the stack runs on the node clock
-(K24), the sensors' rates are the world's (the lidar at 10 Hz, the pair at
-7.5 Hz of simulated time), and the mission check measures speed on the
-simulation clock (R3). What stops it today is a rule, not the code: K25
-says the factor is never above 1, because a factor under 1 flatters the
-onboard budget. Above 1 the flattery turns the other way: the stack gets a
-slower computer than the vehicle has, by the factor, so the tick's 20 ms
-and the planner's 150 ms must be met in less wall time. That is harsher,
-not kinder, and it is why a flight above 1 can serve regression and
-exploration but not the acceptance's figures until item 36 models the
-budget.
-
-What limits the gain is this host: the camera flights already run at a
-real-time factor of 0.85 to 1.00 of the wall clock on it (the depth node,
-the controller and the simulator share the cores, A4), and the smoke
-relay's frames stall the simulator at 1.0 (K25); the lidar flights hold
-1.00 with an unmeasured margin. A factor of 2 needs a host that renders
-the pair's frames and runs the matcher twice as fast, so the item is for a
-stronger computer (a rented host, development.md, or a workstation), and its
-first measurement is how far above 1.0 each profile goes before A7's floor
-(scaled by the factor) is lost.
-
-The work: the factor allowed above 1 in the preparation and the run
-script, A7's floor and the watchdog's read against the factor as they are
-below 1, the manifest's record, and K25 rewritten (a factor above 1 is a
-stress, counted for regression, never for the acceptance's figures); then
-five flights a profile at the largest factor the host holds, compared
-with the series at 1.0 (the mean speed, the arrival, the holds, the
-tick's and the planner's wall figures). Size: S for the switch, M with the
-rules and the comparison.
-
-This item is complete when a flight above 1.0 counts by the rules written
-for it, the largest factor each profile holds on a named host is a
-measured figure, and the series at that factor matches the series at 1.0
-on the metres flown.
-
 ## 39. Open Sky: The Hybrid Stack, Underground And Outdoors
 
 **Type:** direction of the project, decided by the project owner on
@@ -4839,3 +4785,81 @@ This item is complete when the twenty flights are flown and tabulated (the
 world, the sensor set, the result by R1 and R2, the speed, the true position
 at B, the closest true clearance), every failure has its rule named and
 either repaired or in the register, and N2 is closed.
+
+### 38. Faster Than Real Time On A Stronger Host (Completed)
+
+Done on 2026-11-03 (the goal of 2026-11-02, part 1; 08f9e50a and the records):
+the factor above 1 allowed as a stress flight (K25 rewritten: the preparation
+writes any factor above 0, the mission check names a factor above 1 before
+anything else it reads, the host verdict and the watchdog read their floors
+from it as they did), and the largest factor this host holds measured, one
+flight a factor and then a series at the largest held:
+
+| Profile | Factor asked | Held (RTF p50) | Flight | Note |
+|---|---|---|---|---|
+| lidar | 1.25 | 1.25 | r2767 | 2.217 m/s on the simulation clock, B 0.12 m |
+| lidar | 1.5 | 1.50 | r2768 | 2.269 m/s, B 2.28 m (a miss under the stress) |
+| lidar | 2.0 | 2.00 at p50, 0.46 at p10 | r2769 | the planner starved (63 ticks in 100 s against 344 ESDF rebuilds), the vehicle on the offboard's local hold sank onto the staging area's base at 0.48 m/s: the register's row |
+| cameras | 1.1 | 0.75 (the watchdog's floor 0.77) | r2793 | voided |
+| cameras | 1.25 | 0.80 (0.87) | r2794 | voided |
+| cameras | 1.5 | 0.93 (1.05) | r2795 | voided: the stereo set holds no factor above 1 on this host, which sits at A7's floor at 1.0 already |
+
+The lidar series at 1.5 (r2796 to r2800): five of five without contact, B
+0.24 to 1.01 m, 2.084 to 2.410 m/s on the simulation clock (2.220 mean)
+against the series at 1.0 on the same code (r2754 to r2758: 2.323 mean, B
+0.37 to 0.53 m), the flights 90 to 124 s of wall clock against 137 to 182,
+so 1.5 is this host's regression factor of the lidar set, and the
+acceptance's figures stay at 1.0 (A1). What was asked for and how it was
+weighed is kept below as it was written.
+
+**Type:** infrastructure of the simulation, proposed by the project owner
+on 2026-10-29 at the question whether the slowed flight of K25 has an
+inverse: the same flights flown faster than the wall clock on a computer
+stronger than this host, so that a series takes fewer hours.
+
+**Hard prerequisites:** K24 (every period of the stack on the simulation
+clock; the autopilot in lockstep); the core set of A4. Item 36 supersedes
+it: a simulator that waits for the onboard loop runs as fast as the host
+allows by construction, and the factor disappears.
+
+**Validation environment:** any; Urban Circuit Practice 01 for the
+comparison with the series at 1.0.
+
+Possible, by what is in place: the factor is written into the world by the
+preparation (`scripts/prepare_environment_simulation.py`,
+`configure_real_time_factor`), PX4 SITL follows the simulation clock in
+lockstep, every period and watchdog of the stack runs on the node clock
+(K24), the sensors' rates are the world's (the lidar at 10 Hz, the pair at
+7.5 Hz of simulated time), and the mission check measures speed on the
+simulation clock (R3). What stops it today is a rule, not the code: K25
+says the factor is never above 1, because a factor under 1 flatters the
+onboard budget. Above 1 the flattery turns the other way: the stack gets a
+slower computer than the vehicle has, by the factor, so the tick's 20 ms
+and the planner's 150 ms must be met in less wall time. That is harsher,
+not kinder, and it is why a flight above 1 can serve regression and
+exploration but not the acceptance's figures until item 36 models the
+budget.
+
+What limits the gain is this host: the camera flights already run at a
+real-time factor of 0.85 to 1.00 of the wall clock on it (the depth node,
+the controller and the simulator share the cores, A4), and the smoke
+relay's frames stall the simulator at 1.0 (K25); the lidar flights hold
+1.00 with an unmeasured margin. A factor of 2 needs a host that renders
+the pair's frames and runs the matcher twice as fast, so the item is for a
+stronger computer (a rented host, development.md, or a workstation), and its
+first measurement is how far above 1.0 each profile goes before A7's floor
+(scaled by the factor) is lost.
+
+The work: the factor allowed above 1 in the preparation and the run
+script, A7's floor and the watchdog's read against the factor as they are
+below 1, the manifest's record, and K25 rewritten (a factor above 1 is a
+stress, counted for regression, never for the acceptance's figures); then
+five flights a profile at the largest factor the host holds, compared
+with the series at 1.0 (the mean speed, the arrival, the holds, the
+tick's and the planner's wall figures). Size: S for the switch, M with the
+rules and the comparison.
+
+This item is complete when a flight above 1.0 counts by the rules written
+for it, the largest factor each profile holds on a named host is a
+measured figure, and the series at that factor matches the series at 1.0
+on the metres flown.

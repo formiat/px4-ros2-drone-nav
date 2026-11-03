@@ -452,6 +452,21 @@ recording is the last the window drew at or before its moment on the
 simulation clock, so an unevenly held simulator plays second for second),
 or that is shorter than a minute.
 
+### A hurried flight
+
+`REAL_TIME_FACTOR` above 1 (roadmap item 38, K25) hurries the simulator and
+the onboard loop together: the stack gets a computer slower than the
+vehicle's by the factor, so the tick's 20 ms and the planner's 150 ms are
+met in less wall time. The check names it (`NOTE: real-time factor … above
+1 (K25): a stress flight`), the host verdict and the watchdog read their
+floors from the factor, and the flight counts for regression and
+exploration, never for the acceptance's figures. On the development host
+the lidar set holds 1.5 (r2796 to r2800: five of five, 2.220 m/s on the
+simulation clock against 2.323 at 1.0, the flights 90 to 124 s of wall clock
+against 137 to 182) and breaks at 2.0 (r2769, the planner starved; the
+register's row); the stereo set holds no factor above 1, sitting at A7's
+floor at 1.0 already.
+
 ### Localization profile
 
 `validate_localization_profile` (`scripts/headless_runtime_evidence.py`)
