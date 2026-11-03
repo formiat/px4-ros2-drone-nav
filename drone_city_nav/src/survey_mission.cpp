@@ -22,16 +22,20 @@ constexpr std::array<std::array<int, 3>, 6> kFaces{
 // The vehicle's own cell may hug a wall: the flood starts from the nearest
 // cell the body fits in within this reach (the proof's rule).
 constexpr double kVehicleReachM{1.0};
-// How far from the standoff's point a vantage may stand: the open metre round
-// it keeps it off the walls, so in a corridor the point lies in the wall.
-constexpr double kSnapReachM{2.5};
+// How far from the standoff's point a vantage may stand: the open radius
+// keeps a vantage 1.75 m off the walls, and the point of a frontier in a
+// wall lies at the wall.
+constexpr double kSnapReachM{3.5};
 // The flood's margin round the volume, and how far from a cluster's centroid
 // its vantage may stand when none is at the standoff: a box of the lidar's
 // reach twice over held 36 million cells and no reading was ever complete
 // (r2802), and a vantage 35 m away looks at nothing.
 constexpr double kVantageReachM{6.0};
-// The radius of observed free space round a vantage.
-constexpr double kVantageOpenM{1.0};
+// The radius of observed free space round a vantage: the body and the
+// lidar-inertial estimate's height error where the vehicle hovers near a
+// surface inside the scan's minimum range (r2808: the estimate 1.0 m over
+// the truth a metre above the start's pad, the vehicle on it).
+constexpr double kVantageOpenM{1.5};
 // The way through what was seen starts at the nearest observed free cell the
 // body fits in: the vehicle's own cell is often unobserved (the lidar's
 // minimum range; r2804 read one known cell outdoors).
@@ -211,9 +215,9 @@ struct Lattice {
   }
 
   // Every cell within the open radius observed free: where the vehicle holds
-  // to look stands in what was seen, a metre from anything unknown or
-  // occupied (r2807: a vantage 0.6 m over the floor, the descent to it ended
-  // on the floor).
+  // to look stands in what was seen, clear of anything unknown or occupied
+  // (r2807: a vantage 0.6 m over the floor, the descent to it ended on the
+  // floor).
   [[nodiscard]] bool openAround(const GridIndex3D cell) const noexcept {
     for (const std::array<int, 3>& offset : open_ball) {
       const GridIndex3D near{cell.x + offset[0], cell.y + offset[1],
@@ -429,10 +433,18 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
 // round it and reached through what was seen.
 [[nodiscard]] std::optional<GridIndex3D>
 snap(const Lattice& lattice, const Point3& point, const double reach_m) {
-  const std::optional<GridIndex3D> centre = lattice.grid.worldToCell(point);
-  if (!centre.has_value()) {
-    return std::nullopt;
-  }
+  // The search starts at the grid's cell nearest the point: a far vantage
+  // beyond a frontier at the grid's edge lies outside it.
+  const GridBounds3D& bounds = lattice.grid.bounds();
+  const auto index = [&bounds](const double value, const double origin,
+                               const int cells) {
+    return std::clamp(
+        static_cast<int>(std::floor((value - origin) / bounds.resolution_m)), 0,
+        cells - 1);
+  };
+  const GridIndex3D centre{index(point.x, bounds.origin_x, bounds.width_cells),
+                           index(point.y, bounds.origin_y, bounds.height_cells),
+                           index(point.z, bounds.origin_z, bounds.depth_cells)};
   const int reach =
       static_cast<int>(std::ceil(reach_m / lattice.grid.bounds().resolution_m));
   std::optional<GridIndex3D> best;
@@ -440,7 +452,7 @@ snap(const Lattice& lattice, const Point3& point, const double reach_m) {
   for (int z = -reach; z <= reach; ++z) {
     for (int y = -reach; y <= reach; ++y) {
       for (int x = -reach; x <= reach; ++x) {
-        const GridIndex3D cell{centre->x + x, centre->y + y, centre->z + z};
+        const GridIndex3D cell{centre.x + x, centre.y + y, centre.z + z};
         if (lattice.reachedKnown(cell) == kUnreached || !lattice.openAround(cell)) {
           continue;
         }
@@ -566,6 +578,8 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
                                const bool heading_valid, const std::int64_t now_ns) {
   position_ = position;
   position_valid_ = true;
+  yaw_rad_ = yaw_rad;
+  heading_valid_ = heading_valid;
   if (target_.has_value() && !insideDomain(position)) {
     target_left_domain_ = true;
   }
@@ -598,23 +612,7 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   }
   // The look: the sensor's field holds the target's centroid from within
   // the standoff plus a metre, for the dwell.
-  if (!target_.has_value() || target_looked_ || !heading_valid) {
-    look_since_ns_ = 0;
-    return;
-  }
-  const double dx = target_->centroid.x - position.x;
-  const double dy = target_->centroid.y - position.y;
-  const double dz = target_->centroid.z - position.z;
-  const double horizontal = std::hypot(dx, dy);
-  const double range = std::hypot(horizontal, dz);
-  double bearing = std::atan2(dy, dx) - yaw_rad;
-  bearing = std::remainder(bearing, 2.0 * std::numbers::pi);
-  const double elevation = std::atan2(dz, horizontal);
-  const bool in_field =
-      range <= config_.vantage_standoff_m + config_.capture_radius_m &&
-      std::abs(bearing) <= 0.5 * config_.sensor_horizontal_fov_rad &&
-      std::abs(elevation) <= 0.5 * config_.sensor_vertical_fov_rad;
-  if (!in_field) {
+  if (!target_.has_value() || target_looked_ || !inField(target_->centroid)) {
     look_since_ns_ = 0;
     return;
   }
@@ -624,6 +622,58 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
              config_.look_dwell_s) {
     target_looked_ = true;
   }
+}
+
+bool SurveyMission::inField(const Point3& point) const noexcept {
+  if (!position_valid_ || !heading_valid_) {
+    return false;
+  }
+  const double dx = point.x - position_.x;
+  const double dy = point.y - position_.y;
+  const double dz = point.z - position_.z;
+  const double horizontal = std::hypot(dx, dy);
+  const double range = std::hypot(horizontal, dz);
+  const double bearing =
+      std::remainder(std::atan2(dy, dx) - yaw_rad_, 2.0 * std::numbers::pi);
+  const double elevation = std::atan2(dz, horizontal);
+  return range <= config_.vantage_standoff_m + config_.capture_radius_m &&
+         std::abs(bearing) <= 0.5 * config_.sensor_horizontal_fov_rad &&
+         std::abs(elevation) <= 0.5 * config_.sensor_vertical_fov_rad;
+}
+
+void SurveyMission::lookAtCells(const std::int64_t now_ns) {
+  // Every frontier cell the sensor's field held from close by for the
+  // dwell and that stayed a frontier: unknown beyond it the sensor cannot
+  // reach from the reachable space (r2808: new clusters kept rising beside
+  // the ones looked at, where rays through an opening found no return, and
+  // the survey circled the start's building for 1000 s).
+  if (!reading_.has_value() || !bounds_.has_value()) {
+    in_view_since_ns_.clear();
+    return;
+  }
+  const double resolution = bounds_->resolution_m;
+  std::unordered_map<GridIndex3D, std::int64_t, GridIndex3DHash, GridIndex3DEqual>
+      in_view;
+  for (const GridIndex3D cell : reading_->frontier_set) {
+    if (looked_.contains(cell)) {
+      continue;
+    }
+    const Point3 centre{bounds_->origin_x + (cell.x + 0.5) * resolution,
+                        bounds_->origin_y + (cell.y + 0.5) * resolution,
+                        bounds_->origin_z + (cell.z + 0.5) * resolution};
+    if (!inField(centre)) {
+      continue;
+    }
+    const auto seen = in_view_since_ns_.find(cell);
+    const std::int64_t since = seen == in_view_since_ns_.end() ? now_ns : seen->second;
+    if (static_cast<double>(now_ns - since) * 1.0e-9 >= config_.look_dwell_s) {
+      looked_.insert(cell);
+      ++looked_cells_;
+    } else {
+      in_view.emplace(cell, since);
+    }
+  }
+  in_view_since_ns_ = std::move(in_view);
 }
 
 void SurveyMission::recordRoute(const bool available, const double remaining_m,
@@ -706,6 +756,7 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
   if (!reading_.has_value()) {
     return out;
   }
+  lookAtCells(now_ns);
   if (reading_->pinched && position_valid_ &&
       (rise_sent_ns_ == 0 ||
        static_cast<double>(now_ns - rise_sent_ns_) * 1.0e-9 >= kRiseRepeatS)) {
@@ -857,9 +908,10 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
           line, sizeof line,
           "SURVEY_DONE frontier_cells=%zu clusters_without_vantage=%zu chosen=%zu "
           "observed=%zu looked_at=%zu unreachable=%zu unroutable=%zu passes=%zu "
-          "readings=%zu",
+          "readings=%zu looked_cells=%zu",
           reading_->frontier_cells, reading_->clusters_without_vantage, chosen_,
-          observed_, looked_count_, unreachable_, unroutable_, passes_, readings_);
+          observed_, looked_count_, unreachable_, unroutable_, passes_, readings_,
+          looked_cells_);
       out.events.emplace_back(line);
     }
   }

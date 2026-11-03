@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -189,6 +190,9 @@ private:
   };
 
   [[nodiscard]] bool reached(const Point3& point) const noexcept;
+  // The sensor's field holds the point from within the standoff and the capture radius.
+  [[nodiscard]] bool inField(const Point3& point) const noexcept;
+  void lookAtCells(std::int64_t now_ns);
   // The flood's box: the volume and its margin, where a reading is read.
   [[nodiscard]] bool insideDomain(const Point3& point) const noexcept;
   void finishTarget(const char* outcome, SurveyStep& out);
@@ -210,6 +214,12 @@ private:
   std::size_t readings_{0U};
   Point3 position_{};
   bool position_valid_{false};
+  double yaw_rad_{0.0};
+  bool heading_valid_{false};
+  // The frontier cells in the sensor's field, since when.
+  std::unordered_map<GridIndex3D, std::int64_t, GridIndex3DHash, GridIndex3DEqual>
+      in_view_since_ns_;
+  std::size_t looked_cells_{0U};
   Point3 last_passed_position_{};
   bool passed_any_{false};
   bool done_{false};

@@ -148,10 +148,10 @@ TEST(SurveyMissionTest, FacingAwayAtTheVantageWithNothingSeenBeyondTheWaitIsTheL
                                             .height_cells = 48,
                                             .depth_cells = 24}};
   for (int z = 4; z < 21; ++z) {
-    for (int y = 31; y < 42; ++y) {
+    for (int y = 27; y < 46; ++y) {
       for (int x = 7; x < 58; ++x) {
-        const bool wall = x == 7 || x == 57 || y == 31 || y == 41 || z == 4 || z == 20;
-        const bool gap = y == 41 && x >= 30 && x < 37 && z >= 5 && z < 13;
+        const bool wall = x == 7 || x == 57 || y == 27 || y == 45 || z == 4 || z == 20;
+        const bool gap = y == 45 && x >= 30 && x < 37 && z >= 5 && z < 13;
         if (gap) {
           continue;
         }
@@ -354,6 +354,45 @@ TEST(SurveyMissionTest, APinchedReadingIsNoVerdictAndTheVehicleRises) {
   mission.applyReading(wide);
   EXPECT_TRUE(mission.step(5 * kSecond).events.empty());
   EXPECT_FALSE(mission.done());
+}
+
+TEST(SurveyMissionTest, FrontierCellsTheFieldHeldCloseForTheDwellAreLookedAt) {
+  // The door's cells, too few to be a cluster, in the field from 2 m for a
+  // second: looked at cell by cell, and the survey ends.
+  const ObservedOccupancyGrid3D grid = room(true);
+  SurveyConfig large = config();
+  large.cluster_minimum_cells = 64U;
+  const SurveyReading reading = readSurvey(grid, kVehicle, large, {}, {});
+  ASSERT_GE(reading.frontier_cells, 8U);
+  EXPECT_TRUE(reading.frontiers.empty());
+  SurveyMission mission{large};
+  mission.setGridBounds(grid.bounds());
+  const Point3 near{7.5, 5.75, 2.25};
+  mission.recordPose(near, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  // Complete and without a vantage: the end, unless the cells were looked at first.
+  static_cast<void>(mission.step(kSecond));
+  EXPECT_EQ(mission.looked().size(), 0U);
+  SurveyMission held{large};
+  held.setGridBounds(grid.bounds());
+  held.recordPose(near, 0.0, true, kSecond);
+  SurveyReading partial = reading;
+  partial.budget_exhausted = true; // no verdict yet: the look alone is measured
+  held.applyReading(partial);
+  static_cast<void>(held.step(kSecond));
+  EXPECT_EQ(held.looked().size(), 0U);
+  held.recordPose(near, 0.0, true, 2 * kSecond + kSecond / 10);
+  static_cast<void>(held.step(2 * kSecond + kSecond / 10));
+  EXPECT_EQ(held.looked().size(), reading.frontier_cells);
+  // Facing away, nothing is looked at.
+  SurveyMission away{large};
+  away.setGridBounds(grid.bounds());
+  away.recordPose(near, std::numbers::pi, true, kSecond);
+  away.applyReading(partial);
+  static_cast<void>(away.step(kSecond));
+  away.recordPose(near, std::numbers::pi, true, 3 * kSecond);
+  static_cast<void>(away.step(3 * kSecond));
+  EXPECT_EQ(away.looked().size(), 0U);
 }
 
 TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
