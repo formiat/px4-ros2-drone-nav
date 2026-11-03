@@ -38,7 +38,7 @@ wait_for_gazebo_world "${repo_root}" "${world}" 120 || { echo "RENDER none: no w
 python3 "${repo_root}/scripts/render_world_replay.py" --run-directory "${run_directory}" \
   --world "${world}" --model "${model}" --rate "${rate}" --begin-s "${begin_s}" \
   --end-s "${end_s}" --go-file "${go_file}" --clock-output "${run_directory}/render_world_clock.csv" \
-  --map-to-sdf-offset "${map_to_sdf_offset}" \
+  --map-to-sdf-offset="${map_to_sdf_offset}" \
   > "${run_directory}/render_world.log" 2>&1 &
 world_pid=$!
 pids+=("${world_pid}")

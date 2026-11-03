@@ -19,7 +19,8 @@ case $scenario in
   # The held-out finals world (roadmap item 33) and the open sky (item 39): the flight's own targets; the factor's
   # variable and the profile's (LOCALIZATION_PROFILE, GNSS_FAULTS, LIGHT_FAULTS) pass through to the flight.
   finals) target="sim-finals-point-to-point-headless" ;;
-  open-sky) target="sim-open-sky-point-to-point-headless" ;;
+  # The open sky's mission is 1.6 km on three goals, 1100 s of flight: the series' cap of 900 s ended r2791 at 1105 m.
+  open-sky) target="sim-open-sky-point-to-point-headless"; export SMOKE_DURATION_S="${SMOKE_DURATION_S:-2400}" ;;
   *) echo "unknown or set-aside scenario $scenario" >&2; exit 2 ;;
 esac
 RENDER_BAG=1 ENABLE_RVIZ=true RVIZ_CONFIG_FILE=none ENABLE_LIDAR_DEBUG=true \

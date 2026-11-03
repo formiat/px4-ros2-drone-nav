@@ -258,6 +258,12 @@ class RenderedFlightTest(unittest.TestCase):
         self.assertEqual((6.5, -233.0, -37.5), video.map_to_sdf_offset({"effective_overrides": {
             "POINT_TO_POINT_SCENARIO_PATH":
                 "drone_city_nav/config/finals_prize_round_world_07_point_to_point_scenario.json"}}))
+        # The open sky's offset begins with a minus sign: passed with "=", or
+        # argparse reads it as an option (r2791: "expected one argument").
+        runtime = (REPOSITORY / "scripts/render_flight_runtime.sh").read_text()
+        self.assertIn('--map-to-sdf-offset="${map_to_sdf_offset}"', runtime)
+        tool = (REPOSITORY / "tools/render_flight.sh").read_text()
+        self.assertIn('open-sky) target="sim-open-sky-point-to-point-headless"; export SMOKE_DURATION_S=', tool)
 
     def test_a_rendered_flight_is_the_ordinary_one_with_no_window(self) -> None:
         tool = (REPOSITORY / "tools/render_flight.sh").read_text()
