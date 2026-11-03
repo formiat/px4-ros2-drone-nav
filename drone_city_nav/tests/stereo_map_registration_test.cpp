@@ -64,11 +64,15 @@ TEST(StereoMapRegistrationTest, ATurnedAndShiftedFrameIsReadAndTheTargetConverge
     const std::int64_t stamp = 25 * kSecond + i * kSecond;
     report = registration.registerFrame(stamp, frame, identityPose(stamp), true);
     if (i == 0) {
-      EXPECT_STREQ(report.outcome, "applied");
+      // The first readings are read, not acted on: three must agree first.
+      EXPECT_STREQ(report.outcome, "unsettled");
       EXPECT_NEAR(report.yaw_innovation_rad, yaw, 0.1 * yaw);
       EXPECT_NEAR(report.innovation_m, shift.norm(), 0.05);
       EXPECT_GE(report.matched_points, static_cast<double>(kMapMinimumMatchedPoints));
       EXPECT_LE(report.yaw_step_rad, kMapYawStepRad + 1.0e-12);
+    }
+    if (i == 2) {
+      EXPECT_STREQ(report.outcome, "applied");
     }
   }
   const MapFrameOffset target = registration.target();
@@ -92,11 +96,33 @@ TEST(StereoMapRegistrationTest, TheMeasuringModeReadsWithoutMoving) {
     const std::int64_t stamp = 25 * kSecond + i * kSecond;
     const StereoMapRegistrationReport report =
         registration.registerFrame(stamp, frame, identityPose(stamp), false);
-    EXPECT_STREQ(report.outcome, "applied");
+    EXPECT_STREQ(report.outcome, i < 2 ? "unsettled" : "applied") << i;
     EXPECT_NEAR(report.innovation_m, 0.3, 0.05) << i;
   }
   EXPECT_EQ(registration.target().yaw_rad, 0.0);
   EXPECT_EQ(registration.target().translation.norm(), 0.0);
+}
+
+TEST(StereoMapRegistrationTest, ReadingsThatDisagreeMoveNothing) {
+  // r2772: along the way the readings pointed every way and the frame walked
+  // 2.3 m in 36 steps. Readings that do not agree with their neighbours are
+  // read and never acted on.
+  StereoMapRegistration registration;
+  registration.lay(0, room(), identityPose(0));
+  const std::vector<Eigen::Vector3d> frames[] = {
+      frameFrom(0.0, Eigen::Vector3d{0.3, 0.0, 0.0}),
+      frameFrom(0.0, Eigen::Vector3d{-0.3, 0.0, 0.0}),
+      frameFrom(0.0, Eigen::Vector3d{0.0, 0.3, 0.0}),
+  };
+  for (int i = 0; i < 12; ++i) {
+    const std::int64_t stamp = 25 * kSecond + i * kSecond;
+    const StereoMapRegistrationReport report =
+        registration.registerFrame(stamp, frames[i % 3], identityPose(stamp), true);
+    EXPECT_FALSE(report.consistent) << i;
+    EXPECT_STRNE(report.outcome, "applied") << i;
+  }
+  EXPECT_EQ(registration.target().translation.norm(), 0.0);
+  EXPECT_EQ(registration.target().yaw_rad, 0.0);
 }
 
 TEST(StereoMapRegistrationTest, AnEmptyFrameAndTheFreshMapAreSilent) {
@@ -112,7 +138,8 @@ TEST(StereoMapRegistrationTest, AnEmptyFrameAndTheFreshMapAreSilent) {
       frameFrom(0.0, Eigen::Vector3d{0.3, 0.0, 0.0});
   const StereoMapRegistrationReport fresh =
       registration.registerFrame(30 * kSecond, frame, identityPose(30 * kSecond), true);
-  EXPECT_STREQ(fresh.outcome, "applied");
+  // A first reading of the acting grade, read and not acted on (three agree first).
+  EXPECT_STREQ(fresh.outcome, "unsettled");
   registration.lay(30 * kSecond, frame, identityPose(30 * kSecond));
   const StereoMapRegistrationReport young =
       registration.registerFrame(31 * kSecond, frame, identityPose(31 * kSecond), true);

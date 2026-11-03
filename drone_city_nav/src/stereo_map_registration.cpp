@@ -6,6 +6,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <numbers>
 
 namespace drone_city_nav {
@@ -66,6 +67,23 @@ StereoMapRegistrationReport StereoMapRegistration::registerFrame(
       registration.residual_rms_m <= kMapMaximumResidualRmsM) {
     report.outcome = "far";
     if (innovation.norm() <= kMapCorrectionReachM) {
+      recent_[recent_count_ % kMapConsistentReadings] = {innovation,
+                                                         report.yaw_innovation_rad};
+      ++recent_count_;
+      if (recent_count_ >= kMapConsistentReadings) {
+        Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+        double mean_yaw = 0.0;
+        for (const auto& [shift, yaw] : recent_) {
+          mean += shift / static_cast<double>(kMapConsistentReadings);
+          mean_yaw += yaw / static_cast<double>(kMapConsistentReadings);
+        }
+        report.consistent = true;
+        for (const auto& [shift, yaw] : recent_) {
+          report.consistent = report.consistent &&
+                              (shift - mean).norm() <= kMapConsistentTranslationM &&
+                              std::abs(yaw - mean_yaw) <= kMapConsistentYawRad;
+        }
+      }
       const Eigen::Matrix3d translational =
           registration.information.bottomRightCorner<3, 3>();
       const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
@@ -92,6 +110,11 @@ StereoMapRegistrationReport StereoMapRegistration::registerFrame(
       }
       report.outcome =
           report.observed_axes > 0 || yaw_step != 0.0 ? "applied" : "degenerate";
+      if (!report.consistent && std::strcmp(report.outcome, "applied") == 0) {
+        report.outcome = "unsettled";
+        correction.setZero();
+        yaw_step = 0.0;
+      }
     }
   }
   if (correction.norm() > kMapCorrectionStepM) {

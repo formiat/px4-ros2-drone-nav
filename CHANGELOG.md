@@ -6,6 +6,9 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The stereo estimate's registration against its own map acts only when three
+  consecutive readings agree within the step (K57): r2772's frame had walked 2.3 m
+  on 36 readings that pointed every way, the goal missed by 5.1 m.
 - `REAL_TIME_FACTOR` above 1 is allowed as a stress flight (roadmap item 38, K25):
   the preparation writes it, the mission check names it, the host verdict and the
   watchdog read their floors from it as before; never the acceptance's figures.

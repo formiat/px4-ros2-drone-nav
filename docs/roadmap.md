@@ -1708,7 +1708,9 @@ eave with the estimate 1.2 m off and 0.8 m low after a drift of 2.3 m over
 250 s under the profile (the register's row on the drift, now with a
 contact in Urban). The acting registration changes neither the turn nor the
 drift measurably, so this item stays open, its criterion unmet, with the
-ways that remain: an absolute heading source (the
+ways that remain (and, since 2026-11-03, the target moves only when three
+consecutive acting-grade readings agree, K57: r2772's 36 readings that
+pointed every way had walked the frame 2.3 m): an absolute heading source (the
 magnetometer, 5 to 6 degrees off in the simulator; item 39 stage 3), sight
 to the sides or behind dense enough for a fit (a second pair, or the ring
 with more rays), or routes that revisit. The rest is unchanged on that

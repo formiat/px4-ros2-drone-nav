@@ -11,6 +11,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -69,6 +70,14 @@ inline constexpr double kMapYawStepRad{0.0035};
 inline constexpr double kMapYawReachRad{0.087};
 inline constexpr double kMapMinimumYawInformationPerPoint{0.5};
 inline constexpr double kMapYawRateRadps{0.0175};
+// Along the way the registration reads the drift accrued since the cells it
+// matches were laid, seconds, under the fit's own scatter (K57); acting on
+// each reading walked r2772's frame 2.3 m in 36 steps whose innovations
+// pointed every way. A true offset persists: the target moves only when the
+// last three acting-grade readings agree within the step's size.
+inline constexpr std::size_t kMapConsistentReadings{3U};
+inline constexpr double kMapConsistentTranslationM{0.15};
+inline constexpr double kMapConsistentYawRad{0.0087};
 
 // From the filter's frame to the map's: a turn about the vertical, then a
 // shift.
@@ -98,6 +107,8 @@ struct StereoMapRegistrationReport {
   double correction_m{0.0};
   double yaw_information_per_point{0.0};
   double yaw_innovation_rad{0.0};
+  // The last readings of the acting grade agree; without it nothing moves.
+  bool consistent{false};
   double yaw_step_rad{0.0};
   MapFrameOffset target;
   double registration_ms{0.0};
@@ -163,6 +174,9 @@ private:
   mutable std::mutex mutex_;
   MapFrameOffset target_;
   MapFrameOffset applied_;
+  // The last acting-grade innovations (translation, yaw), oldest first once full.
+  std::array<std::pair<Eigen::Vector3d, double>, kMapConsistentReadings> recent_{};
+  std::size_t recent_count_{0U};
   std::int64_t applied_stamp_ns_{0};
 };
 
