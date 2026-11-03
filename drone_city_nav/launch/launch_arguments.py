@@ -75,6 +75,12 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             description="Start the simulation-only mission verification node.",
         ),
         DeclareLaunchArgument(
+            "enable_survey_mission",
+            default_value="false",
+            description="Start the survey mission's node (roadmap item 34): the frontiers of the memory "
+                        "inside the scenario's volume, handed to the monitor on the operator's channel.",
+        ),
+        DeclareLaunchArgument(
             "gnss_topic",
             default_value="",
             description="The satellite fixes the estimator reads on the hybrid profile (item 39).",

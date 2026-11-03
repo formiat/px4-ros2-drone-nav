@@ -78,7 +78,9 @@ void MissionMonitorNode::judgeReturnHome() {
                   latest_proof_.budget_exhausted ? "true" : "false",
                   latest_proof_.goal_region_voxels, proof_held ? "true" : "false",
                   goal_substituted_ ? "true" : "false");
-      if (!goal_substituted_ && proof_held &&
+      // The survey's goals are the survey's business (roadmap item 34): one
+      // proven unreachable is its next frontier's turn, not the way home.
+      if (!goal_substituted_ && proof_held && !survey_ &&
           substituteGoalWithStart("topological", now_ns)) {
         proven_since_ns_ = 0;
         return;
@@ -163,6 +165,14 @@ void MissionMonitorNode::onNavigationProgress(const msg::NavigationProgress& pro
 [[nodiscard]] bool
 MissionMonitorNode::substituteGoalWithStart(const char* trigger,
                                             const std::int64_t now_ns) {
+  if (survey_) {
+    // The survey's return is a new one-waypoint mission after the goals it
+    // reached: the admission of acknowledgements starts over (its progress
+    // rule took the start's acknowledgements for stale after a terminal one
+    // accepted before, r2805: 352 rejected, no result, no landing).
+    waypoint_acknowledgement_admission_ =
+        MissionWaypointAcknowledgementAdmissionState{};
+  }
   if (!returnHomePositionSourceFresh(latest_position_valid_, latest_position_stamp_ns_,
                                      now_ns)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,

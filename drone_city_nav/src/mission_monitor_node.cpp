@@ -42,6 +42,12 @@ MissionMonitorNode::MissionMonitorNode()
         "mission acknowledgement frame and tolerance must be valid"};
   }
   shutdown_on_result_ = declare_parameter<bool>("shutdown_on_result", false);
+  const std::string mission_type =
+      declare_parameter<std::string>("mission_type", "point_to_point");
+  if (mission_type != "point_to_point" && mission_type != "survey") {
+    throw std::invalid_argument{"mission_type must be point_to_point or survey"};
+  }
+  survey_ = mission_type == "survey";
   waypoints_ =
       missionWaypointsFromFlatParameters(declare_parameter<std::vector<double>>(
           "mission_goal_sequence_xyz_m", std::vector<double>{}));
@@ -429,14 +435,33 @@ void MissionMonitorNode::onWaypointAcknowledgement(
               acknowledgement.completed_waypoint_index, waypoints_.size(),
               acknowledgement.producer_instance_id,
               acknowledgement.acknowledgement_sequence);
-  if (goal_substituted_) {
+  if (survey_ && !goal_substituted_) {
+    // A survey goal reached (roadmap item 34): the vehicle holds there for
+    // the survey's next one; the mission ends at home.
+    RCLCPP_INFO(
+        get_logger(), "SURVEY_GOAL_REACHED goal=(%.2f,%.2f,%.2f)",
+        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
+                                                              : waypoints_.size() - 1U]
+            .x,
+        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
+                                                              : waypoints_.size() - 1U]
+            .y,
+        waypoints_[active_waypoint_index_ < waypoints_.size() ? active_waypoint_index_
+                                                              : waypoints_.size() - 1U]
+            .z);
+    publishMissionEvent("SURVEY_GOAL_REACHED");
+    return;
+  }
+  if (goal_substituted_ && !survey_) {
     // The start was reached in place of the goal. A return is not the
     // mission's success: the check counts it only where the manifest says
     // the unreachability was injected.
     report(false, "goal_unreachable_returned");
     return;
   }
-  report(spawn_ok_ && moved_, spawn_ok_ && moved_ ? "none" : "mission_contract");
+  // The goal, or the survey's home (its return is the mission's end).
+  report(spawn_ok_ && moved_,
+         spawn_ok_ && moved_ ? (survey_ ? "survey_home" : "none") : "mission_contract");
 }
 
 void MissionMonitorNode::publishObjective(const Point3& position,

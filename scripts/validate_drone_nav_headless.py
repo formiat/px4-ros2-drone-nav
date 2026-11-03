@@ -321,6 +321,51 @@ def validate_mission_landing(ros_log: str, errors: list[str]) -> None:
         print("OK: the vehicle landed and disarmed at the mission's end")
 
 
+def validate_survey(ros_log: str, errors: list[str], notes: list[str], run_directory: Path | None,
+                    truth_occupancy_3d: str, overrides: dict, lidar_navigation: bool) -> None:
+    """Roadmap item 34 (specification F20): the survey ends with no frontier left in the volume's
+    reachable component (SURVEY_DONE), or by the battery's return (K32); the vehicle comes home by its own
+    track and the monitor reports it; the coverage of the truth's flyable cells within the sensor's reach of
+    the flown path, read from the memory's last snapshot, stands above the figure asked for."""
+    done = re.search(r"SURVEY_DONE [^\n]*", ros_log)
+    battery = re.search(r"GOAL_UNREACHABLE trigger=(battery|main_battery)", ros_log)
+    if done is not None:
+        print(f"OK: the survey ended with no frontier left: {done.group(0).split(']: ')[-1]}")
+    elif battery is not None:
+        notes.append(f"FAIL: the survey ended by the {battery.group(1)} return, frontiers left")
+    else:
+        errors.append("FAIL: the survey ended (SURVEY_DONE, or the battery's return)")
+    require("the survey came home and the monitor reported it", ros_log,
+            r"MISSION_RESULT success=true reason='survey_home'", errors)
+    if run_directory is None or not truth_occupancy_3d or not Path(truth_occupancy_3d).is_file():
+        errors.append("FAIL: the survey's coverage needs the run's records and the truth grid")
+        return
+    volume = overrides.get("RAW_SNAPSHOT_BOUNDS_M", "")
+    reach = 35.0 if lidar_navigation else 6.4
+    try:
+        import survey_coverage
+        figures = survey_coverage.survey_figures(
+            run_directory, Path(truth_occupancy_3d),
+            [float(v) for v in volume.split(",")] if volume else None, reach)
+    except (FileNotFoundError, ValueError) as error:
+        errors.append(f"FAIL: the survey's coverage is read from the memory's snapshot ({error})")
+        return
+    minimum = float(overrides.get("SURVEY_COVERAGE_MINIMUM", "0") or 0.0)
+    coverage = figures.get("volume_coverage")
+    line = (f"the survey covered {coverage:.1%} of the volume's truth flyable cells reachable from the path "
+            f"({figures.get('truth_reachable_cells', 0)} cells), {figures.get('coverage', 0.0):.1%} of those "
+            f"within {reach:g} m of the flown path ({figures.get('truth_target_cells', 0)} cells); "
+            f"{figures['path_m']:.0f} m flown; {figures['frontier_cells']} frontier cells in "
+            f"{figures['clusters']} clusters left, {figures['clusters_with_goal']} with a vantage; "
+            f"required {minimum:.0%} of the volume")
+    if coverage is None:
+        errors.append("FAIL: the survey's coverage is read against the truth (no path inside the volume)")
+    elif coverage < minimum:
+        errors.append("FAIL: " + line)
+    else:
+        print("OK: " + line)
+
+
 def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
     result = re.search(
         r"MISSION_RESULT success=true .*waypoint_count=([0-9]+) "
@@ -366,7 +411,7 @@ def main() -> int:
     parser.add_argument("--px4-log", required=True, action="append", type=Path)
     parser.add_argument(
         "--mission-type",
-        choices=("point_to_point", "cooperative_traffic"),
+        choices=("point_to_point", "survey", "cooperative_traffic"),
         default="point_to_point",
     )
     parser.add_argument("--expected-vehicles", type=int, default=0)
@@ -467,6 +512,7 @@ def main() -> int:
     vehicle_intact_expected = False
     lidar_navigation = False
     truth_occupancy_3d = ""
+    overrides: dict = {}
     if args.runtime_manifest is not None:
         manifest = json.loads(args.runtime_manifest.read_text(encoding="utf-8"))
         manifest_mission = manifest.get("mission", {})
@@ -492,8 +538,10 @@ def main() -> int:
         validate_persistent_3d_acceptance_metrics(ros_log, notes)
         # An injected flight flies out and back to a proof, not to a speed:
         # the mean speed is no requirement of it.
+        # The survey's speed is a figure, not a gate (roadmap item 34: R3 is the flight to a goal's).
         validate_mean_flight_speed(
-            ros_log, notes if return_home_expected or vehicle_intact_expected else errors,
+            ros_log, notes if return_home_expected or vehicle_intact_expected
+            or args.mission_type == "survey" else errors,
             overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
         )
@@ -608,6 +656,10 @@ def main() -> int:
                     Path(truth_occupancy_3d), ros_log, errors,
                     planner_flight_space_m(json.loads(
                         args.runtime_manifest.read_text(encoding="utf-8"))))
+        elif args.mission_type == "survey":
+            validate_survey(ros_log, errors, notes,
+                            args.runtime_manifest.parent if args.runtime_manifest is not None else None,
+                            truth_occupancy_3d, overrides, lidar_navigation)
         elif not return_home_expected:
             validate_return_home(ros_log, False, errors)
             require(
@@ -616,7 +668,7 @@ def main() -> int:
                 r"MISSION_RESULT success=true",
                 errors,
             )
-        if return_home_expected:
+        if return_home_expected or args.mission_type == "survey":
             pass
         elif args.mission_type == "cooperative_traffic":
             validate_cooperative_traffic(

@@ -140,6 +140,7 @@ def generate_launch_description():
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
+    enable_survey_mission = LaunchConfiguration("enable_survey_mission")
     enable_simulation_heading_source = LaunchConfiguration(
         "enable_simulation_heading_source"
     )
@@ -288,8 +289,10 @@ def generate_launch_description():
                 "/fmu/out/sensor_combined" + imu_suffix
             )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
+        survey_volume = None
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
+            survey_volume = scenario["survey_volume_m"]
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
             # PX4 reports NED local positions; the canonical world decides how
             # north and east map onto the map axes, so every node that turns a
@@ -391,6 +394,25 @@ def generate_launch_description():
         )
         assert monitor_shutdown is not None
         mission_monitor_parameters.append({"shutdown_on_result": monitor_shutdown})
+        # Roadmap item 34: the survey mission beside the monitor, which then
+        # takes a goal reached as the survey's and the return home as the end.
+        survey_enabled = enable_survey_mission.perform(context).strip().lower() in (
+            "1", "true", "yes", "on")
+        survey_parameters = [params_file.perform(context), {"use_sim_time": True}]
+        if survey_enabled:
+            mission_monitor_parameters.append({"mission_type": "survey"})
+            if survey_volume is None:
+                raise ValueError("the survey mission needs the scenario's survey_volume_m")
+            survey_parameters.append({"survey_volume_m": list(survey_volume)})
+            # The sensor set's reach and field: the stereo pair's confident depth
+            # and 120 x 105 degrees, the lidar's range and the whole sphere.
+            survey_parameters.append(
+                {"sensor_reach_m": 35.0, "sensor_horizontal_fov_rad": 6.2832,
+                 "sensor_vertical_fov_rad": 3.1416}
+                if navigation_sensors == "lidar"
+                else {"sensor_reach_m": 6.4, "sensor_horizontal_fov_rad": 2.0944,
+                      "sensor_vertical_fov_rad": 1.8326}
+            )
         cameras_mounted = cameras == "stereo_tof"
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
@@ -409,6 +431,7 @@ def generate_launch_description():
         if navigation_overrides:
             production_mppi_parameters.append(navigation_overrides)
             mission_monitor_parameters.append(navigation_overrides)
+            survey_parameters.append(navigation_overrides)
         # Roadmap item 28: the rollouts and the engine the flight is asked to fly with.
         for overrides in (rollouts_overrides(mppi_rollouts.perform(context)),
                           engine_overrides(mppi_engine.perform(context))):
@@ -589,6 +612,14 @@ def generate_launch_description():
             condition=IfCondition(enable_mission_monitor),
             parameters=mission_monitor_parameters,
         )
+        survey_mission = Node(
+            package="drone_city_nav",
+            executable="survey_mission_node",
+            name="survey_mission_node",
+            output="screen",
+            condition=IfCondition(enable_survey_mission),
+            parameters=survey_parameters,
+        )
         production_mppi = Node(
             package="drone_city_nav",
             executable="production_mppi_node",
@@ -621,6 +652,7 @@ def generate_launch_description():
                     )
                 ),
                 mission_monitor,
+                survey_mission,
                 RegisterEventHandler(
                     OnProcessExit(
                         target_action=mission_monitor,

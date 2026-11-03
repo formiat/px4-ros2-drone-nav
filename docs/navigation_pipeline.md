@@ -558,6 +558,75 @@ Offboard consumes the fresh horizon, interpolates by timestamp, and emits PX4
 trajectory setpoints. The finite path reaches zero velocity by its deadline;
 offboard then holds its terminal point instead of extrapolating motion.
 
+## 9. The Survey Mission Layer
+
+Roadmap item 34, specification F20: a layer above the planner that chooses
+its goals, as the return home of item 19 does, and nothing else. It is
+`survey_mission_node` (`drone_city_nav/src/survey_mission_node.cpp`, the
+logic ROS-free in `survey_mission.{hpp,cpp}`), started by the launch
+argument `enable_survey_mission` (the runner's `MISSION_TYPE=survey`), which
+reads the obstacle memory as the mission monitor does (the raw snapshot and
+its deltas), the vehicle's pose from the autopilot, the planner's route to
+its goal (`NavigationProgress`) and the monitor's events.
+
+- **A frontier** is an observed free cell inside the volume the scenario
+  orders (`survey_volume_m`, the map frame) with a face neighbour that is
+  unknown, inside the volume, and holds the body (no occupied cell within
+  0.55 m, inside the envelope's band of heights: K16's rule). A hole a ray
+  left in a wall or a floor, or the unknown under the band, is no frontier
+  (r2758: 20 of 22 clusters on wall holes; r2807: tens of thousands of
+  frontier cells and no end). The volume's face is not a frontier. Frontier
+  cells cluster by 26-connectivity; a cluster under
+  `frontier_cluster_minimum_cells` (8) is noise.
+- **The reachable component** is the flood of K16 from the vehicle through
+  the cells the body fits in, unknown included, inside the volume and 40 m
+  round it, in the envelope's band of heights, under a voxel budget; a
+  second flood runs through the observed free cells alone. A reading from a
+  vehicle outside that box, or whose budget ran out, decides nothing; one
+  whose component is under a hundredth of the largest seen is pinched (the
+  body's sphere between a floor and a ceiling the latest deltas drew) and
+  the vehicle rises 2 m before anything is decided (`SURVEY_RISE`).
+- **The vantage** of a cluster is the observed free cell, a metre clear of
+  anything unknown or occupied all round and reached through what was seen,
+  nearest the point the standoff (2.5 m) short of the centroid on the
+  vehicle's side, within 2.5 m of it, else nearest the centroid within 6 m;
+  a cluster with none waits. The vehicle looks only from where the sensor
+  has been (r2807: a vantage 0.6 m over an unobserved floor ended on it).
+  The next frontier is the one nearest by the route through the observed
+  free cells, measured on the recorded flights against the largest unknown
+  behind and the straight line (step 1's table); when the planner's own
+  route to the chosen vantage is over three times that and 10 m more, the
+  frontier is deferred behind a nearer one and stays a frontier.
+- **The goal** reaches the planner on the operator's channel (K31, `goal X
+  Y Z`), sent until the monitor's event echoes it: the monitor publishes the
+  `NavigationObjective`, and in its survey mode (`mission_type: survey`) a
+  goal reached is `SURVEY_GOAL_REACHED`, a hold for the next, not the
+  mission's result; a new goal and the return start the admission of
+  acknowledgements over (r2805: the start's acknowledgements read as stale
+  after the survey's goals). A goal proven unreachable is not given up for
+  home: the survey's goals are the survey's business.
+- **A frontier disappears by measurement alone** (I3): its cells observed
+  (fewer than a tenth left); the body passed through its unknown neighbours
+  (within the body's radius of a position flown); the sensor's field held
+  its centroid from within the standoff and the capture radius for a second
+  (`looked_at`); at the vantage, with no look in 5 s, the vehicle passed
+  through the far vantage beyond the centroid, an observed cell
+  (`looked_at_on_pass`), or, with none there, stood the wait
+  (`looked_at_from_vantage`); the planner had no executable route to the
+  vantage for 30 s (`unroutable`), or its way led the vehicle out of the
+  flood's box (`left_domain`): by the planner's own map the cluster lies
+  outside the reachable component. There is no list of frontiers tried.
+- **The end**: a complete reading with no cluster that has a vantage is
+  `SURVEY_DONE`; the survey sends `home`, the monitor gives the goal up for
+  the start by the own track (K20), and the arrival there is the mission's
+  success (`survey_home`), landing and disarm as any mission's (K30). The
+  battery's return (K32) ends the survey the same way, by the monitor alone;
+  the survey stops commanding at the monitor's first result or return event.
+
+Every reading and decision is a log line: `SURVEY_READING`,
+`SURVEY_FRONTIER chosen|observed|looked_at|looked_at_on_pass|looked_at_from_vantage|pass|deferred|unreachable|unroutable|left_domain`,
+`SURVEY_RISE`, `SURVEY_COMMAND sent|accepted`, `SURVEY_DONE`, `SURVEY_STOPPED`.
+
 ## Removed Legacy Stages
 
 The production runtime no longer contains:

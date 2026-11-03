@@ -120,6 +120,58 @@ sim-urban-point-to-point-gui: build
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
+# Roadmap item 34: the survey mission, no goal (specification F20): the
+# frontiers of the memory inside the volume the scenario orders, each looked
+# at from a vantage, home by the own track when none is left; the snapshot of
+# the memory is the volume, which the check's coverage reads against the
+# truth grid within the sensor's reach of the flown path.
+SURVEY_SCENARIO_PATH := drone_city_nav/config/urban_circuit_practice_01_survey_scenario.json
+SURVEY_VOLUME_M := -32,0,0,20,46,16
+
+.PHONY: sim-urban-survey-headless
+sim-urban-survey-headless: build urban-truth-occupancy-check
+	python3 scripts/prepare_environment_simulation.py \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		TRUTH_OCCUPANCY_3D_PATH=$(URBAN_TRUTH_OCCUPANCY_3D) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(SURVEY_VOLUME_M)}" \
+		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-urban-survey-gui
+sim-urban-survey-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-urban-survey-lidar-headless sim-urban-survey-lidar-gui
+sim-urban-survey-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-survey-headless
+
+sim-urban-survey-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-survey-gui
+
 # Roadmap item 29: the large dark hall (environments/fixtures/dark_hall), the
 # point-to-point mission across it as the ordinary flight flies Urban's.
 DARK_HALL_SCENARIO_PATH := drone_city_nav/config/dark_hall_point_to_point_scenario.json

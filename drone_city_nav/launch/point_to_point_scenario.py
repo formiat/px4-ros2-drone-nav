@@ -150,6 +150,21 @@ def _launch_platforms(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if len(result) > 1:
         raise ValueError("point-to-point scenario supports at most one launch platform")
     return tuple(result)
+def _survey_volume(document: dict[str, Any]) -> tuple[float, ...] | None:
+    """The box the survey mission orders (roadmap item 34), in the map frame; absent on a flight to a goal."""
+    value = document.get("survey_volume_m")
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) != 6:
+        raise ValueError("survey_volume_m must contain six numeric values")
+    volume = tuple(float(component) for component in value)
+    if not all(math.isfinite(component) for component in volume):
+        raise ValueError("survey_volume_m must contain finite values")
+    if any(volume[axis] >= volume[axis + 3] for axis in range(3)):
+        raise ValueError("survey_volume_m must be a box")
+    return volume
+
+
 def load_point_to_point_scenario(
     path: str | Path, lidar_profile: str = _DEFAULT_LIDAR_PROFILE
 ) -> dict[str, Any]:
@@ -205,6 +220,7 @@ def load_point_to_point_scenario(
         "map_to_sdf": transform,
         "gazebo_axes_swapped": _map_to_sdf_swaps_axes(transform),
         "yaw_rad": yaw_rad,
+        "survey_volume_m": _survey_volume(document),
         "mission_goal_sequence_m": mission_goal_sequence,
         "initial_altitude_m": initial_altitude,
         "minimum_target_z_m": minimum_target_z,

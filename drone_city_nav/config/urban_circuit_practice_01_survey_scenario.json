@@ -1,0 +1,12 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/urban_circuit_practice_01.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [0.749319792, 21.246976852, 7.74],
+    "yaw_rad": 2.4116276060443145
+  },
+  "mission_goal_sequence_m": [[0.749319792, 21.246976852, 9.74]],
+  "survey_volume_m": [-32.0, 0.0, 0.0, 20.0, 46.0, 16.0]
+}

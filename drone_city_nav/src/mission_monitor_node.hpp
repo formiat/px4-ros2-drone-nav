@@ -166,6 +166,9 @@ private:
   bool result_reported_{false};
   bool navigation_mission_ready_{false};
   bool shutdown_on_result_{false};
+  // Roadmap item 34: the survey's goals come on the operator's channel one
+  // after another; reaching one is not the mission's result, coming home is.
+  bool survey_{false};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
   std::uint64_t navigation_mission_epoch_{0U};

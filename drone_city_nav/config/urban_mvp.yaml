@@ -1004,6 +1004,22 @@ collision_crash_node:
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     airborne_altitude_m: 1.0
 
+survey_mission_node:
+  ros__parameters:
+    # Roadmap item 34: the survey mission beside the monitor, reading the same
+    # autopilot position and memory; the scenario sets the volume, the band of
+    # heights and the frame, the launch the sensor set's reach and field.
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    operator_command_topic: /drone_city_nav/operator_command
+    mission_event_topic: /drone_city_nav/mission_events
+    mission_goal_capture_radius_m: 2.0
+    frontier_cluster_minimum_cells: 8
+    # The flood's box (the volume and 40 m round it, in the band) holds up
+    # to twenty million cells on dense arrays: the budget stands above it, or
+    # no reading is ever complete and the survey never ends.
+    flood_voxel_budget: 40000000
+    reading_period_s: 2.0
+
 mission_monitor_node:
   ros__parameters:
     use_static_map: true

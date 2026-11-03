@@ -467,6 +467,22 @@ against 137 to 182) and breaks at 2.0 (r2769, the planner starved; the
 register's row); the stereo set holds no factor above 1, sitting at A7's
 floor at 1.0 already.
 
+### The survey
+
+`MISSION_TYPE=survey` (`make sim-urban-survey-headless`, roadmap item 34)
+has no goal to reach: `validate_survey` asks that the survey ended with no
+frontier left in the volume's reachable component (`SURVEY_DONE`), or by the
+battery's return (a NOTE, K32); that the vehicle came home and the monitor
+reported it (`MISSION_RESULT success=true reason='survey_home'`); the
+landing and the disarm; and the coverage: of the truth's flyable cells
+inside the volume within the sensor's reach of the flown true path (6.4 m on
+the stereo set, 35 m on the lidar), the share the memory's last snapshot
+observed (`scripts/survey_coverage.py`; the snapshot is the volume,
+`RAW_SNAPSHOT_BOUNDS_M`), against `SURVEY_COVERAGE_MINIMUM`. The line also
+counts the metres flown and the frontier cells and clusters left. Every goal
+acknowledged along the way is held to the truth as any goal is. The mean
+flight speed is printed as a NOTE: R3 is the flight to a goal's.
+
 ### Localization profile
 
 `validate_localization_profile` (`scripts/headless_runtime_evidence.py`)

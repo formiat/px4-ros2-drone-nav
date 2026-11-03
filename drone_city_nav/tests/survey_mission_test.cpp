@@ -1,0 +1,384 @@
+#include <gtest/gtest.h>
+
+#include <cmath>
+#include <cstdint>
+#include <numbers>
+
+#include "survey_mission.hpp"
+
+namespace drone_city_nav {
+namespace {
+
+constexpr std::int64_t kSecond{1'000'000'000};
+constexpr double kResolution{0.25};
+
+// A 16 x 12 x 6 m box of memory. A room of 8 x 8 x 4 m observed whole, its
+// walls occupied, the air outside it unknown; with a door, a gap of 1.5 x 2 m
+// in the east wall whose cells are observed free, and 6 m of unknown beyond.
+[[nodiscard]] ObservedOccupancyGrid3D room(const bool door) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 64,
+                                            .height_cells = 48,
+                                            .depth_cells = 24}};
+  for (int z = 4; z < 20; ++z) {
+    for (int y = 8; y < 40; ++y) {
+      for (int x = 8; x < 40; ++x) {
+        const bool wall = x == 8 || x == 39 || y == 8 || y == 39 || z == 4 || z == 19;
+        const bool opening = door && x == 39 && y >= 20 && y < 26 && z >= 5 && z < 13;
+        grid.setState(GridIndex3D{x, y, z}, wall && !opening
+                                                ? ObservedVoxelState::kOccupied
+                                                : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  return grid;
+}
+
+[[nodiscard]] SurveyConfig config() {
+  SurveyConfig config;
+  config.volume_minimum = Point3{0.0, 0.0, 0.0};
+  config.volume_maximum = Point3{16.0, 12.0, 6.0};
+  config.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.5, .maximum_target_z_m = 5.5};
+  return config;
+}
+
+const Point3 kVehicle{4.0, 6.0, 2.5};
+
+TEST(SurveyMissionTest, AClosedRoomHoldsNoFrontierAndTheSurveyGoesHome) {
+  const ObservedOccupancyGrid3D grid = room(false);
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  EXPECT_EQ(reading.frontier_cells, 0U);
+  EXPECT_TRUE(reading.vehicle_placed);
+  EXPECT_FALSE(reading.budget_exhausted);
+  EXPECT_TRUE(reading.complete());
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  const SurveyStep step = mission.step(2 * kSecond);
+  EXPECT_EQ(step.command, SurveyCommand::kHome);
+  ASSERT_EQ(step.events.size(), 1U);
+  EXPECT_EQ(step.events.front().rfind("SURVEY_DONE", 0), 0U);
+  EXPECT_TRUE(mission.done());
+  EXPECT_EQ(mission.step(3 * kSecond).command, SurveyCommand::kNone);
+}
+
+TEST(SurveyMissionTest, ADoorIsOneFrontierLookedAtFromInsideTheRoom) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  // The door's cells whose unknown beyond holds the body (K16's rule): not
+  // those beside the jambs, the sill or the lintel.
+  EXPECT_GE(reading.frontier_cells, 8U);
+  EXPECT_LT(reading.frontier_cells, 6U * 8U);
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  const SurveyFrontier& door = reading.frontiers.front();
+  EXPECT_EQ(door.cells, reading.frontier_cells);
+  EXPECT_NEAR(door.centroid.x, 9.875, 1.0e-9);
+  // The vantage stands the standoff short of the door on the vehicle's side, inside the
+  // room.
+  EXPECT_LT(door.vantage.x, door.centroid.x);
+  EXPECT_GT(door.vantage.x, door.centroid.x - 3.5);
+  EXPECT_GT(door.route_m, 0.0);
+  // Beyond the door nothing was observed: no far vantage to pass through.
+  EXPECT_FALSE(door.far_vantage_known);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  const SurveyStep chosen = mission.step(2 * kSecond);
+  EXPECT_EQ(chosen.command, SurveyCommand::kGoal);
+  EXPECT_NEAR(chosen.goal.x, door.vantage.x, 1.0e-9);
+  ASSERT_EQ(chosen.events.size(), 1U);
+  EXPECT_EQ(chosen.events.front().rfind("SURVEY_FRONTIER chosen", 0), 0U);
+  // At the vantage facing the door for the dwell: looked at.
+  mission.recordPose(door.vantage, 0.0, true, 10 * kSecond);
+  mission.recordPose(door.vantage, 0.0, true, 12 * kSecond);
+  const SurveyStep looked = mission.step(12 * kSecond);
+  ASSERT_GE(looked.events.size(), 1U);
+  EXPECT_EQ(looked.events.front().rfind("SURVEY_FRONTIER looked_at", 0), 0U);
+  EXPECT_EQ(mission.looked().size(), door.cells);
+  // The next reading leaves the looked-at cells out: nothing is left, home.
+  const SurveyReading next =
+      readSurvey(grid, door.vantage, config(), mission.looked(), {});
+  EXPECT_EQ(next.frontier_cells, 0U);
+  mission.applyReading(next);
+  EXPECT_EQ(mission.step(13 * kSecond).command, SurveyCommand::kHome);
+}
+
+TEST(SurveyMissionTest, FacingAwayAtTheVantageWithNothingSeenBeyondTheWaitIsTheLook) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  const SurveyFrontier door = reading.frontiers.front();
+  // Beyond the door nothing was observed: no far vantage to pass through.
+  EXPECT_FALSE(door.far_vantage_known);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  // At the vantage with the back to the door.
+  for (int i = 0; i < 8; ++i) {
+    mission.recordPose(door.vantage, std::numbers::pi, true, (10 + i) * kSecond);
+    const SurveyStep step = mission.step((10 + i) * kSecond);
+    if (!step.events.empty()) {
+      // Settled; the stale reading still lists the door, so a goal follows.
+      EXPECT_EQ(step.events.front().rfind("SURVEY_FRONTIER looked_at_from_vantage", 0),
+                0U);
+      EXPECT_EQ(mission.looked().size(), door.cells);
+      return;
+    }
+  }
+  FAIL() << "the wait at the vantage settled nothing";
+}
+
+// A corridor along x observed whole, its walls occupied, with a gap of the
+// north wall unobserved: the corridor's cells beside the gap are the frontier,
+// and the corridor beyond them is observed space a pass can go through.
+[[nodiscard]] ObservedOccupancyGrid3D corridorWithGap() {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 64,
+                                            .height_cells = 48,
+                                            .depth_cells = 24}};
+  for (int z = 4; z < 21; ++z) {
+    for (int y = 31; y < 42; ++y) {
+      for (int x = 7; x < 58; ++x) {
+        const bool wall = x == 7 || x == 57 || y == 31 || y == 41 || z == 4 || z == 20;
+        const bool gap = y == 41 && x >= 30 && x < 37 && z >= 5 && z < 13;
+        if (gap) {
+          continue;
+        }
+        grid.setState(GridIndex3D{x, y, z},
+                      wall ? ObservedVoxelState::kOccupied : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  return grid;
+}
+
+TEST(SurveyMissionTest, APassGoesThroughObservedSpaceBeyondTheCentroid) {
+  const ObservedOccupancyGrid3D grid = corridorWithGap();
+  const Point3 vehicle{3.0, 9.0, 2.5};
+  const SurveyReading reading = readSurvey(grid, vehicle, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  const SurveyFrontier gap = reading.frontiers.front();
+  EXPECT_GE(gap.cells, 8U);
+  EXPECT_TRUE(gap.far_vantage_known);
+  EXPECT_GT(gap.far_vantage.x, gap.centroid.x);
+  EXPECT_LT(gap.vantage.x, gap.centroid.x);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(vehicle, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  // At the vantage facing back down the corridor, away from the gap.
+  for (int i = 0; i < 8; ++i) {
+    mission.recordPose(gap.vantage, std::numbers::pi, true, (10 + i) * kSecond);
+    const SurveyStep step = mission.step((10 + i) * kSecond);
+    if (step.command == SurveyCommand::kGoal) {
+      EXPECT_NEAR(step.goal.x, gap.far_vantage.x, 1.0e-9);
+      EXPECT_EQ(step.events.front().rfind("SURVEY_FRONTIER pass", 0), 0U);
+      mission.recordPose(gap.far_vantage, std::numbers::pi, true, 30 * kSecond);
+      const SurveyStep passed = mission.step(30 * kSecond);
+      ASSERT_GE(passed.events.size(), 1U);
+      EXPECT_EQ(passed.events.front().rfind("SURVEY_FRONTIER looked_at_on_pass", 0),
+                0U);
+      return;
+    }
+  }
+  FAIL() << "no pass was commanded";
+}
+
+TEST(SurveyMissionTest, APlannerWithNoRouteToTheVantageForLongSettlesTheFrontier) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, std::numbers::pi, true, kSecond);
+  mission.applyReading(reading);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  mission.recordRoute(false, 0.0, 3 * kSecond);
+  mission.recordRoute(true, 5.0, 10 * kSecond); // a route once: the clock starts again
+  mission.recordRoute(false, 0.0, 11 * kSecond);
+  mission.recordRoute(false, 0.0, 40 * kSecond);
+  EXPECT_TRUE(mission.step(40 * kSecond).events.empty());
+  mission.recordRoute(false, 0.0, 42 * kSecond);
+  const SurveyStep settled = mission.step(42 * kSecond);
+  ASSERT_GE(settled.events.size(), 1U);
+  EXPECT_EQ(settled.events.front().rfind("SURVEY_FRONTIER unroutable", 0), 0U);
+  EXPECT_EQ(mission.looked().size(), reading.frontiers.front().cells);
+}
+
+TEST(SurveyMissionTest,
+     TheBodyPassingThroughAFrontierCancelsItAndSmallClustersAreNotChosen) {
+  ObservedOccupancyGrid3D grid = room(true);
+  SurveyConfig small = config();
+  small.cluster_minimum_cells = 64U;
+  const SurveyReading unchosen = readSurvey(grid, kVehicle, small, {}, {});
+  EXPECT_GE(unchosen.frontier_cells, 8U);
+  EXPECT_TRUE(unchosen.frontiers.empty());
+  EXPECT_EQ(unchosen.clusters, 0U);
+  // The body passed through the door: the unknown cells beyond it count as known.
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  for (int i = 0; i <= 8; ++i) {
+    mission.recordPose(Point3{9.5 + 0.25 * i, 5.75, 2.25}, 0.0, true,
+                       (1 + i) * kSecond);
+  }
+  EXPECT_GT(mission.passed().size(), 0U);
+  const SurveyReading passed =
+      readSurvey(grid, kVehicle, config(), {}, mission.passed());
+  EXPECT_LT(passed.frontier_cells, unchosen.frontier_cells);
+}
+
+// A 16 x 12 x 14 m box: the room of 8 x 8 x 4 m with its door high up (9 to
+// 13 m), and a second room below it observed through nothing (0.25 to 0.75
+// m), 8 m of unobserved floors between: its free cells next to unknown make a
+// frontier whose only way from the vehicle runs through unobserved cells, and
+// no observed cell lies within a vantage's reach of it (r2802).
+[[nodiscard]] ObservedOccupancyGrid3D roomsApart() {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 64,
+                                            .height_cells = 48,
+                                            .depth_cells = 56}};
+  for (int z = 36; z < 52; ++z) {
+    for (int y = 8; y < 40; ++y) {
+      for (int x = 8; x < 40; ++x) {
+        const bool wall = x == 8 || x == 39 || y == 8 || y == 39 || z == 36 || z == 51;
+        const bool opening = x == 39 && y >= 20 && y < 26 && z >= 37 && z < 45;
+        grid.setState(GridIndex3D{x, y, z}, wall && !opening
+                                                ? ObservedVoxelState::kOccupied
+                                                : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  for (int z = 1; z < 3; ++z) {
+    for (int y = 12; y < 36; ++y) {
+      for (int x = 12; x < 36; ++x) {
+        grid.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  return grid;
+}
+
+[[nodiscard]] SurveyConfig apartConfig() {
+  SurveyConfig apart = config();
+  apart.volume_maximum = Point3{16.0, 12.0, 14.0};
+  apart.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.25, .maximum_target_z_m = 13.5};
+  return apart;
+}
+
+const Point3 kVehicleHigh{4.0, 6.0, 10.5};
+
+TEST(SurveyMissionTest, AFrontierWithNoOpenVantageInSeenSpaceWaits) {
+  // The room below is a frontier (its unknown holds the body), but no cell a
+  // metre clear of anything unseen lies within reach of it, nor a way to it
+  // through what was seen: it has no vantage, and the door is the one choice.
+  const ObservedOccupancyGrid3D grid = roomsApart();
+  const SurveyReading reading = readSurvey(grid, kVehicleHigh, apartConfig(), {}, {});
+  EXPECT_EQ(reading.clusters, 2U);
+  EXPECT_EQ(reading.clusters_without_vantage, 1U);
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  EXPECT_NEAR(reading.frontiers.front().centroid.x, 9.875, 1.0e-9); // the door
+}
+
+// The room with its east door and a second door in its north wall.
+[[nodiscard]] ObservedOccupancyGrid3D roomTwoDoors() {
+  ObservedOccupancyGrid3D grid = room(true);
+  for (int z = 5; z < 13; ++z) {
+    for (int x = 20; x < 26; ++x) {
+      grid.setState(GridIndex3D{x, 39, z}, ObservedVoxelState::kFree);
+    }
+  }
+  return grid;
+}
+
+TEST(SurveyMissionTest, APlannerRouteFarLongerThanTheReadingsDefersTheFrontier) {
+  // One door chosen, the planner's way to it far longer than the reading's,
+  // and the other door, nearer than that way: the first is deferred and
+  // stays a frontier.
+  const ObservedOccupancyGrid3D grid = roomTwoDoors();
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 2U);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, std::numbers::pi, true, kSecond);
+  mission.applyReading(reading);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  const Point3 first = mission.target()->centroid;
+  mission.recordRoute(true, 120.0, 3 * kSecond);
+  const SurveyStep deferred = mission.step(3 * kSecond);
+  EXPECT_EQ(deferred.command, SurveyCommand::kGoal);
+  ASSERT_GE(deferred.events.size(), 1U);
+  EXPECT_EQ(deferred.events.front().rfind("SURVEY_FRONTIER deferred", 0), 0U);
+  EXPECT_GT(distance3D(mission.target()->centroid, first), 1.0);
+  EXPECT_TRUE(mission.looked().empty());
+}
+
+TEST(SurveyMissionTest, APinchedReadingIsNoVerdictAndTheVehicleRises) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  SurveyReading wide = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_GT(wide.reachable_voxels, 1000U);
+  SurveyMission mission{config()};
+  mission.setGridBounds(grid.bounds());
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  mission.applyReading(wide);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  // A reading from a pinch: a sliver of the component, no frontier with a vantage.
+  SurveyReading pinched = wide;
+  pinched.reachable_voxels = 5U;
+  pinched.frontiers.clear();
+  pinched.reachable_members.clear();
+  mission.applyReading(pinched);
+  const SurveyStep rise = mission.step(3 * kSecond);
+  EXPECT_EQ(rise.command, SurveyCommand::kGoal);
+  EXPECT_NEAR(rise.goal.z, kVehicle.z + kRiseM, 1.0e-9);
+  ASSERT_EQ(rise.events.size(), 1U);
+  EXPECT_EQ(rise.events.front().rfind("SURVEY_RISE", 0), 0U);
+  EXPECT_FALSE(mission.done());
+  // Not repeated before its time; the wide reading again and the survey goes on.
+  EXPECT_EQ(mission.step(4 * kSecond).command, SurveyCommand::kNone);
+  mission.applyReading(wide);
+  EXPECT_TRUE(mission.step(5 * kSecond).events.empty());
+  EXPECT_FALSE(mission.done());
+}
+
+TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 32,
+                                            .height_cells = 32,
+                                            .depth_cells = 32}};
+  for (int z = 0; z < 16; ++z) {
+    for (int y = 0; y < 16; ++y) {
+      for (int x = 0; x < 16; ++x) {
+        grid.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  SurveyConfig volume = config();
+  volume.volume_maximum = Point3{4.0, 4.0, 4.0};
+  volume.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.5, .maximum_target_z_m = 3.5};
+  const SurveyReading reading = readSurvey(grid, Point3{2.0, 2.0, 2.0}, volume, {}, {});
+  EXPECT_EQ(reading.frontier_cells, 0U);
+  EXPECT_TRUE(reading.complete());
+}
+
+} // namespace
+} // namespace drone_city_nav

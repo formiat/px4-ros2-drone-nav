@@ -12,13 +12,13 @@ load_multi_vehicle_sim_scenario() {
   multi_vehicle_mission="false"
   cooperative_traffic_mission="false"
   case "${requested_mission_type}" in
-  point_to_point) ;;
+  point_to_point | survey) ;;
   cooperative_traffic)
     multi_vehicle_mission="true"
     cooperative_traffic_mission="true"
     ;;
   *)
-    echo "Unsupported MISSION_TYPE=${requested_mission_type}; expected point_to_point or cooperative_traffic" >&2
+    echo "Unsupported MISSION_TYPE=${requested_mission_type}; expected point_to_point, survey or cooperative_traffic" >&2
     return 1
     ;;
   esac

@@ -81,10 +81,10 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             'SIM_WORLD_SDF_PATH="$$SIM_COLLISION_WORLD_SDF_PATH"', makefile
         )
         # Urban's four targets, the dark hall's two (roadmap item 29), the
-        # held-out worlds' four (roadmap item 33) and the open sky's two
-        # (roadmap item 39).
-        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 12)
-        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 12)
+        # held-out worlds' four (roadmap item 33), the open sky's two
+        # (roadmap item 39) and the survey's two (roadmap item 34).
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 14)
+        self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 14)
         self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", makefile)
         self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertIn("sim-urban-point-to-point-headless", headless_wrapper)

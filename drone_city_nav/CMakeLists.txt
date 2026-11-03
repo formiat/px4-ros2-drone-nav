@@ -471,6 +471,7 @@ add_drone_city_nav_layer(
   src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_capture_gate.cpp
   src/goal_reachability_proof_3d.cpp
+  src/survey_mission.cpp
   src/mission_waypoint_sequence.cpp
   src/offboard_session_admission.cpp
   src/pending_certified_route_3d.cpp
@@ -1095,6 +1096,16 @@ ament_target_dependencies(
   std_msgs)
 enable_project_warnings(mission_monitor_node)
 
+add_executable(survey_mission_node src/survey_mission_node.cpp)
+target_compile_features(survey_mission_node PRIVATE cxx_std_20)
+target_link_libraries(survey_mission_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
+ament_target_dependencies(
+  survey_mission_node
+  rclcpp
+  std_msgs)
+enable_project_warnings(survey_mission_node)
+
 add_executable(cooperative_traffic_referee_node
                src/cooperative_traffic_referee_main.cpp
                src/cooperative_traffic_referee_node.cpp
@@ -1394,6 +1405,7 @@ install(
     mppi_offboard_node
     world_visualization_node
     mission_monitor_node
+    survey_mission_node
     cooperative_traffic_referee_node
     lidar_inertial_odometry_node
     stereo_depth_node
@@ -1750,6 +1762,12 @@ if(BUILD_TESTING)
   target_compile_features(goal_reachability_proof_3d_test PRIVATE cxx_std_20)
   target_link_libraries(goal_reachability_proof_3d_test drone_city_nav_core)
   enable_project_warnings(goal_reachability_proof_3d_test)
+
+  ament_add_gtest(survey_mission_test tests/survey_mission_test.cpp)
+  target_compile_features(survey_mission_test PRIVATE cxx_std_20)
+  target_include_directories(survey_mission_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(survey_mission_test drone_city_nav_core)
+  enable_project_warnings(survey_mission_test)
 
   ament_add_gtest(mission_waypoint_sequence_test
                   tests/mission_waypoint_sequence_test.cpp)

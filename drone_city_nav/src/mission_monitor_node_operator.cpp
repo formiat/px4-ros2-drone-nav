@@ -24,6 +24,12 @@ void MissionMonitorNode::onOperatorCommand(const std::string& text) {
     case OperatorCommandKind::kGoal:
       operator_hold_ = false;
       goal_substituted_ = false;
+      // A new one-waypoint mission: the admission of acknowledgements starts
+      // over, or the planner's acknowledgements of it are stale after a
+      // terminal one accepted before (r2805: the survey's home never
+      // reported, 352 acknowledgements of the start rejected).
+      waypoint_acknowledgement_admission_ =
+          MissionWaypointAcknowledgementAdmissionState{};
       waypoints_ = {command->goal};
       goal_ = Point2{command->goal.x, command->goal.y};
       active_waypoint_index_ = 0U;
