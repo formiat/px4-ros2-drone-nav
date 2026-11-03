@@ -111,7 +111,7 @@ class HeldOutScenariosTest(unittest.TestCase):
         # world whose map frame is placed over it needs the offset taken back.
         runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8")
         # With "=": the offset begins with a minus sign more often than not.
-        self.assertIn('--sdf-to-map-offset="${sdf_to_map_offset}"', runtime)
+        self.assertIn('--sdf-to-map-offset="$(sdf_to_map_offset)"', runtime)
         self.assertIn("a[1] - b[1], a[2] - b[2], a[3] - b[3]", runtime)
         capture = (REPOSITORY / "scripts/capture_gazebo_pose.py").read_text(encoding="utf-8")
         self.assertIn("pose.position.x + offset[0]", capture)

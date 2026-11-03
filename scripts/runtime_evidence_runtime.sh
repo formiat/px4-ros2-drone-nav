@@ -6,6 +6,19 @@ initialize_runtime_evidence_paths() {
   raw_snapshot_capture_log_file="${runtime_artifact_dir}/raw_snapshot_capture.log"
 }
 
+# The true pose in the map frame: the scenario's start less its spawn is the
+# canonical world's map_to_sdf offset, taken back; zero where the map frame is
+# the SDF frame. Read by the true pose record and the evaluation overlay alike.
+sdf_to_map_offset() {
+  if [[ -n "${point_to_point_map_start_pose:-}" && -n "${point_to_point_gazebo_spawn_pose:-}" ]]; then
+    awk -v start="${point_to_point_map_start_pose}" -v spawn="${point_to_point_gazebo_spawn_pose}" \
+      'BEGIN { split(start, a, ","); split(spawn, b, ",");
+               printf "%.9g,%.9g,%.9g", a[1] - b[1], a[2] - b[2], a[3] - b[3] }'
+  else
+    printf '0,0,0'
+  fi
+}
+
 prepare_runtime_evidence() {
   local runtime_scenario_path=""
   local -a runtime_manifest_args
@@ -168,6 +181,7 @@ start_runtime_evidence_capture() {
   if bool_is_true "${enable_rviz}" && ! bool_is_true "${multi_vehicle_mission}"; then
     python3 "${repo_root}/scripts/evaluation_overlay.py" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
+      --sdf-to-map-offset="$(sdf_to_map_offset)" \
       > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
   fi
   # A flight rendered afterwards (RENDER_BAG=1, scripts/render_flight_video.py):
@@ -207,19 +221,10 @@ start_runtime_evidence_capture() {
     python3 "${repo_root}/scripts/capture_tracking_setpoints.py" \
       "${runtime_artifact_dir}/tracking.npz" \
       > "${runtime_artifact_dir}/tracking_capture.log" 2>&1 &
-    # The true pose in the map frame: the scenario's start less its spawn is
-    # the canonical world's map_to_sdf offset, taken back.
-    local sdf_to_map_offset="0,0,0"
-    if [[ -n "${point_to_point_map_start_pose:-}" && -n "${point_to_point_gazebo_spawn_pose:-}" ]]; then
-      sdf_to_map_offset="$(awk -v start="${point_to_point_map_start_pose}" \
-        -v spawn="${point_to_point_gazebo_spawn_pose}" \
-        'BEGIN { split(start, a, ","); split(spawn, b, ",");
-                 printf "%.9g,%.9g,%.9g", a[1] - b[1], a[2] - b[2], a[3] - b[3] }')"
-    fi
     python3 "${repo_root}/scripts/capture_gazebo_pose.py" \
       "${runtime_artifact_dir}/gz_pose.csv" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
-      --sdf-to-map-offset="${sdf_to_map_offset}" \
+      --sdf-to-map-offset="$(sdf_to_map_offset)" \
       > "${runtime_artifact_dir}/gz_pose.log" 2>&1 &
     gz_pose_capture_pid=$!
     # The lidar-inertial estimate, when the localization profile runs it;

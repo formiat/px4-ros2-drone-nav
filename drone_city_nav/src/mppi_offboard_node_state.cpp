@@ -177,7 +177,14 @@ void MppiOffboardNode::publishRvizDrone() {
   }
   std_msgs::msg::Header header;
   header.stamp = now();
-  header.frame_id = rviz_drone_follow_parent_frame_;
+  // A world whose map frame is the SDF frame moved (the held-out worlds of
+  // roadmap item 33: finals sits 233 m off) is drawn through the transform
+  // RViz holds, so the marker and the followed frame are published in the map
+  // frame; the legacy worlds with the axes exchanged keep the visualization
+  // rotation applied here (r2789: published in gazebo_map with map figures,
+  // the camera followed a point 233 m from the vehicle and the memory).
+  header.frame_id =
+      gazebo_aligned_rviz_axes_swapped_ ? rviz_drone_follow_parent_frame_ : "map";
   const Point2 map_position =
       px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
   const Point3 position = gazeboAlignedRvizFramePosition(

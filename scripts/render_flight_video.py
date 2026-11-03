@@ -58,6 +58,21 @@ def flight_span(run_directory: Path) -> tuple[float, float]:
     return clock[0][1], simulation_time_at(clock, end_wall_s)
 
 
+def map_to_sdf_offset(manifest: dict) -> tuple[float, float, float]:
+    """The world's SDF frame against the map frame the true pose record holds
+    (the canonical world's map_to_sdf offsets, through the run's scenario):
+    the replay moves the model in the SDF frame. Zero without a scenario or
+    where the frames coincide."""
+    scenario_path = manifest.get("effective_overrides", {}).get("POINT_TO_POINT_SCENARIO_PATH")
+    if not scenario_path:
+        return (0.0, 0.0, 0.0)
+    scenario = json.loads(Path(scenario_path).read_text())
+    world = json.loads((Path(scenario_path).parent / scenario["canonical_world"]).read_text())
+    transform = world.get("map_to_sdf", {})
+    return tuple(float(transform.get(key, 0.0))
+                 for key in ("sdf_x_offset_m", "sdf_y_offset_m", "sdf_z_offset_m"))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run")
@@ -69,6 +84,7 @@ def main() -> int:
     manifest = json.loads((run_directory / "manifest.json").read_text())
     world_sdf = manifest["world"]["path"]
     begin_s, end_s = flight_span(run_directory)
+    map_to_sdf = map_to_sdf_offset(manifest)
 
     container = ["./scripts/container_run.sh", "bash", "-lc"]
     workspace_run = f"/workspace/{run_directory}"
@@ -81,7 +97,8 @@ def main() -> int:
         stdout=subprocess.DEVNULL)
     runtime = subprocess.Popen(container + [
         f"bash /workspace/scripts/render_flight_runtime.sh {workspace_run} "
-        f"/workspace/{world_sdf} {args.rate} {begin_s:.3f} {end_s:.3f}"],
+        f"/workspace/{world_sdf} {args.rate} {begin_s:.3f} {end_s:.3f} "
+        f"{map_to_sdf[0]:.6f},{map_to_sdf[1]:.6f},{map_to_sdf[2]:.6f}"],
         stdout=(run_directory / "render_runtime.log").open("w"), stderr=subprocess.STDOUT,
         start_new_session=True)
 

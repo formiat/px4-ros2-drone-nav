@@ -28,13 +28,18 @@ from carried_light import NOMINAL_INTENSITY, light_message  # noqa: E402
 TICK_S = 1.0 / 48.0
 
 
-def true_poses(run_directory: Path) -> list[tuple[float, ...]]:
-    """(simulation clock, x, y, z, qw, qx, qy, qz) of every true pose, in order."""
+def true_poses(run_directory: Path,
+               map_to_sdf: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> list[tuple[float, ...]]:
+    """(simulation clock, x, y, z, qw, qx, qy, qz) of every true pose, in order,
+    the position in the SDF frame: the record holds it in the map frame
+    (capture_gazebo_pose.py), the world's map_to_sdf offset puts it back."""
     rows = []
     with (run_directory / "gz_pose.csv").open(newline="") as stream:
         for row in csv.reader(stream):
             if len(row) >= 8:
-                rows.append(tuple(float(value) for value in row[:8]))
+                values = [float(value) for value in row[:8]]
+                values[1:4] = [v + o for v, o in zip(values[1:4], map_to_sdf)]
+                rows.append(tuple(values))
     rows.sort()
     return rows
 
@@ -142,7 +147,10 @@ def main() -> int:
     parser.add_argument("--end-s", type=float, required=True)
     parser.add_argument("--go-file", type=Path, required=True)
     parser.add_argument("--clock-output", type=Path, required=True)
+    parser.add_argument("--map-to-sdf-offset", default="0,0,0",
+                        help="added to the record's map position: the world's SDF offset")
     args = parser.parse_args()
+    map_to_sdf = tuple(float(value) for value in args.map_to_sdf_offset.split(","))
 
     from gz.msgs10.boolean_pb2 import Boolean
     from gz.msgs10.entity_factory_pb2 import EntityFactory
@@ -150,7 +158,7 @@ def main() -> int:
     from gz.msgs10.pose_pb2 import Pose
     from gz.transport13 import Node
 
-    poses = true_poses(args.run_directory)
+    poses = true_poses(args.run_directory, map_to_sdf)
     times = [pose[0] for pose in poses]
     shares = light_shares(args.run_directory)
     node = Node()

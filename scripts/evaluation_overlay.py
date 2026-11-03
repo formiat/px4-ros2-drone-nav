@@ -4,7 +4,7 @@ it is against where it truly is, and what its light does.
 
 An evaluation component beside a flight with RViz open. It reads what the
 stack publishes anyway and what the evaluation knows, and draws them as a
-MarkerArray in the frame gazebo_map, one for each of the repository's two
+MarkerArray in the frame map, one for each of the repository's two
 views (/evaluation/markers_follow, /evaluation/markers_top): RViz has no
 screen-fixed text, so the words are placed in the world where the view's
 camera, which orbits the vehicle at a fixed yaw, pitch and distance, sees
@@ -175,6 +175,14 @@ def gnss_text(events: list[str]) -> str:
     return "GNSS BACK" if False in verdicts else "GNSS TRUSTED"
 
 
+def sdf_to_map(position: tuple[float, float, float],
+               offset: tuple[float, float, float]) -> tuple[float, float, float]:
+    """The simulator's true position in the map frame: the scenario's start
+    less its spawn added, as the true pose record takes it (capture_gazebo_pose.py);
+    zero on a world whose map frame is the SDF frame."""
+    return tuple(p + o for p, o in zip(position, offset))
+
+
 def charge_text(charge_s: float | None) -> str:
     """The battery's line, in the scenarios that give the light one."""
     if charge_s is None or not math.isfinite(charge_s):
@@ -209,7 +217,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--world", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--sdf-to-map-offset", default="0,0,0",
+                        help="added to the simulator's position: the map frame's offset")
     args = parser.parse_args()
+    offset = tuple(float(value) for value in args.sdf_to_map_offset.split(","))
+    if len(offset) != 3:
+        raise SystemExit("--sdf-to-map-offset takes X,Y,Z")
 
     from gz.msgs10.pose_v_pb2 import Pose_V
     from gz.transport13 import Node as GzNode
@@ -279,7 +292,8 @@ def main() -> int:
         for pose in message.pose:
             if pose.name == args.model:
                 with lock:
-                    state["truth"] = (pose.position.x, pose.position.y, pose.position.z)
+                    state["truth"] = sdf_to_map(
+                        (pose.position.x, pose.position.y, pose.position.z), offset)
                 break
 
     node.create_subscription(String, "/drone_city_nav/mission_events", on_event, kept)
@@ -299,7 +313,7 @@ def main() -> int:
     def marker(identifier: int, kind: int, color: tuple[float, float, float],
                alpha: float = 1.0) -> Marker:
         made = Marker()
-        made.header.frame_id = "gazebo_map"
+        made.header.frame_id = "map"
         made.header.stamp = node.get_clock().now().to_msg()
         made.ns = "evaluation"
         made.id = identifier

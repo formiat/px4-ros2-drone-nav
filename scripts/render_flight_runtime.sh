@@ -7,9 +7,9 @@
 # the run's bag of what RViz shows is played on the simulation's clock, both at
 # RATE, beginning at BEGIN_S of the flight. Every window hands its frames to its
 # FIFO in the run's directory (frame_pace_shim.c), as in a live recording.
-# render_flight_runtime.sh RUN_DIRECTORY WORLD_SDF RATE BEGIN_S END_S
+# render_flight_runtime.sh RUN_DIRECTORY WORLD_SDF RATE BEGIN_S END_S [MAP_TO_SDF_OFFSET]
 set -u
-run_directory=$1; world_sdf=$2; rate=$3; begin_s=$4; end_s=$5
+run_directory=$1; world_sdf=$2; rate=$3; begin_s=$4; end_s=$5; map_to_sdf_offset=${6:-0,0,0}
 repo_root=/workspace
 source "${repo_root}/scripts/video_recording_runtime.sh"
 source "${repo_root}/scripts/gazebo_gui_camera_runtime.sh"
@@ -38,6 +38,7 @@ wait_for_gazebo_world "${repo_root}" "${world}" 120 || { echo "RENDER none: no w
 python3 "${repo_root}/scripts/render_world_replay.py" --run-directory "${run_directory}" \
   --world "${world}" --model "${model}" --rate "${rate}" --begin-s "${begin_s}" \
   --end-s "${end_s}" --go-file "${go_file}" --clock-output "${run_directory}/render_world_clock.csv" \
+  --map-to-sdf-offset "${map_to_sdf_offset}" \
   > "${run_directory}/render_world.log" 2>&1 &
 world_pid=$!
 pids+=("${world_pid}")

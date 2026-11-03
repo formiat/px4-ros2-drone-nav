@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -233,6 +234,30 @@ class RecordingRuntimeContractTest(unittest.TestCase):
 
 class RenderedFlightTest(unittest.TestCase):
     """Part 6 of the technical-debt goal: the pictures drawn after the flight."""
+
+    def test_the_replay_moves_the_model_in_the_sdf_frame(self) -> None:
+        # The true pose record holds the map frame; a held-out world's SDF
+        # frame sits off it (finals: 6.5, -233, -37.5), and the replay adds
+        # the canonical world's offset back (r2789: the model replayed 233 m
+        # from the world's tunnel, the picture black).
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "render_world_replay", REPOSITORY / "scripts/render_world_replay.py")
+        replay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(replay)
+        directory = Path(tempfile.mkdtemp())
+        (directory / "gz_pose.csv").write_text("1.0,73.75,296.25,20.99,1,0,0,0\n")
+        poses = replay.true_poses(directory, (6.5, -233.0, -37.5))
+        self.assertEqual((1.0, 80.25, 63.25, -16.51, 1.0, 0.0, 0.0, 0.0),
+                         tuple(round(v, 2) for v in poses[0]))
+        spec = importlib.util.spec_from_file_location(
+            "render_flight_video", REPOSITORY / "scripts/render_flight_video.py")
+        video = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(video)
+        self.assertEqual((0.0, 0.0, 0.0), video.map_to_sdf_offset({}))
+        self.assertEqual((6.5, -233.0, -37.5), video.map_to_sdf_offset({"effective_overrides": {
+            "POINT_TO_POINT_SCENARIO_PATH":
+                "drone_city_nav/config/finals_prize_round_world_07_point_to_point_scenario.json"}}))
 
     def test_a_rendered_flight_is_the_ordinary_one_with_no_window(self) -> None:
         tool = (REPOSITORY / "tools/render_flight.sh").read_text()

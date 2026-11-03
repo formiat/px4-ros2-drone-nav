@@ -104,6 +104,24 @@ class StateWordsTest(unittest.TestCase):
         self.assertIn('"GNSS_TRUST trusted="', (REPOSITORY / "drone_city_nav/src"
                                                 / "visual_inertial_odometry_node_internal.hpp").read_text())
 
+    def test_the_truth_is_drawn_in_the_map_frame(self) -> None:
+        # The held-out worlds (roadmap item 33) have a map frame moved from the
+        # SDF frame; the overlay draws in the map frame and moves the
+        # simulator's truth into it by the offset the true pose record takes.
+        self.assertEqual((1.0, 2.0, 3.0), OVERLAY.sdf_to_map((1.0, 2.0, 3.0), (0.0, 0.0, 0.0)))
+        self.assertEqual((73.75, 296.25, 21.23),
+                         tuple(round(v, 2) for v in OVERLAY.sdf_to_map(
+                             (80.25, 63.25, -16.27), (-6.5, 233.0, 37.5))))
+        source = PATH.read_text()
+        self.assertIn('made.header.frame_id = "map"', source)
+        self.assertNotIn('"gazebo_map"', source)
+        runtime = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text()
+        self.assertIn('--sdf-to-map-offset="$(sdf_to_map_offset)"', runtime)
+        self.assertEqual(2, runtime.count('--sdf-to-map-offset="$(sdf_to_map_offset)"'))
+        offboard = (REPOSITORY / "drone_city_nav/src/mppi_offboard_node_state.cpp").read_text()
+        self.assertIn('gazebo_aligned_rviz_axes_swapped_ ? rviz_drone_follow_parent_frame_ : "map"',
+                      offboard)
+
     def test_the_backdrop_faces_the_camera(self) -> None:
         # Straight down: the backdrop's face looks up, its orientation a unit quaternion.
         x, y, z, w = OVERLAY.facing(0.0, 1.5707)
