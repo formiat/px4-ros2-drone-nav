@@ -23,7 +23,11 @@ release names the asset tags it was validated with.
   `scripts/localization_evidence.py`, the launch arguments into
   `launch_arguments.py`, the stereo estimator's update laws, the planner's
   diagnostics file record, the mission monitor and the stereo depth node each
-  as a header and themed sources. The acceptance flown again on that code.
+  as a header and themed sources. The acceptance flown again on that code: the
+  lidar set five of five (r2754 to r2758), the dark void three of three; the
+  stereo set, after the registration's consistency gate found on the way (K57),
+  five of five with B 0.85 to 1.76 m at 1.20 m/s (r2775 to r2787) and the void
+  three of three again.
 - The stereo estimate's registration against its own map as a module
   (`src/stereo_map_registration.cpp`, roadmap items 19 and 40) with a measuring
   mode (`MAP_REGISTRATION=measure`), and the measurement of roadmap item 40: on
