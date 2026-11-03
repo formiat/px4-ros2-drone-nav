@@ -99,25 +99,11 @@ public:
         AutopilotStateTopics{
             .local_state = declare_parameter<std::string>(
                 "px4_local_position_topic", "/fmu/out/vehicle_local_position"),
-            .attitude = "",
-            .imu = "",
-            .clock_sync = "",
-            .status = "",
-            .ground_contact = "",
-            .links = "",
-            .battery = "",
         },
         px4_qos,
         AutopilotStateCallbacks{
             .local_state =
                 [this](const AutopilotLocalState& message) { onLocalState(message); },
-            .attitude = {},
-            .imu = {},
-            .clock_sync = {},
-            .status = {},
-            .ground_contact = {},
-            .links = {},
-            .battery = {},
         });
     operator_command_pub_ = create_publisher<std_msgs::msg::String>(
         declare_parameter<std::string>("operator_command_topic",

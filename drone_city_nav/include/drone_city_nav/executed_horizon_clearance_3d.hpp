@@ -46,7 +46,7 @@ struct ConstrainedHorizonSample3D {
 struct ExecutedHorizonClearance3D {
   bool available{false};
   // Every sample below the constraint threshold, nearest first.
-  std::vector<ConstrainedHorizonSample3D> constrained_samples;
+  std::vector<ConstrainedHorizonSample3D> constrained_samples{};
   // Smallest body clearance anywhere on the remaining motion, for diagnostics.
   double minimum_clearance_m{std::numeric_limits<double>::infinity()};
   // Path length along the remaining motion to the first sample whose body
@@ -57,7 +57,7 @@ struct ExecutedHorizonClearance3D {
   // evidence actually covers, in place of the range the sensor guarantees in
   // the open. Absent when the whole remaining motion runs through observed
   // space.
-  std::optional<double> unobserved_distance_m;
+  std::optional<double> unobserved_distance_m{};
 
   [[nodiscard]] bool constrained() const noexcept {
     return available && !constrained_samples.empty();

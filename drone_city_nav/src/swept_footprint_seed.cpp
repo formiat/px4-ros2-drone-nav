@@ -79,7 +79,16 @@ using swept_footprint_detail::normalized;
   add_axis_breakpoints(first.y, direction.y, minimum.y, maximum.y);
   add_axis_breakpoints(first.z, direction.z, minimum.z, maximum.z);
   const std::span<double> active_breakpoints = breakpoints.first(breakpoint_count);
-  std::sort(active_breakpoints.begin(), active_breakpoints.end());
+  // Eight breakpoints at most, sorted by insertion: std::sort's sixteen-element
+  // insertion pass reads as out of bounds to GCC 13 (-Warray-bounds).
+  for (std::size_t index = 1U; index < active_breakpoints.size(); ++index) {
+    const double value = active_breakpoints[index];
+    std::size_t slot = index;
+    for (; slot > 0U && active_breakpoints[slot - 1U] > value; --slot) {
+      active_breakpoints[slot] = active_breakpoints[slot - 1U];
+    }
+    active_breakpoints[slot] = value;
+  }
   const auto unique_end =
       std::unique(active_breakpoints.begin(), active_breakpoints.end());
   breakpoint_count =

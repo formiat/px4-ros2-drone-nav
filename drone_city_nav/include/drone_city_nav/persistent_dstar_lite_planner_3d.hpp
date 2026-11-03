@@ -57,10 +57,10 @@ struct PersistentPlannerWorld3D {
   // cells left out. It prices node clearance for ranking without a raw
   // search; the raw grids above remain the only collision authority, and a
   // world without it (or a point outside its window) ranks from the raw grid.
-  std::shared_ptr<const KnownObstacleDistance3D> observed_clearance_field;
-  std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
-  std::optional<LaunchSupportContact3D> launch_support_contact;
-  std::vector<OccupancyChunkIndex3D> dirty_chunks;
+  std::shared_ptr<const KnownObstacleDistance3D> observed_clearance_field{};
+  std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed{};
+  std::optional<LaunchSupportContact3D> launch_support_contact{};
+  std::vector<OccupancyChunkIndex3D> dirty_chunks{};
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
   // Exact predecessor for which dirty_chunks is complete. A skipped world

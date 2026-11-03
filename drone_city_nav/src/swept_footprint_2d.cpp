@@ -73,7 +73,16 @@ squaredDistanceSegmentToBox(const Point2& first, const Point2& second,
   };
   add_axis_breakpoints(first.x, direction.x, minimum.x, maximum.x);
   add_axis_breakpoints(first.y, direction.y, minimum.y, maximum.y);
-  std::sort(breakpoints.begin(), breakpoints.begin() + breakpoint_count);
+  // Six breakpoints at most, sorted by insertion: std::sort's sixteen-element
+  // insertion pass reads as out of bounds to GCC 13 (-Warray-bounds).
+  for (std::size_t index = 1U; index < breakpoint_count; ++index) {
+    const double value = breakpoints[index];
+    std::size_t slot = index;
+    for (; slot > 0U && breakpoints[slot - 1U] > value; --slot) {
+      breakpoints[slot] = breakpoints[slot - 1U];
+    }
+    breakpoints[slot] = value;
+  }
   const auto unique_end =
       std::unique(breakpoints.begin(), breakpoints.begin() + breakpoint_count);
   breakpoint_count =

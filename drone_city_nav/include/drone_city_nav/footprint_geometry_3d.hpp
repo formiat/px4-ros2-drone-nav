@@ -57,7 +57,7 @@ struct ProprioceptiveFreeSpaceSeed3D {
   // cannot clear while the vehicle threads its way out of a tight spot at
   // hover is contact for the whole departure and an obstacle nowhere else;
   // the physical body stays a hard rule at every pose of it.
-  std::vector<Point3> departure_chain;
+  std::vector<Point3> departure_chain{};
 };
 
 struct AxisAlignedBox3D {

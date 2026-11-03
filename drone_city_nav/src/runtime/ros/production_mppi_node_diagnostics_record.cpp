@@ -44,7 +44,6 @@ void ProductionMppiNode::writeDiagnosticsFileRecord(
   const auto& route_constraint = view.route_constraint;
   const auto planning_state = view.planning_state;
   const auto target_source = view.target_source;
-  const auto static_route_generation_matches = view.static_route_generation_matches;
   const auto rviz_ms = view.rviz_ms;
   JsonOutputStream json;
   json << "{\"tick\":" << snapshot.tick_sequence

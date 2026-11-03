@@ -12,13 +12,13 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] double interpolate(const double first, const double second,
-                                 const double ratio) {
+[[nodiscard]] inline double interpolate(const double first, const double second,
+                                        const double ratio) {
   return first + (second - first) * ratio;
 }
 
 // The vehicle as RViz follows and draws it.
-[[nodiscard]] geometry_msgs::msg::TransformStamped
+[[nodiscard]] inline geometry_msgs::msg::TransformStamped
 droneFollowTransform(const std_msgs::msg::Header& header,
                      const std::string& child_frame, const Point3& position) {
   geometry_msgs::msg::TransformStamped transform;
@@ -31,7 +31,7 @@ droneFollowTransform(const std_msgs::msg::Header& header,
   return transform;
 }
 
-[[nodiscard]] visualization_msgs::msg::Marker
+[[nodiscard]] inline visualization_msgs::msg::Marker
 droneMarker(const std_msgs::msg::Header& header, const int marker_id,
             const Point3& position, const std_msgs::msg::ColorRGBA& color) {
   visualization_msgs::msg::Marker marker =
@@ -44,7 +44,7 @@ droneMarker(const std_msgs::msg::Header& header, const int marker_id,
   return marker;
 }
 
-[[nodiscard]] const char* executionModeName(const std::uint8_t mode) noexcept {
+[[nodiscard]] inline const char* executionModeName(const std::uint8_t mode) noexcept {
   switch (mode) {
     case msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED:
       return "planned";
@@ -57,7 +57,8 @@ droneMarker(const std_msgs::msg::Header& header, const int marker_id,
   }
 }
 
-[[nodiscard]] const char* executionReasonName(const std::uint8_t reason) noexcept {
+[[nodiscard]] inline const char*
+executionReasonName(const std::uint8_t reason) noexcept {
   switch (reason) {
     case msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE:
       return "none";
@@ -76,7 +77,7 @@ droneMarker(const std_msgs::msg::Header& header, const int marker_id,
   }
 }
 
-[[nodiscard]] const char* vehicleRoleName(const std::uint8_t role) noexcept {
+[[nodiscard]] inline const char* vehicleRoleName(const std::uint8_t role) noexcept {
   switch (role) {
     case msg::VehicleDestroyed::ROLE_UNSPECIFIED:
       return "unspecified";
@@ -87,7 +88,8 @@ droneMarker(const std_msgs::msg::Header& header, const int marker_id,
   }
 }
 
-[[nodiscard]] const char* vehicleDeathCauseName(const std::uint8_t cause) noexcept {
+[[nodiscard]] inline const char*
+vehicleDeathCauseName(const std::uint8_t cause) noexcept {
   switch (cause) {
     case msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION:
       return "physical_collision";
@@ -98,7 +100,7 @@ droneMarker(const std_msgs::msg::Header& header, const int marker_id,
   }
 }
 
-[[nodiscard]] bool validVehicleDeathCause(const std::uint8_t cause) noexcept {
+[[nodiscard]] inline bool validVehicleDeathCause(const std::uint8_t cause) noexcept {
   return cause == msg::VehicleDestroyed::CAUSE_PHYSICAL_COLLISION ||
          cause == msg::VehicleDestroyed::CAUSE_PROXIMITY_COLLISION;
 }

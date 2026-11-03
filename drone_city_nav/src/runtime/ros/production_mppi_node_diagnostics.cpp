@@ -449,7 +449,6 @@ void ProductionMppiNode::processDiagnostics(
       .route_constraint = route_constraint,
       .planning_state = planning_state,
       .target_source = target_source,
-      .static_route_generation_matches = static_route_generation_matches,
       .rviz_ms = rviz_ms,
       .now_ns = now_ns,
   };

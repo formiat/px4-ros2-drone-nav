@@ -15,17 +15,6 @@
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] bool finitePoint(const Point3& point) noexcept {
-  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
-}
-
-[[nodiscard]] bool finiteVector(const Vec3& vector) noexcept {
-  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
-}
-
-} // namespace
 
 bool PersistentPlannerWorld3D::valid() const noexcept {
   const bool observed = observed_occupancy != nullptr;
@@ -162,6 +151,8 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
   switch (source) {
     case SpatialRouteCandidateSource3D::kFeasibilitySearch:
       return "feasibility_search";
+    case SpatialRouteCandidateSource3D::kFeasibilityClosestApproach:
+      return "feasibility_closest_approach";
     case SpatialRouteCandidateSource3D::kSpatialSearch:
       return "spatial_search";
     case SpatialRouteCandidateSource3D::kExecutionTimeRefinement:

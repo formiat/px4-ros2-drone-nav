@@ -41,7 +41,6 @@ constexpr std::size_t kMaximumDeviceRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
 // The selected sequence and the route-directed candidate.
 constexpr std::size_t kReportedSequenceCount{2U};
-constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
               static_cast<std::size_t>(kThreadsPerBlock));

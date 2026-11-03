@@ -22,12 +22,12 @@ struct PlannerSearchContinuityBase3D {
   // before the block: the successor stitches onto the incumbent no further
   // along than this station, so the frozen prefix ends short of the block.
   // Unset for an extension, which stitches wherever the overlap lands.
-  std::optional<double> stitch_limit_station_m;
+  std::optional<double> stitch_limit_station_m{};
   // The station the stitch must lie at or beyond: the vehicle's projection
   // plus the overlap plus the distance it flies while the search runs, so the
   // prefix is still ahead of the vehicle when the successor arrives. Unset
   // for an extension.
-  std::optional<double> minimum_stitch_station_m;
+  std::optional<double> minimum_stitch_station_m{};
 
   [[nodiscard]] bool
   validFor(const StaticRouteSearchRequestIdentity& request) const noexcept {

@@ -22,7 +22,7 @@ struct OccupiedCollisionWorld3D {
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   const OccupancyGrid3D* static_occupancy{nullptr};
   const OccupancyGrid2D* planar_occupancy{nullptr};
-  IndexedPointCloudView3D raw_point_cloud;
+  IndexedPointCloudView3D raw_point_cloud{};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   // Proprioceptive contact evidence: occupied evidence the body overlaps at
   // the seed is contact, suppressed for body positions that come no closer to

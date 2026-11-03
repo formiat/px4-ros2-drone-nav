@@ -111,7 +111,7 @@ struct MppiSpeedPolicyInput {
   // space the body would sweep. Read only under a forward sensor that does not
   // see all around, for a motion the vehicle does not face: what was seen
   // before is then the only witness, and an absent value is nothing seen.
-  std::optional<double> unfaced_observed_range_m;
+  std::optional<double> unfaced_observed_range_m{};
   // Whether that motion heads back along the path the vehicle has flown: the
   // memory's range then answers for a frame too dim to see (specification
   // K15), because the way the vehicle came is never closed (I3).
@@ -120,12 +120,12 @@ struct MppiSpeedPolicyInput {
   // heading by (roadmap item 18 stage 0b, specification F13): the rim of a
   // patch the pair matched nothing in, within its reach; absent where the
   // heading looks at no such patch.
-  std::optional<double> sensor_silent_range_m;
+  std::optional<double> sensor_silent_range_m{};
   // Roadmap item 31 (specification K46): the depth the pair's frame is empty
   // to under a sound light, a void frame; absent where the frame is not one.
   // The frame alone then stands behind that range: the void's safety is the
   // light and the braking contract, not the map.
-  std::optional<double> sensor_void_range_m;
+  std::optional<double> sensor_void_range_m{};
   // Whether the carried light's driver reads it sound (roadmap item 29): a
   // frame blind under a sound light is the place's darkness, and the memory's
   // range, what the pair and the time-of-flight ring observed, answers for
@@ -158,12 +158,12 @@ struct MppiSpeedPolicyInput {
   // The forward sensor's latest frame as a measurement (roadmap item 17
   // stage 0): the share of its beams that observed anything, and how old the
   // frame is. Absent, the configured contract stands.
-  std::optional<double> sensor_observed_fraction;
-  std::optional<double> sensor_evidence_age_s;
+  std::optional<double> sensor_observed_fraction{};
+  std::optional<double> sensor_evidence_age_s{};
   // The light the forward camera's latest frame has left, one while its gain
   // makes it up (roadmap item 17 stage 7); absent for a sensor that brings
   // its own.
-  std::optional<double> sensor_light_headroom;
+  std::optional<double> sensor_light_headroom{};
 };
 
 struct MppiSpeedPolicyResult {

@@ -24,7 +24,7 @@ struct RouteReference {
   std::shared_ptr<const std::vector<RouteSample3D>> points;
   std::uint64_t generation{0U};
   float initial_station_m{0.0F};
-  std::optional<float> terminal_cross_track_tolerance_m;
+  std::optional<float> terminal_cross_track_tolerance_m{};
 };
 
 // What the gaze policy decided for the first step of the horizon: which rule
@@ -74,7 +74,7 @@ struct MppiTickInput {
   float reference_speed_mps{-1.0F};
   std::optional<RouteReference> route;
   std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
-  std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy;
+  std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy{};
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;
   std::optional<CooperativeSeparationAcquisition> cooperative_acquisition;
   std::optional<std::size_t> active_rollouts;

@@ -13,11 +13,11 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] double finiteOrNegative(const double value) noexcept {
+[[nodiscard]] inline double finiteOrNegative(const double value) noexcept {
   return std::isfinite(value) ? value : -1.0;
 }
 
-[[nodiscard]] ConstrainedRouteObservation
+[[nodiscard]] inline ConstrainedRouteObservation
 diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
                           const RouteEnvelopeConfig& route_envelope_config,
                           const double diagnostics_distance_m) {
@@ -42,7 +42,7 @@ diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
       route_envelope_config, diagnostics_distance_m);
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 persistentPlannerInfoFields(const ProductionPersistentPlannerTelemetry3D& planner) {
   std::ostringstream fields;
   fields << " planner=persistent_dstar_lite_3d"
@@ -107,7 +107,7 @@ persistentPlannerInfoFields(const ProductionPersistentPlannerTelemetry3D& planne
   return fields.str();
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 persistentPlannerJsonFields(const ProductionPersistentPlannerTelemetry3D& planner) {
   std::ostringstream fields;
   fields << ",\"planner\":\"persistent_dstar_lite_3d\""
@@ -178,7 +178,7 @@ persistentPlannerJsonFields(const ProductionPersistentPlannerTelemetry3D& planne
   return fields.str();
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 certifiedRouteReserveInfoFields(const RouteAdmissionReport3D& admission) {
   const CertifiedRouteReserveAssessment3D& reserve = admission.certified_reserve;
   std::ostringstream fields;
@@ -190,7 +190,7 @@ certifiedRouteReserveInfoFields(const RouteAdmissionReport3D& admission) {
   return fields.str();
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 certifiedRouteReserveJsonFields(const RouteAdmissionReport3D& admission) {
   const CertifiedRouteReserveAssessment3D& reserve = admission.certified_reserve;
   std::ostringstream fields;
@@ -202,7 +202,7 @@ certifiedRouteReserveJsonFields(const RouteAdmissionReport3D& admission) {
   return fields.str();
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 trackingErrorTubeInfoFields(const CertifiedRouteSuffix3D* const execution_route) {
   const TrackingErrorTubeProfile3D* const tube =
       execution_route != nullptr && execution_route->geometry != nullptr
@@ -220,7 +220,7 @@ trackingErrorTubeInfoFields(const CertifiedRouteSuffix3D* const execution_route)
   return fields.str();
 }
 
-[[nodiscard]] std::string
+[[nodiscard]] inline std::string
 trackingErrorTubeJsonFields(const CertifiedRouteSuffix3D* const execution_route) {
   const TrackingErrorTubeProfile3D* const tube =
       execution_route != nullptr && execution_route->geometry != nullptr
@@ -265,7 +265,6 @@ struct DiagnosticsTickView {
   const ConstrainedRouteObservation& route_constraint;
   ProductionMppiPlanningState planning_state;
   std::string_view target_source;
-  const char* static_route_generation_matches;
   double rviz_ms;
   std::int64_t now_ns;
 };

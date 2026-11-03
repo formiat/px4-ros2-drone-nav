@@ -310,7 +310,7 @@ public:
     // Empty in ordinary flight; one point from the departure refinement; a
     // chain from the escape search.
     std::vector<Point3> waypoints;
-    DepartureDiagnostics3D diagnostics;
+    DepartureDiagnostics3D diagnostics{};
 
     [[nodiscard]] bool available() const noexcept {
       return anchor.has_value();
@@ -357,7 +357,7 @@ public:
   [[nodiscard]] std::size_t departureConnectionCount(const Point3& start) const;
 
   struct GoalConnection3D {
-    std::optional<PersistentPlannerNode3D> anchor;
+    std::optional<PersistentPlannerNode3D> anchor{};
     // The point the search ends at: the goal itself, or a free point within
     // the goal tolerance when the goal's own surroundings admit no anchor.
     Point3 endpoint{};

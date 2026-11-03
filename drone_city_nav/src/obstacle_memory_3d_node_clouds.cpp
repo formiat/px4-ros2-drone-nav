@@ -235,8 +235,8 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
       // (specification K14, I3's exit guarantee): a pair that turns back
       // at the dim edge of a dark looks into the same dark and would close it.
       if (hit_only_returns_ && sample.interpolated &&
-          std::ranges::any_of(flown_path_, [&endpoint](const Point3& pose) {
-            return squaredDistance(pose, endpoint) <=
+          std::ranges::any_of(flown_path_, [&endpoint](const Point3& flown) {
+            return squaredDistance(flown, endpoint) <=
                    kFlownPathClearanceM * kFlownPathClearanceM;
           })) {
         ++unobservable_on_path;

@@ -86,7 +86,7 @@ struct ObservedWorldRuntime3D {
   std::function<void(const ObservedWorldUpdate3D&)> update_handler;
   // The clock the build rate is kept on: the node's clock, which is the
   // simulation's in flight. Unset, the monotonic clock.
-  std::function<std::chrono::steady_clock::time_point()> now;
+  std::function<std::chrono::steady_clock::time_point()> now{};
 };
 
 struct StaticWorldUpdate3D {

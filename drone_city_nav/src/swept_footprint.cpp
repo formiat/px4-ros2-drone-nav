@@ -171,13 +171,6 @@ extentMayContainOccupied(const Occupancy& occupancy,
   return false;
 }
 
-[[nodiscard]] bool pointInsideExtent(const Point3& point,
-                                     const AxisAlignedExtent3D& extent) noexcept {
-  return point.x >= extent.minimum.x && point.x <= extent.maximum.x &&
-         point.y >= extent.minimum.y && point.y <= extent.maximum.y &&
-         point.z >= extent.minimum.z && point.z <= extent.maximum.z;
-}
-
 // Points that can touch the body over a sweep or at a pose: the cloud's own
 // cells answer for the extent, so a segment costs the few cells it overlaps
 // rather than one pass over the whole scan.

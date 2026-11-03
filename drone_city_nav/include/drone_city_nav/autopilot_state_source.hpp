@@ -13,26 +13,27 @@
 namespace drone_city_nav {
 
 // Topics of the autopilot's own messages; an empty topic is not subscribed.
+// Every member has its default, so a node names only what it reads.
 struct AutopilotStateTopics {
-  std::string local_state;
-  std::string attitude;
-  std::string imu;
-  std::string clock_sync;
-  std::string status;
-  std::string ground_contact;
-  std::string links;
-  std::string battery;
+  std::string local_state{};
+  std::string attitude{};
+  std::string imu{};
+  std::string clock_sync{};
+  std::string status{};
+  std::string ground_contact{};
+  std::string links{};
+  std::string battery{};
 };
 
 struct AutopilotStateCallbacks {
-  std::function<void(const AutopilotLocalState&)> local_state;
-  std::function<void(const AutopilotAttitude&)> attitude;
-  std::function<void(const AutopilotImuSample&)> imu;
-  std::function<void(const AutopilotClockSync&)> clock_sync;
-  std::function<void(const AutopilotStatus&)> status;
-  std::function<void(const AutopilotGroundContact&)> ground_contact;
-  std::function<void(const AutopilotLinks&)> links;
-  std::function<void(const AutopilotBattery&)> battery;
+  std::function<void(const AutopilotLocalState&)> local_state{};
+  std::function<void(const AutopilotAttitude&)> attitude{};
+  std::function<void(const AutopilotImuSample&)> imu{};
+  std::function<void(const AutopilotClockSync&)> clock_sync{};
+  std::function<void(const AutopilotStatus&)> status{};
+  std::function<void(const AutopilotGroundContact&)> ground_contact{};
+  std::function<void(const AutopilotLinks&)> links{};
+  std::function<void(const AutopilotBattery&)> battery{};
 };
 
 // Subscribes a node to the autopilot's messages and delivers them as the

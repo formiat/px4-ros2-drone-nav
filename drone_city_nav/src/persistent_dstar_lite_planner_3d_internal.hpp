@@ -433,7 +433,7 @@ struct PathPostprocessorContext3D {
   // The update's deadline. The pass is part of an anytime search: past the
   // deadline the route publishes as simplified so far, and the next update
   // simplifies further.
-  std::optional<std::chrono::steady_clock::time_point> deadline;
+  std::optional<std::chrono::steady_clock::time_point> deadline{};
 };
 
 // Moving a route's interior vertices off the walls they were placed against.
@@ -455,7 +455,7 @@ struct PathClearanceCenteringContext3D {
   // and a candidate in unobserved space is never taken. Unknown space stays
   // traversable and free of charge: this only decides where an optional
   // geometric refinement may move a vertex. Empty means everything is observed.
-  std::function<bool(const Point3&)> observed;
+  std::function<bool(const Point3&)> observed{};
   // Raw clearance a vertex is content with; ascent stops there. In a passage
   // narrower than this the local maximum is the middle of the passage, which
   // is what the ascent finds.
@@ -465,7 +465,7 @@ struct PathClearanceCenteringContext3D {
   // Upper bound on clearance queries, so centering cannot eat a search budget.
   std::size_t maximum_clearance_queries{0U};
   // The update's deadline; centering stops there and the next update resumes.
-  std::optional<std::chrono::steady_clock::time_point> deadline;
+  std::optional<std::chrono::steady_clock::time_point> deadline{};
 };
 
 class PathPostprocessor3D final {

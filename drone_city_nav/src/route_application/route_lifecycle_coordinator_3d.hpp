@@ -56,9 +56,9 @@ struct RouteLifecycleReplanSnapshot3D {
   // it, and the station its unexecuted suffix is blocked at, when known: a
   // replacement of a route blocked far enough ahead stitches onto the
   // certified prefix before the block instead of starting from the vehicle.
-  std::shared_ptr<const CertifiedRouteSuffix3D> active_route;
+  std::shared_ptr<const CertifiedRouteSuffix3D> active_route{};
   RouteProgressProjection3D route_projection{};
-  std::optional<double> blocked_station_m;
+  std::optional<double> blocked_station_m{};
   std::uint64_t minimum_route_mission_epoch{0U};
   std::uint64_t minimum_route_sample_sequence{0U};
   std::int64_t stamp_ns{0};

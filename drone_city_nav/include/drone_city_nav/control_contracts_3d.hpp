@@ -101,7 +101,7 @@ struct FiniteMotionHorizonConfig3D {
   // shortened to nothing, because its motion is one the vehicle does not face,
   // then held the very heading that kept it from moving (30 s at a time, the
   // heading unchanged to a degree, r530 to r533 and the probes between them).
-  std::optional<float> rest_gaze_heading_rad;
+  std::optional<float> rest_gaze_heading_rad{};
   StoppingCapability stopping_capability{
       .maximum_commanded_horizontal_deceleration_mps2 =
           std::numeric_limits<double>::max(),

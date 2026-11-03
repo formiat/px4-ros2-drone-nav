@@ -62,14 +62,14 @@ struct SilentPatchConfig {
 struct SilentPatch {
   std::size_t cells{0U};
   // The patch's cells on the stride grid, row-major indices.
-  std::vector<std::size_t> cell_indices;
+  std::vector<std::size_t> cell_indices{};
   std::size_t rim_hits{0U};
   // Free rays beside the patch's cells: matches deeper than the confident
   // depth the silence encloses or borders. A closed patch the pair still
   // matches through is thin smoke, not a face (the smoke face, below).
   std::size_t free_neighbours{0U};
   // The cells of the free rays a region of lit silence encloses (smokeFaces).
-  std::vector<std::size_t> enclosed_free_cells;
+  std::vector<std::size_t> enclosed_free_cells{};
   double rim_depth_m{0.0};
   double rim_spread_m{0.0};
   // The share of the rim depths' variance a plane over the rim explains (a

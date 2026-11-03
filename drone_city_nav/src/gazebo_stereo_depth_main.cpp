@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <gz/msgs/fluid_pressure.pb.h>
 #include <gz/msgs/image.pb.h>
@@ -81,7 +82,8 @@ private:
           message->encoding = "mono16";
           message->step = 2U * image.width();
           message->data.assign(image.data().begin(),
-                               image.data().begin() + pixels * 2U);
+                               image.data().begin() +
+                                   static_cast<std::ptrdiff_t>(pixels * 2U));
           thermal_pub_->publish(std::move(message));
         };
     if (!gazebo_.Subscribe(gazebo_topic, callback)) {
