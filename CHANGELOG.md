@@ -6,6 +6,13 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The recordings of the held-out finals world and the open sky (the owner's word of
+  2026-11-02): `render_flight.sh` takes them as scenarios; the vehicle's marker,
+  the followed frame and the evaluation overlay are drawn in the map frame and
+  the rendered flight's world replay moves the model in the SDF frame, so a world
+  whose map frame is moved from the SDF frame (finals 233 m) holds together on
+  the pictures; the overlay's fourth line names the satellite signal's trust on
+  the hybrid profile (K56).
 - The stereo estimate's registration against its own map acts only when three
   consecutive readings agree within the step (K57): r2772's frame had walked 2.3 m
   on 36 readings that pointed every way, the goal missed by 5.1 m.

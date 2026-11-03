@@ -82,8 +82,14 @@ reads `/evaluation`.
   K12): the viewer sees the light fall and the vehicle see it fall. In the
   dark it reads 4 %, not the 31 % the measured range would give, which has a
   floor at the contract's 2 m margin. In the scenarios that give the light a
-  battery, a third line, `CHARGE`, in seconds. Each line stands on a dark
-  backdrop facing the camera, so that it reads over the memory's clouds.
+  battery, a third line, `CHARGE`, in seconds. On the hybrid profile a
+  fourth, `GNSS TRUSTED`, `GNSS DISTRUSTED` or `GNSS BACK`, from the
+  estimator's trust events (K56; roadmap item 39): the viewer sees the
+  signal lied to and let go, and taken back when it agrees again. Each line
+  stands on a dark backdrop facing the camera, so that it reads over the
+  memory's clouds; all are drawn in the map frame, the simulator's truth
+  moved into it by the world's offset, so a held-out world's pictures hold
+  together (r2789 before: the camera 233 m from the memory).
 - **Two trails**, the vehicle's estimate (the drone marker the offboard
   publishes) in white and the truth in green with a green sphere where the
   vehicle really is. Where the light is lost the two part: what the trails
