@@ -475,11 +475,17 @@ frontier left in the volume's reachable component (`SURVEY_DONE`), or by the
 battery's return (a NOTE, K32); that the vehicle came home and the monitor
 reported it (`MISSION_RESULT success=true reason='survey_home'`); the
 landing and the disarm; and the coverage: of the truth's flyable cells
-inside the volume within the sensor's reach of the flown true path (6.4 m on
-the stereo set, 35 m on the lidar), the share the memory's last snapshot
-observed (`scripts/survey_coverage.py`; the snapshot is the volume,
-`RAW_SNAPSHOT_BOUNDS_M`), against `SURVEY_COVERAGE_MINIMUM`. The line also
-counts the metres flown and the frontier cells and clusters left. Every goal
+inside the volume that the body reaches from the flown true path, the share
+the memory's last snapshot observed (`scripts/survey_coverage.py`; the
+snapshot is the volume, `RAW_SNAPSHOT_BOUNDS_M`), against
+`SURVEY_COVERAGE_MINIMUM`. The truth is flooded as the survey node floods:
+in the volume and 40 m round it, in the scenario's band of heights, in the
+SDF frame of a world whose map frame is moved (the held-out worlds); flooded
+inside the volume alone, a vehicle that never left one hall made the hall
+the whole component and the coverage read 100 % by construction (r2810:
+0.76 by the rule). The line also gives the share within the sensor's reach
+of the path (6.4 m on the stereo set, 35 m on the lidar), and counts the
+metres flown and the frontier cells and clusters left. Every goal
 acknowledged along the way is held to the truth as any goal is. The mean
 flight speed is printed as a NOTE: R3 is the flight to a goal's.
 

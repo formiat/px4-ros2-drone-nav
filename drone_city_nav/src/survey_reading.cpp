@@ -25,20 +25,25 @@ constexpr std::array<std::array<int, 3>, 6> kFaces{
 // The vehicle's own cell may hug a wall: the flood starts from the nearest
 // cell the body fits in within this reach (the proof's rule).
 constexpr double kVehicleReachM{1.0};
-// How far from the standoff's point a vantage may stand: the open radius
-// keeps a vantage 1.75 m off the walls, and the point of a frontier in a
-// wall lies at the wall.
+// How far from the standoff's point a vantage may stand: the open cylinder
+// keeps a vantage off the walls and 1.5 m over the floor, and the point of a
+// frontier in a wall lies at the wall.
 constexpr double kSnapReachM{3.5};
 // The flood's margin round the volume, and how far from a cluster's centroid
 // its vantage may stand when none is at the standoff: a box of the lidar's
 // reach twice over held 36 million cells and no reading was ever complete
 // (r2802), and a vantage 35 m away looks at nothing.
 constexpr double kVantageReachM{6.0};
-// The radius of observed free space round a vantage: the body and the
-// lidar-inertial estimate's height error where the vehicle hovers near a
-// surface inside the scan's minimum range (r2808: the estimate 1.0 m over
-// the truth a metre above the start's pad, the vehicle on it).
-constexpr double kVantageOpenM{1.5};
+// The observed free space round a vantage, a cylinder: the body and a cell
+// to the sides, so a corridor two metres wide holds one (a ball of 1.5 m did
+// not, and its frontiers waited unseen: 0.76 of the reachable volume covered,
+// r2810); the body and the lidar-inertial estimate's height error below, a
+// vehicle that hovers near a surface inside the scan's minimum range sinks
+// onto it (r2808: the estimate 1.0 m over the truth a metre above the
+// start's pad; r2807: a vantage 0.6 m over the floor).
+constexpr double kVantageOpenSideM{0.8};
+constexpr double kVantageOpenBelowM{1.5};
+constexpr double kVantageOpenAboveM{0.8};
 // The footprint of a look: the field that looked at a cell looked at the
 // space round it; the boundary of what was seen creeps a cell a scan where
 // rays find no return, and the new cells within the footprint are the same
@@ -157,13 +162,16 @@ struct Lattice {
     const double fit_radius_voxels = config.body_radius_m / bounds.resolution_m;
     const int reach = static_cast<int>(std::ceil(fit_radius_voxels - 1.0e-9));
     const double limit = fit_radius_voxels * fit_radius_voxels + 1.0e-9;
-    const double open_cells = kVantageOpenM / bounds.resolution_m;
-    const int open_reach = static_cast<int>(std::ceil(open_cells - 1.0e-9));
-    for (int z = -open_reach; z <= open_reach; ++z) {
-      for (int y = -open_reach; y <= open_reach; ++y) {
-        for (int x = -open_reach; x <= open_reach; ++x) {
-          if (static_cast<double>(x * x + y * y + z * z) <=
-              open_cells * open_cells + 1.0e-9) {
+    const double side_cells = kVantageOpenSideM / bounds.resolution_m;
+    const int side = static_cast<int>(std::ceil(side_cells - 1.0e-9));
+    const int below =
+        static_cast<int>(std::ceil(kVantageOpenBelowM / bounds.resolution_m - 1.0e-9));
+    const int above =
+        static_cast<int>(std::ceil(kVantageOpenAboveM / bounds.resolution_m - 1.0e-9));
+    for (int z = -below; z <= above; ++z) {
+      for (int y = -side; y <= side; ++y) {
+        for (int x = -side; x <= side; ++x) {
+          if (static_cast<double>(x * x + y * y) <= side_cells * side_cells + 1.0e-9) {
             open_ball.push_back({x, y, z});
           }
         }
@@ -252,7 +260,7 @@ struct Lattice {
     return fitsBody(cell) && known[at(cell)] != 0U;
   }
 
-  // Every cell within the open radius observed free: where the vehicle holds
+  // Every cell of the open cylinder observed free: where the vehicle holds
   // to look stands in what was seen, clear of anything unknown or occupied
   // (r2807: a vantage 0.6 m over the floor, the descent to it ended on the
   // floor).

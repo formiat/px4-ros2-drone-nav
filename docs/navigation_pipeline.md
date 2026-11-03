@@ -586,12 +586,17 @@ its goal (`NavigationProgress`) and the monitor's events.
   whose component is under a hundredth of the largest seen is pinched (the
   body's sphere between a floor and a ceiling the latest deltas drew) and
   the vehicle rises 2 m before anything is decided (`SURVEY_RISE`).
-- **The vantage** of a cluster is the observed free cell, a metre clear of
-  anything unknown or occupied all round and reached through what was seen,
-  nearest the point the standoff (2.5 m) short of the centroid on the
-  vehicle's side, within 2.5 m of it, else nearest the centroid within 6 m;
-  a cluster with none waits. The vehicle looks only from where the sensor
-  has been (r2807: a vantage 0.6 m over an unobserved floor ended on it).
+- **The vantage** of a cluster is the observed free cell with observed free
+  space round it, a cylinder 0.8 m to the sides, 1.5 m below and 0.8 m
+  above, and reached through what was seen, nearest the point the standoff
+  (2.5 m) short of the centroid on the vehicle's side, within 3.5 m of it,
+  else nearest the centroid within 6 m; a cluster with none waits. The
+  vehicle looks only from where the sensor has been, high enough over a
+  floor that the lidar-inertial estimate's height error does not set it on
+  it (r2807: a vantage 0.6 m over an unobserved floor ended on it; r2808:
+  the estimate 1 m over the truth a metre above the start's pad), and a
+  corridor two metres wide holds one (a ball of 1.5 m held in none, and the
+  corridors' frontiers waited unseen, r2810).
   The next frontier is the one nearest by the route through the observed
   free cells, measured on the recorded flights against the largest unknown
   behind and the straight line (step 1's table); when the planner's own

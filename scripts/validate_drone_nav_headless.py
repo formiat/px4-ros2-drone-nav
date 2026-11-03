@@ -344,9 +344,13 @@ def validate_survey(ros_log: str, errors: list[str], notes: list[str], run_direc
     reach = 35.0 if lidar_navigation else 6.4
     try:
         import survey_coverage
+        scenario = overrides.get("POINT_TO_POINT_SCENARIO_PATH", "")
+        band, offset = (survey_coverage.scenario_frame(Path(scenario)) if scenario
+                        else (None, (0.0, 0.0, 0.0)))
         figures = survey_coverage.survey_figures(
             run_directory, Path(truth_occupancy_3d),
-            [float(v) for v in volume.split(",")] if volume else None, reach)
+            [float(v) for v in volume.split(",")] if volume else None, reach,
+            band=band, truth_offset=offset)
     except (FileNotFoundError, ValueError) as error:
         errors.append(f"FAIL: the survey's coverage is read from the memory's snapshot ({error})")
         return

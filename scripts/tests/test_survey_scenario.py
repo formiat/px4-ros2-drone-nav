@@ -123,6 +123,13 @@ class SurveyScenarioTest(unittest.TestCase):
         validator = (REPOSITORY / "scripts/validate_drone_nav_headless.py").read_text(encoding="utf-8")
         self.assertIn('choices=("point_to_point", "survey", "cooperative_traffic")', validator)
         self.assertIn("def validate_survey(", validator)
+        # The truth flooded as the survey node floods, in the scenario's band and frame (r2810: flooded inside the
+        # volume alone, the coverage read 100 % by construction).
+        self.assertIn("band=band, truth_offset=offset", validator)
+        self.assertEqual(survey_coverage.scenario_frame(
+            REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_survey_scenario.json"),
+            ((1.0, 20.0), (0.0, 0.0, 0.0)))
+        self.assertEqual(survey_coverage.FLOOD_MARGIN_M, 40.0)
         self.assertIn(r"MISSION_RESULT success=true reason='survey_home'", validator)
         self.assertIn('or args.mission_type == "survey" else errors', validator)
         self.assertIn("SURVEY_COVERAGE_MINIMUM\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))

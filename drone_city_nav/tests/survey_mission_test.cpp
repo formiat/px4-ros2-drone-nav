@@ -417,6 +417,37 @@ TEST(SurveyMissionTest, FrontierCellsWithinALooksFootprintAreTheSamePlace) {
   EXPECT_EQ(after.frontier_cells, before.frontier_cells - first.cells);
 }
 
+TEST(SurveyMissionTest, ACorridorTwoMetresWideHoldsAVantageHighOverItsFloor) {
+  // A corridor 2 m wide and 3 m tall observed for 8 m, unknown beyond: its
+  // end is a frontier, and the vantage stands in it, off the walls and
+  // 1.5 m over the floor (r2810: a ball of 1.5 m held in no corridor).
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 64,
+                                            .height_cells = 48,
+                                            .depth_cells = 24}};
+  for (int z = 4; z < 18; ++z) {
+    for (int y = 29; y < 39; ++y) {
+      for (int x = 8; x < 41; ++x) {
+        const bool wall = x == 8 || y == 29 || y == 38 || z == 4 || z == 17;
+        grid.setState(GridIndex3D{x, y, z},
+                      wall ? ObservedVoxelState::kOccupied : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  const SurveyReading reading =
+      readSurvey(grid, Point3{3.5, 8.375, 3.0}, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  const SurveyFrontier& end = reading.frontiers.front();
+  EXPECT_NEAR(end.centroid.x, 10.125, 1.0e-9);
+  EXPECT_LT(end.vantage.x, end.centroid.x);
+  EXPECT_NEAR(end.vantage.y, 8.375, 0.25);
+  // The floor's top at 1.25 m: the vantage 1.5 m over it at least.
+  EXPECT_GE(end.vantage.z, 1.25 + 1.5);
+}
+
 TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
   ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
                                             .origin_y = 0.0,

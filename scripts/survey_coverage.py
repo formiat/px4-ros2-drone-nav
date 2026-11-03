@@ -229,8 +229,27 @@ def near_path_mask(shape, res, path_cells, reach):
     return near[:shape[0], :shape[1], :shape[2]]
 
 
+def scenario_frame(scenario_path: Path):
+    """The scenario's band of heights (the canonical world's navigation, the scenario's over it) and the offset from
+    the map frame to the SDF frame the truth grid is in (the held-out worlds of roadmap item 33; zero on Urban).
+    Only a frame moved, not turned or scaled, is read."""
+    scenario = json.loads(scenario_path.read_text())
+    world = json.loads((scenario_path.parent / scenario["canonical_world"]).read_text())
+    navigation = {**world.get("navigation", {}), **scenario.get("navigation", {})}
+    band = (float(navigation.get("minimum_target_z_m", 1.0)), float(navigation.get("maximum_target_z_m", 32.0)))
+    transform = world["map_to_sdf"]
+    if (transform.get("sdf_x_from") != "map_x" or transform.get("sdf_y_from") != "map_y"
+            or any(transform.get(f"sdf_{axis}_scale", 1.0) != 1.0 for axis in "xyz")):
+        raise ValueError(f"{scenario_path}: a turned or scaled map frame")
+    return band, tuple(float(transform.get(f"sdf_{axis}_offset_m", 0.0)) for axis in "xyz")
+
+
+# The truth is flooded in the box the survey node floods in: the volume and this margin round it, in the band.
+FLOOD_MARGIN_M = 40.0
+
+
 def survey_figures(run_directory: Path, truth: Path | None, volume, reach: float, body: float = 0.55,
-                   cluster_minimum: int = 8) -> dict:
+                   cluster_minimum: int = 8, band=None, truth_offset=(0.0, 0.0, 0.0)) -> dict:
     """The frontiers left and the coverages of one flight; `volume` None reads the snapshot's selection."""
     snapshot = last_snapshot(run_directory)
     if snapshot is None:
@@ -258,17 +277,39 @@ def survey_figures(run_directory: Path, truth: Path | None, volume, reach: float
                "path_samples_inside": len(inside),
                "path_m": float(np.linalg.norm(np.diff(path, axis=0), axis=1).sum()) if len(path) > 1 else 0.0,
                "observed_arrays": (observed, occupied, fits, reachable, frontier, cluster_list, vehicle)}
-    if truth is not None and truth.is_file() and inside:
-        truth_occupied = load_truth(truth, res, origin, shape)
+    if truth is not None and truth.is_file() and len(path):
+        # The truth's flyable component of the flown path, flooded in the volume and the margin round it, in
+        # the band (r2810: flooded inside the volume alone, the start's hall was the whole component and the
+        # coverage read 100 %, 0.76 by this rule), then read inside the volume.
+        margin = int(round(FLOOD_MARGIN_M / res))
+        z_low = (max(origin[2] - FLOOD_MARGIN_M, band[0]) if band else origin[2] - FLOOD_MARGIN_M)
+        z_high = (min(origin[2] + shape[2] * res + FLOOD_MARGIN_M, band[1]) if band
+                  else origin[2] + shape[2] * res + FLOOD_MARGIN_M)
+        below = int(np.floor((origin[2] - z_low) / res))
+        above = int(np.floor((z_high - origin[2]) / res)) - shape[2]
+        big_origin = origin - np.array([margin, margin, below]) * res
+        big_shape = (shape[0] + 2 * margin, shape[1] + 2 * margin, shape[2] + below + above)
+        truth_occupied = load_truth(truth, res, big_origin + np.array(truth_offset, dtype=float), big_shape)
         truth_fits = body_fits(truth_occupied, res, body)
-        truth_reachable = flood(truth_fits, [c for c in inside if truth_fits[c]])
-        target = truth_reachable & near_path_mask(shape, res, inside, reach)
+        seeds = [c for c in (tuple(np.floor((p - big_origin) / res).astype(int)) for p in path)
+                 if all(0 <= c[i] < big_shape[i] for i in range(3)) and truth_fits[c]]
+        reachable_big = flood(truth_fits, sorted(set(seeds)))
+        # The volume inside the big box; the part of the volume outside the band is not flown.
+        window = reachable_big[margin:margin + shape[0], margin:margin + shape[1],
+                               max(below, 0):max(below, 0) + shape[2]]
+        truth_reachable = np.zeros(shape, dtype=bool)
+        z_from = max(-below, 0)
+        truth_reachable[:, :, z_from:z_from + window.shape[2]] = window[:, :, :shape[2] - z_from]
+        target = truth_reachable & near_path_mask(shape, res, inside, reach) if inside else truth_reachable
         figures["truth_target_cells"] = int(target.sum())
         figures["coverage"] = round(float((observed & target).sum() / max(target.sum(), 1)), 4)
         figures["truth_reachable_cells"] = int(truth_reachable.sum())
         figures["volume_coverage"] = round(
             float((observed & truth_reachable).sum() / max(truth_reachable.sum(), 1)), 4)
         # The memory's occupied cells against the truth: a check of the frames.
-        figures["occupied_agreeing_with_truth"] = round(float(
-            (occupied & dilate(truth_occupied, ball_offsets(0.5 / res))).sum() / max(occupied.sum(), 1)), 3)
+        volume_truth = truth_occupied[margin:margin + shape[0], margin:margin + shape[1],
+                                      max(below, 0):max(below, 0) + shape[2]]
+        if volume_truth.shape == shape:
+            figures["occupied_agreeing_with_truth"] = round(float(
+                (occupied & dilate(volume_truth, ball_offsets(0.5 / res))).sum() / max(occupied.sum(), 1)), 3)
     return figures
