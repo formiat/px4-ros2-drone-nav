@@ -7,7 +7,9 @@
 # wall clock (REAL_TIME_FACTOR, 0.6 unless set): beside the windows the simulator holds 0.6 and does not hold 0.7
 # (r1091, r1092), and a flight that holds the factor it asked for is judged like any other (specification A7, A11).
 # The recording is the whole flight at the flight's own pace. Output of the recorder: log/tools/record_RUN.log. The
-# stereo set only: a lidar flight is not recorded (specification A11).
+# stereo set only: a lidar flight is not recorded (specification A11). RECORD_TARGET names another world's target in
+# place of the urban one (sim-finals-point-to-point-headless, sim-open-sky-point-to-point-headless), RECORD_DURATION_S
+# its length cap in simulated seconds and RECORD_LABEL the recording's name in place of the scenario's.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 scenario=$1; run=$2; directory=$3
@@ -23,10 +25,11 @@ case $scenario in
 esac
 # The flight starts 45 s after the simulator: the Gazebo window loads the scene for some 20 s, drawing nothing, and
 # a flight started at once took off unseen (r1090, r1092).
-RECORD_VIDEO=1 STARTUP_SLEEP_S=45 REAL_TIME_FACTOR="${REAL_TIME_FACTOR:-0.6}" TARGET="sim-urban-${scenario}-headless" SMOKE_DURATION_S=$duration \
+RECORD_VIDEO=1 STARTUP_SLEEP_S=45 REAL_TIME_FACTOR="${REAL_TIME_FACTOR:-0.6}" TARGET="${RECORD_TARGET:-sim-urban-${scenario}-headless}" \
+  SMOKE_DURATION_S="${RECORD_DURATION_S:-$duration}" \
   ./tools/series2.sh "$run" > /dev/null 2>&1 &
 flight=$!
-name="${scenario}_${run}"
+name="${RECORD_LABEL:-$scenario}_${run}"
 gnome-session-inhibit --inhibit idle --reason "recording flight $run" \
   python3 scripts/record_flight_video.py "$run" "$flight" "$directory" "$name" \
   > "log/tools/record_${run}.log" 2>&1
