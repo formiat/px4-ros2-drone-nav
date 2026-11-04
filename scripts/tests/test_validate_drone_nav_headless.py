@@ -143,6 +143,20 @@ class MappingPipelineValidationTest(unittest.TestCase):
             errors,
         )
 
+    def test_a_survey_inside_a_building_accepts_zero_miss_scans(self) -> None:
+        # Every ray returns inside a building the survey never leaves (r2820); a scan
+        # without the miss counter is still refused.
+        errors: list[str] = []
+        VALIDATOR.validate_mapping_pipeline(
+            "LIDAR3D_MEMORY accepted=true stamp_ns=123 hits=4300 misses=0 revision=8\n"
+            "ONLINE_OCCUPANCY3D_UPDATE revision=8 known=12000 snapshot=true delta=false\n",
+            "3d", True, False, errors, misses_required=False)
+        self.assertEqual(errors, [])
+        VALIDATOR.validate_mapping_pipeline(
+            "LIDAR3D_MEMORY accepted=true stamp_ns=123 hits=4300 revision=8\n",
+            "3d", True, False, errors, misses_required=False)
+        self.assertIn("FAIL: 3D obstacle memory receives timestamped hit/miss scans", errors)
+
     def test_3d_pipeline_rejects_zero_miss_scans(self) -> None:
         errors: list[str] = []
 

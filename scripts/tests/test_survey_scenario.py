@@ -132,6 +132,8 @@ class SurveyScenarioTest(unittest.TestCase):
         self.assertEqual(survey_coverage.FLOOD_MARGIN_M, 40.0)
         self.assertIn(r"MISSION_RESULT success=true reason='survey_home'", validator)
         self.assertIn('or args.mission_type == "survey" else errors', validator)
+        # A survey inside a building sees no ray without a return (r2820).
+        self.assertIn('misses_required=args.mission_type != "survey"', validator)
         self.assertIn("SURVEY_COVERAGE_MINIMUM\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
         self.assertIn("RAW_SNAPSHOT_BOUNDS_M SURVEY_COVERAGE_MINIMUM",
                       (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8"))

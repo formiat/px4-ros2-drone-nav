@@ -124,12 +124,15 @@ def validate_mapping_pipeline(
     expected_memory: bool | None,
     enable_lidar_debug: bool,
     errors: list[str],
+    misses_required: bool = True,
 ) -> None:
     del lidar_profile  # the 3D lidar is the only profile
+    # A survey may never leave the building it surveys, where every ray returns
+    # (r2820: 47 scans, misses=0 in each, the survey done at 23 s in the hall).
     scan_pattern = (
         r"LIDAR3D_MEMORY accepted=true stamp_ns=[1-9][0-9]* .*"
         r"hits=[1-9][0-9]* "
-        r"misses=[1-9][0-9]*"
+        + (r"misses=[1-9][0-9]*" if misses_required else r"misses=[0-9]+")
     )
     update_pattern = (
         r"ONLINE_OCCUPANCY3D_UPDATE .*revision=[1-9][0-9]* .*"
@@ -487,6 +490,7 @@ def main() -> int:
         expected_memory,
         enable_lidar_debug,
         errors,
+        misses_required=args.mission_type != "survey",
     )
     require(
         "production MPPI is ready",
