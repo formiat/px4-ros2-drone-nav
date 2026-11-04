@@ -146,6 +146,13 @@ def stereo_tof_topics(
         "air_pressure_sensor/air_pressure"
     )
     depth_parameters["air_pressure_topic"] = f"{vehicle_prefix}/barometer/air_pressure"
+    # The vehicle's magnetometer, relayed for the camera estimator's heading
+    # (roadmap item 39 stage 3, item 40).
+    depth_parameters["gazebo_magnetometer_topic"] = (
+        f"/world/{world_name}/model/{model_name}/link/base_link/sensor/"
+        "magnetometer_sensor/magnetometer"
+    )
+    depth_parameters["magnetic_field_topic"] = f"{vehicle_prefix}/magnetometer/magnetic_field"
     # The thermal core (roadmap item 32), relayed as the pair is; the smoke
     # model leaves it untouched (K39), so it has no relay suffix.
     depth_parameters["thermal_gazebo_image_topic"] = f"{sensor_prefix}/thermal/image"

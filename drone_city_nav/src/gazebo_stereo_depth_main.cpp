@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/magnetic_field.hpp>
 #include <std_msgs/msg/float64.hpp>
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <gz/msgs/fluid_pressure.pb.h>
 #include <gz/msgs/image.pb.h>
+#include <gz/msgs/magnetometer.pb.h>
 #include <gz/transport/Node.hh>
 #include <memory>
 #include <stdexcept>
@@ -47,6 +49,7 @@ public:
     subscribe("left");
     subscribe("right");
     relayBarometer();
+    relayMagnetometer();
     relayThermal();
   }
 
@@ -142,6 +145,37 @@ private:
     }
   }
 
+  // The vehicle's magnetometer, relayed as its driver would publish it: the
+  // camera estimator's heading prior (roadmap item 39 stage 3, item 40).
+  void relayMagnetometer() {
+    const std::string gazebo_topic =
+        declare_parameter<std::string>("gazebo_magnetometer_topic", "");
+    if (gazebo_topic.empty()) {
+      return;
+    }
+    magnetometer_pub_ = create_publisher<sensor_msgs::msg::MagneticField>(
+        declare_parameter<std::string>("magnetic_field_topic",
+                                       "/magnetometer/magnetic_field"),
+        rclcpp::SensorDataQoS{});
+    const std::function<void(const gz::msgs::Magnetometer&)> callback =
+        [this](const gz::msgs::Magnetometer& field) {
+          sensor_msgs::msg::MagneticField message;
+          message.header.stamp.sec =
+              static_cast<std::int32_t>(field.header().stamp().sec());
+          message.header.stamp.nanosec =
+              static_cast<std::uint32_t>(field.header().stamp().nsec());
+          message.header.frame_id = frame_id_;
+          message.magnetic_field.x = field.field_tesla().x();
+          message.magnetic_field.y = field.field_tesla().y();
+          message.magnetic_field.z = field.field_tesla().z();
+          magnetometer_pub_->publish(message);
+        };
+    if (!gazebo_.Subscribe(gazebo_topic, callback)) {
+      throw std::runtime_error{"cannot subscribe to the Gazebo magnetometer topic '" +
+                               gazebo_topic + "'"};
+    }
+  }
+
   void publish(const gz::msgs::Image& image,
                rclcpp::Publisher<sensor_msgs::msg::Image>& publisher, const bool left) {
     const std::size_t pixels = static_cast<std::size_t>(image.width()) *
@@ -165,16 +199,23 @@ private:
     message->encoding = "mono8";
     message->step = image.width();
     message->data.resize(pixels);
-    const auto* source = reinterpret_cast<const std::uint8_t*>(image.data().data());
+    const std::string& source = image.data();
     if (rgb) {
       // ITU-R BT.601 luma in integers, what cv::COLOR_RGB2GRAY computes.
+      const auto channel = [&source](const std::size_t index) {
+        return static_cast<unsigned>(static_cast<std::uint8_t>(source[index]));
+      };
       for (std::size_t pixel = 0U; pixel < pixels; ++pixel) {
-        const std::uint8_t* const value = source + 3U * pixel;
         message->data[pixel] = static_cast<std::uint8_t>(
-            (4899U * value[0] + 9617U * value[1] + 1868U * value[2] + 8192U) >> 14U);
+            (4899U * channel(3U * pixel) + 9617U * channel(3U * pixel + 1U) +
+             1868U * channel(3U * pixel + 2U) + 8192U) >>
+            14U);
       }
     } else {
-      std::copy_n(source, pixels, message->data.begin());
+      std::transform(source.begin(),
+                     source.begin() + static_cast<std::ptrdiff_t>(pixels),
+                     message->data.begin(),
+                     [](const char value) { return static_cast<std::uint8_t>(value); });
     }
     applyAutomaticGain(message->data, left);
     if (left) {
@@ -196,7 +237,7 @@ private:
   // images take the same gain, so the matcher compares like with like.
   void applyAutomaticGain(std::vector<std::uint8_t>& data, const bool left) {
     if (left) {
-      std::array<std::size_t, 256> histogram{};
+      std::vector<std::size_t> histogram(256U, 0U);
       for (std::size_t pixel = 0U; pixel < data.size(); pixel += kGainSampleStride) {
         ++histogram[data[pixel]];
       }
@@ -226,7 +267,7 @@ private:
     if (!(gain > 1.0 + 1.0e-3)) {
       return;
     }
-    std::array<std::uint8_t, 256> table{};
+    std::vector<std::uint8_t> table(256U, 0U);
     for (int level = 0; level < 256; ++level) {
       table[static_cast<std::size_t>(level)] = static_cast<std::uint8_t>(
           std::min(255.0, std::round(static_cast<double>(level) * gain)));
@@ -244,6 +285,7 @@ private:
   std::atomic<double> gain_{1.0};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr gain_pub_;
   rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magnetometer_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr thermal_pub_;
   std::string frame_id_;
   gz::transport::Node gazebo_;
@@ -252,7 +294,9 @@ private:
 } // namespace
 } // namespace drone_city_nav
 
-int main(int argc, char** argv) {
+namespace {
+
+int run(int argc, char** argv) {
   const std::vector<std::string> arguments =
       rclcpp::init_and_remove_ros_arguments(argc, argv);
   const bool estimator =
@@ -279,4 +323,17 @@ int main(int argc, char** argv) {
   executor.spin();
   rclcpp::shutdown();
   return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+  try {
+    return run(argc, argv);
+  } catch (const std::exception& error) {
+    // A topic Gazebo refuses or a node that cannot start: said, and the process ends.
+    RCLCPP_FATAL(rclcpp::get_logger("gazebo_stereo_depth"), "%s", error.what());
+    rclcpp::shutdown();
+    return 1;
+  }
 }

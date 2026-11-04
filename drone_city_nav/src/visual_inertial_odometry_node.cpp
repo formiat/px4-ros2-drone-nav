@@ -19,6 +19,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/fluid_pressure.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/magnetic_field.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <std_msgs/msg/float64.hpp>
@@ -242,6 +243,25 @@ public:
                             (pressure->fluid_pressure - smoothed_pressure_pa_)
                   : pressure->fluid_pressure;
           odometry_->addBarometricHeight(-smoothed_pressure_pa_ / kPressurePerMetrePa);
+        },
+        in_group);
+    // The magnetometer (roadmap item 39 stage 3, item 40): its field in the
+    // body frame, logged twice a second on the simulation clock for the
+    // heading it reads against the truth.
+    magnetometer_sub_ = create_subscription<sensor_msgs::msg::MagneticField>(
+        declare_parameter<std::string>("magnetic_field_topic",
+                                       "/magnetometer/magnetic_field"),
+        rclcpp::SensorDataQoS{},
+        [this](const sensor_msgs::msg::MagneticField::ConstSharedPtr field) {
+          const std::int64_t stamp_ns = rclcpp::Time{field->header.stamp}.nanoseconds();
+          if (stamp_ns - magnetometer_logged_ns_ < 500'000'000) {
+            return;
+          }
+          magnetometer_logged_ns_ = stamp_ns;
+          RCLCPP_INFO(
+              get_logger(), "VIO_MAGNETOMETER stamp_s=%.3f field_ut=(%.3f,%.3f,%.3f)",
+              1.0e-9 * static_cast<double>(stamp_ns), 1.0e6 * field->magnetic_field.x,
+              1.0e6 * field->magnetic_field.y, 1.0e6 * field->magnetic_field.z);
         },
         in_group);
     // The pair's judgment of its frame (roadmap item 31, K46): the depth it is
@@ -566,10 +586,10 @@ private:
       initialized_stamp_ns_ = pair.stamp_ns;
     }
     const auto started = std::chrono::steady_clock::now();
-    // The tracker reads the buffers only; OpenCV has no const view of one.
+    // The tracker reads the buffers only: a header over the message's bytes,
+    // not a copy (the relay publishes rows without padding, step == width).
     const auto grey = [](const sensor_msgs::msg::Image& image) {
-      return cv::Mat{static_cast<int>(image.height), static_cast<int>(image.width),
-                     CV_8UC1, const_cast<std::uint8_t*>(image.data.data()), image.step};
+      return cv::Mat{image.data, false}.reshape(1, static_cast<int>(image.height));
     };
     std::optional<Eigen::Matrix3d> turn;
     if (previous_frame_stamp_ns_ > 0) {
@@ -855,6 +875,8 @@ private:
   static constexpr double kPressureSmoothing{0.04};
   double smoothed_pressure_pa_{std::numeric_limits<double>::quiet_NaN()};
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::MagneticField>::SharedPtr magnetometer_sub_;
+  std::int64_t magnetometer_logged_ns_{0};
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr void_range_sub_;
   bool void_declared_{false};
   rclcpp::Subscription<px4_msgs::msg::SensorGps>::SharedPtr gnss_sub_;
