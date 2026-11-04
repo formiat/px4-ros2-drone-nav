@@ -343,9 +343,15 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   // At rest the accelerometer reads the reaction to gravity, up in the body
   // frame: roll and pitch are the rotation that takes it to NED's up.
   Eigen::Vector3d up_body{0.0, 0.0, -1.0};
+  // The rest is the second before the declared stamp, however long the
+  // samples reach back (the replay's reach back as far as its bag).
+  constexpr std::int64_t kRestWindowNs{1'000'000'000};
   for (const VisualInertialImuSample& sample : state.rest_imu) {
     if (sample.stamp_ns > stamp_ns) {
       state.imu.push_back(sample);
+      continue;
+    }
+    if (sample.stamp_ns <= stamp_ns - kRestWindowNs) {
       continue;
     }
     state.rest_gyro_sum += sample.gyro_radps;

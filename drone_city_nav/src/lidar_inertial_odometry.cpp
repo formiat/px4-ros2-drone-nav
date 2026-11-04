@@ -344,13 +344,21 @@ struct LidarInertialOdometry::Impl {
   // The level from the accelerometer at rest: the measured specific force
   // is minus gravity in the body frame, so the rotation that takes it to
   // straight up gives roll and pitch; the heading is the declared one.
+  // The rest is the second before the levelling scan: a rest reaching back
+  // to the first sample seen levelled a flight and its replay, whose bag
+  // reaches further back, on different rests.
+  static constexpr std::int64_t kRestWindowNs{1'000'000'000};
+
   void levelFromRest(const std::int64_t scan_stamp_ns) {
-    // The rest's samples stamped on or before the scan alone; the rest go on
+    // The rest's samples of the window before the scan alone; the rest go on
     // to the propagation. Summed as they arrived, two flights with the same
     // seeds levelled on different rests (r2881, r2883).
     for (const LidarInertialImuSample& sample : rest_imu) {
       if (sample.stamp_ns > scan_stamp_ns) {
         imu.push_back(sample);
+        continue;
+      }
+      if (sample.stamp_ns <= scan_stamp_ns - kRestWindowNs) {
         continue;
       }
       rest_accelerometer_sum += sample.accelerometer_mps2;
@@ -472,7 +480,8 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     const std::size_t rest_before = static_cast<std::size_t>(
         std::count_if(impl.rest_imu.begin(), impl.rest_imu.end(),
                       [stamp_ns](const LidarInertialImuSample& sample) {
-                        return sample.stamp_ns <= stamp_ns;
+                        return sample.stamp_ns <= stamp_ns &&
+                               sample.stamp_ns > stamp_ns - Impl::kRestWindowNs;
                       }));
     if (rest_before < impl.config.minimum_rest_samples) {
       // Not yet half a second of rest to level by: this scan is let go.

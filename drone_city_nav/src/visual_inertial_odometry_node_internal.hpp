@@ -44,6 +44,13 @@ inline void declareGnssTrust(const rclcpp::Logger& logger,
 // the samples received read a different frame in a flight and in its replay
 // (r2888: the estimates parted at the ninth frame, at rest).
 inline constexpr std::int64_t kRestBeforeInitialPoseNs{1'000'000'000};
+// The pose is declared at the first frame stamped on or after the one-second
+// grid mark past the first frame's stamp plus this margin: the flight's
+// estimator and its replay see their first frame a frame or two apart (the
+// recorder's subscription), and a rule counted from the first frame seen read
+// another frame (r2891: the estimates parted at the ninth frame again).
+inline constexpr std::int64_t kDeclarePoseMarginNs{1'500'000'000};
+inline constexpr std::int64_t kDeclarePoseGridNs{1'000'000'000};
 inline constexpr std::int64_t kAutopilotOdometryPeriodNs{40'000'000};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along

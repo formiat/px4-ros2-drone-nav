@@ -327,6 +327,7 @@ private:
   void startAfresh(const char* reason) {
     odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
     rest_start_stamp_ns_ = 0;
+    first_frame_stamp_ns_ = 0;
     previous_frame_stamp_ns_ = 0;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
                          "VISUAL_INERTIAL_ODOMETRY_START_AFRESH reason=%s", reason);
@@ -334,7 +335,13 @@ private:
 
   void onPair(const Pair& pair) {
     if (!odometry_->initialized()) {
-      if (rest_start_stamp_ns_ == 0 ||
+      if (first_frame_stamp_ns_ == 0) {
+        first_frame_stamp_ns_ = pair.stamp_ns;
+      }
+      const std::int64_t due_ns =
+          (first_frame_stamp_ns_ + kDeclarePoseMarginNs + kDeclarePoseGridNs - 1) /
+          kDeclarePoseGridNs * kDeclarePoseGridNs;
+      if (pair.stamp_ns < due_ns || rest_start_stamp_ns_ == 0 ||
           pair.stamp_ns - rest_start_stamp_ns_ < kRestBeforeInitialPoseNs) {
         return;
       }
@@ -576,6 +583,7 @@ private:
   VisualInertialOdometryConfig odometry_config_;
   // The first IMU stamp since the start: the rest is measured from it.
   std::int64_t rest_start_stamp_ns_{0};
+  std::int64_t first_frame_stamp_ns_{0};
   std::int64_t initialized_stamp_ns_{0};
   std::unique_ptr<AutopilotStateSource> autopilot_pose_;
   rclcpp::CallbackGroup::SharedPtr autopilot_pose_group_;
