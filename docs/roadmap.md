@@ -959,89 +959,6 @@ XL.
 Complete when the chosen airframe flies the camera and the lidar series and
 the light scenarios with no contact, its speeds measured against the x500's.
 
-## 34. The Survey Mission: Explore And Come Back With The Map
-
-**Type:** new capability, a mission layer over the single planner; the rule
-it obeys is specification F20 (the owner's, 2026-10-19, recorded
-2026-10-24). The second of the directions of 2026-10-19.
-
-**Hard prerequisites:** item 33 (the held-out worlds, which the survey then
-covers whole); item 19's proof (K16) for the end of the survey; K10 (the
-memory does not forget) for the map. Item 15's shared memory is needed only
-when several vehicles divide a survey, later.
-
-**Validation environment:** Urban Circuit Practice 01 first, surveyed from
-the start without a goal; then one held-out world of item 33.
-
-What it is. A frontier is the boundary between the free space the sensor has
-observed and the unknown. The survey flies to a worthwhile frontier, looks,
-chooses the next, until the reachable space has no frontier left within the
-mission's volume, and comes home along its own track with the map. It is a
-layer that chooses goals for the planner that exists (`NavigationObjective`,
-the way the return home of item 19 hands the planner its goal); it is not a
-second planner and not a second producer of routes (item 12).
-
-What it gives: the product's mission in a building nobody has a map of
-(the operator does not know B's coordinates; "fly in and bring the 3D map
-back" is the work of the indoor vehicles without GNSS), the map as the
-result of the work (the obstacle memory already builds it; item 11 persists
-it), a test of generalisation on a whole world instead of one 400 m route
-(the coverage counted against the truth grid), long flights that exercise
-the drift of a first pass (L1) and the relocalization against the vehicle's
-own map, and the ground for several vehicles (item 15). What it does not
-give: a better flight from A to B.
-
-What exists: the planner and its route repair, the goal handed through
-`NavigationObjective`, the return along the own track (item 19), the flood
-of K16 that says what is reachable, the obstacle memory with no forgetting.
-What is to be written: the frontiers out of the voxel memory, the choice of
-the next one (by the planner's own route cost, for instance), the coverage
-metric, the end condition, the mission's state.
-
-The rules (F20): nothing in transit to any goal prefers unknown or
-unvisited space or a frontier (I1 unchanged); a frontier disappears only by
-measurement, when the sensor has looked at it or when it lies outside the
-reachable component by the flood of K16, never because it was "tried"
-(I3); no second producer of routes beside the planner.
-
-The open questions, to be settled when the item starts, the wording the
-owner's:
-
-- **The survey's volume.** Unknown space is free (I1), so frontiers exist
-  everywhere, above the ceiling's height and beyond the walls. The volume a
-  survey covers is the mission's order, as a goal point is, not a
-  prohibition of the configuration: the vehicle may route outside it and
-  seeks frontiers inside it. The agent's reading; the owner words it.
-- **The end on a whole location.** Item 24 proved the flood on a corridor
-  closed by smoke; on a whole location it did not close before, when the
-  memory still forgot; the forgetting is off (K10) and the closure on the
-  location's scale is unmeasured.
-- **The value of a frontier.** The route's cost from the planner, the
-  size of the unknown behind it, or the plainest rule that surveys the
-  urban location whole in the fewest metres: measured, not chosen.
-
-The order:
-
-1. **Frontiers and coverage, offline.** The frontiers out of a raw snapshot
-   of the memory (`raw_snapshot_3d_*.json` of any flight) and the coverage
-   against the truth grid, as a tool under `tools/`, read on the recorded
-   urban flights first.
-2. **The mission.** The frontier chosen, handed as the goal, the next one
-   when it is observed or unreachable, the end by the flood, home by the
-   own track; a scenario (`sim-urban-survey-headless`) with no B.
-3. **Acceptance.** Five flights a sensor set on the urban location: no
-   contact, home within 2 m in truth, the coverage of the reachable truth
-   within the sensor's reach above a figure measured in step 1 and written
-   into the specification, the mean speed recorded; then the same on one
-   held-out world. The map persisted as item 11 asks.
-
-Size: M for steps 1 and 2, L with the series.
-
-This item is complete when the urban location is surveyed whole in five of
-five flights a sensor set with no contact and the vehicle home, the
-coverage figure stands in the specification, one held-out world is
-surveyed, and the survey's rules are in force as F20 says.
-
 ## 35. The Real Vehicle's Imperfections In The Loop
 
 **Type:** realism stage, general; the third of the directions of
@@ -4863,3 +4780,105 @@ This item is complete when a flight above 1.0 counts by the rules written
 for it, the largest factor each profile holds on a named host is a
 measured figure, and the series at that factor matches the series at 1.0
 on the metres flown.
+
+### 34. The Survey Mission: Explore And Come Back With The Map (Completed)
+
+Done on 2026-11-04 (the goal of 2026-11-02, part 2): `survey_mission_node` and the monitor's survey
+mode (`docs/navigation_pipeline.md`, section 9), the rules in K59 under F20, the scenarios
+`sim-urban-survey-*` and `sim-finals-survey-*`, the coverage read by the mission check
+(`scripts/survey_coverage.py`, R9), `tools/frontiers.py` for the recorded flights. The acceptance on
+48a789fb, the Urban volume (the start's building and the west corridor, 52 x 46 x 16 m):
+
+| Set | Flights | Contact | Home, landed | Coverage of the volume | Worst goal in truth | Survey |
+|---|---|---|---|---|---|---|
+| lidar | r2830 to r2834 | none | 5 of 5 | 0.763 | 0.23 to 0.59 m | 2 to 5 goals, 30 to 46 s, 54 to 72 m |
+| cameras (REAL_TIME_FACTOR 0.8) | r2835 to r2839 | none | 5 of 5 | 0.763 to 0.765 | 0.42 to 0.82 m | 38 to 59 goals, 177 to 229 s, 176 to 247 m |
+
+On the held-out finals world (the staging area and the way to the tunnels' entrance, 60 x 30 x 12 m, the lidar, 02a0859b) the survey covered 0.993 of the volume's reachable truth in both flights (r2840, r2841), the goals in truth within 0.51 m, and both ended on a contact: the vehicle's top under a grating platform 28 m up that the lidar sees through, its cells unknown in the memory, taken by the survey for a frontier with the vantage above it, the planner's way to it through them (the register's row).
+
+Not done as the item asked: the volume is not surveyed whole. Its parts reached only round the
+outside or through the openings of the start hall's floor get no frontier with a vantage (the
+register's two rows: the survey's reach and the lidar-inertial height near floors); the figure
+in R9 is what was measured. The camera flights run at REAL_TIME_FACTOR 0.8, the development host
+holding the stereo set at A7's floor. What was asked for is kept below as it was written.
+
+**Type:** new capability, a mission layer over the single planner; the rule
+it obeys is specification F20 (the owner's, 2026-10-19, recorded
+2026-10-24). The second of the directions of 2026-10-19.
+
+**Hard prerequisites:** item 33 (the held-out worlds, which the survey then
+covers whole); item 19's proof (K16) for the end of the survey; K10 (the
+memory does not forget) for the map. Item 15's shared memory is needed only
+when several vehicles divide a survey, later.
+
+**Validation environment:** Urban Circuit Practice 01 first, surveyed from
+the start without a goal; then one held-out world of item 33.
+
+What it is. A frontier is the boundary between the free space the sensor has
+observed and the unknown. The survey flies to a worthwhile frontier, looks,
+chooses the next, until the reachable space has no frontier left within the
+mission's volume, and comes home along its own track with the map. It is a
+layer that chooses goals for the planner that exists (`NavigationObjective`,
+the way the return home of item 19 hands the planner its goal); it is not a
+second planner and not a second producer of routes (item 12).
+
+What it gives: the product's mission in a building nobody has a map of
+(the operator does not know B's coordinates; "fly in and bring the 3D map
+back" is the work of the indoor vehicles without GNSS), the map as the
+result of the work (the obstacle memory already builds it; item 11 persists
+it), a test of generalisation on a whole world instead of one 400 m route
+(the coverage counted against the truth grid), long flights that exercise
+the drift of a first pass (L1) and the relocalization against the vehicle's
+own map, and the ground for several vehicles (item 15). What it does not
+give: a better flight from A to B.
+
+What exists: the planner and its route repair, the goal handed through
+`NavigationObjective`, the return along the own track (item 19), the flood
+of K16 that says what is reachable, the obstacle memory with no forgetting.
+What is to be written: the frontiers out of the voxel memory, the choice of
+the next one (by the planner's own route cost, for instance), the coverage
+metric, the end condition, the mission's state.
+
+The rules (F20): nothing in transit to any goal prefers unknown or
+unvisited space or a frontier (I1 unchanged); a frontier disappears only by
+measurement, when the sensor has looked at it or when it lies outside the
+reachable component by the flood of K16, never because it was "tried"
+(I3); no second producer of routes beside the planner.
+
+The open questions, to be settled when the item starts, the wording the
+owner's:
+
+- **The survey's volume.** Unknown space is free (I1), so frontiers exist
+  everywhere, above the ceiling's height and beyond the walls. The volume a
+  survey covers is the mission's order, as a goal point is, not a
+  prohibition of the configuration: the vehicle may route outside it and
+  seeks frontiers inside it. The agent's reading; the owner words it.
+- **The end on a whole location.** Item 24 proved the flood on a corridor
+  closed by smoke; on a whole location it did not close before, when the
+  memory still forgot; the forgetting is off (K10) and the closure on the
+  location's scale is unmeasured.
+- **The value of a frontier.** The route's cost from the planner, the
+  size of the unknown behind it, or the plainest rule that surveys the
+  urban location whole in the fewest metres: measured, not chosen.
+
+The order:
+
+1. **Frontiers and coverage, offline.** The frontiers out of a raw snapshot
+   of the memory (`raw_snapshot_3d_*.json` of any flight) and the coverage
+   against the truth grid, as a tool under `tools/`, read on the recorded
+   urban flights first.
+2. **The mission.** The frontier chosen, handed as the goal, the next one
+   when it is observed or unreachable, the end by the flood, home by the
+   own track; a scenario (`sim-urban-survey-headless`) with no B.
+3. **Acceptance.** Five flights a sensor set on the urban location: no
+   contact, home within 2 m in truth, the coverage of the reachable truth
+   within the sensor's reach above a figure measured in step 1 and written
+   into the specification, the mean speed recorded; then the same on one
+   held-out world. The map persisted as item 11 asks.
+
+Size: M for steps 1 and 2, L with the series.
+
+This item is complete when the urban location is surveyed whole in five of
+five flights a sensor set with no contact and the vehicle home, the
+coverage figure stands in the specification, one held-out world is
+surveyed, and the survey's rules are in force as F20 says.

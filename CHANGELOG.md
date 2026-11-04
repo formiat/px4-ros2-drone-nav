@@ -6,6 +6,11 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The survey mission (roadmap item 34): with no goal, the vehicle flies to the frontiers of its own
+  memory inside the volume the scenario orders, looks at each from what it has seen, and comes home by
+  its own track when none is left; the mission check reads the coverage of the volume's reachable truth
+  (0.763 on the Urban volume on both sensor sets, R9) and the rules are K59 under F20. Scenarios
+  `sim-urban-survey-*` and, on the held-out finals world, `sim-finals-survey-*`.
 - The recordings of the held-out finals world and the open sky (the owner's word of
   2026-11-02): `render_flight.sh` takes them as scenarios; the vehicle's marker,
   the followed frame and the evaluation overlay are drawn in the map frame and
