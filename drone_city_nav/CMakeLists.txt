@@ -1167,7 +1167,8 @@ foreach(stereo_depth_process ${stereo_depth_processes})
                                          src/stereo_map_registration.cpp
                                          src/stereo_rectifier.cpp
                                          src/visual_inertial_gnss_input.cpp
-                                         src/visual_inertial_odometry_node.cpp)
+                                         src/visual_inertial_odometry_node.cpp
+                                         src/visual_inertial_odometry_node_map.cpp)
   target_compile_features(${stereo_depth_process} PRIVATE cxx_std_20)
   target_include_directories(${stereo_depth_process} SYSTEM
                              PRIVATE ${OpenCV_INCLUDE_DIRS})

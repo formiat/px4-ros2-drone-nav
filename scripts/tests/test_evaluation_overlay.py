@@ -163,6 +163,9 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         # The monitor's sources are three since 2026-11-02 (the source size contract).
         sources["mission_monitor_node.cpp"] = "".join(
             path.read_text() for path in sorted((REPOSITORY / "drone_city_nav/src").glob("mission_monitor_node*.cpp")))
+        # The camera estimator's node is three since 2026-11-04 (the class, its constructor, its depth).
+        sources["visual_inertial_odometry_node.cpp"] = "".join(
+            path.read_text() for path in sorted((REPOSITORY / "drone_city_nav/src").glob("visual_inertial_odometry_node*")))
         for text in sources.values():
             self.assertIn('"/drone_city_nav/mission_events"', text)
         self.assertIn('"MISSION_READINESS ready=true"', sources["mission_monitor_node.cpp"])
