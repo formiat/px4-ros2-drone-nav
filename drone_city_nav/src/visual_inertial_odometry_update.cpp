@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <deque>
+#include <iterator>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -266,20 +267,41 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // The magnetometer's heading as a prior on the filter's yaw, on every frame:
 // no feature observes the heading, and under the imperfections profile it
 // drifted 0.2 to 2.3 degrees a flight, the frame turned 1.15 degrees and the
-// goal missed by 2.07 m (r2842). The simulated field's horizontal direction
-// in the world holds to 0.47 degrees (standard deviation, 1.01 at the 95th
-// percentile) over a flight whose heading turned 1234 degrees (r2842,
-// tools/magnetic_heading.py), which the sigma covers. The direction at the
-// first frame after the declared pose is the zero, the vehicle at rest on
-// its pad; a reading more than 20 degrees off it is a disturbed field (iron
-// near the sensor), left out reading by reading, never latched.
+// goal missed by 2.07 m (r2842). The simulated sensor holds the field's
+// horizontal direction in the world to 0.03 degrees (r2842, r2843: the
+// truth's attitude interpolated to each reading, tools/magnetic_heading.py);
+// the real vehicle's class of sensor, the IIS2MDC PX4's model is noted after,
+// reads 3 mG RMS, 0.8 degrees across the 0.22 G of the horizontal field, and
+// the filter's own tilt enters the heading twice over at the field's dip of
+// 63 degrees: the sigma of a degree covers both. The field is taken at the
+// frame's stamp, between the readings either side of it: the pair is
+// processed well after its stamp, and the newest reading belonged to a body
+// turned since (r2843 with it: the heading wandered -0.69 to +0.28 degrees).
+// The direction at the first frame after the declared pose is the zero, the
+// vehicle at rest on its pad; a reading more than 20 degrees off it is a
+// disturbed field (iron near the sensor), left out reading by reading, never
+// latched.
 void VisualInertialOdometry::Impl::magneticHeadingPrior() {
   constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
   constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
-  if (!config.magnetic_heading || !magnetic_field_body.has_value()) {
+  constexpr std::int64_t kBracketNs{50'000'000};
+  if (!config.magnetic_heading) {
     return;
   }
-  const Eigen::Vector3d world = body_to_ned * *magnetic_field_body;
+  const auto after = std::ranges::lower_bound(magnetic_readings, stamp_ns, {},
+                                              &MagneticReading::stamp_ns);
+  if (after == magnetic_readings.end() || after == magnetic_readings.begin()) {
+    return;
+  }
+  const MagneticReading& before = *std::prev(after);
+  const std::int64_t span_ns = after->stamp_ns - before.stamp_ns;
+  if (span_ns > kBracketNs) {
+    return;
+  }
+  const double share =
+      static_cast<double>(stamp_ns - before.stamp_ns) / static_cast<double>(span_ns);
+  const Eigen::Vector3d world =
+      body_to_ned * ((1.0 - share) * before.field_body + share * after->field_body);
   if (!(world.head<2>().squaredNorm() > 0.0)) {
     return;
   }

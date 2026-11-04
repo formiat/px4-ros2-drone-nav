@@ -557,17 +557,18 @@ TEST(VisualInertialOdometry, TheMagnetometerHoldsTheHeadingAgainstAGyroBias) {
     const std::vector<Eigen::Vector3d> points = landmarks(generator);
     const std::vector<Eigen::Vector3d> none;
     VisualInertialOdometry odometry{config};
-    const auto magnetometer = [&](const double t, const bool disturbed) {
+    const auto magnetometer = [&](const std::int64_t stamp_ns, const bool disturbed) {
+      const double t = static_cast<double>(stamp_ns) * 1.0e-9;
       if (with_magnetometer) {
         const Eigen::Matrix3d turn =
             Eigen::AngleAxisd{disturbed ? 30.0 * std::numbers::pi / 180.0 : 0.0,
                               Eigen::Vector3d::UnitZ()}
                 .toRotationMatrix();
-        odometry.addMagneticField(Motion::bodyToNed(t).transpose() *
-                                  (turn * field_world));
+        odometry.addMagneticField(stamp_ns, Motion::bodyToNed(t).transpose() *
+                                                (turn * field_world));
       }
     };
-    magnetometer(0.0, false);
+    magnetometer(0, false);
     odometry.initialize(0, Motion::position(0.0), 0.0);
     std::int64_t imu_stamp = 0;
     std::int64_t stamp = 0;
@@ -579,8 +580,8 @@ TEST(VisualInertialOdometry, TheMagnetometerHoldsTheHeadingAgainstAGyroBias) {
         // The bias walks in once the features are gone.
         odometry.addImu(
             Motion::imu(imu_stamp, frame > 20 ? gyro_bias : Eigen::Vector3d::Zero()));
+        magnetometer(imu_stamp, frame > 40 && frame <= 60);
       }
-      magnetometer(t, frame > 40 && frame <= 60);
       static_cast<void>(
           odometry.addFrame(stamp, observe(config, t, frame <= 20 ? points : none,
                                            config.observation_noise, generator)));

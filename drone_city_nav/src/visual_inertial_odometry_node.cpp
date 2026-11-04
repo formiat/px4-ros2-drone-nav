@@ -212,7 +212,8 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
           // The sensor's axes are the body's forward, left, up (Gazebo's);
           // the filter's are forward, right, down.
           const std::scoped_lock lock{odometry_mutex_};
-          odometry_->addMagneticField(Eigen::Vector3d{field->magnetic_field.x,
+          odometry_->addMagneticField(rclcpp::Time{field->header.stamp}.nanoseconds(),
+                                      Eigen::Vector3d{field->magnetic_field.x,
                                                       -field->magnetic_field.y,
                                                       -field->magnetic_field.z});
         }

@@ -44,22 +44,27 @@ def main() -> int:
             print(f"{run}: no readings or no truth")
             continue
         readings = np.array(readings)
-        index = np.clip(np.searchsorted(truth[:, 0], readings[:, 0]), 0, len(truth) - 1)
-        close = np.abs(truth[index, 0] - readings[:, 0]) < 0.05
-        readings, index = readings[close], index[close]
-        true_yaw = np.array([2 * math.atan2(truth[i, 7], truth[i, 4]) for i in index])
+        readings = readings[(readings[:, 0] > truth[0, 0]) & (readings[:, 0] < truth[-1, 0])]
+        # The truth's attitude interpolated to each reading's stamp: the nearest row, up to 12 ms away, turned
+        # the field by the vehicle's rates and read 0.47 degrees of scatter where the sensor has 0.03 (r2842).
+        quaternions = truth[:, 4:8].copy()
+        for row in range(1, len(quaternions)):
+            if np.dot(quaternions[row], quaternions[row - 1]) < 0.0:
+                quaternions[row] = -quaternions[row]
+        attitude = np.stack([np.interp(readings[:, 0], truth[:, 0], quaternions[:, k]) for k in range(4)], axis=1)
+        attitude /= np.linalg.norm(attitude, axis=1, keepdims=True)
+        true_yaw = np.array([math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) for w, x, y, z in attitude])
         print(f"{run}: {len(readings)} readings over {readings[-1, 0] - readings[0, 0]:.0f} s, "
               f"field {np.linalg.norm(readings[:, 1:], axis=1).mean():.1f} uT, "
               f"true heading spans {math.degrees(np.ptp(np.unwrap(true_yaw))):.0f} deg")
         for name, convert in CONVENTIONS.items():
             directions = []
-            for (stamp, mx, my, mz), i in zip(readings, index):
+            for (stamp, mx, my, mz), (w, x, y, z) in zip(readings, attitude):
                 body = np.array([mx, my, mz])
                 if convert is None:
                     world = body
                 else:
-                    rotation = quaternion_matrix(truth[i, 4], truth[i, 5], truth[i, 6], truth[i, 7])
-                    world = rotation @ convert(body)
+                    world = quaternion_matrix(w, x, y, z) @ convert(body)
                 directions.append(math.atan2(world[1], world[0]))
             directions = np.unwrap(np.array(directions))
             mean = float(np.mean(directions))

@@ -251,9 +251,9 @@ public:
   // The barometer's height, in metres up from any origin: through a dark
   // stretch the filter holds its height to the change the barometer saw.
   void addBarometricHeight(double height_m);
-  // The magnetometer's field in the body frame (forward, right, down), in any
-  // unit: its direction in the world is the heading's prior.
-  void addMagneticField(const Eigen::Vector3d& field_body);
+  // The magnetometer's field at its stamp in the body frame (forward, right,
+  // down), in any unit: its direction in the world is the heading's prior.
+  void addMagneticField(std::int64_t stamp_ns, const Eigen::Vector3d& field_body);
 
   // An absolute position in the estimator's NED frame with its standard
   // deviation per axis, fused at the filter's current time (the satellite

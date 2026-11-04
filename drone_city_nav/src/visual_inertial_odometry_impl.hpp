@@ -35,6 +35,12 @@ constexpr Eigen::Index kAccelerometerBias{12};
 constexpr Eigen::Index kImuStates{15};
 constexpr Eigen::Index kCloneStates{6};
 
+// One reading of the magnetometer, in the body frame (forward, right, down).
+struct MagneticReading {
+  std::int64_t stamp_ns{0};
+  Eigen::Vector3d field_body{Eigen::Vector3d::Zero()};
+};
+
 struct Clone {
   std::uint64_t id{0U};
   std::int64_t stamp_ns{0};
@@ -101,9 +107,10 @@ struct VisualInertialOdometry::Impl {
   // height the barometer gives since is a prior on every frame (r2721:
   // under the imperfections profile the height drifted 1.2 m in 250 s).
   std::optional<double> barometric_zero_m;
-  // The magnetometer's field in the body frame, and the direction of its
-  // horizontal part in the world at the declared pose: the heading's zero.
-  std::optional<Eigen::Vector3d> magnetic_field_body;
+  // The magnetometer's readings over the last second, and the direction of
+  // the field's horizontal part in the world at the declared pose: the
+  // heading's zero.
+  std::deque<MagneticReading> magnetic_readings;
   std::optional<double> magnetic_zero_rad;
   // The void (K46): the pair's judgment, the void's state and its time.
   VisualInertialVoid in_void;

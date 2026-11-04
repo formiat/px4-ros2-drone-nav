@@ -413,9 +413,17 @@ void VisualInertialOdometry::addBarometricHeight(const double height_m) {
   }
 }
 
-void VisualInertialOdometry::addMagneticField(const Eigen::Vector3d& field_body) {
-  if (field_body.allFinite() && field_body.head<2>().norm() > 0.0) {
-    impl_->magnetic_field_body = field_body;
+void VisualInertialOdometry::addMagneticField(const std::int64_t stamp_ns,
+                                              const Eigen::Vector3d& field_body) {
+  constexpr std::int64_t kKeptNs{1'000'000'000};
+  std::deque<MagneticReading>& readings = impl_->magnetic_readings;
+  if (!field_body.allFinite() || !(field_body.norm() > 0.0) ||
+      (!readings.empty() && stamp_ns <= readings.back().stamp_ns)) {
+    return;
+  }
+  readings.push_back(MagneticReading{.stamp_ns = stamp_ns, .field_body = field_body});
+  while (readings.front().stamp_ns < stamp_ns - kKeptNs) {
+    readings.pop_front();
   }
 }
 
