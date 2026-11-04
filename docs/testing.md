@@ -385,7 +385,8 @@ node, the wall speed); since 2026-11-04 the controller announces a step only
 after the step's sensor outputs are out (`--sensors`, the sensors' wait in the
 same record); the host cannot slow such a flight, but two flights with the same
 seeds do not yet repeat (the register's row; `tools/flight_diff.py` measures how
-far they part: 13.10 s and 27 m on the lidar set, r2881 and r2883). A stepped flight runs at a third of real time,
+far they part: 13.10 s and 27 m on the lidar set, r2881 and r2883; 12.98 s after the
+second repair, r2884 and r2885). A stepped flight runs at a third of real time,
 so its window (`SMOKE_DURATION_S`, wall seconds) is set three times the
 usual, and the host verdict A7, which reads the real-time factor, voids it:
 such flights are flown through `tools/series2.sh` and read by hand.
