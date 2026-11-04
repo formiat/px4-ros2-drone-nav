@@ -66,7 +66,7 @@ prepare_runtime_evidence() {
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
     IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
-    GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION \
+    GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -127,11 +127,14 @@ start_runtime_evidence_capture() {
         --output "${runtime_artifact_dir}/camera_stream.csv" \
         > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
     fi
-    # The magnetometer's slow disturbance under the imperfections profile
-    # (roadmap items 35 and 40, K52), seeded by the run: the camera process
-    # relays the field from this relay (simulation_resource_runtime.sh).
-    if imperfection_family_on magnetometer; then
+    # The field's slow disturbance a vehicle reads beside its currents and a
+    # building's steel (roadmap item 40), a scenario of its own as smoke is,
+    # not the vehicle's profile: MAGNETIC_DISTURBANCE=ntu, seeded by the run;
+    # the camera process relays the field from this relay
+    # (simulation_resource_runtime.sh).
+    if [[ -n "${MAGNETIC_DISTURBANCE:-}" ]]; then
       python3 "${repo_root}/scripts/magnetometer_disturbance.py" \
+        --profile "${MAGNETIC_DISTURBANCE}" \
         --world "${world_name}" --model "${default_gazebo_follow_target}" \
         --seed "${IMPERFECTION_SEED:-0}" \
         --output "${runtime_artifact_dir}/magnetometer_disturbance.csv" \

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Roadmap items 35 and 40 (K52): the slow disturbance of a real vehicle's magnetic field, beside the flight.
+"""Roadmap item 40: the slow disturbance of the magnetic field a vehicle reads, beside the flight (MAGNETIC_DISTURBANCE).
 
 An evaluation component nobody tells the vehicle about: it relays the vehicle's magnetometer from the simulator to
 the topic the camera process reads, and adds to each axis a first-order Gauss-Markov process stepped on the readings'
-own stamps (the simulation clock), seeded by the run: the field a real vehicle reads beside its motors' currents and
-a building's steel. The magnitudes are the NTU VIRAL eee_01 vehicle's (tools/imperfections_sources.py: its VN-100
-against the flight's FAST-LIO attitude, the heading's deviation with the heading taken out): 1.06 uT standing, a
-correlation time of 9.3 s. gz-sensors' magnetometer applies its noise without the step's time, so the model's own
-dynamic bias never moves: the walk is this relay's. The field is in the gauss the sensor reports.
+own stamps (the simulation clock), seeded by the run: the field a vehicle reads beside its own currents and a
+building's steel. A scenario of its own, as smoke is, not the vehicle's imperfections profile (K52 holds the
+sensor): what it measures is where the magnetometer's heading stops helping. Profile `ntu`: the NTU VIRAL eee_01
+vehicle's (tools/imperfections_sources.py: its VN-100 against the flight's FAST-LIO attitude, the heading's
+deviation with the heading taken out), 1.06 uT standing, a correlation time of 9.3 s. gz-sensors' magnetometer
+applies its noise without the step's time, so a dynamic bias in the model never moves: the walk is this relay's.
+The field is in the gauss the sensor reports.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ class Walk:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--profile", choices=("ntu",), required=True)
     parser.add_argument("--world", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--seed", type=int, default=0)
@@ -84,7 +87,7 @@ def main() -> int:
     if not node.subscribe_raw(topic, relay, "gz.msgs.Magnetometer", SubscribeOptions()):
         print(f"cannot subscribe to {topic}", file=sys.stderr)
         return 1
-    print(f"MAGNETOMETER_DISTURBANCE seed={args.seed} standing_gauss={STANDING_GAUSS:g} "
+    print(f"MAGNETOMETER_DISTURBANCE profile={args.profile} seed={args.seed} standing_gauss={STANDING_GAUSS:g} "
           f"correlation_s={CORRELATION_S:g}", flush=True)
     try:
         while True:
