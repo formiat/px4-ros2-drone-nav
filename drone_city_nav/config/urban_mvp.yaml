@@ -84,8 +84,8 @@ obstacle_memory_3d_node:
     lidar_mount_yaw_rad: 0.0
     lidar_z_offset_m: 0.0
     use_full_lidar_extrinsic: true
-    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
-    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
+    # The lidar's mount: config/sensor_extrinsics.yaml, handed over by the
+    # launch (launch/sensor_extrinsics.py).
     lidar_3d_horizontal_samples: 360
     lidar_3d_vertical_samples: 181
     lidar_3d_horizontal_min_angle_rad: -3.141592653589793
@@ -825,8 +825,8 @@ visual_inertial_odometry_node:
     left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
     right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
-    right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-    right_from_left_translation_m: [-0.2, 0.0, 0.0]
+    # The pair's extrinsics (the right camera 0.2 m along x): the sensor set's
+    # single source, config/sensor_extrinsics.yaml (the launch hands them over).
     # The autopilot's own estimate, the prior of a restart in flight (K28); the
     # local position is a versioned message (_v1).
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
@@ -852,9 +852,8 @@ lidar_inertial_odometry_node:
     px4_clock_is_ros_clock: true
     px4_visual_odometry_topic: /fmu/in/vehicle_visual_odometry
     estimate_pose_topic: /drone_city_nav/lidar_inertial_odometry/pose
-    # The same mounting the obstacle memory projects the scan with.
-    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
-    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
+    # The same mounting the obstacle memory projects the scan with: the
+    # sensor set's single source, config/sensor_extrinsics.yaml (the launch).
     # The declared initial pose: the autopilot's local origin and the start
     # heading, both set by the scenario at launch; this value is the
     # fallback for a launch without a scenario.
@@ -1436,8 +1435,8 @@ stereo_depth_node:
     left_camera_distortion: [0.0, 0.0, 0.0, 0.0]
     right_camera_intrinsics: [369.5041722813605, 369.5041722813605, 639.5, 479.5]
     right_camera_distortion: [0.0, 0.0, 0.0, 0.0]
-    right_from_left_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-    right_from_left_translation_m: [-0.2, 0.0, 0.0]
+    # The pair's extrinsics (the right camera 0.2 m along x): the sensor set's
+    # single source, config/sensor_extrinsics.yaml (the launch hands them over).
     # Semi-global matching (OpenCV StereoSGBM, three-way). 256 disparities put
     # the nearest matched depth at 0.29 m, inside the shafts whose walls stand
     # 0.5 to 1 m from the vehicle.

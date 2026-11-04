@@ -1,0 +1,33 @@
+# The sensor set's mounts, their single source (roadmap item 27 block 3): each
+# sensor's position in metres and orientation (roll, pitch, yaw in radians,
+# applied yaw, then pitch, then roll) in the body frame, base_link,
+# forward-left-up. The simulator's runtime vehicle model is written from it
+# (scripts/configure_drone_lidar_model.py); the launch hands the nodes their
+# parameters from it (launch/sensor_extrinsics.py); the models in the
+# repository and the defaults written in the code are held to it within 1e-6
+# (scripts/tests/test_sensor_extrinsics.py). Another vehicle states its own.
+
+# base_link over the vehicle model's origin (x500_base's own pose, K22): the
+# sensor sets are included this far above the origin.
+base_link_height_m: 0.24
+
+# The stereo and time-of-flight block (models/stereo_tof_v1): its link, the
+# pair 0.2 m apart (K33's baseline), the ring of six zone sensors.
+stereo_tof_link: {position_m: [0.32, 0.0, 0.02], rpy_rad: [0.0, 0.0, 0.0]}
+stereo_left: {position_m: [0.32, 0.10, 0.02], rpy_rad: [0.0, 0.0, 0.0]}
+stereo_right: {position_m: [0.32, -0.10, 0.02], rpy_rad: [0.0, 0.0, 0.0]}
+tof_up: {position_m: [-0.10, 0.0, 0.12], rpy_rad: [0.0, -1.5707963267948966, 0.0]}
+tof_down: {position_m: [0.0, 0.0, -0.10], rpy_rad: [0.0, 1.5707963267948966, 0.0]}
+tof_front: {position_m: [0.34, 0.0, -0.04], rpy_rad: [0.0, 0.0, 0.0]}
+tof_back: {position_m: [-0.32, 0.0, 0.02], rpy_rad: [0.0, 0.0, 3.141592653589793]}
+tof_left: {position_m: [0.0, 0.32, 0.02], rpy_rad: [0.0, 0.0, 1.5707963267948966]}
+tof_right: {position_m: [0.0, -0.32, 0.02], rpy_rad: [0.0, 0.0, -1.5707963267948966]}
+
+# The lidar (models/lidar_3d_v1 on models/x500_lidar_3d): its scan's origin.
+lidar: {position_m: [0.12, 0.0, 0.315], rpy_rad: [0.0, 0.0, 0.0]}
+
+# The autopilot's IMU, barometer and magnetometer (x500_base, at base_link):
+# the body frame is the IMU's.
+imu: {position_m: [0.0, 0.0, 0.0], rpy_rad: [0.0, 0.0, 0.0]}
+barometer: {position_m: [0.0, 0.0, 0.0], rpy_rad: [0.0, 0.0, 0.0]}
+magnetometer: {position_m: [0.0, 0.0, 0.0], rpy_rad: [0.0, 0.0, 0.0]}

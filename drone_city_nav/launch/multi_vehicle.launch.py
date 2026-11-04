@@ -515,6 +515,8 @@ def generate_multi_vehicle_launch_description():
                 },
             )
             memory_params["gazebo_aligned_rviz_axes_swapped"] = gazebo_axes_swapped
+            # The lidar's mount from the sensor set's single source.
+            memory_params.update(_SENSOR_PROFILE_SUPPORT["LIDAR_PARAMETERS"])
             if navigation_sensors == "stereo_tof":
                 memory_params.update(_VISION_MEMORY_OVERRIDES)
             if depth_topics is not None:

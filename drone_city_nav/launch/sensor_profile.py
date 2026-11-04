@@ -6,6 +6,21 @@ remains available on request."""
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sensor_extrinsics import (  # noqa: E402 (the launch directory is the package)
+    camera_parameters,
+    lidar_parameters,
+    load as load_extrinsics,
+    vision_memory_parameters,
+)
+
+# The sensor set's mounts, their single source (config/sensor_extrinsics.yaml):
+# the lidar's for its memory and its estimator.
+EXTRINSICS = load_extrinsics()
+LIDAR_PARAMETERS = lidar_parameters(EXTRINSICS)
 
 CAMERA_PROFILES = ("none", "stereo_tof")
 NAVIGATION_SENSOR_PROFILES = ("lidar", "stereo_tof")
@@ -75,7 +90,8 @@ VISION_MEMORY_OVERRIDES = {
     "lidar_3d_hit_only_returns": True,
     "lidar_surface_interpolation_enabled": False,
     "lidar_3d_minimum_range_m": 0.3,
-    "lidar_extrinsic_translation_body_frd_m": [0.32, -0.10, -0.02],
+    # The returns arrive at the left camera (config/sensor_extrinsics.yaml).
+    **vision_memory_parameters(EXTRINSICS),
     "hit_weight": 2,
 }
 
@@ -132,7 +148,9 @@ def stereo_tof_topics(
     )
     bridge_arguments = []
     remappings = []
-    depth_parameters = {"returns_topic": f"{vehicle_prefix}/stereo_depth/points"}
+    # The pair, the ring and the left camera in the body (config/sensor_extrinsics.yaml).
+    depth_parameters = {"returns_topic": f"{vehicle_prefix}/stereo_depth/points",
+                        **camera_parameters(EXTRINSICS)}
     for side in ("left", "right"):
         depth_parameters[f"{side}_gazebo_image_topic"] = (
             f"{sensor_prefix}/stereo_{side}/image{image_topic_suffix}"

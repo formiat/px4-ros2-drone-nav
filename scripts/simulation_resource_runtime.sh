@@ -65,17 +65,19 @@ prepare_runtime_resources() {
   local runtime_sensor_model_name="lidar_3d_v1"
   cp -a "${repo_root}/drone_city_nav/models/x500_lidar_3d" \
     "${runtime_models_dir}/${runtime_drone_model_name}"
-  python3 "${repo_root}/scripts/configure_drone_lidar_model.py" \
-    "${runtime_models_dir}/${runtime_drone_model_name}" \
-    --model-name "${runtime_drone_model_name}" \
-    --camera-profile "${camera_profile}" \
-    $([[ "${navigation_sensor_profile}" == "stereo_tof" ]] && printf '%s' '--without-lidar')
   cp -a "${repo_root}/drone_city_nav/models/${runtime_sensor_model_name}" \
     "${runtime_models_dir}/${runtime_sensor_model_name}"
   if [[ "${camera_profile}" == "stereo_tof" ]]; then
     cp -a "${repo_root}/drone_city_nav/models/stereo_tof_v1" \
       "${runtime_models_dir}/stereo_tof_v1"
   fi
+  # The sensors' poses from the sensor set's single source
+  # (drone_city_nav/config/sensor_extrinsics.yaml) into the runtime copies.
+  python3 "${repo_root}/scripts/configure_drone_lidar_model.py" \
+    "${runtime_models_dir}/${runtime_drone_model_name}" \
+    --model-name "${runtime_drone_model_name}" \
+    --camera-profile "${camera_profile}" \
+    $([[ "${navigation_sensor_profile}" == "stereo_tof" ]] && printf '%s' '--without-lidar')
 
   local lidar_visibility_mode="no-static-3d"
   if bool_is_true "${active_static_map}"; then

@@ -34,6 +34,7 @@ from localization_profile import (
 )
 from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
+    LIDAR_PARAMETERS,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -279,6 +280,7 @@ def generate_launch_description():
         lidar_inertial_overrides = {
             "use_sim_time": True,
             "publish_to_autopilot": localization == "lidar_inertial",
+            **LIDAR_PARAMETERS,
         }
         visual_inertial_overrides = compute_visual_inertial_overrides(
             localization, gnss_topic.perform(context), map_registration.perform(context))
@@ -378,7 +380,9 @@ def generate_launch_description():
         )
 
         static_world_path_override = static_occupancy_3d_path.perform(context).strip()
-        obstacle_memory_parameters = [params_file.perform(context)]
+        # The lidar's mount from the sensor set's single source; the vision
+        # memory's below (config/sensor_extrinsics.yaml).
+        obstacle_memory_parameters = [params_file.perform(context), LIDAR_PARAMETERS]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
         production_mppi_parameters = [

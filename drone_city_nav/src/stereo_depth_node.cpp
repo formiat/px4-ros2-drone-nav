@@ -192,10 +192,17 @@ StereoDepthNode::StereoDepthNode(const rclcpp::NodeOptions& options)
     if (position.size() != 3U) {
       throw std::invalid_argument{"invalid time-of-flight sensor position"};
     }
+    // The sensor set's single source hands both over (config/sensor_extrinsics.yaml);
+    // kTofMounts is the fallback the tests hold to it.
+    const std::vector<double> pitch_yaw = declare_parameter<std::vector<double>>(
+        "tof_" + side + "_pitch_yaw_rad", {mount.pitch_rad, mount.yaw_rad});
+    if (pitch_yaw.size() != 2U) {
+      throw std::invalid_argument{"invalid time-of-flight sensor orientation"};
+    }
     TofSensor& sensor = tof_sensors_.at(slot);
     sensor.config = tof;
-    sensor.config.pitch_rad = mount.pitch_rad;
-    sensor.config.yaw_rad = mount.yaw_rad;
+    sensor.config.pitch_rad = pitch_yaw[0];
+    sensor.config.yaw_rad = pitch_yaw[1];
     sensor.config.position_m = Point3{position[0], position[1], position[2]};
     if (!tofZoneReturnsConfigIsValid(sensor.config)) {
       throw std::invalid_argument{"invalid time-of-flight configuration"};

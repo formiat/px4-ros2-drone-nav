@@ -190,21 +190,10 @@ class DroneModelSdfContractTest(unittest.TestCase):
             0.315, include_pose[2] + sensor_pose[2] - base_link_height_m
         )
         # The obstacle memory and the lidar-inertial odometry project the scan
-        # with the one mounting.
+        # with the one mounting, the sensor set's single source's
+        # (scripts/tests/test_sensor_extrinsics.py holds every place to it).
         config_text = NAV_CONFIG.read_text(encoding="utf-8")
-        self.assertEqual(
-            2,
-            config_text.count(
-                "lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]"
-            ),
-        )
-        self.assertEqual(
-            2,
-            config_text.count(
-                "lidar_extrinsic_quaternion_lidar_flu_to_body_frd: "
-                "[0.0, 1.0, 0.0, 0.0]"
-            ),
-        )
+        self.assertNotIn("lidar_extrinsic_translation_body_frd_m", config_text)
 
 
 if __name__ == "__main__":

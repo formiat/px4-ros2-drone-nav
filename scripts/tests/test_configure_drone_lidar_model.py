@@ -18,14 +18,19 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import configure_drone_lidar_model as lidar_model  # noqa: E402
 
 
-SOURCE_MODEL = REPO_ROOT / "drone_city_nav/models/x500_lidar_3d"
+
+
+def runtime_copy(temp_dir: str) -> Path:
+    """The wrapper and its sensor models side by side, as the runtime directory holds them."""
+    for name in ("x500_lidar_3d", "lidar_3d_v1", "stereo_tof_v1"):
+        shutil.copytree(REPO_ROOT / "drone_city_nav/models" / name, Path(temp_dir) / name)
+    return Path(temp_dir) / "x500_lidar_3d"
 
 
 class ConfigureDroneLidarModelTest(unittest.TestCase):
     def test_materializes_3d_wrapper_with_consistent_model_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            destination = Path(temp_dir) / "x500_lidar_3d"
-            shutil.copytree(SOURCE_MODEL, destination)
+            destination = runtime_copy(temp_dir)
 
             sensor_model = lidar_model.configure_model(destination, "x500_lidar_3d")
 
@@ -41,8 +46,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
 
     def test_camera_profile_adds_the_stereo_and_time_of_flight_set(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            destination = Path(temp_dir) / "x500_lidar_3d"
-            shutil.copytree(SOURCE_MODEL, destination)
+            destination = runtime_copy(temp_dir)
 
             lidar_model.configure_model(destination, "x500_lidar_3d", "stereo_tof")
 
@@ -64,8 +68,7 @@ class ConfigureDroneLidarModelTest(unittest.TestCase):
 
     def test_camera_navigation_leaves_the_lidar_out_of_the_vehicle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            destination = Path(temp_dir) / "x500_lidar_3d"
-            shutil.copytree(SOURCE_MODEL, destination)
+            destination = runtime_copy(temp_dir)
 
             lidar_model.configure_model(
                 destination, "x500_lidar_3d", "stereo_tof", lidar_mounted=False
