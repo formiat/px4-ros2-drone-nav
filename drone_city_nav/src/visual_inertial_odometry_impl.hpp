@@ -112,6 +112,9 @@ struct VisualInertialOdometry::Impl {
   // heading's zero.
   std::deque<MagneticReading> magnetic_readings;
   std::optional<double> magnetic_zero_rad;
+  // The last frame's prior, for the estimate.
+  double magnetic_innovation_rad{0.0};
+  std::int64_t magnetic_reading_age_ns{0};
   // The void (K46): the pair's judgment, the void's state and its time.
   VisualInertialVoid in_void;
   // The accelerometer across the rotor axis, integrated since the last frame.

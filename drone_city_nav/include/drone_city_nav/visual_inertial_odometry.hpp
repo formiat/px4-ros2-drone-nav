@@ -4,6 +4,7 @@
 #include <Eigen/Geometry>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -219,6 +220,11 @@ struct VisualInertialEstimate {
   // parallax in; along one they do not, only the accelerometer holds it and
   // this grows.
   double weakest_velocity_sigma_mps{0.0};
+  // The magnetometer's heading prior on this frame (roadmap item 40): its
+  // innovation, NaN where no reading was fused, and the age of the reading it
+  // took at the frame's stamp (negative: a reading after it).
+  double magnetic_innovation_rad{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t magnetic_reading_age_ns{0};
 };
 
 class VisualInertialOdometry {

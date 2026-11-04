@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <deque>
+#include <limits>
 #include <optional>
 #include <span>
 #include <unordered_map>
@@ -532,10 +533,13 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
                  state.config.maximum_unaided_s) {
     state.holdHeight();
   }
+  state.magnetic_innovation_rad = std::numeric_limits<double>::quiet_NaN();
   if (!state.lost) {
     state.barometricHeightPrior();
     state.magneticHeadingPrior();
   }
+  estimate.magnetic_innovation_rad = state.magnetic_innovation_rad;
+  estimate.magnetic_reading_age_ns = state.magnetic_reading_age_ns;
   state.fuseRotorDrag();
   estimate.healthy =
       state.last_update_stamp_ns > 0 &&

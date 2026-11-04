@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <deque>
-#include <iterator>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -274,9 +273,11 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // reads 3 mG RMS, 0.8 degrees across the 0.22 G of the horizontal field, and
 // the filter's own tilt enters the heading twice over at the field's dip of
 // 63 degrees: the sigma of a degree covers both. The field is taken at the
-// frame's stamp, between the readings either side of it: the pair is
-// processed well after its stamp, and the newest reading belonged to a body
-// turned since (r2843 with it: the heading wandered -0.69 to +0.28 degrees).
+// frame's stamp: the reading nearest it, turned by the gyroscope through the
+// time between (r2843 took the newest reading, whatever its age, and the
+// heading wandered -0.69 to +0.28 degrees; r2844 waited for readings either
+// side of the frame, and in lockstep the pair is processed before the
+// magnetometer's next reading arrives: nothing was fused).
 // The direction at the first frame after the declared pose is the zero, the
 // vehicle at rest on its pad; a reading more than 20 degrees off it is a
 // disturbed field (iron near the sensor), left out reading by reading, never
@@ -284,24 +285,30 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 void VisualInertialOdometry::Impl::magneticHeadingPrior() {
   constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
   constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
-  constexpr std::int64_t kBracketNs{50'000'000};
+  constexpr std::int64_t kNearestNs{50'000'000};
   if (!config.magnetic_heading) {
     return;
   }
-  const auto after = std::ranges::lower_bound(magnetic_readings, stamp_ns, {},
-                                              &MagneticReading::stamp_ns);
-  if (after == magnetic_readings.end() || after == magnetic_readings.begin()) {
+  const auto nearest = std::ranges::min_element(
+      magnetic_readings, {}, [this](const MagneticReading& reading) {
+        return reading.stamp_ns > stamp_ns ? reading.stamp_ns - stamp_ns
+                                           : stamp_ns - reading.stamp_ns;
+      });
+  if (nearest == magnetic_readings.end()) {
     return;
   }
-  const MagneticReading& before = *std::prev(after);
-  const std::int64_t span_ns = after->stamp_ns - before.stamp_ns;
-  if (span_ns > kBracketNs) {
+  magnetic_reading_age_ns = stamp_ns - nearest->stamp_ns;
+  if (std::abs(magnetic_reading_age_ns) > kNearestNs) {
     return;
   }
-  const double share =
-      static_cast<double>(stamp_ns - before.stamp_ns) / static_cast<double>(span_ns);
+  // A field fixed in the world turns in the body against the body's rate.
+  const Eigen::Vector3d rate = last_imu.has_value()
+                                   ? Eigen::Vector3d{last_imu->gyro_radps - gyro_bias}
+                                   : Eigen::Vector3d::Zero();
   const Eigen::Vector3d world =
-      body_to_ned * ((1.0 - share) * before.field_body + share * after->field_body);
+      body_to_ned *
+      (expSo3(-rate * (static_cast<double>(magnetic_reading_age_ns) * 1.0e-9)) *
+       nearest->field_body);
   if (!(world.head<2>().squaredNorm() > 0.0)) {
     return;
   }
@@ -312,6 +319,7 @@ void VisualInertialOdometry::Impl::magneticHeadingPrior() {
   }
   const double innovation =
       std::remainder(*magnetic_zero_rad - heading, 2.0 * std::numbers::pi);
+  magnetic_innovation_rad = innovation;
   if (std::abs(innovation) > kGateRad) {
     return;
   }
