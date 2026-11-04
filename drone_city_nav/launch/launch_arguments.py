@@ -67,7 +67,11 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
         DeclareLaunchArgument(
             "enable_gazebo_bridge",
             default_value="true",
-            description="Start the Gazebo bridge for the selected lidar profile.",
+            description=(
+                "Start the Gazebo bridges and the image source beside the simulated pair; "
+                "false runs the stack on a flight's stack bag alone, the pair's frames over "
+                "ROS (tools/replay_stack.sh, roadmap item 27 block 6)."
+            ),
         ),
         DeclareLaunchArgument(
             "enable_mission_monitor",

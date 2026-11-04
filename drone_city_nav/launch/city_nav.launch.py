@@ -57,11 +57,13 @@ def stereo_vision_nodes(
     magnetometer_topic_suffix,
     smoke_face,
     vio_arguments,
+    gazebo=True,
 ):
     """The vision path of roadmap item 14: the pair and the time-of-flight scans bridged, depth
     recovered; in shadow a second memory integrates the returns beside the lidar's; with
     visual-inertial overrides the process that owns the images also hosts the estimator (item 16),
-    vio_arguments its ROS arguments."""
+    vio_arguments its ROS arguments. Without Gazebo (a replay of a flight's stack bag) the depth
+    node reads the pair's frames over ROS and nothing is bridged."""
     bridge_arguments, remappings, depth_topics = stereo_tof_topics(
         gazebo_world_name,
         gazebo_model_name,
@@ -81,11 +83,13 @@ def stereo_vision_nodes(
             output="screen",
             arguments=[*bridge_arguments, "--ros-args", *remappings],
         ),
+    ] if gazebo else []
+    nodes += [
         Node(
             package="drone_city_nav",
             # The depth node beside the simulated pair's image source, in one
             # process; no name, which would rename both of its nodes.
-            executable="gazebo_stereo_depth_node",
+            executable="gazebo_stereo_depth_node" if gazebo else "stereo_depth_node",
             output="screen",
             arguments=(["--visual-inertial-odometry"] if visual_inertial_overrides is not None
                        else []) + vio_arguments,
@@ -586,7 +590,7 @@ def generate_launch_description():
                     arguments=[*bridge_arguments, "--ros-args", *bridge_remaps],
                 )
             )
-        if gazebo_bridge_enabled and cameras_mounted:
+        if cameras_mounted:
             nodes.extend(
                 stereo_vision_nodes(
                     params_file.perform(context),
@@ -601,6 +605,7 @@ def generate_launch_description():
                     smoke_face=optional_bool_override(context, smoke_face, "smoke_face")
                     is True,
                     vio_arguments=vio_arguments,
+                    gazebo=gazebo_bridge_enabled,
                 )
             )
         nodes.append(

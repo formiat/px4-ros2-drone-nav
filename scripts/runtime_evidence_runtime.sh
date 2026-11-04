@@ -66,7 +66,7 @@ prepare_runtime_evidence() {
     LIGHT_BATTERY_S RETURN_HOME_EXPECTED STREAM_FAULTS \
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
     IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
-    GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE \
+    GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE RECORD_STACK_BAG \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -77,8 +77,36 @@ prepare_runtime_evidence() {
   python3 "${repo_root}/scripts/runtime_manifest.py" "${runtime_manifest_args[@]}"
 }
 
+# Roadmap item 27 block 6: the recorder closed before the flight's processes
+# are ended. Its cache (up to 256 MB) and the file's index are written when it
+# is told to stop, which the bounded termination's two seconds do not allow.
+stop_stack_bag_recorder() {
+  [[ -n "${stack_bag_pid:-}" ]] || return 0
+  kill -TERM "${stack_bag_pid}" 2>/dev/null || true
+  local _
+  for _ in $(seq 1 1200); do
+    kill -0 "${stack_bag_pid}" 2>/dev/null || break
+    sleep 0.1
+  done
+  echo "stack bag recorder stopped $(date -u +%H:%M:%S)" >> "${runtime_artifact_dir}/stack_bag.log"
+  stack_bag_pid=""
+}
+
 start_runtime_evidence_capture() {
   echo "Runtime manifest: ${runtime_manifest_path}"
+  # Roadmap item 27 block 6: the stack's inputs and outputs recorded
+  # (RECORD_STACK_BAG=true; the topics scripts/stack_bag_topics.py names), so
+  # that tools/replay_stack.sh runs the stack again on the bag alone.
+  stack_bag_pid=""
+  if bool_is_true "${RECORD_STACK_BAG:-false}"; then
+    local -a stack_bag_topics
+    mapfile -t stack_bag_topics < <(python3 "${repo_root}/scripts/stack_bag_topics.py" record \
+      --navigation-sensor-profile "${navigation_sensor_profile}" --camera-profile "${camera_profile}")
+    ros2 bag record -s mcap --storage-preset-profile zstd_fast --max-cache-size 268435456 \
+      -o "${runtime_artifact_dir}/stack_bag" "${stack_bag_topics[@]}" \
+      > "${runtime_artifact_dir}/stack_bag.log" 2>&1 &
+    stack_bag_pid=$!
+  fi
   # What every process of the flight consumes, for the resource-budget checks
   # and the budget document; every flight records it, whatever it flies.
   python3 "${repo_root}/scripts/capture_process_resources.py" \

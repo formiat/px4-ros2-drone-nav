@@ -244,7 +244,7 @@ class ContractTest(unittest.TestCase):
         self.assertIn('if [[ -n "${MAGNETIC_DISTURBANCE:-}" && "${CAMERA_PROFILE:-}" == stereo_tof ]]; then', resources)
         self.assertIn("magnetometer_disturbance.py", evidence)
         self.assertIn('--profile "${MAGNETIC_DISTURBANCE}"', evidence)
-        self.assertIn("GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE \\", evidence)
+        self.assertIn("GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE RECORD_STACK_BAG \\", evidence)
         self.assertIn("  MAGNETIC_DISTURBANCE\n", container)
         self.assertIn('"magnetometer_topic_suffix"', (REPOSITORY / "drone_city_nav" / "launch" / "launch_arguments.py").read_text())
         profile = (REPOSITORY / "drone_city_nav" / "launch" / "sensor_profile.py").read_text()

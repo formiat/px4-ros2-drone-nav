@@ -563,6 +563,7 @@ cleanup() {
   fi
   cleanup_started=true
   trap - EXIT INT TERM
+  stop_stack_bag_recorder
 
   job_pids="$(jobs -pr || true)"
   if [[ -z "${job_pids}" ]]; then
@@ -891,6 +892,9 @@ if bool_is_true "${record_video}"; then
   recorded_top_view "${runtime_artifact_dir}" \
     > "${runtime_artifact_dir}/rviz_top_down.log" 2>&1 &
 fi
+# The launch's arguments beside the manifest: a replay of the flight's stack
+# reads them (tools/replay_stack.sh, roadmap item 27 block 6).
+printf '%s\n' "${ros_launch_args[@]}" > "${runtime_artifact_dir}/ros_launch_args.txt"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav "${launch_file}" \
     "${ros_launch_args[@]}" \
