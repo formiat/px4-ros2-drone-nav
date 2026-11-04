@@ -51,6 +51,9 @@ env_args=(
   --env XDG_RUNTIME_DIR="${container_runtime}"
   # The resource record of a flight names the image it ran in.
   --env DRONE_GAZEBO_DEV_IMAGE="${image_name}"
+  # The middleware's transports: the pair's frames through shared memory
+  # (docker/fastdds_profiles.xml; the container shares the host's /dev/shm).
+  --env FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/docker/fastdds_profiles.xml
 )
 
 # A GUI run needs the X server to accept the container. The container has its
@@ -231,6 +234,7 @@ exec "$@"
 docker run --rm "${tty_args[@]}" \
   --privileged \
   --network host \
+  --ipc host \
   --user "${user_uid}:${user_gid}" \
   "${gpu_args[@]}" "${env_args_vulkan[@]}" "${vulkan_icd_args[@]}" \
   "${cpuset_args[@]}" \

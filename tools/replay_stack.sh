@@ -37,10 +37,12 @@ echo "REPLAY $run start $(date -u +%H:%M:%S) rate $rate inputs ${#inputs[@]} out
 ros2 launch drone_city_nav city_nav.launch.py "${args[@]}" > "$out/ros_replay.log" 2>&1 &
 launch_pid=$!
 sleep 30
-ros2 bag record -s mcap --max-cache-size 268435456 -o "$out/replay_bag" "${outputs[@]}" > "$out/replay_bag.log" 2>&1 &
+ros2 bag record -s mcap --max-cache-size 268435456 --qos-profile-overrides-path /workspace/scripts/stack_bag_qos.yaml \
+  -o "$out/replay_bag" --topics "${outputs[@]}" > "$out/replay_bag.log" 2>&1 &
 record_pid=$!
 sleep 5
-ros2 bag play --clock 250 -r "$rate" --topics "${inputs[@]}" "$bag" > "$out/play.log" 2>&1
+# The bag first: --topics takes every argument after it.
+ros2 bag play "$bag" --clock 250 -r "$rate" --topics "${inputs[@]}" > "$out/play.log" 2>&1
 echo "REPLAY $run played $(date -u +%H:%M:%S)" | tee -a "$out/replay.log"
 sleep 5
 stop() { kill -TERM "$1" 2>/dev/null || true; for _ in $(seq 1 600); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.1; done; kill -KILL "$1" 2>/dev/null || true; }

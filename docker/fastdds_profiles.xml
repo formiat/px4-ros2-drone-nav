@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- The middleware's transports in the dev container (FASTRTPS_DEFAULT_PROFILES_FILE, scripts/container_run.sh;
+     roadmap item 27 block 6). The stack's largest messages, the pair's frames of 3.7 MB each at 7.5 Hz, travel
+     through shared memory: Fast DDS's default shared-memory segment takes messages up to 512 KB and sends the rest
+     over UDP, where the kernel's 208 KB receive buffer loses fragments (r2874: 2293 of 2673 frames reached the
+     stack bag's recorder). The segment and the message size are raised to hold several frames; UDP stays for what
+     shared memory cannot carry. -->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>shared_memory_large</transport_id>
+        <type>SHM</type>
+        <segment_size>67108864</segment_size>
+        <maxMessageSize>16777216</maxMessageSize>
+      </transport_descriptor>
+      <transport_descriptor>
+        <transport_id>udp_default</transport_id>
+        <type>UDPv4</type>
+      </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="large_messages" is_default_profile="true">
+      <rtps>
+        <userTransports>
+          <transport_id>shared_memory_large</transport_id>
+          <transport_id>udp_default</transport_id>
+        </userTransports>
+        <useBuiltinTransports>false</useBuiltinTransports>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>

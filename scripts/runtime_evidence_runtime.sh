@@ -102,8 +102,12 @@ start_runtime_evidence_capture() {
     local -a stack_bag_topics
     mapfile -t stack_bag_topics < <(python3 "${repo_root}/scripts/stack_bag_topics.py" record \
       --navigation-sensor-profile "${navigation_sensor_profile}" --camera-profile "${camera_profile}")
+    # The receive stamps on the simulation clock: the player's clock is these
+    # (r2874's were the wall's, and the replayed stack read every message as
+    # years old).
     ros2 bag record -s mcap --storage-preset-profile zstd_fast --max-cache-size 268435456 \
-      -o "${runtime_artifact_dir}/stack_bag" "${stack_bag_topics[@]}" \
+      --use-sim-time --qos-profile-overrides-path "${repo_root}/scripts/stack_bag_qos.yaml" \
+      -o "${runtime_artifact_dir}/stack_bag" --topics "${stack_bag_topics[@]}" \
       > "${runtime_artifact_dir}/stack_bag.log" 2>&1 &
     stack_bag_pid=$!
   fi

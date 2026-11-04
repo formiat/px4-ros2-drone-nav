@@ -1,0 +1,10 @@
+# The stack bag recorder's subscriptions (roadmap item 27 block 6, scripts/stack_bag_topics.py): best effort and
+# volatile where a topic has publishers of both reliabilities, so that every publisher reaches the recorder (the
+# mission events: the monitor's reliable, the survey node's best effort; r2874 recorded one publisher's alone). A
+# best-effort subscription is compatible with a reliable publisher and with a best-effort one. The replay's player
+# offers each topic the QoS the bag recorded.
+/drone_city_nav/mission_events:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100

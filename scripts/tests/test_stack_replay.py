@@ -64,12 +64,23 @@ class ReplayContractTest(unittest.TestCase):
         evidence = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8")
         self.assertIn('if bool_is_true "${RECORD_STACK_BAG:-false}"; then', evidence)
         self.assertIn("stack_bag_topics.py\" record", evidence)
+        self.assertIn('--qos-profile-overrides-path "${repo_root}/scripts/stack_bag_qos.yaml"', evidence)
+        self.assertIn("/drone_city_nav/mission_events:\n  reliability: best_effort",
+                      (REPOSITORY / "scripts/stack_bag_qos.yaml").read_text(encoding="utf-8"))
         self.assertIn("RECORD_STACK_BAG \\\n", evidence)
         self.assertIn("stop_stack_bag_recorder() {", evidence)
         runner = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
         self.assertIn("  trap - EXIT INT TERM\n  stop_stack_bag_recorder\n", runner)
         self.assertIn('printf \'%s\\n\' "${ros_launch_args[@]}" > "${runtime_artifact_dir}/ros_launch_args.txt"', runner)
-        self.assertIn("  RECORD_STACK_BAG\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
+        container = (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8")
+        self.assertIn("  RECORD_STACK_BAG\n", container)
+        self.assertIn("--use-sim-time --qos-profile-overrides-path", evidence)
+        # The pair's frames reach the recorder through shared memory (r2874 lost 14 percent over UDP).
+        self.assertIn("--env FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/docker/fastdds_profiles.xml", container)
+        self.assertIn("  --ipc host \\\n", container)
+        profiles = (REPOSITORY / "docker/fastdds_profiles.xml").read_text(encoding="utf-8")
+        self.assertIn("<maxMessageSize>16777216</maxMessageSize>", profiles)
+        self.assertIn('is_default_profile="true"', profiles)
 
     def test_the_launch_runs_the_stack_without_gazebo(self) -> None:
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
