@@ -589,8 +589,9 @@ its goal (`NavigationProgress`) and the monitor's events.
 - **The vantage** of a cluster is the observed free cell with observed free
   space round it, a cylinder 0.8 m to the sides, 1.5 m below and 0.8 m
   above, reached through what was seen and with a line of sight through
-  observed free space to the cluster's centroid (a frontier under a floor
-  has no vantage over it, r2818), nearest the point the standoff
+  observed free space to the cluster's frontier cell nearest its centroid
+  (a frontier under a floor has no vantage over it, r2818; a centroid lies
+  off a curved frontier, r2819), nearest the point the standoff
   (2.5 m) short of the centroid on the vehicle's side, within 3.5 m of it,
   else nearest the centroid within 6 m; a cluster with none waits. The
   vehicle looks only from where the sensor has been, high enough over a
@@ -615,7 +616,7 @@ its goal (`NavigationProgress`) and the monitor's events.
 - **A frontier disappears by measurement alone** (I3): its cells observed
   (fewer than a tenth left); the body passed through its unknown neighbours
   (within the body's radius of a position flown); the sensor's field held
-  its centroid from within the standoff and the capture radius for a second,
+  that cell from within the standoff and the capture radius for a second,
   along a line of sight through observed free space past the lidar's
   minimum range (`looked_at`; a frontier cell so held is looked at too, and
   the cells within a metre of it: the look's footprint); at the vantage, with no look in 5 s, the vehicle passed

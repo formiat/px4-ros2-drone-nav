@@ -78,6 +78,10 @@ struct SurveyConfig {
 
 struct SurveyFrontier {
   Point3 centroid{};
+  // The cluster's frontier cell nearest its centroid: what a look looks at
+  // (a centroid lies off the frontier, beyond a curved one, and a line to it
+  // ends in unknown: r2819, every cluster without a vantage at 40 s).
+  Point3 sight{};
   Point3 vantage{};
   Point3 far_vantage{};
   std::size_t cells{0U};

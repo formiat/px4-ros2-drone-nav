@@ -66,7 +66,7 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   }
   // The look: the sensor's field holds the target's centroid from within
   // the standoff plus a metre, for the dwell.
-  if (!target_.has_value() || target_looked_ || !sees(target_->centroid)) {
+  if (!target_.has_value() || target_looked_ || !sees(target_->sight)) {
     look_since_ns_ = 0;
     return;
   }

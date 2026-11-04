@@ -478,8 +478,8 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
 
 // The cell nearest the point within the reach that is observed free, open
 // round it, reached through what was seen, and with a line of sight to the
-// cluster's centroid: a vantage looks at its frontier (r2818: a vantage in
-// the hall over a frontier under its floor, the vehicle held over the
+// cluster's frontier cell nearest its centroid: a vantage looks at its frontier (r2818:
+// a vantage in the hall over a frontier under its floor, the vehicle held over the
 // stairwell until the lidar-inertial height ran 1.9 m off and it sat on the
 // floor).
 [[nodiscard]] std::optional<GridIndex3D> snap(const Lattice& lattice,
@@ -555,6 +555,12 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     }
     const double count = static_cast<double>(members.size());
     frontier.centroid = Point3{sum.x / count, sum.y / count, sum.z / count};
+    frontier.sight = grid.cellCenter(*std::min_element(
+        members.begin(), members.end(),
+        [&grid, &frontier](const auto& lhs, const auto& rhs) {
+          return squaredDistance(grid.cellCenter(lhs), frontier.centroid) <
+                 squaredDistance(grid.cellCenter(rhs), frontier.centroid);
+        }));
     // The vantage on the vehicle's side of the centroid, the far vantage beyond it.
     double dx = frontier.centroid.x - vehicle.x;
     double dy = frontier.centroid.y - vehicle.y;
@@ -577,11 +583,10 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     // from a cell unknown lays open (r2802: a vantage under the pad's floor;
     // r2807: one 0.6 m over the floor). A cluster with none waits.
     std::optional<GridIndex3D> vantage =
-        snap(lattice, near, kSnapReachM, frontier.centroid);
+        snap(lattice, near, kSnapReachM, frontier.sight);
     if (!vantage.has_value()) {
-      vantage =
-          snap(lattice, frontier.centroid,
-               std::min(config.sensor_reach_m, kVantageReachM), frontier.centroid);
+      vantage = snap(lattice, frontier.centroid,
+                     std::min(config.sensor_reach_m, kVantageReachM), frontier.sight);
     }
     if (!vantage.has_value()) {
       ++reading.clusters_without_vantage;
@@ -592,7 +597,7 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     // The pass goes through observed space only (r2806: a far vantage in
     // unknown space behind the centroid sent the planner round the world).
     const std::optional<GridIndex3D> far_vantage =
-        snap(lattice, far, kSnapReachM, frontier.centroid);
+        snap(lattice, far, kSnapReachM, frontier.sight);
     frontier.far_vantage_known = far_vantage.has_value();
     frontier.far_vantage =
         frontier.far_vantage_known ? grid.cellCenter(*far_vantage) : frontier.vantage;
