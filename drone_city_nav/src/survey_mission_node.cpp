@@ -9,6 +9,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -213,13 +214,21 @@ private:
   }
 
   void onMissionEvent(const std::string& event) {
+    // The survey starts with the mission: before it the monitor takes no
+    // command, and a survey that read and looked on the pad ended there
+    // (r2826: SURVEY_DONE at 12 s, before the takeoff's goal was reached).
+    if (!ready_ && (event.starts_with("MISSION_READINESS ready=true") ||
+                    event.starts_with("SURVEY_GOAL_REACHED"))) {
+      ready_ = true;
+      RCLCPP_INFO(get_logger(), "SURVEY_STARTED event='%s'", event.c_str());
+    }
     if (pending_ && event == "OPERATOR_COMMAND " + pending_text_) {
       pending_ = false;
       RCLCPP_INFO(get_logger(), "SURVEY_COMMAND accepted='%s'", pending_text_.c_str());
       return;
     }
-    if (!passive_ && (event.rfind("MISSION_RESULT", 0) == 0 ||
-                      event.rfind("GOAL_UNREACHABLE", 0) == 0)) {
+    if (!passive_ && (event.starts_with("MISSION_RESULT") ||
+                      event.starts_with("GOAL_UNREACHABLE"))) {
       passive_ = true;
       pending_ = false;
       RCLCPP_WARN(get_logger(), "SURVEY_STOPPED event='%s'", event.c_str());
@@ -237,6 +246,9 @@ private:
   }
 
   void tick() {
+    if (!ready_) {
+      return;
+    }
     const std::int64_t now_ns = now().nanoseconds();
     if (reading_future_.valid() && reading_future_.wait_for(std::chrono::seconds{0}) ==
                                        std::future_status::ready) {
@@ -266,10 +278,10 @@ private:
       RCLCPP_INFO(get_logger(), "%s", event.c_str());
     }
     if (step.command == SurveyCommand::kGoal) {
-      char text[96];
-      std::snprintf(text, sizeof text, "goal %.3f %.3f %.3f", step.goal.x, step.goal.y,
-                    step.goal.z);
-      send(text);
+      std::array<char, 96U> text{};
+      std::snprintf(text.data(), text.size(), "goal %.3f %.3f %.3f", step.goal.x,
+                    step.goal.y, step.goal.z);
+      send(text.data());
     } else if (step.command == SurveyCommand::kHome) {
       send("home");
     } else if (pending_ &&
@@ -298,6 +310,7 @@ private:
   std::int64_t last_reading_ns_{0};
   Point3 position_{};
   bool position_valid_{false};
+  bool ready_{false};
   bool passive_{false};
   bool pending_{false};
   std::string pending_text_;

@@ -20,6 +20,9 @@ namespace {
 constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
 constexpr std::size_t kVoxelsPerChunk{
     static_cast<std::size_t>(kChunkSize * kChunkSize * kChunkSize)};
+// The cells of a chunk's layer.
+constexpr std::size_t kChunkArea{static_cast<std::size_t>(kChunkSize) *
+                                 static_cast<std::size_t>(kChunkSize)};
 constexpr std::uint32_t kUnreached{std::numeric_limits<std::uint32_t>::max()};
 constexpr std::array<std::array<int, 3>, 6> kFaces{
     {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
@@ -61,15 +64,12 @@ constexpr double kKnownSeedReachM{3.0};
 // looked up in the grid's chunks cost 45 hash lookups a cell; the box of a
 // 50 x 45 m volume holds millions).
 struct Lattice {
-  const ObservedOccupancyGrid3D& grid;
-  const SurveyConfig& config;
+  const ObservedOccupancyGrid3D* grid;
+  const SurveyConfig* config;
   GridIndex3D volume_low{};
   GridIndex3D volume_high{};
   GridIndex3D flood_low{};
   GridIndex3D flood_high{};
-  int nx{0};
-  int ny{0};
-  int nz{0};
   // The cells the body does not fit in (an occupied cell within its radius, K16).
   std::vector<std::uint8_t> blocked;
   // The route's length in lattice steps of every reached cell, through the
@@ -89,7 +89,7 @@ struct Lattice {
 
   void markLooked(const SurveyCellSet& looked) {
     looked_near.assign(blocked.size(), 0U);
-    const double cells = kLookFootprintM / grid.bounds().resolution_m;
+    const double cells = kLookFootprintM / grid->bounds().resolution_m;
     const int reach = static_cast<int>(std::ceil(cells - 1.0e-9));
     std::vector<std::array<int, 3>> footprint;
     for (int z = -reach; z <= reach; ++z) {
@@ -118,9 +118,9 @@ struct Lattice {
   }
 
   Lattice(const ObservedOccupancyGrid3D& grid_in, const SurveyConfig& config_in)
-      : grid{grid_in},
-        config{config_in} {
-    const GridBounds3D& bounds = grid.bounds();
+      : grid{&grid_in},
+        config{&config_in} {
+    const GridBounds3D& bounds = grid->bounds();
     const auto cell = [&bounds](const double x, const double y, const double z) {
       return GridIndex3D{
           static_cast<int>(std::floor((x - bounds.origin_x) / bounds.resolution_m)),
@@ -133,34 +133,29 @@ struct Lattice {
                          std::clamp(index.z, 0, bounds.depth_cells - 1)};
     };
     const double epsilon = 1.0e-6;
-    volume_low =
-        clamp(cell(config.volume_minimum.x + epsilon, config.volume_minimum.y + epsilon,
-                   config.volume_minimum.z + epsilon));
-    volume_high =
-        clamp(cell(config.volume_maximum.x - epsilon, config.volume_maximum.y - epsilon,
-                   config.volume_maximum.z - epsilon));
+    volume_low = clamp(cell(config->volume_minimum.x + epsilon,
+                            config->volume_minimum.y + epsilon,
+                            config->volume_minimum.z + epsilon));
+    volume_high = clamp(cell(config->volume_maximum.x - epsilon,
+                             config->volume_maximum.y - epsilon,
+                             config->volume_maximum.z - epsilon));
     const double margin = kFloodMarginM;
     flood_low =
-        clamp(cell(config.volume_minimum.x - margin, config.volume_minimum.y - margin,
-                   std::max(config.volume_minimum.z - margin,
-                            config.envelope.minimum_target_z_m)));
+        clamp(cell(config->volume_minimum.x - margin, config->volume_minimum.y - margin,
+                   std::max(config->volume_minimum.z - margin,
+                            config->envelope.minimum_target_z_m)));
     flood_high =
-        clamp(cell(config.volume_maximum.x + margin, config.volume_maximum.y + margin,
-                   std::min(config.volume_maximum.z + margin,
-                            config.envelope.maximum_target_z_m)));
-    nx = flood_high.x - flood_low.x + 1;
-    ny = flood_high.y - flood_low.y + 1;
-    nz = flood_high.z - flood_low.z + 1;
-    const std::size_t count = static_cast<std::size_t>(nx) *
-                              static_cast<std::size_t>(ny) *
-                              static_cast<std::size_t>(nz);
+        clamp(cell(config->volume_maximum.x + margin, config->volume_maximum.y + margin,
+                   std::min(config->volume_maximum.z + margin,
+                            config->envelope.maximum_target_z_m)));
+    const std::size_t count = extent(0) * extent(1) * extent(2);
     blocked.assign(count, 0U);
     distance.assign(count, kUnreached);
     known.assign(count, 0U);
     known_distance.assign(count, kUnreached);
     // The body's ball round every occupied cell of the box or within the
     // radius of it: the box's cells it covers are blocked.
-    const double fit_radius_voxels = config.body_radius_m / bounds.resolution_m;
+    const double fit_radius_voxels = config->body_radius_m / bounds.resolution_m;
     const int reach = static_cast<int>(std::ceil(fit_radius_voxels - 1.0e-9));
     const double limit = fit_radius_voxels * fit_radius_voxels + 1.0e-9;
     const double side_cells = kVantageOpenSideM / bounds.resolution_m;
@@ -188,7 +183,7 @@ struct Lattice {
         }
       }
     }
-    for (const auto& [index, storage] : grid.chunks()) {
+    for (const auto& [index, storage] : grid->chunks()) {
       const GridIndex3D low{index.x * kChunkSize, index.y * kChunkSize,
                             index.z * kChunkSize};
       if (low.x + kChunkSize - 1 < flood_low.x - reach ||
@@ -209,7 +204,7 @@ struct Lattice {
         const GridIndex3D occupied{
             low.x + static_cast<int>(bit % kChunkSize),
             low.y + static_cast<int>((bit / kChunkSize) % kChunkSize),
-            low.z + static_cast<int>(bit / (kChunkSize * kChunkSize))};
+            low.z + static_cast<int>(bit / kChunkArea)};
         if (state == ObservedVoxelState::kFree) {
           if (inFlood(occupied)) {
             known[at(occupied)] = 1U;
@@ -241,11 +236,18 @@ struct Lattice {
     return within(cell, flood_low, flood_high);
   }
 
+  // Cells along an axis of the flood's box.
+  [[nodiscard]] std::size_t extent(const int axis) const noexcept {
+    const std::array<int, 3> cells{flood_high.x - flood_low.x,
+                                   flood_high.y - flood_low.y,
+                                   flood_high.z - flood_low.z};
+    return static_cast<std::size_t>(cells.at(static_cast<std::size_t>(axis))) + 1U;
+  }
+
   [[nodiscard]] std::size_t at(const GridIndex3D cell) const noexcept {
-    return (static_cast<std::size_t>(cell.z - flood_low.z) *
-                static_cast<std::size_t>(ny) +
+    return (static_cast<std::size_t>(cell.z - flood_low.z) * extent(1) +
             static_cast<std::size_t>(cell.y - flood_low.y)) *
-               static_cast<std::size_t>(nx) +
+               extent(0) +
            static_cast<std::size_t>(cell.x - flood_low.x);
   }
 
@@ -266,14 +268,12 @@ struct Lattice {
   // (r2807: a vantage 0.6 m over the floor, the descent to it ended on the
   // floor).
   [[nodiscard]] bool openAround(const GridIndex3D cell) const noexcept {
-    for (const std::array<int, 3>& offset : open_ball) {
-      const GridIndex3D near{cell.x + offset[0], cell.y + offset[1],
-                             cell.z + offset[2]};
-      if (!inFlood(near) || known[at(near)] == 0U) {
-        return false;
-      }
-    }
-    return true;
+    return std::ranges::all_of(
+        open_ball, [this, cell](const std::array<int, 3>& offset) {
+          const GridIndex3D near{cell.x + offset[0], cell.y + offset[1],
+                                 cell.z + offset[2]};
+          return inFlood(near) && known[at(near)] != 0U;
+        });
   }
 
   [[nodiscard]] std::uint32_t reachedKnown(const GridIndex3D cell) const noexcept {
@@ -286,7 +286,7 @@ struct Lattice {
 // the box (it may route outside the volume) floods from the box's cell
 // nearest it.
 void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
-  const std::optional<GridIndex3D> centre_cell = lattice.grid.worldToCell(vehicle);
+  const std::optional<GridIndex3D> centre_cell = lattice.grid->worldToCell(vehicle);
   if (!centre_cell.has_value()) {
     return;
   }
@@ -300,7 +300,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
   const GridIndex3D centre{
       centre_cell->x, centre_cell->y,
       std::clamp(centre_cell->z, lattice.flood_low.z, lattice.flood_high.z)};
-  const double resolution = lattice.grid.bounds().resolution_m;
+  const double resolution = lattice.grid->bounds().resolution_m;
   const int reach = static_cast<int>(std::ceil(kVehicleReachM / resolution));
   std::optional<GridIndex3D> seed;
   double best = std::numeric_limits<double>::infinity();
@@ -339,7 +339,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
               distances[lattice.at(neighbour)] != kUnreached) {
             continue;
           }
-          if (++visited > lattice.config.flood_voxel_budget) {
+          if (++visited > lattice.config->flood_voxel_budget) {
             return visited;
           }
           distances[lattice.at(neighbour)] = depth;
@@ -352,7 +352,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
   };
   reading.reachable_voxels = run(*seed, lattice.distance, false);
   reading.budget_exhausted =
-      reading.reachable_voxels > lattice.config.flood_voxel_budget;
+      reading.reachable_voxels > lattice.config->flood_voxel_budget;
   if (reading.budget_exhausted) {
     return;
   }
@@ -383,7 +383,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
                                                      const SurveyCellSet& looked,
                                                      const SurveyCellSet& passed) {
   std::vector<GridIndex3D> cells;
-  for (const auto& [index, storage] : lattice.grid.chunks()) {
+  for (const auto& [index, storage] : lattice.grid->chunks()) {
     const GridIndex3D low{index.x * kChunkSize, index.y * kChunkSize,
                           index.z * kChunkSize};
     const GridIndex3D high{low.x + kChunkSize - 1, low.y + kChunkSize - 1,
@@ -401,7 +401,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
       }
       const GridIndex3D cell{low.x + static_cast<int>(bit % kChunkSize),
                              low.y + static_cast<int>((bit / kChunkSize) % kChunkSize),
-                             low.z + static_cast<int>(bit / (kChunkSize * kChunkSize))};
+                             low.z + static_cast<int>(bit / kChunkArea)};
       if (!lattice.inVolume(cell) || lattice.lookedAt(cell, looked)) {
         continue;
       }
@@ -414,7 +414,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
         // r2807: clusters under the floor, a vantage 0.6 m over it, a
         // contact, 489 frontiers chosen and no end in 1500 s).
         if (lattice.inVolume(neighbour) &&
-            lattice.grid.state(neighbour) == ObservedVoxelState::kUnknown &&
+            lattice.grid->state(neighbour) == ObservedVoxelState::kUnknown &&
             lattice.fitsBody(neighbour) && !passed.contains(neighbour)) {
           cells.push_back(cell);
           break;
@@ -487,7 +487,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
                                               const Point3& sight) {
   // The search starts at the grid's cell nearest the point: a far vantage
   // beyond a frontier at the grid's edge lies outside it.
-  const GridBounds3D& bounds = lattice.grid.bounds();
+  const GridBounds3D& bounds = lattice.grid->bounds();
   const auto index = [&bounds](const double value, const double origin,
                                const int cells) {
     return std::clamp(
@@ -498,7 +498,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
                            index(point.y, bounds.origin_y, bounds.height_cells),
                            index(point.z, bounds.origin_z, bounds.depth_cells)};
   const int reach =
-      static_cast<int>(std::ceil(reach_m / lattice.grid.bounds().resolution_m));
+      static_cast<int>(std::ceil(reach_m / lattice.grid->bounds().resolution_m));
   std::vector<std::pair<double, GridIndex3D>> candidates;
   for (int z = -reach; z <= reach; ++z) {
     for (int y = -reach; y <= reach; ++y) {
@@ -507,7 +507,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
         if (lattice.reachedKnown(cell) == kUnreached || !lattice.openAround(cell)) {
           continue;
         }
-        const double d = squaredDistance(lattice.grid.cellCenter(cell), point);
+        const double d = squaredDistance(lattice.grid->cellCenter(cell), point);
         if (d <= reach_m * reach_m) {
           candidates.emplace_back(d, cell);
         }
@@ -518,7 +518,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
   std::sort(candidates.begin(), candidates.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
   for (const auto& [distance, cell] : candidates) {
-    if (lineOfSight(lattice.grid, lattice.grid.cellCenter(cell), sight)) {
+    if (lineOfSight(*lattice.grid, lattice.grid->cellCenter(cell), sight)) {
       return cell;
     }
   }
@@ -600,7 +600,7 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
         snap(lattice, far, kSnapReachM, frontier.sight);
     frontier.far_vantage_known = far_vantage.has_value();
     frontier.far_vantage =
-        frontier.far_vantage_known ? grid.cellCenter(*far_vantage) : frontier.vantage;
+        far_vantage.has_value() ? grid.cellCenter(*far_vantage) : frontier.vantage;
     reading.reachable_members.insert(members.begin(), members.end());
     frontier.members = std::move(members);
     reading.frontiers.push_back(std::move(frontier));
@@ -618,8 +618,8 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
 }
 
 std::string summary(const SurveyReading& reading) {
-  char line[320];
-  std::snprintf(line, sizeof line,
+  std::array<char, 320U> line{};
+  std::snprintf(line.data(), line.size(),
                 "SURVEY_READING frontier_cells=%zu clusters=%zu with_vantage=%zu "
                 "without_vantage=%zu reachable_voxels=%zu known_voxels=%zu "
                 "vehicle_placed=%s budget_exhausted=%s nearest_route_m=%.1f "
@@ -630,7 +630,7 @@ std::string summary(const SurveyReading& reading) {
                 reading.budget_exhausted ? "true" : "false",
                 reading.frontiers.empty() ? 0.0 : reading.frontiers.front().route_m,
                 reading.reading_ms);
-  return line;
+  return line.data();
 }
 
 bool lineOfSight(const ObservedOccupancyGrid3D& grid, const Point3& from,
@@ -644,8 +644,9 @@ bool lineOfSight(const ObservedOccupancyGrid3D& grid, const Point3& from,
   if (!target.has_value()) {
     return false;
   }
-  for (double travelled = kSkipM; travelled < length; travelled += step) {
-    const double share = travelled / length;
+  const int steps = static_cast<int>(std::ceil((length - kSkipM) / step));
+  for (int index = 0; index < steps; ++index) {
+    const double share = (kSkipM + static_cast<double>(index) * step) / length;
     const std::optional<GridIndex3D> cell = grid.worldToCell(
         Point3{from.x + share * (to.x - from.x), from.y + share * (to.y - from.y),
                from.z + share * (to.z - from.z)});

@@ -4,6 +4,7 @@
 #include "survey_mission.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -183,16 +184,19 @@ bool SurveyMission::reached(const Point3& point) const noexcept {
 }
 
 void SurveyMission::finishTarget(const char* outcome, SurveyStep& out) {
-  char line[256];
+  if (!target_.has_value()) {
+    return;
+  }
+  std::array<char, 256U> line{};
   std::snprintf(
-      line, sizeof line,
+      line.data(), line.size(),
       "SURVEY_FRONTIER %s centroid=(%.2f,%.2f,%.2f) cells=%zu chosen=%zu "
       "observed=%zu looked_at=%zu unreachable=%zu unroutable=%zu left_domain=%zu "
       "passes=%zu",
       outcome, target_->centroid.x, target_->centroid.y, target_->centroid.z,
       target_->cells, chosen_, observed_, looked_count_, unreachable_, unroutable_,
       left_domain_, passes_);
-  out.events.emplace_back(line);
+  out.events.emplace_back(line.data());
   target_.reset();
   target_looked_ = false;
   target_unroutable_ = false;
@@ -226,13 +230,13 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
     out.goal =
         Point3{position_.x, position_.y,
                std::min(position_.z + kRiseM, config_.envelope.maximum_target_z_m)};
-    char line[192];
-    std::snprintf(line, sizeof line,
+    std::array<char, 192U> line{};
+    std::snprintf(line.data(), line.size(),
                   "SURVEY_RISE reachable_voxels=%zu largest_component=%zu "
                   "goal=(%.2f,%.2f,%.2f) rises=%zu",
                   reading_->reachable_voxels, largest_component_, out.goal.x,
                   out.goal.y, out.goal.z, rises_);
-    out.events.emplace_back(line);
+    out.events.emplace_back(line.data());
     return out;
   }
   if (!reading_->pinched) {
@@ -265,14 +269,14 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
                                 distance3D(candidate.centroid, target_->centroid) > 1.0;
                        });
       if (nearer != reading_->frontiers.end()) {
-        char line[192];
+        std::array<char, 192U> line{};
         std::snprintf(
-            line, sizeof line,
+            line.data(), line.size(),
             "SURVEY_FRONTIER deferred centroid=(%.2f,%.2f,%.2f) reading_route_m=%.1f "
             "planner_route_m=%.1f nearer_route_m=%.1f",
             target_->centroid.x, target_->centroid.y, target_->centroid.z,
             target_->route_m, planner_route_m, nearer->route_m);
-        out.events.emplace_back(line);
+        out.events.emplace_back(line.data());
         ++deferred_;
         target_ = *nearer;
         phase_ = Phase::kApproach;
@@ -319,13 +323,13 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       ++passes_;
       out.command = SurveyCommand::kGoal;
       out.goal = target_->far_vantage;
-      char line[192];
+      std::array<char, 192U> line{};
       std::snprintf(
-          line, sizeof line,
+          line.data(), line.size(),
           "SURVEY_FRONTIER pass centroid=(%.2f,%.2f,%.2f) far_vantage=(%.2f,%.2f,%.2f)",
           target_->centroid.x, target_->centroid.y, target_->centroid.z,
           target_->far_vantage.x, target_->far_vantage.y, target_->far_vantage.z);
-      out.events.emplace_back(line);
+      out.events.emplace_back(line.data());
     } else if (phase_ == Phase::kPass && reached(target_->far_vantage)) {
       // The pass carried the sensor past the centroid: looked at.
       looked_.insert(target_->members.begin(), target_->members.end());
@@ -349,29 +353,29 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       ++chosen_;
       out.command = SurveyCommand::kGoal;
       out.goal = target_->vantage;
-      char line[256];
+      std::array<char, 256U> line{};
       std::snprintf(
-          line, sizeof line,
+          line.data(), line.size(),
           "SURVEY_FRONTIER chosen centroid=(%.2f,%.2f,%.2f) vantage=(%.2f,%.2f,%.2f) "
           "cells=%zu route_m=%.1f candidates=%zu",
           target_->centroid.x, target_->centroid.y, target_->centroid.z,
           target_->vantage.x, target_->vantage.y, target_->vantage.z, target_->cells,
           target_->route_m, reading_->frontiers.size());
-      out.events.emplace_back(line);
+      out.events.emplace_back(line.data());
     } else if (reading_->complete()) {
       done_ = true;
       home_sent_ = true;
       out.command = SurveyCommand::kHome;
-      char line[256];
+      std::array<char, 256U> line{};
       std::snprintf(
-          line, sizeof line,
+          line.data(), line.size(),
           "SURVEY_DONE frontier_cells=%zu clusters_without_vantage=%zu chosen=%zu "
           "observed=%zu looked_at=%zu unreachable=%zu unroutable=%zu passes=%zu "
           "readings=%zu looked_cells=%zu",
           reading_->frontier_cells, reading_->clusters_without_vantage, chosen_,
           observed_, looked_count_, unreachable_, unroutable_, passes_, readings_,
           looked_cells_);
-      out.events.emplace_back(line);
+      out.events.emplace_back(line.data());
     }
   }
   return out;

@@ -467,8 +467,11 @@ void MissionMonitorNode::onWaypointAcknowledgement(
     return;
   }
   // The goal, or the survey's home (its return is the mission's end).
-  report(spawn_ok_ && moved_,
-         spawn_ok_ && moved_ ? (survey_ ? "survey_home" : "none") : "mission_contract");
+  // A survey that saw its volume from the start comes home without moving
+  // far: its result is its coverage, not its distance (r2826).
+  const bool moved = moved_ || survey_;
+  const char* const success_reason = survey_ ? "survey_home" : "none";
+  report(spawn_ok_ && moved, spawn_ok_ && moved ? success_reason : "mission_contract");
 }
 
 void MissionMonitorNode::publishObjective(const Point3& position,
