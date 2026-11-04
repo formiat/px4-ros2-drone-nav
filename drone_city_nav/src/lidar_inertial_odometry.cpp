@@ -173,7 +173,7 @@ thinScan(const std::vector<Eigen::Vector3d>& points,
   std::vector<Eigen::Vector3d> thinned;
   thinned.reserve(cells.size());
   for (const Accumulator& accumulator : cells) {
-    thinned.push_back(accumulator.sum / static_cast<double>(accumulator.count));
+    thinned.emplace_back(accumulator.sum / static_cast<double>(accumulator.count));
   }
   return thinned;
 }
@@ -222,54 +222,58 @@ struct LidarInertialOdometry::Impl {
         submap(config) {
   }
 
+  // The attitudes and the covariance first, the flags last: the aligned
+  // members between the flags cost 40 bytes of padding.
+  Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
+  Eigen::Quaterniond attitude{Eigen::Quaterniond::Identity()};
+  Eigen::Quaterniond last_keyframe_rotation{Eigen::Quaterniond::Identity()};
+  Matrix6d covariance{Matrix6d::Identity() * 0.01};
   LidarInertialOdometryConfig config;
   Submap submap;
-  bool initialized{false};
-  bool attitude_levelled{false};
   double heading_rad{0.0};
   // Accelerometer and gyroscope samples seen before the first scan, for the
   // level and the bias the vehicle shows at rest.
   Eigen::Vector3d rest_accelerometer_sum{Eigen::Vector3d::Zero()};
   Eigen::Vector3d rest_gyro_sum{Eigen::Vector3d::Zero()};
   std::size_t rest_samples{0U};
+  std::deque<LidarInertialImuSample> rest_imu;
   // The state at the last scan: what every later IMU sample is integrated
   // from, so a scan's starting guess is the state at the scan's own stamp.
   std::int64_t stamp_ns{0};
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
-  Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
   Eigen::Vector3d gyro_bias{Eigen::Vector3d::Zero()};
   // The outside level, when one is observed (observeAttitude).
-  bool has_attitude{false};
   std::int64_t attitude_stamp_ns{0};
-  Eigen::Quaterniond attitude{Eigen::Quaterniond::Identity()};
   // The outside height (observeHeight) and its datum: the mean of the
   // height plus the pose's z (NED, so the height the pose itself stands at
   // taken off) over the rest, for as long as the pose stays where the first
   // height found it. A datum from the moment of the first scan alone (25 to
   // 50 samples) was 0.05 m uncertain and held r2148 0.09 m high for the
   // whole flight; the rest before the takeoff is some 25 s.
-  bool has_height{false};
   std::int64_t height_stamp_ns{0};
   double height_m{std::numeric_limits<double>::quiet_NaN()};
   double height_datum_sum_m{0.0};
   std::size_t height_datum_samples{0U};
-  bool height_datum_open{true};
   Eigen::Vector3d height_datum_position{Eigen::Vector3d::Zero()};
   std::deque<LidarInertialImuSample> imu;
   std::int64_t last_imu_stamp_ns{0};
   Eigen::Vector3d last_keyframe_position{Eigen::Vector3d::Zero()};
-  Eigen::Quaterniond last_keyframe_rotation{Eigen::Quaterniond::Identity()};
-  bool has_keyframe{false};
   // The last scan that registered: where the estimate returns to when a
   // scan fails, carried forward at that velocity.
-  bool has_registered{false};
-  bool holding{false};
   std::int64_t registered_stamp_ns{0};
   Eigen::Vector3d registered_position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d registered_velocity{Eigen::Vector3d::Zero()};
-  // The uncertainty of position and velocity at the last registered scan.
-  Matrix6d covariance{Matrix6d::Identity() * 0.01};
+  // The flags: initialised, levelled; the outside level and height seen,
+  // the height's datum open; a keyframe, a registered scan, holding.
+  bool initialized{false};
+  bool attitude_levelled{false};
+  bool has_attitude{false};
+  bool has_height{false};
+  bool height_datum_open{true};
+  bool has_keyframe{false};
+  bool has_registered{false};
+  bool holding{false};
 
   struct Propagated {
     std::int64_t stamp_ns{0};
@@ -340,7 +344,20 @@ struct LidarInertialOdometry::Impl {
   // The level from the accelerometer at rest: the measured specific force
   // is minus gravity in the body frame, so the rotation that takes it to
   // straight up gives roll and pitch; the heading is the declared one.
-  void levelFromRest() {
+  void levelFromRest(const std::int64_t scan_stamp_ns) {
+    // The rest's samples stamped on or before the scan alone; the rest go on
+    // to the propagation. Summed as they arrived, two flights with the same
+    // seeds levelled on different rests (r2881, r2883).
+    for (const LidarInertialImuSample& sample : rest_imu) {
+      if (sample.stamp_ns > scan_stamp_ns) {
+        imu.push_back(sample);
+        continue;
+      }
+      rest_accelerometer_sum += sample.accelerometer_mps2;
+      rest_gyro_sum += sample.gyro_radps;
+      ++rest_samples;
+    }
+    rest_imu.clear();
     if (rest_samples == 0U) {
       rotation =
           Eigen::Quaterniond{Eigen::AngleAxisd{heading_rad, Eigen::Vector3d::UnitZ()}};
@@ -397,9 +414,9 @@ void LidarInertialOdometry::addImu(const LidarInertialImuSample& sample) {
   }
   impl.last_imu_stamp_ns = std::max(impl.last_imu_stamp_ns, sample.stamp_ns);
   if (!impl.attitude_levelled) {
-    impl.rest_accelerometer_sum += sample.accelerometer_mps2;
-    impl.rest_gyro_sum += sample.gyro_radps;
-    ++impl.rest_samples;
+    if (impl.rest_imu.empty() || sample.stamp_ns > impl.rest_imu.back().stamp_ns) {
+      impl.rest_imu.push_back(sample);
+    }
     return;
   }
   impl.imu.push_back(sample);
@@ -452,12 +469,17 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     return estimate;
   }
   if (!impl.attitude_levelled) {
-    if (impl.rest_samples < impl.config.minimum_rest_samples) {
+    const std::size_t rest_before = static_cast<std::size_t>(
+        std::count_if(impl.rest_imu.begin(), impl.rest_imu.end(),
+                      [stamp_ns](const LidarInertialImuSample& sample) {
+                        return sample.stamp_ns <= stamp_ns;
+                      }));
+    if (rest_before < impl.config.minimum_rest_samples) {
       // Not yet half a second of rest to level by: this scan is let go.
       estimate.healthy = false;
       return estimate;
     }
-    impl.levelFromRest();
+    impl.levelFromRest(stamp_ns);
     impl.stamp_ns = stamp_ns;
   }
   // A scan too large for the period is thinned coarser, not sampled: a
@@ -675,7 +697,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       keyframe.points_world.reserve(thinned.size());
       const Eigen::Matrix3d rotation = impl.rotation.toRotationMatrix();
       for (const Eigen::Vector3d& point : thinned) {
-        keyframe.points_world.push_back(rotation * point + keyframe_position);
+        keyframe.points_world.emplace_back(rotation * point + keyframe_position);
       }
       impl.submap.insert(std::move(keyframe));
       impl.last_keyframe_position = impl.position;

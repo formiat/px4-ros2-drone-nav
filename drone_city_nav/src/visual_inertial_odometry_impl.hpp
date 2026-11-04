@@ -147,6 +147,10 @@ struct VisualInertialOdometry::Impl {
   Eigen::Vector3d rest_gyro_square_sum{Eigen::Vector3d::Zero()};
   Eigen::Vector3d rest_accelerometer_sum{Eigen::Vector3d::Zero()};
   std::size_t rest_samples{0U};
+  // The samples received before the declared pose, summed at the
+  // initialisation over those stamped on or before it alone: summed as they
+  // arrived, the flight and its replay started from different rests (r2886).
+  std::deque<VisualInertialImuSample> rest_imu;
 
   void propagateStep(const Eigen::Vector3d& gyro, const Eigen::Vector3d& accelerometer,
                      double dt, Matrix15& transition, Matrix15& noise);

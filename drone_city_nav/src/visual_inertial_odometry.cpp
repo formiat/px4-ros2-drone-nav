@@ -343,6 +343,17 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   // At rest the accelerometer reads the reaction to gravity, up in the body
   // frame: roll and pitch are the rotation that takes it to NED's up.
   Eigen::Vector3d up_body{0.0, 0.0, -1.0};
+  for (const VisualInertialImuSample& sample : state.rest_imu) {
+    if (sample.stamp_ns > stamp_ns) {
+      state.imu.push_back(sample);
+      continue;
+    }
+    state.rest_gyro_sum += sample.gyro_radps;
+    state.rest_gyro_square_sum += sample.gyro_radps.cwiseAbs2();
+    state.rest_accelerometer_sum += sample.accelerometer_mps2;
+    ++state.rest_samples;
+  }
+  state.rest_imu.clear();
   if (state.rest_samples > 0U) {
     up_body = (state.rest_accelerometer_sum / static_cast<double>(state.rest_samples))
                   .normalized();
@@ -431,10 +442,9 @@ void VisualInertialOdometry::addMagneticField(const std::int64_t stamp_ns,
 void VisualInertialOdometry::addImu(const VisualInertialImuSample& sample) {
   Impl& state = *impl_;
   if (!state.initialized) {
-    state.rest_gyro_sum += sample.gyro_radps;
-    state.rest_gyro_square_sum += sample.gyro_radps.cwiseAbs2();
-    state.rest_accelerometer_sum += sample.accelerometer_mps2;
-    ++state.rest_samples;
+    if (state.rest_imu.empty() || sample.stamp_ns > state.rest_imu.back().stamp_ns) {
+      state.rest_imu.push_back(sample);
+    }
     state.last_imu = sample;
     return;
   }
