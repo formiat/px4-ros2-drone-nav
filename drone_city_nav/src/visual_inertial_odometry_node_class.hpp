@@ -125,11 +125,15 @@ private:
     // A frame waits for the IMU up to its own stamp, in order: the filter
     // clones the pose where the propagation stands. It waits for the
     // barometer's and the magnetometer's streams past its stamp as well, up
-    // to 50 ms of the IMU's beyond it (a stream that stopped holds nothing
+    // to a second of the IMU's beyond it (a stream that stopped holds nothing
     // up), and takes the barometer's height stamped last before it: taken
     // as they arrived, the replayed stack read a frame with another count of
     // samples before it and parted from the flown one by 4 to 6 cm from the
-    // first minutes (r2875's replay; roadmap item 27 block 6, item 36).
+    // first minutes (r2875's replay; roadmap item 27 block 6, item 36). The
+    // second, not 50 ms: after a long match the executor serves the queued
+    // IMU samples before the queued barometer and magnetometer readings
+    // stamped earlier, and at 50 ms the frame went ahead of them (r2890's
+    // replay parted from the flight at frame 1769 on the feature counts).
     while (!pending_.empty() && streamsPassed(pending_.front().stamp_ns)) {
       const Pair pair = std::move(pending_.front());
       pending_.pop_front();
@@ -216,7 +220,7 @@ private:
   }
 
   [[nodiscard]] bool streamsPassed(const std::int64_t stamp_ns) const noexcept {
-    constexpr std::int64_t kStreamSlackNs{50'000'000};
+    constexpr std::int64_t kStreamSlackNs{1'000'000'000};
     if (last_imu_stamp_ns_ < stamp_ns) {
       return false;
     }
