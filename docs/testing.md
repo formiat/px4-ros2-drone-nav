@@ -343,6 +343,31 @@ the register's row), a scenario of its own, never the acceptance series';
 is measured under the profile as under the light's flicker (F1); R3's targets
 are the means measured under it, the clean vehicle's means references.
 
+## Replay Of The Whole Stack
+
+`RECORD_STACK_BAG=true` records, beside the flight, everything the stack reads
+and everything it writes (`scripts/stack_bag_topics.py`: the autopilot's stream
+and states, the pair's frames, the ring, the lidar, the barometer, the
+magnetometer, the thermal frame, the operator's commands, the contacts; the
+setpoints and the odometry to the autopilot, the estimators' poses, the
+mission's events, the planner's status and horizon) into
+`log/runs/<run>/stack_bag`, on the simulation clock, the pair's frames through
+shared memory (`docker/fastdds_profiles.xml`; some 6 GB over a camera flight,
+none of its frames lost, the flight's speed and the transport's delivery as
+without the recorder). Every flight writes its launch arguments beside the
+manifest (`ros_launch_args.txt`). `tools/replay_stack.sh <run> [rate]` runs
+the stack again in the dev container on the bag alone, no Gazebo and no
+autopilot: the flight's own launch arguments with the bridges and the simulated
+image source off (`enable_gazebo_bridge:=false`, the depth node reading the
+pair over ROS), the inputs played on the bag's clock at the rate given, the
+outputs recorded and set against the flight's by `tools/replay_compare.py`
+(`log/tools/replay/<run>/stack/compare.txt`): the estimators' poses matched by
+stamp, within 0.05 m at the 95th percentile for a replay that passes; the
+trajectory setpoints matched by stamp, the share byte-equal; the mission's
+events in order. Measured on 2026-11-04 (the goal of 2026-11-02, part 4): the camera flight r2875 replayed at 0.8 matched all 2639 of its stereo estimate's poses, 0.157 m apart at the median and 0.579 at the 95th percentile (0.04 to 0.06 over the first three minutes, 0.28 to 0.54 after: the flight's map registration applied one step the replay did not, the memory being multi-threaded, and the order of a step's messages differs, roadmap item 36), 5.6 percent of 17598 matched setpoints equal, the position's difference 0.033 m at p95. The lidar flight r2876 replayed at 1.0 matched 1699 of 1701 lidar-inertial poses, 0.021 m at the median and 0.077 at p95 (0.00, 0.01, 0.06 and 0.06 by minute), 12.4 percent of 8489 setpoints equal, 0.126 m at p95: the replay's contract of 0.05 m is not met on either set, and the mission's own events are not a replay's measure, the replayed planner steering a recorded vehicle. What the replay cannot give is the
+autopilot's side: the vehicle's motion is the recording's, so a changed
+setpoint is measured, not flown (roadmap item 27 block 6).
+
 Two more simulation processes of roadmap item 36 (specification K53) ride a
 flight on request. `BUDGET_RELAY=on` puts `budget_relay_node` between the
 loop's producers and consumers: every output (the depth returns, the

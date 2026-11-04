@@ -52,6 +52,18 @@ Circuit) receives the axis swap `(0, 1, 1, 0)`, while a world that already
 swaps its map axes keeps the identity. Every node that turns a PX4 pose into
 map coordinates, including the mission monitor, receives the same matrix.
 
+## The Middleware's Transports
+
+The container runs Fast DDS with `docker/fastdds_profiles.xml`
+(`FASTRTPS_DEFAULT_PROFILES_FILE`, `scripts/container_run.sh`, the container
+sharing the host's `/dev/shm`): a shared-memory segment of 64 MB that carries
+messages up to 16 MB, UDP beside it. The default segment takes 512 KB and
+sends the rest over UDP, where the kernel's 208 KB receive buffer loses
+fragments of the pair's 3.7 MB frames: the stack bag's recorder lost 14
+percent of them in flight (r2874) and half of them in a measurement
+(`tools/dds_frames.py`), none through the segment (r2875). The transport's
+delivery times the mission check reads are unchanged by it.
+
 ## Heading Source
 
 The simulated magnetometer is not usable as a heading source in this SITL
