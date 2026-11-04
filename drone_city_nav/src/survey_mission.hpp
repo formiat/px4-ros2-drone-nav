@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -123,6 +124,11 @@ struct SurveyReading {
 
 [[nodiscard]] std::string summary(const SurveyReading& reading);
 
+// The line from the vehicle to a point runs through observed free space past
+// the lidar's minimum range: the sensor could see the point from there.
+[[nodiscard]] bool lineOfSight(const ObservedOccupancyGrid3D& grid, const Point3& from,
+                               const Point3& to);
+
 enum class SurveyCommand : std::uint8_t {
   kNone,
   kGoal,
@@ -148,7 +154,9 @@ public:
   explicit SurveyMission(const SurveyConfig& config);
 
   // The memory's lattice, for the body's passage.
-  void setGridBounds(const GridBounds3D& bounds);
+  // The memory: its lattice for the body's passage, its free cells for the
+  // line of sight of a look.
+  void setMemory(std::shared_ptr<const ObservedOccupancyGrid3D> memory);
   // The vehicle's pose: the cells the body passes through, and the look at
   // the target.
   void recordPose(const Point3& position, double yaw_rad, bool heading_valid,
@@ -190,15 +198,16 @@ private:
   };
 
   [[nodiscard]] bool reached(const Point3& point) const noexcept;
-  // The sensor's field holds the point from within the standoff and the capture radius.
-  [[nodiscard]] bool inField(const Point3& point) const noexcept;
+  // The sensor sees the point: in its field from within the standoff and the
+  // capture radius, the line to it through observed free space.
+  [[nodiscard]] bool sees(const Point3& point) const;
   void lookAtCells(std::int64_t now_ns);
   // The flood's box: the volume and its margin, where a reading is read.
   [[nodiscard]] bool insideDomain(const Point3& point) const noexcept;
   void finishTarget(const char* outcome, SurveyStep& out);
 
   SurveyConfig config_;
-  std::optional<GridBounds3D> bounds_;
+  std::shared_ptr<const ObservedOccupancyGrid3D> memory_;
   SurveyCellSet looked_;
   SurveyCellSet passed_;
   std::optional<SurveyFrontier> target_;

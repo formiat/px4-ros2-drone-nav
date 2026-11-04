@@ -23,8 +23,8 @@ SurveyMission::SurveyMission(const SurveyConfig& config)
     : config_{config} {
 }
 
-void SurveyMission::setGridBounds(const GridBounds3D& bounds) {
-  bounds_ = bounds;
+void SurveyMission::setMemory(std::shared_ptr<const ObservedOccupancyGrid3D> memory) {
+  memory_ = std::move(memory);
 }
 
 void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
@@ -38,24 +38,25 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   }
   // The body's passage: the cells within its radius of a position a lattice
   // step from the last recorded one.
-  if (bounds_.has_value() &&
+  if (memory_ != nullptr &&
       (!passed_any_ ||
-       distance3D(position, last_passed_position_) >= bounds_->resolution_m)) {
+       distance3D(position, last_passed_position_) >= memory_->bounds().resolution_m)) {
     passed_any_ = true;
     last_passed_position_ = position;
-    const double resolution = bounds_->resolution_m;
+    const GridBounds3D& bounds = memory_->bounds();
+    const double resolution = bounds.resolution_m;
     const GridIndex3D centre{
-        static_cast<int>(std::floor((position.x - bounds_->origin_x) / resolution)),
-        static_cast<int>(std::floor((position.y - bounds_->origin_y) / resolution)),
-        static_cast<int>(std::floor((position.z - bounds_->origin_z) / resolution))};
+        static_cast<int>(std::floor((position.x - bounds.origin_x) / resolution)),
+        static_cast<int>(std::floor((position.y - bounds.origin_y) / resolution)),
+        static_cast<int>(std::floor((position.z - bounds.origin_z) / resolution))};
     const int reach = static_cast<int>(std::ceil(config_.body_radius_m / resolution));
     for (int z = -reach; z <= reach; ++z) {
       for (int y = -reach; y <= reach; ++y) {
         for (int x = -reach; x <= reach; ++x) {
           const GridIndex3D cell{centre.x + x, centre.y + y, centre.z + z};
-          const Point3 centre_m{bounds_->origin_x + (cell.x + 0.5) * resolution,
-                                bounds_->origin_y + (cell.y + 0.5) * resolution,
-                                bounds_->origin_z + (cell.z + 0.5) * resolution};
+          const Point3 centre_m{bounds.origin_x + (cell.x + 0.5) * resolution,
+                                bounds.origin_y + (cell.y + 0.5) * resolution,
+                                bounds.origin_z + (cell.z + 0.5) * resolution};
           if (distance3D(centre_m, position) <= config_.body_radius_m) {
             passed_.insert(cell);
           }
@@ -65,7 +66,7 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   }
   // The look: the sensor's field holds the target's centroid from within
   // the standoff plus a metre, for the dwell.
-  if (!target_.has_value() || target_looked_ || !inField(target_->centroid)) {
+  if (!target_.has_value() || target_looked_ || !sees(target_->centroid)) {
     look_since_ns_ = 0;
     return;
   }
@@ -77,7 +78,7 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   }
 }
 
-bool SurveyMission::inField(const Point3& point) const noexcept {
+bool SurveyMission::sees(const Point3& point) const {
   if (!position_valid_ || !heading_valid_) {
     return false;
   }
@@ -89,9 +90,13 @@ bool SurveyMission::inField(const Point3& point) const noexcept {
   const double bearing =
       std::remainder(std::atan2(dy, dx) - yaw_rad_, 2.0 * std::numbers::pi);
   const double elevation = std::atan2(dz, horizontal);
+  // The field without the line of sight looked through floors and walls:
+  // the lidar's sphere took the frontiers of the corridors below the hall
+  // for looked at, and 0.24 of the reachable volume stayed unseen (r2810).
   return range <= config_.vantage_standoff_m + config_.capture_radius_m &&
          std::abs(bearing) <= 0.5 * config_.sensor_horizontal_fov_rad &&
-         std::abs(elevation) <= 0.5 * config_.sensor_vertical_fov_rad;
+         std::abs(elevation) <= 0.5 * config_.sensor_vertical_fov_rad &&
+         memory_ != nullptr && lineOfSight(*memory_, position_, point);
 }
 
 void SurveyMission::lookAtCells(const std::int64_t now_ns) {
@@ -100,21 +105,22 @@ void SurveyMission::lookAtCells(const std::int64_t now_ns) {
   // reach from the reachable space (r2808: new clusters kept rising beside
   // the ones looked at, where rays through an opening found no return, and
   // the survey circled the start's building for 1000 s).
-  if (!reading_.has_value() || !bounds_.has_value()) {
+  if (!reading_.has_value() || memory_ == nullptr) {
     in_view_since_ns_.clear();
     return;
   }
-  const double resolution = bounds_->resolution_m;
+  const GridBounds3D& bounds = memory_->bounds();
+  const double resolution = bounds.resolution_m;
   std::unordered_map<GridIndex3D, std::int64_t, GridIndex3DHash, GridIndex3DEqual>
       in_view;
   for (const GridIndex3D cell : reading_->frontier_set) {
     if (looked_.contains(cell)) {
       continue;
     }
-    const Point3 centre{bounds_->origin_x + (cell.x + 0.5) * resolution,
-                        bounds_->origin_y + (cell.y + 0.5) * resolution,
-                        bounds_->origin_z + (cell.z + 0.5) * resolution};
-    if (!inField(centre)) {
+    const Point3 centre{bounds.origin_x + (cell.x + 0.5) * resolution,
+                        bounds.origin_y + (cell.y + 0.5) * resolution,
+                        bounds.origin_z + (cell.z + 0.5) * resolution};
+    if (!sees(centre)) {
       continue;
     }
     const auto seen = in_view_since_ns_.find(cell);

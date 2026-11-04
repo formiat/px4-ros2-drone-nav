@@ -613,4 +613,33 @@ std::string summary(const SurveyReading& reading) {
   return line;
 }
 
+bool lineOfSight(const ObservedOccupancyGrid3D& grid, const Point3& from,
+                 const Point3& to) {
+  // The first metre is the lidar's minimum range: unknown round the vehicle
+  // is not what hides the point.
+  constexpr double kSkipM{1.0};
+  const double length = distance3D(from, to);
+  const double step = 0.5 * grid.bounds().resolution_m;
+  const std::optional<GridIndex3D> target = grid.worldToCell(to);
+  if (!target.has_value()) {
+    return false;
+  }
+  for (double travelled = kSkipM; travelled < length; travelled += step) {
+    const double share = travelled / length;
+    const std::optional<GridIndex3D> cell = grid.worldToCell(
+        Point3{from.x + share * (to.x - from.x), from.y + share * (to.y - from.y),
+               from.z + share * (to.z - from.z)});
+    if (!cell.has_value()) {
+      return false;
+    }
+    if (GridIndex3DEqual{}(*cell, *target)) {
+      return true;
+    }
+    if (grid.state(*cell) != ObservedVoxelState::kFree) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace drone_city_nav

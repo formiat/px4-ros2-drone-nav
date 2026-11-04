@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <numbers>
 
 #include "survey_mission.hpp"
@@ -56,7 +57,7 @@ TEST(SurveyMissionTest, AClosedRoomHoldsNoFrontierAndTheSurveyGoesHome) {
   EXPECT_FALSE(reading.budget_exhausted);
   EXPECT_TRUE(reading.complete());
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, 0.0, true, kSecond);
   mission.applyReading(reading);
   const SurveyStep step = mission.step(2 * kSecond);
@@ -86,7 +87,7 @@ TEST(SurveyMissionTest, ADoorIsOneFrontierLookedAtFromInsideTheRoom) {
   // Beyond the door nothing was observed: no far vantage to pass through.
   EXPECT_FALSE(door.far_vantage_known);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, 0.0, true, kSecond);
   mission.applyReading(reading);
   const SurveyStep chosen = mission.step(2 * kSecond);
@@ -117,7 +118,7 @@ TEST(SurveyMissionTest, FacingAwayAtTheVantageWithNothingSeenBeyondTheWaitIsTheL
   // Beyond the door nothing was observed: no far vantage to pass through.
   EXPECT_FALSE(door.far_vantage_known);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, 0.0, true, kSecond);
   mission.applyReading(reading);
   EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
@@ -174,7 +175,7 @@ TEST(SurveyMissionTest, APassGoesThroughObservedSpaceBeyondTheCentroid) {
   EXPECT_GT(gap.far_vantage.x, gap.centroid.x);
   EXPECT_LT(gap.vantage.x, gap.centroid.x);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(vehicle, 0.0, true, kSecond);
   mission.applyReading(reading);
   EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
@@ -201,7 +202,7 @@ TEST(SurveyMissionTest, APlannerWithNoRouteToTheVantageForLongSettlesTheFrontier
   const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
   ASSERT_EQ(reading.frontiers.size(), 1U);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, std::numbers::pi, true, kSecond);
   mission.applyReading(reading);
   EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
@@ -228,7 +229,7 @@ TEST(SurveyMissionTest,
   EXPECT_EQ(unchosen.clusters, 0U);
   // The body passed through the door: the unknown cells beyond it count as known.
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   for (int i = 0; i <= 8; ++i) {
     mission.recordPose(Point3{9.5 + 0.25 * i, 5.75, 2.25}, 0.0, true,
                        (1 + i) * kSecond);
@@ -314,7 +315,7 @@ TEST(SurveyMissionTest, APlannerRouteFarLongerThanTheReadingsDefersTheFrontier) 
   const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
   ASSERT_EQ(reading.frontiers.size(), 2U);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, std::numbers::pi, true, kSecond);
   mission.applyReading(reading);
   EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
@@ -333,7 +334,7 @@ TEST(SurveyMissionTest, APinchedReadingIsNoVerdictAndTheVehicleRises) {
   SurveyReading wide = readSurvey(grid, kVehicle, config(), {}, {});
   ASSERT_GT(wide.reachable_voxels, 1000U);
   SurveyMission mission{config()};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   mission.recordPose(kVehicle, 0.0, true, kSecond);
   mission.applyReading(wide);
   EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
@@ -366,7 +367,7 @@ TEST(SurveyMissionTest, FrontierCellsTheFieldHeldCloseForTheDwellAreLookedAt) {
   ASSERT_GE(reading.frontier_cells, 8U);
   EXPECT_TRUE(reading.frontiers.empty());
   SurveyMission mission{large};
-  mission.setGridBounds(grid.bounds());
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   const Point3 near{7.5, 5.75, 2.25};
   mission.recordPose(near, 0.0, true, kSecond);
   mission.applyReading(reading);
@@ -374,7 +375,7 @@ TEST(SurveyMissionTest, FrontierCellsTheFieldHeldCloseForTheDwellAreLookedAt) {
   static_cast<void>(mission.step(kSecond));
   EXPECT_EQ(mission.looked().size(), 0U);
   SurveyMission held{large};
-  held.setGridBounds(grid.bounds());
+  held.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   held.recordPose(near, 0.0, true, kSecond);
   SurveyReading partial = reading;
   partial.budget_exhausted = true; // no verdict yet: the look alone is measured
@@ -386,7 +387,7 @@ TEST(SurveyMissionTest, FrontierCellsTheFieldHeldCloseForTheDwellAreLookedAt) {
   EXPECT_EQ(held.looked().size(), reading.frontier_cells);
   // Facing away, nothing is looked at.
   SurveyMission away{large};
-  away.setGridBounds(grid.bounds());
+  away.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
   away.recordPose(near, std::numbers::pi, true, kSecond);
   away.applyReading(partial);
   static_cast<void>(away.step(kSecond));
@@ -446,6 +447,30 @@ TEST(SurveyMissionTest, ACorridorTwoMetresWideHoldsAVantageHighOverItsFloor) {
   EXPECT_NEAR(end.vantage.y, 8.375, 0.25);
   // The floor's top at 1.25 m: the vantage 1.5 m over it at least.
   EXPECT_GE(end.vantage.z, 1.25 + 1.5);
+}
+
+TEST(SurveyMissionTest, AFrontierBehindAWallOrUnknownIsNotLookedAt) {
+  // The door's cells 3 m from a vehicle outside the room, facing them: the
+  // line to them crosses unknown air and the wall, and the sensor did not
+  // see them (r2810: the lidar's sphere looked through floors).
+  const ObservedOccupancyGrid3D grid = room(true);
+  SurveyConfig large = config();
+  large.cluster_minimum_cells = 64U;
+  SurveyReading reading = readSurvey(grid, kVehicle, large, {}, {});
+  ASSERT_GE(reading.frontier_cells, 8U);
+  reading.budget_exhausted = true; // no verdict: the look alone is measured
+  SurveyMission mission{large};
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
+  const Point3 outside{11.0, 3.0, 2.25};
+  const double facing = std::atan2(5.75 - outside.y, 9.875 - outside.x);
+  mission.recordPose(outside, facing, true, kSecond);
+  mission.applyReading(reading);
+  static_cast<void>(mission.step(kSecond));
+  mission.recordPose(outside, facing, true, 3 * kSecond);
+  static_cast<void>(mission.step(3 * kSecond));
+  EXPECT_EQ(mission.looked().size(), 0U);
+  EXPECT_FALSE(lineOfSight(grid, outside, Point3{9.875, 5.75, 2.25}));
+  EXPECT_TRUE(lineOfSight(grid, Point3{7.5, 5.75, 2.25}, Point3{9.875, 5.75, 2.25}));
 }
 
 TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {

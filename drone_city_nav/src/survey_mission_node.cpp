@@ -182,7 +182,7 @@ private:
     memory_ = std::move(grid);
     memory_producer_instance_id_ = snapshot.producer_instance_id;
     memory_base_revision_ = snapshot.obstacle_snapshot_revision;
-    mission_->setGridBounds(bounds);
+    mission_->setMemory(memory_);
   }
 
   void onMemoryDelta(const msg::RawObstacleDelta3D& delta) {
@@ -196,6 +196,7 @@ private:
     auto grid = std::make_shared<ObservedOccupancyGrid3D>(*memory_);
     applyMemoryChunks(*grid, delta.chunks);
     memory_ = std::move(grid);
+    mission_->setMemory(memory_);
   }
 
   void onLocalState(const AutopilotLocalState& message) {
