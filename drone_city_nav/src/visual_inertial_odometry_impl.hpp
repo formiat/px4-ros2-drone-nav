@@ -101,6 +101,10 @@ struct VisualInertialOdometry::Impl {
   // height the barometer gives since is a prior on every frame (r2721:
   // under the imperfections profile the height drifted 1.2 m in 250 s).
   std::optional<double> barometric_zero_m;
+  // The magnetometer's field in the body frame, and the direction of its
+  // horizontal part in the world at the declared pose: the heading's zero.
+  std::optional<Eigen::Vector3d> magnetic_field_body;
+  std::optional<double> magnetic_zero_rad;
   // The void (K46): the pair's judgment, the void's state and its time.
   VisualInertialVoid in_void;
   // The accelerometer across the rotor axis, integrated since the last frame.
@@ -146,6 +150,7 @@ struct VisualInertialOdometry::Impl {
   void judgeDeadReckoning(VisualInertialEstimate& estimate) const;
   void holdHeight();
   void barometricHeightPrior();
+  void magneticHeadingPrior();
   void fuseRotorDrag();
 };
 

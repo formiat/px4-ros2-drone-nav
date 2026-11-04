@@ -77,6 +77,8 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   // The airframe's: fitted per vehicle (visual_inertial_odometry.hpp).
   config.rotor_drag_1ps =
       declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
+  config.magnetic_heading =
+      declare_parameter<bool>("magnetic_heading", config.magnetic_heading);
   odometry_config_ = config;
   odometry_ = std::make_unique<VisualInertialOdometry>(config);
   maximum_unaided_ns_ = static_cast<std::int64_t>(config.maximum_unaided_s * 1.0e9);
@@ -206,6 +208,14 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
                                      "/magnetometer/magnetic_field"),
       rclcpp::SensorDataQoS{},
       [this](const sensor_msgs::msg::MagneticField::ConstSharedPtr field) {
+        {
+          // The sensor's axes are the body's forward, left, up (Gazebo's);
+          // the filter's are forward, right, down.
+          const std::scoped_lock lock{odometry_mutex_};
+          odometry_->addMagneticField(Eigen::Vector3d{field->magnetic_field.x,
+                                                      -field->magnetic_field.y,
+                                                      -field->magnetic_field.z});
+        }
         const std::int64_t stamp_ns = rclcpp::Time{field->header.stamp}.nanoseconds();
         if (stamp_ns - magnetometer_logged_ns_ < 500'000'000) {
           return;

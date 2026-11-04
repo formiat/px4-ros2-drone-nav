@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <deque>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <unordered_map>
@@ -44,7 +45,7 @@ std::optional<Eigen::Vector3d> VisualInertialOdometry::Impl::triangulate(
       continue;
     }
     for (std::size_t side = 0U; side < 2U; ++side) {
-      const Camera& camera = cameras[side];
+      const Camera& camera = cameras.at(side);
       views.push_back(
           View{.ned_to_camera = camera.body_to_camera * clone->body_to_ned.transpose(),
                .centre = clone->position + clone->body_to_ned * camera.position_body,
@@ -97,7 +98,8 @@ std::optional<Eigen::Vector3d> VisualInertialOdometry::Impl::triangulate(
     }
     for (const View& view : used) {
       const double depth = (view.ned_to_camera * (point - view.centre)).z();
-      if (!(depth >= config.minimum_depth_m && depth <= config.maximum_depth_m)) {
+      if (!std::isfinite(depth) || depth < config.minimum_depth_m ||
+          depth > config.maximum_depth_m) {
         return std::nullopt;
       }
     }
@@ -129,7 +131,7 @@ std::optional<FeatureRows> VisualInertialOdometry::Impl::featureRows(
       return std::nullopt;
     }
     for (std::size_t side = 0U; side < 2U; ++side, row += 2) {
-      const Camera& camera = cameras[side];
+      const Camera& camera = cameras.at(side);
       const Eigen::Vector2d& measured =
           side == 0U ? observation.left : observation.right;
       // The residual at the current estimate, the Jacobian at the first.
@@ -258,6 +260,51 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
   jacobian(0, kPosition + 2) = weight;
   Eigen::VectorXd residual{1};
   residual(0) = weight * (*barometric_zero_m - *barometric_height_m - position.z());
+  update(jacobian, residual);
+}
+
+// The magnetometer's heading as a prior on the filter's yaw, on every frame:
+// no feature observes the heading, and under the imperfections profile it
+// drifted 0.2 to 2.3 degrees a flight, the frame turned 1.15 degrees and the
+// goal missed by 2.07 m (r2842). The simulated field's horizontal direction
+// in the world holds to 0.47 degrees (standard deviation, 1.01 at the 95th
+// percentile) over a flight whose heading turned 1234 degrees (r2842,
+// tools/magnetic_heading.py), which the sigma covers. The direction at the
+// first frame after the declared pose is the zero, the vehicle at rest on
+// its pad; a reading more than 20 degrees off it is a disturbed field (iron
+// near the sensor), left out reading by reading, never latched.
+void VisualInertialOdometry::Impl::magneticHeadingPrior() {
+  constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
+  constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
+  if (!config.magnetic_heading || !magnetic_field_body.has_value()) {
+    return;
+  }
+  const Eigen::Vector3d world = body_to_ned * *magnetic_field_body;
+  if (!(world.head<2>().squaredNorm() > 0.0)) {
+    return;
+  }
+  const double heading = std::atan2(world.y(), world.x());
+  if (!magnetic_zero_rad.has_value()) {
+    magnetic_zero_rad = heading;
+    return;
+  }
+  const double innovation =
+      std::remainder(*magnetic_zero_rad - heading, 2.0 * std::numbers::pi);
+  if (std::abs(innovation) > kGateRad) {
+    return;
+  }
+  // A heading, not a field: the turn about the world's vertical alone (the
+  // correction is applied as body_to_ned * exp(theta), so that turn is the
+  // vertical's row of body_to_ned). The field dips 64 degrees, and its full
+  // Jacobian weighs the tilt twice the heading: the filter, sure of its
+  // heading and less of its tilt, took the reading for a tilt and left the
+  // heading to drift (4.2 degrees of 5.6 in the test). The tilt is the
+  // gravity's to hold.
+  const double weight = config.observation_noise / kHeadingSigmaRad;
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(1, covariance.rows());
+  jacobian.block<1, 3>(0, kTheta) = weight * body_to_ned.row(2);
+  Eigen::VectorXd residual{1};
+  residual(0) = weight * innovation;
   update(jacobian, residual);
 }
 

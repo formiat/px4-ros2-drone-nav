@@ -147,6 +147,10 @@ struct VisualInertialOdometryConfig {
   // a coefficient 11 percent low at that speed; the fit of r575 and r576,
   // 0.106, had a residual of 0.036 m/s^2, 0.34 m/s, which could not see it.
   double rotor_drag_1ps{0.118};
+  // The magnetometer's heading as a prior on the yaw (roadmap item 39 stage
+  // 3, item 40): no feature observes the heading, and it drifted 0.2 to 2.3
+  // degrees a flight under the imperfections profile (K52).
+  bool magnetic_heading{true};
   // What the declared initial pose and the alignment at rest are worth.
   double initial_tilt_sigma_rad{0.02};
   double initial_heading_sigma_rad{1.0e-3};
@@ -247,6 +251,9 @@ public:
   // The barometer's height, in metres up from any origin: through a dark
   // stretch the filter holds its height to the change the barometer saw.
   void addBarometricHeight(double height_m);
+  // The magnetometer's field in the body frame (forward, right, down), in any
+  // unit: its direction in the world is the heading's prior.
+  void addMagneticField(const Eigen::Vector3d& field_body);
 
   // An absolute position in the estimator's NED frame with its standard
   // deviation per axis, fused at the filter's current time (the satellite

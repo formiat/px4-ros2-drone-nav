@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <optional>
 #include <random>
 #include <vector>
@@ -528,6 +529,79 @@ TEST(VisualInertialOdometry, TheBarometerBoundsTheHeightsDrift) {
   }
 }
 
+// The yaw between the estimate's attitude and the truth's.
+[[nodiscard]] double headingError(const VisualInertialEstimate& estimate,
+                                  const double t) {
+  const Eigen::Matrix3d error =
+      Motion::bodyToNed(t).transpose() * estimate.body_to_ned.toRotationMatrix();
+  return std::atan2(error(1, 0), error(0, 0));
+}
+
+TEST(VisualInertialOdometry, TheMagnetometerHoldsTheHeadingAgainstAGyroBias) {
+  // No feature observes the heading, and where the features are gone the
+  // gyroscope's bias goes unseen too: a bias of a degree a second about the
+  // vertical turns the heading 6 degrees over 6 s without them. The
+  // magnetometer's field, its direction fixed in the world, holds it; a
+  // reading turned 30 degrees for two seconds (iron near the sensor) is left
+  // out, not followed.
+  VisualInertialOdometryConfig config = testConfig();
+  // The stretch without features stays short of the unaided timeout.
+  config.maximum_unaided_s = 10.0;
+  // The bias let to walk as fast as it does here: the filter's certainty
+  // about the heading then wears as it would over minutes of a flight.
+  config.gyro_bias_walk_radps2_sqrt_hz = 1.0e-3;
+  const Eigen::Vector3d field_world{0.2, 0.05, 0.43};
+  const Eigen::Vector3d gyro_bias{0.0, 0.0, 1.0 * std::numbers::pi / 180.0};
+  for (const bool with_magnetometer : {false, true}) {
+    std::mt19937 generator{7U};
+    const std::vector<Eigen::Vector3d> points = landmarks(generator);
+    const std::vector<Eigen::Vector3d> none;
+    VisualInertialOdometry odometry{config};
+    const auto magnetometer = [&](const double t, const bool disturbed) {
+      if (with_magnetometer) {
+        const Eigen::Matrix3d turn =
+            Eigen::AngleAxisd{disturbed ? 30.0 * std::numbers::pi / 180.0 : 0.0,
+                              Eigen::Vector3d::UnitZ()}
+                .toRotationMatrix();
+        odometry.addMagneticField(Motion::bodyToNed(t).transpose() *
+                                  (turn * field_world));
+      }
+    };
+    magnetometer(0.0, false);
+    odometry.initialize(0, Motion::position(0.0), 0.0);
+    std::int64_t imu_stamp = 0;
+    std::int64_t stamp = 0;
+    double worst_rad = 0.0;
+    for (std::int64_t frame = 1; frame <= 80; ++frame) {
+      stamp = frame * kFramePeriodNs;
+      const double t = static_cast<double>(stamp) * 1.0e-9;
+      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+        // The bias walks in once the features are gone.
+        odometry.addImu(
+            Motion::imu(imu_stamp, frame > 20 ? gyro_bias : Eigen::Vector3d::Zero()));
+      }
+      magnetometer(t, frame > 40 && frame <= 60);
+      static_cast<void>(
+          odometry.addFrame(stamp, observe(config, t, frame <= 20 ? points : none,
+                                           config.observation_noise, generator)));
+      worst_rad = std::max(
+          worst_rad, std::abs(headingError(odometry.predicted(stamp + 1'000'000), t)));
+    }
+    const double final_deg =
+        std::abs(headingError(odometry.predicted(stamp + 1'000'000),
+                              static_cast<double>(stamp) * 1.0e-9)) *
+        180.0 / std::numbers::pi;
+    if (with_magnetometer) {
+      EXPECT_LT(final_deg, 0.5) << final_deg;
+      // The two seconds of the disturbed field left out: the bias's 2 degrees
+      // over them and back, not the 30 the readings pointed to.
+      EXPECT_LT(worst_rad * 180.0 / std::numbers::pi, 3.0) << worst_rad;
+    } else {
+      EXPECT_GT(final_deg, 5.0) << final_deg;
+    }
+  }
+}
+
 TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
   // No camera observes the rotation about gravity or the position of the
   // whole scene; with first-estimate Jacobians the filter's certainty about
@@ -611,7 +685,10 @@ TEST(VisualInertialOdometry, AFramesCloneIsFoundByItsStampWhileItIsKept) {
   }
   const std::optional<VisualInertialClonePose> last =
       odometry.clonePose(5 * kFramePeriodNs);
-  ASSERT_TRUE(last.has_value());
+  if (!last.has_value()) {
+    ADD_FAILURE() << "The newest clone's pose must be kept";
+    return;
+  }
   EXPECT_LT((last->position_ned_m - Motion::position(0.5)).norm(), 0.02);
   EXPECT_FALSE(odometry.clonePose(5 * kFramePeriodNs + 1).has_value());
   // Three clones are kept: the first frame's has left.

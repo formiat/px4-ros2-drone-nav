@@ -302,10 +302,11 @@ void VisualInertialOdometry::reinitialize(const std::int64_t stamp_ns,
   // first sample after the hole, and the sample from before the hole then
   // bracketed the hole again at the first step and the filter was lost at
   // once (r1309).
-  if (!state.imu.empty() || state.last_imu.has_value()) {
-    VisualInertialImuSample sample =
-        state.imu.empty() ? *state.last_imu : state.imu.front();
-    sample.stamp_ns = stamp_ns;
+  std::optional<VisualInertialImuSample> sample =
+      state.imu.empty() ? state.last_imu
+                        : std::optional<VisualInertialImuSample>{state.imu.front()};
+  if (sample.has_value()) {
+    sample->stamp_ns = stamp_ns;
     state.last_imu = sample;
   }
   state.held_barometric_height_m = state.barometric_height_m;
@@ -409,6 +410,12 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
 void VisualInertialOdometry::addBarometricHeight(const double height_m) {
   if (std::isfinite(height_m)) {
     impl_->barometric_height_m = height_m;
+  }
+}
+
+void VisualInertialOdometry::addMagneticField(const Eigen::Vector3d& field_body) {
+  if (field_body.allFinite() && field_body.head<2>().norm() > 0.0) {
+    impl_->magnetic_field_body = field_body;
   }
 }
 
@@ -519,6 +526,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   }
   if (!state.lost) {
     state.barometricHeightPrior();
+    state.magneticHeadingPrior();
   }
   state.fuseRotorDrag();
   estimate.healthy =

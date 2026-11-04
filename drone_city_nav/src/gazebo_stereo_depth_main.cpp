@@ -165,9 +165,12 @@ private:
           message.header.stamp.nanosec =
               static_cast<std::uint32_t>(field.header().stamp().nsec());
           message.header.frame_id = frame_id_;
-          message.magnetic_field.x = field.field_tesla().x();
-          message.magnetic_field.y = field.field_tesla().y();
-          message.magnetic_field.z = field.field_tesla().z();
+          // Gazebo Harmonic's field_tesla carries gauss (x500_base's model
+          // notes it; 0.48 read for the 48 uT of the world's field, r2842).
+          constexpr double kTeslaPerGauss{1.0e-4};
+          message.magnetic_field.x = kTeslaPerGauss * field.field_tesla().x();
+          message.magnetic_field.y = kTeslaPerGauss * field.field_tesla().y();
+          message.magnetic_field.z = kTeslaPerGauss * field.field_tesla().z();
           magnetometer_pub_->publish(message);
         };
     if (!gazebo_.Subscribe(gazebo_topic, callback)) {
