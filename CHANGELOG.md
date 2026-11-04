@@ -10,7 +10,8 @@ release names the asset tags it was validated with.
   inputs and outputs beside the flight, `tools/replay_stack.sh` runs the stack again on the bag without the
   simulator and the autopilot and `tools/replay_compare.py` sets its outputs against the flight's. The sensor
   set's mounts in one place, `drone_city_nav/config/sensor_extrinsics.yaml` (block 3). The pair's frames
-  through shared memory in the container (`docker/fastdds_profiles.xml`).
+  through shared memory in the container (`docker/fastdds_profiles.xml`). The step controller announces a
+  step only after the step's sensor outputs are out (roadmap item 36).
 - The magnetometer's heading as a prior on the stereo estimate's yaw (roadmap items 39 stage 3 and 40, K60):
   the camera process relays the vehicle's magnetometer, the estimator fuses the field's direction from the reading
   nearest each frame against its direction at rest; the clean vehicle's frame turns +0.07 degrees, under the

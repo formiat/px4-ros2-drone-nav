@@ -381,9 +381,11 @@ r2471), and `BUDGET_RELAY=measure` records the ages without holding
 and lets `scripts/step_controller.py` advance it `STEP_MS` (20) milliseconds
 at a time, each step acknowledged by every onboard node and the pilot
 (`step_controller.csv`: the waits, the runaways, the timeouts, the slowest
-node, the wall speed); the host cannot slow such a flight, but two flights
-with the same seeds do not yet repeat (the register's row; `tools/flight_diff.py`
-measures how far they part). A stepped flight runs at a third of real time,
+node, the wall speed); since 2026-11-04 the controller announces a step only
+after the step's sensor outputs are out (`--sensors`, the sensors' wait in the
+same record); the host cannot slow such a flight, but two flights with the same
+seeds do not yet repeat (the register's row; `tools/flight_diff.py` measures how
+far they part: 13.10 s and 27 m on the lidar set, r2881 and r2883). A stepped flight runs at a third of real time,
 so its window (`SMOKE_DURATION_S`, wall seconds) is set three times the
 usual, and the host verdict A7, which reads the real-time factor, voids it:
 such flights are flown through `tools/series2.sh` and read by hand.

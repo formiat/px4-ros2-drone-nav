@@ -729,6 +729,8 @@ registration stay on the CPU.
 
 ## 27. Readiness For A Real Vehicle
 
+**Blocks 3 and 6 done (2026-11-04, the goal of 2026-11-02, part 4):** the sensor set's mounts in one source (K61), the whole stack recorded and replayed (K62; the replay's contract not met, the measures in K62 and the register). The item stays open for what needs the board.
+
 **Type:** new capability, deferred. The project owner on 2026-10-09: no
 vehicle is coming soon, so nothing is adapted to hardware yet; the safety
 block is recorded here so that it is the first thing done when one is.
@@ -1083,6 +1085,8 @@ not deterministic across runs). Recommendation: take the deterministic
 flight up again after item 28's way A, on the lidar set first (its estimate
 registers against the map and does not drift), with the in-step order as
 the one remaining mechanism. Registered in `technical_debt.md`.
+
+**Measured again on 2026-11-04 (the goal of 2026-11-02, part 4, on 528856ee):** The twins r2878 and r2879 (the lidar set, the CPU engine at 256 rollouts, seed 1, 20 ms steps) parted at 12.59 s and 32 m at most before the first repair, r2881 and r2883 at 13.10 s and 27 m after it; what parts them lies inside the nodes, not between the world and the nodes: the planner's ticks fall on the same grid and its noise is seeded by the tick, but at its first tick the estimate it reads differs by 1.3 mm and the reference speed by 14 percent (the memory's snapshot at the tick), and the single-threaded lidar-inertial estimate differs by 2 to 12 mm while the vehicle still rests, from the order its IMU samples and sweeps are read in. The item stays open, its criterion unmet; the in-step order of every node's inputs, which the step controller cannot give from outside (the estimators', the memory's and the planner's work runs on their own timers and queues), remains the way.
 
 ## 37. Full Support Of The ModalAI VOXL 2
 
