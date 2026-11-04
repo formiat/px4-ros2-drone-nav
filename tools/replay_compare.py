@@ -2,7 +2,8 @@
 """replay_compare.py FLIGHT_BAG REPLAY_BAG: the replayed stack's outputs against the flight's (roadmap item 27 block
 6, tools/replay_stack.sh): the estimators' poses matched by their stamps (the distance's median, 95th percentile
 and largest over the matched pairs, and how many of either side found no match), the trajectory setpoints matched by
-their stamps (the share whose bytes are equal, the largest differences of position and velocity), the mission's
+their stamps (the nearest within 5 ms: the setpoint carries the stamp of its own tick, whose phase the replay's
+timer does not share), the share equal in position, velocity and yaw, the largest differences, the mission's
 events in order (the first that differs). The verdict against the replay's contract: the matched poses' 95th
 percentile within 0.05 m. Run in the dev container (rosbag2_py)."""
 
@@ -72,8 +73,13 @@ def compare_poses(flight: list, replay: list) -> tuple[str, bool]:
                            (b[1].pose.position.x, b[1].pose.position.y, b[1].pose.position.z)) for a, b in pairs]
     p95 = percentile(distances, 0.95)
     ok = bool(distances) and p95 <= POSE_TOLERANCE_M
+    # The distance's median a minute of the flight: where the two part.
+    by_minute: dict[int, list[float]] = {}
+    for (a, _), d in zip(pairs, distances):
+        by_minute.setdefault(stamp_ns(a[1]) // 60_000_000_000, []).append(d)
+    minutes = " ".join(f"{percentile(by_minute[m], 0.5):.2f}" for m in sorted(by_minute))
     return (f"{distance_stats(distances)}; unmatched flight {flight_alone} replay {replay_alone}"
-            f" ({'within' if ok else 'beyond'} {POSE_TOLERANCE_M:.2f} m at p95)"), ok
+            f" ({'within' if ok else 'beyond'} {POSE_TOLERANCE_M:.2f} m at p95); by minute {minutes}"), ok
 
 
 def vector_difference(a, b) -> float:
@@ -84,17 +90,50 @@ def vector_difference(a, b) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in pairs if math.isfinite(x)))
 
 
+SETPOINT_MATCH_US = 5_000
+SETPOINT_EQUAL = 1.0e-6
+
+
+def match_nearest(flight: list, replay: list, key, within: int) -> tuple[list[tuple], int, int]:
+    """Each flight item with the replay item nearest by key within the span, each replay item taken once."""
+    ordered = sorted(replay, key=key)
+    keys = [key(item) for item in ordered]
+    import bisect
+    taken = set()
+    pairs = []
+    for item in flight:
+        k = key(item)
+        i = bisect.bisect_left(keys, k)
+        best = None
+        for j in (i - 1, i):
+            if 0 <= j < len(ordered) and j not in taken and abs(keys[j] - k) <= within:
+                if best is None or abs(keys[j] - k) < abs(keys[best] - k):
+                    best = j
+        if best is not None:
+            taken.add(best)
+            pairs.append((item, ordered[best]))
+    return pairs, len(flight) - len(pairs), len(replay) - len(pairs)
+
+
+def yaw_difference(a, b) -> float:
+    if math.isfinite(a) != math.isfinite(b):
+        return math.inf
+    return abs(math.remainder(a - b, 2.0 * math.pi)) if math.isfinite(a) else 0.0
+
+
 def compare_setpoints(flight: list, replay: list) -> str:
-    pairs, flight_alone, replay_alone = match_by_key(flight, replay, lambda item: int(item[1].timestamp))
+    pairs, flight_alone, replay_alone = match_nearest(flight, replay, lambda item: int(item[1].timestamp),
+                                                      SETPOINT_MATCH_US)
     if not pairs:
         return f"no matched setpoints; unmatched flight {flight_alone} replay {replay_alone}"
-    equal = sum(1 for a, b in pairs if a[0] == b[0])
     positions = [vector_difference(a[1].position, b[1].position) for a, b in pairs]
     velocities = [vector_difference(a[1].velocity, b[1].velocity) for a, b in pairs]
-    return (f"{equal} of {len(pairs)} matched setpoints byte-equal ({100.0 * equal / len(pairs):.1f} percent); "
-            f"position difference p95 {percentile(positions, 0.95):.3f} max {max(positions):.3f} m, velocity p95 "
-            f"{percentile(velocities, 0.95):.3f} max {max(velocities):.3f} m/s; unmatched flight {flight_alone} "
-            f"replay {replay_alone}")
+    yaws = [yaw_difference(float(a[1].yaw), float(b[1].yaw)) for a, b in pairs]
+    equal = sum(1 for p, v, y in zip(positions, velocities, yaws) if max(p, v, y) <= SETPOINT_EQUAL)
+    return (f"{equal} of {len(pairs)} matched setpoints equal in position, velocity and yaw "
+            f"({100.0 * equal / len(pairs):.1f} percent); position difference p95 {percentile(positions, 0.95):.3f} "
+            f"max {max(positions):.3f} m, velocity p95 {percentile(velocities, 0.95):.3f} max {max(velocities):.3f} "
+            f"m/s, yaw p95 {percentile(yaws, 0.95):.4f} rad; unmatched flight {flight_alone} replay {replay_alone}")
 
 
 def compare_events(flight: list[str], replay: list[str]) -> str:

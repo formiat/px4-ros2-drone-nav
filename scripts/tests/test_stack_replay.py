@@ -117,15 +117,20 @@ class ReplayCompareTest(unittest.TestCase):
         replay = [(b"", Stamped(1, k, 0.1 if k >= 96 else 0.0, 0.0, 0.0)) for k in range(100)]
         self.assertTrue(compare.compare_poses(flight, replay)[1], "four of a hundred beyond: p95 within")
 
-    def test_the_setpoints_compare_bytes_and_finite_fields(self) -> None:
-        def setpoint(stamp: int, x: float, vx: float, raw: bytes):
-            return (raw, type("S", (), {"timestamp": stamp, "position": [x, 0.0, math.nan],
-                                        "velocity": [vx, math.nan, math.nan]})())
-        flight = [setpoint(k, 1.0, 0.5, b"a") for k in range(10)]
-        replay = [setpoint(k, 1.0, 0.5, b"a") for k in range(9)] + [setpoint(9, 1.5, 0.5, b"b")]
+    def test_the_setpoints_match_by_the_nearest_tick_and_compare_their_fields(self) -> None:
+        def setpoint(stamp_us: int, x: float, vx: float, yaw: float = 0.0):
+            return (b"", type("S", (), {"timestamp": stamp_us, "position": [x, 0.0, math.nan],
+                                        "velocity": [vx, math.nan, math.nan], "yaw": yaw})())
+        # The replay's ticks 3 ms off the flight's: matched within 5 ms, one replay setpoint a flight one.
+        flight = [setpoint(20_000 * k, 1.0, 0.5) for k in range(10)]
+        replay = [setpoint(20_000 * k + 3_000, 1.0, 0.5) for k in range(9)] + [setpoint(20_000 * 9 + 3_000, 1.5, 0.5)]
         line = compare.compare_setpoints(flight, replay)
-        self.assertIn("9 of 10 matched setpoints byte-equal (90.0 percent)", line)
+        self.assertIn("9 of 10 matched setpoints equal in position, velocity and yaw (90.0 percent)", line)
         self.assertIn("max 0.500 m", line)
+        far = [setpoint(20_000 * k + 9_000, 1.0, 0.5) for k in range(10)]
+        self.assertIn("no matched setpoints", compare.compare_setpoints(flight, far))
+        self.assertEqual(math.inf, compare.yaw_difference(math.nan, 0.5))
+        self.assertAlmostEqual(2 * math.pi - 6.2, compare.yaw_difference(3.1, -3.1), places=6)
         self.assertEqual(math.inf, compare.vector_difference([math.nan, 1.0], [0.0, 1.0]))
 
     def test_the_events_name_the_first_difference(self) -> None:
