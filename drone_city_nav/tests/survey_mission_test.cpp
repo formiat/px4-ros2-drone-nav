@@ -473,6 +473,43 @@ TEST(SurveyMissionTest, AFrontierBehindAWallOrUnknownIsNotLookedAt) {
   EXPECT_TRUE(lineOfSight(grid, Point3{7.5, 5.75, 2.25}, Point3{9.875, 5.75, 2.25}));
 }
 
+TEST(SurveyMissionTest, AFrontierUnderAFloorHasNoVantageAboveIt) {
+  // Two levels under one roof, a solid slab between them; the vehicle above,
+  // an unobserved gap in the lower level's wall below it. Open cells above the
+  // slab lie within reach of the gap's frontier, but the slab hides it: no
+  // vantage (r2818: a vantage over a frontier under the floor, the vehicle
+  // held over the stairwell until it sat on the floor).
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 64,
+                                            .height_cells = 48,
+                                            .depth_cells = 40}};
+  for (int z = 4; z < 37; ++z) {
+    for (int y = 8; y < 40; ++y) {
+      for (int x = 8; x < 56; ++x) {
+        const bool wall =
+            x == 8 || x == 55 || y == 8 || y == 39 || z == 4 || z == 20 || z == 36;
+        const bool gap = x == 8 && y >= 18 && y < 30 && z >= 7 && z < 17;
+        if (!gap) {
+          grid.setState(GridIndex3D{x, y, z}, wall ? ObservedVoxelState::kOccupied
+                                                   : ObservedVoxelState::kFree);
+        }
+      }
+    }
+  }
+  SurveyConfig levels = config();
+  levels.volume_maximum = Point3{16.0, 12.0, 10.0};
+  levels.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.5, .maximum_target_z_m = 9.5};
+  const SurveyReading reading = readSurvey(grid, Point3{6.0, 6.0, 7.0}, levels, {}, {});
+  EXPECT_EQ(reading.clusters, 1U);
+  EXPECT_EQ(reading.clusters_without_vantage, 1U);
+  EXPECT_TRUE(reading.frontiers.empty());
+  EXPECT_FALSE(lineOfSight(grid, Point3{4.0, 5.6, 6.75}, Point3{2.375, 5.6, 2.9}));
+}
+
 TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
   ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
                                             .origin_y = 0.0,

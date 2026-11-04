@@ -10,6 +10,7 @@
 #include <limits>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "survey_mission.hpp"
 
@@ -476,9 +477,14 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
 }
 
 // The cell nearest the point within the reach that is observed free, open
-// round it and reached through what was seen.
-[[nodiscard]] std::optional<GridIndex3D>
-snap(const Lattice& lattice, const Point3& point, const double reach_m) {
+// round it, reached through what was seen, and with a line of sight to the
+// cluster's centroid: a vantage looks at its frontier (r2818: a vantage in
+// the hall over a frontier under its floor, the vehicle held over the
+// stairwell until the lidar-inertial height ran 1.9 m off and it sat on the
+// floor).
+[[nodiscard]] std::optional<GridIndex3D> snap(const Lattice& lattice,
+                                              const Point3& point, const double reach_m,
+                                              const Point3& sight) {
   // The search starts at the grid's cell nearest the point: a far vantage
   // beyond a frontier at the grid's edge lies outside it.
   const GridBounds3D& bounds = lattice.grid.bounds();
@@ -493,8 +499,7 @@ snap(const Lattice& lattice, const Point3& point, const double reach_m) {
                            index(point.z, bounds.origin_z, bounds.depth_cells)};
   const int reach =
       static_cast<int>(std::ceil(reach_m / lattice.grid.bounds().resolution_m));
-  std::optional<GridIndex3D> best;
-  double best_distance = std::numeric_limits<double>::infinity();
+  std::vector<std::pair<double, GridIndex3D>> candidates;
   for (int z = -reach; z <= reach; ++z) {
     for (int y = -reach; y <= reach; ++y) {
       for (int x = -reach; x <= reach; ++x) {
@@ -503,14 +508,21 @@ snap(const Lattice& lattice, const Point3& point, const double reach_m) {
           continue;
         }
         const double d = squaredDistance(lattice.grid.cellCenter(cell), point);
-        if (d < best_distance && d <= reach_m * reach_m) {
-          best_distance = d;
-          best = cell;
+        if (d <= reach_m * reach_m) {
+          candidates.emplace_back(d, cell);
         }
       }
     }
   }
-  return best;
+  // The line of sight costs a ray: checked nearest first, until one sees.
+  std::sort(candidates.begin(), candidates.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+  for (const auto& [distance, cell] : candidates) {
+    if (lineOfSight(lattice.grid, lattice.grid.cellCenter(cell), sight)) {
+      return cell;
+    }
+  }
+  return std::nullopt;
 }
 
 } // namespace
@@ -564,10 +576,12 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     // what was seen: the vehicle looks from where the sensor has been, never
     // from a cell unknown lays open (r2802: a vantage under the pad's floor;
     // r2807: one 0.6 m over the floor). A cluster with none waits.
-    std::optional<GridIndex3D> vantage = snap(lattice, near, kSnapReachM);
+    std::optional<GridIndex3D> vantage =
+        snap(lattice, near, kSnapReachM, frontier.centroid);
     if (!vantage.has_value()) {
-      vantage = snap(lattice, frontier.centroid,
-                     std::min(config.sensor_reach_m, kVantageReachM));
+      vantage =
+          snap(lattice, frontier.centroid,
+               std::min(config.sensor_reach_m, kVantageReachM), frontier.centroid);
     }
     if (!vantage.has_value()) {
       ++reading.clusters_without_vantage;
@@ -577,7 +591,8 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     frontier.route_m = static_cast<double>(lattice.reachedKnown(*vantage)) * resolution;
     // The pass goes through observed space only (r2806: a far vantage in
     // unknown space behind the centroid sent the planner round the world).
-    const std::optional<GridIndex3D> far_vantage = snap(lattice, far, kSnapReachM);
+    const std::optional<GridIndex3D> far_vantage =
+        snap(lattice, far, kSnapReachM, frontier.centroid);
     frontier.far_vantage_known = far_vantage.has_value();
     frontier.far_vantage =
         frontier.far_vantage_known ? grid.cellCenter(*far_vantage) : frontier.vantage;
