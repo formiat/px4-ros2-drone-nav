@@ -213,9 +213,16 @@ start_runtime_evidence_capture() {
     # Roadmap item 36: the simulator waits for the onboard loop (the step controller, a simulation process).
     if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
       local step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial,stereo_depth
-      [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]] && step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial
+      # The step's sensor outputs the controller waits for before announcing the step: the pair's returns
+      # (7.5 Hz) or the lidar's sweeps (10 Hz), the autopilot's stream to the step's last iteration (4 ms).
+      local step_sensors="/stereo_depth/points:133.333,/fmu/out/sensor_combined:4"
+      if [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]]; then
+        step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial
+        step_sensors="/lidar_3d/points:100,/fmu/out/sensor_combined:4"
+      fi
       python3 "${repo_root}/scripts/step_controller.py" --world "${world_name}" \
         --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" --timeout-s 10 \
+        --sensors "${step_sensors}" \
         --output "${runtime_artifact_dir}/step_controller.csv" \
         > "${runtime_artifact_dir}/step_controller.log" 2>&1 &
     fi

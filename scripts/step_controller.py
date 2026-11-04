@@ -6,9 +6,14 @@ and waiting for each expected node's acknowledgement on /drone_city_nav/step_ack
 has processed everything the step brought it: `step_acknowledger.hpp`). Whatever the host does, the world does not
 move on before the loop has finished with the step: two flights with the same seeds fly the same metres on any
 host, as slowly as the host needs. A node that does not acknowledge within the timeout is named in the log and the
-world moves on (the flight is then not a deterministic one, and the log says so). The CSV carries, every 50 steps,
-the steps, the wait for the acknowledgements (wall ms, median and 95th percentile), the timeouts and their nodes,
-and the wall speed (simulation seconds per wall second).
+world moves on (the flight is then not a deterministic one, and the log says so). Before the step is announced the
+controller waits for the step's sensor outputs (--sensors: a topic and its period in ms, the stamp read from the
+message; a periodic sensor whose next stamp falls within the step is waited for, the autopilot's stream up to the
+step's last iteration), since the simulator's sensors publish off the render thread after the world's step has
+returned and a node that reads the step first acknowledges it before the scan (the twins of 2026-10-30 parted on the
+memory's first scan, a frame apart). The CSV carries, every 50 steps, the steps, the wait for the acknowledgements
+(wall ms, median and 95th percentile), the wait for the sensors, the timeouts and their nodes, and the wall speed
+(simulation seconds per wall second).
 """
 from __future__ import annotations
 
@@ -29,6 +34,8 @@ def main() -> int:
     parser.add_argument("--timeout-s", type=float, default=2.0)
     parser.add_argument("--startup-wait-s", type=float, default=240.0)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--sensors", default="",
+                        help="comma-separated TOPIC:PERIOD_MS of the sensor outputs a step waits for")
     args = parser.parse_args()
 
     import rclpy
@@ -36,7 +43,8 @@ def main() -> int:
     from gz.msgs10.world_control_pb2 import WorldControl
     from gz.transport13 import Node as GzNode
     from rclpy.node import Node
-    from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+    from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+    from rosidl_runtime_py.utilities import get_message
     from std_msgs.msg import UInt64
 
     expected = [name for name in args.expected.split(",") if name]
@@ -59,6 +67,41 @@ def main() -> int:
 
     for name in expected:
         node.create_subscription(UInt64, f"/drone_city_nav/step_ack/{name}", listener(name), qos)
+    # The sensors' latest stamps, from the message's header or the autopilot's timestamp (microseconds, the
+    # simulation clock under px4_clock_is_ros_clock).
+    sensors: dict[str, int] = {}
+    latest_ns: dict[str, int] = {}
+
+    def watch(topic: str, period_ms: str) -> None:
+        sensors[topic] = int(float(period_ms) * 1.0e6)
+        latest_ns[topic] = -1
+
+        def on_message(message) -> None:
+            if hasattr(message, "header"):
+                stamp = int(message.header.stamp.sec) * 1_000_000_000 + int(message.header.stamp.nanosec)
+            else:
+                stamp = int(message.timestamp) * 1_000
+            latest_ns[topic] = max(latest_ns[topic], stamp)
+
+        topic_types = dict(node.get_topic_names_and_types()).get(topic)
+        if not topic_types:
+            print(f"STEP_CONTROLLER sensor {topic} has no type yet; waited for by its publisher", flush=True)
+        message_type = get_message(topic_types[0]) if topic_types else None
+        if message_type is not None:
+            node.create_subscription(message_type, topic, on_message, qos_profile_sensor_data)
+
+    pending_sensors = [entry for entry in args.sensors.split(",") if entry]
+
+    def sensors_due(target: int) -> list[str]:
+        """The sensors whose next stamp falls on or before the step's end and has not arrived."""
+        due = []
+        for topic, period in sensors.items():
+            last = latest_ns[topic]
+            next_stamp = (last // period + 1) * period if last >= 0 else target
+            if next_stamp <= target:
+                due.append(topic)
+        return due
+
     gz = GzNode()
     service = f"/world/{args.world}/control"
 
@@ -74,8 +117,8 @@ def main() -> int:
 
     log = args.output.open("w", newline="")
     writer = csv.writer(log)
-    writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "stalls", "runaways", "timeouts", "missing",
-                     "wall_speed", "slowest"])
+    writer.writerow(["sim_s", "steps", "wait_p50_ms", "wait_p95_ms", "sensor_wait_p95_ms", "sensor_timeouts",
+                     "stalls", "runaways", "timeouts", "missing", "wall_speed", "slowest"])
     # The world stays paused from the start (the runtime starts it without -r); said again here for a world
     # that runs. The stack is up when every expected node publishes its acknowledgement.
     if not control(pause=True):
@@ -91,10 +134,19 @@ def main() -> int:
         print(f"STEP_CONTROLLER no acknowledgement publisher from {missing} within {args.startup_wait_s:.0f} s",
               flush=True)
         return 1
+    for entry in pending_sensors:
+        topic, _, period_ms = entry.partition(":")
+        for _ in range(100):
+            if dict(node.get_topic_names_and_types()).get(topic):
+                break
+            rclpy.spin_once(node, timeout_sec=0.1)
+        watch(topic, period_ms)
     print(f"STEP_CONTROLLER paused at sim {sim_ns() * 1e-9:.3f} s; stepping {iterations} iterations "
-          f"({args.step_ms} ms) a step, waiting for {expected}", flush=True)
+          f"({args.step_ms} ms) a step, waiting for {expected}, the sensors {sorted(sensors)}", flush=True)
     index = 0
     waits: list[float] = []
+    sensor_waits: list[float] = []
+    sensor_timeouts = 0
     stalls = 0
     runaways = 0  # the world found running on its own (the autopilot's bridge unpauses it at its start)
     expected_ns = sim_ns()
@@ -120,6 +172,14 @@ def main() -> int:
                 rclpy.spin_once(node, timeout_sec=0.001)
             if sim_ns() < target_ns:
                 stalls += 1
+            # The step's sensor outputs, before the nodes hear of the step.
+            sensors_asked = time.monotonic()
+            deadline = sensors_asked + 2.0
+            while sensors_due(target_ns) and time.monotonic() < deadline:
+                rclpy.spin_once(node, timeout_sec=0.0005)
+            sensor_waits.append((time.monotonic() - sensors_asked) * 1.0e3)
+            if sensors_due(target_ns):
+                sensor_timeouts += 1
             index += 1
             asked = time.monotonic()
             asked_at[0] = asked
@@ -139,13 +199,17 @@ def main() -> int:
                 speed = (sim_ns() - window_sim_started) * 1.0e-9 / wall if wall > 0 else 0.0
                 medians = {name: sorted(values)[len(values) // 2] for name, values in ack_waits.items() if values}
                 slowest = max(medians, key=medians.get) if medians else ""
+                sensor_ordered = sorted(sensor_waits)
                 writer.writerow([f"{sim_ns() * 1e-9:.3f}", index, f"{ordered[len(ordered) // 2]:.1f}",
-                                 f"{ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]:.1f}", stalls, runaways,
+                                 f"{ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]:.1f}",
+                                 f"{sensor_ordered[min(len(sensor_ordered) - 1, int(0.95 * len(sensor_ordered)))]:.1f}",
+                                 sensor_timeouts, stalls, runaways,
                                  timeouts,
                                  ";".join(f"{k}:{v}" for k, v in sorted(missing_names.items())), f"{speed:.3f}",
                                  f"{slowest}:{medians[slowest]:.0f}" if slowest else ""])
                 log.flush()
                 waits.clear()
+                sensor_waits.clear()
                 for values in ack_waits.values():
                     values.clear()
                 window_started = time.monotonic()
