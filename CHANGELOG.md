@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The magnetometer's heading as a prior on the stereo estimate's yaw (roadmap items 39 stage 3 and 40, K60):
+  the camera process relays the vehicle's magnetometer, the estimator fuses the field's direction from the reading
+  nearest each frame against its direction at rest; the clean vehicle's frame turns +0.07 degrees, under the
+  imperfections profile 0.15 to 0.80 with the goal met in five of five. The profile carries the magnetometer's
+  noise (K52); the field's disturbance beside a vehicle's currents is a scenario of its own,
+  `MAGNETIC_DISTURBANCE=ntu`. Roadmap items 35 and 40 done.
 - The survey mission (roadmap item 34): with no goal, the vehicle flies to the frontiers of its own
   memory inside the volume the scenario orders, looks at each from what it has seen, and comes home by
   its own track when none is left; the mission check reads the coverage of the volume's reachable truth

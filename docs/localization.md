@@ -37,9 +37,13 @@ require `CAMERA_PROFILE=stereo_tof`.
 | `visual_inertial` (default on the stereo set) | IMU and the visual-inertial estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity), with a fixed noise (`EKF2_EV_NOISE_MD 1`, 0.3 m, 0.05 rad); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run inside the stereo process, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry` every 40 ms |
 | `hybrid` | as `visual_inertial` | the estimator's | the visual-inertial estimator with the satellite fixes read through the autopilot's adapter from the topic `gnss_topic` names (the simulation's fault relay on the open sky), each fix one measurement of trust (K56), fused as an absolute position while trusted |
 
-The magnetometer is not fused in any profile: the simulated one sits five to
-six degrees off. In `lidar_inertial` and `visual_inertial` nothing the
-autopilot fuses comes from the simulator's truth. `scripts/px4_parameter_runtime.sh` streams the
+The autopilot fuses no magnetometer in any profile (`EKF2_MAG_TYPE 5`): its
+own fusion of the simulated one sat five to six degrees off. The stereo
+estimate reads the sensor itself, which holds the field's direction to 0.03
+degrees (r2842, r2843), as a prior on its yaw on `visual_inertial` and
+`hybrid` (K60, `magnetic_heading`); the lidar's heading is its registration's.
+In `lidar_inertial` and `visual_inertial` nothing the autopilot fuses comes
+from the simulator's truth. `scripts/px4_parameter_runtime.sh` streams the
 parameters and shows the four the mission check reads back.
 
 ## The Lidar-Inertial Estimator

@@ -61,7 +61,10 @@ degrees off at hover and wandered with a standard deviation of 2.2 degrees in
 flight, with excursions past ten degrees. The error did not follow the world's
 magnetic field (the world model was rotated by 41.6 degrees and the sensor's
 azimuth moved by 3) and did not respond to `EKF2_MAG_DECL`, `EKF2_DECL_TYPE`
-or `EKF2_MAG_TYPE`. A lidar map built with that heading copies every wall a
+or `EKF2_MAG_TYPE`; the sensor itself holds the field's direction to 0.03
+degrees against the true attitude (r2842, r2843, `tools/magnetic_heading.py`),
+so the offset is the autopilot's fusion of it, and the stereo estimate reads
+the sensor (K60). A lidar map built with that heading copies every wall a
 metre sideways at the integration range, and the copies open and close
 passages the planner is trying to use.
 
@@ -422,7 +425,7 @@ and the vehicle's drivers ([`obstacle_mapping.md`](obstacle_mapping.md),
 with the imperfections a real one has, each a measurement from a source on
 this machine (`tools/imperfections_sources.py` prints them with their
 sources), and `IMPERFECTION_SEED` draws their random parts, so the manifest
-reproduces a flight. Four families, `IMPERFECTIONS=nominal_<family>` for one
+reproduces a flight. Five families, `IMPERFECTIONS=nominal_<family>` for one
 alone: `imu`, the bias walk of the EuRoC imu0 calibration written by
 `scripts/configure_imperfections.py` into a runtime copy of `x500_base` as the
 model's dynamic bias (the element takes the walk's density; the x500 model
@@ -435,7 +438,14 @@ stream's jitter and gaps as the recording shows them (the K28 relay's
 `jitter` profile, `IMU_FAULTS=jitter`), the frames' stamp moved 2 ms by the
 stream relay, the lidar's sweeps delivered with a real driver's cadence
 spread (`scripts/lidar_sweep_jitter.py`, the bridge reading
-`lidar_scan_topic_suffix:=/relayed`). The relays are evaluation components;
+`lidar_scan_topic_suffix:=/relayed`); `magnetometer`, the IIS2MDC's white
+noise the x500 model's own note names, written into the runtime copy of
+`x500_base`. The field's slow disturbance beside a vehicle's currents and a
+building's steel is a scenario of its own, `MAGNETIC_DISTURBANCE=ntu`: a relay
+(`scripts/magnetometer_disturbance.py`) adds the NTU vehicle's 1.06 uT over
+9.3 s on the readings' stamps and the camera process reads
+`magnetometer_topic_suffix:=/relayed` (gz-sensors' magnetometer never moves a
+dynamic bias in the model). The relays are evaluation components;
 no production node reads the variable (the contract test holds it there),
 and the IMU relay writes an evidence row every 2500 samples (the relayed
 period's mean, deviation and largest gap; the rms of each axis'

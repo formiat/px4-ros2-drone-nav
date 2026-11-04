@@ -336,7 +336,10 @@ imperfections (`IMPERFECTIONS=nominal`, specification K52 and F21;
 [`gazebo_simulation.md`](gazebo_simulation.md), "The Real Vehicle's
 Imperfections") with the run's number as `IMPERFECTION_SEED`, both in the
 manifest; `IMPERFECTIONS=` on the command line flies the clean vehicle, and
-`tools/imperfections_series.sh` flies the families apart. The mean speed of R3
+`tools/imperfections_series.sh` flies the families apart. `MAGNETIC_DISTURBANCE=ntu`
+adds the field's slow disturbance beside a vehicle's currents (roadmap item 40,
+the register's row), a scenario of its own, never the acceptance series';
+`tools/magnetic_heading.py` reads a flight's field against the truth. The mean speed of R3
 is measured under the profile as under the light's flicker (F1); R3's targets
 are the means measured under it, the clean vehicle's means references.
 
