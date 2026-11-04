@@ -127,6 +127,16 @@ start_runtime_evidence_capture() {
         --output "${runtime_artifact_dir}/camera_stream.csv" \
         > "${runtime_artifact_dir}/camera_stream.log" 2>&1 &
     fi
+    # The magnetometer's slow disturbance under the imperfections profile
+    # (roadmap items 35 and 40, K52), seeded by the run: the camera process
+    # relays the field from this relay (simulation_resource_runtime.sh).
+    if imperfection_family_on magnetometer; then
+      python3 "${repo_root}/scripts/magnetometer_disturbance.py" \
+        --world "${world_name}" --model "${default_gazebo_follow_target}" \
+        --seed "${IMPERFECTION_SEED:-0}" \
+        --output "${runtime_artifact_dir}/magnetometer_disturbance.csv" \
+        > "${runtime_artifact_dir}/magnetometer_disturbance.log" 2>&1 &
+    fi
   fi
   if ! bool_is_true "${multi_vehicle_mission}"; then
     # Specification K28: the autopilot's IMU stream failing, the same kind of

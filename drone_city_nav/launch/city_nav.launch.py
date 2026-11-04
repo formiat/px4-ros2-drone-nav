@@ -53,6 +53,7 @@ def stereo_vision_nodes(
     visual_inertial_overrides,
     image_topic_suffix,
     tof_topic_suffix,
+    magnetometer_topic_suffix,
     smoke_face,
     vio_arguments,
 ):
@@ -65,6 +66,7 @@ def stereo_vision_nodes(
         gazebo_model_name,
         image_topic_suffix=image_topic_suffix,
         tof_topic_suffix=tof_topic_suffix,
+        magnetometer_topic_suffix=magnetometer_topic_suffix,
     )
     with open(params_path, encoding="utf-8") as params_stream:
         memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
@@ -176,6 +178,7 @@ def generate_launch_description():
     shutdown_on_mission_result = LaunchConfiguration("shutdown_on_mission_result")
     point_to_point_scenario_path = LaunchConfiguration("point_to_point_scenario_path")
     stereo_image_topic_suffix = LaunchConfiguration("stereo_image_topic_suffix")
+    magnetometer_topic_suffix = LaunchConfiguration("magnetometer_topic_suffix")
     smoke_zones = LaunchConfiguration("smoke_zones")
     smoke_seed = LaunchConfiguration("smoke_seed")
     heat_sources = LaunchConfiguration("heat_sources")
@@ -590,6 +593,7 @@ def generate_launch_description():
                     visual_inertial_overrides=visual_inertial_overrides,
                     image_topic_suffix=image_suffix,
                     tof_topic_suffix=sensor_suffix,
+                    magnetometer_topic_suffix=magnetometer_topic_suffix.perform(context).strip(),
                     smoke_face=optional_bool_override(context, smoke_face, "smoke_face")
                     is True,
                     vio_arguments=vio_arguments,

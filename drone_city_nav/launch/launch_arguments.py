@@ -157,6 +157,15 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             ),
         ),
         DeclareLaunchArgument(
+            "magnetometer_topic_suffix",
+            default_value="",
+            description=(
+                "Suffix of the Gazebo magnetometer topic the camera process relays: set when "
+                "an evaluation relay adds the field's slow disturbance (roadmap items 35 and "
+                "40, K52)."
+            ),
+        ),
+        DeclareLaunchArgument(
             "stereo_image_topic_suffix",
             default_value="",
             description=(

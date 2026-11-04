@@ -117,6 +117,7 @@ def stereo_tof_topics(
     vehicle_prefix: str = "",
     image_topic_suffix: str = "",
     tof_topic_suffix: str = "",
+    magnetometer_topic_suffix: str = "",
 ):
     """How one vehicle's camera set reaches its depth node: (bridge arguments,
     bridge remaps, parameters of the `gazebo_stereo_depth_node` process). Only
@@ -150,7 +151,7 @@ def stereo_tof_topics(
     # (roadmap item 39 stage 3, item 40).
     depth_parameters["gazebo_magnetometer_topic"] = (
         f"/world/{world_name}/model/{model_name}/link/base_link/sensor/"
-        "magnetometer_sensor/magnetometer"
+        f"magnetometer_sensor/magnetometer{magnetometer_topic_suffix}"
     )
     depth_parameters["magnetic_field_topic"] = f"{vehicle_prefix}/magnetometer/magnetic_field"
     # The thermal core (roadmap item 32), relayed as the pair is; the smoke

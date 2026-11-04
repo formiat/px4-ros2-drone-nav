@@ -20,11 +20,11 @@ runtime copy of it (never into the repository's or PX4's own models):
 - the extrinsics: the sensor set's include pose turned by the residual of the stack's own calibration, 0.08 degrees
   (K33's half a pixel) about pitch and yaw, each with a sign from the seed; the stack reads the nominal pose.
 - the magnetometer (roadmap item 40): the base model's magnetometer gets the white noise its own note names, 3 mG RMS
-  of an IIS2MDC (the element writes 1e-4 in the gauss the sensor reports, 0.1 mG), and the slow disturbance a real
-  vehicle's field carries, measured on the NTU VIRAL eee_01 flight (its VN-100 against the flight's FAST-LIO
-  attitude, the heading's deviation with the heading taken out): 1.06 uT standing, a correlation time of 9.3 s, as
-  a dynamic bias on each axis. No hard-iron offset: a vehicle flies calibrated (the NTU vehicle's own, 6.0 uT, turned
-  its heading 12.9 degrees with the heading, which no prior survives).
+  of an IIS2MDC (the element writes 1e-4 in the gauss the sensor reports, 0.1 mG). The field's slow disturbance is a
+  relay's (scripts/magnetometer_disturbance.py): gz-sensors' magnetometer applies its noise without the step's time,
+  so a dynamic bias in the model never moves (r2847: the field's direction white, 0.79 degrees, at every lag). No
+  hard-iron offset: a vehicle flies calibrated (the NTU vehicle's own, 6.0 uT, turned its heading 12.9 degrees with
+  the heading, which no prior survives).
 
 The magnitudes come from `tools/imperfections_sources.py`; a change of a source is a change here, with its row in K52.
 """
@@ -44,8 +44,6 @@ VIBRATION_ACCELERATION_MPS2 = (0.192, 0.552, 0.380)  # NTU eee_01, rms above 50 
 VIBRATION_RATE_RADPS = (0.0156, 0.0141, 0.0042)
 EXTRINSIC_ANGLE_RAD = math.radians(0.08)  # K33: the calibration's residual, half a pixel
 MAGNETOMETER_NOISE_GAUSS = 3.0e-3  # IIS2MDC, 3 mG RMS: the x500 model's own note (the sensor reports gauss)
-MAGNETOMETER_WALK_STANDING_GAUSS = 1.06e-2  # NTU eee_01 VN-100: 1.06 uT of slow disturbance (heading 2.28 deg sd)
-MAGNETOMETER_WALK_CORRELATION_S = 9.3  # NTU eee_01: the disturbance's 1/e correlation time
 VEHICLE_MODEL = "x500_lidar_3d"
 BASE_MODEL = "x500_base"
 SENSOR_MODELS = ("lidar_3d_v1", "stereo_tof_v1")
@@ -88,12 +86,9 @@ def write_imu_bias(model_sdf: Path) -> int:
 
 
 def write_magnetometer_noise(model_sdf: Path) -> int:
-    """Each axis of the magnetometer gets the noise and the slow disturbance; returns the axes written."""
+    """Each axis of the magnetometer gets the sensor's white noise; returns the axes written."""
     tree = ET.parse(model_sdf)
     written = 0
-    # gz-sensors drives the dynamic bias with sigma_b * sqrt(dt) a step: the standing deviation over the
-    # correlation time tau is sigma_b * sqrt(tau / 2), so the element takes standing / sqrt(tau / 2).
-    density = MAGNETOMETER_WALK_STANDING_GAUSS / math.sqrt(MAGNETOMETER_WALK_CORRELATION_S / 2.0)
     for sensor in tree.getroot().iter("sensor"):
         if sensor.get("type") != "magnetometer":
             continue
@@ -104,12 +99,9 @@ def write_magnetometer_noise(model_sdf: Path) -> int:
             noise = magnetometer.find(f"{axis}/noise")
             if noise is None:
                 continue
-            for tag in ("stddev", "dynamic_bias_stddev", "dynamic_bias_correlation_time"):
-                for stale in noise.findall(tag):
-                    noise.remove(stale)
+            for stale in noise.findall("stddev"):
+                noise.remove(stale)
             ET.SubElement(noise, "stddev").text = f"{MAGNETOMETER_NOISE_GAUSS:.6g}"
-            ET.SubElement(noise, "dynamic_bias_stddev").text = f"{density:.6g}"
-            ET.SubElement(noise, "dynamic_bias_correlation_time").text = f"{MAGNETOMETER_WALK_CORRELATION_S:g}"
             written += 1
     tree.write(model_sdf, encoding="utf-8", xml_declaration=True)
     return written

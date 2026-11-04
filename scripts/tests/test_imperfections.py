@@ -50,6 +50,29 @@ BASE_MODEL_SDF = """<?xml version="1.0"?>
 """
 
 
+MAGNETOMETER = load("magnetometer_disturbance")
+
+
+class MagnetometerDisturbanceTest(unittest.TestCase):
+    def test_the_walk_stands_and_decays_as_the_vehicle_measured(self) -> None:
+        # 100 Hz over an hour of simulation time: the standing deviation and the 1/e correlation time are the
+        # NTU vehicle's (1.06 uT, 9.3 s), the same seed gives the same walk.
+        walk = MAGNETOMETER.Walk(4)
+        series = [walk.at(0.01 * k)[0] for k in range(360_000)]
+        mean = sum(series) / len(series)
+        deviation = (sum((v - mean) ** 2 for v in series) / len(series)) ** 0.5
+        self.assertAlmostEqual(deviation, 1.06e-2, delta=0.25e-2)
+        lag = 930
+        pairs = len(series) - lag
+        covariance = sum((series[k] - mean) * (series[k + lag] - mean) for k in range(pairs)) / pairs
+        self.assertAlmostEqual(covariance / deviation ** 2, 1.0 / 2.718281828, delta=0.12)
+        again = MAGNETOMETER.Walk(4)
+        self.assertEqual([again.at(0.01 * k)[0] for k in range(100)], series[:100])
+        self.assertNotEqual(MAGNETOMETER.Walk(5).at(0.0), MAGNETOMETER.Walk(4).at(0.0))
+        # A reading that comes again or out of order leaves the walk where it was.
+        self.assertEqual(walk.at(1.0), walk.at(0.5))
+
+
 class ConfigureImperfectionsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = Path(tempfile.mkdtemp())
@@ -80,7 +103,7 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         self.assertEqual(gyro.findtext("dynamic_bias_correlation_time"), "400")
         self.assertEqual(gyro.findtext("stddev"), "0.0008726646", "the white noise stays the model's")
 
-    def test_the_magnetometer_gets_its_noise_and_the_slow_disturbance(self) -> None:
+    def test_the_magnetometer_gets_its_noise(self) -> None:
         done = imperfections.configure(self.runtime, 3, self.px4_models, ("magnetometer",))
         self.assertEqual(done["magnetometer_axes"], 3)
         self.assertEqual(done["imu_axes_with_bias"], 0)
@@ -89,9 +112,8 @@ class ConfigureImperfectionsTest(unittest.TestCase):
             noise = root.find(f".//magnetometer/{axis}/noise")
             # The IIS2MDC's 3 mG RMS in the gauss the sensor reports; one stddev, the model's replaced.
             self.assertEqual([e.text for e in noise.findall("stddev")], ["0.003"])
-            # 1.06 uT standing over 9.3 s: the element takes the standing deviation over sqrt(tau / 2).
-            self.assertAlmostEqual(float(noise.findtext("dynamic_bias_stddev")), 1.06e-2 / (9.3 / 2.0) ** 0.5, delta=1e-8)
-            self.assertEqual(noise.findtext("dynamic_bias_correlation_time"), "9.3")
+            # The slow disturbance is the relay's: gz-sensors' magnetometer never moves a dynamic bias.
+            self.assertIsNone(noise.find("dynamic_bias_stddev"))
         self.assertIn("<stddev>0.0001</stddev>", (self.px4_models / "x500_base" / "model.sdf").read_text())
 
     def test_the_vehicle_model_gets_the_vibration_and_the_turned_sensor_pose(self) -> None:
@@ -218,6 +240,11 @@ class ContractTest(unittest.TestCase):
         for family in ("imu", "vibration", "extrinsics", "stamps", "magnetometer"):
             self.assertIn(family, helpers)
         self.assertIn("for family in imu vibration extrinsics magnetometer; do", resources)
+        self.assertIn("ros_launch_args+=(magnetometer_topic_suffix:=/relayed)", resources)
+        self.assertIn("magnetometer_disturbance.py", evidence)
+        self.assertIn('"magnetometer_topic_suffix"', (REPOSITORY / "drone_city_nav" / "launch" / "launch_arguments.py").read_text())
+        profile = (REPOSITORY / "drone_city_nav" / "launch" / "sensor_profile.py").read_text()
+        self.assertIn('f"magnetometer_sensor/magnetometer{magnetometer_topic_suffix}"', profile)
         self.assertEqual(resources.count("imperfection_family_on stamps"), 2)
         self.assertEqual(evidence.count("imperfection_family_on stamps"), 3)
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()

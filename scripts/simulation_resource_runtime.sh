@@ -18,6 +18,11 @@ append_sensor_relay_launch_args() {
     { imperfection_family_on stamps && [[ -z "${SMOKE_ZONES:-}" ]]; }; then
     ros_launch_args+=(stereo_image_topic_suffix:=/relayed)
   fi
+  # The magnetometer's slow disturbance (K52): the camera process relays the
+  # field from the disturbance relay (runtime_evidence_runtime.sh).
+  if imperfection_family_on magnetometer && [[ "${CAMERA_PROFILE:-}" == stereo_tof ]]; then
+    ros_launch_args+=(magnetometer_topic_suffix:=/relayed)
+  fi
   # Roadmap item 36 (K53): the loop's consumers read the budget relay's topics; 'measure' listens only.
   # (An if, not a '&&' list: the function's last status under set -e ended r2434 before the launch.)
   if [[ "${BUDGET_RELAY:-off}" == on ]]; then
