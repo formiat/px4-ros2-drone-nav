@@ -120,10 +120,21 @@ private:
       restart_due_ = false;
     }
     // A frame waits for the IMU up to its own stamp, in order: the filter
-    // clones the pose where the propagation stands.
-    while (!pending_.empty() && last_imu_stamp_ns_ >= pending_.front().stamp_ns) {
+    // clones the pose where the propagation stands. It waits for the
+    // barometer's and the magnetometer's streams past its stamp as well, up
+    // to 50 ms of the IMU's beyond it (a stream that stopped holds nothing
+    // up), and takes the barometer's height stamped last before it: taken
+    // as they arrived, the replayed stack read a frame with another count of
+    // samples before it and parted from the flown one by 4 to 6 cm from the
+    // first minutes (r2875's replay; roadmap item 27 block 6, item 36).
+    while (!pending_.empty() && streamsPassed(pending_.front().stamp_ns)) {
       const Pair pair = std::move(pending_.front());
       pending_.pop_front();
+      while (!pending_heights_.empty() &&
+             pending_heights_.front().first <= pair.stamp_ns) {
+        odometry_->addBarometricHeight(pending_heights_.front().second);
+        pending_heights_.pop_front();
+      }
       onPair(pair);
     }
     publishToAutopilot(stamp_ns);
@@ -199,6 +210,18 @@ private:
     // starves the estimator shows here and nowhere else.
     pose_age_max_ns_ =
         std::max(pose_age_max_ns_, get_clock()->now().nanoseconds() - stamp_ns);
+  }
+
+  [[nodiscard]] bool streamsPassed(const std::int64_t stamp_ns) const noexcept {
+    constexpr std::int64_t kStreamSlackNs{50'000'000};
+    if (last_imu_stamp_ns_ < stamp_ns) {
+      return false;
+    }
+    const bool slack = last_imu_stamp_ns_ >= stamp_ns + kStreamSlackNs;
+    return slack ||
+           ((last_barometer_stamp_ns_ == 0 || last_barometer_stamp_ns_ >= stamp_ns) &&
+            (last_magnetometer_stamp_ns_ == 0 ||
+             last_magnetometer_stamp_ns_ >= stamp_ns));
   }
 
   void queueIfPaired() {
@@ -591,6 +614,11 @@ private:
   std::int64_t frame_stamp_offset_ns_{0};
   std::int64_t previous_frame_stamp_ns_{0};
   std::int64_t last_imu_stamp_ns_{0};
+  std::int64_t last_barometer_stamp_ns_{0};
+  std::int64_t last_magnetometer_stamp_ns_{0};
+  // The barometer's heights with their stamps, each fed to the filter before
+  // the first frame stamped after it.
+  std::deque<std::pair<std::int64_t, double>> pending_heights_;
   // The longest interval between consecutive IMU samples over the last eight
   // frames: past 50 ms the filter treats it as a hole.
   std::int64_t imu_gap_max_ns_{0};

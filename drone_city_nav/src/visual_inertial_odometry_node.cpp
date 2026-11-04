@@ -197,7 +197,11 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
                       kPressureSmoothing *
                           (pressure->fluid_pressure - smoothed_pressure_pa_)
                 : pressure->fluid_pressure;
-        odometry_->addBarometricHeight(-smoothed_pressure_pa_ / kPressurePerMetrePa);
+        // Held for the frame stamped after it
+        // (visual_inertial_odometry_node_class.hpp).
+        last_barometer_stamp_ns_ = rclcpp::Time{pressure->header.stamp}.nanoseconds();
+        pending_heights_.emplace_back(last_barometer_stamp_ns_,
+                                      -smoothed_pressure_pa_ / kPressurePerMetrePa);
       },
       in_group);
   // The magnetometer (roadmap item 39 stage 3, item 40): its field in the
@@ -212,6 +216,9 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
           // The sensor's axes are the body's forward, left, up (Gazebo's);
           // the filter's are forward, right, down.
           const std::scoped_lock lock{odometry_mutex_};
+          last_magnetometer_stamp_ns_ =
+              std::max(last_magnetometer_stamp_ns_,
+                       rclcpp::Time{field->header.stamp}.nanoseconds());
           odometry_->addMagneticField(rclcpp::Time{field->header.stamp}.nanoseconds(),
                                       Eigen::Vector3d{field->magnetic_field.x,
                                                       -field->magnetic_field.y,
