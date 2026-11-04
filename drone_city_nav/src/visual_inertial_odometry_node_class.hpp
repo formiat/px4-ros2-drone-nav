@@ -83,6 +83,9 @@ private:
       imu_gap_max_ns_ = std::max(imu_gap_max_ns_, stamp_ns - last_imu_stamp_ns_);
     }
     last_imu_stamp_ns_ = std::max(last_imu_stamp_ns_, stamp_ns);
+    if (rest_start_stamp_ns_ == 0) {
+      rest_start_stamp_ns_ = stamp_ns;
+    }
     if (gnss_input_ != nullptr) {
       if (const std::optional<GnssTrustVerdict> gone =
               gnss_input_->expire(get_clock()->now().nanoseconds())) {
@@ -319,7 +322,7 @@ private:
 
   void startAfresh(const char* reason) {
     odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
-    imu_samples_at_start_ = imu_samples_;
+    rest_start_stamp_ns_ = 0;
     previous_frame_stamp_ns_ = 0;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
                          "VISUAL_INERTIAL_ODOMETRY_START_AFRESH reason=%s", reason);
@@ -327,7 +330,8 @@ private:
 
   void onPair(const Pair& pair) {
     if (!odometry_->initialized()) {
-      if (imu_samples_ - imu_samples_at_start_ < kRestSamplesBeforeInitialPose) {
+      if (rest_start_stamp_ns_ == 0 ||
+          pair.stamp_ns - rest_start_stamp_ns_ < kRestBeforeInitialPoseNs) {
         return;
       }
       odometry_->initialize(pair.stamp_ns, Eigen::Vector3d::Zero(),
@@ -566,7 +570,8 @@ private:
   // Whether any frame has aided the filter since the node started (onPair).
   bool aided_{false};
   VisualInertialOdometryConfig odometry_config_;
-  std::uint64_t imu_samples_at_start_{0U};
+  // The first IMU stamp since the start: the rest is measured from it.
+  std::int64_t rest_start_stamp_ns_{0};
   std::int64_t initialized_stamp_ns_{0};
   std::unique_ptr<AutopilotStateSource> autopilot_pose_;
   rclcpp::CallbackGroup::SharedPtr autopilot_pose_group_;

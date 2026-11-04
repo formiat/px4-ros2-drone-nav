@@ -39,9 +39,11 @@ inline void declareGnssTrust(const rclcpp::Logger& logger,
   declared = verdict.trusted;
 }
 
-// The vehicle stands still this many IMU samples before its pose is declared:
-// roll, pitch and the gyroscope bias come from them.
-inline constexpr std::uint64_t kRestSamplesBeforeInitialPose{100U};
+// The vehicle stands still this long on the IMU's clock before its pose is
+// declared: roll, pitch and the gyroscope bias come from the rest. A count of
+// the samples received read a different frame in a flight and in its replay
+// (r2888: the estimates parted at the ninth frame, at rest).
+inline constexpr std::int64_t kRestBeforeInitialPoseNs{1'000'000'000};
 inline constexpr std::int64_t kAutopilotOdometryPeriodNs{40'000'000};
 
 // The optical frame (x right, y down, z forward) of a camera that looks along
