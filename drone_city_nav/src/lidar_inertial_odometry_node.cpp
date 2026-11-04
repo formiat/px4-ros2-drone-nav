@@ -29,6 +29,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -205,8 +206,36 @@ private:
     if (!std::isfinite(pressure.fluid_pressure)) {
       return;
     }
-    odometry_->observeHeight(rclcpp::Time{pressure.header.stamp}.nanoseconds(),
-                             -pressure.fluid_pressure / kPressurePerMetrePa);
+    pending_heights_.emplace_back(rclcpp::Time{pressure.header.stamp}.nanoseconds(),
+                                  -pressure.fluid_pressure / kPressurePerMetrePa);
+  }
+
+  // The outside level and height reach the estimator in the order of their
+  // stamps, each before the first scan stamped after it, however the
+  // executor served them: applied as they arrived, two flights with the same
+  // seeds differed by 2 to 12 mm while the vehicle still rested (r2881,
+  // r2883; roadmap item 36). What is stamped after the scan waits for the
+  // next.
+  void applyObservationsUpTo(const std::int64_t stamp_ns) {
+    while (true) {
+      const bool attitude =
+          !pending_attitudes_.empty() && pending_attitudes_.front().first <= stamp_ns;
+      const bool height =
+          !pending_heights_.empty() && pending_heights_.front().first <= stamp_ns;
+      if (!attitude && !height) {
+        return;
+      }
+      if (attitude && (!height || pending_attitudes_.front().first <=
+                                      pending_heights_.front().first)) {
+        odometry_->observeAttitude(pending_attitudes_.front().first,
+                                   pending_attitudes_.front().second);
+        pending_attitudes_.pop_front();
+      } else {
+        odometry_->observeHeight(pending_heights_.front().first,
+                                 pending_heights_.front().second);
+        pending_heights_.pop_front();
+      }
+    }
   }
 
   // The autopilot's attitude as the outside level of the registration (the
@@ -219,8 +248,8 @@ private:
       return;
     }
     const std::array<float, 4>& q = sample.quaternion;
-    odometry_->observeAttitude(source.mapped_ros_stamp_ns,
-                               Eigen::Quaterniond{q[0], q[1], q[2], q[3]});
+    pending_attitudes_.emplace_back(source.mapped_ros_stamp_ns,
+                                    Eigen::Quaterniond{q[0], q[1], q[2], q[3]});
   }
 
   void onImu(const AutopilotImuSample& sample) {
@@ -313,6 +342,7 @@ private:
                                lidar_translation_body_);
     }
     const std::int64_t stamp_ns = rclcpp::Time{cloud.header.stamp}.nanoseconds();
+    applyObservationsUpTo(stamp_ns);
     const LidarInertialEstimate estimate = odometry_->addScan(stamp_ns, points_body);
     const double scan_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - started)
@@ -424,6 +454,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   std::unique_ptr<StepAcknowledger> step_acknowledger_;
   std::deque<sensor_msgs::msg::PointCloud2::SharedPtr> pending_clouds_;
+  std::deque<std::pair<std::int64_t, Eigen::Quaterniond>> pending_attitudes_;
+  std::deque<std::pair<std::int64_t, double>> pending_heights_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
