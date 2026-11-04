@@ -278,10 +278,12 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // heading wandered -0.69 to +0.28 degrees; r2844 waited for readings either
 // side of the frame, and in lockstep the pair is processed before the
 // magnetometer's next reading arrives: nothing was fused).
-// The direction at the first frame after the declared pose is the zero, the
-// vehicle at rest on its pad; a reading more than 20 degrees off it is a
-// disturbed field (iron near the sensor), left out reading by reading, never
-// latched.
+// The zero is the mean direction over the frames while the vehicle rests
+// where it was declared, fixed when it first moves: a single reading's error
+// stayed in the zero for the whole flight (r2847: the IIS2MDC's 0.8 degrees of
+// noise a reading, the heading +1.69 degrees at the end). A reading more than
+// 20 degrees off the zero is a disturbed field (iron near the sensor), left
+// out reading by reading, never latched.
 void VisualInertialOdometry::Impl::magneticHeadingPrior() {
   constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
   constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
@@ -312,11 +314,24 @@ void VisualInertialOdometry::Impl::magneticHeadingPrior() {
   if (!(world.head<2>().squaredNorm() > 0.0)) {
     return;
   }
-  const double heading = std::atan2(world.y(), world.x());
   if (!magnetic_zero_rad.has_value()) {
-    magnetic_zero_rad = heading;
-    return;
+    constexpr double kRestM{0.3};
+    constexpr double kRestMps{0.2};
+    if (!magnetic_rest_position.has_value()) {
+      magnetic_rest_position = position;
+    }
+    const Eigen::Vector2d direction = world.head<2>().normalized();
+    if ((position - *magnetic_rest_position).norm() < kRestM &&
+        velocity.norm() < kRestMps) {
+      magnetic_zero_sum += direction;
+      return;
+    }
+    if (!(magnetic_zero_sum.squaredNorm() > 0.0)) {
+      magnetic_zero_sum = direction;
+    }
+    magnetic_zero_rad = std::atan2(magnetic_zero_sum.y(), magnetic_zero_sum.x());
   }
+  const double heading = std::atan2(world.y(), world.x());
   const double innovation =
       std::remainder(*magnetic_zero_rad - heading, 2.0 * std::numbers::pi);
   magnetic_innovation_rad = innovation;

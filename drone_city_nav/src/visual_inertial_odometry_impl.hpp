@@ -107,10 +107,13 @@ struct VisualInertialOdometry::Impl {
   // height the barometer gives since is a prior on every frame (r2721:
   // under the imperfections profile the height drifted 1.2 m in 250 s).
   std::optional<double> barometric_zero_m;
-  // The magnetometer's readings over the last second, and the direction of
-  // the field's horizontal part in the world at the declared pose: the
-  // heading's zero.
+  // The magnetometer's readings over the last second; the field's
+  // horizontal direction in the world summed while the vehicle rests where it
+  // was declared, and that place; the heading's zero, their mean, fixed when
+  // the vehicle first moves.
   std::deque<MagneticReading> magnetic_readings;
+  Eigen::Vector2d magnetic_zero_sum{Eigen::Vector2d::Zero()};
+  std::optional<Eigen::Vector3d> magnetic_rest_position;
   std::optional<double> magnetic_zero_rad;
   // The last frame's prior, for the estimate.
   double magnetic_innovation_rad{0.0};
