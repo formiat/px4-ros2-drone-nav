@@ -272,11 +272,11 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // the real vehicle's class of sensor, the IIS2MDC PX4's model is noted after,
 // reads 3 mG RMS, 0.8 degrees across the 0.22 G of the horizontal field, and
 // the filter's own tilt enters the heading twice over at the field's dip of
-// 63 degrees. The sigma, half a degree, is weighed against the filter's own
-// certainty of its heading, 0.06 to 0.07 degrees, while under the profile
-// the heading drifts a degree or two: at a degree the prior pulled back in
-// some 40 s and the heading wandered to -1.8 degrees (r2849); at half a degree
-// in some 10 s, the readings' noise averaged over some 70 frames. The field is taken at
+// 63 degrees: the sigma of a degree covers both. A heavier prior follows the
+// tilt's error rather than holding the heading: at half a degree the heading
+// ran to +2.9 degrees with the innovation at zero and the goal was missed by
+// 2.14 m (r2850); at a degree the goal is met 0.73 to 1.00 m away under the
+// profile (r2843, r2845, r2847, r2849). The field is taken at
 // the frame's stamp: the reading nearest it, turned by the gyroscope through the time
 // between (r2843 took the newest reading, whatever its age, and the heading wandered
 // -0.69 to +0.28 degrees; r2844 waited for readings either side of the frame, and in
@@ -288,7 +288,7 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // 20 degrees off the zero is a disturbed field (iron near the sensor), left
 // out reading by reading, never latched.
 void VisualInertialOdometry::Impl::magneticHeadingPrior() {
-  constexpr double kHeadingSigmaRad{0.5 * std::numbers::pi / 180.0};
+  constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
   constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
   constexpr std::int64_t kNearestNs{50'000'000};
   if (!config.magnetic_heading) {
