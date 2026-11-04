@@ -8,8 +8,9 @@ move on before the loop has finished with the step: two flights with the same se
 host, as slowly as the host needs. A node that does not acknowledge within the timeout is named in the log and the
 world moves on (the flight is then not a deterministic one, and the log says so). Before the step is announced the
 controller waits for the step's sensor outputs (--sensors: a topic and its period in ms, the stamp read from the
-message; a periodic sensor whose next stamp falls within the step is waited for, the autopilot's stream up to the
-step's last iteration), since the simulator's sensors publish off the render thread after the world's step has
+message; a sensor is waited for while its latest stamp plus its period lies on or before the step's end, the
+lidar's sweep every 100 ms, the autopilot's stream through its bridge every 10 ms), since the simulator's sensors
+publish off the render thread after the world's step has
 returned and a node that reads the step first acknowledges it before the scan (the twins of 2026-10-30 parted on the
 memory's first scan, a frame apart). The CSV carries, every 50 steps, the steps, the wait for the acknowledgements
 (wall ms, median and 95th percentile), the wait for the sensors, the timeouts and their nodes, and the wall speed
@@ -93,14 +94,11 @@ def main() -> int:
     pending_sensors = [entry for entry in args.sensors.split(",") if entry]
 
     def sensors_due(target: int) -> list[str]:
-        """The sensors whose next stamp falls on or before the step's end and has not arrived."""
-        due = []
-        for topic, period in sensors.items():
-            last = latest_ns[topic]
-            next_stamp = (last // period + 1) * period if last >= 0 else target
-            if next_stamp <= target:
-                due.append(topic)
-        return due
+        """The sensors whose stream stands a period or more behind the step's end: a sensor's latest stamp plus
+        its period on or before the end means the step's output is still to come (a stream whose stamps are not
+        on the step's grid, the autopilot's at 100 Hz through its bridge, is a period behind at most)."""
+        return [topic for topic, period in sensors.items()
+                if (latest_ns[topic] if latest_ns[topic] >= 0 else 0) + period <= target]
 
     gz = GzNode()
     service = f"/world/{args.world}/control"
