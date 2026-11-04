@@ -87,6 +87,24 @@ class SurveyScenarioTest(unittest.TestCase):
             self.assertIn(f"{target}:", makefile)
         self.assertIn("$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-survey-headless\n", makefile)
 
+    def test_the_finals_survey_orders_its_volume_and_reads_the_truth_in_the_sdf_frame(self) -> None:
+        scenario_path = REPOSITORY / "drone_city_nav/config/finals_prize_round_world_07_survey_scenario.json"
+        scenario = SCENARIO_MODULE.load_point_to_point_scenario(scenario_path)
+        self.assertEqual(scenario["survey_volume_m"], (50.0, 270.0, 18.0, 110.0, 300.0, 30.0))
+        self.assertEqual(scenario["mission_goal_sequence_m"], ((73.75, 296.25, 23.23),))
+        self.assertEqual(survey_coverage.scenario_frame(scenario_path), ((1.0, 39.0), (6.5, -233.0, -37.5)))
+        makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
+        self.assertIn("FINALS_SURVEY_VOLUME_M := 50,270,18,110,300,30\n", makefile)
+        recipe = makefile[makefile.index("sim-finals-survey-headless: build"):]
+        recipe = recipe[:recipe.index("\n\n")]
+        for text in ("MISSION_TYPE=survey", "TRUTH_OCCUPANCY_3D_PATH=$(FINALS_TRUTH_OCCUPANCY_3D)",
+                     'RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(FINALS_SURVEY_VOLUME_M)}"'):
+            self.assertIn(text, recipe)
+        for name in ("survey_headless", "survey_gui", "survey_lidar_headless", "survey_lidar_gui"):
+            target = "sim-finals-" + name.replace("_", "-")
+            self.assertIn(f"make {target}\n",
+                          (REPOSITORY / f"scripts/sim_finals_{name}.sh").read_text(encoding="utf-8"))
+
     def test_the_survey_node_commands_on_the_operators_channel_beside_the_monitor(self) -> None:
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('executable="survey_mission_node"', launch)

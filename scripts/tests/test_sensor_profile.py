@@ -109,8 +109,8 @@ class SensorProfileTest(unittest.TestCase):
         # (Urban's two and the dark hall's).
         # The urban, the dark hall, the two held-out worlds' and the open
         # sky's headless targets, and the cooperative one.
-        # Urban's headless flight, the dark hall's, the held-out worlds' two, the open sky's and the survey's.
-        self.assertEqual(7, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
+        # Urban's headless flight, the dark hall's, the held-out worlds' two, the open sky's and the survey's two.
+        self.assertEqual(8, makefile.count('"$${CAMERA_PROFILE:-stereo_tof}" = none'))
 
 
 if __name__ == "__main__":

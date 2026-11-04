@@ -1,0 +1,15 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/finals_prize_round_world_07.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [73.75, 296.25, 21.23],
+    "yaw_rad": 3.141593
+  },
+  "mission_goal_sequence_m": [[73.75, 296.25, 23.23]],
+  "launch_platforms": [
+    {"id": "pad", "vehicle_ids": ["point_to_point_vehicle"], "size_m": [3.0, 3.0, 1.0], "top_z_m": 21.0}
+  ],
+  "survey_volume_m": [50.0, 270.0, 18.0, 110.0, 300.0, 30.0]
+}

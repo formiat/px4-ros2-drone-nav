@@ -172,6 +172,55 @@ sim-urban-survey-lidar-headless:
 sim-urban-survey-lidar-gui:
 	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-survey-gui
 
+# The survey on the held-out finals world (roadmap items 33 and 34), nothing
+# adapted: the staging area and the way to the tunnels' entrance.
+FINALS_SURVEY_SCENARIO_PATH := drone_city_nav/config/finals_prize_round_world_07_survey_scenario.json
+FINALS_SURVEY_VOLUME_M := 50,270,18,110,300,30
+
+.PHONY: sim-finals-survey-headless
+sim-finals-survey-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment finals_prize_round_world_07 --runtime-map-mode no-static \
+		--scenario $(FINALS_SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/finals_prize_round_world_07/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(FINALS_SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		TRUTH_OCCUPANCY_3D_PATH=$(FINALS_TRUTH_OCCUPANCY_3D) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(FINALS_SURVEY_VOLUME_M)}" \
+		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-finals-survey-gui
+sim-finals-survey-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment finals_prize_round_world_07 --runtime-map-mode no-static \
+		--scenario $(FINALS_SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/finals_prize_round_world_07/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(FINALS_SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-finals-survey-lidar-headless sim-finals-survey-lidar-gui
+sim-finals-survey-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-finals-survey-headless
+
+sim-finals-survey-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-finals-survey-gui
+
 # Roadmap item 29: the large dark hall (environments/fixtures/dark_hall), the
 # point-to-point mission across it as the ordinary flight flies Urban's.
 DARK_HALL_SCENARIO_PATH := drone_city_nav/config/dark_hall_point_to_point_scenario.json
