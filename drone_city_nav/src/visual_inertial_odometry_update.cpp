@@ -272,20 +272,23 @@ void VisualInertialOdometry::Impl::barometricHeightPrior() {
 // the real vehicle's class of sensor, the IIS2MDC PX4's model is noted after,
 // reads 3 mG RMS, 0.8 degrees across the 0.22 G of the horizontal field, and
 // the filter's own tilt enters the heading twice over at the field's dip of
-// 63 degrees: the sigma of a degree covers both. The field is taken at the
-// frame's stamp: the reading nearest it, turned by the gyroscope through the
-// time between (r2843 took the newest reading, whatever its age, and the
-// heading wandered -0.69 to +0.28 degrees; r2844 waited for readings either
-// side of the frame, and in lockstep the pair is processed before the
-// magnetometer's next reading arrives: nothing was fused).
-// The zero is the mean direction over the frames while the vehicle rests
-// where it was declared, fixed when it first moves: a single reading's error
+// 63 degrees. The sigma, half a degree, is weighed against the filter's own
+// certainty of its heading, 0.06 to 0.07 degrees, while under the profile
+// the heading drifts a degree or two: at a degree the prior pulled back in
+// some 40 s and the heading wandered to -1.8 degrees (r2849); at half a degree
+// in some 10 s, the readings' noise averaged over some 70 frames. The field is taken at
+// the frame's stamp: the reading nearest it, turned by the gyroscope through the time
+// between (r2843 took the newest reading, whatever its age, and the heading wandered
+// -0.69 to +0.28 degrees; r2844 waited for readings either side of the frame, and in
+// lockstep the pair is processed before the magnetometer's next reading arrives:
+// nothing was fused). The zero is the mean direction over the frames while the vehicle
+// rests where it was declared, fixed when it first moves: a single reading's error
 // stayed in the zero for the whole flight (r2847: the IIS2MDC's 0.8 degrees of
 // noise a reading, the heading +1.69 degrees at the end). A reading more than
 // 20 degrees off the zero is a disturbed field (iron near the sensor), left
 // out reading by reading, never latched.
 void VisualInertialOdometry::Impl::magneticHeadingPrior() {
-  constexpr double kHeadingSigmaRad{1.0 * std::numbers::pi / 180.0};
+  constexpr double kHeadingSigmaRad{0.5 * std::numbers::pi / 180.0};
   constexpr double kGateRad{20.0 * std::numbers::pi / 180.0};
   constexpr std::int64_t kNearestNs{50'000'000};
   if (!config.magnetic_heading) {
