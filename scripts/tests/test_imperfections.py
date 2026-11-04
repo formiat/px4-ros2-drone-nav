@@ -41,7 +41,12 @@ BASE_MODEL_SDF = """<?xml version="1.0"?>
 <linear_acceleration><x><noise type="gaussian"><mean>0</mean><stddev>0.00637</stddev></noise></x>
 <y><noise type="gaussian"><mean>0</mean><stddev>0.00637</stddev></noise></y>
 <z><noise type="gaussian"><mean>0</mean><stddev>0.00686</stddev></noise></z></linear_acceleration>
-</imu></sensor></link></model></sdf>
+</imu></sensor>
+<sensor name="magnetometer_sensor" type="magnetometer"><magnetometer>
+<x><noise type="gaussian"><stddev>0.0001</stddev></noise></x>
+<y><noise type="gaussian"><stddev>0.0001</stddev></noise></y>
+<z><noise type="gaussian"><stddev>0.0001</stddev></noise></z>
+</magnetometer></sensor></link></model></sdf>
 """
 
 
@@ -75,6 +80,20 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         self.assertEqual(gyro.findtext("dynamic_bias_correlation_time"), "400")
         self.assertEqual(gyro.findtext("stddev"), "0.0008726646", "the white noise stays the model's")
 
+    def test_the_magnetometer_gets_its_noise_and_the_slow_disturbance(self) -> None:
+        done = imperfections.configure(self.runtime, 3, self.px4_models, ("magnetometer",))
+        self.assertEqual(done["magnetometer_axes"], 3)
+        self.assertEqual(done["imu_axes_with_bias"], 0)
+        root = ET.parse(self.runtime / "x500_base" / "model.sdf").getroot()
+        for axis in ("x", "y", "z"):
+            noise = root.find(f".//magnetometer/{axis}/noise")
+            # The IIS2MDC's 3 mG RMS in the gauss the sensor reports; one stddev, the model's replaced.
+            self.assertEqual([e.text for e in noise.findall("stddev")], ["0.003"])
+            # 1.06 uT standing over 9.3 s: the element takes the standing deviation over sqrt(tau / 2).
+            self.assertAlmostEqual(float(noise.findtext("dynamic_bias_stddev")), 1.06e-2 / (9.3 / 2.0) ** 0.5, delta=1e-8)
+            self.assertEqual(noise.findtext("dynamic_bias_correlation_time"), "9.3")
+        self.assertIn("<stddev>0.0001</stddev>", (self.px4_models / "x500_base" / "model.sdf").read_text())
+
     def test_the_vehicle_model_gets_the_vibration_and_the_turned_sensor_pose(self) -> None:
         done = imperfections.configure(self.runtime, 0, self.px4_models)
         self.assertEqual(done["sensor_poses_turned"], 1)
@@ -99,7 +118,8 @@ class ConfigureImperfectionsTest(unittest.TestCase):
 
     def test_one_family_alone_writes_only_its_part(self) -> None:
         done = imperfections.configure(self.runtime, 0, self.px4_models, ("extrinsics",))
-        self.assertEqual(done, {"imu_axes_with_bias": 0, "sensor_poses_turned": 1, "vibration_plugin": 0})
+        self.assertEqual(done, {"imu_axes_with_bias": 0, "sensor_poses_turned": 1, "vibration_plugin": 0,
+                                "magnetometer_axes": 0})
         self.assertTrue((self.runtime / "x500_base").is_symlink(), "the base model stays PX4's")
         root = ET.parse(self.runtime / "x500_lidar_3d" / "model.sdf").getroot()
         self.assertEqual([p for p in root.find("model").findall("plugin")
@@ -195,8 +215,9 @@ class ContractTest(unittest.TestCase):
         self.assertIn('--families "$(IFS=,; echo "${model_families[*]}")"', resources)
         helpers = (REPOSITORY / "scripts" / "simulation_runtime_helpers.sh").read_text()
         self.assertIn('"${IMPERFECTIONS:-none}" == "nominal_$1"', helpers)
-        for family in ("imu", "vibration", "extrinsics", "stamps"):
+        for family in ("imu", "vibration", "extrinsics", "stamps", "magnetometer"):
             self.assertIn(family, helpers)
+        self.assertIn("for family in imu vibration extrinsics magnetometer; do", resources)
         self.assertEqual(resources.count("imperfection_family_on stamps"), 2)
         self.assertEqual(evidence.count("imperfection_family_on stamps"), 3)
         launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text()

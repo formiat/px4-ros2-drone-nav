@@ -19,6 +19,12 @@ runtime copy of it (never into the repository's or PX4's own models):
   the square root of two) and the seed for its phases;
 - the extrinsics: the sensor set's include pose turned by the residual of the stack's own calibration, 0.08 degrees
   (K33's half a pixel) about pitch and yaw, each with a sign from the seed; the stack reads the nominal pose.
+- the magnetometer (roadmap item 40): the base model's magnetometer gets the white noise its own note names, 3 mG RMS
+  of an IIS2MDC (the element writes 1e-4 in the gauss the sensor reports, 0.1 mG), and the slow disturbance a real
+  vehicle's field carries, measured on the NTU VIRAL eee_01 flight (its VN-100 against the flight's FAST-LIO
+  attitude, the heading's deviation with the heading taken out): 1.06 uT standing, a correlation time of 9.3 s, as
+  a dynamic bias on each axis. No hard-iron offset: a vehicle flies calibrated (the NTU vehicle's own, 6.0 uT, turned
+  its heading 12.9 degrees with the heading, which no prior survives).
 
 The magnitudes come from `tools/imperfections_sources.py`; a change of a source is a change here, with its row in K52.
 """
@@ -37,6 +43,9 @@ VIBRATION_FREQUENCY_HZ = 55.0  # NTU VIRAL eee_01, the rotors' peak
 VIBRATION_ACCELERATION_MPS2 = (0.192, 0.552, 0.380)  # NTU eee_01, rms above 50 Hz times sqrt(2)
 VIBRATION_RATE_RADPS = (0.0156, 0.0141, 0.0042)
 EXTRINSIC_ANGLE_RAD = math.radians(0.08)  # K33: the calibration's residual, half a pixel
+MAGNETOMETER_NOISE_GAUSS = 3.0e-3  # IIS2MDC, 3 mG RMS: the x500 model's own note (the sensor reports gauss)
+MAGNETOMETER_WALK_STANDING_GAUSS = 1.06e-2  # NTU eee_01 VN-100: 1.06 uT of slow disturbance (heading 2.28 deg sd)
+MAGNETOMETER_WALK_CORRELATION_S = 9.3  # NTU eee_01: the disturbance's 1/e correlation time
 VEHICLE_MODEL = "x500_lidar_3d"
 BASE_MODEL = "x500_base"
 SENSOR_MODELS = ("lidar_3d_v1", "stereo_tof_v1")
@@ -74,6 +83,34 @@ def write_imu_bias(model_sdf: Path) -> int:
                 ET.SubElement(noise, "dynamic_bias_stddev").text = f"{walk:.6g}"
                 ET.SubElement(noise, "dynamic_bias_correlation_time").text = f"{BIAS_CORRELATION_TIME_S:g}"
                 written += 1
+    tree.write(model_sdf, encoding="utf-8", xml_declaration=True)
+    return written
+
+
+def write_magnetometer_noise(model_sdf: Path) -> int:
+    """Each axis of the magnetometer gets the noise and the slow disturbance; returns the axes written."""
+    tree = ET.parse(model_sdf)
+    written = 0
+    # gz-sensors drives the dynamic bias with sigma_b * sqrt(dt) a step: the standing deviation over the
+    # correlation time tau is sigma_b * sqrt(tau / 2), so the element takes standing / sqrt(tau / 2).
+    density = MAGNETOMETER_WALK_STANDING_GAUSS / math.sqrt(MAGNETOMETER_WALK_CORRELATION_S / 2.0)
+    for sensor in tree.getroot().iter("sensor"):
+        if sensor.get("type") != "magnetometer":
+            continue
+        magnetometer = sensor.find("magnetometer")
+        if magnetometer is None:
+            continue
+        for axis in ("x", "y", "z"):
+            noise = magnetometer.find(f"{axis}/noise")
+            if noise is None:
+                continue
+            for tag in ("stddev", "dynamic_bias_stddev", "dynamic_bias_correlation_time"):
+                for stale in noise.findall(tag):
+                    noise.remove(stale)
+            ET.SubElement(noise, "stddev").text = f"{MAGNETOMETER_NOISE_GAUSS:.6g}"
+            ET.SubElement(noise, "dynamic_bias_stddev").text = f"{density:.6g}"
+            ET.SubElement(noise, "dynamic_bias_correlation_time").text = f"{MAGNETOMETER_WALK_CORRELATION_S:g}"
+            written += 1
     tree.write(model_sdf, encoding="utf-8", xml_declaration=True)
     return written
 
@@ -134,7 +171,7 @@ def write_vehicle_model(model_sdf: Path, seed: int, extrinsics: bool = True,
     return turned, True
 
 
-FAMILIES = ("imu", "vibration", "extrinsics")
+FAMILIES = ("imu", "vibration", "extrinsics", "magnetometer")
 
 
 def configure(runtime_models_dir: Path, seed: int, px4_models_dir: Path,
@@ -144,11 +181,15 @@ def configure(runtime_models_dir: Path, seed: int, px4_models_dir: Path,
     if unknown:
         raise ValueError(f"unknown imperfection families {sorted(unknown)}")
     axes = 0
+    magnetometer_axes = 0
     if "imu" in families:
         axes = write_imu_bias(copy_base_model(runtime_models_dir, px4_models_dir))
+    if "magnetometer" in families:
+        magnetometer_axes = write_magnetometer_noise(copy_base_model(runtime_models_dir, px4_models_dir))
     turned, plugin = write_vehicle_model(runtime_models_dir / VEHICLE_MODEL / "model.sdf", seed,
                                          extrinsics="extrinsics" in families, vibration="vibration" in families)
-    return {"imu_axes_with_bias": axes, "sensor_poses_turned": turned, "vibration_plugin": int(plugin)}
+    return {"imu_axes_with_bias": axes, "sensor_poses_turned": turned, "vibration_plugin": int(plugin),
+            "magnetometer_axes": magnetometer_axes}
 
 
 def main() -> int:
@@ -157,12 +198,13 @@ def main() -> int:
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--px4-models-dir", type=Path, required=True)
     parser.add_argument("--families", default=",".join(FAMILIES),
-                        help="comma-separated subset of imu,vibration,extrinsics")
+                        help="comma-separated subset of imu,vibration,extrinsics,magnetometer")
     args = parser.parse_args()
     done = configure(args.runtime_models_dir, args.seed, args.px4_models_dir,
                      tuple(f for f in args.families.split(",") if f))
     print(f"IMPERFECTIONS seed={args.seed} families={args.families} imu_axes_with_bias={done['imu_axes_with_bias']} "
-          f"sensor_poses_turned={done['sensor_poses_turned']} vibration_plugin={done['vibration_plugin']}")
+          f"sensor_poses_turned={done['sensor_poses_turned']} vibration_plugin={done['vibration_plugin']} "
+          f"magnetometer_axes={done['magnetometer_axes']}")
     return 0
 
 

@@ -6,7 +6,9 @@ imperfections_sources.py [--out FILE]
 Every figure comes from a file on this machine, never from a guess: the x500 model's IMU noise (the PX4 model,
 IIM42653), the EuRoC imu0 calibration (ADIS16448: noise densities and bias random walks), the NTU VIRAL eee_01
 recording in the replay's record (the IMU's rate, its stamp jitter and gaps, the rotors' vibration by axis above
-50 Hz and its peak frequency; the sweeps' period and its spread), the EuRoC cam0 and imu0 stamps (a hardware
+50 Hz and its peak frequency; the sweeps' period and its spread), the NTU vehicle's magnetometer against the flight's
+FAST-LIO attitude (its noise, the heading's deviation with the heading, the slow disturbance), the x500 model's
+magnetometer note (an IIS2MDC's 3 mG RMS), the EuRoC cam0 and imu0 stamps (a hardware
 trigger: no jitter), and the stack's own camera-to-IMU stamp offset (K33's +4 ms, its uncertainty +-2 ms from the
 measurements that set it). The table is the source column of K52; run it again when a source changes.
 """
@@ -26,6 +28,8 @@ X500_SDF = REPO / "external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/m
 EUROC = Path("/data/gazebo/datasets/euroc/V1_01_easy/mav0")
 NTU_RECORD = REPO / "log/tools/part5/eee_01_record"
 VIO_NODE = REPO / "drone_city_nav/src/visual_inertial_odometry_node.cpp"
+NTU_MAGNETOMETER = Path("/data/gazebo/datasets/ntu_viral/eee_01_magnetometer/magnetometer.csv")
+NTU_FASTLIO = Path("/data/gazebo/datasets/ntu_viral/eee_01_fastlio_odom.csv")
 
 
 def x500_imu_noise() -> list[tuple[str, str, str]]:
@@ -116,6 +120,74 @@ def ntu_sweeps() -> list[tuple[str, str, str]]:
              f"{NTU_RECORD.relative_to(REPO)}/scans.bin ({len(stamps)} sweeps, the OS1-16 stamped at the sweep's start)")]
 
 
+def x500_magnetometer() -> list[tuple[str, str, str]]:
+    text = X500_SDF.read_text()
+    part = text[text.index('type="magnetometer"'):]
+    part = part[: part.index("</magnetometer>")]
+    note = re.search(r"([0-9.]+)\s*mgauss RMS", part).group(1)
+    stddevs = re.findall(r"<stddev>([0-9.e-]+)</stddev>", part)
+    return [("magnetometer white noise the model's note names (x, y, z)", f"{note} mG RMS (IIS2MDC)",
+             f"{X500_SDF.relative_to(REPO)}: the element writes {' '.join(stddevs)} in the gauss the sensor reports")]
+
+
+def rotation(x: float, y: float, z: float, w: float) -> np.ndarray:
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def ntu_magnetometer() -> list[tuple[str, str, str]]:
+    """The NTU vehicle's VN-100 field (gauss in the message's tesla field) against the flight's FAST-LIO attitude
+    (its frame the first IMU frame, levelled by the accelerometer at rest): the white noise, the heading's deviation
+    with the heading (a hard-iron offset turns with the body), and the slow remainder."""
+    mag = np.loadtxt(NTU_MAGNETOMETER, delimiter=",", skiprows=1)
+    stamps = mag[:, 0].astype(np.int64)
+    field = mag[:, 1:4] * 100.0
+    noise = np.diff(field, axis=0).std(axis=0) / np.sqrt(2.0)
+    rest = np.loadtxt(NTU_RECORD / "imu.csv", delimiter=",", max_rows=400)[:, 4:7].mean(axis=0)
+    up = rest / np.linalg.norm(rest)
+    east = np.array([1.0, 0.0, 0.0]) - up[0] * up
+    east /= np.linalg.norm(east)
+    north = np.cross(up, east)
+    rows = []
+    origin = None
+    for line in NTU_FASTLIO.open():
+        parts = line.split(",")
+        stamp = int(parts[0]) * 1_000_000_000 + int(parts[1])
+        position = np.array([float(v) for v in parts[4:7]])
+        origin = position if origin is None else origin
+        k = int(np.clip(np.searchsorted(stamps, stamp), 1, len(stamps) - 1))
+        k = k - 1 if abs(stamps[k - 1] - stamp) < abs(stamps[k] - stamp) else k
+        if abs(stamps[k] - stamp) > 3_000_000 or (position - origin) @ up < 1.0:
+            continue  # the reading nearest the pose, airborne
+        attitude = rotation(*[float(v) for v in parts[7:11]])
+        world = attitude @ field[k]
+        body_x = attitude[:, 0]
+        rows.append((stamp * 1e-9, np.arctan2(world @ north, world @ east), np.arctan2(body_x @ north, body_x @ east)))
+    t, direction, heading = (np.array(c) for c in zip(*rows))
+    direction = np.degrees(np.unwrap(direction))
+    heading = np.unwrap(heading)
+    design = np.vstack([np.ones_like(t), np.cos(heading), np.sin(heading), t - t[0]]).T
+    coef, *_ = np.linalg.lstsq(design, direction, rcond=None)
+    remainder = direction - design @ coef
+    horizontal = float(np.linalg.norm(field - (field @ up)[:, None] * up, axis=1).mean())
+    grid = np.arange(0.0, t[-1] - t[0], 0.1)
+    even = np.interp(grid, t - t[0], remainder)
+    even -= even.mean()
+    correlation = np.correlate(even, even, mode="full")[len(even) - 1:]
+    tau = grid[np.argmax(correlation / correlation[0] < 1.0 / np.e)]
+    deviation = float(np.hypot(coef[1], coef[2]))
+    source = (f"{NTU_MAGNETOMETER.relative_to(NTU_MAGNETOMETER.parents[1])} (tools/ntu_magnetometer_extract.py) against "
+              f"{NTU_FASTLIO.name}, {len(t)} airborne poses over {t[-1] - t[0]:.0f} s")
+    return [("NTU eee_01 VN-100 magnetometer white noise per reading (x, y, z)",
+             " ".join(f"{v:.3f}" for v in noise) + f" uT at {1e9 / np.median(np.diff(stamps)):.0f} Hz", source),
+            ("NTU eee_01 heading deviation with the heading (an uncalibrated hard-iron offset)",
+             f"{deviation:.1f} deg, {np.radians(deviation) * horizontal:.2f} uT on {horizontal:.1f} uT horizontal", source),
+            ("NTU eee_01 slow disturbance, the deviation and a linear drift taken out",
+             f"{remainder.std():.2f} deg sd, {np.radians(remainder.std()) * horizontal:.2f} uT; correlation time {tau:.1f} s",
+             source)]
+
+
 def stack_offsets() -> list[tuple[str, str, str]]:
     text = VIO_NODE.read_text()
     offset = re.search(r'"frame_stamp_offset_s",\s*([0-9.]+)', text).group(1)
@@ -134,6 +206,8 @@ def main() -> int:
     rows += euroc_periods()
     rows += ntu_imu()
     rows += ntu_sweeps()
+    rows += x500_magnetometer()
+    rows += ntu_magnetometer()
     rows += stack_offsets()
     width = max(len(r[0]) for r in rows)
     lines = [f"{name:<{width}} | {value} | {source}" for name, value, source in rows]

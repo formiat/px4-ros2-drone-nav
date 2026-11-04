@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # imperfections_series.sh FAMILY...: the real vehicle's imperfections (roadmap item 35, K52) flown apart or whole: for each
-# FAMILY (imu, vibration, extrinsics, stamps, or all for the whole profile) five camera flights then five lidar flights,
+# FAMILY (imu, vibration, extrinsics, stamps, magnetometer, or all for the whole profile) five camera flights then five lidar flights,
 # seeds 1 to 5, on the clear location, each through fly_until_valid.sh (three attempts). The series file carries the
 # start, the total and the count done; the flights' lines as series2.sh writes them.
 set -u

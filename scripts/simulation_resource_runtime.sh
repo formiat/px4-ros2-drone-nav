@@ -82,10 +82,11 @@ prepare_runtime_resources() {
     --enabled true
   # Roadmap item 35 (K52): the real vehicle's imperfections in the runtime
   # model alone: the IMU's bias walk, the rotors' vibration, the sensor set's
-  # pose turned by the calibration's residual.
+  # pose turned by the calibration's residual, the magnetometer's noise and
+  # slow disturbance.
   local model_families=()
   local family
-  for family in imu vibration extrinsics; do
+  for family in imu vibration extrinsics magnetometer; do
     imperfection_family_on "${family}" && model_families+=("${family}")
   done
   if [[ ${#model_families[@]} -gt 0 ]]; then

@@ -4,7 +4,8 @@
 # turns the whole profile on, IMPERFECTIONS=nominal_<family> one family alone, for
 # the series that fly them apart: imu (the bias walk), vibration (the rotors'
 # wrench), extrinsics (the sensor set's pose), stamps (the IMU stream's jitter and
-# gaps, the frames' offset, the sweeps' cadence).
+# gaps, the frames' offset, the sweeps' cadence), magnetometer (its noise and the
+# field's slow disturbance).
 imperfection_family_on() {
   [[ "${IMPERFECTIONS:-none}" == nominal || "${IMPERFECTIONS:-none}" == "nominal_$1" ]]
 }
