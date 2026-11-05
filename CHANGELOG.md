@@ -22,6 +22,9 @@ release names the asset tags it was validated with.
   The stack's determinism is the replay's contract (the owner's decision of 2026-11-05): one bag a sensor set kept
   under `log/tools/replay/regression/`, `./tools/gates.sh --replay` replays both (`tools/replay_stack.sh` takes a
   kept directory, chooses the set's rate and exits with the verdict).
+- The ordinary flight carries a steady light (the owner's decision of 2026-11-05): `LIGHT_FAULTS` is `none`
+  unless a scenario names a failure; the moderate flicker stays in the long flight under failures and on request.
+  The recording's overlay names the satellite fault being injected beside the vehicle's own verdict.
 - The estimators read their inputs the same in a flight and in its replay (a frame or a scan waits for
   the streams past its stamp, the rest and the pose's declaration by stamps, deep queues for the
   barometer and the magnetometer): the lidar set replays within 0.012 m at p95, the stereo set to 0.000.

@@ -104,6 +104,21 @@ class StateWordsTest(unittest.TestCase):
         self.assertIn('"GNSS_TRUST trusted="', (REPOSITORY / "drone_city_nav/src"
                                                 / "visual_inertial_odometry_node_internal.hpp").read_text())
 
+    def test_the_injected_satellite_fault_stands_beside_the_verdict(self) -> None:
+        # The owner's request of 2026-11-05: the viewer sees the fault begin and the verdict follow. The variant's
+        # name is the relay's knowledge, on /evaluation, which no production node reads.
+        trusted = ["GNSS_TRUST trusted=true"]
+        self.assertEqual("GNSS TRUSTED", OVERLAY.gnss_text(trusted, "none"))
+        self.assertEqual("GNSS TRUSTED   FAULT WALK", OVERLAY.gnss_text(trusted, "walk"))
+        self.assertEqual("GNSS DISTRUSTED   FAULT RETURN OFFSET",
+                         OVERLAY.gnss_text(trusted + ["GNSS_TRUST trusted=false"], "return_offset"))
+        self.assertEqual("GNSS FAULT JAM+BAD TIME", OVERLAY.gnss_text([], "jam+bad_time"))
+        overlay = (REPOSITORY / "scripts" / "evaluation_overlay.py").read_text()
+        self.assertIn('create_subscription(String, "/evaluation/gnss_fault", on_gnss_fault, 10)', overlay)
+        relay = (REPOSITORY / "scripts" / "gnss_fault_relay.py").read_text()
+        self.assertIn('fault_pub = node.create_publisher(String, "/evaluation/gnss_fault", 1)', relay)
+        self.assertIn("fault_pub.publish(String(data=player.active_names(t_s)))", relay)
+
     def test_the_truth_is_drawn_in_the_map_frame(self) -> None:
         # The held-out worlds (roadmap item 33) have a map frame moved from the
         # SDF frame; the overlay draws in the map frame and moves the

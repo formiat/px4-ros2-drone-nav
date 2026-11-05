@@ -81,9 +81,10 @@ sim-cooperative-traffic-urban-gui: build
 		./scripts/run_drone_nav_sim.sh
 
 # The ordinary flight after roadmap item 17 (specification A10): the location
-# with no light of its own and the moderate flicker of the carried light; a
-# named scenario sets the failures otherwise.
-ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"
+# with no light of its own and the carried light steady (the owner's decision
+# of 2026-11-05, F1: the moderate flicker flies only where a scenario names
+# it); a named scenario sets the failures.
+ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-none}"
 
 .PHONY: sim-urban-point-to-point-headless
 sim-urban-point-to-point-headless: build
@@ -419,7 +420,7 @@ LOW_BATTERY_SCENARIO := LIGHT_BATTERY_S=240 \
 # it reaches B or gives it up for an unreliable light; and a short one under
 # the harshest failures the owner's range allows, the light all but gone
 # from the forty-fifth second, which asks only that the vehicle stay whole.
-LONG_FAILURES_SCENARIO := STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
+LONG_FAILURES_SCENARIO := LIGHT_FAULTS=moderate STREAM_FAULTS=moderate RETURN_HOME_ALLOWED=true \
 	MISSION_GOALS_XYZ_M="63.009,23.857,12.593;0.749,21.247,9.6"
 # Roadmap item 18: smoke in the location (specification A13, F4). The ordinary
 # smoke flight carries four plumes beside the route where the location is

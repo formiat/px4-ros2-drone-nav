@@ -186,8 +186,9 @@ What the remaining holds cost, and where, is recorded per flight in
 the recovery after a physical block, 0.3 to 1.2 s without a route each time.
 
 **The flights of roadmap item 17.** The ordinary flight is dark: the
-location without its ambient light, the carried light under the moderate
-flicker (specification A10); a
+location without its ambient light, the carried light steady (specification
+A10; its moderate flicker flew in every flight until 2026-11-05 and flies
+since only where a scenario names it, `LIGHT_FAULTS=moderate`, F1); a
 `GOAL_UNREACHABLE` fails it as before, whatever its trigger. The named
 scenarios say in the manifest what else may end them:
 
@@ -340,7 +341,7 @@ manifest; `IMPERFECTIONS=` on the command line flies the clean vehicle, and
 adds the field's slow disturbance beside a vehicle's currents (roadmap item 40,
 the register's row), a scenario of its own, never the acceptance series';
 `tools/magnetic_heading.py` reads a flight's field against the truth. The mean speed of R3
-is measured under the profile as under the light's flicker (F1); R3's targets
+is measured under the profile (as it was under the light's flicker until 2026-11-05, F1); R3's targets
 are the means measured under it, the clean vehicle's means references.
 
 ## Replay Of The Whole Stack

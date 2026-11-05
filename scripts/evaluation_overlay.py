@@ -30,7 +30,12 @@ not large).
   braking contract's measure, what the light is judged by, K12), and the
   charge of its battery in the scenarios that give it one
   (/carried_light/charge_s, what the vehicle knows). Each line stands on a
-  dark backdrop facing the view's camera, so that it reads over the memory.
+  dark backdrop facing the view's camera, so that it reads over the memory;
+- the satellite signal on the hybrid profile: the vehicle's own verdict
+  (TRUSTED, DISTRUSTED, BACK, from the estimator's events, K56) and, beside
+  it, the variant the fault relay is playing (/evaluation/gnss_fault, the
+  injector's knowledge, for the viewer): the fault begins, the verdict
+  follows.
 
 No obstacle of the truth is drawn here: the location's smoke zones are the
 world half's (the replayed world of a recording), and the obstacles RViz shows
@@ -160,19 +165,24 @@ def light_text(share: float | None, seen: float | None) -> str:
     return "   ".join(parts)
 
 
-def gnss_text(events: list[str]) -> str:
+def gnss_text(events: list[str], injected: str = "") -> str:
     """The satellite signal's line on the hybrid profile (roadmap item 39,
     K56): nothing until the estimator has declared its trust once, then
     TRUSTED, DISTRUSTED while the signal is read as lying or lost, BACK once
     the trust returned. The estimator's event `GNSS_TRUST trusted=` is the
-    source; a profile without the signal never declares it."""
+    source; a profile without the signal never declares it. Beside the
+    verdict, the variant the fault relay is playing (`injected`, the
+    injector's knowledge: "none" or nothing outside a fault), for the viewer."""
     verdicts = [event.endswith("trusted=true") for event in events
                 if event.startswith("GNSS_TRUST trusted=")]
-    if not verdicts:
-        return ""
-    if not verdicts[-1]:
-        return "GNSS DISTRUSTED"
-    return "GNSS BACK" if False in verdicts else "GNSS TRUSTED"
+    words = ""
+    if verdicts:
+        words = ("GNSS DISTRUSTED" if not verdicts[-1]
+                 else "GNSS BACK" if False in verdicts else "GNSS TRUSTED")
+    if injected and injected != "none":
+        fault = "FAULT " + injected.upper().replace("_", " ")
+        words = f"{words}   {fault}" if words else f"GNSS {fault}"
+    return words
 
 
 def sdf_to_map(position: tuple[float, float, float],
@@ -240,7 +250,7 @@ def main() -> int:
     lock = threading.Lock()
     state = {"events": [], "estimate": None, "truth": None, "share": None, "charge": None,
              "seen": None, "velocity_mode": False, "ready": False, "dead_reckoning": False,
-             "landed_at": None}
+             "landed_at": None, "gnss_fault": ""}
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
     ticks = [0]
@@ -281,6 +291,10 @@ def main() -> int:
         with lock:
             state["charge"] = message.data
 
+    def on_gnss_fault(message: String) -> None:
+        with lock:
+            state["gnss_fault"] = message.data
+
     def on_progress(message: NavigationProgress) -> None:
         with lock:
             # The share the frame grants, not the measured range over the
@@ -303,6 +317,7 @@ def main() -> int:
                              on_control_mode, best_effort)
     node.create_subscription(Float64, "/evaluation/light_share", on_share, 10)
     node.create_subscription(Float64, "/carried_light/charge_s", on_charge, 10)
+    node.create_subscription(String, "/evaluation/gnss_fault", on_gnss_fault, 10)
     node.create_subscription(NavigationProgress, "/drone_city_nav/mppi/navigation_progress",
                              on_progress, 10)
     publishers = {view: node.create_publisher(MarkerArray, f"/evaluation/markers_{view}", 10)
@@ -340,7 +355,7 @@ def main() -> int:
                                      state["ready"], landed)
             light = light_text(share, state["seen"])
             charge = charge_text(state["charge"])
-            gnss = gnss_text(state["events"])
+            gnss = gnss_text(state["events"], state["gnss_fault"])
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))
         if truth is not None:
@@ -367,8 +382,9 @@ def main() -> int:
                     (1, light, 0.75 * TEXT_HEIGHT_M, -0.2, 0.78,
                      AMBER if share is not None and share < 0.35 else GREY),
                     (5, charge, 0.75 * TEXT_HEIGHT_M, -0.5, 0.71, GREY),
-                    (6, gnss, 0.75 * TEXT_HEIGHT_M, -0.5, 0.64,
-                     AMBER if gnss == "GNSS DISTRUSTED" else GREEN)):
+                    # With the fault's name the line is as long as the light's.
+                    (6, gnss, 0.75 * TEXT_HEIGHT_M, -0.25 if "FAULT" in gnss else -0.5, 0.64,
+                     AMBER if "DISTRUSTED" in gnss or "FAULT" in gnss else GREEN)):
                 words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
                 backdrop = marker(identifier + 10, Marker.CUBE, (0.0, 0.0, 0.0), 0.6)
                 if not line.strip():

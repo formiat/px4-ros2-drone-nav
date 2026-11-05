@@ -123,7 +123,8 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
                         makefile,
                     )
         # The ordinary flight of roadmap item 17 (specification A10) is the
-        # dark location and the moderate flicker.
+        # dark location and a steady carried light: the moderate flicker flies
+        # only where a scenario names it (the owner's decision of 2026-11-05).
         # The location's own light never comes back (the owner's rule of
         # 2026-10-03): no urban or dark-hall target selects the lit world; the
         # open sky (roadmap item 39) flies under its sun, in its two targets.
@@ -133,7 +134,9 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
             recipe = makefile[makefile.index(f"{target}: build"):]
             self.assertNotIn("SIM_GUI_WORLD_SDF_PATH", recipe[:recipe.index("\n\n")])
         self.assertNotIn("WORLD_ILLUMINATION", makefile)
-        self.assertIn('LIGHT_FAULTS="$${LIGHT_FAULTS-moderate}"', makefile)
+        self.assertIn('ORDINARY_FLIGHT := LIGHT_FAULTS="$${LIGHT_FAULTS-none}"', makefile)
+        self.assertNotIn("LIGHT_FAULTS-moderate", makefile)
+        self.assertIn("LONG_FAILURES_SCENARIO := LIGHT_FAULTS=moderate STREAM_FAULTS=moderate", makefile)
         # The owner's rule of 2026-10-24 (specification F4): the ordinary
         # flight is the clear location and no smoke flight is flown; the
         # ordinary targets set no smoke of their own (a smoke scenario's

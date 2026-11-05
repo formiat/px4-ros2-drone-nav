@@ -24,7 +24,8 @@ directory. Two things move the light:
 
 Two regimes, decided by the project owner on 2026-09-27:
 
-- moderate, the norm of every flight: short and frequent dimming, its dark
+- moderate, flown where a scenario names it (the norm of every flight until
+  2026-11-05, specification F1): short and frequent dimming, its dark
   stretches never long enough to reach the "unreliable" judgment;
 - severe, a scenario of its own: outages growing longer and more frequent
   until the vehicle judges its light unreliable, and staying that bad while

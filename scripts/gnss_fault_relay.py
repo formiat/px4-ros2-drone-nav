@@ -25,7 +25,10 @@ moment the vehicle is airborne and seeded by the run's number:
   return_offset  lost for the duration, then back at a constant offset of the
                  magnitude (default 50 m) for the rest of the flight
 
-The schedule never leaves this process; no production node reads it. The
+The schedule never reaches the vehicle; no production node reads it. Only
+the name of the variant being played goes out, for the viewer, on
+/evaluation/gnss_fault, which the RViz overlay draws beside the vehicle's own
+verdict (as the carried light's share goes out on /evaluation/light_share). The
 fix's bytes are untouched but for what the variant says. A row of what was
 relayed every second goes to --output (the evidence).
 """
@@ -204,12 +207,14 @@ def main() -> int:
     from rclpy.executors import ExternalShutdownException
     from px4_msgs.msg import SensorGps, VehicleLandDetected
     from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+    from std_msgs.msg import String
 
     rclpy.init()
     node = rclpy.create_node("gnss_fault_relay")
     qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE,
                      history=HistoryPolicy.KEEP_LAST, depth=50)
     publisher = node.create_publisher(SensorGps, args.output_topic, qos)
+    fault_pub = node.create_publisher(String, "/evaluation/gnss_fault", 1)
     lock = threading.Lock()
     airborne_since_us: list[int | None] = [None]
     relayed = [0, 0]  # relayed, dropped
@@ -276,6 +281,7 @@ def main() -> int:
             second = math.floor(t_s) if t_s > -1.0e8 else None
             if second is not None and second != last_row_s[0]:
                 last_row_s[0] = second
+                fault_pub.publish(String(data=player.active_names(t_s)))
                 rows.append([f"{t_s:.1f}", player.active_names(t_s), str(relayed[0]), str(relayed[1]),
                              f"{played.latitude_deg:.7f}", f"{played.longitude_deg:.7f}",
                              f"{played.altitude_m:.2f}", str(played.fix_type), f"{played.eph_m:.1f}"])

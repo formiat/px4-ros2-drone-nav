@@ -116,7 +116,8 @@ simulated GNSS, the magnetometer and the simulation heading source
 estimator does the same (`lidar_inertial`). `gnss` is a request, and what the
 multi-vehicle missions fly until the vehicles share a frame (roadmap item 15). The ordinary flight is dark since roadmap item 17: the location has no light
 of its own, the cameras carry noise, and the vehicle flies by a light it
-carries, which flickers in every flight; the smoke of roadmap items 18 and
+carries (steady in the ordinary flight; its failures are scenarios of their
+own since 2026-11-05, specification F1); the smoke of roadmap items 18 and
 23 is in the simulator and the vehicle reads it, but since 2026-10-24 no
 flight carries it: the ordinary flight is the clear location (specification
 F4, the owner's rule); when that light fails, or its battery
