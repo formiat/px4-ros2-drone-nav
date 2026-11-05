@@ -12,6 +12,9 @@ release names the asset tags it was validated with.
   set's mounts in one place, `drone_city_nav/config/sensor_extrinsics.yaml` (block 3). The pair's frames
   through shared memory in the container (`docker/fastdds_profiles.xml`). The step controller announces a
   step only after the step's sensor outputs are out (roadmap item 36).
+- The estimators read their inputs the same in a flight and in its replay (a frame or a scan waits for
+  the streams past its stamp, the rest and the pose's declaration by stamps, deep queues for the
+  barometer and the magnetometer): the lidar set replays within 0.012 m at p95.
 - The magnetometer's heading as a prior on the stereo estimate's yaw (roadmap items 39 stage 3 and 40, K60):
   the camera process relays the vehicle's magnetometer, the estimator fuses the field's direction from the reading
   nearest each frame against its direction at rest; the clean vehicle's frame turns +0.07 degrees, under the
