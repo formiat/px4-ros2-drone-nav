@@ -165,21 +165,22 @@ def write_vehicle_model(model_sdf: Path, seed: int, extrinsics: bool = True,
 
 
 FAMILIES = ("imu", "vibration", "extrinsics", "magnetometer")
-RENDERING_SENSOR_TYPES = ("gpu_lidar", "camera", "depth_camera", "thermal_camera")
-
-
-def remove_rendering_noise(runtime_models_dir: Path) -> int:
-    """The rendering sensors' noise elements removed from the sensor models (roadmap item 36: gz-sensors draws
-    every sensor's noise from the process's one generator, the rendering thread's draws interleaving with the
-    physics thread's IMU draws as the threads run, so a seed does not repeat the IMU's noise); returns the count."""
+def keep_imu_noise_alone(runtime_models_dir: Path, px4_models_dir: Path) -> int:
+    """Every sensor's noise but the IMU's removed from the runtime models (roadmap item 36, the step controller's
+    deterministic flights): gz-sensors draws every sensor's noise from the process's one generator (gz::math::Rand,
+    seeded by --seed), and gz-sim runs the sensor systems' post-updates in parallel threads, the rendering sensors'
+    in another thread again, so the draws interleave as the threads run and two flights with the same seed read
+    different IMU noise (r2904 to r2907, their autopilots' attitudes at rest apart from the first sample). Returns
+    the count of noise elements removed."""
     removed = 0
-    for name in SENSOR_MODELS:
-        model_sdf = runtime_models_dir / name / "model.sdf"
+    models = [runtime_models_dir / name / "model.sdf" for name in SENSOR_MODELS]
+    models.append(copy_base_model(runtime_models_dir, px4_models_dir))
+    for model_sdf in models:
         if not model_sdf.is_file():
             continue
         tree = ET.parse(model_sdf)
         for sensor in tree.getroot().iter("sensor"):
-            if sensor.get("type") not in RENDERING_SENSOR_TYPES:
+            if sensor.get("type") == "imu":
                 continue
             for parent in sensor.iter():
                 for noise in parent.findall("noise"):
@@ -214,11 +215,11 @@ def main() -> int:
     parser.add_argument("--px4-models-dir", type=Path, required=True)
     parser.add_argument("--families", default=",".join(FAMILIES),
                         help="comma-separated subset of imu,vibration,extrinsics,magnetometer")
-    parser.add_argument("--without-rendering-noise", action="store_true",
-                        help="remove the rendering sensors' noise (the step controller's deterministic flights)")
+    parser.add_argument("--imu-noise-alone", action="store_true",
+                        help="remove every sensor's noise but the IMU's (the step controller's deterministic flights)")
     args = parser.parse_args()
-    if args.without_rendering_noise:
-        print(f"RENDERING_NOISE removed={remove_rendering_noise(args.runtime_models_dir)}")
+    if args.imu_noise_alone:
+        print(f"IMU_NOISE_ALONE removed={keep_imu_noise_alone(args.runtime_models_dir, args.px4_models_dir)}")
         if not args.families:
             return 0
     done = configure(args.runtime_models_dir, args.seed, args.px4_models_dir,

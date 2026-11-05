@@ -138,19 +138,32 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         self.assertEqual(len([p for p in root.find("model").findall("plugin")
                               if p.get("name") == imperfections.PLUGIN_NAME]), 1)
 
-    def test_the_rendering_sensors_lose_their_noise_for_the_step_controller(self) -> None:
+    def test_every_sensor_but_the_imu_loses_its_noise_for_the_step_controller(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            runtime = Path(temp)
+            runtime = Path(temp) / "runtime"
+            px4 = Path(temp) / "px4"
             for name in imperfections.SENSOR_MODELS:
                 shutil.copytree(REPOSITORY / "drone_city_nav" / "models" / name, runtime / name)
-            removed = imperfections.remove_rendering_noise(runtime)
-            self.assertGreater(removed, 0)
+            base = px4 / imperfections.BASE_MODEL
+            base.mkdir(parents=True)
+            (base / "model.sdf").write_text(
+                '<sdf version="1.9"><model name="x500_base"><link name="base_link">'
+                '<sensor name="a" type="air_pressure"><air_pressure><pressure><noise type="gaussian">'
+                '<stddev>3</stddev></noise></pressure></air_pressure></sensor>'
+                '<sensor name="i" type="imu"><imu><angular_velocity><x><noise type="gaussian">'
+                '<stddev>0.001</stddev></noise></x></angular_velocity></imu></sensor>'
+                '</link></model></sdf>', encoding="utf-8")
+            removed = imperfections.keep_imu_noise_alone(runtime, px4)
+            self.assertGreater(removed, 1)
             for name in imperfections.SENSOR_MODELS:
-                text = (runtime / name / "model.sdf").read_text(encoding="utf-8")
-                self.assertNotIn("<noise>", text)
+                self.assertNotIn("<noise", (runtime / name / "model.sdf").read_text(encoding="utf-8"))
+            written = (runtime / imperfections.BASE_MODEL / "model.sdf").read_text(encoding="utf-8")
+            self.assertEqual(1, written.count("<noise"), "the IMU's noise alone stays")
+            self.assertIn("<stddev>3</stddev>", (base / "model.sdf").read_text(encoding="utf-8"),
+                          "PX4's own model is never written")
         runtime_script = (REPOSITORY / "scripts/simulation_resource_runtime.sh").read_text(encoding="utf-8")
         self.assertIn('if [[ "${STEP_CONTROLLER:-off}" == on ]]; then\n    python3', runtime_script)
-        self.assertIn("--without-rendering-noise", runtime_script)
+        self.assertIn("--imu-noise-alone", runtime_script)
 
     def test_one_family_alone_writes_only_its_part(self) -> None:
         done = imperfections.configure(self.runtime, 0, self.px4_models, ("extrinsics",))

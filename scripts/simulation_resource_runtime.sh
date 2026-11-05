@@ -87,21 +87,6 @@ prepare_runtime_resources() {
     "${runtime_models_dir}/${runtime_sensor_model_name}/model.sdf" \
     --mode "${lidar_visibility_mode}" \
     --enabled true
-  # Roadmap item 36 (K53): under the step controller the rendering sensors
-  # (the lidar, the ToF ring, the pair) carry no noise. gz-sensors draws every
-  # sensor's noise from the process's one generator (gz::math::Rand, seeded by
-  # --seed), the IMU's from the physics thread and theirs from the rendering
-  # thread, so the draws interleave as the threads run and two flights with
-  # the same seed read different IMU noise: their autopilots' attitudes at
-  # rest differed from the first sample (r2904, r2905).
-  if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
-    python3 "${repo_root}/scripts/configure_imperfections.py" \
-      "${runtime_models_dir}" \
-      --seed "${IMPERFECTION_SEED:-0}" \
-      --px4-models-dir "${px4_models_dir}" \
-      --families "" \
-      --without-rendering-noise
-  fi
   # Roadmap item 35 (K52): the real vehicle's imperfections in the runtime
   # model alone: the IMU's bias walk, the rotors' vibration, the sensor set's
   # pose turned by the calibration's residual, the magnetometer's noise and
@@ -117,5 +102,21 @@ prepare_runtime_resources() {
       --seed "${IMPERFECTION_SEED:-0}" \
       --px4-models-dir "${px4_models_dir}" \
       --families "$(IFS=,; echo "${model_families[*]}")"
+  fi
+  # Roadmap item 36 (K53): under the step controller every sensor's noise but
+  # the IMU's is removed from the runtime models. gz-sensors draws every
+  # sensor's noise from the process's one generator (gz::math::Rand, seeded
+  # by --seed), gz-sim runs the sensor systems' post-updates in parallel
+  # threads and the rendering sensors in another, so the draws interleave as
+  # the threads run and two flights with the same seed read different IMU
+  # noise: their autopilots' attitudes at rest differed from the first sample
+  # (r2904 to r2907).
+  if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
+    python3 "${repo_root}/scripts/configure_imperfections.py" \
+      "${runtime_models_dir}" \
+      --seed "${IMPERFECTION_SEED:-0}" \
+      --px4-models-dir "${px4_models_dir}" \
+      --families "" \
+      --imu-noise-alone
   fi
 }
