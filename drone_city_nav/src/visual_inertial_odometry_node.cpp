@@ -185,7 +185,10 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   // the filter holds through a dark stretch (roadmap item 17 stage 5).
   barometer_sub_ = create_subscription<sensor_msgs::msg::FluidPressure>(
       declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
-      rclcpp::SensorDataQoS{},
+      // A history deep enough for what queues behind a frame's match (170 ms
+      // of a 50 Hz stream): at the sensor data depth of five the readings
+      // past it were lost, differently in a flight and in its replay (r2892).
+      rclcpp::SensorDataQoS{}.keep_last(256),
       [this](const sensor_msgs::msg::FluidPressure::ConstSharedPtr pressure) {
         if (!std::isfinite(pressure->fluid_pressure)) {
           return;
@@ -210,7 +213,7 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   magnetometer_sub_ = create_subscription<sensor_msgs::msg::MagneticField>(
       declare_parameter<std::string>("magnetic_field_topic",
                                      "/magnetometer/magnetic_field"),
-      rclcpp::SensorDataQoS{},
+      rclcpp::SensorDataQoS{}.keep_last(256),
       [this](const sensor_msgs::msg::MagneticField::ConstSharedPtr field) {
         {
           // The sensor's axes are the body's forward, left, up (Gazebo's);

@@ -145,7 +145,9 @@ public:
         rclcpp::QoS{rclcpp::KeepLast{100}}.best_effort().durability_volatile();
     barometer_sub_ = create_subscription<sensor_msgs::msg::FluidPressure>(
         declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
-        rclcpp::SensorDataQoS{},
+        // Deep enough for what queues behind a registration (the camera
+        // estimator's barometer the same, r2892).
+        rclcpp::SensorDataQoS{}.keep_last(256),
         [this](const sensor_msgs::msg::FluidPressure::ConstSharedPtr pressure) {
           onBarometer(*pressure);
         });
