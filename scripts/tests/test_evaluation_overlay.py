@@ -104,6 +104,28 @@ class StateWordsTest(unittest.TestCase):
         self.assertIn('"GNSS_TRUST trusted="', (REPOSITORY / "drone_city_nav/src"
                                                 / "visual_inertial_odometry_node_internal.hpp").read_text())
 
+    def test_the_survey_mission_reads_as_a_survey(self) -> None:
+        # Roadmap item 34: the survey gives its goals as the operator gives one and ends by the way home; the
+        # words say what the vehicle is doing, not TO GOAL and OPERATOR -> HOME.
+        text = OVERLAY.state_text
+        ready = ["MISSION_READINESS ready=true"]
+        goals = ready + ["OPERATOR_COMMAND goal 0.375 22.125 9.875", "SURVEY_GOAL_REACHED",
+                         "OPERATOR_COMMAND goal 1.625 26.375 12.375"]
+        self.assertEqual("SURVEY   GOAL 0", text(ready, False, False, True, True, False, True)[0])
+        self.assertEqual("SURVEY   GOAL 2", text(goals, False, False, True, True, False, True)[0])
+        home = goals + ["OPERATOR_COMMAND home", "GOAL_UNREACHABLE trigger=operator"]
+        self.assertEqual("SURVEY DONE -> HOME", text(home, False, False, True, True, False, True)[0])
+        self.assertEqual("OPERATOR -> HOME", text(home, False, False, True, True, False, False)[0])
+        self.assertEqual("SURVEY COMPLETE",
+                         text(home + ["MISSION_RESULT success=true reason="], False, False, True, True, False, True)[0])
+        # The battery's way home is the battery's on a survey too.
+        self.assertEqual("BATTERY -> HOME",
+                         text(goals + ["GOAL_UNREACHABLE trigger=battery"], False, False, True, True, False, True)[0])
+        runtime = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text()
+        self.assertIn('--sdf-to-map-offset="$(sdf_to_map_offset)" --mission "${mission_type}" \\\n', runtime)
+        render = (REPOSITORY / "tools" / "render_flight.sh").read_text()
+        self.assertIn('survey) target="sim-urban-survey-headless" ;;', render)
+
     def test_the_injected_satellite_fault_stands_beside_the_verdict(self) -> None:
         # The owner's request of 2026-11-05: the viewer sees the fault begin and the verdict follow. The variant's
         # name is the relay's knowledge, on /evaluation, which no production node reads.

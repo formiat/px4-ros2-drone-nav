@@ -14,7 +14,9 @@ not large).
 - the state of the mission as the vehicle decided it, in words in the top
   left corner of the view: TO GOAL, GOAL REACHED, LIGHT UNRELIABLE -> HOME, BATTERY -> HOME,
   GOAL UNREACHABLE -> HOME, DEAD RECKONING,
-  LEVEL DESCENT, LANDED, CRASH.
+  LEVEL DESCENT, LANDED, CRASH; on the survey mission (--mission survey,
+  roadmap item 34) SURVEY with the count of the goals the survey has given
+  the vehicle, SURVEY DONE -> HOME and SURVEY COMPLETE.
   Its sources are the stack's own events (/drone_city_nav/mission_events,
   specification K26, the destruction among them), the navigation's
   readiness and the offboard control mode the vehicle asks of the autopilot
@@ -82,10 +84,13 @@ TRUTH = (0.4, 1.0, 0.4)
 
 def state_text(events: list[str], dead_reckoning: bool, descending: bool,
                airborne: bool, ready: bool,
-               landed: bool = False) -> tuple[str, tuple[float, float, float]]:
+               landed: bool = False, survey: bool = False) -> tuple[str, tuple[float, float, float]]:
     """The words over the vehicle for what it has decided so far. `landed`
     while the vehicle stays where it touched down: the landing's event is
-    kept, the vehicle may fly on (r1184 touched a floor and flew on)."""
+    kept, the vehicle may fly on (r1184 touched a floor and flew on). `survey`
+    on the survey mission (roadmap item 34): its goals are the survey's own,
+    given as the operator gives one, and its way home is the survey's end, so
+    the words say so instead of TO GOAL and OPERATOR -> HOME."""
     if any(event.startswith("VEHICLE_DESTROYED") for event in events):
         return "CRASH", RED
     # Who flies the vehicle (K29): the motors killed, the pilot's mode or the
@@ -105,7 +110,7 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     if any(event.startswith("MISSION_LANDING started=true") for event in events):
         return "LANDING", GREY
     if any(event.startswith("MISSION_RESULT success=true") for event in events):
-        return "GOAL REACHED", GREEN
+        return ("SURVEY COMPLETE" if survey else "GOAL REACHED"), GREEN
     # The camera estimator declares dead reckoning on the pad too, where it
     # has no motion to see; it reads as the flight's only once it is under way.
     if descending and ready:
@@ -120,6 +125,8 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
                 None)
     if home is not None:
         trigger = home.split("trigger=", 1)[-1].split()[0]
+        if survey and trigger == "operator":
+            return "SURVEY DONE -> HOME", GREEN
         words = {"unreliable_light": "LIGHT UNRELIABLE", "battery": "BATTERY",
                  "main_battery": "MAIN BATTERY", "operator": "OPERATOR"}
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
@@ -129,6 +136,9 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
     if "seen=true" in heat:
         return "HEAT SOURCE", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
+        if survey:
+            goals = sum(1 for event in events if event.startswith("OPERATOR_COMMAND goal"))
+            return f"SURVEY   GOAL {goals}", GREEN
         return "TO GOAL", GREEN
     return ("TAKEOFF" if airborne else "ON THE PAD"), GREY
 
@@ -229,6 +239,8 @@ def main() -> int:
     parser.add_argument("--model", required=True)
     parser.add_argument("--sdf-to-map-offset", default="0,0,0",
                         help="added to the simulator's position: the map frame's offset")
+    parser.add_argument("--mission", default="point_to_point",
+                        help="the flight's mission type: survey words the survey's states")
     args = parser.parse_args()
     offset = tuple(float(value) for value in args.sdf_to_map_offset.split(","))
     if len(offset) != 3:
@@ -352,7 +364,7 @@ def main() -> int:
                       math.dist(truth, landed_at) < LANDED_WITHIN_M)
             text, color = state_text(state["events"], state["dead_reckoning"],
                                      state["velocity_mode"], estimate is not None,
-                                     state["ready"], landed)
+                                     state["ready"], landed, args.mission == "survey")
             light = light_text(share, state["seen"])
             charge = charge_text(state["charge"])
             gnss = gnss_text(state["events"], state["gnss_fault"])

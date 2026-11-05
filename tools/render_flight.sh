@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # render_flight.sh SCENARIO FIRST_RUN DIRECTORY [RATE]: one flight of a named scenario (point-to-point, light-lost,
 # light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall, dark-void across it at 12 m (item 31),
-# finals on the held-out finals world (item 33), open-sky on the open sky (item 39);
+# finals on the held-out finals world (item 33), open-sky on the open sky (item 39), survey for the survey mission on
+# Urban (item 34: no goal, the frontiers of the memory, home with the map; the stereo set flew its acceptance at a
+# factor of 0.8, which the caller's variable gives);
 # the stereo set only) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
 # passes through to the flight: the stereo set's smoke flights held 0.8, K25; the smoke scenarios are not flown since
 # 2026-10-24, specification F4)
@@ -16,6 +18,7 @@ case $scenario in
   point-to-point | light-lost | light-failure | low-battery | smoke-blocked | smoke | smoke-rooms | clear) target="sim-urban-${scenario}-headless" ;;
   dark-hall) target="sim-dark-hall-headless" ;;
   dark-void) target="sim-dark-void-headless" ;;
+  survey) target="sim-urban-survey-headless" ;;
   # The held-out finals world (roadmap item 33) and the open sky (item 39): the flight's own targets; the factor's
   # variable and the profile's (LOCALIZATION_PROFILE, GNSS_FAULTS, LIGHT_FAULTS) pass through to the flight.
   finals) target="sim-finals-point-to-point-headless" ;;

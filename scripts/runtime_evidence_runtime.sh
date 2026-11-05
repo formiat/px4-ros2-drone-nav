@@ -233,7 +233,7 @@ start_runtime_evidence_capture() {
   if bool_is_true "${enable_rviz}" && ! bool_is_true "${multi_vehicle_mission}"; then
     python3 "${repo_root}/scripts/evaluation_overlay.py" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
-      --sdf-to-map-offset="$(sdf_to_map_offset)" \
+      --sdf-to-map-offset="$(sdf_to_map_offset)" --mission "${mission_type}" \
       > "${runtime_artifact_dir}/evaluation_overlay.log" 2>&1 &
   fi
   # A flight rendered afterwards (RENDER_BAG=1, scripts/render_flight_video.py):
