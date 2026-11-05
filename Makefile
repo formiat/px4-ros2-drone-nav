@@ -174,9 +174,11 @@ sim-urban-survey-lidar-gui:
 	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-urban-survey-gui
 
 # The survey on the held-out finals world (roadmap items 33 and 34), nothing
-# adapted: the staging area and the way to the tunnels' entrance.
+# adapted: 30 x 60 x 12 m round the point-to-point scenario's start, the long
+# side along the route's first leg (the start inside the world since
+# 2026-11-05; the volume ordered before it lay in the void round the shells).
 FINALS_SURVEY_SCENARIO_PATH := drone_city_nav/config/finals_prize_round_world_07_survey_scenario.json
-FINALS_SURVEY_VOLUME_M := 50,270,18,110,300,30
+FINALS_SURVEY_VOLUME_M := 42,225,25,72,285,37
 
 .PHONY: sim-finals-survey-headless
 sim-finals-survey-headless: build

@@ -1011,6 +1011,173 @@ XL.
 Complete when the chosen airframe flies the camera and the lidar series and
 the light scenarios with no contact, its speeds measured against the x500's.
 
+## 33. Held-Out Worlds: Point-To-Point Flights On The Cave Circuit And The Finals World
+
+**Reopened on 2026-11-05.** The project owner, looking at the finals recording and at the world itself, saw
+the vehicle start behind the location's walls. Measured that day on the truth grids: a world of tunnels and
+caverns is a set of shells in an empty grid; the free voxels joined to the grid's faces, the void round the
+shells (102 million voxels on the finals world, 526 million in the cave), are roofed by the tunnels above them and
+floored by the ones below, and `tools/heldout_scenario.py` took the largest flyable component under a ceiling,
+which was that void. The start and the goal of both scenarios stood on the outside of a tunnel's shell; the
+inside, the staging area's own space (1.12 million voxels on the finals world, 3.26 million in the cave), was never
+flown. Every figure of the record below, the finals survey of item 34 (r2840, r2841) and the recording
+`finals_r2790` describe flights round the outside of the shells: the "round floor" every finals landing touched is
+a tunnel's top. Repaired on 2026-11-05: the tool keeps to the space the world encloses (`outside_of_the_world`: a
+free voxel joined to the grid's faces through free voxels is not the world), both scenarios drawn again with seed
+1, in the route band at the first seed (the finals world: the start at (57.25, 234.75, 28.23), 362.6 m along the
+grid; the cave: (-14.25, 50.25, 2.23), 389.5 m), each start and goal in the staging area's component of the truth
+grid; the finals survey's start and volume moved with its scenario. The flights are to be flown again inside the
+worlds; until they are the item is open, and K55's figures and the register's rows that rest on those flights (its
+row of this day lists them) are unverified. The record of 2026-10-31 follows as it was written.
+
+Closed on 2026-10-31 (the goal of 2026-10-30, part 0): the twenty flights flown and
+tabulated on one commit, every failure read to its rule and repaired or in the register,
+N2 closed. What was asked for and how it was built is kept below as it was written; this
+is what came of it.
+
+**Done on 2026-10-31** (the goal of 2026-10-30, part 0; commits 2d94efc7, 9bffdd05,
+4a1268eb, e4a91d57, cea7a4ab, 6f6015a4 and the closing commit). What was built
+for the test: the scenarios of both worlds drawn from their truth grids by
+`tools/heldout_scenario.py` with a recorded seed (the reachable free component
+at the body's radius plus 0.5 m under a ceiling; the start on a pad over a flat
+patch; the goal 300 to 600 m away along the grid where the band holds a landing
+patch, else the longest pair; the landing patch 4.5 x 4.5 m with the floor within
+a metre, under the goal and around the start); each world's canonical file
+placing the stack's fixed memory box over the world by one rule (the box is a
+location constant of `urban_mvp.yaml`, finding 1 below); the `sim-cave-*` and
+`sim-finals-*` targets with nothing of the urban location; the true pose
+recorded in the map frame; the mission check judged without the urban route
+volume (the acceptance metrics, the mean speed and the dynamics with every
+single-vehicle mission check; the snapshot only where a volume is stated).
+
+The twenty flights on one commit (e4a91d57, the imperfections profile, seeds
+the run numbers; the finals camera flights at `REAL_TIME_FACTOR=0.5`, K25,
+since the world's visuals hold the stereo render under the floor, r2571 to
+r2573 voided):
+
+| World | Set | Run | R1 | R2, truth at B | Speed, m/s | Read to |
+|---|---|---|---|---|---|---|
+| Cave | stereo | r2561 | no contact | no goal | — | K1 (6.4 m reset); then PX4 failsafe |
+| Cave | stereo | r2562 | contact at landing | 28.0 m | 1.506 | VIO scale 1.108; K30 |
+| Cave | stereo | r2563 | no contact | no goal | — | K1 (4.7 m) |
+| Cave | stereo | r2564 | no contact | no goal (truth 1.9 m from B) | — | K1 (9.3 m) |
+| Cave | stereo | r2565 | no contact | no goal | — | K1 (7.9 m) |
+| Cave | lidar | r2566 | no contact | no goal | — | the lidar's scans lost in the open (LIO); PX4 failsafe |
+| Cave | lidar | r2567 | contact at 4.1 m/s | no goal | — | K1 reset 3.5 m, the horizon flown to its lease's end (repaired, cea7a4ab) |
+| Cave | lidar | r2568 | no contact | no goal | — | scans lost (LIO) |
+| Cave | lidar | r2569 | no contact, landed | 1.28 m | 4.314 | clean |
+| Cave | lidar | r2570 | no contact | no goal | — | scans lost (LIO) |
+| Finals | stereo | r2575 | contact at landing | 2.07 m | 1.100 | K30 (round tunnel floor) |
+| Finals | stereo | r2576 | contact at landing | 1.74 m | 0.984 | K30 |
+| Finals | stereo | r2577 | contact at landing | 1.87 m | 1.034 | K30 |
+| Finals | stereo | r2578 | contact at landing | 0.66 m | 1.074 | K30 |
+| Finals | stereo | r2579 | contact at landing | 0.83 m | 1.017 | K30 |
+| Finals | lidar | r2580 | no contact, landed | 0.58 m | 3.071 | clean |
+| Finals | lidar | r2581 | contact at landing | 0.39 m | 3.315 | K30 |
+| Finals | lidar | r2582 | contact at landing | 1.05 m | 3.797 | K30 |
+| Finals | lidar | r2583 | contact at landing | 0.37 m | 3.487 | K30 |
+| Finals | lidar | r2584 | contact at 8.6 m/s | no goal | — | K1 reset 7.5 m, the horizon flown to its lease's end (repaired) |
+
+The groups the K1 repair touched, flown again on 6f6015a4: the cave stereo group r2585 to r2589 (five without contact; four resets of 4.7 to 9.9 m braked at once; r2587 at B by its estimate, 15.4 m off by the truth), the cave lidar group r2590 to r2594 (none at B: r2590 called destroyed on its pad by a 4.6 m jump of the estimate at rest; four flew out of the cave into the open air and lost their scans), the finals lidar group r2595 to r2599 (five of five at B within 0.42 to 0.87 m, 3.52 m/s; five contacts at touchdown on the round floor). The urban
+acceptance on 6f6015a4: the stereo set r2601 to r2605 five of five without contact, B by the truth 1.75, 2.65, 3.80, 2.63, 2.08 m (four misses the estimate's, the register's drift row), mean 1.280 m/s; the lidar r2606 to r2610 five of five, B 0.14 to 0.76 m, mean 2.259 m/s (0.9 percent under the target, the attempt recorded in the register); one void (r2600, the watchdog). The three earlier cave series (r2542 to
+r2560, on earlier pairs: r2549 to r2552 reached the first goal within 1.3 m and
+touched the corner wall under it on the landing descent) are the record behind
+the landing patch.
+
+The rules read from the failures (each in the register, `technical_debt.md`):
+
+1. The obstacle memory's box (345 x 525 x 40 m at (-30,-30,0)) is a location
+   constant of the configuration; a held-out world is flown through the part
+   the box covers, placed by its canonical file (the cave's 225 m of height
+   stay unflown).
+2. The stereo estimator under the imperfections profile drifts in the cave by
+   3 to 12 % in scale and 1 to 7 degrees (B missed by 4 to 28 m; the register's
+   heading-drift row; item 40).
+3. K1: the autopilot's resets of 3.6 to 9.9 m close the navigation in the cave
+   (7 of 10 stereo flights, 2 lidar); the vehicle then holds until the
+   autopilot's failsafe. The number is urban's (0.4 to 4.1 m); the re-anchor
+   asked on 2026-09-25 is not built. The owner's call.
+4. K1's closing published nothing to the offboard, which flew the resident
+   horizon to its lease's end: a defect everywhere, repaired (cea7a4ab).
+5. K30: the landing descends on the estimate, blind, and the contact exception
+   knows a flat floor: contacts on the cave's slopes and the finals' round
+   tunnel floor at touchdown (13 of 20). The owner's call.
+6. The lidar set in a volume wider than its reach (the cave's open air above
+   the entrance): the LIO loses its scans, the autopilot its position, the
+   failsafe lands blind; and on 4 starts the LIO's first registration failed
+   at rest (matched 0.01 to 0.11, the inertial speed 0.26 to 3 m/s at rest;
+   seeds 2566, 2568, 2570, 2590). Item 31's void is the stereo set's.
+7. The first step off the pad into unseen space (r2554) and the route through
+   unknown into the sky: I1 holds, and the braking contract did not cover a
+   floor under the pair's axis.
+
+N2 is closed by the measurement: the stack's code holds no location constant
+(the cave and the finals flew the urban code unchanged); its configuration
+holds one (the memory box); its rules K1 and K30 and the lidar set's void are
+urban's.
+
+
+**Type:** validation without a vehicle, general; the first of the directions
+of the discussion of 2026-10-19 with the project owner (recorded 2026-10-24
+at the owner's word, with items 34 and 35).
+
+**Hard prerequisites:** none. The two worlds are versioned release artifacts
+and load as they are ([environment_candidates.md](environment_candidates.md),
+[scenarios.md](scenarios.md)); the flights need no static map (the no-static
+ESDF of item 12), so item 11 is not needed for them.
+
+**Validation environment:** `cave_circuit_practice_01` and
+`finals_prize_round_world_07`, never flown. `urban_circuit_practice_01` is
+the learning set; the dark hall is the only other world flown, and it is
+small.
+
+The risk this item answers: every flight of the project has been flown on
+one location, and the specification's forty K rules are each justified by
+flights there. Whether they generalise or fit the location cannot be told
+from the location itself; the register has carried this as N2 since
+2026-09-26. The held-out test is the plain one: fly the other worlds with
+nothing changed for them, and read what breaks.
+
+The rules of the test:
+
+1. **Nothing adapted.** No parameter, threshold or scenario constant is
+   changed for a held-out world before its flights; the urban scenario's
+   location constants that exist today are named and kept out of these
+   scenarios (the route volume and the snapshot bounds of the Makefile's
+   urban targets, the smoke zones of F4, the urban start and goal). What a
+   held-out world then needs is a finding, not a tuning.
+2. **The scenarios.** Point-to-point scenarios in the v2 schema (as
+   `dark_hall_point_to_point_scenario.json`), the start and the goal drawn
+   with a recorded seed from the reachable free component of each world's
+   truth voxelization (the flood of K16 on the truth grid with the body's
+   radius), the route's length in the urban mission's band (300 to 600 m),
+   the goal where the light's reach makes sense for the camera set; the
+   pairs are written into the scenario files, so a flight is reproducible.
+   A Makefile target a world, headless, both sensor sets.
+3. **The series.** Five single flights a world and a sensor set, through
+   `tools/fly_until_valid.sh` (A4, A7): twenty flights. R1 and R2 are the
+   gates (no contact; B in truth within 2 m); the mean speed is measured and
+   written, not gated: R3's numbers are the urban mission's, and a number a
+   held-out world cannot reach is a finding about the rule that holds it.
+4. **Every failure read to its rule.** A flight that fails names the K rule
+   or the law that failed it, and the rule is classified: a defect that
+   would fail anywhere is repaired, on all worlds, and the urban series flown
+   again (the acceptance rule); a rule that is the urban location's goes to
+   the register with its class and the owner's call. No rule is relaxed on
+   the held-out world to make the flight pass.
+5. **The truth grids.** The 0.5 m Occupancy3D of each world exists
+   (environment_candidates.md's table); the body's true clearance
+   (`tools/body_truth_clearance.py`) wants 0.25 m, built as
+   `log/tools/truth25` was, if a flight's contact or crawl needs it.
+
+Size: S for the scenarios and the truth grids; the flights about three
+hours a sensor set with the voids; M with the reading of the failures.
+
+This item is complete when the twenty flights are flown and tabulated (the
+world, the sensor set, the result by R1 and R2, the speed, the true position
+at B, the closest true clearance), every failure has its rule named and
+either repaired or in the register, and N2 is closed.
+
 ## 36. The Simulator Waits For The Onboard Loop: Deterministic Flights
 
 **Type:** infrastructure of the simulation, deferred; weighed on 2026-10-24
@@ -4482,156 +4649,6 @@ in five of five flights on the stereo set with no contact, the cold room is
 still crossed, the standoff is a measured number in the specification, and
 the thermal core's reading is the decision's evidence in every flight.
 
-### 33. Held-Out Worlds: Point-To-Point Flights On The Cave Circuit And The Finals World (Completed)
-
-Closed on 2026-10-31 (the goal of 2026-10-30, part 0): the twenty flights flown and
-tabulated on one commit, every failure read to its rule and repaired or in the register,
-N2 closed. What was asked for and how it was built is kept below as it was written; this
-is what came of it.
-
-**Done on 2026-10-31** (the goal of 2026-10-30, part 0; commits 2d94efc7, 9bffdd05,
-4a1268eb, e4a91d57, cea7a4ab, 6f6015a4 and the closing commit). What was built
-for the test: the scenarios of both worlds drawn from their truth grids by
-`tools/heldout_scenario.py` with a recorded seed (the reachable free component
-at the body's radius plus 0.5 m under a ceiling; the start on a pad over a flat
-patch; the goal 300 to 600 m away along the grid where the band holds a landing
-patch, else the longest pair; the landing patch 4.5 x 4.5 m with the floor within
-a metre, under the goal and around the start); each world's canonical file
-placing the stack's fixed memory box over the world by one rule (the box is a
-location constant of `urban_mvp.yaml`, finding 1 below); the `sim-cave-*` and
-`sim-finals-*` targets with nothing of the urban location; the true pose
-recorded in the map frame; the mission check judged without the urban route
-volume (the acceptance metrics, the mean speed and the dynamics with every
-single-vehicle mission check; the snapshot only where a volume is stated).
-
-The twenty flights on one commit (e4a91d57, the imperfections profile, seeds
-the run numbers; the finals camera flights at `REAL_TIME_FACTOR=0.5`, K25,
-since the world's visuals hold the stereo render under the floor, r2571 to
-r2573 voided):
-
-| World | Set | Run | R1 | R2, truth at B | Speed, m/s | Read to |
-|---|---|---|---|---|---|---|
-| Cave | stereo | r2561 | no contact | no goal | — | K1 (6.4 m reset); then PX4 failsafe |
-| Cave | stereo | r2562 | contact at landing | 28.0 m | 1.506 | VIO scale 1.108; K30 |
-| Cave | stereo | r2563 | no contact | no goal | — | K1 (4.7 m) |
-| Cave | stereo | r2564 | no contact | no goal (truth 1.9 m from B) | — | K1 (9.3 m) |
-| Cave | stereo | r2565 | no contact | no goal | — | K1 (7.9 m) |
-| Cave | lidar | r2566 | no contact | no goal | — | the lidar's scans lost in the open (LIO); PX4 failsafe |
-| Cave | lidar | r2567 | contact at 4.1 m/s | no goal | — | K1 reset 3.5 m, the horizon flown to its lease's end (repaired, cea7a4ab) |
-| Cave | lidar | r2568 | no contact | no goal | — | scans lost (LIO) |
-| Cave | lidar | r2569 | no contact, landed | 1.28 m | 4.314 | clean |
-| Cave | lidar | r2570 | no contact | no goal | — | scans lost (LIO) |
-| Finals | stereo | r2575 | contact at landing | 2.07 m | 1.100 | K30 (round tunnel floor) |
-| Finals | stereo | r2576 | contact at landing | 1.74 m | 0.984 | K30 |
-| Finals | stereo | r2577 | contact at landing | 1.87 m | 1.034 | K30 |
-| Finals | stereo | r2578 | contact at landing | 0.66 m | 1.074 | K30 |
-| Finals | stereo | r2579 | contact at landing | 0.83 m | 1.017 | K30 |
-| Finals | lidar | r2580 | no contact, landed | 0.58 m | 3.071 | clean |
-| Finals | lidar | r2581 | contact at landing | 0.39 m | 3.315 | K30 |
-| Finals | lidar | r2582 | contact at landing | 1.05 m | 3.797 | K30 |
-| Finals | lidar | r2583 | contact at landing | 0.37 m | 3.487 | K30 |
-| Finals | lidar | r2584 | contact at 8.6 m/s | no goal | — | K1 reset 7.5 m, the horizon flown to its lease's end (repaired) |
-
-The groups the K1 repair touched, flown again on 6f6015a4: the cave stereo group r2585 to r2589 (five without contact; four resets of 4.7 to 9.9 m braked at once; r2587 at B by its estimate, 15.4 m off by the truth), the cave lidar group r2590 to r2594 (none at B: r2590 called destroyed on its pad by a 4.6 m jump of the estimate at rest; four flew out of the cave into the open air and lost their scans), the finals lidar group r2595 to r2599 (five of five at B within 0.42 to 0.87 m, 3.52 m/s; five contacts at touchdown on the round floor). The urban
-acceptance on 6f6015a4: the stereo set r2601 to r2605 five of five without contact, B by the truth 1.75, 2.65, 3.80, 2.63, 2.08 m (four misses the estimate's, the register's drift row), mean 1.280 m/s; the lidar r2606 to r2610 five of five, B 0.14 to 0.76 m, mean 2.259 m/s (0.9 percent under the target, the attempt recorded in the register); one void (r2600, the watchdog). The three earlier cave series (r2542 to
-r2560, on earlier pairs: r2549 to r2552 reached the first goal within 1.3 m and
-touched the corner wall under it on the landing descent) are the record behind
-the landing patch.
-
-The rules read from the failures (each in the register, `technical_debt.md`):
-
-1. The obstacle memory's box (345 x 525 x 40 m at (-30,-30,0)) is a location
-   constant of the configuration; a held-out world is flown through the part
-   the box covers, placed by its canonical file (the cave's 225 m of height
-   stay unflown).
-2. The stereo estimator under the imperfections profile drifts in the cave by
-   3 to 12 % in scale and 1 to 7 degrees (B missed by 4 to 28 m; the register's
-   heading-drift row; item 40).
-3. K1: the autopilot's resets of 3.6 to 9.9 m close the navigation in the cave
-   (7 of 10 stereo flights, 2 lidar); the vehicle then holds until the
-   autopilot's failsafe. The number is urban's (0.4 to 4.1 m); the re-anchor
-   asked on 2026-09-25 is not built. The owner's call.
-4. K1's closing published nothing to the offboard, which flew the resident
-   horizon to its lease's end: a defect everywhere, repaired (cea7a4ab).
-5. K30: the landing descends on the estimate, blind, and the contact exception
-   knows a flat floor: contacts on the cave's slopes and the finals' round
-   tunnel floor at touchdown (13 of 20). The owner's call.
-6. The lidar set in a volume wider than its reach (the cave's open air above
-   the entrance): the LIO loses its scans, the autopilot its position, the
-   failsafe lands blind; and on 4 starts the LIO's first registration failed
-   at rest (matched 0.01 to 0.11, the inertial speed 0.26 to 3 m/s at rest;
-   seeds 2566, 2568, 2570, 2590). Item 31's void is the stereo set's.
-7. The first step off the pad into unseen space (r2554) and the route through
-   unknown into the sky: I1 holds, and the braking contract did not cover a
-   floor under the pair's axis.
-
-N2 is closed by the measurement: the stack's code holds no location constant
-(the cave and the finals flew the urban code unchanged); its configuration
-holds one (the memory box); its rules K1 and K30 and the lidar set's void are
-urban's.
-
-
-**Type:** validation without a vehicle, general; the first of the directions
-of the discussion of 2026-10-19 with the project owner (recorded 2026-10-24
-at the owner's word, with items 34 and 35).
-
-**Hard prerequisites:** none. The two worlds are versioned release artifacts
-and load as they are ([environment_candidates.md](environment_candidates.md),
-[scenarios.md](scenarios.md)); the flights need no static map (the no-static
-ESDF of item 12), so item 11 is not needed for them.
-
-**Validation environment:** `cave_circuit_practice_01` and
-`finals_prize_round_world_07`, never flown. `urban_circuit_practice_01` is
-the learning set; the dark hall is the only other world flown, and it is
-small.
-
-The risk this item answers: every flight of the project has been flown on
-one location, and the specification's forty K rules are each justified by
-flights there. Whether they generalise or fit the location cannot be told
-from the location itself; the register has carried this as N2 since
-2026-09-26. The held-out test is the plain one: fly the other worlds with
-nothing changed for them, and read what breaks.
-
-The rules of the test:
-
-1. **Nothing adapted.** No parameter, threshold or scenario constant is
-   changed for a held-out world before its flights; the urban scenario's
-   location constants that exist today are named and kept out of these
-   scenarios (the route volume and the snapshot bounds of the Makefile's
-   urban targets, the smoke zones of F4, the urban start and goal). What a
-   held-out world then needs is a finding, not a tuning.
-2. **The scenarios.** Point-to-point scenarios in the v2 schema (as
-   `dark_hall_point_to_point_scenario.json`), the start and the goal drawn
-   with a recorded seed from the reachable free component of each world's
-   truth voxelization (the flood of K16 on the truth grid with the body's
-   radius), the route's length in the urban mission's band (300 to 600 m),
-   the goal where the light's reach makes sense for the camera set; the
-   pairs are written into the scenario files, so a flight is reproducible.
-   A Makefile target a world, headless, both sensor sets.
-3. **The series.** Five single flights a world and a sensor set, through
-   `tools/fly_until_valid.sh` (A4, A7): twenty flights. R1 and R2 are the
-   gates (no contact; B in truth within 2 m); the mean speed is measured and
-   written, not gated: R3's numbers are the urban mission's, and a number a
-   held-out world cannot reach is a finding about the rule that holds it.
-4. **Every failure read to its rule.** A flight that fails names the K rule
-   or the law that failed it, and the rule is classified: a defect that
-   would fail anywhere is repaired, on all worlds, and the urban series flown
-   again (the acceptance rule); a rule that is the urban location's goes to
-   the register with its class and the owner's call. No rule is relaxed on
-   the held-out world to make the flight pass.
-5. **The truth grids.** The 0.5 m Occupancy3D of each world exists
-   (environment_candidates.md's table); the body's true clearance
-   (`tools/body_truth_clearance.py`) wants 0.25 m, built as
-   `log/tools/truth25` was, if a flight's contact or crawl needs it.
-
-Size: S for the scenarios and the truth grids; the flights about three
-hours a sensor set with the voids; M with the reading of the failures.
-
-This item is complete when the twenty flights are flown and tabulated (the
-world, the sensor set, the result by R1 and R2, the speed, the true position
-at B, the closest true clearance), every failure has its rule named and
-either repaired or in the register, and N2 is closed.
-
 ### 38. Faster Than Real Time On A Stronger Host (Completed)
 
 Done on 2026-11-03 (the goal of 2026-11-02, part 1; 08f9e50a and the records):
@@ -4723,7 +4740,7 @@ mode (`docs/navigation_pipeline.md`, section 9), the rules in K59 under F20, the
 | lidar | r2830 to r2834 | none | 5 of 5 | 0.763 | 0.23 to 0.59 m | 2 to 5 goals, 30 to 46 s, 54 to 72 m |
 | cameras (REAL_TIME_FACTOR 0.8) | r2835 to r2839 | none | 5 of 5 | 0.763 to 0.765 | 0.42 to 0.82 m | 38 to 59 goals, 177 to 229 s, 176 to 247 m |
 
-On the held-out finals world (the staging area and the way to the tunnels' entrance, 60 x 30 x 12 m, the lidar, 02a0859b) the survey covered 0.993 of the volume's reachable truth in both flights (r2840, r2841), the goals in truth within 0.51 m, and both ended on a contact: the vehicle's top under a grating platform 28 m up that the lidar sees through, its cells unknown in the memory, taken by the survey for a frontier with the vantage above it, the planner's way to it through them (the register's row).
+On the held-out finals world (the staging area and the way to the tunnels' entrance, 60 x 30 x 12 m, the lidar, 02a0859b) the survey covered 0.993 of the volume's reachable truth in both flights (r2840, r2841), the goals in truth within 0.51 m, and both ended on a contact: the vehicle's top under a grating platform 28 m up that the lidar sees through, its cells unknown in the memory, taken by the survey for a frontier with the vantage above it, the planner's way to it through them (the register's row). Read again on 2026-11-05: those two flights surveyed the void round the world's shells, their start outside the world (roadmap item 33's reopening); the finals survey is to be flown again from the start inside it.
 
 Not done as the item asked: the volume is not surveyed whole. Its parts reached only round the
 outside or through the openings of the start hall's floor get no frontier with a vantage (the

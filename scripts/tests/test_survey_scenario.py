@@ -90,11 +90,15 @@ class SurveyScenarioTest(unittest.TestCase):
     def test_the_finals_survey_orders_its_volume_and_reads_the_truth_in_the_sdf_frame(self) -> None:
         scenario_path = REPOSITORY / "drone_city_nav/config/finals_prize_round_world_07_survey_scenario.json"
         scenario = SCENARIO_MODULE.load_point_to_point_scenario(scenario_path)
-        self.assertEqual(scenario["survey_volume_m"], (50.0, 270.0, 18.0, 110.0, 300.0, 30.0))
-        self.assertEqual(scenario["mission_goal_sequence_m"], ((73.75, 296.25, 23.23),))
+        self.assertEqual(scenario["survey_volume_m"], (42.0, 225.0, 25.0, 72.0, 285.0, 37.0))
+        self.assertEqual(scenario["mission_goal_sequence_m"], ((57.25, 234.75, 30.23),))
+        # The survey starts where the point-to-point scenario does, inside the world's shells.
+        flight = json.loads((REPOSITORY / "drone_city_nav/config/finals_prize_round_world_07_point_to_point_scenario.json")
+                            .read_text(encoding="utf-8"))
+        self.assertEqual(tuple(flight["vehicle"]["map_start_m"]), scenario["map_start_m"])
         self.assertEqual(survey_coverage.scenario_frame(scenario_path), ((1.0, 39.0), (6.5, -233.0, -37.5)))
         makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
-        self.assertIn("FINALS_SURVEY_VOLUME_M := 50,270,18,110,300,30\n", makefile)
+        self.assertIn("FINALS_SURVEY_VOLUME_M := 42,225,25,72,285,37\n", makefile)
         recipe = makefile[makefile.index("sim-finals-survey-headless: build"):]
         recipe = recipe[:recipe.index("\n\n")]
         for text in ("MISSION_TYPE=survey", "TRUTH_OCCUPANCY_3D_PATH=$(FINALS_TRUTH_OCCUPANCY_3D)",

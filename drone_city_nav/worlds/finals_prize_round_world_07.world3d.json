@@ -13,7 +13,7 @@
     "sdf_z_offset_m": -37.5
   },
   "navigation": {
-    "initial_altitude_m": 23.23,
+    "initial_altitude_m": 30.23,
     "minimum_target_z_m": 1.0,
     "maximum_target_z_m": 39.0
   },

@@ -37,6 +37,34 @@ def target_recipe(makefile: str, target: str) -> str:
     return match.group(1)
 
 
+class OutsideOfTheWorldTest(unittest.TestCase):
+    def test_the_void_round_a_shell_is_outside_and_what_it_encloses_is_not(self) -> None:
+        import numpy
+        spec = importlib.util.spec_from_file_location("heldout_scenario", REPOSITORY / "tools/heldout_scenario.py")
+        tool = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(tool)
+        except ImportError as error:
+            # The tool is the host's (tools/README.md); the dev container's NumPy 2 does not load the
+            # distribution's SciPy, built against NumPy 1 (the register's row).
+            self.skipTest(f"scipy does not load in this interpreter: {error}".splitlines()[0])
+        occupied = numpy.zeros((20, 20, 20), dtype=bool)
+        # A closed shell, a room of 6 x 6 x 6 cells inside it; a slab over the void beside it (a
+        # tunnel overhead: the void has a ceiling and a floor too, the rule that failed).
+        occupied[5:13, 5:13, 5:13] = True
+        occupied[6:12, 6:12, 6:12] = False
+        occupied[14:19, 5:13, 15] = True
+        occupied[14:19, 5:13, 3] = True
+        outside = tool.outside_of_the_world(occupied)
+        self.assertFalse(outside[8, 8, 8], "the room inside the shell")
+        self.assertTrue(outside[16, 8, 8], "the void between the slabs")
+        self.assertTrue(outside[0, 0, 0])
+        self.assertFalse(outside[5, 5, 5], "an occupied voxel is not free space")
+        # A hole in the shell lets the outside in.
+        occupied[5, 8, 8] = False
+        self.assertTrue(tool.outside_of_the_world(occupied)[8, 8, 8])
+
+
 class HeldOutScenariosTest(unittest.TestCase):
     def test_the_scenarios_are_drawn_from_the_truth_grids_in_the_route_band(self) -> None:
         for short, (world_id, gazebo_world_name, grid) in WORLDS.items():
@@ -67,6 +95,9 @@ class HeldOutScenariosTest(unittest.TestCase):
                                      max(attempt["farthest_goal_m"] for attempt in selection["attempts"]))
                 self.assertLessEqual(selection["route_length_m"], 600.0)
                 self.assertEqual(selection["landing_patch_m"], 4.5)
+                # Inside the world: the void round its shells is not flown (until 2026-11-05 both
+                # scenarios stood on the outside of a tunnel's shell).
+                self.assertEqual(selection["space"], "enclosed by the world's shells")
                 self.assertLessEqual(selection["straight_distance_m"], selection["route_length_m"])
                 self.assertGreaterEqual(selection["goal_over_floor_m"], 1.5)
                 self.assertLessEqual(selection["goal_over_floor_m"], 3.0)

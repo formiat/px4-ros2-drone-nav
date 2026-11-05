@@ -25,6 +25,9 @@ release names the asset tags it was validated with.
 - The ordinary flight carries a steady light (the owner's decision of 2026-11-05): `LIGHT_FAULTS` is `none`
   unless a scenario names a failure; the moderate flicker stays in the long flight under failures and on request.
   The recording's overlay names the satellite fault being injected beside the vehicle's own verdict.
+- The held-out scenarios start inside their worlds: `tools/heldout_scenario.py` keeps to the space the world's
+  shells enclose (until 2026-11-05 it took the void round the tunnels, and the finals and cave flights flew outside
+  the worlds); both scenarios and the finals survey are drawn again, roadmap item 33 is reopened.
 - The estimators read their inputs the same in a flight and in its replay (a frame or a scan waits for
   the streams past its stamp, the rest and the pose's declaration by stamps, deep queues for the
   barometer and the magnetometer): the lidar set replays within 0.012 m at p95, the stereo set to 0.000.

@@ -17,8 +17,13 @@ The rule's result is the canonical world's map_to_sdf offset; the stack's box is
 
 The space. A voxel is flyable when no occupied voxel lies within the body's radius 0.55 m plus 0.5 m of clearance
 (1.05 m: the flood of K16 with item 33's clearance), it lies inside the box by that same clearance (the memory holds
-nothing beyond its faces), and something occupied stands above it in its column (a ceiling: the sky over a terrain is not the world). The start's component is the largest connected
-set of flyable voxels. Everything is measured on the truth grid: the result is reproducible from the grid and the seed.
+nothing beyond its faces), something occupied stands above it in its column (a ceiling: the sky over a terrain is not
+the world), and it is enclosed by the world: not joined to the grid's faces through free voxels. A world of tunnels
+and caverns is a set of shells in an empty grid, and the void round the shells is free, roofed by the tunnels above
+it, floored by the ones below and far larger than the world's inside: until 2026-11-05 the largest flyable component
+was that void, and the start and the goal of both held-out worlds stood on the outside of a tunnel's shell (the
+flights r2561 to r2610, r2788 to r2790, r2840 and r2841). The start's component is the largest connected set of
+flyable voxels. Everything is measured on the truth grid: the result is reproducible from the grid and the seed.
 
 The start: a flat 3 x 3 m patch of floor (one floor voxel top under its nine cells, nothing occupied between it and
 the seed cell), the launch pad 3 x 3 x 1 m with its top 0.5 m over the floor voxel's top (the dark hall's pad stands
@@ -86,6 +91,14 @@ def dense_occupancy(path: Path):
     return bounds, occupied
 
 
+def outside_of_the_world(occupied):
+    """The free voxels joined to the grid's faces through free voxels (six neighbours): the void round the world's
+    shells, which the vehicle never enters. What a shell encloses is the world; a voxel's size closes the meshes'
+    seams (both held-out worlds are tight at 0.5 m)."""
+    labels, _ = ndimage.label(~np.pad(occupied, 1, constant_values=False))
+    return (labels == labels[0, 0, 0])[1:-1, 1:-1, 1:-1]
+
+
 def memory_box():
     """The obstacle memory's box in map coordinates, and the takeoff climb, from the node configuration."""
     configuration = yaml.safe_load((REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text())
@@ -146,8 +159,10 @@ def select(args):
            max(box_low_cell[2], 0):box_high_cell[2]] = True
     # The body's clearance inside the box too: the memory holds nothing beyond its faces.
     inside_clear = ndimage.binary_erosion(inside, iterations=int(math.ceil((BODY_RADIUS_M + CLEARANCE_M) / resolution)))
-    flyable = (distance >= BODY_RADIUS_M + CLEARANCE_M) & covered & inside_clear
-    del distance
+    enclosed = ~outside_of_the_world(occupied)[low[0]:high[0], low[1]:high[1], low[2]:high[2]]
+    flyable = (distance >= BODY_RADIUS_M + CLEARANCE_M) & covered & inside_clear & enclosed
+    print(f"enclosed free voxels in the sub-volume {int((enclosed & ~sub).sum())}")
+    del distance, enclosed
     labels, count = ndimage.label(flyable)
     sizes = np.bincount(labels.ravel())
     sizes[0] = 0
@@ -343,6 +358,7 @@ def select(args):
             "goal_under_ceiling_m": round(float(goal_ceiling_sdf - goal_sdf[2]), 2),
             "landing_patch_m": (2 * LANDING_CELLS + 1) * resolution,
             "component_voxels": int(sizes[component_label]),
+            "space": "enclosed by the world's shells",
             "memory_box_in_world_m": [box_low_sdf.round(1).tolist(), box_high_sdf.round(1).tolist()],
         },
     }
