@@ -538,6 +538,16 @@ Stages, as seen on 2026-09-27:
   horizon, bounded by the speed measured for it, so that a closing body is
   met at the distance its closing speed demands. The exit guarantee holds: a
   body that moves onto the vehicle's own position does not freeze it.
+- **Stage 2a (weighed on 2026-11-05, after stage 2 is flown). The swept
+  space narrowed by the body's measured velocity.** The field's usual
+  answer to other agents is a track and a predicted path (multi-object
+  tracking, a constant-velocity or a learned prediction). Stage 2's swept
+  space, bounded by the measured speed in every direction, is the
+  prediction the invariants allow without a model of intent; where it costs
+  speed (a body walking away is met as if it could turn back at once), the
+  sweep is narrowed along the velocity the scans measured, with the turn
+  the body could make over the horizon kept inside it. A measurement, as
+  every other layer: no track outlives its evidence.
 - **Stage 3. The door flown out and back.** Closed on the way out, open on
   the way back: the route through it is found from what the vehicle saw last,
   with no reset of the memory.
@@ -903,13 +913,53 @@ What is missing, in order:
 Steps 1 to 3 need no vehicle and no board beyond an arm64 machine; step 4
 needs the bench board. An x86 board spares the port at a cost in mass.
 
+### Calibration, Time Synchronisation And The Bench In The Loop (weighed on 2026-11-05)
+
+Recorded at the project owner's word after a reading of what the field asks of
+a real sensor set (a list of the skills hired for in 2026; a conference talk
+on PX4 with ROS 2 and a GPU's stereo VIO, whose author names the IMU's noise
+figures and the transforms as where a real vehicle's estimate goes wrong).
+Blocks 3 and 4 gain four steps, none of them begun; the first three need the
+sensors on a bench, the fourth the bench board alone:
+
+- **The calibration as a procedure.** The pair's intrinsics, distortion and
+  baseline, the camera-to-IMU rotation, lever arm and time offset, by a
+  target (Kalibr or its equal), written into the one source of the mounts
+  (`config/sensor_extrinsics.yaml`, K61) and the pair's calibration (K33); the
+  time-of-flight ring and the lidar against the body likewise. The online
+  estimate block 4 names (the frames' time offset and the camera-to-IMU
+  extrinsics, as OpenVINS and VINS-Fusion do) is then read against an offline
+  figure, not trusted alone. The procedure and its repeatability (the same
+  figures from two sessions, within stated bounds) are the deliverable, not
+  one set of numbers.
+- **The IMU's noise by its Allan variance.** A recording of hours at rest,
+  the white noise and the bias walk of each axis read from it, in place of the
+  figures the simulator's imperfections carry today (K52: the VN-100 of the NTU
+  VIRAL recording) and of the estimators' noise parameters; the same tool over
+  the simulated IMU as its control (it must return what the model was given).
+- **The time in hardware.** One trigger for the pair (its two stamps are taken
+  as equal today), the exposure's midpoint stamped on the IMU's clock (a
+  trigger line or PPS; PTP where two computers share the sensors), the
+  residual offset measured against the calibration's; and the autopilot's
+  stream at every sample on the board's own PX4 build (the DDS client's rate
+  limit of K53, which `scripts/setup_px4_autopilot.sh` sets for the simulator).
+- **The bench in the loop.** The stack on the bench board, the simulator and
+  the autopilot's SITL on the workstation, the DDS link between them a real
+  network: the tick, the transport and the onboard budget (K53) measured on
+  the target computer in a closed loop, flights and all, before any
+  autopilot hardware. It stands between step 4 of the arm64 build (recorded
+  data on the board) and the HITL with a real Pixhawk; the vehicle's buses
+  (DroneCAN for the light's driver and the peripherals, the radio) are listed
+  with it.
+
 The hardware a vehicle could be built from, what fits and why, and what it
 costs: [hardware_builds.md](hardware_builds.md).
 
 Order: block 1 in the simulator; the build split, the arm64 build and a
-launch on recorded data; cameras on a bench; HITL with a real Pixhawk; tethered flights in a
-net, manual first, then a hold, then a short route. Months of one person's
-work; the first two steps cost nothing.
+launch on recorded data; the bench in the loop; cameras on a bench, their
+calibration, the IMU's Allan variance and the time in hardware; HITL with a
+real Pixhawk; tethered flights in a net, manual first, then a hold, then a
+short route. Months of one person's work; the first two steps cost nothing.
 
 ## 30. The Airframe's Size
 
@@ -1395,6 +1445,105 @@ drift while unaided (4 percent of the path, the worst measured) lends the
 trust's normalisation its allowance and inflates the whole window's
 translation before the fix is fused (584d4341, 4c8ca7eb, e6b6d563). Stages
 3 to 5 remain.
+
+## 41. Loop Closure: A Pose Graph Over The Flight's Keyframes
+
+**Type:** localization, general; deferred, recorded on 2026-11-05 at the
+project owner's word (the field's list of what an estimator is expected to
+carry: SLAM with loop closure, pose graphs and non-linear optimisation).
+Not proposed before a mission needs it; the measurement of stage 0 says when.
+
+**Hard prerequisites:** items 13, 16 and 40 (the two estimators and the
+registration against the vehicle's own map); item 34's survey mission and
+the way home of item 19 for routes that return over seen ground; the replay
+of the whole stack (K62) for stage 0. **Validation prerequisite:** item 39
+for the kilometres where a drift grows.
+
+**Validation environment:** any route that returns: the survey mission, B
+and back, the open sky's 1.6 km flown as a loop; the real recordings of
+item 25 for the references.
+
+Both estimators are odometries: their error has no bound on a first pass
+(the register's row). What holds it today is measured and partial: the
+lidar-inertial estimate registers every scan against its own submap and
+came to 0.1 to 0.2 m over 400 m, which is why item 13 deferred the closure;
+the stereo estimate holds its heading by the magnetometer's prior (K60) and
+its position by the registration along the way (item 40, which reads no
+drift on a one-way route, K57), and drifts 1.1 to 3.8 percent of the path
+without the satellite signal over the open sky (item 39). A loop closure is
+the measurement that says "this place was seen before, from there", and a
+pose graph is what spreads its correction over the flight.
+
+The stages:
+
+0. **The measurement.** Over recorded flights that return (the survey's
+   flights, B and back, a loop on the open sky), replayed from their bags:
+   the estimate's error at each return against the truth, per set and per
+   length, with and without item 40's registration. The item goes on only
+   where that error decides a mission (a goal missed, a memory doubled).
+1. **The recognition.** A place seen again, recognised from what the
+   vehicle keeps: the stereo keyframes' features, the lidar's local
+   geometry. Deterministic, with a measured gate: a closure is one
+   measurement with its residual, accepted while it agrees with the
+   estimate's own uncertainty and dropped when it does not; nothing is
+   remembered about a place beyond its keyframe, no latch.
+2. **The graph.** The keyframes' poses optimised with the closures. The
+   solver weighed against the onboard image and the arm64 build: a small
+   one of our own over the few hundred keyframes of a flight, or GTSAM or
+   Ceres as a dependency. The correction reaches the navigation as item
+   40's does, a bounded turn and shift of the estimate's frame; the
+   obstacle memory is one rigid grid, so what a correction does to cells
+   written before it (left where they are, or the memory re-anchored) is
+   the stage's hard decision, taken on stage 0's figures.
+3. **The references.** ORB-SLAM3 and Kimera, which close loops, beside
+   OpenVINS, which does not, over the real recordings of item 25 (EuRoC,
+   NTU VIRAL): what a closure is worth on a real vehicle's data, and the
+   bar ours is read against.
+4. **Flown.** The survey and B and back on both sets, the open sky's loop
+   on the stereo set without the signal.
+
+The navigation invariants hold: a closure is a measurement, never a rule
+about a place; a wrong closure is a crash and is counted as one.
+
+This item is complete when, on routes that return over seen ground, the
+estimate's error at the return is bounded by the closure on both sensor
+sets (the figure measured against stage 0's), no closure is accepted
+wrongly over the acceptance series and the recordings, the references'
+figures stand beside ours, and R3's mean speed is kept. Size L.
+
+## 42. The Flight's Record In A Viewer Without The Stack
+
+**Type:** tooling, independent recurring workstream; recorded on 2026-11-05
+at the project owner's word. Size S.
+
+**Hard prerequisites:** the stack bag (K62) and the recording's bag (K26).
+
+**Validation environment:** the kept bags (`log/tools/replay/regression/`).
+
+A flight's record is read today through the tools of `tools/` and through
+RViz, which needs the workspace built and the messages' package sourced. A
+viewer that opens an MCAP bag by itself (Foxglove, which the field names
+and the PX4 community uses; Lichtblick, its open fork; Rerun and
+PlotJuggler weighed beside them: the licence, the offline use, the custom
+messages of `drone_city_nav`) shows the same flight to someone without the
+stack: the obstacle memory, the estimate against the truth, the mission's
+events, the pair's frames, the autopilot's streams on one time line.
+
+1. The viewer chosen on a kept bag, by what it opens without the workspace
+   (the custom messages through the bag's embedded schemas) and by its
+   licence.
+2. A layout kept in the repository for each sensor set: the map, the pose
+   and the truth, the events, the frames, the speeds and the budgets; one
+   documented command from a run's number to the open record.
+3. The recording's bag written as MCAP, if the viewer needs it (it is
+   SQLite today).
+
+Nothing of the stack depends on it, and the recordings of A11 keep their
+approved layout: the viewer is for reading a flight, not for the videos.
+
+This item is complete when a kept bag of each sensor set opens in the
+chosen viewer by one documented command on a machine without the
+workspace, with the panels above, and `tools/README.md` names it.
 
 ## Completed
 

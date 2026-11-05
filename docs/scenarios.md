@@ -148,22 +148,23 @@ estimate against the truth, so that each scenario reads without a word:
 ## What Is Planned And Not Yet Runnable
 
 So that nobody searches for a script that does not exist. The roadmap
-([`roadmap.md`](roadmap.md)) carries, undelivered as of 2026-10-03:
+([`roadmap.md`](roadmap.md)) carries, undelivered as of 2026-11-05:
 
+- **item 11** — valid 3D static maps for new environments, by the survey;
 - **item 15** — cooperative traffic over a channel that behaves like radio,
   and a shared frame without GNSS; until then the cooperative scenario above
   is a test bench for the separation algorithm, not a model of the air;
-- **item 18** — smoke and transient obstacles such as a person crossing the
-  frame (its thermal channel was measured and set aside: the core returns with
-  item 32); today a moving body leaves a trail in the map until the sensor
-  looks there again (the memory forgets nothing by time, K10);
-- **item 23** — rooms filled with moderate smoke the vehicle flies through,
-  one of them on the way in every flight;
-- **item 24** — item 19's proof flown: B physically unreachable and given
-  up by the proof, not by the battery; closed by item 18's blocking
-  scenario;
-- **item 20** — the simulation slowed on purpose so that four vehicles fit
-  the workstation and a recorded flight counts as an acceptance one (the
-  recording itself is built, above).
+- **item 21** — doors and bodies that move slowly; today a moving body leaves
+  a trail in the map until the sensor looks there again (the memory forgets
+  nothing by time, K10);
+- **item 22** — passive navigation without illumination, thermal-inertial;
+- **item 27** — what a real vehicle needs after the safety block: the drivers,
+  the calibration, the time in hardware, the bench in the loop;
+- **item 30** — the airframe's size; **item 37** — the VOXL 2 on the board;
+- **item 36** — the acceptance rules on the stepped simulator;
+- **item 39** — the open sky's downward camera, its absolute correction
+  without the signal and its speed (stages 3 to 5);
+- **item 41** — loop closure over the flight's keyframes;
+- **item 42** — the flight's record in a viewer without the stack.
 
 None of these has a command yet. What exists is in the two tables above.
