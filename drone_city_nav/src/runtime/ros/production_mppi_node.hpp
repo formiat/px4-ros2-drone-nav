@@ -68,6 +68,7 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -595,9 +596,25 @@ private:
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
   std::unique_ptr<StepAcknowledger> step_acknowledger_;
+
+  // Roadmap item 36: under the step acknowledgement every stamped input is
+  // read at the tick a step after its stamp, whichever step it arrived in
+  // (the autopilot's samples over its bridge, the memory's snapshot, delta,
+  // latest scan and status): two flights with the same seeds read their first
+  // tick 1.3 mm apart (r2881, r2883), and with the autopilot's samples held
+  // alone one twin's first tick read the memory's snapshot a step ahead of
+  // the other's (r2908, r2909). The inputs arrive on their own callback
+  // groups and are read on the planning timer's.
+  struct HeldInput {
+    std::int64_t stamp_ns;
+    std::function<void()> read;
+  };
+
   std::int64_t step_period_ns_{0};
-  std::deque<AutopilotLocalState> held_local_states_;
-  void releaseHeldLocalStates(std::int64_t tick_entry_ns);
+  std::mutex held_inputs_mutex_;
+  std::deque<HeldInput> held_inputs_;
+  bool holdInput(std::int64_t stamp_ns, std::function<void()> read);
+  void releaseHeldInputs(std::int64_t tick_entry_ns);
   rclcpp::TimerBase::SharedPtr planner_health_timer_;
 };
 

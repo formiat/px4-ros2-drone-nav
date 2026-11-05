@@ -562,18 +562,13 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       AutopilotStateCallbacks{
           .local_state =
               [this](const AutopilotLocalState& sample) {
-                // Under the step acknowledgement (roadmap item 36) the sample
-                // waits for the tick a step after its stamp, whichever step it
-                // arrived in: the autopilot's samples reach the planner over
-                // its bridge in this step or the next, and two flights with
-                // the same seeds read their first tick 1.3 mm apart (r2881,
-                // r2883); the memory's snapshot is built a step before the
-                // tick that reads it by the acknowledgement itself.
-                if (step_acknowledger_ != nullptr && step_acknowledger_->enabled()) {
-                  held_local_states_.push_back(sample);
-                  return;
+                // Roadmap item 36: the sample waits for the tick a step after
+                // its stamp under the step acknowledgement (held_inputs_).
+                const std::int64_t stamp_ns =
+                    static_cast<std::int64_t>(sample.timestamp_sample_us) * 1'000;
+                if (!holdInput(stamp_ns, [this, sample] { onLocalState(sample); })) {
+                  onLocalState(sample);
                 }
-                onLocalState(sample);
               },
           .status =
               [this](const AutopilotStatus& status) { onAutopilotStatus(status); },
@@ -599,14 +594,26 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message,
                const rclcpp::MessageInfo& info) {
-          onRawObstacleSnapshot3D(std::move(message), info);
+          const std::int64_t stamp_ns =
+              rclcpp::Time(message->header.stamp).nanoseconds();
+          if (!holdInput(stamp_ns, [this, message, info] {
+                onRawObstacleSnapshot3D(message, info);
+              })) {
+            onRawObstacleSnapshot3D(std::move(message), info);
+          }
         },
         world_subscription_options);
     raw_delta_3d_sub_ = create_subscription<msg::RawObstacleDelta3D>(
         raw_delta_3d_topic, rclcpp::QoS{1}.best_effort().transient_local(),
         [this](msg::RawObstacleDelta3D::ConstSharedPtr message,
                const rclcpp::MessageInfo& info) {
-          onRawObstacleDelta3D(std::move(message), info);
+          const std::int64_t stamp_ns =
+              rclcpp::Time(message->header.stamp).nanoseconds();
+          if (!holdInput(stamp_ns, [this, message, info] {
+                onRawObstacleDelta3D(message, info);
+              })) {
+            onRawObstacleDelta3D(std::move(message), info);
+          }
         },
         world_subscription_options);
   }
@@ -648,14 +655,22 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       config_.world.topics.latest_sensor_obstacle_scan, rclcpp::SensorDataQoS{},
       [this](const msg::LatestSensorObstacleScan::SharedPtr message,
              const rclcpp::MessageInfo& info) {
-        onLatestSensorObstacleScan(*message, info);
+        const std::int64_t stamp_ns = rclcpp::Time(message->header.stamp).nanoseconds();
+        if (!holdInput(stamp_ns, [this, message, info] {
+              onLatestSensorObstacleScan(*message, info);
+            })) {
+          onLatestSensorObstacleScan(*message, info);
+        }
       },
       sensor_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       config_.world.topics.obstacle_memory_status,
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::ObstacleMemoryStatus::SharedPtr message) {
-        onMemoryStatus(*message);
+        const std::int64_t stamp_ns = rclcpp::Time(message->header.stamp).nanoseconds();
+        if (!holdInput(stamp_ns, [this, message] { onMemoryStatus(*message); })) {
+          onMemoryStatus(*message);
+        }
       },
       world_subscription_options);
   applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(

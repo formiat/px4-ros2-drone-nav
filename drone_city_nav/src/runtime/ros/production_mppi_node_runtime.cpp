@@ -149,15 +149,34 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
   return stability;
 }
 
-// The autopilot's samples held under the step acknowledgement, those stamped a
-// step before the tick or earlier, in their order.
-void ProductionMppiNode::releaseHeldLocalStates(const std::int64_t tick_entry_ns) {
-  while (!held_local_states_.empty() &&
-         static_cast<std::int64_t>(held_local_states_.front().timestamp_sample_us) *
-                 1'000 <=
-             tick_entry_ns - step_period_ns_) {
-    onLocalState(held_local_states_.front());
-    held_local_states_.pop_front();
+bool ProductionMppiNode::holdInput(const std::int64_t stamp_ns,
+                                   std::function<void()> read) {
+  if (step_acknowledger_ == nullptr || !step_acknowledger_->enabled()) {
+    return false;
+  }
+  const std::lock_guard<std::mutex> lock(held_inputs_mutex_);
+  held_inputs_.push_back(HeldInput{.stamp_ns = stamp_ns, .read = std::move(read)});
+  return true;
+}
+
+// The held inputs stamped a step before the tick or earlier, read in the order
+// they arrived.
+void ProductionMppiNode::releaseHeldInputs(const std::int64_t tick_entry_ns) {
+  std::vector<std::function<void()>> due;
+  {
+    const std::lock_guard<std::mutex> lock(held_inputs_mutex_);
+    const std::int64_t limit_ns = tick_entry_ns - step_period_ns_;
+    for (auto it = held_inputs_.begin(); it != held_inputs_.end();) {
+      if (it->stamp_ns <= limit_ns) {
+        due.push_back(std::move(it->read));
+        it = held_inputs_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  for (const std::function<void()>& read : due) {
+    read();
   }
 }
 
@@ -165,7 +184,7 @@ void ProductionMppiNode::startPlanningTimer() {
   planning_timer_ = create_timer(
       std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
       [this]() {
-        releaseHeldLocalStates(get_clock()->now().nanoseconds());
+        releaseHeldInputs(get_clock()->now().nanoseconds());
         planningTick();
       },
       planning_callback_group_);
