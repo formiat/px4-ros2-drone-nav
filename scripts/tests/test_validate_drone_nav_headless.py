@@ -84,9 +84,11 @@ class ValidatorCliTest(unittest.TestCase):
 
 
 class StepControllerBarometerTest(unittest.TestCase):
-    def test_the_noiseless_barometer_stale_line_is_the_step_controllers_alone(self) -> None:
-        # Under the step controller the barometer carries no noise and the autopilot marks it stale at rest.
-        log = "INFO  [commander] Armed\nERROR [vehicle_air_data] BARO #0 failed:  STALE!\n"
+    def test_the_noiseless_sensors_stale_lines_are_the_step_controllers_alone(self) -> None:
+        # Under the step controller the barometer and the magnetometer carry no noise and the autopilot marks
+        # them stale at rest.
+        log = ("INFO  [commander] Armed\nERROR [vehicle_air_data] BARO #0 failed:  STALE!\n"
+               "ERROR [vehicle_magnetometer] MAG #0 failed:  STALE!\n")
         for step_controller, failed in (("on", False), ("off", True)):
             with self.subTest(step_controller=step_controller), tempfile.TemporaryDirectory() as directory:
                 manifest = Path(directory) / "manifest.json"
