@@ -615,6 +615,7 @@ private:
   std::deque<HeldInput> held_inputs_;
   bool holdInput(std::int64_t stamp_ns, std::function<void()> read);
   void releaseHeldInputs(std::int64_t tick_entry_ns);
+  void waitForPoolsIdle();
   rclcpp::TimerBase::SharedPtr planner_health_timer_;
 };
 

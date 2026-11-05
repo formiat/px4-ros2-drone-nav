@@ -5,6 +5,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <span>
+#include <thread>
 #include <utility>
 
 #include "execution_horizon_assembler_3d.hpp"
@@ -180,11 +181,38 @@ void ProductionMppiNode::releaseHeldInputs(const std::int64_t tick_entry_ns) {
   }
 }
 
+// Roadmap item 36: under the step acknowledgement the tick reads a world built
+// from everything the step brought, not whichever build has finished by the
+// tick: with every input held to the step, one twin's first tick read a contact
+// distance of 0.144 m and the other's 0.247 (r2912, r2913), the world's lanes
+// still building. The route search's lane is waited for the same way.
+void ProductionMppiNode::waitForPoolsIdle() {
+  if (step_acknowledger_ == nullptr || !step_acknowledger_->enabled()) {
+    return;
+  }
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool idle = true;
+    for (const auto* pool : {planning_worker_pool_.get(), world_worker_pool_.get()}) {
+      for (const auto& lane : pool->snapshot().lanes) {
+        if (lane.pending != 0U || lane.started != lane.completed) {
+          idle = false;
+        }
+      }
+    }
+    if (idle) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+  }
+}
+
 void ProductionMppiNode::startPlanningTimer() {
   planning_timer_ = create_timer(
       std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
       [this]() {
         releaseHeldInputs(get_clock()->now().nanoseconds());
+        waitForPoolsIdle();
         planningTick();
       },
       planning_callback_group_);
