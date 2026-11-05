@@ -137,10 +137,13 @@ private:
     while (!pending_.empty() && streamsPassed(pending_.front().stamp_ns)) {
       const Pair pair = std::move(pending_.front());
       pending_.pop_front();
+      heights_applied_ = 0U;
       while (!pending_heights_.empty() &&
              pending_heights_.front().first <= pair.stamp_ns) {
-        odometry_->addBarometricHeight(pending_heights_.front().second);
+        last_height_m_ = pending_heights_.front().second;
+        odometry_->addBarometricHeight(last_height_m_);
         pending_heights_.pop_front();
+        ++heights_applied_;
       }
       onPair(pair);
     }
@@ -383,6 +386,21 @@ private:
     }
     // The pose in the map's frame, as the autopilot receives it.
     applyMapFrame(estimate, pair.stamp_ns);
+    if (frame_log_) {
+      RCLCPP_INFO(
+          get_logger(),
+          "VIO_FRAME stamp_s=%.3f imu=%" PRIu64 " heights=%zu height=%.4f "
+          "mag_age_ms=%.1f mag_innovation_deg=%.4f tracked=%zu used=%zu gated=%zu "
+          "healthy=%d position=(%.4f,%.4f,%.4f) yaw=%.5f",
+          1.0e-9 * static_cast<double>(pair.stamp_ns),
+          imu_samples_ - imu_at_last_frame_, heights_applied_, last_height_m_,
+          1.0e-6 * static_cast<double>(estimate.magnetic_reading_age_ns),
+          180.0 / M_PI * estimate.magnetic_innovation_rad, estimate.tracked_features,
+          estimate.used_features, estimate.gated_features, estimate.healthy ? 1 : 0,
+          estimate.position_ned_m.x(), estimate.position_ned_m.y(),
+          estimate.position_ned_m.z(), mapYaw(estimate));
+    }
+    imu_at_last_frame_ = imu_samples_;
     publishPose(estimate, pair.left->header.stamp);
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
@@ -644,6 +662,10 @@ private:
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t frames_{0U};
   std::uint64_t frames_without_estimate_{0U};
+  bool frame_log_{false};
+  std::uint64_t imu_at_last_frame_{0U};
+  std::size_t heights_applied_{0U};
+  double last_height_m_{std::numeric_limits<double>::quiet_NaN()};
 };
 
 } // namespace drone_city_nav::visual_inertial_odometry_node_internal

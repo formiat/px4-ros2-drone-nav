@@ -193,6 +193,7 @@ def generate_launch_description():
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     gnss_topic = LaunchConfiguration("gnss_topic")
     map_registration = LaunchConfiguration("map_registration")
+    estimator_frame_log = LaunchConfiguration("estimator_frame_log")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
     step_ack = LaunchConfiguration("step_ack")
@@ -288,6 +289,9 @@ def generate_launch_description():
         }
         visual_inertial_overrides = compute_visual_inertial_overrides(
             localization, gnss_topic.perform(context), map_registration.perform(context))
+        if visual_inertial_overrides is not None and optional_bool_override(
+                context, estimator_frame_log, "estimator_frame_log") is True:
+            visual_inertial_overrides["frame_log"] = True
         imu_suffix = imu_topic_suffix.perform(context).strip()
         if visual_inertial_overrides is not None and imu_suffix:
             visual_inertial_overrides["px4_sensor_combined_topic"] = (

@@ -77,6 +77,9 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   // The airframe's: fitted per vehicle (visual_inertial_odometry.hpp).
   config.rotor_drag_1ps =
       declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
+  // One line a frame of what the filter consumed (the stack bag's replay
+  // against the flight, roadmap item 27 block 6); off on the vehicle.
+  frame_log_ = declare_parameter<bool>("frame_log", false);
   config.magnetic_heading =
       declare_parameter<bool>("magnetic_heading", config.magnetic_heading);
   odometry_config_ = config;

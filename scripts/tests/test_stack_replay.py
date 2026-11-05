@@ -74,6 +74,9 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn('printf \'%s\\n\' "${ros_launch_args[@]}" > "${runtime_artifact_dir}/ros_launch_args.txt"', runner)
         container = (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8")
         self.assertIn("  RECORD_STACK_BAG\n", container)
+        self.assertIn("ros_launch_args+=(estimator_frame_log:=true)", runner)
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('visual_inertial_overrides["frame_log"] = True', launch)
         self.assertIn("--use-sim-time --qos-profile-overrides-path", evidence)
         # The pair's frames reach the recorder through shared memory (r2874 lost 14 percent over UDP).
         self.assertIn("--env FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/docker/fastdds_profiles.xml", container)
