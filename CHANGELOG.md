@@ -15,7 +15,10 @@ release names the asset tags it was validated with.
   noise but the IMU's is removed from the runtime models, so a seed repeats the IMU's noise (gz-sensors' one
   generator across gz-sim's parallel sensor threads); `tools/imu_twins.py` compares two twins' autopilot samples.
   Under the step acknowledgement the planner reads every stamped input a step after its stamp and its tick
-  waits for its world and route lanes (roadmap item 36).
+  waits for its world and route lanes (roadmap item 36). The autopilot's IMU reaches the stack at every sample
+  (`scripts/setup_px4_autopilot.sh` gives `/fmu/out/sensor_combined` a rate limit of 1000 Hz in the client's
+  `dds_topics.yaml`; without one the client sent one sample in 2.5, its choice the order of its threads, and two
+  flights with the same seeds levelled on different rests); the lidar-inertial rest is 125 samples, half a second.
 - The estimators read their inputs the same in a flight and in its replay (a frame or a scan waits for
   the streams past its stamp, the rest and the pose's declaration by stamps, deep queues for the
   barometer and the magnetometer): the lidar set replays within 0.012 m at p95, the stereo set to 0.000.

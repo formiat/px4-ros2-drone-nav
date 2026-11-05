@@ -52,6 +52,14 @@ Circuit) receives the axis swap `(0, 1, 1, 0)`, while a world that already
 swaps its map axes keeps the identity. Every node that turns a PX4 pose into
 map coordinates, including the mission monitor, receives the same matrix.
 
+The autopilot's IMU reaches the stack as `/fmu/out/sensor_combined` at every
+sample, 250 Hz: `scripts/setup_px4_autopilot.sh` gives the topic a rate limit
+of 1000 Hz in the client's `dds_topics.yaml` (specification K53). Without one
+the uXRCE-DDS client polls a topic every 10 ms and sends whichever sample is
+current, one in 2.5, chosen by the order of the autopilot's threads: two
+flights with the same seeds read different samples from the first tenth of a
+second (r2910, r2911), and the estimators levelled on different rests.
+
 ## The Middleware's Transports
 
 The container runs Fast DDS with `docker/fastdds_profiles.xml`

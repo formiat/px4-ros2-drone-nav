@@ -82,7 +82,9 @@ point-to-point flight:
 ```
 
 It checks the host tools and the NVIDIA runtime, builds the dev image if it is
-missing, clones PX4 Autopilot v1.17.0 into `external/PX4-Autopilot` and builds
+missing, clones PX4 Autopilot v1.17.0 into `external/PX4-Autopilot` (the setup
+script then gives the client's IMU topic a rate limit of 1000 Hz in its
+`dds_topics.yaml`, so the stack reads every sample; specification K53) and builds
 `px4_sitl` there inside the container, builds the workspace, fetches the
 versioned `urban_circuit_practice_01` assets, then launches the GUI flight
 (`--headless` for the headless mission check, `--no-run` to stop after the

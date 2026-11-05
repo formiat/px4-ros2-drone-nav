@@ -53,8 +53,8 @@ class ContractTest(unittest.TestCase):
         self.assertIn('gz_args+=(--seed "${IMPERFECTION_SEED:-0}")', (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text())
         self.assertIn("step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial", evidence)
         # Repair 1 of the in-step order (2026-11-04): the step's sensor outputs before the step is announced.
-        self.assertIn('step_sensors="/lidar_3d/points:100,/fmu/out/sensor_combined:10"', evidence)
-        self.assertIn('step_sensors="/stereo_depth/points:133.333,/fmu/out/sensor_combined:10"', evidence)
+        self.assertIn('step_sensors="/lidar_3d/points:100,/fmu/out/sensor_combined:4"', evidence)
+        self.assertIn('step_sensors="/stereo_depth/points:133.333,/fmu/out/sensor_combined:4"', evidence)
         self.assertIn('--sensors "${step_sensors}"', evidence)
         controller = (REPOSITORY / "scripts" / "step_controller.py").read_text()
         self.assertIn('parser.add_argument("--sensors"', controller)

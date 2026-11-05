@@ -9,7 +9,7 @@ host, as slowly as the host needs. A node that does not acknowledge within the t
 world moves on (the flight is then not a deterministic one, and the log says so). Before the step is announced the
 controller waits for the step's sensor outputs (--sensors: a topic and its period in ms, the stamp read from the
 message; a sensor is waited for while its latest stamp plus its period lies on or before the step's end, the
-lidar's sweep every 100 ms, the autopilot's stream through its bridge every 10 ms), since the simulator's sensors
+lidar's sweep every 100 ms, the autopilot's stream through its bridge every 4 ms), since the simulator's sensors
 publish off the render thread after the world's step has
 returned and a node that reads the step first acknowledges it before the scan (the twins of 2026-10-30 parted on the
 memory's first scan, a frame apart). The CSV carries, every 50 steps, the steps, the wait for the acknowledgements
@@ -96,7 +96,7 @@ def main() -> int:
     def sensors_due(target: int) -> list[str]:
         """The sensors whose stream stands a period or more behind the step's end: a sensor's latest stamp plus
         its period on or before the end means the step's output is still to come (a stream whose stamps are not
-        on the step's grid, the autopilot's at 100 Hz through its bridge, is a period behind at most)."""
+        on the step's grid, the autopilot's at 250 Hz through its bridge, is a period behind at most)."""
         return [topic for topic, period in sensors.items()
                 if (latest_ns[topic] if latest_ns[topic] >= 0 else 0) + period <= target]
 

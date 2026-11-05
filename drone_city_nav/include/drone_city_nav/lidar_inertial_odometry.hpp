@@ -128,9 +128,10 @@ struct LidarInertialOdometryConfig {
   // before the first scan is registered: scans that come sooner are let go.
   // In flight the first scan found 2 to 9 samples (0.02 to 0.09 s) where the
   // replay of a record found 1954; a level read from a few samples carries
-  // their noise into the map's tilt, a different tilt every flight. Fifty:
-  // half a second at the autopilot's 100 Hz.
-  std::size_t minimum_rest_samples{50U};
+  // their noise into the map's tilt, a different tilt every flight. A hundred
+  // and twenty-five: half a second at the autopilot's 250 Hz, every sample
+  // through its bridge since 2026-11-05 (scripts/setup_px4_autopilot.sh).
+  std::size_t minimum_rest_samples{125U};
   double maximum_gyro_bias_radps{0.05};
 };
 

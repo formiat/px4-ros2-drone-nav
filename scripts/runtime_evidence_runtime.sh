@@ -214,11 +214,11 @@ start_runtime_evidence_capture() {
     if [[ "${STEP_CONTROLLER:-off}" == on ]]; then
       local step_nodes=pilot,offboard,mission_monitor,memory,planner,visual_inertial,stereo_depth
       # The step's sensor outputs the controller waits for before announcing the step: the pair's returns
-      # (7.5 Hz) or the lidar's sweeps (10 Hz), the autopilot's stream through its bridge (100 Hz).
-      local step_sensors="/stereo_depth/points:133.333,/fmu/out/sensor_combined:10"
+      # (7.5 Hz) or the lidar's sweeps (10 Hz), the autopilot's stream through its bridge (250 Hz, every sample).
+      local step_sensors="/stereo_depth/points:133.333,/fmu/out/sensor_combined:4"
       if [[ "${NAVIGATION_SENSOR_PROFILE:-}" == lidar ]]; then
         step_nodes=pilot,offboard,mission_monitor,memory,planner,lidar_inertial
-        step_sensors="/lidar_3d/points:100,/fmu/out/sensor_combined:10"
+        step_sensors="/lidar_3d/points:100,/fmu/out/sensor_combined:4"
       fi
       python3 "${repo_root}/scripts/step_controller.py" --world "${world_name}" \
         --expected "${step_nodes}" --step-ms "${STEP_MS:-20}" --timeout-s 10 \

@@ -13,14 +13,17 @@ namespace {
 // ceiling at z = -6, sampled every quarter metre.
 [[nodiscard]] std::vector<Eigen::Vector3d> roomPoints() {
   std::vector<Eigen::Vector3d> points;
-  for (double a = -10.0; a <= 10.0; a += 0.25) {
-    for (double b = -6.0; b <= 0.0; b += 0.25) {
+  for (int i = -40; i <= 40; ++i) {
+    const double a = 0.25 * i;
+    for (int j = -24; j <= 0; ++j) {
+      const double b = 0.25 * j;
       points.emplace_back(10.0, a, b);
       points.emplace_back(-10.0, a, b);
       points.emplace_back(a, 10.0, b);
       points.emplace_back(a, -10.0, b);
     }
-    for (double c = -10.0; c <= 10.0; c += 0.25) {
+    for (int k = -40; k <= 40; ++k) {
+      const double c = 0.25 * k;
       points.emplace_back(a, c, 0.0);
       points.emplace_back(a, c, -6.0);
     }
@@ -43,6 +46,15 @@ scanFrom(const std::vector<Eigen::Vector3d>& room, const Eigen::Vector3d& positi
 
 constexpr std::int64_t kSecond{1'000'000'000LL};
 
+// The tests' IMU runs at 100 Hz, so half a second of rest is fifty samples
+// here; the vehicle's bridge brings 250 Hz, the default's hundred and
+// twenty-five.
+LidarInertialOdometryConfig testConfig() {
+  LidarInertialOdometryConfig config;
+  config.minimum_rest_samples = 50U;
+  return config;
+}
+
 // At rest the accelerometer reads minus gravity in the body frame.
 [[nodiscard]] LidarInertialImuSample
 restSample(const std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned,
@@ -59,7 +71,7 @@ restSample(const std::int64_t stamp_ns, const Eigen::Quaterniond& body_to_ned,
 // let go, and the one that comes once they are there registers.
 TEST(LidarInertialOdometryTest, TheFirstScanWaitsForARestToLevelBy) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d start{-3.0, 1.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
@@ -79,7 +91,7 @@ TEST(LidarInertialOdometryTest, TheFirstScanWaitsForARestToLevelBy) {
 // open and the later heights also enter it, at ten against fifty.
 TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometryConfig config;
+  LidarInertialOdometryConfig config = testConfig();
   config.height_prior_share = 1.0;
   LidarInertialOdometry odometry{config};
   const Eigen::Vector3d start{-3.0, 1.0, -2.0};
@@ -112,7 +124,7 @@ TEST(LidarInertialOdometryTest, TheHeightDatumIsTheRests) {
 // of them on, and anchors from there.
 TEST(LidarInertialOdometryTest, TheHeightDatumSettlesWhenTheBarometerBeginsLate) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometryConfig config;
+  LidarInertialOdometryConfig config = testConfig();
   config.height_prior_share = 1.0;
   LidarInertialOdometry odometry{config};
   const Eigen::Vector3d start{-3.0, 1.0, -2.0};
@@ -144,7 +156,7 @@ TEST(LidarInertialOdometryTest, TheHeightDatumSettlesWhenTheBarometerBeginsLate)
 
 TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d start{-3.0, 1.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
@@ -194,7 +206,7 @@ TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
 TEST(LidarInertialOdometryTest, AFewHundredMatchedPointsInAVastHallAreHealthy) {
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   const Eigen::Vector3d start{0.0, 0.0, -1.5};
-  LidarInertialOdometryConfig config;
+  LidarInertialOdometryConfig config = testConfig();
   LidarInertialOdometry odometry{config};
   odometry.initialize(0, start, 0.0);
   for (int i = 1; i <= 50; ++i) {
@@ -246,7 +258,7 @@ TEST(LidarInertialOdometryTest, AFewHundredMatchedPointsInAVastHallAreHealthy) {
 
 TEST(LidarInertialOdometryTest, ARegistrationFarBeyondThePriorIsNoMeasurement) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d start{-3.0, 1.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
@@ -276,7 +288,7 @@ TEST(LidarInertialOdometryTest, ARegistrationFarBeyondThePriorIsNoMeasurement) {
 
 TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d position{0.0, 0.0, -2.0};
   odometry.initialize(0, position, 0.0);
   for (int i = 1; i <= 50; ++i) {
@@ -320,17 +332,20 @@ TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
 // scans' own stamps.
 void flyTheCorridor(const std::int64_t imu_offset_ns) {
   std::vector<Eigen::Vector3d> corridor;
-  for (double x = -40.0; x <= 40.0; x += 0.25) {
-    for (double z = -4.0; z <= 0.0; z += 0.25) {
+  for (int i = -160; i <= 160; ++i) {
+    const double x = 0.25 * i;
+    for (int k = -16; k <= 0; ++k) {
+      const double z = 0.25 * k;
       corridor.emplace_back(x, 3.0, z);
       corridor.emplace_back(x, -3.0, z);
     }
-    for (double y = -3.0; y <= 3.0; y += 0.25) {
+    for (int j = -12; j <= 12; ++j) {
+      const double y = 0.25 * j;
       corridor.emplace_back(x, y, 0.0);
       corridor.emplace_back(x, y, -4.0);
     }
   }
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d start{-30.0, 0.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
@@ -360,7 +375,7 @@ void flyTheCorridor(const std::int64_t imu_offset_ns) {
     std::vector<Eigen::Vector3d> scan;
     for (const Eigen::Vector3d& point : corridor) {
       if ((point - truth).norm() <= 30.0) {
-        scan.push_back(point - truth);
+        scan.emplace_back(point - truth);
       }
     }
     estimate = odometry.addScan(stamp, scan);
@@ -392,7 +407,7 @@ TEST(LidarInertialOdometryTest, TheImuIsIntegratedToTheScanStamp) {
 // attitude, and the next scan that fits registers again from there.
 TEST(LidarInertialOdometryTest, ALostScanHoldsThePositionUntilOneRegistersAgain) {
   const std::vector<Eigen::Vector3d> room = roomPoints();
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   const Eigen::Vector3d position{1.0, -2.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, position, 0.0);
@@ -435,13 +450,15 @@ TEST(LidarInertialOdometryTest, ALostScanHoldsThePositionUntilOneRegistersAgain)
 // before 2026-10-10).
 TEST(LidarInertialOdometryTest, TheRecoverySearchesUpToTheWidenedDistance) {
   std::vector<Eigen::Vector3d> walls;
-  for (double a = -10.0; a <= 10.0; a += 0.25) {
-    for (double b = -6.0; b <= 0.0; b += 0.25) {
+  for (int i = -40; i <= 40; ++i) {
+    const double a = 0.25 * i;
+    for (int j = -24; j <= 0; ++j) {
+      const double b = 0.25 * j;
       walls.emplace_back(10.0, a, b);
       walls.emplace_back(-10.0, a, b);
     }
   }
-  LidarInertialOdometryConfig config;
+  LidarInertialOdometryConfig config = testConfig();
   ASSERT_DOUBLE_EQ(config.maximum_correspondence_m, 1.0);
   ASSERT_DOUBLE_EQ(config.recovery_correspondence_factor, 3.0);
   LidarInertialOdometry odometry{config};
@@ -470,7 +487,7 @@ TEST(LidarInertialOdometryTest, TheRecoverySearchesUpToTheWidenedDistance) {
 
 TEST(LidarInertialOdometryTest,
      AnEmptyScanIsNotHealthyAndAnUninitializedEstimatorSaysSo) {
-  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  LidarInertialOdometry odometry{testConfig()};
   EXPECT_FALSE(odometry.initialized());
   EXPECT_FALSE(odometry.addScan(kSecond, {}).healthy);
   odometry.initialize(0, Eigen::Vector3d::Zero(), 0.0);

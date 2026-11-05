@@ -97,6 +97,14 @@ class ContainerEntrypointTest(unittest.TestCase):
         )
         self.assertNotIn("docker run", text)
 
+    def test_the_autopilot_setup_gives_the_imu_topic_every_sample(self) -> None:
+        # Roadmap item 36, specification K53: without a rate limit the client sent one of 2.5 samples, its choice
+        # the order of the autopilot's threads (r2910, r2911).
+        text = self.read_script("setup_px4_autopilot.sh")
+        self.assertIn('entry = "  - topic: /fmu/out/sensor_combined\\n    type: px4_msgs::msg::SensorCombined\\n"', text)
+        self.assertIn('limited = entry + "    rate_limit: 1000.\\n"', text)
+        self.assertEqual(2, text.count("imu_topic_at_every_sample\n"), "a fresh clone and an existing checkout")
+
     def test_stop_sim_uses_shared_cleanup(self) -> None:
         text = self.read_script("stop_sim.sh")
 
