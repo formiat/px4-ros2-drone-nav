@@ -149,14 +149,33 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
   return stability;
 }
 
+// The autopilot's samples held under the step acknowledgement, those stamped a
+// step before the tick or earlier, in their order.
+void ProductionMppiNode::releaseHeldLocalStates(const std::int64_t tick_entry_ns) {
+  while (!held_local_states_.empty() &&
+         static_cast<std::int64_t>(held_local_states_.front().timestamp_sample_us) *
+                 1'000 <=
+             tick_entry_ns - step_period_ns_) {
+    onLocalState(held_local_states_.front());
+    held_local_states_.pop_front();
+  }
+}
+
 void ProductionMppiNode::startPlanningTimer() {
   planning_timer_ = create_timer(
       std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
-      [this]() { planningTick(); }, planning_callback_group_);
+      [this]() {
+        releaseHeldLocalStates(get_clock()->now().nanoseconds());
+        planningTick();
+      },
+      planning_callback_group_);
   // Roadmap item 36: the step acknowledgement follows the tick (its group) and
   // waits for the worker pools' queues to be empty (a running task ends in
   // milliseconds; a lane's long-lived task held it for the five-second cap).
   if (step_acknowledger_ == nullptr) {
+    step_period_ns_ =
+        static_cast<std::int64_t>(declare_parameter<int>("step_period_ms", 20)) *
+        1'000'000;
     step_acknowledger_ = std::make_unique<StepAcknowledger>(
         *this, "planner", planning_callback_group_, [this] {
           for (const auto* pool :

@@ -66,6 +66,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -594,6 +595,9 @@ private:
   rclcpp::TimerBase::SharedPtr planning_start_timer_;
   rclcpp::TimerBase::SharedPtr planning_timer_;
   std::unique_ptr<StepAcknowledger> step_acknowledger_;
+  std::int64_t step_period_ns_{0};
+  std::deque<AutopilotLocalState> held_local_states_;
+  void releaseHeldLocalStates(std::int64_t tick_entry_ns);
   rclcpp::TimerBase::SharedPtr planner_health_timer_;
 };
 

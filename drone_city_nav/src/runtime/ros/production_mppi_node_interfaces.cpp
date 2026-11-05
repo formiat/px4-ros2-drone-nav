@@ -561,7 +561,20 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       sensor_qos,
       AutopilotStateCallbacks{
           .local_state =
-              [this](const AutopilotLocalState& sample) { onLocalState(sample); },
+              [this](const AutopilotLocalState& sample) {
+                // Under the step acknowledgement (roadmap item 36) the sample
+                // waits for the tick a step after its stamp, whichever step it
+                // arrived in: the autopilot's samples reach the planner over
+                // its bridge in this step or the next, and two flights with
+                // the same seeds read their first tick 1.3 mm apart (r2881,
+                // r2883); the memory's snapshot is built a step before the
+                // tick that reads it by the acknowledgement itself.
+                if (step_acknowledger_ != nullptr && step_acknowledger_->enabled()) {
+                  held_local_states_.push_back(sample);
+                  return;
+                }
+                onLocalState(sample);
+              },
           .status =
               [this](const AutopilotStatus& status) { onAutopilotStatus(status); },
           .ground_contact =
