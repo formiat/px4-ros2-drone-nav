@@ -387,7 +387,12 @@ same record); the host cannot slow such a flight, but two flights with the same
 seeds do not yet repeat (the register's row; `tools/flight_diff.py` measures how
 far they part: 13.10 s and 27 m on the lidar set, r2881 and r2883; 12.98 s after the
 second repair, r2884 and r2885; 12.99 s on the estimators' determinism of K62, r2902 and
-r2903; 12.85 s with the planner's samples held a step, r2904 and r2905). A stepped flight runs at a third of real time,
+r2903; 12.85 s with the planner's samples held a step, r2904 and r2905; 13.22 s with the model's
+noise the IMU's alone, r2908 to r2911: the autopilot's samples then byte-equal through the rest,
+`tools/imu_twins.py`, its attitude apart from its first sample). Under the step controller every
+sensor's noise but the IMU's is removed from the runtime models (gz-sensors' one generator across
+gz-sim's parallel sensor threads), and the flight check reads the autopilot's stale barometer and
+magnetometer lines as the mode's. A stepped flight runs at a third of real time,
 so its window (`SMOKE_DURATION_S`, wall seconds) is set three times the
 usual, and the host verdict A7, which reads the real-time factor, voids it:
 such flights are flown through `tools/series2.sh` and read by hand.

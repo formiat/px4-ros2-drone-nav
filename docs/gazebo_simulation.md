@@ -483,7 +483,14 @@ number on `/drone_city_nav/step` and waits for `/drone_city_nav/step_ack/<name>`
 from every expected node: the onboard nodes behind `step_ack_enabled` (the
 acknowledgement rides the callback group of the node's heavy work and waits
 for its worker to finish what it is on) and the pilot, whose ticks run on the
-steps. The world then moves only when the loop has finished with the step.
+steps. The world then moves only when the loop has finished with the step. Under
+the controller every sensor's noise but the IMU's is removed from the runtime
+models (`configure_imperfections.py --imu-noise-alone`): gz-sensors draws every
+sensor's noise from the process's one generator, seeded by `--seed`, and gz-sim
+runs the sensor systems' post-updates in parallel threads, so the IMU's draws
+would otherwise interleave with the other sensors' as the threads run (r2904 to
+r2907); the autopilot marks the noiseless barometer and magnetometer stale at
+rest, which the flight check reads as the mode's.
 Measured on 2026-10-30: the flight's pace is the loop's (a wall speed of
 0.34, 0 runaways, 22 ms a step), and two flights with the same seeds part at
 9 s of flight (`docs/technical_debt.md`).
