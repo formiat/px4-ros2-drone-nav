@@ -97,6 +97,21 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn("replay_compare.py", replay)
         self.assertIn("--clock 250", replay)
 
+    def test_the_kept_bags_replay_as_a_gate(self) -> None:
+        # The owner's decision of 2026-11-05 (roadmap item 36): the stack's determinism is the replay's contract, and
+        # the kept bags replay as a gate after a change to the estimators, the memory or the planner's input path.
+        replay = (REPOSITORY / "tools/replay_stack.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ -d "$1/stack_bag" ]]; then dir=${1%/}; run=$(basename "$dir"); else run=$1; dir="log/runs/$run"; fi',
+                      replay)
+        self.assertIn('if [[ -z "$rate" ]]; then if [[ "$navigation" == lidar ]]; then rate=1.0; else rate=0.8; fi; fi',
+                      replay)
+        self.assertTrue(replay.rstrip().endswith("grep -q '^REPLAY PASS$' \"$out/compare.txt\""), "the exit status is the verdict")
+        gates = (REPOSITORY / "tools/gates.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ "${1:-}" == "--replay" ]]; then', gates)
+        self.assertIn("kept=(log/tools/replay/regression/*/)", gates)
+        self.assertIn('./tools/replay_stack.sh "${dir%/}" || X=1', gates)
+        self.assertIn("no kept bag under log/tools/replay/regression/", gates)
+
 
 class Stamped:
     def __init__(self, sec: int, nanosec: int, x: float, y: float, z: float) -> None:

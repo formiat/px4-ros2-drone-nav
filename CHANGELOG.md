@@ -19,6 +19,9 @@ release names the asset tags it was validated with.
   (`scripts/setup_px4_autopilot.sh` gives `/fmu/out/sensor_combined` a rate limit of 1000 Hz in the client's
   `dds_topics.yaml`; without one the client sent one sample in 2.5, its choice the order of its threads, and two
   flights with the same seeds levelled on different rests); the lidar-inertial rest is 125 samples, half a second.
+  The stack's determinism is the replay's contract (the owner's decision of 2026-11-05): one bag a sensor set kept
+  under `log/tools/replay/regression/`, `./tools/gates.sh --replay` replays both (`tools/replay_stack.sh` takes a
+  kept directory, chooses the set's rate and exits with the verdict).
 - The estimators read their inputs the same in a flight and in its replay (a frame or a scan waits for
   the streams past its stamp, the rest and the pose's declaration by stamps, deep queues for the
   barometer and the magnetometer): the lidar set replays within 0.012 m at p95, the stereo set to 0.000.

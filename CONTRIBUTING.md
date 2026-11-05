@@ -75,7 +75,11 @@ cat log/tools/gate_flag.txt      # "X=0" is green; output in log/tools/gate_all.
 It runs `make format`, `make build`, `make test`, `make test-scripts` and
 `make quality` in the container, in that order. Do not edit tracked files
 while it runs. Then confirm `git status --short` holds only what was meant
-and commit.
+and commit. A change to the estimators, the obstacle memory or the planner's
+input path also runs `./tools/gates.sh --replay` after the whole gate: the
+stack replayed on the kept bags of both sensor sets, its poses within 0.05 m
+at p95 of the recorded flight's ([docs/testing.md](docs/testing.md), "Replay
+Of The Whole Stack"; the owner's decision of 2026-11-05).
 
 - Code, comments, documents and commit messages are in English, with the
   field's standard terms (UAV, SLAM, VIO, LIO, MSCKF, GNSS-denied, D* Lite,

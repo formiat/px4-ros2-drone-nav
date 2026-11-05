@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
-# replay_stack.sh RUN [RATE]: the stack of a recorded flight (RECORD_STACK_BAG=true, log/runs/RUN/stack_bag) run
+# replay_stack.sh RUN|DIR [RATE]: the stack of a recorded flight (RECORD_STACK_BAG=true, log/runs/RUN/stack_bag, or a
+# directory kept with the bag and the flight's ros_launch_args.txt, such as log/tools/replay/regression/RUN) run
 # again in the dev container on the bag alone, no Gazebo and no autopilot (roadmap item 27 block 6): the flight's
-# launch arguments (log/runs/RUN/ros_launch_args.txt) with the bridges and the simulated image source off, the
-# stack's inputs played on the bag's clock at RATE (0.8 unless given, the camera flights' real-time factor), its
+# launch arguments with the bridges and the simulated image source off, the stack's inputs played on the bag's clock
+# at RATE (unless given, the set's real-time factor of record: 1.0 for the lidar set, 0.8 for the cameras), its
 # outputs recorded to log/tools/replay/RUN/stack/replay_bag and compared with the flight's by tools/replay_compare.py
-# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line). Host; --inner runs in the container.
+# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line; the exit status says which). Host;
+# --inner runs in the container.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if [[ "${1:-}" != "--inner" ]]; then
-  run=$1; rate=${2:-0.8}
-  [[ -d "log/runs/$run/stack_bag" ]] || { echo "no stack bag in log/runs/$run"; exit 1; }
+  rate=${2:-}
+  if [[ -d "$1/stack_bag" ]]; then dir=${1%/}; run=$(basename "$dir"); else run=$1; dir="log/runs/$run"; fi
+  [[ -d "$dir/stack_bag" ]] || { echo "no stack bag in $dir"; exit 1; }
   mkdir -p "log/tools/replay/$run/stack"; touch log/tools/replay/.keep
   exec ./scripts/container_run.sh bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/install/setup.bash;
-    exec bash /workspace/tools/replay_stack.sh --inner $run $rate"
+    exec bash /workspace/tools/replay_stack.sh --inner $run /workspace/$dir '$rate'"
 fi
-run=$2; rate=$3
-bag="/workspace/log/runs/$run/stack_bag"
+run=$2; dir=$3; rate=$4
+bag="$dir/stack_bag"
 out="/workspace/log/tools/replay/$run/stack"
 navigation=stereo_tof; cameras=stereo_tof
 args=()
@@ -29,7 +32,8 @@ while IFS= read -r argument; do
     camera_profile:=*) cameras="${argument#*:=}" ;;
   esac
   args+=("$argument")
-done < "/workspace/log/runs/$run/ros_launch_args.txt"
+done < "$dir/ros_launch_args.txt"
+if [[ -z "$rate" ]]; then if [[ "$navigation" == lidar ]]; then rate=1.0; else rate=0.8; fi; fi
 mapfile -t inputs < <(python3 /workspace/scripts/stack_bag_topics.py inputs \
   --navigation-sensor-profile "$navigation" --camera-profile "$cameras" --in-bag "$bag")
 mapfile -t outputs < <(python3 /workspace/scripts/stack_bag_topics.py outputs)
@@ -51,3 +55,4 @@ stop "$launch_pid"
 python3 /workspace/tools/replay_compare.py "$bag" "$out/replay_bag" > "$out/compare.txt" 2>&1
 tail -n 6 "$out/compare.txt" | tee -a "$out/replay.log"
 echo "REPLAY $run end $(date -u +%H:%M:%S)" | tee -a "$out/replay.log"
+grep -q '^REPLAY PASS$' "$out/compare.txt"

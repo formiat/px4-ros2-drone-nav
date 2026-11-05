@@ -368,6 +368,16 @@ events in order. Measured on 2026-11-04 (the goal of 2026-11-02, part 4): the ca
 autopilot's side: the vehicle's motion is the recording's, so a changed
 setpoint is measured, not flown (roadmap item 27 block 6).
 
+Since 2026-11-05 the replay is the measure of the stack's determinism (the
+owner's decision, roadmap item 36, specification K53) and a gate: one bag a
+sensor set is kept under `log/tools/replay/regression/<run>/` (the bag with the
+flight's `ros_launch_args.txt` and manifest; r2918 for the lidar set, flown on 11d8c809; the camera set's pending, below), and `./tools/gates.sh --replay` replays
+them both (`tools/replay_stack.sh` on the kept directory, at the set's real-time
+factor of record), `X=0` when every replay's poses stand within 0.05 m at p95 of
+the flight's. It is run after the whole gate on a change to the estimators,
+the obstacle memory or the planner's input path (CONTRIBUTING, "Before A
+Commit"). the lidar bag r2918 replays within 0.025 m at p95 (0.011 at the median over 1687 pairs, twice the same), the camera bags r2919 and r2920 do not (0.065 and 0.345 m at p95): the replayed stereo estimate parts from the flown one since the autopilot's IMU reaches the stack at every sample (r2901, at 100 Hz, replayed to 0.000), r2920 from its first frames (the barometer's smoothed height 1 cm apart over the first 21 frames, the recording beginning after the estimator's first readings) and r2919 at 314 s with every logged input of the frame equal; the camera set's kept bag waits on this (the register's row)
+
 Two more simulation processes of roadmap item 36 (specification K53) ride a
 flight on request. `BUDGET_RELAY=on` puts `budget_relay_node` between the
 loop's producers and consumers: every output (the depth returns, the
@@ -391,7 +401,7 @@ r2903; 12.85 s with the planner's samples held a step, r2904 and r2905; 13.22 s 
 noise the IMU's alone, r2908 to r2911: the autopilot's samples then byte-equal through the rest,
 `tools/imu_twins.py`, its attitude apart from its first sample; 14.58 s with the planner's
 inputs held to the step and its tick after its lanes, r2914 and r2915, the first tick alike to
-the fifth digit). Under the step controller every
+the fifth digit; the twins r2916 and r2917 flown on 11d8c809 with every IMU sample through the bridge read the same samples (1246 by 5 s), levelled alike (the lidar-inertial estimate byte-equal to 2.9 s) and part at 14.75 s (40 m at most): the autopilot's EKF fuses its first barometer sample at 391142 against 391093 us of its own IMU time with every sensor input equal, the batching of its own threads, and its states part from 3.14 s). Under the step controller every
 sensor's noise but the IMU's is removed from the runtime models (gz-sensors' one generator across
 gz-sim's parallel sensor threads), and the flight check reads the autopilot's stale barometer and
 magnetometer lines as the mode's. A stepped flight runs at a third of real time,
