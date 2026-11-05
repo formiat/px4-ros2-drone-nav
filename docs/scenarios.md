@@ -143,7 +143,7 @@ estimate against the truth, so that each scenario reads without a word:
 | A low battery at launch | the charge counts down beside the bar; `BATTERY -> HOME` when it no longer covers the way home with its margin |
 | A long flight under failures (set aside) | `TO GOAL`, `GOAL REACHED`, then `TO GOAL` again for the start, under the flicker and the stream's failures |
 | A goal outside the location (set aside) | the exploration, then `BATTERY -> HOME` and the way back |
-| The open sky on the hybrid profile, a satellite fault played | `GNSS TRUSTED`, then the fault's name beside it in amber as the relay begins it (`GNSS TRUSTED   FAULT WALK`), `GNSS DISTRUSTED   FAULT WALK` once the vehicle reads it, `GNSS DISTRUSTED` while the trust waits after the fault's end, `GNSS BACK` |
+| The open sky on the hybrid profile, a satellite fault played | `GNSS TRUSTED`; `GNSS DISTRUSTED   FAULT JAM` in amber from the second the relay begins the fault (the vehicle reads it on the next fix, so the fault's name and the verdict appear together: r2921, a jam and a walk); `GNSS DISTRUSTED` for the five seconds the trust waits after the fault's end; `GNSS BACK` |
 
 ## What Is Planned And Not Yet Runnable
 
