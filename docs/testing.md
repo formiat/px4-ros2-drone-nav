@@ -389,7 +389,9 @@ far they part: 13.10 s and 27 m on the lidar set, r2881 and r2883; 12.98 s after
 second repair, r2884 and r2885; 12.99 s on the estimators' determinism of K62, r2902 and
 r2903; 12.85 s with the planner's samples held a step, r2904 and r2905; 13.22 s with the model's
 noise the IMU's alone, r2908 to r2911: the autopilot's samples then byte-equal through the rest,
-`tools/imu_twins.py`, its attitude apart from its first sample). Under the step controller every
+`tools/imu_twins.py`, its attitude apart from its first sample; 14.58 s with the planner's
+inputs held to the step and its tick after its lanes, r2914 and r2915, the first tick alike to
+the fifth digit). Under the step controller every
 sensor's noise but the IMU's is removed from the runtime models (gz-sensors' one generator across
 gz-sim's parallel sensor threads), and the flight check reads the autopilot's stale barometer and
 magnetometer lines as the mode's. A stepped flight runs at a third of real time,
