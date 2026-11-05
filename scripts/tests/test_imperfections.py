@@ -138,6 +138,20 @@ class ConfigureImperfectionsTest(unittest.TestCase):
         self.assertEqual(len([p for p in root.find("model").findall("plugin")
                               if p.get("name") == imperfections.PLUGIN_NAME]), 1)
 
+    def test_the_rendering_sensors_lose_their_noise_for_the_step_controller(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            runtime = Path(temp)
+            for name in imperfections.SENSOR_MODELS:
+                shutil.copytree(REPOSITORY / "drone_city_nav" / "models" / name, runtime / name)
+            removed = imperfections.remove_rendering_noise(runtime)
+            self.assertGreater(removed, 0)
+            for name in imperfections.SENSOR_MODELS:
+                text = (runtime / name / "model.sdf").read_text(encoding="utf-8")
+                self.assertNotIn("<noise>", text)
+        runtime_script = (REPOSITORY / "scripts/simulation_resource_runtime.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ "${STEP_CONTROLLER:-off}" == on ]]; then\n    python3', runtime_script)
+        self.assertIn("--without-rendering-noise", runtime_script)
+
     def test_one_family_alone_writes_only_its_part(self) -> None:
         done = imperfections.configure(self.runtime, 0, self.px4_models, ("extrinsics",))
         self.assertEqual(done, {"imu_axes_with_bias": 0, "sensor_poses_turned": 1, "vibration_plugin": 0,

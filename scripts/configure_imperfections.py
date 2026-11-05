@@ -165,6 +165,28 @@ def write_vehicle_model(model_sdf: Path, seed: int, extrinsics: bool = True,
 
 
 FAMILIES = ("imu", "vibration", "extrinsics", "magnetometer")
+RENDERING_SENSOR_TYPES = ("gpu_lidar", "camera", "depth_camera", "thermal_camera")
+
+
+def remove_rendering_noise(runtime_models_dir: Path) -> int:
+    """The rendering sensors' noise elements removed from the sensor models (roadmap item 36: gz-sensors draws
+    every sensor's noise from the process's one generator, the rendering thread's draws interleaving with the
+    physics thread's IMU draws as the threads run, so a seed does not repeat the IMU's noise); returns the count."""
+    removed = 0
+    for name in SENSOR_MODELS:
+        model_sdf = runtime_models_dir / name / "model.sdf"
+        if not model_sdf.is_file():
+            continue
+        tree = ET.parse(model_sdf)
+        for sensor in tree.getroot().iter("sensor"):
+            if sensor.get("type") not in RENDERING_SENSOR_TYPES:
+                continue
+            for parent in sensor.iter():
+                for noise in parent.findall("noise"):
+                    parent.remove(noise)
+                    removed += 1
+        tree.write(model_sdf, encoding="utf-8", xml_declaration=True)
+    return removed
 
 
 def configure(runtime_models_dir: Path, seed: int, px4_models_dir: Path,
@@ -192,7 +214,13 @@ def main() -> int:
     parser.add_argument("--px4-models-dir", type=Path, required=True)
     parser.add_argument("--families", default=",".join(FAMILIES),
                         help="comma-separated subset of imu,vibration,extrinsics,magnetometer")
+    parser.add_argument("--without-rendering-noise", action="store_true",
+                        help="remove the rendering sensors' noise (the step controller's deterministic flights)")
     args = parser.parse_args()
+    if args.without_rendering_noise:
+        print(f"RENDERING_NOISE removed={remove_rendering_noise(args.runtime_models_dir)}")
+        if not args.families:
+            return 0
     done = configure(args.runtime_models_dir, args.seed, args.px4_models_dir,
                      tuple(f for f in args.families.split(",") if f))
     print(f"IMPERFECTIONS seed={args.seed} families={args.families} imu_axes_with_bias={done['imu_axes_with_bias']} "
