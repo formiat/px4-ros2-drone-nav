@@ -38,6 +38,11 @@ CRITICAL_PX4_PATTERN = re.compile(
     r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
+# Under the step controller every sensor's noise but the IMU's is removed from
+# the vehicle model (roadmap item 36), and the autopilot's validator marks the
+# noiseless barometer stale at rest, its values repeating; the vision is the
+# autopilot's height reference, so the line is the mode's, not a fault.
+STEP_CONTROLLER_BAROMETER_STALE = re.compile(r"ERROR \[vehicle_air_data\] BARO #\d+ failed:\s+STALE!")
 
 
 def parse_bool(value: str) -> bool | None:
@@ -693,6 +698,8 @@ def main() -> int:
     elif mission_failed:
         print("WARN: mission failure was allowed")
 
+    if overrides.get("STEP_CONTROLLER", "off") == "on":
+        px4_log = STEP_CONTROLLER_BAROMETER_STALE.sub("", px4_log)
     if CRITICAL_PX4_PATTERN.search(px4_log):
         # With its position source gone the autopilot's own failsafe cannot
         # run its position tasks and says so; under the harshest failures

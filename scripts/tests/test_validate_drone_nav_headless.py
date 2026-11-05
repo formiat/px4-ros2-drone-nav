@@ -83,6 +83,29 @@ class ValidatorCliTest(unittest.TestCase):
                 self.assertIn(requirement, failures)
 
 
+class StepControllerBarometerTest(unittest.TestCase):
+    def test_the_noiseless_barometer_stale_line_is_the_step_controllers_alone(self) -> None:
+        # Under the step controller the barometer carries no noise and the autopilot marks it stale at rest.
+        log = "INFO  [commander] Armed\nERROR [vehicle_air_data] BARO #0 failed:  STALE!\n"
+        for step_controller, failed in (("on", False), ("off", True)):
+            with self.subTest(step_controller=step_controller), tempfile.TemporaryDirectory() as directory:
+                manifest = Path(directory) / "manifest.json"
+                manifest.write_text(
+                    '{"effective_overrides": {"STEP_CONTROLLER": "%s"}}' % step_controller, encoding="utf-8")
+                argv = [str(VALIDATOR_PATH), "--ros-log", "ros.log", "--px4-log", "px4.log",
+                        "--runtime-manifest", str(manifest), "--expected-static", "false",
+                        "--lidar-profile", "3d"]
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with (
+                    mock.patch.object(sys, "argv", argv),
+                    mock.patch.object(VALIDATOR, "read_text", side_effect=lambda path: log if "px4" in str(path) else ""),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    VALIDATOR.main()
+                self.assertEqual(failed, "critical simulator errors" in stderr.getvalue(), stderr.getvalue())
+
+
 class MappingPipelineValidationTest(unittest.TestCase):
 
     def test_execution_chain_rejects_safe_unpublished_ticks(self) -> None:
