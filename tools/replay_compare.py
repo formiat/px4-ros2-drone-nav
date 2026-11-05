@@ -90,7 +90,7 @@ def vector_difference(a, b) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in pairs if math.isfinite(x)))
 
 
-SETPOINT_MATCH_US = 5_000
+SETPOINT_MATCH_US = 9_000  # under half the offboard's 20 ms tick: the replay's phase is its own
 SETPOINT_EQUAL = 1.0e-6
 
 

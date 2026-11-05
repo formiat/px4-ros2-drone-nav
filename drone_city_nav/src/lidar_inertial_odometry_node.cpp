@@ -209,7 +209,6 @@ private:
       return;
     }
     const std::int64_t stamp_ns = rclcpp::Time{pressure.header.stamp}.nanoseconds();
-    last_height_stamp_ns_ = std::max(last_height_stamp_ns_, stamp_ns);
     pending_heights_.emplace_back(stamp_ns,
                                   -pressure.fluid_pressure / kPressurePerMetrePa);
   }
@@ -220,6 +219,8 @@ private:
   // seeds differed by 2 to 12 mm while the vehicle still rested (r2881,
   // r2883; roadmap item 36). What is stamped after the scan waits for the
   // next.
+  static constexpr std::int64_t kObservationLagNs{50'000'000};
+
   void applyObservationsUpTo(const std::int64_t stamp_ns) {
     while (true) {
       const bool attitude =
@@ -252,8 +253,6 @@ private:
       return;
     }
     const std::array<float, 4>& q = sample.quaternion;
-    last_attitude_stamp_ns_ =
-        std::max(last_attitude_stamp_ns_, source.mapped_ros_stamp_ns);
     pending_attitudes_.emplace_back(source.mapped_ros_stamp_ns,
                                     Eigen::Quaterniond{q[0], q[1], q[2], q[3]});
   }
@@ -286,8 +285,8 @@ private:
                             sample.accelerometer_mps2.z}});
     ++imu_samples_;
     if (!pending_clouds_.empty() &&
-        streamsPassed(
-            rclcpp::Time{pending_clouds_.front()->header.stamp}.nanoseconds())) {
+        last_imu_stamp_ns_ >=
+            rclcpp::Time{pending_clouds_.front()->header.stamp}.nanoseconds()) {
       const sensor_msgs::msg::PointCloud2::SharedPtr cloud = pending_clouds_.front();
       pending_clouds_.pop_front();
       onCloud(*cloud);
@@ -304,25 +303,9 @@ private:
   // IMU reaches it; registering the waiting one whenever the next arrived
   // put the IMU 440 to 500 ms behind again on r411 to r413, where
   // registrations ran to 160 to 208 ms.
-  // The scan waits for the autopilot's attitude and the barometer past its
-  // stamp too, up to a second of the IMU's beyond it: after a long
-  // registration the executor serves the queued IMU samples before the
-  // queued readings stamped earlier, and the scan went ahead of them
-  // (roadmap item 36; the camera estimator's frame waits the same way).
-  [[nodiscard]] bool streamsPassed(const std::int64_t stamp_ns) const noexcept {
-    constexpr std::int64_t kStreamSlackNs{1'000'000'000};
-    if (last_imu_stamp_ns_ < stamp_ns) {
-      return false;
-    }
-    const bool slack = last_imu_stamp_ns_ >= stamp_ns + kStreamSlackNs;
-    return slack ||
-           ((last_attitude_stamp_ns_ == 0 || last_attitude_stamp_ns_ >= stamp_ns) &&
-            (last_height_stamp_ns_ == 0 || last_height_stamp_ns_ >= stamp_ns));
-  }
-
   void onCloudReceived(const sensor_msgs::msg::PointCloud2::SharedPtr& cloud) {
     if (pending_clouds_.empty() &&
-        streamsPassed(rclcpp::Time{cloud->header.stamp}.nanoseconds())) {
+        last_imu_stamp_ns_ >= rclcpp::Time{cloud->header.stamp}.nanoseconds()) {
       onCloud(*cloud);
       return;
     }
@@ -364,7 +347,12 @@ private:
                                lidar_translation_body_);
     }
     const std::int64_t stamp_ns = rclcpp::Time{cloud.header.stamp}.nanoseconds();
-    applyObservationsUpTo(stamp_ns);
+    // The level and the height stamped 50 ms before the scan or earlier: what
+    // has surely arrived, so the scan waits for nothing and reads the same in
+    // a flight and in its replay. Waiting for the streams past the scan's own
+    // stamp held the pose 16 ms older and the clearance laws the speed (r2894:
+    // 1.57 m/s against 2.41, the estimate's error the better for it).
+    applyObservationsUpTo(stamp_ns - kObservationLagNs);
     const LidarInertialEstimate estimate = odometry_->addScan(stamp_ns, points_body);
     const double scan_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - started)
@@ -478,8 +466,6 @@ private:
   std::deque<sensor_msgs::msg::PointCloud2::SharedPtr> pending_clouds_;
   std::deque<std::pair<std::int64_t, Eigen::Quaterniond>> pending_attitudes_;
   std::deque<std::pair<std::int64_t, double>> pending_heights_;
-  std::int64_t last_attitude_stamp_ns_{0};
-  std::int64_t last_height_stamp_ns_{0};
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr odometry_pub_;
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;

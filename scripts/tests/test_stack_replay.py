@@ -121,13 +121,13 @@ class ReplayCompareTest(unittest.TestCase):
         def setpoint(stamp_us: int, x: float, vx: float, yaw: float = 0.0):
             return (b"", type("S", (), {"timestamp": stamp_us, "position": [x, 0.0, math.nan],
                                         "velocity": [vx, math.nan, math.nan], "yaw": yaw})())
-        # The replay's ticks 3 ms off the flight's: matched within 5 ms, one replay setpoint a flight one.
+        # The replay's ticks 3 ms off the flight's: matched within 9 ms, one replay setpoint a flight one.
         flight = [setpoint(20_000 * k, 1.0, 0.5) for k in range(10)]
         replay = [setpoint(20_000 * k + 3_000, 1.0, 0.5) for k in range(9)] + [setpoint(20_000 * 9 + 3_000, 1.5, 0.5)]
         line = compare.compare_setpoints(flight, replay)
         self.assertIn("9 of 10 matched setpoints equal in position, velocity and yaw (90.0 percent)", line)
         self.assertIn("max 0.500 m", line)
-        far = [setpoint(20_000 * k + 9_000, 1.0, 0.5) for k in range(10)]
+        far = [setpoint(20_000 * k + 10_000, 1.0, 0.5) for k in range(10)]
         self.assertIn("no matched setpoints", compare.compare_setpoints(flight, far))
         self.assertEqual(math.inf, compare.yaw_difference(math.nan, 0.5))
         self.assertAlmostEqual(2 * math.pi - 6.2, compare.yaw_difference(3.1, -3.1), places=6)
