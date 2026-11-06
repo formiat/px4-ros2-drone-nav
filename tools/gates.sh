@@ -33,6 +33,11 @@ EOS
 " &)
   exit 0
 fi
+# A C++ source that differs from HEAD is compiled by this gate, whatever built it before: a compiler warning printed
+# by a build before the gate was not in the gate's log, the object being up to date (d97e4ab8's set-but-not-used
+# went in so).
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep -E '\.(cpp|hpp|h)$' |
+  while IFS= read -r source; do [[ -f "$source" ]] && touch "$source"; done
 (setsid bash -c "./scripts/dev_shell.sh <<'EOS' > log/tools/gate_all.log 2>&1
 make format && make build && make test && make test-scripts && make quality; echo X=\$? > /workspace/log/tools/gate_flag.txt
 exit

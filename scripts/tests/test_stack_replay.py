@@ -127,6 +127,9 @@ class ReplayContractTest(unittest.TestCase):
                       replay)
         self.assertTrue(replay.rstrip().endswith("grep -q '^REPLAY PASS$' \"$out/compare.txt\""), "the exit status is the verdict")
         gates = (REPOSITORY / "tools/gates.sh").read_text(encoding="utf-8")
+        # The gate compiles what differs from HEAD itself: a warning of an earlier build is not in its log otherwise.
+        self.assertIn('while IFS= read -r source; do [[ -f "$source" ]] && touch "$source"; done\n(setsid bash -c '
+                      '"./scripts/dev_shell.sh', gates)
         self.assertIn('if [[ "${1:-}" == "--replay" ]]; then', gates)
         self.assertIn("kept=(log/tools/replay/regression/*/)", gates)
         self.assertIn('./tools/replay_stack.sh "${dir%/}" || X=1', gates)
