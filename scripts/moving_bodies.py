@@ -12,7 +12,7 @@ from the seed.
     z a height at or above the floor at the first point; speed m/s)
 
 Each body is created in the running world a little above its floor, falls
-onto it and stands there under gravity; from then on its pose is set fifty
+onto it and stands there under gravity; from then on its pose is set ten
 times a second on the simulation clock along its walk at the height it came
 to rest at, so the walk has to lie on one level floor. The pair, the ring
 and the lidar see it as any body, and the vehicle's contact sensor reports a
@@ -44,7 +44,10 @@ HEIGHT_M = 1.7
 MASS_KG = 70.0
 KELVIN = 307.0
 DROP_M = 0.3
-SET_RATE_HZ = 50.0
+# Ten times a second, the sensors' own rate (the pair 7.5 Hz, the lidar 10): a pose set fifty times a second
+# cost the camera flight's simulator a tenth of its speed (a real-time factor of 0.65 against 0.73 over the first
+# 80 s, r2985 and r2986; 0.72 at ten, r2988; 0.75 with the body never moved, r2987).
+SET_RATE_HZ = 10.0
 LOG_PERIOD_S = 0.1
 
 

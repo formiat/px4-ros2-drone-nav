@@ -5,7 +5,7 @@ vehicle's contact system reports (roadmap item 21, the bench before the first fl
 A world of its own: a floor, a probe standing on it that carries the vehicle's contact system
 (`libdrone_contact_system.so`, the plugin of the vehicle's models, publishing on the flight's topic), and one body
 of scripts/moving_bodies.py walking through the probe's place at 1 m/s as it walks in a flight (created in the
-running world, dropped onto the floor, its pose set fifty times a second). The contacts the system publishes are
+running world, dropped onto the floor, its pose set ten times a second). The contacts the system publishes are
 read for 40 s: the bench passes when one names the body's collision, and prints the first.
 """
 from __future__ import annotations
