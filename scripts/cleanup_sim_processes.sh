@@ -172,3 +172,14 @@ if [[ "${clean_stale_processes_dry_run}" == "true" ||
 fi
 
 python3 "${repo_root}/scripts/gazebo_process_cleanup.py" "${cleanup_args[@]}"
+
+# The shared-memory segments the stopped processes held (64 MB a participant,
+# docker/fastdds_profiles.xml; the container shares the host's /dev/shm): a
+# process stopped from outside leaves its own, 5.6 GB after ten hours of
+# flights (2026-11-06). What a living process holds stays.
+if [[ "${clean_stale_processes_dry_run}" == "true" ||
+  "${clean_stale_processes_dry_run}" == "1" ]]; then
+  python3 "${repo_root}/scripts/fastdds_shm_cleanup.py" --dry-run || true
+else
+  python3 "${repo_root}/scripts/fastdds_shm_cleanup.py" || true
+fi

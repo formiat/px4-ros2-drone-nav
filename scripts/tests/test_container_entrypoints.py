@@ -73,6 +73,8 @@ class ContainerEntrypointTest(unittest.TestCase):
         # (its image or its workspace mount), and any Makefile sim-* target
         # marks it; the former pattern named only sim-gui and sim-headless.
         self.assertIn("container_belongs_to_repository", text)
+        # The stopped processes' Fast DDS segments go with them (5.6 GB left on the host on 2026-11-06).
+        self.assertIn('python3 "${repo_root}/scripts/fastdds_shm_cleanup.py" || true', text)
         self.assertIn('{{.Config.Image}} {{range .Mounts}}{{.Source}} {{end}}', text)
         self.assertIn("make[\",[:space:]]+sim-[a-z0-9-]+", text)
         self.assertNotIn("sim-(gui|headless)", text)
