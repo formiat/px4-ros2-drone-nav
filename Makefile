@@ -612,6 +612,38 @@ sim-urban-smoke-blocked-gui:
 sim-urban-smoke-rooms-headless:
 	$(SMOKE_ROOMS_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
 
+# Roadmap item 21: a warm body of a person's size walking back and forth where every flight passes, the long
+# corridor at y -16 (its floor at 1.0 m, its walls at y -18.5 and -13.5; MOVING_BODIES, scripts/moving_bodies.py):
+# across the route in the vehicle's view; along the corridor, towards the vehicle and away; out of the south room
+# into the corridor's mouth, from the vehicle's side. A scenario of its own: the ordinary flight carries no body.
+WALKING_BODY_SCENARIO := MOVING_BODIES="40,-18,40,-14,1.0,1.2"
+WALKING_BODY_ONCOMING_SCENARIO := MOVING_BODIES="43,-16,33,-16,1.0,1.2"
+WALKING_BODY_SIDE_SCENARIO := MOVING_BODIES="29.5,-23.5,29.5,-15,1.0,1.2"
+
+.PHONY: sim-urban-walking-body-headless
+sim-urban-walking-body-headless:
+	$(WALKING_BODY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-walking-body-gui
+sim-urban-walking-body-gui:
+	$(WALKING_BODY_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-walking-body-oncoming-headless
+sim-urban-walking-body-oncoming-headless:
+	$(WALKING_BODY_ONCOMING_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-walking-body-oncoming-gui
+sim-urban-walking-body-oncoming-gui:
+	$(WALKING_BODY_ONCOMING_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
+.PHONY: sim-urban-walking-body-side-headless
+sim-urban-walking-body-side-headless:
+	$(WALKING_BODY_SIDE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless
+
+.PHONY: sim-urban-walking-body-side-gui
+sim-urban-walking-body-side-gui:
+	$(WALKING_BODY_SIDE_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-gui
+
 .PHONY: sim-urban-hot-smoke-plume-headless
 sim-urban-hot-smoke-plume-headless:
 	$(HOT_PLUME_SCENARIO) $(MAKE) --no-print-directory sim-urban-point-to-point-headless

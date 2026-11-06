@@ -70,5 +70,43 @@ class MovingBodiesTest(unittest.TestCase):
             self.assertNotIn("warm_body", text, source.name)
 
 
+class BodyEncountersTest(unittest.TestCase):
+    def setUp(self) -> None:
+        sys.path.insert(0, str(REPOSITORY / "tools"))
+        import body_encounters  # noqa: PLC0415
+        self.tool = body_encounters
+
+    def test_the_distance_is_to_the_bodys_surface(self) -> None:
+        body = (10.0, 5.0, 1.0)  # its axis and the floor it stands on
+        distance, gap, over = self.tool.body_distance((12.25, 5.0, 2.0), body)
+        self.assertAlmostEqual(2.0, distance)
+        self.assertAlmostEqual(2.0, gap)
+        self.assertLess(over, 0.0)
+        distance, gap, over = self.tool.body_distance((10.1, 5.0, 3.3), body)
+        self.assertAlmostEqual(0.6, distance)
+        self.assertEqual(0.0, gap)
+        self.assertAlmostEqual(0.6, over)
+
+    def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
+        self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
+        self.assertAlmostEqual(4.0 * 0.3 + 16.0 / 8.0, self.tool.stop_way_m(4.0))
+
+    def test_a_meeting_is_measured_at_the_closest_approach(self) -> None:
+        # The vehicle flies along x at 2 m/s, 2.3 m over the floor; the body stands at x = 20 beside its line.
+        truth = [(0.02 * k, 0.04 * k, 1.0, 3.3) for k in range(1000)]
+        body = [(0.1 * k, 20.0, 0.0, 1.0) for k in range(200)]
+        met = self.tool.meeting(truth, body)
+        self.assertAlmostEqual(10.0, met["t_s"], delta=0.05)
+        self.assertAlmostEqual(0.75, met["gap_m"], delta=0.01)
+        self.assertAlmostEqual(2.0, met["speed_before_mps"], delta=0.05)
+        self.assertGreater(met["closing_mps"], 1.5)
+        self.assertLess(met["margin_m"], met["distance_m"])
+
+    def test_the_tool_is_recorded(self) -> None:
+        readme = (REPOSITORY / "tools/README.md").read_text(encoding="utf-8")
+        self.assertIn("| `body_encounters.py` |", readme)
+        self.assertIn("| `body_contact_rig.py` |", readme)
+
+
 if __name__ == "__main__":
     unittest.main()
