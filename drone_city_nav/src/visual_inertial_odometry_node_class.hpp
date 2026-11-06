@@ -337,21 +337,50 @@ private:
   // What the tracker handed the filter for a frame, as one number (FNV-1a
   // over the features' ids and image coordinates): the frame record's way of
   // saying whether a flight and its replay updated on the same observations.
+  static constexpr std::uint64_t kDigestSeed{14695981039346656037ULL};
+
+  static void mix(std::uint64_t& hash, const void* data,
+                  const std::size_t size) noexcept {
+    const auto* bytes = static_cast<const unsigned char*>(data);
+    for (std::size_t index = 0U; index < size; ++index) {
+      hash = (hash ^ bytes[index]) * 1099511628211ULL;
+    }
+  }
+
   [[nodiscard]] static std::uint64_t
   digest(const std::vector<StereoFeatureObservation>& observations) noexcept {
-    std::uint64_t hash = 14695981039346656037ULL;
-    const auto mix = [&hash](const void* data, const std::size_t size) {
-      const auto* bytes = static_cast<const unsigned char*>(data);
-      for (std::size_t index = 0U; index < size; ++index) {
-        hash = (hash ^ bytes[index]) * 1099511628211ULL;
-      }
-    };
+    std::uint64_t hash = kDigestSeed;
     for (const StereoFeatureObservation& observation : observations) {
-      mix(&observation.id, sizeof(observation.id));
-      mix(observation.left.data(), 2U * sizeof(double));
-      mix(observation.right.data(), 2U * sizeof(double));
+      mix(hash, &observation.id, sizeof(observation.id));
+      mix(hash, observation.left.data(), 2U * sizeof(double));
+      mix(hash, observation.right.data(), 2U * sizeof(double));
     }
     return hash;
+  }
+
+  // The IMU samples the node holds stamped in (from, to], their count and one
+  // number over their stamps and rates: the frame record's way of saying
+  // whether a flight and its replay had the same samples for a frame (the
+  // rest second for the frame the pose is declared at). The middleware
+  // delivers the stream at best effort, to the stack and to the bag's
+  // recorder apart (r2939: the declared states 3e-8 rad apart).
+  struct ImuDigest {
+    std::size_t samples{0U};
+    std::uint64_t hash{kDigestSeed};
+  };
+
+  [[nodiscard]] ImuDigest imuBetween(const std::int64_t from_ns,
+                                     const std::int64_t to_ns) const noexcept {
+    ImuDigest digest;
+    for (const GyroSample& sample : gyro_) {
+      if (sample.stamp_ns <= from_ns || sample.stamp_ns > to_ns) {
+        continue;
+      }
+      ++digest.samples;
+      mix(digest.hash, &sample.stamp_ns, sizeof(sample.stamp_ns));
+      mix(digest.hash, sample.rate_radps.data(), 3U * sizeof(double));
+    }
+    return digest;
   }
 
   void startAfresh(const char* reason) {
@@ -385,6 +414,10 @@ private:
     const auto grey = [](const sensor_msgs::msg::Image& image) {
       return cv::Mat{image.data, false}.reshape(1, static_cast<int>(image.height));
     };
+    const ImuDigest imu = imuBetween(previous_frame_stamp_ns_ > 0
+                                         ? previous_frame_stamp_ns_
+                                         : pair.stamp_ns - kRestBeforeInitialPoseNs,
+                                     pair.stamp_ns);
     std::optional<Eigen::Matrix3d> turn;
     if (previous_frame_stamp_ns_ > 0) {
       turn = cameraTurn(previous_frame_stamp_ns_, pair.stamp_ns, gyro_bias_);
@@ -416,13 +449,15 @@ private:
     if (frame_log_) {
       RCLCPP_INFO(
           get_logger(),
-          "VIO_FRAME stamp_s=%.3f imu=%" PRIu64 " heights=%zu height=%.4f "
+          "VIO_FRAME stamp_s=%.3f imu=%" PRIu64 " imu_used=%zu imu_digest=%016" PRIx64
+          " heights=%zu height=%.4f "
           "mag_age_ms=%.1f mag_innovation_deg=%.4f observations=%016" PRIx64
           " imu_lag_ms=%.3f tracked=%zu candidates=%zu untriangulated=%zu used=%zu "
           "gated=%zu clones=%zu residual=%.6f healthy=%d position=(%.4f,%.4f,%.4f) "
           "yaw=%.5f",
           1.0e-9 * static_cast<double>(pair.stamp_ns),
-          imu_samples_ - imu_at_last_frame_, heights_applied_, last_height_m_,
+          imu_samples_ - imu_at_last_frame_, imu.samples, imu.hash, heights_applied_,
+          last_height_m_,
           1.0e-6 * static_cast<double>(estimate.magnetic_reading_age_ns),
           180.0 / M_PI * estimate.magnetic_innovation_rad, digest(observations),
           1.0e-6 * static_cast<double>(estimate.imu_lag_ns), estimate.tracked_features,

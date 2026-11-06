@@ -7,7 +7,9 @@ import sys
 
 # In the order the estimator consumes them: what arrived, what the frame read (the barometer, the magnetometer,
 # the tracker's observations, the IMU up to it), what the update made of it, the state after.
-FIELDS = ("imu", "heights", "height", "mag_age_ms", "mag_innovation_deg", "observations", "imu_lag_ms", "tracked",
+# Without `imu`, the count of the samples that ARRIVED between two frames: it differs with the arrival's timing
+# and says nothing; `imu_used` and `imu_digest` are the samples stamped between them.
+FIELDS = ("imu_used", "imu_digest", "heights", "height", "mag_age_ms", "mag_innovation_deg", "observations", "imu_lag_ms", "tracked",
           "candidates", "untriangulated", "used", "gated", "clones", "residual", "healthy", "position", "yaw")
 
 
