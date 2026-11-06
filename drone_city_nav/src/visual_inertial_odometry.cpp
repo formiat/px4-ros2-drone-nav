@@ -488,21 +488,31 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   // observations go into one update and the track is closed.
   const bool window_full = state.clones.size() > state.config.maximum_clones;
   const std::uint64_t oldest_id = state.clones.front().id;
-  std::vector<std::vector<TrackObservation>> closed;
+  std::vector<std::pair<std::uint64_t, std::vector<TrackObservation>>> closed;
   for (auto track = state.tracks.begin(); track != state.tracks.end();) {
     const bool ended = track->second.back().clone_id != clone_id;
     const bool leaving = window_full && track->second.front().clone_id == oldest_id;
     if (ended || leaving) {
       if (track->second.size() >= state.config.minimum_track_frames) {
-        closed.push_back(std::move(track->second));
+        closed.emplace_back(track->first, std::move(track->second));
       }
       track = state.tracks.erase(track);
     } else {
       ++track;
     }
   }
-  std::sort(closed.begin(), closed.end(),
-            [](const auto& a, const auto& b) { return a.size() > b.size(); });
+  // The longest tracks first, and between equals the feature's id, scattered:
+  // the map hands its tracks over in the order of its buckets, which is no
+  // property of the flight, and a choice left to that order took other
+  // features into the update whenever more closed than it takes. The id is
+  // scattered (a multiplication by the golden ratio's odd constant) because
+  // the ids rise in the order the tracker found the features, across the
+  // image: the lowest ids first would take one corner of it.
+  constexpr std::uint64_t kScatter{0x9E3779B97F4A7C15ULL};
+  std::sort(closed.begin(), closed.end(), [](const auto& a, const auto& b) {
+    return a.second.size() != b.second.size() ? a.second.size() > b.second.size()
+                                              : a.first * kScatter < b.first * kScatter;
+  });
   if (closed.size() > state.config.maximum_features_per_update) {
     closed.resize(state.config.maximum_features_per_update);
   }
@@ -510,7 +520,7 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
 
   std::vector<FeatureRows> accepted;
   Eigen::Index total_rows = 0;
-  for (const std::vector<TrackObservation>& track : closed) {
+  for (const auto& [feature, track] : closed) {
     const std::optional<Eigen::Vector3d> point = state.triangulate(track);
     if (!point.has_value()) {
       ++estimate.untriangulated_features;

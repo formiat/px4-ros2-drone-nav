@@ -1692,6 +1692,11 @@ if(BUILD_TESTING)
                         ${OpenCV_LIBS})
   enable_project_warnings(stereo_rectifier_test)
 
+  ament_add_gtest(windowed_mean_test tests/windowed_mean_test.cpp)
+  target_compile_features(windowed_mean_test PRIVATE cxx_std_20)
+  target_include_directories(windowed_mean_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  enable_project_warnings(windowed_mean_test)
+
   # The synthetic flights take 4.7 s on the development host and over the
   # default 60 s under arm64 emulation (roadmap item 27 block 2 step 3).
   ament_add_gtest(visual_inertial_odometry_test

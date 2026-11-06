@@ -5,8 +5,10 @@ whose consumed inputs or outputs differ, with both lines, and how many frames di
 import re
 import sys
 
-FIELDS = ("imu", "heights", "height", "mag_age_ms", "mag_innovation_deg", "tracked", "used", "gated", "healthy",
-          "position", "yaw")
+# In the order the estimator consumes them: what arrived, what the frame read (the barometer, the magnetometer,
+# the tracker's observations, the IMU up to it), what the update made of it, the state after.
+FIELDS = ("imu", "heights", "height", "mag_age_ms", "mag_innovation_deg", "observations", "imu_lag_ms", "tracked",
+          "candidates", "untriangulated", "used", "gated", "clones", "residual", "healthy", "position", "yaw")
 
 
 def frames(path):

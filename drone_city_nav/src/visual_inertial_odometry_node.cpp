@@ -184,8 +184,10 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
               },
       },
       in_group, in_group);
-  // The barometer, smoothed over half a second of its 50 Hz: the height
-  // the filter holds through a dark stretch (roadmap item 17 stage 5).
+  // The barometer, the mean of its last second (fifty readings at 50 Hz):
+  // the height the filter holds through a dark stretch (roadmap item 17
+  // stage 5). A window, so that the height of a frame is a function of the
+  // readings of the second before it and of nothing earlier (WindowedMean).
   barometer_sub_ = create_subscription<sensor_msgs::msg::FluidPressure>(
       declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
       // A history deep enough for what queues behind a frame's match (170 ms
@@ -197,17 +199,13 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
           return;
         }
         const std::scoped_lock lock{odometry_mutex_};
-        smoothed_pressure_pa_ =
-            std::isfinite(smoothed_pressure_pa_)
-                ? smoothed_pressure_pa_ +
-                      kPressureSmoothing *
-                          (pressure->fluid_pressure - smoothed_pressure_pa_)
-                : pressure->fluid_pressure;
+        const double smoothed_pressure_pa =
+            pressure_window_.push(pressure->fluid_pressure);
         // Held for the frame stamped after it
         // (visual_inertial_odometry_node_class.hpp).
         last_barometer_stamp_ns_ = rclcpp::Time{pressure->header.stamp}.nanoseconds();
         pending_heights_.emplace_back(last_barometer_stamp_ns_,
-                                      -smoothed_pressure_pa_ / kPressurePerMetrePa);
+                                      -smoothed_pressure_pa / kPressurePerMetrePa);
       },
       in_group);
   // The magnetometer (roadmap item 39 stage 3, item 40): its field in the

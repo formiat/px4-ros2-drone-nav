@@ -47,6 +47,7 @@
 #include "stereo_map_registration.hpp"
 #include "visual_inertial_gnss_input.hpp"
 #include "visual_inertial_odometry_node_internal.hpp"
+#include "windowed_mean.hpp"
 
 namespace drone_city_nav::visual_inertial_odometry_node_internal {
 
@@ -327,6 +328,26 @@ private:
                          GnssInput::summary(decision, fix, gnss_fused_).c_str());
   }
 
+  // What the tracker handed the filter for a frame, as one number (FNV-1a
+  // over the features' ids and image coordinates): the frame record's way of
+  // saying whether a flight and its replay updated on the same observations.
+  [[nodiscard]] static std::uint64_t
+  digest(const std::vector<StereoFeatureObservation>& observations) noexcept {
+    std::uint64_t hash = 14695981039346656037ULL;
+    const auto mix = [&hash](const void* data, const std::size_t size) {
+      const auto* bytes = static_cast<const unsigned char*>(data);
+      for (std::size_t index = 0U; index < size; ++index) {
+        hash = (hash ^ bytes[index]) * 1099511628211ULL;
+      }
+    };
+    for (const StereoFeatureObservation& observation : observations) {
+      mix(&observation.id, sizeof(observation.id));
+      mix(observation.left.data(), 2U * sizeof(double));
+      mix(observation.right.data(), 2U * sizeof(double));
+    }
+    return hash;
+  }
+
   void startAfresh(const char* reason) {
     odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
     rest_start_stamp_ns_ = 0;
@@ -390,13 +411,18 @@ private:
       RCLCPP_INFO(
           get_logger(),
           "VIO_FRAME stamp_s=%.3f imu=%" PRIu64 " heights=%zu height=%.4f "
-          "mag_age_ms=%.1f mag_innovation_deg=%.4f tracked=%zu used=%zu gated=%zu "
-          "healthy=%d position=(%.4f,%.4f,%.4f) yaw=%.5f",
+          "mag_age_ms=%.1f mag_innovation_deg=%.4f observations=%016" PRIx64
+          " imu_lag_ms=%.3f tracked=%zu candidates=%zu untriangulated=%zu used=%zu "
+          "gated=%zu clones=%zu residual=%.6f healthy=%d position=(%.4f,%.4f,%.4f) "
+          "yaw=%.5f",
           1.0e-9 * static_cast<double>(pair.stamp_ns),
           imu_samples_ - imu_at_last_frame_, heights_applied_, last_height_m_,
           1.0e-6 * static_cast<double>(estimate.magnetic_reading_age_ns),
-          180.0 / M_PI * estimate.magnetic_innovation_rad, estimate.tracked_features,
-          estimate.used_features, estimate.gated_features, estimate.healthy ? 1 : 0,
+          180.0 / M_PI * estimate.magnetic_innovation_rad, digest(observations),
+          1.0e-6 * static_cast<double>(estimate.imu_lag_ns), estimate.tracked_features,
+          estimate.candidate_features, estimate.untriangulated_features,
+          estimate.used_features, estimate.gated_features, estimate.clones,
+          estimate.residual_rms_sigma, estimate.healthy ? 1 : 0,
           estimate.position_ned_m.x(), estimate.position_ned_m.y(),
           estimate.position_ned_m.z(), mapYaw(estimate));
     }
@@ -619,8 +645,10 @@ private:
   bool dead_reckoning_declared_{false};
   // Air at 1.225 kg/m^3 under 9.807 m/s^2: 12.0 Pa a metre near the ground.
   static constexpr double kPressurePerMetrePa{12.013};
-  static constexpr double kPressureSmoothing{0.04};
-  double smoothed_pressure_pa_{std::numeric_limits<double>::quiet_NaN()};
+  // A second of the barometer's 50 Hz: the lag (24 readings) and the noise
+  // (a seventh) of the exponential smoothing at 0.04 it replaced.
+  static constexpr std::size_t kPressureWindow{50U};
+  WindowedMean pressure_window_{kPressureWindow};
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr barometer_sub_;
   rclcpp::Subscription<sensor_msgs::msg::MagneticField>::SharedPtr magnetometer_sub_;
   std::int64_t magnetometer_logged_ns_{0};

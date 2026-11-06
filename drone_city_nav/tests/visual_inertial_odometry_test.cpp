@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -393,6 +395,46 @@ TEST(VisualInertialOdometry, AnUncertainVelocityIsNotHealthy) {
   EXPECT_FALSE(bounded.last.healthy);
 }
 
+// More tracks closing at once than an update takes: which of them it takes
+// is the tracks' own (their lengths, then their features' ids), not the
+// order the frame's features were handed over in. The filter keeps its
+// tracks in a hash map, whose order follows the insertions, and a choice left
+// to that order took other features into the update (roadmap item 36: a
+// flight and the replay of its bag are to make the same choice).
+TEST(VisualInertialOdometry, TheUpdatesChoiceAmongClosedTracksIsNotTheOrderTheyCameIn) {
+  VisualInertialOdometryConfig config = testConfig();
+  config.maximum_features_per_update = 5U;
+  std::mt19937 generator{7U};
+  const std::vector<Eigen::Vector3d> points = landmarks(generator);
+  VisualInertialOdometry in_order{config};
+  VisualInertialOdometry reversed{config};
+  in_order.initialize(0, Motion::position(0.0), 0.0);
+  reversed.initialize(0, Motion::position(0.0), 0.0);
+  std::int64_t imu_stamp = 0;
+  std::size_t capped = 0U;
+  for (std::int64_t frame = 1; frame <= 120; ++frame) {
+    const std::int64_t stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      in_order.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+      reversed.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    std::vector<StereoFeatureObservation> observations =
+        observe(config, static_cast<double>(stamp) * 1.0e-9, points,
+                config.observation_noise, generator);
+    const VisualInertialEstimate first = in_order.addFrame(stamp, observations);
+    std::reverse(observations.begin(), observations.end());
+    const VisualInertialEstimate second = reversed.addFrame(stamp, observations);
+    capped += first.candidate_features == config.maximum_features_per_update ? 1U : 0U;
+    ASSERT_EQ(first.used_features, second.used_features) << "frame " << frame;
+    for (int axis = 0; axis < 3; ++axis) {
+      ASSERT_EQ(first.position_ned_m[axis], second.position_ned_m[axis])
+          << "frame " << frame << " axis " << axis;
+    }
+  }
+  // The cap bit: otherwise the test says nothing.
+  EXPECT_GT(capped, 20U);
+}
+
 TEST(VisualInertialOdometry, TheWindowKeepsItsDeclaredNumberOfClones) {
   VisualInertialOdometryConfig config = testConfig();
   config.maximum_clones = 6U;
@@ -543,7 +585,12 @@ TEST(VisualInertialOdometry, TheMagnetometerHoldsTheHeadingAgainstAGyroBias) {
   // vertical turns the heading 6 degrees over 6 s without them. The
   // magnetometer's field, its direction fixed in the world, holds it; a
   // reading turned 30 degrees for two seconds (iron near the sensor) is left
-  // out, not followed.
+  // out, not followed. Read over six draws of the noise: how well the
+  // magnetometer holds it follows the filter's state when the features go,
+  // which follows which of them its updates took (over twelve draws 0.27 to
+  // 1.92 degrees at the end, 0.94 at the mean, 2.8 to 3.7 at the worst
+  // through the disturbed readings; 5.4 to 6.3 without the magnetometer). One
+  // draw's half a degree was that draw's.
   VisualInertialOdometryConfig config = testConfig();
   // The stretch without features stays short of the unaided timeout.
   config.maximum_unaided_s = 10.0;
@@ -552,55 +599,62 @@ TEST(VisualInertialOdometry, TheMagnetometerHoldsTheHeadingAgainstAGyroBias) {
   config.gyro_bias_walk_radps2_sqrt_hz = 1.0e-3;
   const Eigen::Vector3d field_world{0.2, 0.05, 0.43};
   const Eigen::Vector3d gyro_bias{0.0, 0.0, 1.0 * std::numbers::pi / 180.0};
-  for (const bool with_magnetometer : {false, true}) {
-    std::mt19937 generator{7U};
-    const std::vector<Eigen::Vector3d> points = landmarks(generator);
-    const std::vector<Eigen::Vector3d> none;
-    VisualInertialOdometry odometry{config};
-    const auto magnetometer = [&](const std::int64_t stamp_ns, const bool disturbed) {
-      const double t = static_cast<double>(stamp_ns) * 1.0e-9;
+  double held_sum_deg = 0.0;
+  const std::array<unsigned, 6> seeds{7U, 1U, 2U, 3U, 4U, 5U};
+  for (const unsigned seed : seeds) {
+    for (const bool with_magnetometer : {false, true}) {
+      std::mt19937 generator{seed};
+      const std::vector<Eigen::Vector3d> points = landmarks(generator);
+      const std::vector<Eigen::Vector3d> none;
+      VisualInertialOdometry odometry{config};
+      const auto magnetometer = [&](const std::int64_t stamp_ns, const bool disturbed) {
+        const double t = static_cast<double>(stamp_ns) * 1.0e-9;
+        if (with_magnetometer) {
+          const Eigen::Matrix3d turn =
+              Eigen::AngleAxisd{disturbed ? 30.0 * std::numbers::pi / 180.0 : 0.0,
+                                Eigen::Vector3d::UnitZ()}
+                  .toRotationMatrix();
+          odometry.addMagneticField(stamp_ns, Motion::bodyToNed(t).transpose() *
+                                                  (turn * field_world));
+        }
+      };
+      magnetometer(0, false);
+      odometry.initialize(0, Motion::position(0.0), 0.0);
+      std::int64_t imu_stamp = 0;
+      std::int64_t stamp = 0;
+      double worst_rad = 0.0;
+      for (std::int64_t frame = 1; frame <= 80; ++frame) {
+        stamp = frame * kFramePeriodNs;
+        const double t = static_cast<double>(stamp) * 1.0e-9;
+        for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+          // The bias walks in once the features are gone.
+          odometry.addImu(
+              Motion::imu(imu_stamp, frame > 20 ? gyro_bias : Eigen::Vector3d::Zero()));
+          magnetometer(imu_stamp, frame > 40 && frame <= 60);
+        }
+        static_cast<void>(
+            odometry.addFrame(stamp, observe(config, t, frame <= 20 ? points : none,
+                                             config.observation_noise, generator)));
+        worst_rad =
+            std::max(worst_rad,
+                     std::abs(headingError(odometry.predicted(stamp + 1'000'000), t)));
+      }
+      const double final_deg =
+          std::abs(headingError(odometry.predicted(stamp + 1'000'000),
+                                static_cast<double>(stamp) * 1.0e-9)) *
+          180.0 / std::numbers::pi;
       if (with_magnetometer) {
-        const Eigen::Matrix3d turn =
-            Eigen::AngleAxisd{disturbed ? 30.0 * std::numbers::pi / 180.0 : 0.0,
-                              Eigen::Vector3d::UnitZ()}
-                .toRotationMatrix();
-        odometry.addMagneticField(stamp_ns, Motion::bodyToNed(t).transpose() *
-                                                (turn * field_world));
+        EXPECT_LT(final_deg, 2.5) << "seed " << seed;
+        held_sum_deg += final_deg;
+        // The two seconds of the disturbed field left out: the bias's 2 degrees
+        // over them and back, not the 30 the readings pointed to.
+        EXPECT_LT(worst_rad * 180.0 / std::numbers::pi, 4.5) << "seed " << seed;
+      } else {
+        EXPECT_GT(final_deg, 5.0) << "seed " << seed;
       }
-    };
-    magnetometer(0, false);
-    odometry.initialize(0, Motion::position(0.0), 0.0);
-    std::int64_t imu_stamp = 0;
-    std::int64_t stamp = 0;
-    double worst_rad = 0.0;
-    for (std::int64_t frame = 1; frame <= 80; ++frame) {
-      stamp = frame * kFramePeriodNs;
-      const double t = static_cast<double>(stamp) * 1.0e-9;
-      for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
-        // The bias walks in once the features are gone.
-        odometry.addImu(
-            Motion::imu(imu_stamp, frame > 20 ? gyro_bias : Eigen::Vector3d::Zero()));
-        magnetometer(imu_stamp, frame > 40 && frame <= 60);
-      }
-      static_cast<void>(
-          odometry.addFrame(stamp, observe(config, t, frame <= 20 ? points : none,
-                                           config.observation_noise, generator)));
-      worst_rad = std::max(
-          worst_rad, std::abs(headingError(odometry.predicted(stamp + 1'000'000), t)));
-    }
-    const double final_deg =
-        std::abs(headingError(odometry.predicted(stamp + 1'000'000),
-                              static_cast<double>(stamp) * 1.0e-9)) *
-        180.0 / std::numbers::pi;
-    if (with_magnetometer) {
-      EXPECT_LT(final_deg, 0.5) << final_deg;
-      // The two seconds of the disturbed field left out: the bias's 2 degrees
-      // over them and back, not the 30 the readings pointed to.
-      EXPECT_LT(worst_rad * 180.0 / std::numbers::pi, 3.0) << worst_rad;
-    } else {
-      EXPECT_GT(final_deg, 5.0) << final_deg;
     }
   }
+  EXPECT_LT(held_sum_deg / static_cast<double>(seeds.size()), 1.5);
 }
 
 TEST(VisualInertialOdometry, TheHeadingIsNeverLearnedFromFeatures) {
