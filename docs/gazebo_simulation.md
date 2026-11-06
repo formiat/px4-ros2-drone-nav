@@ -65,7 +65,12 @@ second (r2910, r2911), and the estimators levelled on different rests.
 The container runs Fast DDS with `docker/fastdds_profiles.xml`
 (`FASTRTPS_DEFAULT_PROFILES_FILE`, `scripts/container_run.sh`, the container
 sharing the host's `/dev/shm`): a shared-memory segment of 64 MB that carries
-messages up to 16 MB, UDP beside it. The default segment takes 512 KB and
+messages up to 16 MB, UDP beside it. A participant stopped from outside leaves
+its segment behind; `scripts/stop_sim.sh` removes what no living process holds
+(`scripts/fastdds_shm_cleanup.py`, the test of Fast DDS's own `fastdds shm clean`): ten
+hours of flights had left 5.6 GB on the host, 2.9 GB of it swapped out, and the
+camera flights' real-time factor under A7's floor in seven attempts of eleven
+(2026-11-06; 0.85 to 0.89 in five of six after). The default segment takes 512 KB and
 sends the rest over UDP, where the kernel's 208 KB receive buffer loses
 fragments of the pair's 3.7 MB frames: the stack bag's recorder lost 14
 percent of them in flight (r2874) and half of them in a measurement

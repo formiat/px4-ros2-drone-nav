@@ -6,6 +6,19 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The camera set's stack replay meets its contract with the autopilot's IMU at every sample, and a camera
+  bag is kept in the replay gate beside the lidar's (roadmap item 36, specification K62): a recorded flight
+  replays to 0.000 m over every pose, twice the same (r2944, r2945). Five repairs: the barometer's pressure
+  as a windowed mean, the update's choice among closed tracks independent of the map's order, a depth frame
+  registered against the long-lived map on the frames' grid, the replay's player holding its publishers
+  before the first message, the filter's first step from the declared pose started at the sample of the
+  declared stamp. The frame record names the IMU samples of each frame; the gate compiles what differs
+  from HEAD itself; `tools/replay_first_poses.py`, `tools/bag_imu_losses.py`.
+- The planner's navigation input bounds the yaw rate it may measure by the autopilot's limit, not by the
+  cap on what the gaze commands: on the lidar set, capped at 0.8 rad/s, every overshoot of a turn was read
+  as no navigation and the planner ticked nothing through it, 14 to 18 s of a flight; r2959 met a wall so.
+- Stopping a simulation removes the Fast DDS shared-memory segments its processes left on the host
+  (`scripts/fastdds_shm_cleanup.py`).
 - The whole stack recorded and replayed (roadmap item 27 block 6): `RECORD_STACK_BAG=true` records the stack's
   inputs and outputs beside the flight, `tools/replay_stack.sh` runs the stack again on the bag without the
   simulator and the autopilot and `tools/replay_compare.py` sets its outputs against the flight's. The sensor

@@ -26,6 +26,7 @@ def load_module(name: str, path: Path):
 
 
 compare = load_module("replay_compare", REPOSITORY / "tools" / "replay_compare.py")
+imu_losses = load_module("bag_imu_losses", REPOSITORY / "tools" / "bag_imu_losses.py")
 
 
 class StackBagTopicsTest(unittest.TestCase):
@@ -142,6 +143,19 @@ class Stamped:
         self.header.stamp = type("Stamp", (), {"sec": sec, "nanosec": nanosec})()
         self.pose = type("Pose", (), {})()
         self.pose.position = type("Point", (), {"x": x, "y": y, "z": z})()
+
+
+class BagImuLossesTest(unittest.TestCase):
+    def test_a_step_longer_than_the_period_is_a_sample_the_bag_lacks(self) -> None:
+        raw = [4000 * k for k in range(200) if k != 120]
+        relayed = [4000 * k + 700 for k in range(200)]
+        self.assertEqual([(4000 * 119, 8000, 99, 100)], imu_losses.losses(raw, relayed))
+        self.assertEqual([], imu_losses.losses([4000 * k for k in range(200)], relayed))
+
+    def test_the_bag_tools_are_recorded(self) -> None:
+        readme = (REPOSITORY / "tools/README.md").read_text(encoding="utf-8")
+        self.assertIn("| `bag_imu_losses.py` |", readme)
+        self.assertIn("| `replay_first_poses.py` |", readme)
 
 
 class ReplayCompareTest(unittest.TestCase):
