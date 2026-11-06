@@ -109,6 +109,8 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn("stack_bag_topics.py inputs", replay)
         self.assertIn("replay_compare.py", replay)
         self.assertIn("--clock 250", replay)
+        # The player's publishers stand before the first message (r2938: the stack lost the bag's first 0.3 s).
+        self.assertIn("--delay 5 --topics", replay)
 
     def test_the_kept_bags_replay_as_a_gate(self) -> None:
         # The owner's decision of 2026-11-05 (roadmap item 36): the stack's determinism is the replay's contract, and
@@ -141,10 +143,12 @@ class ReplayCompareTest(unittest.TestCase):
         line, ok = compare.compare_poses(flight, replay)
         self.assertTrue(ok)
         self.assertIn("unmatched flight 5 replay 5", line)
+        self.assertIn("the replay's estimate begins at 1.000 s, the flight's at 1.000 s", line)
         replay = [(b"", Stamped(1, k, 0.1 if k >= 90 else 0.0, 0.0, 0.0)) for k in range(100)]
         line, ok = compare.compare_poses(flight, replay)
         self.assertFalse(ok)
         self.assertIn("max 0.100", line)
+        self.assertNotIn("begins at", line)
         replay = [(b"", Stamped(1, k, 0.1 if k >= 96 else 0.0, 0.0, 0.0)) for k in range(100)]
         self.assertTrue(compare.compare_poses(flight, replay)[1], "four of a hundred beyond: p95 within")
 

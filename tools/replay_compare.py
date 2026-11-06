@@ -78,8 +78,15 @@ def compare_poses(flight: list, replay: list) -> tuple[str, bool]:
     for (a, _), d in zip(pairs, distances):
         by_minute.setdefault(stamp_ns(a[1]) // 60_000_000_000, []).append(d)
     minutes = " ".join(f"{percentile(by_minute[m], 0.5):.2f}" for m in sorted(by_minute))
+    # An estimate that began on another frame is another estimate from its first pose (r2938: the replayed stack
+    # lost the bag's first 0.3 s and declared its pose a second after the flight's): said, not left to be read
+    # out of the distances.
+    start = ""
+    if flight and replay and stamp_ns(flight[0][1]) != stamp_ns(replay[0][1]):
+        start = (f"; the replay's estimate begins at {stamp_ns(replay[0][1]) * 1.0e-9:.3f} s, the flight's at "
+                 f"{stamp_ns(flight[0][1]) * 1.0e-9:.3f} s")
     return (f"{distance_stats(distances)}; unmatched flight {flight_alone} replay {replay_alone}"
-            f" ({'within' if ok else 'beyond'} {POSE_TOLERANCE_M:.2f} m at p95); by minute {minutes}"), ok
+            f" ({'within' if ok else 'beyond'} {POSE_TOLERANCE_M:.2f} m at p95); by minute {minutes}{start}"), ok
 
 
 def vector_difference(a, b) -> float:

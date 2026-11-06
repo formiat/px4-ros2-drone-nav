@@ -45,8 +45,11 @@ ros2 bag record -s mcap --max-cache-size 268435456 --qos-profile-overrides-path 
   -o "$out/replay_bag" --topics "${outputs[@]}" > "$out/replay_bag.log" 2>&1 &
 record_pid=$!
 sleep 5
-# The bag first: --topics takes every argument after it.
-ros2 bag play "$bag" --clock 250 -r "$rate" --topics "${inputs[@]}" > "$out/play.log" 2>&1
+# The bag first: --topics takes every argument after it. The player's
+# publishers stand five seconds before the first message: played at once, the
+# stack had not matched them yet and lost the bag's first 0.3 s, and the
+# stereo estimate declared its pose a second after the flight's (r2938).
+ros2 bag play "$bag" --clock 250 -r "$rate" --delay 5 --topics "${inputs[@]}" > "$out/play.log" 2>&1
 echo "REPLAY $run played $(date -u +%H:%M:%S)" | tee -a "$out/replay.log"
 sleep 5
 stop() { kill -TERM "$1" 2>/dev/null || true; for _ in $(seq 1 600); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.1; done; kill -KILL "$1" 2>/dev/null || true; }
