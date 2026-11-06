@@ -20,6 +20,7 @@ from headless_topology_validation import (
 )
 from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E402
 from resource_budget_evidence import validate_resource_budget  # noqa: E402
+from world_enclosure import validate_scenario_inside  # noqa: E402
 from headless_runtime_evidence import (
     planner_flight_space_m,
     validate_goal_reached_in_truth,
@@ -535,6 +536,12 @@ def main() -> int:
             manifest_mission.get("unreachable_goal_injected", False))
         truth_occupancy_3d = str(manifest_mission.get("truth_occupancy_3d", ""))
         overrides = manifest.get("effective_overrides", {})
+        # Specification K63: a scenario that carries the proof of its start and goals is measured
+        # again on the truth grid it was judged by (roadmap item 33's flights flew outside their worlds).
+        scenario_path = str(manifest_mission.get("scenario", {}).get("path", ""))
+        if scenario_path and truth_occupancy_3d:
+            validate_scenario_inside(Path(__file__).resolve().parents[1] / scenario_path,
+                                     Path(truth_occupancy_3d), errors)
         # Roadmap item 17: a scenario whose light fails or whose battery is
         # low at launch asks for the return as the goal-outside flight does.
         # A long flight under failures may end at B or, its light judged

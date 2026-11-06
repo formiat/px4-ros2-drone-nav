@@ -163,6 +163,40 @@ At runtime, `simulation_truth_adapter_node` converts Gazebo dynamic poses back
 to map coordinates and the referee blocks mission start until every navigation
 pose agrees with physical truth.
 
+### A Start And A Goal Inside The World
+
+A world of tunnels, caverns or rooms is a set of shells in an empty space, and
+the space round the shells is as free as the space inside them. On 2026-11-05
+the project owner saw the finals flight start behind the location's walls: the
+scenario tool had taken "the largest free space under a ceiling" for the world,
+and the void round the tunnels has ceilings (the tunnels above it), floors (the
+ones below) and a hundred times the world's volume. Both held-out scenarios
+stood on the outside of a tunnel's shell, and thirty flights were flown there
+(roadmap item 33). A start or a goal is therefore never taken on one test:
+it is proven inside by tests that do not share a way of failing
+(`tools/scenario_inside.py`, specification K63), each on the world's truth
+voxelization, the start read after its takeoff climb:
+
+| Test | What it reads | What it cannot see |
+|---|---|---|
+| **rays** | What the point sees: 128 rays over the sphere, the share that meets a surface within 40 m (`scripts/world_enclosure.py`). Inside the finals world 0.99 at the first percentile, in its void 0.63 at the 99th; the start flown until 2026-11-05 read 0.62. Inside at 0.90 or more. | A small closed pocket in a wall reads as inside: the tiles' vote rules it out. |
+| **tiles** | What the world is made of: its own parts in the SDF (the staging area and every tile, each with a pose) vote for the free component holding the point 1.5 m over the most of their origins; the point is in it. | A part's origin is not always on its floor (36 of 117 on the finals world lie in the void), so the parts vote and never decide alone. |
+| **shells** | Where the tiles' component is sealed from the grid's faces, the point is sealed too (a flood from the faces). | A world with an open entrance is joined to the faces whole (Urban: its staging area is open), and the flood tells nothing; the rays hold there. |
+| **floor** | A floor under the point within 8 m and a ceiling over it within 25 m. | The void between two tunnels has both: this test passed the faulty start. |
+
+Every test passes for every point, or the scenario is not flown. The proof is
+written into the scenario file (`inside`: the grid's hash, the world's figures,
+each point's readings); `tools/heldout_scenario.py` writes it as it draws a
+scenario and refuses one it cannot prove, and the flight's check measures the
+rays again on the truth grid of every flight whose scenario carries a proof
+(`OK: the scenario's start and goals lie inside the world`). The tool also
+draws the grid's slice at each point's height (`--pictures`: the void grey, the
+world white, the point red) for the eye that found the fault. A scenario
+written by hand (the Urban ones) is proven the same way after any change of
+its start or goal; the open sky has no inside and carries no proof. A
+recording is looked at before it is kept: the convex side of a tunnel beside
+the pad is the void.
+
 ## Static World Generation
 
 The planner static obstacle source is configured with:
@@ -371,7 +405,8 @@ After changing simulation assets or launch setup:
 2. Start a clean GUI run and confirm model placement.
 3. Verify static map and raw obstacle grid in RViz.
 4. Confirm lidar points align with visible obstacles.
-5. Confirm start and goal are valid.
+5. Confirm start and goal are valid: inside the world by `tools/scenario_inside.py` (above), the proof
+   written into the scenario, its slices looked at.
 6. Run a headless smoke test.
 7. Inspect logs for unexpected replans or frame warnings.
 

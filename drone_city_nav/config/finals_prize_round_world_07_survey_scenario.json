@@ -4,12 +4,96 @@
   "vehicle": {
     "px4_model_target": "gz_x500_lidar_3d",
     "gazebo_model_name": "x500_lidar_3d_0",
-    "map_start_m": [57.25, 234.75, 28.23],
+    "map_start_m": [
+      57.25,
+      234.75,
+      28.23
+    ],
     "yaw_rad": 1.670465
   },
-  "mission_goal_sequence_m": [[57.25, 234.75, 30.23]],
-  "launch_platforms": [
-    {"id": "pad", "vehicle_ids": ["point_to_point_vehicle"], "size_m": [3.0, 3.0, 1.0], "top_z_m": 28.0}
+  "mission_goal_sequence_m": [
+    [
+      57.25,
+      234.75,
+      30.23
+    ]
   ],
-  "survey_volume_m": [42.0, 225.0, 25.0, 72.0, 285.0, 37.0]
+  "launch_platforms": [
+    {
+      "id": "pad",
+      "vehicle_ids": [
+        "point_to_point_vehicle"
+      ],
+      "size_m": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "top_z_m": 28.0
+    }
+  ],
+  "survey_volume_m": [
+    42.0,
+    225.0,
+    25.0,
+    72.0,
+    285.0,
+    37.0
+  ],
+  "inside": {
+    "tool": "tools/scenario_inside.py",
+    "grid": "external/environment-candidates/work/final_event_07_r050.occupancy3d",
+    "grid_sha256": "1107ca8ecfe0fd86e258fed61ea49f37062abe882b29cd37a6a914645a8d99cb",
+    "rays": 128,
+    "reach_m": 40.0,
+    "enclosed_share": 0.9,
+    "world": {
+      "parts": 117,
+      "anchors_free": 111,
+      "anchors_in_the_tiles_component": 64,
+      "tiles_component_voxels": 1117718,
+      "void_voxels": 100320372,
+      "sealed_from_the_grids_faces": true
+    },
+    "points": [
+      {
+        "name": "start",
+        "map_m": [
+          57.25,
+          234.75,
+          30.23
+        ],
+        "rays_meeting_a_surface": 1.0,
+        "in_the_tiles_component": true,
+        "joined_to_the_grids_faces": false,
+        "floor_under_m": 3.0,
+        "ceiling_over_m": 5.5,
+        "passed": {
+          "rays": true,
+          "tiles": true,
+          "shells": true,
+          "floor": true
+        }
+      },
+      {
+        "name": "goal 1",
+        "map_m": [
+          57.25,
+          234.75,
+          30.23
+        ],
+        "rays_meeting_a_surface": 1.0,
+        "in_the_tiles_component": true,
+        "joined_to_the_grids_faces": false,
+        "floor_under_m": 3.0,
+        "ceiling_over_m": 5.5,
+        "passed": {
+          "rays": true,
+          "tiles": true,
+          "shells": true,
+          "floor": true
+        }
+      }
+    ]
+  }
 }

@@ -378,7 +378,21 @@ def main() -> int:
                         help="prefer a goal under a flat ceiling over a flat floor (the finals world)")
     parser.add_argument("--scenario", type=Path, required=True, help="the scenario file written")
     parser.add_argument("--world", type=Path, required=True, help="the canonical world file written")
-    select(parser.parse_args())
+    args = parser.parse_args()
+    select(args)
+    # The proof that what was drawn lies inside the world, by tests that do not share this tool's way of failing
+    # (specification K63): written into the scenario, or the scenario is not to be flown.
+    import scenario_inside  # noqa: PLC0415
+
+    passed, proof, _ = scenario_inside.prove(args.scenario, args.grid, scenario_inside.default_world_sdf(args.scenario))
+    for point in proof["points"]:
+        print(f"inside: {point['name']} rays {point['rays_meeting_a_surface']:.2f} passed {point['passed']}")
+    if not passed:
+        print("the scenario's start or goal is not proven inside the world: not to be flown", file=sys.stderr)
+        return 1
+    document = json.loads(args.scenario.read_text(encoding="utf-8"))
+    document["inside"] = proof
+    args.scenario.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     return 0
 
 
