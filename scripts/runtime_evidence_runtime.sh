@@ -67,6 +67,7 @@ prepare_runtime_evidence() {
     STREAM_FAULT_SEED RETURN_HOME_ALLOWED RETURN_TRIGGERS_ALLOWED VEHICLE_INTACT_EXPECTED \
     IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
     GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE RECORD_STACK_BAG \
+    MOVING_BODIES MOVING_BODY_SEED \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
       runtime_manifest_args+=(
@@ -174,6 +175,17 @@ start_runtime_evidence_capture() {
     fi
   fi
   if ! bool_is_true "${multi_vehicle_mission}"; then
+    # Roadmap item 21: warm bodies that walk through the location
+    # (MOVING_BODIES, a scenario of its own; where on its walk each starts is
+    # drawn from the run's seed), an evaluation component as the light's and
+    # the streams' failures are: no production node reads the walks.
+    if [[ -n "${MOVING_BODIES:-}" ]]; then
+      python3 "${repo_root}/scripts/moving_bodies.py" \
+        --world "${world_name}" --bodies="${MOVING_BODIES}" \
+        --seed "${MOVING_BODY_SEED:-${IMPERFECTION_SEED:-0}}" \
+        --output "${runtime_artifact_dir}/moving_bodies.csv" \
+        > "${runtime_artifact_dir}/moving_bodies.log" 2>&1 &
+    fi
     # Specification K28: the autopilot's IMU stream failing, the same kind of
     # component: the estimators read its samples from the relay (the holes of
     # K28, or the jitter and gaps of the imperfections profile, K52).
