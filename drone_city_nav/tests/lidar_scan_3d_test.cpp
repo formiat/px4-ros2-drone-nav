@@ -95,6 +95,26 @@ TEST(LidarScan3D, AFlaggedReturnIsFreeSpaceUpToItsEnd) {
                    .organized_dimensions_match);
 }
 
+TEST(LidarScan3D, AWarmBodysReturnIsAHitMarkedAsOne) {
+  // Flag 3 (specification K64): the thermal core's reader calls the return a
+  // warm body's surface. Flag 2 stays what the sensor looked at and did not see.
+  const std::vector<Point3> points{Point3{3.0, 4.0, 0.0}, Point3{6.0, 0.0, 0.0},
+                                   Point3{0.0, 2.0, 0.0}};
+  const std::vector<float> flags{3.0F, 1.0F, 2.0F};
+
+  const OrganizedLidarScan3DResult result =
+      decodeHitOnlyReturns3D(points, flags, 0.2, 8.0);
+
+  ASSERT_EQ(result.beams.size(), 2U);
+  EXPECT_EQ(result.hit_beams, 2U);
+  EXPECT_TRUE(result.beams[0].hit);
+  EXPECT_TRUE(result.beams[0].warm_body);
+  EXPECT_TRUE(result.beams[1].hit);
+  EXPECT_FALSE(result.beams[1].warm_body);
+  ASSERT_EQ(result.unobservable.size(), 1U);
+  EXPECT_FALSE(result.unobservable.front().warm_body);
+}
+
 TEST(LidarScan3D, JoinsAdjacentReturnsOfOneWallWithSurfaceSamples) {
   const OrganizedLidarScan3DConfig config = threeRowScanConfig();
   // A vertical wall ten metres ahead sampled by the -10, 0 and +10 degree

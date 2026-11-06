@@ -116,7 +116,7 @@ def texture_png(path: Path, seed: int) -> None:
 
 
 def body_name(index: int) -> str:
-    return f"warm_body_{index}"
+    return f"walking_body_{index}"
 
 
 def body_sdf(index: int, x: float, y: float, z_base: float, texture: Path) -> str:
@@ -151,7 +151,7 @@ def listen(world: str, sim_s, heights) -> None:
 
     def on_poses(message: Pose_V) -> None:
         for pose in message.pose:
-            if pose.name.startswith("warm_body_"):
+            if pose.name.startswith("walking_body_"):
                 index = int(pose.name.rsplit("_", 1)[1])
                 if index < len(heights):
                     heights[index] = pose.position.z

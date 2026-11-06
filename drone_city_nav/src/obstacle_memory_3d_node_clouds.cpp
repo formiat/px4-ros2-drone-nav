@@ -152,6 +152,19 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
                     .value_or(std::vector<float>{}),
                 scan_config_.minimum_range_m, scan_config_.maximum_range_m)
           : decodeOrganizedLidarScan3D(*raw_returns, scan_config_);
+  // The lidar set's warm bodies ride in the scan as a field of their own
+  // (the thermal core's node, K64); the stereo set's as the returns' flag 3.
+  if (!hit_only_returns_) {
+    const std::vector<float> warm_bodies =
+        decodePointCloudFloatField(pending.cloud, "warm_body")
+            .value_or(std::vector<float>{});
+    if (warm_bodies.size() == decoded.beams.size()) {
+      for (std::size_t index = 0U; index < warm_bodies.size(); ++index) {
+        decoded.beams[index].warm_body =
+            decoded.beams[index].hit && warm_bodies[index] >= 0.5F;
+      }
+    }
+  }
   // Roadmap item 18 stage 0: the patterns in which the lidar fails, read
   // from the organized scan; an aerosol's returns and a dropout bundle's
   // rays become misses to their range with fail evidence there.
@@ -219,7 +232,8 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
                      .range_m = sample.range_m,
                      .hit = sample.hit,
                      .valid = sample.valid && ray.valid,
-                     .surface_only = sample.interpolated};
+                     .surface_only = sample.interpolated,
+                     .warm_body = sample.warm_body};
     if (!beam.valid) {
       ++projection_invalid;
       memory_beams.push_back(beam);

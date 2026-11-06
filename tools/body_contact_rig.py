@@ -66,7 +66,7 @@ def main() -> int:
         def on_contacts(message: Contacts) -> None:
             with lock:
                 for contact in message.contact:
-                    if "warm_body" in contact.collision2.name and not touched:
+                    if "walking_body" in contact.collision2.name and not touched:
                         touched.append(f"{contact.collision1.name} against {contact.collision2.name}")
 
         node.subscribe(Contacts, TOPIC, on_contacts)

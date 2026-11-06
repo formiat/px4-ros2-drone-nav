@@ -137,9 +137,13 @@ private:
     std_msgs::msg::Float64 share;
     share.data = reading.hot_share;
     thermal_share_pub_->publish(share);
+    std::vector<ThermalBody> bodies =
+        stereo_depth_node_internal::readThermalBodiesImage(image, thermal_config_,
+                                                           body_config_);
     const double stamp_s = rclcpp::Time{image.header.stamp}.seconds();
     const std::lock_guard<std::mutex> lock{mutex_};
     thermal_reading_ = reading;
+    thermal_bodies_ = std::move(bodies);
     thermal_stamp_s_ = stamp_s;
     if (image.width > 0U) {
       thermal_aspect_ = static_cast<double>(image.height) / image.width;
@@ -208,7 +212,9 @@ private:
     bool covered{false};
     {
       const std::lock_guard<std::mutex> lock{mutex_};
-      hot = thermal_reading_.hot() &&
+      // A warm region waits for the pose as a source does: its bearing is
+      // turned with the vehicle between the frame and the scan.
+      hot = (thermal_reading_.hot() || !thermal_bodies_.empty()) &&
             std::abs(stamp_s - thermal_stamp_s_) <= kThermalFreshS;
       covered = !poses_.empty() && poses_.back().stamp_s >= stamp_s;
     }
@@ -220,6 +226,7 @@ private:
     }
     if (!hot && !held_.has_value()) {
       announce(std::nullopt);
+      announceBodies({});
       scan_pub_->publish(*scan);
       return;
     }
@@ -240,9 +247,83 @@ private:
     }
   }
 
+  void announceBodies(const std::vector<ThermalBodySighting>& bodies) {
+    const bool seen = !bodies.empty();
+    if (seen == bodies_seen_) {
+      return;
+    }
+    bodies_seen_ = seen;
+    std_msgs::msg::String event;
+    event.data = stereo_depth_node_internal::bodyEventText(bodies);
+    mission_event_pub_->publish(event);
+    RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
+  }
+
+  // The scan with one more field, `warm_body`: 1 at a return that is a sighted
+  // body's own surface (K64), 0 elsewhere. The memory holds those returns as
+  // moving evidence (K65). The flags ride in the scan itself, as the heat
+  // marks do: a cloud of their own was displaced in the memory's queue (r2292).
+  [[nodiscard]] static sensor_msgs::msg::PointCloud2
+  withWarmBodies(const sensor_msgs::msg::PointCloud2& scan,
+                 const std::vector<ThermalBodySighting>& bodies) {
+    sensor_msgs::msg::PointCloud2 flagged;
+    flagged.header = scan.header;
+    flagged.height = scan.height;
+    flagged.width = scan.width;
+    flagged.is_bigendian = scan.is_bigendian;
+    flagged.is_dense = scan.is_dense;
+    flagged.fields = scan.fields;
+    sensor_msgs::msg::PointField field;
+    field.name = "warm_body";
+    field.offset = scan.point_step;
+    field.datatype = sensor_msgs::msg::PointField::FLOAT32;
+    field.count = 1U;
+    flagged.fields.push_back(field);
+    flagged.point_step = scan.point_step + static_cast<std::uint32_t>(sizeof(float));
+    flagged.row_step = flagged.point_step * flagged.width;
+    const std::size_t points = static_cast<std::size_t>(scan.width) * scan.height;
+    flagged.data.assign(points * flagged.point_step, 0U);
+    sensor_msgs::PointCloud2ConstIterator<float> x{scan, "x"};
+    sensor_msgs::PointCloud2ConstIterator<float> y{scan, "y"};
+    sensor_msgs::PointCloud2ConstIterator<float> z{scan, "z"};
+    for (std::size_t index = 0U; index < points; ++index, ++x, ++y, ++z) {
+      std::copy_n(scan.data.begin() +
+                      static_cast<std::ptrdiff_t>(index * scan.point_step),
+                  scan.point_step,
+                  flagged.data.begin() +
+                      static_cast<std::ptrdiff_t>(index * flagged.point_step));
+      const Point3 point{*x, *y, *z};
+      const float flag =
+          std::ranges::any_of(
+              bodies,
+              [&point](const ThermalBodySighting& body) {
+                return onBody(point, body,
+                              stereo_depth_node_internal::kBodySilhouetteMarginRad,
+                              stereo_depth_node_internal::kBodyDepthM);
+              })
+              ? 1.0F
+              : 0.0F;
+      std::memcpy(
+          std::addressof(flagged.data.at(index * flagged.point_step + scan.point_step)),
+          std::addressof(flag), sizeof(float));
+    }
+    return flagged;
+  }
+
+  // The scan to the memory, its warm bodies' returns flagged when any is sighted.
+  void forward(const sensor_msgs::msg::PointCloud2& scan,
+               const std::vector<ThermalBodySighting>& bodies) {
+    if (bodies.empty()) {
+      scan_pub_->publish(scan);
+    } else {
+      scan_pub_->publish(withWarmBodies(scan, bodies));
+    }
+  }
+
   void processScan(const sensor_msgs::msg::PointCloud2& scan) {
     const double stamp_s = rclcpp::Time{scan.header.stamp}.seconds();
     std::optional<ThermalReading> heat;
+    std::vector<ThermalBody> regions;
     bool looked_cold{false};
     double aspect{0.75};
     HeatSourceFix fix_snapshot;
@@ -271,6 +352,18 @@ private:
               orientation.conjugate() * at_frame->orientation *
               Eigen::Vector3d{heat->direction.x, heat->direction.y, heat->direction.z};
           heat->direction = Point3{bearing.x(), bearing.y(), bearing.z()};
+        }
+      }
+      if (fresh) {
+        regions = thermal_bodies_;
+        if (at_frame.has_value()) {
+          for (ThermalBody& region : regions) {
+            const Eigen::Vector3d bearing =
+                orientation.conjugate() * at_frame->orientation *
+                Eigen::Vector3d{region.direction.x, region.direction.y,
+                                region.direction.z};
+            region.direction = Point3{bearing.x(), bearing.y(), bearing.z()};
+          }
         }
       }
       looked_cold = fresh && !thermal_reading_.hot();
@@ -305,6 +398,11 @@ private:
       }
     }
     dropWeakReturns(returns, intensities);
+    // The warm regions the scan's own hits range as bodies (K64).
+    const std::vector<ThermalBodySighting> bodies =
+        sightBodies(regions, returns,
+                    stereo_depth_node_internal::kBodySilhouetteMarginRad, body_config_);
+    announceBodies(bodies);
     const Eigen::Quaterniond to_scan = orientation.conjugate();
     if (heat.has_value()) {
       std::optional<Eigen::Vector3d> fix;
@@ -340,7 +438,7 @@ private:
       cold_since_s_.reset();
     }
     if (!held_.has_value()) {
-      scan_pub_->publish(scan);
+      forward(scan, bodies);
       return;
     }
     // The held ball in the scan's frame (a reading toward its centre for the log).
@@ -406,7 +504,7 @@ private:
         ++*fi;
       }
     }
-    scan_pub_->publish(forwarded);
+    forward(forwarded, bodies);
     geometry_msgs::msg::PointStamped point;
     point.header.stamp = scan.header.stamp;
     point.header.frame_id = "map";
@@ -453,8 +551,10 @@ private:
   }
 
   ThermalReadingConfig thermal_config_{};
+  ThermalBodyConfig body_config_{};
   std::mutex mutex_;
   ThermalReading thermal_reading_{};
+  std::vector<ThermalBody> thermal_bodies_;
   double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
   std::deque<stereo_depth_node_internal::TimedPose> poses_;
   std::deque<std::pair<double, Point3>> pending_bearings_;
@@ -474,6 +574,7 @@ private:
   sensor_msgs::msg::PointCloud2::ConstSharedPtr waiting_scan_;
   double marks_logged_s_{0.0};
   bool heat_seen_{false};
+  bool bodies_seen_{false};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr scan_sub_;

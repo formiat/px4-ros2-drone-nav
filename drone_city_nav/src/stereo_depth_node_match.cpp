@@ -344,6 +344,36 @@ void StereoDepthNode::matchIfPaired() {
     mission_event_pub_->publish(event);
     RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
   }
+  // The warm regions the pair's and the ring's hits range as bodies (K64):
+  // their returns go to the memory as a body's, flag 3.
+  {
+    std::vector<ThermalBody> regions;
+    {
+      const std::lock_guard<std::mutex> lock{thermal_mutex_};
+      if (std::abs(pair_stamp_s - thermal_stamp_s_) <= kThermalFreshS) {
+        regions = thermal_bodies_;
+      }
+    }
+    const std::vector<ThermalBodySighting> bodies =
+        sightBodies(regions, returns,
+                    stereo_depth_node_internal::kBodySilhouetteMarginRad, body_config_);
+    for (StereoDepthReturn& ray : returns) {
+      ray.warm_body =
+          ray.hit && !ray.unobservable &&
+          std::ranges::any_of(bodies, [&ray](const ThermalBodySighting& body) {
+            return onBody(ray.point, body,
+                          stereo_depth_node_internal::kBodySilhouetteMarginRad,
+                          stereo_depth_node_internal::kBodyDepthM);
+          });
+    }
+    if (bodies.empty() == bodies_seen_) {
+      bodies_seen_ = !bodies.empty();
+      std_msgs::msg::String event;
+      event.data = stereo_depth_node_internal::bodyEventText(bodies);
+      mission_event_pub_->publish(event);
+      RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
+    }
+  }
   std_msgs::msg::Float64 smoke_message;
   smoke_message.data =
       tof_zones > 0U ? static_cast<double>(smoky_zones) / static_cast<double>(tof_zones)
@@ -453,7 +483,8 @@ void StereoDepthNode::matchIfPaired() {
   cloud.header.stamp = left->header.stamp;
   cloud.header.frame_id = frame_id_;
   sensor_msgs::PointCloud2Modifier modifier{cloud};
-  // intensity: 1 a surface, 0 a free ray, 2 looked at, not seen (item 17 stage 8).
+  // intensity: 1 a surface, 0 a free ray, 2 looked at, not seen (item 17 stage 8),
+  // 3 a warm body's surface (item 21, K64).
   modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y",
                                 1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
                                 sensor_msgs::msg::PointField::FLOAT32, "intensity", 1,
@@ -468,7 +499,13 @@ void StereoDepthNode::matchIfPaired() {
     *x = static_cast<float>(ray.point.x);
     *y = static_cast<float>(ray.point.y);
     *z = static_cast<float>(ray.point.z);
-    *flag = ray.unobservable ? 2.0F : static_cast<float>(ray.hit);
+    if (ray.unobservable) {
+      *flag = 2.0F;
+    } else if (ray.warm_body) {
+      *flag = 3.0F;
+    } else {
+      *flag = static_cast<float>(ray.hit);
+    }
     hits += ray.hit ? 1U : 0U;
     ++x;
     ++y;

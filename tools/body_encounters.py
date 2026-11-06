@@ -132,7 +132,7 @@ def planner_events(run: Path, near: list[float]) -> tuple[int, int, bool]:
     """Trajectories found in collision and stops published while the body was near (-1 where the flight's records
     do not place the log's lines on the simulation's clock), and a contact with a body."""
     log = (run / "ros_drone_nav.log").read_text(errors="replace")
-    contact = bool(re.search(r"VEHICLE_DESTROYED[^\n]*obstacle_collision='warm_body", log))
+    contact = bool(re.search(r"VEHICLE_DESTROYED[^\n]*obstacle_collision='walking_body", log))
     if not near:
         return 0, 0, contact
     track = run / "mppi" / "mppi_track.jsonl"

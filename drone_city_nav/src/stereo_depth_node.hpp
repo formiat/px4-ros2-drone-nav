@@ -139,8 +139,12 @@ private:
   double heat_error_m_{1.0};
   static constexpr double kThermalFreshS{0.5};
   ThermalReadingConfig thermal_config_{};
+  ThermalBodyConfig body_config_{};
   std::mutex thermal_mutex_;
   ThermalReading thermal_reading_{};
+  // The frame's warm regions (K64), sighted as bodies against the returns.
+  std::vector<ThermalBody> thermal_bodies_;
+  bool bodies_seen_{false};
   double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
   // Nought, so that the first hot frame lays its marks (r2235: NaN laid none).
   double heat_emitted_s_{0.0};

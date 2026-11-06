@@ -132,9 +132,14 @@ def state_text(events: list[str], dead_reckoning: bool, descending: bool,
         return f"{words.get(trigger, 'GOAL UNREACHABLE')} -> HOME", AMBER
     # A heat source in the thermal core's frame (roadmap item 32, K49), while
     # the depth node reads one.
-    heat = next((event for event in reversed(events) if event.startswith("HEAT_SOURCE")), "")
+    heat = next((event for event in reversed(events)
+                 if event.startswith("HEAT_SOURCE") and "class=body" not in event), "")
     if "seen=true" in heat:
         return "HEAT SOURCE", AMBER
+    # A warm body the core and the returns sight (roadmap item 21, K64): the same line with its class.
+    body = next((event for event in reversed(events) if event.startswith("HEAT_SOURCE class=body")), "")
+    if "seen=true" in body:
+        return "WARM BODY", AMBER
     if ready or any(event.startswith("MISSION_READINESS") for event in events):
         if survey:
             goals = sum(1 for event in events if event.startswith("OPERATOR_COMMAND goal"))

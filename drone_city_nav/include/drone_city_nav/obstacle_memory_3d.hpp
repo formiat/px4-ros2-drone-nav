@@ -22,6 +22,9 @@ struct LidarBeam3D {
   // A reconstructed surface sample: occupied evidence at the endpoint only.
   // No beam travelled to it, so it carries no free-space evidence.
   bool surface_only{false};
+  // A return on a body the thermal core sights as warm (roadmap item 21,
+  // specification K64): moving evidence.
+  bool warm_body{false};
 };
 
 struct LidarScan3DView {

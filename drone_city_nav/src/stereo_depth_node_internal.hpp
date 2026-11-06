@@ -362,4 +362,42 @@ readThermalImage(const sensor_msgs::msg::Image& image,
   return readThermalFrame(kelvin_hundredths, image.width, image.height, config);
 }
 
+// The frame's warm regions (roadmap item 21, specification K64); none for
+// another encoding or a short frame.
+[[nodiscard]] inline std::vector<ThermalBody>
+readThermalBodiesImage(const sensor_msgs::msg::Image& image,
+                       const ThermalReadingConfig& source,
+                       const ThermalBodyConfig& config) {
+  const std::size_t pixels = static_cast<std::size_t>(image.width) * image.height;
+  if (image.encoding != "mono16" || pixels == 0U || image.data.size() < 2U * pixels) {
+    return {};
+  }
+  std::vector<std::uint16_t> kelvin_hundredths(pixels);
+  std::memcpy(kelvin_hundredths.data(), image.data.data(), 2U * pixels);
+  return readThermalBodies(kelvin_hundredths, image.width, image.height, source,
+                           config);
+}
+
+// A return within this of a sighted body's silhouette is its own: the core's
+// pixel is 0.36 degrees and the frame and the returns are a tenth of a second
+// apart at most.
+inline constexpr double kBodySilhouetteMarginRad{0.02};
+// And within this of its range: a person's own depth and the range's error.
+inline constexpr double kBodyDepthM{0.75};
+
+// The mission's words on warm bodies (K64), the heat source's line with a
+// class: how many the core and the returns sight, and the nearest.
+[[nodiscard]] inline std::string
+bodyEventText(const std::vector<ThermalBodySighting>& bodies) {
+  if (bodies.empty()) {
+    return "HEAT_SOURCE class=body seen=false";
+  }
+  double nearest_m = bodies.front().range_m;
+  for (const ThermalBodySighting& body : bodies) {
+    nearest_m = std::min(nearest_m, body.range_m);
+  }
+  return "HEAT_SOURCE class=body seen=true bodies=" + std::to_string(bodies.size()) +
+         " range_m=" + std::to_string(nearest_m);
+}
+
 } // namespace drone_city_nav::stereo_depth_node_internal

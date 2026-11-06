@@ -115,7 +115,9 @@ decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
     const bool valid = std::isfinite(range_m) && range_m >= minimum_range_m &&
                        range_m <= maximum_range_m;
     const bool hit = valid && (hit_flags.empty() || hit_flags[index] >= 0.5F);
-    if (valid && !hit_flags.empty() && hit_flags[index] >= 1.5F) {
+    // A warm body's surface (flag 3, K64): a hit, and moving evidence.
+    const bool warm_body = hit && !hit_flags.empty() && hit_flags[index] >= 2.5F;
+    if (valid && !hit_flags.empty() && hit_flags[index] >= 1.5F && !warm_body) {
       // Looked at and not seen (flag 2): occupied evidence without free
       // space, and no observation of the frame's.
       result.unobservable.push_back(LidarBeamSample3D{
@@ -133,7 +135,8 @@ decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
                   : Vec3{},
         .range_m = valid ? range_m : 0.0,
         .hit = hit,
-        .valid = valid});
+        .valid = valid,
+        .warm_body = warm_body});
     result.hit_beams += hit ? 1U : 0U;
     result.miss_beams += valid && !hit ? 1U : 0U;
     result.invalid_beams += valid ? 0U : 1U;

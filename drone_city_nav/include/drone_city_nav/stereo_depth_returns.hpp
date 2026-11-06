@@ -47,6 +47,9 @@ struct StereoDepthReturn {
   // time-of-flight zone (roadmap item 18 stage 2): the memory's fail
   // evidence, not a surface.
   bool unobservable{false};
+  // A hit on a body the thermal core sights as warm (roadmap item 21,
+  // specification K64): a surface now, and moving evidence to the memory.
+  bool warm_body{false};
 };
 
 // The returns of a disparity image in the left camera's forward-left-up frame.

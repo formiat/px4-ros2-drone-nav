@@ -63,6 +63,23 @@ class StateWordsTest(unittest.TestCase):
                               False, True, True)[0])
         self.assertNotIn("SMOKE", PATH.read_text())
 
+    def test_a_warm_body_and_a_heat_source_are_told_apart(self) -> None:
+        # Roadmap items 21 and 32: the heat source's line, and the same line with a class for a body.
+        text = OVERLAY.state_text
+        ready = ["MISSION_READINESS ready=true"]
+        self.assertEqual("WARM BODY", text(ready + ["HEAT_SOURCE class=body seen=true bodies=1 range_m=6.2"],
+                                           False, False, True, True)[0])
+        self.assertEqual("TO GOAL", text(ready + ["HEAT_SOURCE class=body seen=true bodies=1 range_m=6.2",
+                                                  "HEAT_SOURCE class=body seen=false"],
+                                         False, False, True, True)[0])
+        self.assertEqual("HEAT SOURCE", text(ready + ["HEAT_SOURCE seen=true range_m=8.0 pixels=30",
+                                                      "HEAT_SOURCE class=body seen=false"],
+                                             False, False, True, True)[0])
+        self.assertEqual("WARM BODY", text(ready + ["HEAT_SOURCE seen=true range_m=8.0 pixels=30",
+                                                    "HEAT_SOURCE seen=false",
+                                                    "HEAT_SOURCE class=body seen=true bodies=2 range_m=4.0"],
+                                           False, False, True, True)[0])
+
     def test_the_words_sit_in_the_top_left_corner_of_each_view(self) -> None:
         # Straight down with yaw 0, RViz's camera has +Y to its right and -X up.
         x, y, z = OVERLAY.corner_offset(0.0, 1.5707, 50.0, -0.55, 0.86)

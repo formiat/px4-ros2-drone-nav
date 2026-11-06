@@ -249,9 +249,12 @@ void StereoDepthNode::onThermal(const sensor_msgs::msg::Image& image) {
   std_msgs::msg::Float64 share;
   share.data = reading.hot_share;
   thermal_share_pub_->publish(share);
+  std::vector<ThermalBody> bodies = stereo_depth_node_internal::readThermalBodiesImage(
+      image, thermal_config_, body_config_);
   const double stamp_s = rclcpp::Time{image.header.stamp}.seconds();
   const std::lock_guard<std::mutex> lock{thermal_mutex_};
   thermal_reading_ = reading;
+  thermal_bodies_ = std::move(bodies);
   thermal_stamp_s_ = stamp_s;
   if (reading.hot()) {
     // The bearing waits for the estimate's pose at the frame's stamp (r2248:

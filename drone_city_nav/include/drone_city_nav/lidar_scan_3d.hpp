@@ -17,6 +17,9 @@ struct LidarBeamSample3D {
   // than measured by a beam of its own: it carries occupied evidence at its
   // endpoint only, never free-space evidence along a ray.
   bool interpolated{false};
+  // A return the thermal core's reader calls a warm body's surface (roadmap
+  // item 21, specification K64): a surface now, moving evidence to the memory.
+  bool warm_body{false};
 };
 
 struct OrganizedLidarScan3DConfig {

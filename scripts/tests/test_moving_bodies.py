@@ -42,7 +42,7 @@ class MovingBodiesTest(unittest.TestCase):
 
     def test_the_body_is_a_person_sized_warm_dynamic_model(self) -> None:
         sdf = bodies.body_sdf(2, 1.0, 2.0, 3.0, Path("/tmp/texture.png"))
-        self.assertIn('<model name="warm_body_2"><static>false</static>', sdf)
+        self.assertIn('<model name="walking_body_2"><static>false</static>', sdf)
         self.assertIn("<pose>1.0 2.0 3.85 0 0 0</pose>", sdf)
         self.assertIn("<cylinder><radius>0.25</radius><length>1.7</length></cylinder>", sdf)
         self.assertIn("<temperature>307.0</temperature>", sdf)
@@ -67,7 +67,7 @@ class MovingBodiesTest(unittest.TestCase):
             text = source.read_text()
             self.assertNotIn("MOVING_BODIES", text, source.name)
             self.assertNotIn("moving_bodies", text, source.name)
-            self.assertNotIn("warm_body", text, source.name)
+            self.assertNotIn("walking_body", text, source.name)
 
 
 class BodyEncountersTest(unittest.TestCase):
