@@ -24,6 +24,10 @@ A LEVEL is NAME[,key=value...]:
                the wall is, created at run time through the world's create service as a flight creates it; heatx=D
                its centre D m ahead of the carrier (4.0), heatz=Z its height (the carrier's); read by the thermal
                core of the vehicle's class (160 x 120, 57 degrees, 9 Hz, up to 650 K) the carrier adds for it
+  body=T       a warm body (roadmap item 21): an upright cylinder 0.5 m across and 1.7 m tall standing on the floor,
+               its surface tagged T K (a person reads 305 to 310), textured, created at run time as the heat source
+               is; bodyx=D its axis D m ahead of the carrier (4.0), bodyy=Y m to the left (0)
+  wallk=K      the wall's tagged temperature (310); 0 leaves the wall untagged, at the atmosphere's 288 K
   corridor=W   two textured side walls W m apart along the whole floor, 6 m tall (the location's north corridor is
                4.4 m wide): the smoke box, 6 m wide, then fills the corridor wall to wall, and the walls give the
                pair's silence a rim at the smoke's face as the location does (the smoke face detector's measurement)
@@ -180,6 +184,9 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
       <material><ambient>0 0 0 1</ambient><diffuse>{albedo} {albedo} {albedo} 1</diffuse><specular>0 0 0 1</specular>
         <pbr><metal><metalness>0</metalness><roughness>1</roughness></metal></pbr></material>
     </visual></link></model>"""
+    wall_k = float(spec.get("wallk", 310.0))
+    wall_tag = (f'<plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal">'
+                f"<temperature>{wall_k}</temperature></plugin>" if wall_k > 0.0 else "")
     return f"""<?xml version="1.0"?>
 <sdf version="1.10"><world name="smoke_rig">
   <physics name="p" type="ode"><max_step_size>0.004</max_step_size><real_time_factor>1.0</real_time_factor></physics>
@@ -203,7 +210,7 @@ def world_sdf(spec: dict[str, str], textures: Path) -> str:
     <collision name="c"><geometry><box><size>0.1 12 6</size></box></geometry></collision>
     <visual name="v"><geometry><box><size>0.1 12 6</size></box></geometry>
       <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
-      <plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal"><temperature>310</temperature></plugin>
+      {wall_tag}
     </visual></link></model>{extra}
   <include><uri>model://carrier</uri><pose>0 0 {height} 0 0 0</pose></include>
 </world></sdf>
@@ -217,6 +224,24 @@ def heat_source_sdf(x: float, z: float, radius: float, kelvin: float, textures: 
 <sdf version="1.10"><model name="heat_source"><static>true</static><pose>{x} 0 {z} 0 0 0</pose><link name="l">
   <collision name="c"><geometry><sphere><radius>{radius}</radius></sphere></geometry></collision>
   <visual name="v"><geometry><sphere><radius>{radius}</radius></sphere></geometry>
+    <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
+    <plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal"><temperature>{kelvin}</temperature></plugin>
+  </visual></link></model></sdf>"""
+
+
+BODY_DIAMETER_M, BODY_HEIGHT_M = 0.5, 1.7
+
+
+def body_sdf(x: float, y: float, kelvin: float, textures: Path) -> str:
+    """A warm body (roadmap item 21): an upright textured cylinder on the floor, a person's size, tagged with its
+    surface temperature for the thermal camera; the pair, the ring and the lidar see it as any body."""
+    return f"""<?xml version="1.0"?>
+<sdf version="1.10"><model name="warm_body"><static>true</static><pose>{x} {y} {BODY_HEIGHT_M / 2.0} 0 0 0</pose>
+<link name="l">
+  <collision name="c"><geometry><cylinder><radius>{BODY_DIAMETER_M / 2.0}</radius><length>{BODY_HEIGHT_M}</length>
+    </cylinder></geometry></collision>
+  <visual name="v"><geometry><cylinder><radius>{BODY_DIAMETER_M / 2.0}</radius><length>{BODY_HEIGHT_M}</length>
+    </cylinder></geometry>
     <material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>{textures}/wall.png</albedo_map></metal></pbr></material>
     <plugin filename="gz-sim-thermal-system" name="gz::sim::systems::Thermal"><temperature>{kelvin}</temperature></plugin>
   </visual></link></model></sdf>"""
@@ -491,6 +516,15 @@ def run_level(out: Path, level: str) -> None:
             ok, reply = node.request("/world/smoke_rig/create", source, EntityFactory, Boolean, 5000)
             if not (ok and reply.data):
                 raise RuntimeError("the heat source could not be created")
+        if "body" in spec:
+            body = EntityFactory()
+            body.sdf = body_sdf(float(spec.get("bodyx", 4.0)), float(spec.get("bodyy", 0.0)), float(spec["body"]),
+                                textures(out))
+            body.name = "warm_body"
+            body.allow_renaming = False
+            ok, reply = node.request("/world/smoke_rig/create", body, EntityFactory, Boolean, 5000)
+            if not (ok and reply.data):
+                raise RuntimeError("the warm body could not be created")
         time.sleep(WARM_UP_S)
         collector.armed = True
         deadline = time.time() + 60.0
@@ -514,6 +548,8 @@ def run_level(out: Path, level: str) -> None:
             arrays = {key: np.stack(frames) for key, frames in collector.frames.items() if frames}
         meta = {"sigma": sigma, "x0": x0, "len": length, "light": light, "particles": float(spec.get("particles", 0)),
                 "heat": float(spec.get("heat", 0)), "heatr": float(spec.get("heatr", 0.3)), "heatx": float(spec.get("heatx", 4.0)), "heatz": float(spec.get("heatz", spec.get("height", 1.5))),
+                "body": float(spec.get("body", 0)), "bodyx": float(spec.get("bodyx", 4.0)),
+                "bodyy": float(spec.get("bodyy", 0.0)), "wallk": float(spec.get("wallk", 310.0)),
                 "panel": float(spec.get("panel", 0)), "albedo": float(spec.get("albedo", 0)),
                 "noise": spec.get("noise", "model"), "wall": float(spec.get("wall", 8.0)),
                 "height": float(spec.get("height", 1.5))}

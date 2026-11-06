@@ -14,6 +14,8 @@ the thermal camera on the wall.
 two, by the brightness of the pixel (the camera's noise setting, specification A12).
 --vio OUT_DIR NAME...: the camera estimator replayed over a level's record (NAME_vio/replay_smoke.csv): the features
 tracked, the position error at the end and at most, the path flown.
+--body OUT_DIR NAME...: the thermal core's reading of a warm body of a person's size (roadmap item 21; levels of
+`body=T`): the pixels over the frame's median by 5 to 30 K, the reading and the extent of the warm pixels.
 --reach OUT_DIR NAME...: the carried light's reach by the carrier's height over the floor (roadmap item 31, the root
 goal of 2026-10-24 part 2.0; levels of `height=Z,wall=60`): over the whole left frame, before the gain, its mean and
 95th percentile of grey and the share of its pixels under 6 levels (the unlit grey of K12); after the gain the share
@@ -269,10 +271,50 @@ def heat(out, names):
               + " / ".join(f"{share:.4f}" for share in shares) + f" | {count:.0f} | {az_text} | {pair_text} | {ring_text} |")
 
 
+BODY_THRESHOLDS_K = (5.0, 10.0, 15.0, 20.0, 30.0)
+
+
+def body(out, names):
+    """The thermal core's reading of a warm body (roadmap item 21, the rig of a person's size and temperature): the
+    core's frames (160 x 120, 0.01 K a level) against the frame's median: the frame's median and largest reading,
+    the deviation of the pixels within 2 K of the median (the frame's noise), the pixels over the median by 5, 10,
+    15, 20 and 30 K, the warm pixels' reading (their median, where any stand 5 K over), and at 5 K their extent in
+    columns and rows against what a body 0.5 m across and 1.7 m tall subtends at its distance from the core."""
+    print("| level | body K, at m | wall K, at m | frame p50 K | frame max K | noise K | px over p50 by "
+          + " / ".join(f"{k:g}" for k in BODY_THRESHOLDS_K) + " K | warm px read K | warm extent cols x rows "
+          "(a body's) |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    for name in names:
+        data, meta = load(out, name)
+        core = 0.01 * data["thermal_core"].astype(np.float64)
+        medians = np.median(core.reshape(len(core), -1), axis=1)
+        calm = [frame[np.abs(frame - median) < 2.0] for frame, median in zip(core, medians)]
+        noise_k = float(np.mean([values.std() for values in calm]))
+        counts = [float(np.mean([np.sum(frame > median + above) for frame, median in zip(core, medians)]))
+                  for above in BODY_THRESHOLDS_K]
+        warm = np.stack([frame > median + BODY_THRESHOLDS_K[0] for frame, median in zip(core, medians)])
+        read_text, extent_text = "-", "-"
+        if warm.any():
+            read_text = f"{np.median(core[warm]):.1f}"
+            rows, cols = np.nonzero(warm.any(axis=0))
+            extent_text = f"{cols.max() - cols.min() + 1} x {rows.max() - rows.min() + 1}"
+        body_text = "none"
+        if meta.get("body"):
+            distance = float(meta["bodyx"]) - CORE_X_M
+            body_text = f"{meta['body']:g}, {distance:.2f}"
+            extent_text += f" ({CORE_FOCAL_PX * 0.5 / distance:.1f} x {CORE_FOCAL_PX * 1.7 / distance:.1f})"
+        wall_text = f"{meta.get('wallk', 310.0):g}, {float(meta['wall']) - CORE_X_M:.2f}"
+        print(f"| {name} | {body_text} | {wall_text} | {np.mean(medians):.1f} | {core.max():.1f} | {noise_k:.3f} | "
+              + " / ".join(f"{count:.0f}" for count in counts) + f" | {read_text} | {extent_text} |")
+
+
 def main():
     arguments = sys.argv[1:]
     if arguments and arguments[0] == "--heat":
         heat(arguments[1], arguments[2:])
+        return 0
+    if arguments and arguments[0] == "--body":
+        body(arguments[1], arguments[2:])
         return 0
     if arguments and arguments[0] == "--thermal":
         thermal(arguments[1], arguments[2:])
