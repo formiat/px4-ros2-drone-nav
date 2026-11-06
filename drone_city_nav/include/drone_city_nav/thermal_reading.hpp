@@ -61,6 +61,90 @@ struct ThermalReading {
 readThermalFrame(std::span<const std::uint16_t> kelvin_hundredths, std::size_t width,
                  std::size_t height, const ThermalReadingConfig& config);
 
+// The thermal core's frame read for warm bodies (roadmap item 21,
+// specification K64): what moves where a vehicle flies is mostly warm, and a
+// warm region of a body's size says "a body that may move stands there"
+// before any motion is seen. Warm is a hint, never the motion itself: the
+// obstacle memory holds what the core calls a body as moving evidence and
+// lets it become an ordinary obstacle once it has stood (K65).
+struct ThermalBodyConfig {
+  // A pixel this much over the frame's median, and under the source's
+  // threshold, is warm. The rig (2026-11-06, the core reads tags on a grid
+  // of 5.2 K without noise): a body tagged 305 to 307 K reads 17.8 K over an
+  // untagged frame, one tagged 310 K 23.0; four fifths of the smaller.
+  double above_median_k{14.0};
+  // Neighbouring pixels of one surface read within this of each other (the
+  // rig: one level a surface, the next 5.2 K away): a body before a warmer
+  // wall is a region of its own.
+  double same_surface_k{2.0};
+  // Fewer warm pixels are no body: a person gives 52 at 20 m (the rig).
+  std::size_t least_warm_pixels{8U};
+  // The body's apparent size as its range: warm pixels times the range
+  // squared for a body 0.5 m across and 1.7 m tall (the rig: 15300 to 20800
+  // from 5 to 20 m; 0.85 m2 at the core's focal length is 18300).
+  double body_pixel_metres_squared{18300.0};
+  // The widest and the tallest a region of a body's size is at its range: a
+  // person and half a metre of error either way. A warm wall is wider.
+  double widest_m{1.0};
+  double tallest_m{2.2};
+  // The regions read from one frame, the largest first.
+  std::size_t most_bodies{4U};
+};
+
+struct ThermalBody {
+  std::size_t warm_pixels{0U};
+  // The region's centre as a unit direction in the core's forward-left-up
+  // frame and the angular radius round it (half a pixel added).
+  Point3 direction{1.0, 0.0, 0.0};
+  double half_angle_rad{0.0};
+  // The angles the region spans across and up.
+  double width_rad{0.0};
+  double height_rad{0.0};
+  // The range the region's size gives for a body; nought when the frame's
+  // edge cuts it.
+  double range_by_size_m{0.0};
+};
+
+// The warm regions of the frame, each of one surface, the largest first.
+[[nodiscard]] std::vector<ThermalBody>
+readThermalBodies(std::span<const std::uint16_t> kelvin_hundredths, std::size_t width,
+                  std::size_t height, const ThermalReadingConfig& source,
+                  const ThermalBodyConfig& config);
+
+// Whether a warm region at `range_m` is of a body's size: a wall, a floor
+// the sun warmed, a parked machine span more.
+[[nodiscard]] bool bodySized(const ThermalBody& region, double range_m,
+                             const ThermalBodyConfig& config) noexcept;
+
+// A warm region the returns range as a body: where it stands in the sensor's
+// forward-left-up frame.
+struct ThermalBodySighting {
+  Point3 direction{1.0, 0.0, 0.0};
+  double width_rad{0.0};
+  double height_rad{0.0};
+  double range_m{0.0};
+};
+
+// Whether a point of the sensor's frame lies in the box of directions the
+// region spans, `margin_rad` wider each way: the region's silhouette, not the
+// cone round it, which at a person's shape is mostly background.
+[[nodiscard]] bool inRegion(const Point3& point, const Point3& direction,
+                            double width_rad, double height_rad,
+                            double margin_rad) noexcept;
+
+// The warm regions that are bodies: each ranged by the median of the hits in
+// its silhouette (the lidar's, the ring's or the pair's) or, without one, by
+// its own size, and of a body's size at that range.
+[[nodiscard]] std::vector<ThermalBodySighting>
+sightBodies(std::span<const ThermalBody> regions,
+            std::span<const StereoDepthReturn> returns, double margin_rad,
+            const ThermalBodyConfig& config);
+
+// Whether a return is a sighted body's own surface: in its silhouette and
+// within `depth_m` of its range, the body's own depth and the range's error.
+[[nodiscard]] bool onBody(const Point3& point, const ThermalBodySighting& body,
+                          double margin_rad, double depth_m) noexcept;
+
 // The range to the source: the median range of the hits (the ring's or the
 // pair's, whichever has them) within the hot region's cone, widened by
 // `cone_margin_rad`, and never over `ceiling_range_m` (the source's fix over

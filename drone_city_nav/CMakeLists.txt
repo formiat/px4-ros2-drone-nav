@@ -357,6 +357,7 @@ add_drone_city_nav_layer(
   src/stereo_silent_patches.cpp
   src/stereo_lit_range.cpp
   src/stereo_void_frame.cpp
+  src/thermal_body_reading.cpp
   src/thermal_reading.cpp
   src/tracked_agent_lidar_filter.cpp)
 target_link_libraries(
@@ -829,6 +830,12 @@ add_executable(gnss_trust_replay tools/gnss_trust_replay.cpp)
 target_compile_features(gnss_trust_replay PRIVATE cxx_std_20)
 target_link_libraries(gnss_trust_replay drone_city_nav_localization)
 enable_project_warnings(gnss_trust_replay)
+
+# Roadmap item 21: the thermal core's readers over one frame of the rig.
+add_executable(thermal_frame_bodies tools/thermal_frame_bodies.cpp)
+target_compile_features(thermal_frame_bodies PRIVATE cxx_std_20)
+target_link_libraries(thermal_frame_bodies drone_city_nav_core)
+enable_project_warnings(thermal_frame_bodies)
 
 # The stereo pair's depth against the simulator's (specification K7).
 add_executable(stereo_depth_accuracy tools/stereo_depth_accuracy.cpp)

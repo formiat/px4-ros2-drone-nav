@@ -76,6 +76,141 @@ TEST(ThermalReadingTest, TheLocationsWarmSurfacesAndAFewPixelsAreNoSource) {
   EXPECT_FALSE(readThermalFrame(frame, 0U, 0U, ThermalReadingConfig{}).hot());
 }
 
+// A block `columns` wide and `rows` tall with its top-left corner at (u, v).
+void warm(std::vector<std::uint16_t>& frame, const std::size_t u, const std::size_t v,
+          const std::size_t columns, const std::size_t rows,
+          const std::uint16_t kelvin_hundredths) {
+  for (std::size_t row = v; row < v + rows; ++row) {
+    for (std::size_t column = u; column < u + columns; ++column) {
+      frame[row * kWidth + column] = kelvin_hundredths;
+    }
+  }
+}
+
+// The rig of 2026-11-06 (roadmap item 21): a person at 5 m is 14 x 53 pixels
+// reading 305.83 K in a frame of 288 K.
+constexpr std::size_t kPersonPixels{742U};
+
+TEST(ThermalBodyTest, ABodyIsReadWithItsDirectionExtentAndRange) {
+  std::vector<std::uint16_t> frame = frameOf(28800U);
+  warm(frame, 73U, 40U, 14U, 53U, 30583U);
+  const std::vector<ThermalBody> bodies = readThermalBodies(
+      frame, kWidth, kHeight, ThermalReadingConfig{}, ThermalBodyConfig{});
+  ASSERT_EQ(bodies.size(), 1U);
+  const ThermalBody& body = bodies.front();
+  EXPECT_EQ(body.warm_pixels, kPersonPixels);
+  EXPECT_NEAR(norm(body.direction), 1.0, 1e-12);
+  // The block's centre (79.5, 66) is on the frame's centre column and below
+  // its centre row (59.5).
+  EXPECT_NEAR(body.direction.y, 0.0, 1e-9);
+  EXPECT_LT(body.direction.z, 0.0);
+  EXPECT_NEAR(body.width_rad, 2.0 * std::atan(7.0 / kFocalPx), 1e-4);
+  EXPECT_NEAR(body.height_rad, 2.0 * std::atan(26.5 / kFocalPx), 1e-4);
+  EXPECT_NEAR(body.range_by_size_m, std::sqrt(18300.0 / 742.0), 1e-9);
+  EXPECT_TRUE(bodySized(body, 5.0, ThermalBodyConfig{}));
+  // Read at the range of a wall 25 m off it would be 2.4 m wide: no body.
+  EXPECT_FALSE(bodySized(body, 25.0, ThermalBodyConfig{}));
+  EXPECT_FALSE(bodySized(body, 0.0, ThermalBodyConfig{}));
+  // The source's reader sees nothing of it: 17.8 K is under its 30.
+  EXPECT_FALSE(readThermalFrame(frame, kWidth, kHeight, ThermalReadingConfig{}).hot());
+  // A body the frame's edge cuts reads no size.
+  std::vector<std::uint16_t> cut = frameOf(28800U);
+  warm(cut, 0U, 40U, 14U, 53U, 30583U);
+  EXPECT_EQ(readThermalBodies(cut, kWidth, kHeight, ThermalReadingConfig{},
+                              ThermalBodyConfig{})
+                .front()
+                .range_by_size_m,
+            0.0);
+}
+
+TEST(ThermalBodyTest, AWarmerWallBehindTheBodyIsARegionOfItsOwnAndNoBody) {
+  std::vector<std::uint16_t> frame = frameOf(28800U);
+  // The rig: a wall tagged 310 K 25 m off, a band 72 x 38 pixels reading
+  // 310.97 K, and the person before it at 5 m.
+  warm(frame, 44U, 40U, 72U, 38U, 31097U);
+  warm(frame, 73U, 40U, 14U, 53U, 30583U);
+  const std::vector<ThermalBody> bodies = readThermalBodies(
+      frame, kWidth, kHeight, ThermalReadingConfig{}, ThermalBodyConfig{});
+  // The wall's band either side of the body, and the body.
+  ASSERT_EQ(bodies.size(), 3U);
+  std::size_t of_a_body{0U};
+  for (const ThermalBody& region : bodies) {
+    if (region.warm_pixels == kPersonPixels) {
+      EXPECT_TRUE(bodySized(region, 5.0, ThermalBodyConfig{}));
+      ++of_a_body;
+    } else {
+      // The wall's halves at the wall's range: 5 m wide each.
+      EXPECT_FALSE(bodySized(region, 24.7, ThermalBodyConfig{}));
+    }
+  }
+  EXPECT_EQ(of_a_body, 1U);
+}
+
+TEST(ThermalBodyTest, ABodyIsRangedByTheHitsInItsSilhouetteAndItsReturnsAreItsOwn) {
+  std::vector<std::uint16_t> frame = frameOf(28800U);
+  warm(frame, 73U, 40U, 14U, 53U, 30583U);
+  const std::vector<ThermalBody> regions = readThermalBodies(
+      frame, kWidth, kHeight, ThermalReadingConfig{}, ThermalBodyConfig{});
+  ASSERT_EQ(regions.size(), 1U);
+  const Point3 towards = regions.front().direction;
+  // The body's surface 5 m off, the wall behind it 12 m off beside the silhouette,
+  // a free ray through the silhouette, which is no range.
+  std::vector<StereoDepthReturn> returns;
+  for (int i = -2; i <= 2; ++i) {
+    returns.push_back(
+        {.point = Point3{5.0 * towards.x, 5.0 * towards.y + 0.05 * i, 5.0 * towards.z},
+         .hit = true});
+  }
+  returns.push_back({.point = Point3{12.0, 3.0, 0.0}, .hit = true});
+  returns.push_back({.point = Point3{9.0 * towards.x, 9.0 * towards.y, 9.0 * towards.z},
+                     .hit = false});
+  const std::vector<ThermalBodySighting> bodies =
+      sightBodies(regions, returns, 0.02, ThermalBodyConfig{});
+  ASSERT_EQ(bodies.size(), 1U);
+  EXPECT_NEAR(bodies.front().range_m, 5.0, 0.01);
+  EXPECT_TRUE(onBody(returns.front().point, bodies.front(), 0.02, 0.75));
+  EXPECT_FALSE(onBody(returns.at(5).point, bodies.front(), 0.02, 0.75));
+  // The wall straight behind the body is in its silhouette and beyond its depth.
+  EXPECT_FALSE(onBody(Point3{12.0 * towards.x, 12.0 * towards.y, 12.0 * towards.z},
+                      bodies.front(), 0.02, 0.75));
+  // Without a hit the region is ranged by its own size, 4.97 m.
+  const std::vector<ThermalBodySighting> by_size =
+      sightBodies(regions, {}, 0.02, ThermalBodyConfig{});
+  ASSERT_EQ(by_size.size(), 1U);
+  EXPECT_NEAR(by_size.front().range_m, std::sqrt(18300.0 / 742.0), 1e-9);
+  // Hits that put the region 25 m off make it a wall's width: no body.
+  std::vector<StereoDepthReturn> far;
+  far.push_back({.point = Point3{25.0 * towards.x, 25.0 * towards.y, 25.0 * towards.z},
+                 .hit = true});
+  EXPECT_TRUE(sightBodies(regions, far, 0.02, ThermalBodyConfig{}).empty());
+}
+
+TEST(ThermalBodyTest, ASourceAWallThatFillsTheFrameAndAFewPixelsAreNoBody) {
+  // The 500 K source of roadmap item 32: every pixel of it is over the
+  // source's threshold, so none is warm.
+  std::vector<std::uint16_t> frame = frameOf(28800U);
+  heat(frame, 100U, 50U, 10U, 50115U);
+  EXPECT_TRUE(readThermalBodies(frame, kWidth, kHeight, ThermalReadingConfig{},
+                                ThermalBodyConfig{})
+                  .empty());
+  EXPECT_TRUE(readThermalFrame(frame, kWidth, kHeight, ThermalReadingConfig{}).hot());
+  // A warm wall that fills the frame is the frame's median: nothing stands over it.
+  frame = frameOf(31097U);
+  warm(frame, 73U, 40U, 14U, 53U, 30583U);
+  EXPECT_TRUE(readThermalBodies(frame, kWidth, kHeight, ThermalReadingConfig{},
+                                ThermalBodyConfig{})
+                  .empty());
+  // Seven warm pixels are under the least.
+  frame = frameOf(28800U);
+  warm(frame, 10U, 10U, 7U, 1U, 30583U);
+  EXPECT_TRUE(readThermalBodies(frame, kWidth, kHeight, ThermalReadingConfig{},
+                                ThermalBodyConfig{})
+                  .empty());
+  EXPECT_TRUE(
+      readThermalBodies(frame, 0U, 0U, ThermalReadingConfig{}, ThermalBodyConfig{})
+          .empty());
+}
+
 TEST(ThermalReadingTest, TheRangeIsTheHitsInTheConeOrTheConservativeOne) {
   ThermalReading reading;
   reading.hot_pixels = 20U;
