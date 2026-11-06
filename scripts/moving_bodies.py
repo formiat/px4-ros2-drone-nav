@@ -44,9 +44,10 @@ HEIGHT_M = 1.7
 MASS_KG = 70.0
 KELVIN = 307.0
 DROP_M = 0.3
-# Ten times a second, the sensors' own rate (the pair 7.5 Hz, the lidar 10): a pose set fifty times a second
-# cost the camera flight's simulator a tenth of its speed (a real-time factor of 0.65 against 0.73 over the first
-# 80 s, r2985 and r2986; 0.72 at ten, r2988; 0.75 with the body never moved, r2987).
+# Ten times a second, the sensors' own rate (the pair 7.5 Hz, the lidar 10): a body set oftener moves no
+# differently between their frames. (A cost of the pose service to the simulator's speed was read on 2026-11-06
+# from four flights and withdrawn the same day: the host carried other work, and three flights in a row on a
+# quieter host read 0.67 without a body, 0.81 with a walking one and 0.90 with a standing one, r2995 to r2997.)
 SET_RATE_HZ = 10.0
 LOG_PERIOD_S = 0.1
 
