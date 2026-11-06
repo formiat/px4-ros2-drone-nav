@@ -149,6 +149,7 @@ class ReplayCompareTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("max 0.100", line)
         self.assertNotIn("begins at", line)
+        self.assertNotIn("begins at", compare.compare_poses(flight[5:], flight)[0], "the recorder's late start")
         replay = [(b"", Stamped(1, k, 0.1 if k >= 96 else 0.0, 0.0, 0.0)) for k in range(100)]
         self.assertTrue(compare.compare_poses(flight, replay)[1], "four of a hundred beyond: p95 within")
 
