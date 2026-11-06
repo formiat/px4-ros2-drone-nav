@@ -130,7 +130,7 @@ public:
   ProductionMppiNode& operator=(ProductionMppiNode&&) = delete;
 
 private:
-  void onLocalState(const AutopilotLocalState& sample);
+  void onLocalState(const AutopilotLocalState& message);
   void onAutopilotStatus(const AutopilotStatus& status);
   void onGroundContact(const AutopilotGroundContact& contact);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);

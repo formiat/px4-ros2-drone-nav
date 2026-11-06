@@ -118,6 +118,12 @@ class SimulationSmokeContractTest(unittest.TestCase):
         self.assertIn('executable="thermal_core_node"', launch)
         self.assertIn('sensor/thermal/image"', launch)
         self.assertIn('{"gaze_follows_motion": True, "maximum_yaw_rate_radps": 0.8}', launch)
+        # The cap is on what the gaze commands. What the navigation input may measure has its own bound, the
+        # autopilot's: bounded by the cap, the planner read every overshoot of a turn as no navigation (r2959).
+        control = (REPOSITORY / "drone_city_nav" / "src" / "runtime" / "ros" /
+                   "production_mppi_config_ros_control.cpp").read_text()
+        self.assertIn('declare<double>("navigation_angular_derivative_maximum_yaw_rate_radps", 3.5)', control)
+        self.assertIn(".maximum_yaw_rate_radps = angular_maximum_yaw_rate_radps,", control)
         thermal_node = (REPOSITORY / "drone_city_nav" / "src" / "thermal_core_node.cpp").read_text()
         self.assertIn("dropWeakReturns(returns, intensities);", thermal_node)
         self.assertIn('obstacle_memory_overrides["lidar_3d_topic"] = "/drone_city_nav/thermal_core/points"', launch)

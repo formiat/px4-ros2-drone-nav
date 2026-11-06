@@ -174,8 +174,8 @@ void ProductionMppiConfigLoader::declareControl() {
   TranslationalSpeedLimitByVerticalShare3D& speed_limit_table =
       mppi.dynamics.translational_speed_limit_by_vertical_share;
   float level_speed_limit_mps{0.0F};
-  for (std::size_t sample = 0U;
-       sample < TranslationalSpeedLimitByVerticalShare3D::kSamples; ++sample) {
+  std::size_t sample = 0U;
+  for (float& table_limit_mps : speed_limit_table.limit_mps) {
     const double vertical_share =
         static_cast<double>(sample) /
         static_cast<double>(TranslationalSpeedLimitByVerticalShare3D::kSamples - 1U);
@@ -185,10 +185,9 @@ void ProductionMppiConfigLoader::declareControl() {
         control.speed_policy.absolute_speed_limit_mps,
         Vec3{std::sqrt(std::max(0.0, 1.0 - vertical_share * vertical_share)), 0.0,
              vertical_share});
-    speed_limit_table.limit_mps[sample] =
-        std::nextafter(static_cast<float>(limit_mps), 0.0F);
-    level_speed_limit_mps =
-        std::max(level_speed_limit_mps, speed_limit_table.limit_mps[sample]);
+    table_limit_mps = std::nextafter(static_cast<float>(limit_mps), 0.0F);
+    level_speed_limit_mps = std::max(level_speed_limit_mps, table_limit_mps);
+    ++sample;
   }
   mppi.dynamics.maximum_translational_speed_mps = level_speed_limit_mps;
   mppi.dynamics.maximum_horizontal_acceleration_mps2 =
@@ -197,8 +196,8 @@ void ProductionMppiConfigLoader::declareControl() {
       mppi::makeFiniteHorizonConfig(control.speed_policy.stopping_capability);
   mppi.dynamics.maximum_control_jerk_mps3 =
       static_cast<float>(maximum_control_jerk_mps3);
-  // The yaw the gaze may command; the time model's stationary turns and the
-  // angular-derivative contract read the same two values below.
+  // The yaw the gaze may command; the time model's stationary turns read the
+  // same two values, and the angular-derivative contract the acceleration.
   mppi.dynamics.maximum_yaw_rate_radps =
       static_cast<float>(declare<double>("maximum_yaw_rate_radps", 1.5));
   mppi.dynamics.maximum_yaw_acceleration_radps2 =
@@ -216,11 +215,20 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("navigation_angular_derivative_minimum_interval_ms", 1.0);
   const double angular_maximum_interval_ms =
       declare<double>("navigation_angular_derivative_maximum_interval_ms", 100.0);
+  // The yaw rate the navigation input may MEASURE is bounded by the
+  // autopilot's own limit (MC_YAWRATE_MAX, 200 degrees a second), not by the
+  // cap on what the gaze commands: the vehicle overshoots a commanded turn
+  // (1.2 rad/s under the lidar set's cap of 0.8), every sample above the cap
+  // was read as no navigation, and the planner ticked nothing through each
+  // such turn while the vehicle flew its resident horizon: 14 to 18 s of a
+  // lidar flight's 160 to 190, 1.6 s of r2959 at 2.4 m/s into a wall the
+  // memory already held.
+  const double angular_maximum_yaw_rate_radps =
+      declare<double>("navigation_angular_derivative_maximum_yaw_rate_radps", 3.5);
   control.navigation_angular_derivative = NavigationAngularDerivativeConfig{
       .minimum_interval_s = angular_minimum_interval_ms * 1.0e-3,
       .maximum_interval_s = angular_maximum_interval_ms * 1.0e-3,
-      .maximum_yaw_rate_radps =
-          static_cast<double>(mppi.dynamics.maximum_yaw_rate_radps),
+      .maximum_yaw_rate_radps = angular_maximum_yaw_rate_radps,
       .maximum_yaw_acceleration_radps2 =
           static_cast<double>(mppi.dynamics.maximum_yaw_acceleration_radps2),
   };

@@ -289,6 +289,19 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
         navigation.yaw_acceleration_authoritative;
     navigation.valid =
         navigation.full_state_authoritative && !navigation_frame_reset_unresolved_;
+    if (!navigation.valid && navigation_baseline_established_) {
+      // A sample the autopilot vouches for that is still no navigation says
+      // which authority it lacks: r2959 flew 1.6 s on ticks that ended with
+      // "navigation_not_valid" alone, and the yaw rate's bound behind them
+      // took the autopilot's own log to find.
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "LOCAL_POSITION navigation_valid=false yaw_rate_authoritative=%s "
+          "frame_reset_unresolved=%s source_timestamp_us=%" PRIu64,
+          navigation.yaw_rate_authoritative ? "true" : "false",
+          navigation_frame_reset_unresolved_ ? "true" : "false",
+          navigation.source_timestamp_us);
+    }
     navigation.revision = navigation_.revision + 1U;
     navigation_ = navigation;
     navigation_baseline_established_ = true;
