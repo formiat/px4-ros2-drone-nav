@@ -695,6 +695,34 @@ TEST(VisualInertialOdometry, TheFirstStepAfterTheDeclaredPoseIsNoHole) {
             2.0 * config.initial_velocity_sigma_mps);
 }
 
+// The pose is declared at a frame the filter hears of after the IMU has run
+// past it, and how far past is the arrival's timing: the first step from the
+// declared pose starts at the sample of the declared stamp, not at the last
+// one to arrive. Started at that one, a flight and the replay of its bag, and
+// two replays of one bag, parted at the first update with every input of the
+// frame record equal (roadmap item 36; r2939, r2941).
+TEST(VisualInertialOdometry, TheDeclaredPoseDoesNotCarryHowFarTheImuHadRunPastIt) {
+  const VisualInertialOdometryConfig config = testConfig();
+  constexpr std::int64_t kDeclaredNs{20 * kFramePeriodNs};
+  const auto flown = [&config](const std::int64_t past_ns) {
+    VisualInertialOdometry odometry{config};
+    std::int64_t imu_stamp = 0;
+    for (; imu_stamp <= kDeclaredNs + past_ns; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    odometry.initialize(kDeclaredNs, Eigen::Vector3d::Zero(), 0.0);
+    for (; imu_stamp <= kDeclaredNs + kFramePeriodNs; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    return odometry.addFrame(kDeclaredNs + kFramePeriodNs, {});
+  };
+  const VisualInertialEstimate soon = flown(kImuPeriodNs);
+  const VisualInertialEstimate late = flown(7 * kImuPeriodNs);
+  EXPECT_EQ(soon.position_ned_m, late.position_ned_m);
+  EXPECT_EQ(soon.velocity_ned_mps, late.velocity_ned_mps);
+  EXPECT_EQ(soon.body_to_ned.coeffs(), late.body_to_ned.coeffs());
+}
+
 TEST(VisualInertialOdometry, ThePoseBetweenFramesFollowsTheImu) {
   const VisualInertialOdometryConfig config = testConfig();
   std::mt19937 generator{7U};

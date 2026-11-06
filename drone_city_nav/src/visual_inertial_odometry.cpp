@@ -346,11 +346,17 @@ void VisualInertialOdometry::initialize(const std::int64_t stamp_ns,
   // The rest is the second before the declared stamp, however long the
   // samples reach back (the replay's reach back as far as its bag).
   constexpr std::int64_t kRestWindowNs{1'000'000'000};
+  // The first step starts at the sample of the declared stamp: the last one
+  // to arrive lies past it by as much as the frame waited, and a step
+  // bracketed from there was another step in a flight and in its replay
+  // (r2939, r2941).
+  state.last_imu.reset();
   for (const VisualInertialImuSample& sample : state.rest_imu) {
     if (sample.stamp_ns > stamp_ns) {
       state.imu.push_back(sample);
       continue;
     }
+    state.last_imu = sample;
     if (sample.stamp_ns <= stamp_ns - kRestWindowNs) {
       continue;
     }
@@ -508,8 +514,8 @@ VisualInertialEstimate VisualInertialOdometry::addFrame(
   // scattered (a multiplication by the golden ratio's odd constant) because
   // the ids rise in the order the tracker found the features, across the
   // image: the lowest ids first would take one corner of it.
-  constexpr std::uint64_t kScatter{0x9E3779B97F4A7C15ULL};
   std::sort(closed.begin(), closed.end(), [](const auto& a, const auto& b) {
+    constexpr std::uint64_t kScatter{0x9E3779B97F4A7C15ULL};
     return a.second.size() != b.second.size() ? a.second.size() > b.second.size()
                                               : a.first * kScatter < b.first * kScatter;
   });
