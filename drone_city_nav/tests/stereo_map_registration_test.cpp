@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <Eigen/Geometry>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <numbers>
 #include <vector>
@@ -16,13 +18,16 @@ constexpr std::int64_t kSecond{1'000'000'000};
 // A room: two walls and a floor, in the map's frame.
 [[nodiscard]] std::vector<Eigen::Vector3d> room() {
   std::vector<Eigen::Vector3d> points;
-  for (double a = -4.0; a <= 4.0; a += 0.2) {
-    for (double b = -2.0; b <= 2.0; b += 0.2) {
+  // From -4.0 to 3.8 along the walls and the floor, -2.0 to 2.0 up the walls.
+  for (int i = -20; i < 20; ++i) {
+    const double a = 0.2 * i;
+    for (int j = -10; j <= 10; ++j) {
+      const double b = 0.2 * j;
       points.emplace_back(5.0, a, b); // the wall ahead
       points.emplace_back(a, 5.0, b); // the wall to the right
     }
-    for (double b = -4.0; b <= 4.0; b += 0.2) {
-      points.emplace_back(a, b, 2.0); // the floor
+    for (int j = -20; j < 20; ++j) {
+      points.emplace_back(a, 0.2 * j, 2.0); // the floor
     }
   }
   return points;
@@ -49,6 +54,31 @@ constexpr std::int64_t kSecond{1'000'000'000};
   pose.position_ned_m = Eigen::Vector3d::Zero();
   pose.body_to_ned = Eigen::Quaterniond::Identity();
   return pose;
+}
+
+// The first depth frame of each period of the clock is registered, whatever
+// frame the chain began on: a flight and the replay of its bag begin on
+// different frames, and a period counted from the last registration kept
+// them on different frames for the whole flight (roadmap item 36).
+TEST(StereoMapRegistrationTest,
+     TheRegistrationsFallOnTheClocksPeriodsWhateverCameFirst) {
+  StereoMapRegistration early;
+  StereoMapRegistration late;
+  early.lay(0, room(), identityPose(0));
+  late.lay(0, room(), identityPose(0));
+  const std::vector<Eigen::Vector3d> frame = frameFrom(0.0, Eigen::Vector3d::Zero());
+  ASSERT_TRUE(early.due(kSecond * 52 / 100));
+  static_cast<void>(
+      early.registerFrame(kSecond * 52 / 100, frame, identityPose(0), false));
+  ASSERT_TRUE(late.due(kSecond * 74 / 100));
+  static_cast<void>(
+      late.registerFrame(kSecond * 74 / 100, frame, identityPose(0), false));
+  for (const std::int64_t stamp :
+       {kSecond * 88 / 100, kSecond * 102 / 100, kSecond * 115 / 100}) {
+    EXPECT_EQ(early.due(stamp), late.due(stamp)) << stamp;
+  }
+  EXPECT_FALSE(early.due(kSecond * 88 / 100));
+  EXPECT_TRUE(early.due(kSecond * 102 / 100));
 }
 
 TEST(StereoMapRegistrationTest, ATurnedAndShiftedFrameIsReadAndTheTargetConvergesToIt) {
@@ -109,15 +139,15 @@ TEST(StereoMapRegistrationTest, ReadingsThatDisagreeMoveNothing) {
   // read and never acted on.
   StereoMapRegistration registration;
   registration.lay(0, room(), identityPose(0));
-  const std::vector<Eigen::Vector3d> frames[] = {
+  const std::array<std::vector<Eigen::Vector3d>, 3> frames{
       frameFrom(0.0, Eigen::Vector3d{0.3, 0.0, 0.0}),
       frameFrom(0.0, Eigen::Vector3d{-0.3, 0.0, 0.0}),
       frameFrom(0.0, Eigen::Vector3d{0.0, 0.3, 0.0}),
   };
   for (int i = 0; i < 12; ++i) {
     const std::int64_t stamp = 25 * kSecond + i * kSecond;
-    const StereoMapRegistrationReport report =
-        registration.registerFrame(stamp, frames[i % 3], identityPose(stamp), true);
+    const StereoMapRegistrationReport report = registration.registerFrame(
+        stamp, frames.at(static_cast<std::size_t>(i % 3)), identityPose(stamp), true);
     EXPECT_FALSE(report.consistent) << i;
     EXPECT_STRNE(report.outcome, "applied") << i;
   }

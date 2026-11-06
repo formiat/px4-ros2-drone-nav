@@ -2,6 +2,7 @@
 
 #include <Eigen/Eigenvalues>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -17,7 +18,12 @@ StereoMapRegistration::StereoMapRegistration()
 }
 
 bool StereoMapRegistration::due(const std::int64_t stamp_ns) const noexcept {
-  return !map_.empty() && stamp_ns - last_registration_ns_ >= kMapRegistrationPeriodNs;
+  // The first frame of each period of the clock: a period counted from the
+  // last registration hangs every one of them on the first, and a flight and
+  // its replay, whose first depth frames differ, registered other frames for
+  // the whole flight (r2936: 235 points against 227 at the first one).
+  return !map_.empty() && stamp_ns / kMapRegistrationPeriodNs !=
+                              last_registration_ns_ / kMapRegistrationPeriodNs;
 }
 
 MapFrameOffset StereoMapRegistration::target() const {
@@ -67,8 +73,8 @@ StereoMapRegistrationReport StereoMapRegistration::registerFrame(
       registration.residual_rms_m <= kMapMaximumResidualRmsM) {
     report.outcome = "far";
     if (innovation.norm() <= kMapCorrectionReachM) {
-      recent_[recent_count_ % kMapConsistentReadings] = {innovation,
-                                                         report.yaw_innovation_rad};
+      recent_.at(recent_count_ % kMapConsistentReadings) = {innovation,
+                                                            report.yaw_innovation_rad};
       ++recent_count_;
       if (recent_count_ >= kMapConsistentReadings) {
         Eigen::Vector3d mean = Eigen::Vector3d::Zero();
@@ -189,9 +195,9 @@ void StereoMapRegistration::applyFrame(VisualInertialEstimate& estimate,
 
 std::string StereoMapRegistration::summary(const StereoMapRegistrationReport& report,
                                            const std::uint64_t frames_without_clone) {
-  char line[640];
+  std::array<char, 640> line{};
   std::snprintf(
-      line, sizeof line,
+      line.data(), line.size(),
       "VIO_MAP_REGISTRATION outcome=%s matched=%.2f matched_points=%.0f "
       "residual_m=%.3f information_per_point=%.4f observed_axes=%d "
       "innovation_m=%.3f correction_m=%.3f yaw_information_per_point=%.2f "
@@ -208,7 +214,7 @@ std::string StereoMapRegistration::summary(const StereoMapRegistrationReport& re
       report.target.translation.y(), report.target.translation.z(),
       report.registration_ms, report.scan_points, report.map_points,
       report.registrations, report.corrections, frames_without_clone);
-  return line;
+  return std::string{line.data()};
 }
 
 } // namespace drone_city_nav

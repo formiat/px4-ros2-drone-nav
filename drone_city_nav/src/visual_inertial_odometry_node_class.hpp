@@ -147,6 +147,7 @@ private:
         ++heights_applied_;
       }
       onPair(pair);
+      takeDepthUpTo(pair.stamp_ns - kDepthBehindNs);
     }
     publishToAutopilot(stamp_ns);
   }
@@ -229,10 +230,15 @@ private:
       return false;
     }
     const bool slack = last_imu_stamp_ns_ >= stamp_ns + kStreamSlackNs;
+    // The depth a stated time behind the frame as well: the frame thread
+    // registers it after the frame (takeDepthUpTo), and a depth frame not yet
+    // here would be registered a frame later, from another state of the filter.
     return slack ||
            ((last_barometer_stamp_ns_ == 0 || last_barometer_stamp_ns_ >= stamp_ns) &&
             (last_magnetometer_stamp_ns_ == 0 ||
-             last_magnetometer_stamp_ns_ >= stamp_ns));
+             last_magnetometer_stamp_ns_ >= stamp_ns) &&
+            (last_depth_stamp_ns_ == 0 ||
+             last_depth_stamp_ns_ >= stamp_ns - kDepthBehindNs));
   }
 
   void queueIfPaired() {
@@ -477,6 +483,7 @@ private:
   // One depth frame against the estimator's long-lived map
   // (visual_inertial_odometry_node_map.cpp).
   void onDepth(const sensor_msgs::msg::PointCloud2& cloud);
+  void takeDepthUpTo(std::int64_t stamp_ns);
 
   // Specification K28: a filter lost in a hole of its IMU stream (r720,
   // r723: a host frozen for seconds) stayed lost for the flight and the
@@ -662,6 +669,20 @@ private:
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;
   std::deque<Pair> pending_;
+
+  // The depth frames held for the frame thread (takeDepthUpTo), registered
+  // three frame periods behind the frame: the depth node's match lags its
+  // frame by 0.15 s at the median and 0.23 at the 95th percentile (K53), so
+  // the depth of the third frame back is here before the frame is.
+  struct DepthFrame {
+    std::int64_t stamp_ns{0};
+    std::vector<Eigen::Vector3d> points_body;
+  };
+
+  static constexpr std::int64_t kDepthBehindNs{400'000'000};
+  static constexpr std::size_t kPendingDepthFrames{32U};
+  std::deque<DepthFrame> pending_depth_;
+  std::int64_t last_depth_stamp_ns_{0};
   std::deque<GyroSample> gyro_;
   Px4MapFrameTransform transform_;
   Px4RosTimeMapper time_mapper_;

@@ -280,8 +280,8 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
         queueIfPaired();
       },
       in_group);
-  // The depth is registered on a thread of its own: a registration takes
-  // tens of milliseconds, and the frames and the IMU do not wait for it.
+  // The depth arrives on a thread of its own, which thins it; the frame
+  // thread registers it (0.5 ms at the median, 7 ms at most: r2936).
   depth_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions depth_options;
   depth_options.callback_group = depth_group_;

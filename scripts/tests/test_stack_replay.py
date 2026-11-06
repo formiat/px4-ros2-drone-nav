@@ -85,6 +85,19 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn("<maxMessageSize>16777216</maxMessageSize>", profiles)
         self.assertIn('is_default_profile="true"', profiles)
 
+    def test_the_stereo_estimator_registers_its_depth_on_the_frames_grid(self) -> None:
+        # Roadmap item 36: a depth frame is registered by the frame thread after the frame a stated time ahead of
+        # it, which waits for it; registered as it arrived, the map's frame stepped apart in a flight and its replay
+        # (r2936). The registrations fall on the clock's periods.
+        node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node_class.hpp").read_text(encoding="utf-8")
+        self.assertIn("      onPair(pair);\n      takeDepthUpTo(pair.stamp_ns - kDepthBehindNs);\n", node)
+        self.assertIn("last_depth_stamp_ns_ >= stamp_ns - kDepthBehindNs", node)
+        depth = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node_map.cpp").read_text(encoding="utf-8")
+        self.assertIn("pending_depth_.push_back(DepthFrame{stamp_ns, std::move(points_body)});", depth)
+        registration = (REPOSITORY / "drone_city_nav/src/stereo_map_registration.cpp").read_text(encoding="utf-8")
+        self.assertIn("last_registration_ns_ / kMapRegistrationPeriodNs", registration)
+        self.assertNotIn("stamp_ns - last_registration_ns_ >= kMapRegistrationPeriodNs", registration)
+
     def test_the_launch_runs_the_stack_without_gazebo(self) -> None:
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('executable="gazebo_stereo_depth_node" if gazebo else "stereo_depth_node"', launch)
