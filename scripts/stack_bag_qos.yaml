@@ -8,3 +8,33 @@
   durability: volatile
   history: keep_last
   depth: 100
+# The streams the estimators consume sample by sample, a second of the fastest and more in the recorder's
+# history: the recorder asks for the publisher's depth, Fast DDS does not announce one, and the default of ten
+# holds 40 ms of the 250 Hz IMU. A recorder kept off its core that long lost a sample the stack had (r2938 to
+# r2940: one to three of the autopilot's samples a flight missing from the bag and present in the relayed copy;
+# r2939: one of the rest second's, and the replayed pose was declared 3e-8 rad from the flown one).
+/fmu/out/sensor_combined:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1000
+/fmu/out/sensor_combined/relayed:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1000
+/fmu/out/vehicle_attitude:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1000
+/barometer/air_pressure:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1000
+/magnetometer/magnetic_field:
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 1000

@@ -67,6 +67,11 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn('--qos-profile-overrides-path "${repo_root}/scripts/stack_bag_qos.yaml"', evidence)
         self.assertIn("/drone_city_nav/mission_events:\n  reliability: best_effort",
                       (REPOSITORY / "scripts/stack_bag_qos.yaml").read_text(encoding="utf-8"))
+        # The sample-by-sample streams keep a deep history at the recorder (r2939: a sample of the rest second lost).
+        for stream in ("/fmu/out/sensor_combined", "/fmu/out/sensor_combined/relayed", "/fmu/out/vehicle_attitude",
+                       "/barometer/air_pressure", "/magnetometer/magnetic_field"):
+            self.assertIn(f"{stream}:\n  reliability: best_effort\n  durability: volatile\n  history: keep_last\n"
+                          "  depth: 1000\n", (REPOSITORY / "scripts/stack_bag_qos.yaml").read_text(encoding="utf-8"))
         self.assertIn("RECORD_STACK_BAG \\\n", evidence)
         self.assertIn("stop_stack_bag_recorder() {", evidence)
         runner = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
