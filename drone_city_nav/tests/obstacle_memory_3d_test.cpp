@@ -641,9 +641,11 @@ TEST(ObstacleMemory3D, AnUnknownVoxelBesideAFollowedBodyIsTheBodysOnItsHit) {
              kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
   }
   ASSERT_EQ(stats.followed_bodies, 1U);
-  // A cold return beside it, in a voxel nothing had observed, within its reach.
+  // A cold return beside it, in a voxel nothing had observed, within its
+  // reach (between scans the sweep holds it, by no measurement).
   const GridIndex3D beside{29, 8, 10};
-  ASSERT_EQ(memory.grid().state(beside), ObservedVoxelState::kUnknown);
+  ASSERT_TRUE(memory.grid().isUnobservable(beside) ||
+              memory.grid().state(beside) == ObservedVoxelState::kUnknown);
   const std::array cold{hitAt(origin, {7.375, 2.125, 2.625})};
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = cold,

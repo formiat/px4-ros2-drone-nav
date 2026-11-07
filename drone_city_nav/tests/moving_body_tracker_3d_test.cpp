@@ -137,7 +137,7 @@ TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {
                     .top_m = 2.75,
                     .age_s = 1.0,
                     .voxels = 14U};
-  const std::vector<GridIndex3D> cells = sweptCells3D(body, 1.5, kBounds);
+  const std::vector<GridIndex3D> cells = sweptCells3D(body, 1.5, 0.0, kBounds);
   ASSERT_FALSE(cells.empty());
   const auto [x_min, x_max] = std::ranges::minmax(cells, {}, &GridIndex3D::x);
   const auto [z_min, z_max] = std::ranges::minmax(cells, {}, &GridIndex3D::z);
@@ -150,9 +150,15 @@ TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {
     EXPECT_TRUE(cell.y == 19 || cell.y == 20) << cell.y;
   }
   body.velocity_map_mps = {};
-  EXPECT_TRUE(sweptCells3D(body, 1.5, kBounds).empty());
+  EXPECT_TRUE(sweptCells3D(body, 1.5, 0.0, kBounds).empty());
   body.velocity_map_mps = {1.2, 0.0, 0.0};
-  EXPECT_TRUE(sweptCells3D(body, 0.0, kBounds).empty());
+  EXPECT_TRUE(sweptCells3D(body, 0.0, 0.0, kBounds).empty());
+  // A reach widens and heightens the sweep by itself.
+  const std::vector<GridIndex3D> reached = sweptCells3D(body, 1.5, 0.5, kBounds);
+  EXPECT_GT(reached.size(), cells.size());
+  const auto [z_low, z_high] = std::ranges::minmax(reached, {}, &GridIndex3D::z);
+  EXPECT_EQ(z_low.z, 4);
+  EXPECT_EQ(z_high.z, 12);
 }
 
 } // namespace

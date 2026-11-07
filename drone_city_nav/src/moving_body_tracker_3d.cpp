@@ -297,11 +297,14 @@ MovingBodyTracker3D::previousCells(const std::size_t body) const noexcept {
 }
 
 std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double sweep_s,
+                                      const double reach_m,
                                       const GridBounds3D& bounds) {
   std::vector<GridIndex3D> cells;
   if (!body.moving() || !(sweep_s > 0.0) || !(bounds.resolution_m > 0.0)) {
     return cells;
   }
+  const double radius_m = body.radius_m + std::max(0.0, reach_m);
+  const double top_m = body.top_m + std::max(0.0, reach_m);
   const Point3& from = body.centre_map;
   const Point3 to{from.x + body.velocity_map_mps.x * sweep_s,
                   from.y + body.velocity_map_mps.y * sweep_s, from.z};
@@ -309,24 +312,23 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
     return static_cast<int>(std::floor((value - origin) / bounds.resolution_m));
   };
   const int x_low =
-      std::max(0, cell_of(std::min(from.x, to.x) - body.radius_m, bounds.origin_x));
+      std::max(0, cell_of(std::min(from.x, to.x) - radius_m, bounds.origin_x));
   const int x_high =
       std::min(bounds.width_cells - 1,
-               cell_of(std::max(from.x, to.x) + body.radius_m, bounds.origin_x));
+               cell_of(std::max(from.x, to.x) + radius_m, bounds.origin_x));
   const int y_low =
-      std::max(0, cell_of(std::min(from.y, to.y) - body.radius_m, bounds.origin_y));
+      std::max(0, cell_of(std::min(from.y, to.y) - radius_m, bounds.origin_y));
   const int y_high =
       std::min(bounds.height_cells - 1,
-               cell_of(std::max(from.y, to.y) + body.radius_m, bounds.origin_y));
+               cell_of(std::max(from.y, to.y) + radius_m, bounds.origin_y));
   const int z_low = std::max(0, cell_of(body.bottom_m, bounds.origin_z));
-  const int z_high =
-      std::min(bounds.depth_cells - 1, cell_of(body.top_m, bounds.origin_z));
+  const int z_high = std::min(bounds.depth_cells - 1, cell_of(top_m, bounds.origin_z));
   const double along_x = to.x - from.x;
   const double along_y = to.y - from.y;
   const double along_squared = along_x * along_x + along_y * along_y;
   for (int z = z_low; z <= z_high; ++z) {
     const double centre_z = bounds.origin_z + (z + 0.5) * bounds.resolution_m;
-    if (centre_z < body.bottom_m || centre_z > body.top_m) {
+    if (centre_z < body.bottom_m || centre_z > top_m) {
       continue;
     }
     for (int y = y_low; y <= y_high; ++y) {
@@ -340,7 +342,7 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
                        0.0, 1.0);
         const double apart = std::hypot(centre_x - (from.x + share * along_x),
                                         centre_y - (from.y + share * along_y));
-        if (apart <= body.radius_m) {
+        if (apart <= radius_m) {
           cells.push_back({x, y, z});
         }
       }

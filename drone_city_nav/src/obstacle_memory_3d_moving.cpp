@@ -310,8 +310,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // vehicle leaves it a way out (the exit the law owes, K66).
   constexpr double kKeepsClearOfVehicleM{1.0};
   for (const MovingBody3D& body : followed_bodies_) {
-    for (const GridIndex3D cell :
-         sweptCells3D(body, config_.moving_sweep_s, grid_.bounds())) {
+    for (const GridIndex3D cell : sweptCells3D(
+             body, config_.moving_sweep_s, config_.moving_reach_m, grid_.bounds())) {
       if (grid_.isOccupied(cell) ||
           distance3D(grid_.cellCenter(cell), origin) <= kKeepsClearOfVehicleM) {
         continue;

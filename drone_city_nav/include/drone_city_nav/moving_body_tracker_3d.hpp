@@ -120,9 +120,11 @@ private:
 };
 
 // The cells of the grid a moving body sweeps in `sweep_s` at its measured
-// velocity: its cylinder carried along the velocity, the cells whose centres
-// lie inside. A standing body sweeps nothing.
-[[nodiscard]] std::vector<GridIndex3D>
-sweptCells3D(const MovingBody3D& body, double sweep_s, const GridBounds3D& bounds);
+// velocity: its cylinder, a person's reach wider and taller (`reach_m`: an
+// arm, a step aside, a raised hand), carried along the velocity, the cells
+// whose centres lie inside. A standing body sweeps nothing.
+[[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,
+                                                    double sweep_s, double reach_m,
+                                                    const GridBounds3D& bounds);
 
 } // namespace drone_city_nav

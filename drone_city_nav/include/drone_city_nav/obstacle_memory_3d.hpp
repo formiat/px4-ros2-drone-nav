@@ -74,6 +74,10 @@ struct ObstacleMemory3DConfig {
   // `MovingBodyTracker3D`: a body is the one last seen within the matching
   // distance, and a cluster under the least size is a return, not a body.
   double moving_sweep_s{1.5};
+  // The sweep is a person's reach wider and taller than the body's voxels
+  // (an arm, a step aside, a raised hand): r3065 and r3066 passed 0.4 to
+  // 0.6 m over the body's head, which the footprint's own clearance allows.
+  double moving_reach_m{0.5};
   double moving_match_m{1.0};
   std::size_t moving_least_voxels{4U};
 };

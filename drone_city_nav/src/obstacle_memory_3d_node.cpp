@@ -204,6 +204,8 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
   // K66: the sweep of a body followed moving, and how the bodies are followed.
   memory_config.moving_sweep_s =
       std::max(0.0, declare_parameter<double>("moving_sweep_s", 1.5));
+  memory_config.moving_reach_m =
+      std::max(0.0, declare_parameter<double>("moving_reach_m", 0.5));
   memory_config.moving_match_m =
       std::max(0.0, declare_parameter<double>("moving_match_m", 1.0));
   memory_config.moving_least_voxels = static_cast<std::size_t>(std::max<std::int64_t>(
