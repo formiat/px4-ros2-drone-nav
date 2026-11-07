@@ -67,6 +67,11 @@ struct ObstacleMemory3DConfig {
   double moving_stand_s{5.0};
 };
 
+// An occupancy confirmed this often at most is young: a second of a sensor's
+// scans. A body stands in a voxel for less as it walks; a surface the vehicle
+// looks at collects more within its first seconds in view.
+inline constexpr std::uint16_t kYoungConfirmations{10U};
+
 struct ObstacleMemory3DStats {
   std::size_t source_beams{0U};
   std::size_t processed_beams{0U};

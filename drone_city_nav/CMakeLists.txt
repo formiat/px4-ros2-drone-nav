@@ -344,6 +344,7 @@ add_drone_city_nav_layer(
   src/lidar_self_filter.cpp
   src/mapping_lifecycle.cpp
   src/obstacle_memory_3d.cpp
+  src/obstacle_memory_3d_moving.cpp
   src/obstacle_memory_transport_policy_3d.cpp
   src/observed_esdf_3d.cpp
   src/observed_esdf_3d_fingerprint.cpp
