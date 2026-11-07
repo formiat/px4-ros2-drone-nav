@@ -385,14 +385,14 @@ TEST(ObstacleMemory3D, AMovingVoxelUnobservedExpiresAndOneThatStoodBecomesAWall)
   EXPECT_TRUE(memory.grid().isOccupied({6, 1, 2}));
 }
 
-TEST(ObstacleMemory3D, AGrazingRayStillClearsAMovingVoxel) {
-  // K42 keeps a floor seen edge-on from the rays grazing it; a held body's
-  // column is as thin, and a free ray through it clears it all the same.
+TEST(ObstacleMemory3D, AGrazingRayKeepsAHeldVoxelOfASurfaceAsAnyOther) {
+  // K42 keeps a surface seen edge-on from the rays grazing it, a held voxel
+  // among them (r3061: wall voxels the layer had taken were carved away by
+  // the rays along the wall, and the vehicle met the wall); the layer's life
+  // takes a body's trail the grazing rays alone see.
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
-  // The body's column: three voxels one over the other at x 6, in the plane of a
-  // ray running along x and grazing the y planes.
   std::vector<LidarBeam3D> column;
   for (const double dz : {-1.0, 0.0, 1.0}) {
     const double norm = std::sqrt(25.0 + dz * dz);
@@ -405,11 +405,15 @@ TEST(ObstacleMemory3D, AGrazingRayStillClearsAMovingVoxel) {
   static_cast<void>(memory.integrateScan(
       {.origin_map = origin, .beams = column, .acquisition_stamp_ns = kSecondNs}));
   ASSERT_TRUE(memory.grid().isOccupied({6, 1, 2}));
-  ASSERT_TRUE(memory.grid().isOccupied({6, 1, 3}));
   const std::array gone{missAlongX(12.0)};
-  const ObstacleMemory3DStats stats = memory.integrateScan(
+  ObstacleMemory3DStats stats = memory.integrateScan(
       {.origin_map = origin, .beams = gone, .acquisition_stamp_ns = 2 * kSecondNs});
-  EXPECT_EQ(stats.moving_cleared, 1U);
+  EXPECT_EQ(stats.moving_cleared, 0U);
+  EXPECT_TRUE(memory.grid().isOccupied({6, 1, 2}));
+  // Unobserved by anything but grazing rays, the trail expires with the life.
+  stats = memory.integrateScan(
+      {.origin_map = origin, .beams = gone, .acquisition_stamp_ns = 5 * kSecondNs});
+  EXPECT_GE(stats.moving_expired, 3U);
   EXPECT_EQ(memory.grid().state({6, 1, 2}), ObservedVoxelState::kUnknown);
 }
 

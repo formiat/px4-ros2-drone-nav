@@ -110,7 +110,8 @@ clusterBodies(const std::span<const GridIndex3D> cells, const GridBounds3D& boun
                                                   half);
     }
     if (body.radius_m > config.widest_radius_m ||
-        body.top_m - body.bottom_m < config.least_height_m) {
+        body.top_m - body.bottom_m < config.least_height_m ||
+        body.top_m - body.bottom_m > config.tallest_m) {
       continue;
     }
     body.voxels = group.size();

@@ -56,6 +56,9 @@ struct MovingBodyTrackerConfig3D {
   std::size_t least_voxels{4U};
   double widest_radius_m{1.0};
   double least_height_m{1.0};
+  // One taller than this is a wall's skin (r3061: skins 3 to 5.5 m tall read
+  // as bodies walking along the walls), not a body of a person's height.
+  double tallest_m{2.5};
 };
 
 // Follows clusters of voxels as bodies between scans: the voxels are

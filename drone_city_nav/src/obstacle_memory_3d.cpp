@@ -711,12 +711,12 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   };
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      // A voxel the moving layer holds is no surface the grazing rule keeps: a
-      // person's column is as thin as a floor seen edge-on, and the rays
-      // along the corridor cleared nothing of it (r3013: cells re-hit within
-      // the stand's time became walls).
-      if (grazing && grid_.isOccupied(cell) && !heldMoving(cell) &&
-          inGrazedSurface(cell)) {
+      // A voxel the layer holds is kept from the grazing rays as any surface
+      // is (r3061: wall voxels the layer had taken were carved away by the
+      // rays along the wall, and the vehicle met the wall at 4 m/s); a body's
+      // trail seen by grazing rays alone is unobserved to the layer and
+      // expires with its life.
+      if (grazing && grid_.isOccupied(cell) && inGrazedSurface(cell)) {
         return;
       }
       recordScanEvidence(cell, false, false, scan_evidence, cursor);
