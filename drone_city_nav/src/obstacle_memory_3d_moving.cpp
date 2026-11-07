@@ -70,6 +70,43 @@ bool ObstacleMemory3D::besideOldSurface(const GridIndex3D cell) const noexcept {
   return false;
 }
 
+bool ObstacleMemory3D::inAColumn(const GridIndex3D cell) const noexcept {
+  // A body is a column: its voxels stand on one another. A floor's or a
+  // ceiling's voxels lie beside one another, and a body's feet joined the
+  // young floor of the corridor into one cluster wider than any body (r3057:
+  // the body's held column went unclustered for the whole approach until the
+  // floor under it had been confirmed old).
+  const GridIndex3D above{cell.x, cell.y, cell.z + 1};
+  const GridIndex3D below{cell.x, cell.y, cell.z - 1};
+  return (grid_.contains(above) && grid_.isOccupied(above)) ||
+         (grid_.contains(below) && grid_.isOccupied(below));
+}
+
+bool ObstacleMemory3D::besideSurfaceOrItsSkin(const GridIndex3D cell) const noexcept {
+  // A surface's skin is the young occupancy beside it, the range's noise on
+  // its near side at close range (r3053: the body turning a quarter metre
+  // from the corridor's wall was one cluster with that young skin, and no
+  // body until it walked clear).
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if (dx == 0 && dy == 0 && dz == 0) {
+          continue;
+        }
+        const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
+        if (oldSurfaceVoxel(near)) {
+          return true;
+        }
+        if (grid_.contains(near) && grid_.isOccupied(near) && !heldMoving(near) &&
+            !oldOrdinary(near) && besideOldSurface(near)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
   if (heldMoving(cell)) {
     return true;
@@ -175,7 +212,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         remaining &= remaining - 1U;
         const GridIndex3D cell =
             cellFromChunkBit(chunk_index, word_index * 64U + bit_offset);
-        if (!besideOldSurface(cell)) {
+        if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
           cells.push_back(cell);
         }
       }
@@ -192,7 +229,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
             cellFromChunkBit(chunk_index, word_index * 64U + bit_offset);
         if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
             !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations &&
-            !besideOldSurface(cell)) {
+            !besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
           cells.push_back(cell);
         }
       }
@@ -228,13 +265,17 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
               !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
             holdMoving(cell, now_ms, stats);
           }
-          // A lone old voxel beside the body's is the body's own.
+          // A voxel beside the body's that is no surface's is the body's own:
+          // a lone old one confirmed before the body was seen to move, or a
+          // young one left out of the cluster for standing beside a wall's
+          // skin (the body's wall-side column).
           for (int dz = -1; dz <= 1; ++dz) {
             for (int dy = -1; dy <= 1; ++dy) {
               for (int dx = -1; dx <= 1; ++dx) {
                 const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
-                if ((dx != 0 || dy != 0 || dz != 0) && oldOrdinary(near) &&
-                    !grid_.isUnobservable(near) && !oldSurfaceVoxel(near)) {
+                if ((dx != 0 || dy != 0 || dz != 0) && grid_.contains(near) &&
+                    grid_.isOccupied(near) && !grid_.isUnobservable(near) &&
+                    !heldMoving(near) && !oldSurfaceVoxel(near)) {
                   holdMoving(near, now_ms, stats);
                 }
               }

@@ -203,6 +203,8 @@ private:
   [[nodiscard]] bool besideOldSurface(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool oldOrdinary(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool oldSurfaceVoxel(GridIndex3D cell) const noexcept;
+  [[nodiscard]] bool besideSurfaceOrItsSkin(GridIndex3D cell) const noexcept;
+  [[nodiscard]] bool inAColumn(GridIndex3D cell) const noexcept;
   // The layer's voxels after a scan: the expired to unknown, the stood to
   // ordinary occupancy.
   void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);
