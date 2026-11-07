@@ -143,18 +143,27 @@ constexpr std::size_t kHistoryCells{512U};
 
 } // namespace
 
-bool MovingBodyTracker3D::movedSinceFirst(const Track& track,
-                                          const std::span<const GridIndex3D> cells,
-                                          const double resolution_m) {
-  const double dx = track.body.centre_map.x - track.first_centre_map.x;
-  const double dy = track.body.centre_map.y - track.first_centre_map.y;
-  if (std::hypot(dx, dy) < resolution_m) {
+constexpr std::size_t kReferenceScans{3U};
+
+bool MovingBodyTracker3D::movedLately(const Track& track,
+                                      const std::span<const GridIndex3D> cells,
+                                      const double resolution_m) {
+  if (track.recent.size() < kReferenceScans) {
+    return false;
+  }
+  const Reference& reference = track.recent.front();
+  const double dx = track.body.centre_map.x - reference.centre_map.x;
+  const double dy = track.body.centre_map.y - reference.centre_map.y;
+  // A cluster that doubled meanwhile grew (a wall's young skin, its old
+  // voxels cleared and new ones taken, shifts its centre like a step).
+  if (std::hypot(dx, dy) < resolution_m ||
+      cells.size() > 2U * reference.cells.size() + 2U) {
     return false;
   }
   const GridIndex3D shift{static_cast<int>(std::lround(dx / resolution_m)),
                           static_cast<int>(std::lround(dy / resolution_m)), 0};
-  const double carried = coverage(track.first_cells, cells, shift);
-  const double uncarried = coverage(track.first_cells, cells, GridIndex3D{});
+  const double carried = coverage(reference.cells, cells, shift);
+  const double uncarried = coverage(reference.cells, cells, GridIndex3D{});
   return carried >= 0.5 && carried - uncarried >= 0.25;
 }
 
@@ -190,15 +199,15 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       taken[nearest] = true;
       Track& before = tracks_[nearest];
       track.first_ms = before.first_ms;
-      track.first_centre_map = before.first_centre_map;
-      track.first_cells = std::move(before.first_cells);
       track.cells_since_first = std::move(before.cells_since_first);
+      track.recent = std::move(before.recent);
       track.previous_cells = std::move(before.cells);
       track.moved = before.moved;
       track.velocity_map_mps = before.velocity_map_mps;
       track.body = body;
+      track.last_ms = now_ms;
       if (!track.moved) {
-        track.moved = movedSinceFirst(track, cluster.cells, bounds.resolution_m);
+        track.moved = movedLately(track, cluster.cells, bounds.resolution_m);
         for (const GridIndex3D cell : cluster.cells) {
           if (track.cells_since_first.size() >= kHistoryCells) {
             break;
@@ -231,9 +240,12 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       }
     } else {
       track.first_ms = now_ms;
-      track.first_centre_map = body.centre_map;
-      track.first_cells = cluster.cells;
       track.cells_since_first = cluster.cells;
+    }
+    track.recent.push_back(
+        Reference{.centre_map = body.centre_map, .cells = cluster.cells});
+    if (track.recent.size() > kReferenceScans) {
+      track.recent.pop_front();
     }
     track.last_ms = now_ms;
     body.age_s = static_cast<double>(now_ms - track.first_ms) * 1.0e-3;

@@ -30,6 +30,46 @@ std::uint16_t ObstacleMemory3D::confirmationsAt(const GridIndex3D cell) const no
                                          ObservedOccupancyGrid3D::localBitIndex(cell));
 }
 
+bool ObstacleMemory3D::oldOrdinary(const GridIndex3D cell) const noexcept {
+  return grid_.contains(cell) && grid_.isOccupied(cell) && !heldMoving(cell) &&
+         (grid_.isUnobservable(cell) || confirmationsAt(cell) > kYoungConfirmations);
+}
+
+bool ObstacleMemory3D::oldSurfaceVoxel(const GridIndex3D cell) const noexcept {
+  // A surface has extent: an old occupancy with an old neighbour. A lone old
+  // voxel among a body's is the body's own, confirmed before the body was
+  // seen to move (r3045: two such voxels dropped the whole column from the
+  // clustering for three seconds of the approach).
+  if (!oldOrdinary(cell)) {
+    return false;
+  }
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if ((dx != 0 || dy != 0 || dz != 0) &&
+            oldOrdinary({cell.x + dx, cell.y + dy, cell.z + dz})) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+bool ObstacleMemory3D::besideOldSurface(const GridIndex3D cell) const noexcept {
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if ((dx != 0 || dy != 0 || dz != 0) &&
+            oldSurfaceVoxel({cell.x + dx, cell.y + dy, cell.z + dz})) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
   if (heldMoving(cell)) {
     return true;
@@ -118,6 +158,13 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
                                     ObstacleMemory3DStats& stats) {
   // The layer's voxels, and the young occupancies this scan hit: a body first
   // seen where nothing had been observed is told by its step.
+  // A voxel beside an old surface is that surface's skin (the range's noise
+  // on its near side) or a body's feet or wall-side cells: not a body's
+  // voxel to cluster, or a body a quarter metre from a wall is one cluster
+  // with the wall's skin, hugging it, and goes unread (r3041: the crossing
+  // body at the corridor's wall was first followed after the vehicle had
+  // passed it). What remains of the body, its column clear of the wall, is
+  // enough.
   std::vector<GridIndex3D> cells;
   for (const auto& [chunk_index, chunk] : moving_) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
@@ -126,7 +173,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       while (remaining != 0U) {
         const auto bit_offset = static_cast<std::size_t>(std::countr_zero(remaining));
         remaining &= remaining - 1U;
-        cells.push_back(cellFromChunkBit(chunk_index, word_index * 64U + bit_offset));
+        const GridIndex3D cell =
+            cellFromChunkBit(chunk_index, word_index * 64U + bit_offset);
+        if (!besideOldSurface(cell)) {
+          cells.push_back(cell);
+        }
       }
     }
   }
@@ -140,7 +191,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         const GridIndex3D cell =
             cellFromChunkBit(chunk_index, word_index * 64U + bit_offset);
         if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
-            !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
+            !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations &&
+            !besideOldSurface(cell)) {
           cells.push_back(cell);
         }
       }
@@ -150,9 +202,19 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   followed_bodies_.clear();
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
-    bool held = false;
+    std::size_t held_cells = 0U;
+    std::size_t hugging_cells = 0U;
     for (const GridIndex3D cell : tracker_.cells(index)) {
-      held = held || heldMoving(cell);
+      held_cells += heldMoving(cell) ? 1U : 0U;
+      hugging_cells += besideOldSurface(cell) ? 1U : 0U;
+    }
+    // A cluster that hugs an old surface along more than half its voxels is
+    // that surface's skin, the range's noise on its near side, which walks
+    // along the wall with the vehicle (r3035: walls 14 to 18 m off read as
+    // bodies at 0.5 to 3 m/s); a body stands clear of surfaces but for its
+    // feet.
+    if (2U * hugging_cells > tracker_.cells(index).size()) {
+      continue;
     }
     if (body.moving()) {
       // A cluster seen to move is a body: its voxels, the ones it had the
@@ -166,11 +228,36 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
               !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
             holdMoving(cell, now_ms, stats);
           }
+          // A lone old voxel beside the body's is the body's own.
+          for (int dz = -1; dz <= 1; ++dz) {
+            for (int dy = -1; dy <= 1; ++dy) {
+              for (int dx = -1; dx <= 1; ++dx) {
+                const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
+                if ((dx != 0 || dy != 0 || dz != 0) && oldOrdinary(near) &&
+                    !grid_.isUnobservable(near) && !oldSurfaceVoxel(near)) {
+                  holdMoving(near, now_ms, stats);
+                }
+              }
+            }
+          }
         }
       }
-      held = true;
+      held_cells = tracker_.cells(index).size();
     }
-    if (held) {
+    // A body the planner reads, whose envelope the layer grows in and whose
+    // sweep is laid, is a cluster seen to move that the layer holds by half
+    // at least: a young wall patch with held voxels in it is a wall (r3031,
+    // r3033: such patches were read as standing bodies 2 to 5 m from the
+    // vehicle on nearly every scan, and the law braked toward them). What
+    // stands is an occupancy like any, and the clearance laws answer for it.
+    // Read within 12 m, where the lidar's samples fall closer than a body's
+    // width (0.08 m apart at 12 m on a 0.4 degree spacing, 0.2 at 30): beyond
+    // it a body is a few scattered voxels, and so is a far wall's skin
+    // (r3037: such skins 11 to 18 m off read as bodies at 0.5 to 3 m/s).
+    constexpr double kReadsBodiesWithinM{12.0};
+    if (body.moving() && 2U * held_cells >= tracker_.cells(index).size() &&
+        std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) <=
+            kReadsBodiesWithinM) {
       followed_bodies_.push_back(body);
     }
   }

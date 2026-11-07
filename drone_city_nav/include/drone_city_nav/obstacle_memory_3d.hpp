@@ -198,6 +198,11 @@ private:
   [[nodiscard]] bool movingEvidenceAt(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool heldMoving(GridIndex3D cell) const noexcept;
   [[nodiscard]] std::uint16_t confirmationsAt(GridIndex3D cell) const noexcept;
+  // Whether an old ordinary occupancy, or the dark, stands among the 26
+  // neighbours: the voxel is a surface's skin, not a body's.
+  [[nodiscard]] bool besideOldSurface(GridIndex3D cell) const noexcept;
+  [[nodiscard]] bool oldOrdinary(GridIndex3D cell) const noexcept;
+  [[nodiscard]] bool oldSurfaceVoxel(GridIndex3D cell) const noexcept;
   // The layer's voxels after a scan: the expired to unknown, the stood to
   // ordinary occupancy.
   void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);

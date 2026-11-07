@@ -570,30 +570,82 @@ TEST(ObstacleMemory3D, AnOldWallBesideANoiseVoxelOrAWarmBodyStaysOrdinary) {
   EXPECT_EQ(stats.moving_hits, 0U);
 }
 
-TEST(ObstacleMemory3D, AnUnknownVoxelBesideAFollowedBodyIsTheBodysOnItsHit) {
-  // Inside a followed body's envelope a voxel beside a held one joins it
-  // whatever it was; beyond every envelope only a free one does (r3025).
+TEST(ObstacleMemory3D, AClusterThatWalksAlongAnOldWallIsTheWallsSkinNotABody) {
+  // r3035: the range's noise on a wall's near side, held, walked along the
+  // wall with the vehicle and was read as a body at 0.5 to 3 m/s. A cluster
+  // hugging an old surface along more than half its voxels is no body.
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
-  std::vector<LidarBeam3D> warm;
-  for (const double y : {1.5, 2.5}) {
+  // The wall at x 12, seen for two seconds over four rows.
+  std::vector<LidarBeam3D> wall;
+  for (const double y : {1.5, 2.5, 3.5, 4.5}) {
     for (const double z : {1.5, 2.5}) {
-      warm.push_back(hitAt(origin, {6.5, y, z}, true));
+      wall.push_back(hitAt(origin, {12.5, y, z}));
     }
   }
-  ObstacleMemory3DStats stats = memory.integrateScan(
-      {.origin_map = origin, .beams = warm, .acquisition_stamp_ns = kSecondNs});
-  ASSERT_EQ(stats.moving_hits, 4U);
+  for (int scan = 0; scan < 20; ++scan) {
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = origin,
+         .beams = wall,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000}));
+  }
+  // Its skin: four returns a voxel before it, warm, walking a row along it.
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan < 6; ++scan) {
+    const double y_low = scan < 3 ? 1.5 : 2.5;
+    std::vector<LidarBeam3D> skin;
+    for (const double y : {y_low, y_low + 1.0}) {
+      for (const double z : {1.5, 2.5}) {
+        skin.push_back(hitAt(origin, {11.5, y, z}, true));
+      }
+    }
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = skin,
+         .acquisition_stamp_ns =
+             4 * kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  EXPECT_EQ(stats.followed_bodies, 0U);
+  EXPECT_EQ(stats.swept_voxels, 0U);
+}
+
+TEST(ObstacleMemory3D, AnUnknownVoxelBesideAFollowedBodyIsTheBodysOnItsHit) {
+  // Inside a body's envelope, a body followed moving, a voxel beside a held
+  // one joins it whatever it was; beyond every envelope only a free one does
+  // (r3025), and a standing cluster is no body (r3033).
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  const auto block = [&](const double x) {
+    std::vector<LidarBeam3D> beams;
+    for (const double y : {1.625, 1.875}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        beams.push_back(hitAt(origin, {x, y, z}, true));
+      }
+    }
+    return beams;
+  };
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan <= 6; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = block(6.625 + 0.12 * scan),
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
   ASSERT_EQ(stats.followed_bodies, 1U);
   // A cold return beside it, in a voxel nothing had observed, within its reach.
-  const std::array cold{hitAt(origin, {6.5, 3.5, 2.5})};
-  ASSERT_EQ(memory.grid().state({6, 3, 2}), ObservedVoxelState::kUnknown);
+  const GridIndex3D beside{29, 8, 10};
+  ASSERT_EQ(memory.grid().state(beside), ObservedVoxelState::kUnknown);
+  const std::array cold{hitAt(origin, {7.375, 2.125, 2.625})};
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = cold,
-                                .acquisition_stamp_ns = kSecondNs + 100'000'000});
+                                .acquisition_stamp_ns = kSecondNs + 700'000'000});
   EXPECT_EQ(stats.moving_hits, 1U);
-  EXPECT_TRUE(memory.grid().isOccupied({6, 3, 2}));
+  EXPECT_TRUE(memory.grid().isOccupied(beside));
   // A lone warm voxel is no followed body: its unknown neighbour stays ordinary.
   ObstacleMemory3D lone{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};

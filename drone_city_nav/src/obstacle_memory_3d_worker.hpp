@@ -64,6 +64,7 @@ private:
   void workerLoop(std::stop_token stop_token);
   void process(PersistentLidarScan3D scan);
   void publishMovingBodies(std::int64_t acquisition_stamp_ns);
+  void logNearestBodies(const Point3& origin);
 
   rclcpp::Node& node_;
   ObstacleMemory3D memory_;

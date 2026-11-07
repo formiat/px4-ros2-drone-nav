@@ -1,12 +1,15 @@
 #include "obstacle_memory_3d_worker.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cinttypes>
+#include <cstdio>
 #include <limits>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -47,6 +50,43 @@ bool ObstacleMemory3DWorker::enqueue(PersistentLidarScan3D scan) {
     dropped_scans_.fetch_add(1U, std::memory_order_relaxed);
   }
   return dropped;
+}
+
+void ObstacleMemory3DWorker::logNearestBodies(const Point3& origin) {
+  // The bodies the memory follows, the five nearest the vehicle, once a
+  // second: what the planner's law and the sweep stand on.
+  const std::vector<MovingBody3D>& bodies = memory_.movingBodies();
+  if (bodies.empty()) {
+    return;
+  }
+  std::vector<const MovingBody3D*> nearest;
+  nearest.reserve(bodies.size());
+  for (const MovingBody3D& body : bodies) {
+    nearest.push_back(&body);
+  }
+  std::ranges::sort(nearest,
+                    [&](const MovingBody3D* first, const MovingBody3D* second) {
+                      return distance3D(first->centre_map, origin) <
+                             distance3D(second->centre_map, origin);
+                    });
+  std::string text;
+  std::size_t listed = 0U;
+  for (const MovingBody3D* body : nearest) {
+    if (listed++ >= 5U) {
+      break;
+    }
+    std::array<char, 160> item{};
+    std::snprintf(item.data(), item.size(),
+                  " [%.1f %.1f %.1f r%.2f h%.2f v%.2f,%.2f n%zu a%.1f d%.1f]",
+                  body->centre_map.x, body->centre_map.y, body->centre_map.z,
+                  body->radius_m, body->top_m - body->bottom_m,
+                  body->velocity_map_mps.x, body->velocity_map_mps.y, body->voxels,
+                  body->age_s, distance3D(body->centre_map, origin));
+    text += item.data();
+  }
+  RCLCPP_INFO_THROTTLE(node_.get_logger(), *node_.get_clock(), 1000,
+                       "FOLLOWED_BODIES followed=%zu nearest=%s", bodies.size(),
+                       text.c_str());
 }
 
 void ObstacleMemory3DWorker::publishMovingBodies(
@@ -110,6 +150,7 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
                       .acquisition_stamp_ns = scan.acquisition_stamp_ns});
   const ObstacleMemory3DChanges changes = memory_.takeChanges();
   publishMovingBodies(scan.acquisition_stamp_ns);
+  logNearestBodies(scan.origin_map);
   const auto integration_finished = std::chrono::steady_clock::now();
   const bool transport_coalesced = transport_.enqueue(
       memory_.grid(), changes, rclcpp::Time{scan.acquisition_stamp_ns, RCL_ROS_TIME},

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <span>
 #include <vector>
 
@@ -60,11 +61,14 @@ struct MovingBodyTrackerConfig3D {
 // Follows clusters of voxels as bodies between scans: the voxels are
 // clustered by 26-connectivity, each cluster is matched to the body nearest
 // where it was last seen, and the body's velocity is read off its centre's
-// steps once the cluster is seen to have moved: its voxels of the first scan
-// carried by the centre's displacement (a cell at least) cover the voxels of
-// this scan better than they do uncarried, by a quarter. A surface coming
-// into view only gains voxels and covers itself uncarried; a surface's noise
-// shifts no centre by a cell. A body that is not seen again is gone.
+// steps once the cluster is seen to have moved: its voxels of three scans
+// before, carried by the centre's displacement since (a cell at least), cover
+// the voxels of this scan better than they do uncarried, by a quarter, and
+// the cluster has not doubled meanwhile (three scans, not the first: a body
+// the vehicle flies toward gains voxels as the range closes, r3037). A
+// surface coming into view only gains voxels and covers itself uncarried; a
+// surface's noise shifts no centre by a cell. A body that is not seen again
+// is gone.
 class MovingBodyTracker3D {
 public:
   explicit MovingBodyTracker3D(const MovingBodyTrackerConfig3D& config = {});
@@ -85,6 +89,11 @@ public:
   cellsSinceFirst(std::size_t body) const noexcept;
 
 private:
+  struct Reference {
+    Point3 centre_map{};
+    std::vector<GridIndex3D> cells;
+  };
+
   struct Track {
     MovingBody3D body;
     Vec3 velocity_map_mps{};
@@ -92,15 +101,15 @@ private:
     std::int64_t last_ms{0};
     std::vector<GridIndex3D> cells;
     std::vector<GridIndex3D> previous_cells;
-    Point3 first_centre_map{};
-    std::vector<GridIndex3D> first_cells;
     std::vector<GridIndex3D> cells_since_first;
+    // The centre and the voxels of the last scans, the oldest first.
+    std::deque<Reference> recent;
     bool moved{false};
   };
 
-  [[nodiscard]] static bool movedSinceFirst(const Track& track,
-                                            std::span<const GridIndex3D> cells,
-                                            double resolution_m);
+  [[nodiscard]] static bool movedLately(const Track& track,
+                                        std::span<const GridIndex3D> cells,
+                                        double resolution_m);
 
   MovingBodyTrackerConfig3D config_;
   std::vector<Track> tracks_;
