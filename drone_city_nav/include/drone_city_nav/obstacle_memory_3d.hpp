@@ -198,9 +198,6 @@ private:
   [[nodiscard]] bool movingEvidenceAt(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool heldMoving(GridIndex3D cell) const noexcept;
   [[nodiscard]] std::uint16_t confirmationsAt(GridIndex3D cell) const noexcept;
-  // A young occupancy turned free: its young occupied neighbours are the
-  // body that vacated it, held from now.
-  void joinMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);
   // The layer's voxels after a scan: the expired to unknown, the stood to
   // ordinary occupancy.
   void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);

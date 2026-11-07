@@ -530,8 +530,6 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
           std::clamp(scores->scores.at(bit_index) + (occupied ? hit_delta : miss_delta),
                      minimum_score, maximum_score);
       scores->scores.at(bit_index) = after_score;
-      const std::uint16_t confirmations_before = scores->confirmations.at(bit_index);
-      const bool unobservable_before = grid_.isUnobservable(cell);
       if (occupied) {
         std::uint16_t& confirmations = scores->confirmations.at(bit_index);
         confirmations =
@@ -571,13 +569,6 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
         grid_chunk = grid_.findChunk(chunk_index);
         chunk_dirty = true;
         ++stats.state_transitions;
-      }
-      // A young occupancy that turned free was a body passing (K65): what
-      // stands young beside it is the body, moved on, and the layer takes it.
-      if (config_.moving_life_s > 0.0 && before == ObservedVoxelState::kOccupied &&
-          after != ObservedVoxelState::kOccupied &&
-          confirmations_before <= kYoungConfirmations && !unobservable_before) {
-        joinMoving(cell, now_ms, stats);
       }
       // An occupancy that only the dark the sensor looked into put there is
       // observed unobservable (specification K14) until a measured return

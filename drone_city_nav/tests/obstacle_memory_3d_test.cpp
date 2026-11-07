@@ -462,49 +462,68 @@ TEST(ObstacleMemory3D, AHitInObservedFreeSpaceIsMovingEvidenceUnlessBesideAWall)
       0U);
 }
 
-TEST(ObstacleMemory3D,
-     ABodyFirstSeenInUnknownSpaceJoinsTheLayerWhenItsVacatedVoxelTurnsFree) {
+// A hit on the cell whose centre is `end`, from `origin`.
+[[nodiscard]] LidarBeam3D hitAt(const Point3& origin, const Point3& end,
+                                const bool warm_body = false) {
+  const Vec3 along{end.x - origin.x, end.y - origin.y, end.z - origin.z};
+  const double norm =
+      std::sqrt(along.x * along.x + along.y * along.y + along.z * along.z);
+  return LidarBeam3D{.direction_map = {along.x / norm, along.y / norm, along.z / norm},
+                     .range_m = norm,
+                     .hit = true,
+                     .valid = true,
+                     .warm_body = warm_body};
+}
+
+// A cold body of four voxels, two wide and two tall, its front face at x.
+[[nodiscard]] std::vector<LidarBeam3D> coldBlockAt(const Point3& origin,
+                                                   const double x) {
+  std::vector<LidarBeam3D> block;
+  for (const double y : {1.5, 2.5}) {
+    for (const double z : {1.5, 2.5}) {
+      block.push_back(hitAt(origin, {x, y, z}));
+    }
+  }
+  return block;
+}
+
+TEST(ObstacleMemory3D, ABodyFirstSeenInUnknownSpaceJoinsTheLayerOnceItIsSeenToMove) {
   // r3018 to r3023: a body first seen by the lidar where nothing had been
   // observed left the ends of its walk as ordinary occupancies for ever. Its
-  // first return is nothing yet; once it has moved on and the voxel it stood
-  // in turns free, young, the young occupancies beside that voxel are the
-  // body. (One voxel of it: a column seen along one axis is a surface K42
-  // keeps from the rays grazing it.)
+  // first returns are nothing yet; once its cluster is seen to have moved by
+  // a cell, every voxel it has had is the layer's.
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
-  const std::array first{hitAlongX(5.0)};
-  ObstacleMemory3DStats stats = memory.integrateScan(
-      {.origin_map = origin, .beams = first, .acquisition_stamp_ns = kSecondNs});
-  EXPECT_EQ(stats.moving_hits, 0U);
-  ASSERT_TRUE(memory.grid().isOccupied({6, 1, 2}));
-  // The body a metre on; the rays to it pass through where it stood, five
-  // misses to turn that free.
-  const std::array moved{hitAlongX(6.0)};
-  for (int scan = 1; scan <= 5; ++scan) {
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan <= 5; ++scan) {
     stats = memory.integrateScan(
         {.origin_map = origin,
-         .beams = moved,
+         .beams = coldBlockAt(origin, 6.5 + 0.12 * scan),
          .acquisition_stamp_ns =
              kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+    if (scan < 5) {
+      EXPECT_EQ(stats.moving_hits, 0U) << scan;
+      EXPECT_EQ(stats.moving_joined, 0U) << scan;
+    }
   }
-  EXPECT_TRUE(memory.grid().isKnownFree({6, 1, 2}));
-  EXPECT_EQ(stats.moving_joined, 1U);
-  EXPECT_TRUE(memory.grid().isOccupied({7, 1, 2}));
-  // Held from now: a hit confirms it as the body's, a free ray clears it.
+  // The fifth scan put the block a cell on: seen to move, held from now.
+  EXPECT_GE(stats.moving_joined, 4U);
+  EXPECT_EQ(stats.followed_bodies, 1U);
+  ASSERT_TRUE(memory.grid().isOccupied({7, 1, 2}));
   stats = memory.integrateScan({.origin_map = origin,
-                                .beams = moved,
+                                .beams = coldBlockAt(origin, 7.1),
                                 .acquisition_stamp_ns = kSecondNs + 600'000'000});
-  EXPECT_EQ(stats.moving_hits, 1U);
+  EXPECT_EQ(stats.moving_hits, 4U);
   const std::array gone{missAlongX(12.0)};
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 700'000'000});
-  EXPECT_EQ(stats.moving_cleared, 1U);
+  EXPECT_GE(stats.moving_cleared, 1U);
   EXPECT_EQ(memory.grid().state({7, 1, 2}), ObservedVoxelState::kUnknown);
 }
 
-TEST(ObstacleMemory3D, AnOldWallBesideAFlippingNoiseVoxelStaysOrdinary) {
+TEST(ObstacleMemory3D, AnOldWallBesideANoiseVoxelOrAWarmBodyStaysOrdinary) {
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
@@ -539,13 +558,9 @@ TEST(ObstacleMemory3D, AnOldWallBesideAFlippingNoiseVoxelStaysOrdinary) {
   EXPECT_EQ(stats.moving_joined, 0U);
   EXPECT_EQ(stats.moving_voxels, 0U);
   EXPECT_TRUE(memory.grid().isOccupied({12, 1, 2}));
-  // A body beside the wall does not take the wall with it either: its hit is
-  // the body's, the wall's own voxel stays ordinary.
-  const std::array beside{LidarBeam3D{.direction_map = {1.0, 0.1, 0.0},
-                                      .range_m = 10.05,
-                                      .hit = true,
-                                      .valid = true,
-                                      .warm_body = true}};
+  // A warm body beside the wall does not take the wall with it either: its
+  // hit is the body's, the wall's own voxel stays ordinary.
+  const std::array beside{hitAt(origin, {11.5, 2.5, 2.5}, true)};
   stats = memory.integrateScan(
       {.origin_map = origin, .beams = beside, .acquisition_stamp_ns = 6 * kSecondNs});
   EXPECT_EQ(stats.moving_hits, 1U);
@@ -555,49 +570,66 @@ TEST(ObstacleMemory3D, AnOldWallBesideAFlippingNoiseVoxelStaysOrdinary) {
   EXPECT_EQ(stats.moving_hits, 0U);
 }
 
-TEST(ObstacleMemory3D, AnUnknownVoxelBesideAHeldBodyIsTheBodysOnItsHit) {
+TEST(ObstacleMemory3D, AnUnknownVoxelBesideAFollowedBodyIsTheBodysOnItsHit) {
+  // Inside a followed body's envelope a voxel beside a held one joins it
+  // whatever it was; beyond every envelope only a free one does (r3025).
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
-  const std::array warm{hitAlongX(5.0, true)};
+  std::vector<LidarBeam3D> warm;
+  for (const double y : {1.5, 2.5}) {
+    for (const double z : {1.5, 2.5}) {
+      warm.push_back(hitAt(origin, {6.5, y, z}, true));
+    }
+  }
   ObstacleMemory3DStats stats = memory.integrateScan(
       {.origin_map = origin, .beams = warm, .acquisition_stamp_ns = kSecondNs});
-  ASSERT_EQ(stats.moving_hits, 1U);
-  // A cold return beside it, in a voxel nothing had observed.
-  const std::array cold{LidarBeam3D{
-      .direction_map = {1.0, 0.2, 0.0}, .range_m = 5.1, .hit = true, .valid = true}};
-  ASSERT_EQ(memory.grid().state({6, 2, 2}), ObservedVoxelState::kUnknown);
+  ASSERT_EQ(stats.moving_hits, 4U);
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  // A cold return beside it, in a voxel nothing had observed, within its reach.
+  const std::array cold{hitAt(origin, {6.5, 3.5, 2.5})};
+  ASSERT_EQ(memory.grid().state({6, 3, 2}), ObservedVoxelState::kUnknown);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = cold,
                                 .acquisition_stamp_ns = kSecondNs + 100'000'000});
   EXPECT_EQ(stats.moving_hits, 1U);
-  EXPECT_TRUE(memory.grid().isOccupied({6, 2, 2}));
+  EXPECT_TRUE(memory.grid().isOccupied({6, 3, 2}));
+  // A lone warm voxel is no followed body: its unknown neighbour stays ordinary.
+  ObstacleMemory3D lone{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array one{hitAlongX(5.0, true)};
+  static_cast<void>(lone.integrateScan(
+      {.origin_map = origin, .beams = one, .acquisition_stamp_ns = kSecondNs}));
+  const std::array next{hitAt(origin, {6.5, 2.5, 2.5})};
+  EXPECT_EQ(lone.integrateScan({.origin_map = origin,
+                                .beams = next,
+                                .acquisition_stamp_ns = kSecondNs + 100'000'000})
+                .moving_hits,
+            0U);
 }
 
 TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
-  // K66: a body's column walks along x at 1.2 m/s; once followed, the cells it
-  // will sweep in the next 1.5 s are occupied and unobservable between scans,
-  // lifted before the next scan reads them, and never the vehicle's own place.
-  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
-                                                          .minimum_range_m = 0.1,
-                                                          .moving_least_voxels = 3U}};
+  // K66: a body's column walks along x at 1.2 m/s over a grid of 0.25 m; once
+  // followed, the cells it will sweep in the next 1.5 s are occupied and
+  // unobservable between scans, lifted before the next scan reads them.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
   const Point3 origin{1.5, 1.5, 2.5};
   ObstacleMemory3DStats stats{};
-  for (int scan = 0; scan <= 20; ++scan) {
-    // The column at x 5 + 0.12 m a scan: hits over three heights, warm.
-    const double x = 5.0 + 0.12 * scan;
-    std::vector<LidarBeam3D> column;
-    for (const double dz : {-1.0, 0.0, 1.0}) {
-      const double norm = std::sqrt((x - 1.5) * (x - 1.5) + dz * dz);
-      column.push_back(LidarBeam3D{.direction_map = {(x - 1.5) / norm, 0.0, dz / norm},
-                                   .range_m = norm,
-                                   .hit = true,
-                                   .valid = true,
-                                   .warm_body = true});
+  const auto column = [&](const double x) {
+    std::vector<LidarBeam3D> beams;
+    for (const double y : {1.625, 1.875}) {
+      for (const double z : {2.125, 2.375, 2.625}) {
+        beams.push_back(hitAt(origin, {x, y, z}, true));
+      }
     }
+    return beams;
+  };
+  for (int scan = 0; scan <= 20; ++scan) {
     stats = memory.integrateScan(
         {.origin_map = origin,
-         .beams = column,
+         .beams = column(6.5 + 0.12 * scan),
          .acquisition_stamp_ns =
              kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
   }
@@ -606,14 +638,21 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   EXPECT_NEAR(body.velocity_map_mps.x, 1.2, 0.5);
   EXPECT_GT(stats.swept_voxels, 0U);
   // Ahead of the body, within 1.5 s of its walk: occupied, by no measurement.
-  const GridIndex3D ahead{8, 1, 2};
+  const GridIndex3D ahead{38, 6, 10};
   EXPECT_TRUE(memory.grid().isOccupied(ahead));
   EXPECT_TRUE(memory.grid().isUnobservable(ahead));
-  // The next scan reads the cell as it was: a free ray clears it.
-  const std::array gone{missAlongX(12.0)};
+  // The next scan reads the cell as it was: free rays through the body clear
+  // it, the body is gone, and the sweep with it.
+  std::vector<LidarBeam3D> gone = column(6.5 + 0.12 * 20);
+  for (LidarBeam3D& beam : gone) {
+    beam.hit = false;
+    beam.range_m = 12.0;
+    beam.warm_body = false;
+  }
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'100'000'000});
+  EXPECT_EQ(stats.followed_bodies, 0U);
   EXPECT_TRUE(memory.grid().isKnownFree(ahead));
   EXPECT_EQ(stats.swept_voxels, 0U);
   // With no sweep configured the bodies are still followed and nothing is laid.

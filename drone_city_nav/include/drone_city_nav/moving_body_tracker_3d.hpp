@@ -56,9 +56,11 @@ struct MovingBodyTrackerConfig3D {
 // Follows clusters of voxels as bodies between scans: the voxels are
 // clustered by 26-connectivity, each cluster is matched to the body nearest
 // where it was last seen, and the body's velocity is read off its centre's
-// steps. A step leaves a voxel behind: a cluster that only gained voxels
-// since the last scan came into view rather than moved, and its centre's
-// shift is no velocity. A body that is not seen again is gone.
+// steps once the cluster is seen to have moved: its voxels of the first scan
+// carried by the centre's displacement (a cell at least) cover the voxels of
+// this scan better than they do uncarried, by a quarter. A surface coming
+// into view only gains voxels and covers itself uncarried; a surface's noise
+// shifts no centre by a cell. A body that is not seen again is gone.
 class MovingBodyTracker3D {
 public:
   explicit MovingBodyTracker3D(const MovingBodyTrackerConfig3D& config = {});
@@ -73,6 +75,10 @@ public:
   [[nodiscard]] std::span<const GridIndex3D> cells(std::size_t body) const noexcept;
   [[nodiscard]] std::span<const GridIndex3D>
   previousCells(std::size_t body) const noexcept;
+  // Every voxel the body has had since it was first seen, until it was seen
+  // to move (512 at most): what the layer takes when it does.
+  [[nodiscard]] std::span<const GridIndex3D>
+  cellsSinceFirst(std::size_t body) const noexcept;
 
 private:
   struct Track {
@@ -82,7 +88,15 @@ private:
     std::int64_t last_ms{0};
     std::vector<GridIndex3D> cells;
     std::vector<GridIndex3D> previous_cells;
+    Point3 first_centre_map{};
+    std::vector<GridIndex3D> first_cells;
+    std::vector<GridIndex3D> cells_since_first;
+    bool moved{false};
   };
+
+  [[nodiscard]] static bool movedSinceFirst(const Track& track,
+                                            std::span<const GridIndex3D> cells,
+                                            double resolution_m);
 
   MovingBodyTrackerConfig3D config_;
   std::vector<Track> tracks_;

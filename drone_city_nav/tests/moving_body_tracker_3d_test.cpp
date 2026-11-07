@@ -95,6 +95,27 @@ TEST(MovingBodyTracker3D, ASurfaceComingIntoViewIsNoBodyAndNoStep) {
   EXPECT_TRUE(tracker.bodies().empty());
 }
 
+TEST(MovingBodyTracker3D, ASurfacesNoiseIsNoStep) {
+  // r3025: a fresh surface's voxels come and go with the range's noise, and
+  // the cluster that lost one was read as a body that stepped. Its centre
+  // shifts by less than a cell, and that is no step.
+  MovingBodyTracker3D tracker;
+  for (int scan = 0; scan < 30; ++scan) {
+    std::vector<GridIndex3D> patch;
+    for (int x = 10; x < 13; ++x) {
+      for (int z = 4; z < 8; ++z) {
+        if (scan % 2 == 1 && x == 12 && z == 7) {
+          continue;
+        }
+        patch.push_back({x, 10, z});
+      }
+    }
+    tracker.update(patch, kBounds, 1000 + static_cast<std::int64_t>(scan) * 100);
+    ASSERT_EQ(tracker.bodies().size(), 1U);
+    EXPECT_FALSE(tracker.bodies().front().moving()) << scan;
+  }
+}
+
 TEST(MovingBodyTracker3D, AColumnFarFromWhereItWasIsANewBody) {
   MovingBodyTracker3D tracker;
   tracker.update(column(10, 10), kBounds, 1000);

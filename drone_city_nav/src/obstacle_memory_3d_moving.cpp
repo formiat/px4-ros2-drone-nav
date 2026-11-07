@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -29,23 +30,6 @@ std::uint16_t ObstacleMemory3D::confirmationsAt(const GridIndex3D cell) const no
                                          ObservedOccupancyGrid3D::localBitIndex(cell));
 }
 
-void ObstacleMemory3D::joinMoving(const GridIndex3D cell, const std::int64_t now_ms,
-                                  ObstacleMemory3DStats& stats) {
-  for (int dz = -1; dz <= 1; ++dz) {
-    for (int dy = -1; dy <= 1; ++dy) {
-      for (int dx = -1; dx <= 1; ++dx) {
-        const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
-        if ((dx == 0 && dy == 0 && dz == 0) || !grid_.contains(near) ||
-            !grid_.isOccupied(near) || grid_.isUnobservable(near) || heldMoving(near) ||
-            confirmationsAt(near) > kYoungConfirmations) {
-          continue;
-        }
-        holdMoving(near, now_ms, stats);
-      }
-    }
-  }
-}
-
 bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
   if (heldMoving(cell)) {
     return true;
@@ -56,13 +40,30 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
     // A surface seen for long, or the dark: never a body.
     return false;
   }
-  // A voxel beside one the layer holds joins it, free, unknown or a young
-  // occupancy: the cluster that shifts. Away from the layer, a hit where free
-  // space had been observed is a body's appearance, a hit in unknown space or
-  // on a young occupancy is nothing yet, and a surface voxel's neighbour
-  // takes a return now and then from the range's noise: ordinary, as the
-  // surface is, unless the body walks there (r3013: a body turning a quarter
-  // metre from a wall left its wall-side cells).
+  // Inside a followed body's envelope (a cell beyond its reach) a voxel beside
+  // one the layer holds joins it, free, unknown or a young occupancy: the
+  // cluster that shifts. Beyond every envelope only a free voxel beside a held
+  // one does (r3025: a held voxel's unknown neighbours taken whatever stood
+  // round them spread the layer over every fresh surface, 28 thousand voxels).
+  // Away from the layer, a hit where free space had been observed is a body's
+  // appearance, a hit in unknown space or on a young occupancy is nothing
+  // yet, and a surface voxel's neighbour takes a return now and then from the
+  // range's noise: ordinary, as the surface is, unless the body walks there
+  // (r3013: a body turning a quarter metre from a wall left its wall-side
+  // cells).
+  const Point3 centre = grid_.cellCenter(cell);
+  const double resolution_m = grid_.bounds().resolution_m;
+  bool inside_envelope = false;
+  for (const MovingBody3D& body : followed_bodies_) {
+    if (std::hypot(centre.x - body.centre_map.x, centre.y - body.centre_map.y) <=
+            body.radius_m + resolution_m &&
+        centre.z >= body.bottom_m - resolution_m &&
+        centre.z <= body.top_m + resolution_m) {
+      inside_envelope = true;
+      break;
+    }
+  }
+  const bool free = !occupied && grid_.state(cell) == ObservedVoxelState::kFree;
   bool beside_ordinary{false};
   for (int dz = -1; dz <= 1; ++dz) {
     for (int dy = -1; dy <= 1; ++dy) {
@@ -72,15 +73,14 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
             !grid_.isOccupied(near)) {
           continue;
         }
-        if (heldMoving(near)) {
+        if (heldMoving(near) && (free || inside_envelope)) {
           return true;
         }
-        beside_ordinary = true;
+        beside_ordinary = beside_ordinary || !heldMoving(near);
       }
     }
   }
-  return !occupied && grid_.state(cell) == ObservedVoxelState::kFree &&
-         !beside_ordinary;
+  return free && !beside_ordinary;
 }
 
 void ObstacleMemory3D::liftSweep() {
@@ -155,10 +155,12 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       held = held || heldMoving(cell);
     }
     if (body.moving()) {
-      // A cluster that stepped is a body: its voxels, and the ones it had the
-      // scan before, are the layer's from now.
+      // A cluster seen to move is a body: its voxels, the ones it had the
+      // scan before and every one it has had since it was first seen are the
+      // layer's from now.
       for (const std::span<const GridIndex3D> group :
-           {tracker_.cells(index), tracker_.previousCells(index)}) {
+           {tracker_.cells(index), tracker_.previousCells(index),
+            tracker_.cellsSinceFirst(index)}) {
         for (const GridIndex3D cell : group) {
           if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
               !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {

@@ -123,7 +123,39 @@ clusterBodies(const std::span<const GridIndex3D> cells, const GridBounds3D& boun
   return clusters;
 }
 
+// The share of a set of cells found in another, carried by a shift.
+[[nodiscard]] double coverage(const std::span<const GridIndex3D> cells,
+                              const std::span<const GridIndex3D> among,
+                              const GridIndex3D shift) {
+  if (cells.empty()) {
+    return 0.0;
+  }
+  std::size_t found = 0U;
+  for (const GridIndex3D cell : cells) {
+    const GridIndex3D carried{cell.x + shift.x, cell.y + shift.y, cell.z + shift.z};
+    found += std::ranges::find(among, carried) != among.end() ? 1U : 0U;
+  }
+  return static_cast<double>(found) / static_cast<double>(cells.size());
+}
+
+constexpr std::size_t kHistoryCells{512U};
+
 } // namespace
+
+bool MovingBodyTracker3D::movedSinceFirst(const Track& track,
+                                          const std::span<const GridIndex3D> cells,
+                                          const double resolution_m) {
+  const double dx = track.body.centre_map.x - track.first_centre_map.x;
+  const double dy = track.body.centre_map.y - track.first_centre_map.y;
+  if (std::hypot(dx, dy) < resolution_m) {
+    return false;
+  }
+  const GridIndex3D shift{static_cast<int>(std::lround(dx / resolution_m)),
+                          static_cast<int>(std::lround(dy / resolution_m)), 0};
+  const double carried = coverage(track.first_cells, cells, shift);
+  const double uncarried = coverage(track.first_cells, cells, GridIndex3D{});
+  return carried >= 0.5 && carried - uncarried >= 0.25;
+}
 
 MovingBodyTracker3D::MovingBodyTracker3D(const MovingBodyTrackerConfig3D& config)
     : config_{config} {
@@ -157,32 +189,50 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       taken[nearest] = true;
       Track& before = tracks_[nearest];
       track.first_ms = before.first_ms;
+      track.first_centre_map = before.first_centre_map;
+      track.first_cells = std::move(before.first_cells);
+      track.cells_since_first = std::move(before.cells_since_first);
       track.previous_cells = std::move(before.cells);
+      track.moved = before.moved;
+      track.velocity_map_mps = before.velocity_map_mps;
+      track.body = body;
+      if (!track.moved) {
+        track.moved = movedSinceFirst(track, cluster.cells, bounds.resolution_m);
+        for (const GridIndex3D cell : cluster.cells) {
+          if (track.cells_since_first.size() >= kHistoryCells) {
+            break;
+          }
+          if (std::ranges::find(track.cells_since_first, cell) ==
+              track.cells_since_first.end()) {
+            track.cells_since_first.push_back(cell);
+          }
+        }
+      }
       const double elapsed_s = static_cast<double>(now_ms - before.last_ms) * 1.0e-3;
-      // A step leaves a voxel behind; a surface coming into view only gains
-      // them, and its centre's shift is no velocity. A body that keeps every
-      // voxel this scan has not stepped, and its velocity decays toward rest.
+      // A step leaves a voxel behind; a body that keeps every voxel this scan
+      // has not stepped, and its velocity decays toward rest.
       const bool stepped =
+          track.moved &&
           std::ranges::any_of(track.previous_cells, [&](const GridIndex3D cell) {
             return std::ranges::find(cluster.cells, cell) == cluster.cells.end();
           });
-      track.velocity_map_mps = before.velocity_map_mps;
       if (!stepped) {
         track.velocity_map_mps.x *= 1.0 - config_.velocity_gain;
         track.velocity_map_mps.y *= 1.0 - config_.velocity_gain;
-      } else {
-        if (elapsed_s > 0.0) {
-          const Vec3 step{(body.centre_map.x - before.body.centre_map.x) / elapsed_s,
-                          (body.centre_map.y - before.body.centre_map.y) / elapsed_s,
-                          0.0};
-          track.velocity_map_mps.x +=
-              config_.velocity_gain * (step.x - track.velocity_map_mps.x);
-          track.velocity_map_mps.y +=
-              config_.velocity_gain * (step.y - track.velocity_map_mps.y);
-        }
+      } else if (elapsed_s > 0.0) {
+        const Vec3 step{(body.centre_map.x - before.body.centre_map.x) / elapsed_s,
+                        (body.centre_map.y - before.body.centre_map.y) / elapsed_s,
+                        0.0};
+        track.velocity_map_mps.x +=
+            config_.velocity_gain * (step.x - track.velocity_map_mps.x);
+        track.velocity_map_mps.y +=
+            config_.velocity_gain * (step.y - track.velocity_map_mps.y);
       }
     } else {
       track.first_ms = now_ms;
+      track.first_centre_map = body.centre_map;
+      track.first_cells = cluster.cells;
+      track.cells_since_first = cluster.cells;
     }
     track.last_ms = now_ms;
     body.age_s = static_cast<double>(now_ms - track.first_ms) * 1.0e-3;
@@ -216,6 +266,13 @@ std::span<const GridIndex3D>
 MovingBodyTracker3D::cells(const std::size_t body) const noexcept {
   return body < tracks_.size() ? std::span<const GridIndex3D>{tracks_[body].cells}
                                : std::span<const GridIndex3D>{};
+}
+
+std::span<const GridIndex3D>
+MovingBodyTracker3D::cellsSinceFirst(const std::size_t body) const noexcept {
+  return body < tracks_.size()
+             ? std::span<const GridIndex3D>{tracks_[body].cells_since_first}
+             : std::span<const GridIndex3D>{};
 }
 
 std::span<const GridIndex3D>
