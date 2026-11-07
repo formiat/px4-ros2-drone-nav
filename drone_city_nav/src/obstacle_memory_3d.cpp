@@ -699,7 +699,12 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   };
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      if (grazing && grid_.isOccupied(cell) && inGrazedSurface(cell)) {
+      // A voxel the moving layer holds is no surface the grazing rule keeps: a
+      // person's column is as thin as a floor seen edge-on, and the rays
+      // along the corridor cleared nothing of it (r3013: cells re-hit within
+      // the stand's time became walls).
+      if (grazing && grid_.isOccupied(cell) && !heldMoving(cell) &&
+          inGrazedSurface(cell)) {
         return;
       }
       recordScanEvidence(cell, false, false, scan_evidence, cursor);
@@ -729,20 +734,27 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
   if (grid_.state(cell) != ObservedVoxelState::kFree) {
     return false;
   }
-  // A surface voxel's neighbour takes a return now and then from the range's
-  // noise: ordinary, as the surface is. A body walks clear of the walls.
+  // A voxel beside one the layer holds joins it: the cluster that shifts. A
+  // surface voxel's neighbour takes a return now and then from the range's
+  // noise: ordinary, as the surface is, unless the body walks there (r3013:
+  // a body turning a quarter metre from a wall left its wall-side cells).
+  bool beside_ordinary{false};
   for (int dz = -1; dz <= 1; ++dz) {
     for (int dy = -1; dy <= 1; ++dy) {
       for (int dx = -1; dx <= 1; ++dx) {
         const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
-        if ((dx != 0 || dy != 0 || dz != 0) && grid_.contains(near) &&
-            grid_.isOccupied(near) && !heldMoving(near)) {
-          return false;
+        if ((dx == 0 && dy == 0 && dz == 0) || !grid_.contains(near) ||
+            !grid_.isOccupied(near)) {
+          continue;
         }
+        if (heldMoving(near)) {
+          return true;
+        }
+        beside_ordinary = true;
       }
     }
   }
-  return true;
+  return !beside_ordinary;
 }
 
 void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
