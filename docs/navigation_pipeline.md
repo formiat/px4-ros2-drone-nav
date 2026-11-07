@@ -11,7 +11,11 @@ observed `Occupancy3D`.
 heartbeat without copying the grid. The 3D profile publishes a revisioned
 `/drone_city_nav/raw_obstacle_snapshot_3d` base plus
 `/drone_city_nav/raw_obstacle_delta_3d` dirty chunks. RViz and provenance
-representations are debug-only and are never planner inputs.
+representations are debug-only and are never planner inputs. The memory's
+moving layer (specification K65) holds what moves by how it behaves, and the
+bodies the memory follows moving (K66) reach the planner as
+`MovingBodyEvidence3D` with every scan, their sweep occupied in the snapshots
+between scans.
 
 In no-static mode the reconstructed raw state is the planning world. The 3D
 pipeline publishes the current physical scan first, integrates persistent memory
@@ -268,6 +272,9 @@ Reference speed is bounded by:
 - mode cruise and absolute limits;
 - curvature preview;
 - sensor-observation range and physical stopping capability;
+- the bodies the memory follows moving (specification K66): the speed the
+  vehicle can stop from before a body's envelope the commanded motion closes
+  on, less what the body closes meanwhile;
 - goal approach;
 - the finite certified route endpoint and the reserve needed to stop before it;
 - the first route sample the persistent raw world blocks, braked toward as

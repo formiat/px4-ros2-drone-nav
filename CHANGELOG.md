@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Warm bodies that walk (roadmap item 21 stages 1a, 1 and 2; specification K64, K65, K66, F23): a walking body
+  in the simulation (`scripts/moving_bodies.py`, the scenarios `sim-urban-walking-body`, `-oncoming`, `-side`), the
+  thermal core's reading of bodies on both sets, the obstacle memory's moving layer (what moves is told by how it
+  behaves; no decay by age), the bodies followed between scans with their sweep along the measured velocity and a
+  person's reach, and the planner's stopping law toward a closing body. Tools: `thermal_body_rig.py`,
+  `body_contact_rig.py`, `body_encounters.py`, `thermal_frame_bodies`.
 - The camera set's stack replay meets its contract with the autopilot's IMU at every sample, and a camera
   bag is kept in the replay gate beside the lidar's (roadmap item 36, specification K62): a recorded flight
   replays to 0.000 m over every pose, twice the same (r2944, r2945). Five repairs: the barometer's pressure

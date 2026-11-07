@@ -13,10 +13,16 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   them of the distance less the vehicle's radius (0.35 m) less the way a stop needs at the closing speed
   (v * 0.3 s + v^2 / (2 * 4 m/s^2), the reaction of a planner tick and the profile's acceleration);
 - what the planner did while the body was within 10 m: trajectories found in collision and stops published;
-- the body's trace in the memory: in every snapshot, the occupied cells inside the volume the walk sweeps (the
-  walk's rectangle, the body's radius and a cell wider, the body's height) that lie farther than 0.6 m from where
-  the body stood at the snapshot's stamp: cells of a wall where there is free floor. The largest count, the count in
-  the last snapshot and how long after the vehicle was last within 10 m of the body that snapshot was taken;
+- the body's trace in the memory: in every snapshot, the occupied cells whose centres lie inside the volume the
+  walk sweeps (the walk's rectangle, the body's radius and a tenth of a metre of the range's noise wider; from 0.3 m
+  over the floor, above the floor's own two rows of cells, to the body's height) that lie farther than 0.6 m from
+  where the body stood at the snapshot's stamp: an occupancy where there is free air. A wall the walk comes within
+  a quarter of a metre of lies outside the volume; the floor's rows under it do too. The largest count over the
+  snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
+  than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
+  back, specification K65) and the oldest trace cell's age: the longest, over the snapshots, since the body last
+  stood within 0.6 m of a cell still occupied in that snapshot. A body walking back and forth comes back to every
+  cell of its walk within its period, so the age never says more than the period does;
 - a contact with the body, from the crash detector's line.
 """
 from __future__ import annotations
@@ -40,6 +46,8 @@ VEHICLE_RADIUS_M = 0.35
 REACTION_S, DECELERATION_MPS2 = 0.3, 4.0
 NEAR_M = 10.0
 APART_M = 0.6
+NOISE_M, OVER_FLOOR_M = 0.1, 0.3
+LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
 
 
@@ -155,16 +163,27 @@ def planner_events(run: Path, near: list[float]) -> tuple[int, int, bool]:
 
 def swept_volume(body) -> tuple[float, ...]:
     xs, ys = [row[1] for row in body], [row[2] for row in body]
-    pad = BODY_RADIUS_M + 0.25
-    return (min(xs) - pad, min(ys) - pad, body[0][3], max(xs) + pad, max(ys) + pad, body[0][3] + BODY_HEIGHT_M)
+    pad = BODY_RADIUS_M + NOISE_M
+    return (min(xs) - pad, min(ys) - pad, body[0][3] + OVER_FLOOR_M, max(xs) + pad, max(ys) + pad,
+            body[0][3] + BODY_HEIGHT_M)
 
 
-def trace(run: Path, body, near: list[float]) -> tuple[int, int, float, int]:
-    """The body's trace over the snapshots: the largest count of wall cells where the body is not, the count in
-    the last snapshot, how long after the last time near that snapshot was taken, and the snapshots read."""
+def trace_age_s(body, stamps: list[float], centre: tuple[float, float], t_s: float) -> float:
+    """How long before t the body last stood within APART_M of a cell's centre; the whole log when never."""
+    for row in reversed(body[:bisect.bisect_right(stamps, t_s)]):
+        if math.hypot(row[1] - centre[0], row[2] - centre[1]) <= APART_M:
+            return t_s - row[0]
+    return t_s - stamps[0]
+
+
+def trace(run: Path, body, near: list[float]) -> tuple[int, int, int, float, int]:
+    """The body's trace over the snapshots: the largest count of occupied cells where the body is not, the count in
+    the last snapshot, the stale cells over the snapshots, the oldest trace cell's age, and the snapshots read."""
     volume = swept_volume(body)
     stamps = [row[0] for row in body]
     counts = []
+    stale = 0
+    oldest_s = 0.0
     for path in sorted(run.glob("raw_snapshot_3d_revision_*.json")):
         document = json.loads(path.read_text())
         stamp = document["header"]["stamp"]
@@ -183,13 +202,17 @@ def trace(run: Path, body, near: list[float]) -> tuple[int, int, float, int]:
         place = at(body, stamps, t_s)
         cells = np.argwhere(occupied)
         centres = origin + (cells + 0.5) * res
-        apart = np.hypot(centres[:, 0] - place[1], centres[:, 1] - place[2]) > APART_M
+        inside = np.all((centres >= volume[:3]) & (centres <= volume[3:]), axis=1)
+        apart = inside & (np.hypot(centres[:, 0] - place[1], centres[:, 1] - place[2]) > APART_M)
         counts.append((t_s, int(apart.sum())))
+        for centre in centres[apart]:
+            age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)
+            stale += age_s > LAYER_LIFE_S + STAMP_SLACK_S
+            oldest_s = max(oldest_s, age_s)
     if not counts:
-        return -1, -1, float("nan"), 0
+        return -1, -1, -1, float("nan"), 0
     counts.sort()
-    last_near = near[-1] if near else float("nan")
-    return max(count for _, count in counts), counts[-1][1], counts[-1][0] - last_near, len(counts)
+    return max(count for _, count in counts), counts[-1][1], stale, oldest_s, len(counts)
 
 
 def main() -> int:
@@ -197,7 +220,7 @@ def main() -> int:
         print(__doc__)
         return 2
     print("| run | body | closest at s | distance m (gap, over the top) | speed there / before m/s | closing m/s | "
-          "stop margin m | collisions found, stops | trace cells most / last (s after, snapshots) | contact |")
+          "stop margin m | collisions found, stops | trace cells most / last (stale, oldest s, snapshots) | contact |")
     print("|---|---|---|---|---|---|---|---|---|---|")
     for name in sys.argv[1:]:
         run = Path(name) if "/" in name else Path("log/runs") / name
@@ -205,11 +228,12 @@ def main() -> int:
         for index, body in sorted(read_bodies(run).items()):
             met = meeting(truth, body)
             collisions, stops, contact = planner_events(run, met["near"])
-            most, last, after_s, snapshots = trace(run, body, met["near"])
+            most, last, stale, oldest_s, snapshots = trace(run, body, met["near"])
             print(f"| {run.name} | {index} | {met['t_s']:.1f} | {met['distance_m']:.2f} ({met['gap_m']:.2f}, "
                   f"{met['over_m']:+.2f}) | {met['speed_mps']:.2f} / {met['speed_before_mps']:.2f} | "
                   f"{met['closing_mps']:.2f} | {met['margin_m']:+.2f} | {collisions}, {stops} | "
-                  + (f"{most} / {last} ({after_s:.0f}, {snapshots})" if snapshots else "no snapshot holds the walk")
+                  + (f"{most} / {last} ({stale}, {oldest_s:.1f}, {snapshots})" if snapshots
+                     else "no snapshot holds the walk")
                   + f" | {'yes' if contact else 'no'} |")
     return 0
 

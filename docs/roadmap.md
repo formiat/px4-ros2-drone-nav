@@ -626,6 +626,15 @@ the door variant: five flights past a body that crosses the route, no
 contact, no occupancy of it older than the stated decay, and the mean
 speed of R3 kept.
 
+Stages 1a, 1 and 2 for warm bodies were done on 2026-11-06 and 2026-11-07
+(the goal of 2026-11-05, part 1; specification K64, K65, K66, F23). Stage 2
+was built in stage 2a's form at once, the sweep along the measured velocity
+with a person's reach: an isotropic sweep of a body at 1.2 m/s fills 4.2 m of
+the corridor the acceptance's body paces, and the vehicle would wait for it to
+the flight's end. A standing body is an occupancy like any, answered for by
+the clearance laws; the law and the sweep are for bodies seen to move. The
+doors (stage 3) and the cold bodies' acceptance stay open.
+
 ## 22. Passive Navigation Without Illumination: Thermal-Inertial
 
 **Type:** sensing and localization, general.

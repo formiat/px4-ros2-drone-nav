@@ -102,6 +102,23 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertGreater(met["closing_mps"], 1.5)
         self.assertLess(met["margin_m"], met["distance_m"])
 
+    def test_the_trace_counts_cells_the_body_left_longer_ago_than_the_layer_lives(self) -> None:
+        # The walk from y 0 to 5 and back at 1 m/s: at 8 s the body is at y 2; a cell at y 3 was within
+        # 0.6 m of it 0.5 s ago (on the way back), the cell at y 0 last at 0.6 s, 7.4 s ago: stale.
+        body = [(t * 0.1, 10.0, 5.0 - abs((t * 0.1) % 10.0 - 5.0), 1.0) for t in range(0, 101)]
+        stamps = [row[0] for row in body]
+        self.assertAlmostEqual(0.0, self.tool.trace_age_s(body, stamps, (10.0, 2.0), 8.0), delta=0.11)
+        self.assertAlmostEqual(0.5, self.tool.trace_age_s(body, stamps, (10.0, 3.0), 8.0), delta=0.11)
+        self.assertAlmostEqual(7.4, self.tool.trace_age_s(body, stamps, (10.0, 0.0), 8.0), delta=0.11)
+        self.assertGreater(self.tool.trace_age_s(body, stamps, (10.0, 0.0), 8.0),
+                           self.tool.LAYER_LIFE_S + self.tool.STAMP_SLACK_S)
+        # The volume the walk sweeps keeps a wall the walk comes within a quarter metre of outside it,
+        # and the floor's own rows under it.
+        volume = self.tool.swept_volume(body)
+        self.assertAlmostEqual(0.0 - 0.35, volume[1], delta=1e-9)
+        self.assertAlmostEqual(5.0 + 0.35, volume[4], delta=1e-9)
+        self.assertAlmostEqual(1.3, volume[2], delta=1e-9)
+
     def test_the_tool_is_recorded(self) -> None:
         readme = (REPOSITORY / "tools/README.md").read_text(encoding="utf-8")
         self.assertIn("| `body_encounters.py` |", readme)
