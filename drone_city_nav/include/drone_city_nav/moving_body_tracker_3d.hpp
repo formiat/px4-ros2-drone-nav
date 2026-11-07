@@ -48,9 +48,13 @@ struct MovingBodyTrackerConfig3D {
   // jitters by a voxel between scans, and a walk reads steady over a few.
   double velocity_gain{0.3};
   // A cluster smaller than this is a noise return, not a body; one reaching
-  // farther than this from its centre is a surface, not a body.
+  // farther than this from its centre is a surface, not a body; one lower
+  // than this is a sheet of the range's noise over a far floor or ceiling, a
+  // cell thick (r3027: 191 such bodies at once), not a body of a person's
+  // height.
   std::size_t least_voxels{4U};
   double widest_radius_m{1.0};
+  double least_height_m{1.0};
 };
 
 // Follows clusters of voxels as bodies between scans: the voxels are

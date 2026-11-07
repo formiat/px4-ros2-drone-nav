@@ -620,7 +620,7 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   const auto column = [&](const double x) {
     std::vector<LidarBeam3D> beams;
     for (const double y : {1.625, 1.875}) {
-      for (const double z : {2.125, 2.375, 2.625}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
         beams.push_back(hitAt(origin, {x, y, z}, true));
       }
     }

@@ -32,10 +32,14 @@ TEST(MovingBodyTracker3D, TwoColumnsApartAreTwoBodiesOfTheirSize) {
   std::vector<GridIndex3D> cells = column(10, 10);
   const std::vector<GridIndex3D> other = column(30, 30);
   cells.insert(cells.end(), other.begin(), other.end());
-  // Three stray voxels under the least a body has are no body.
+  // Three stray voxels under the least a body has are no body, nor is a sheet
+  // of six a cell thick (the range's noise over a far floor).
   cells.push_back({50, 50, 5});
   cells.push_back({51, 50, 5});
   cells.push_back({52, 50, 5});
+  for (int x = 60; x < 66; ++x) {
+    cells.push_back({x, 50, 5});
+  }
   tracker.update(cells, kBounds, 1000);
   ASSERT_EQ(tracker.bodies().size(), 2U);
   const MovingBody3D& body = tracker.bodies().front();
