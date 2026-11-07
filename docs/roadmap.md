@@ -633,6 +633,15 @@ with a person's reach: an isotropic sweep of a body at 1.2 m/s fills 4.2 m of
 the corridor the acceptance's body paces, and the vehicle would wait for it to
 the flight's end. A standing body is an occupancy like any, answered for by
 the clearance laws; the law and the sweep are for bodies seen to move. The
+acceptance of fcac4c47 (2026-11-07): five flights a set past the crossing
+body, no contact; the stopping margin against the closing speed positive on
+2 of 5 lidar and 4 of 5 camera flights (the rest short by 0.15 to 1.4 m,
+passes over the body's head at 0.7 to 1.8 m); the trace older than the
+layer's life nil on 4 of 5 lidar flights; the mean speed with the body 2.18
+(lidar) and 1.36 m/s (cameras), without it 2.20 and 1.37 on the same
+commit, 2.31 and 1.29 at part 0's acceptance. Open debts: the camera set
+follows the oncoming body hardly at all (0.19 to 1.0 m over its head in
+r3085 to r3087), the memory's integration costs a third more (K53), and the
 doors (stage 3) and the cold bodies' acceptance stay open.
 
 ## 22. Passive Navigation Without Illumination: Thermal-Inertial
