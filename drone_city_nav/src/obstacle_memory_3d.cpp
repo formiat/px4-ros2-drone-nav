@@ -214,7 +214,9 @@ cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
 ObstacleMemory3D::ObstacleMemory3D(const GridBounds3D& bounds,
                                    ObstacleMemory3DConfig config)
     : config_{config},
-      grid_{bounds} {
+      grid_{bounds},
+      tracker_{MovingBodyTrackerConfig3D{.match_m = config.moving_match_m,
+                                         .least_voxels = config.moving_least_voxels}} {
   if (!validConfig(config_)) {
     throw std::invalid_argument{"invalid ObstacleMemory3D config"};
   }
@@ -230,6 +232,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   if (stats.stale_acquisition) {
     return stats;
   }
+  liftSweep();
   const std::size_t stride = static_cast<std::size_t>(config_.scan_stride);
   ScanEvidence scan_evidence;
   for (std::size_t index = 0U; index < scan.beams.size(); index += stride) {
@@ -262,6 +265,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   }
   if (config_.moving_life_s > 0.0) {
     settleMoving(now_ms, stats);
+    followMoving(scan_evidence, scan.origin_map, now_ms, stats);
   }
   // Every integrated scan is a revision, whether or not a voxel changed state:
   // the revision is published with the scan's stamp, and the consumer holds a
@@ -399,6 +403,10 @@ std::size_t ObstacleMemory3D::forgetDynamicVolumes(
 void ObstacleMemory3D::reset() {
   grid_.clear();
   evidence_.clear();
+  moving_.clear();
+  tracker_.clear();
+  followed_bodies_.clear();
+  swept_.clear();
   dirty_chunks_.clear();
   last_evidence_stamp_ns_ = 0;
   decay_epoch_ns_ = 0;
@@ -630,6 +638,10 @@ void ObstacleMemory3D::decayUnconfirmed(const std::int64_t now_ms,
     }
   }
   decayed_voxel_total_ += stats.decayed_voxels;
+}
+
+const std::vector<MovingBody3D>& ObstacleMemory3D::movingBodies() const noexcept {
+  return followed_bodies_;
 }
 
 std::size_t ObstacleMemory3D::decayedVoxelTotal() const noexcept {

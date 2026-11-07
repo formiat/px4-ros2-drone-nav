@@ -170,6 +170,8 @@ private:
                              "/drone_city_nav/latest_sensor_obstacle_scan");
     world.topics.obstacle_memory_status = declare<std::string>(
         "obstacle_memory_status_topic", "/drone_city_nav/obstacle_memory_status");
+    world.topics.moving_body_evidence = declare<std::string>(
+        "moving_body_evidence_topic", "/drone_city_nav/moving_body_evidence_3d");
   }
 
   void declareExecution() {

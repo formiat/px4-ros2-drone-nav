@@ -663,6 +663,15 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         }
       },
       sensor_evidence_subscription_options);
+  moving_body_evidence_sub_ = create_subscription<msg::MovingBodyEvidence3D>(
+      config_.world.topics.moving_body_evidence, rclcpp::SensorDataQoS{},
+      [this](const msg::MovingBodyEvidence3D::SharedPtr message) {
+        const std::int64_t stamp_ns = rclcpp::Time(message->header.stamp).nanoseconds();
+        if (!holdInput(stamp_ns, [this, message] { onMovingBodyEvidence(*message); })) {
+          onMovingBodyEvidence(*message);
+        }
+      },
+      sensor_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
       config_.world.topics.obstacle_memory_status,
       rclcpp::QoS{1}.reliable().transient_local(),

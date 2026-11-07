@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/moving_body_tracker_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 
@@ -10,6 +11,7 @@
 #include <limits>
 #include <span>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -65,6 +67,15 @@ struct ObstacleMemory3DConfig {
   // Nought turns the layer off: every hit is an ordinary one.
   double moving_life_s{3.0};
   double moving_stand_s{5.0};
+  // Specification K66: a body the layer holds and follows moving sweeps the
+  // volume its measured velocity carries it through in this time; the swept
+  // voxels are occupied between scans, so the planner keeps out of where the
+  // body is going. Nought sweeps nothing. The bodies are followed by
+  // `MovingBodyTracker3D`: a body is the one last seen within the matching
+  // distance, and a cluster under the least size is a return, not a body.
+  double moving_sweep_s{1.5};
+  double moving_match_m{1.0};
+  std::size_t moving_least_voxels{4U};
 };
 
 // An occupancy confirmed this often at most is young: a second of a sensor's
@@ -94,6 +105,10 @@ struct ObstacleMemory3DStats {
   // young (a body first seen where nothing had been observed).
   std::size_t moving_joined{0U};
   std::size_t moving_voxels{0U};
+  // The bodies followed after the scan (K66) and the voxels their sweep
+  // laid.
+  std::size_t followed_bodies{0U};
+  std::size_t swept_voxels{0U};
   std::size_t outside_endpoints{0U};
   double evidence_interval_s{0.0};
   bool stale_acquisition{false};
@@ -120,6 +135,8 @@ public:
   [[nodiscard]] std::uint64_t revision() const noexcept;
   [[nodiscard]] ObstacleMemory3DChanges takeChanges();
   [[nodiscard]] std::size_t decayedVoxelTotal() const noexcept;
+  // The bodies the moving layer follows (K66), as of the last scan.
+  [[nodiscard]] const std::vector<MovingBody3D>& movingBodies() const noexcept;
 
 private:
   struct ScanEvidenceChunk {
@@ -187,6 +204,15 @@ private:
   // The layer's voxels after a scan: the expired to unknown, the stood to
   // ordinary occupancy.
   void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);
+  // The bodies followed after a scan (K66): the layer's voxels and the
+  // young occupancies the scan hit, clustered and matched to the bodies of
+  // the scan before; a cluster that stepped is a body, its voxels held; and
+  // the bodies' sweep, lifted before a scan's evidence applies and laid
+  // again from the bodies followed after it.
+  void liftSweep();
+  void followMoving(const ScanEvidence& scan_evidence, const Point3& origin,
+                    std::int64_t now_ms, ObstacleMemory3DStats& stats);
+  void holdMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
   [[nodiscard]] static GridIndex3D cellFromChunkBit(OccupancyChunkIndex3D chunk,
@@ -200,6 +226,11 @@ private:
       dirty_chunks_;
   std::unordered_map<OccupancyChunkIndex3D, MovingChunk, OccupancyChunkIndex3DHash>
       moving_;
+  MovingBodyTracker3D tracker_;
+  // The bodies the layer holds, of the tracker's; the planner reads these.
+  std::vector<MovingBody3D> followed_bodies_;
+  // The voxels the sweep holds occupied and the state each had before.
+  std::vector<std::pair<GridIndex3D, ObservedVoxelState>> swept_;
   std::uint64_t revision_{0U};
   std::int64_t last_evidence_stamp_ns_{0};
   // The clock of the confirmations: the first stamped scan's time.

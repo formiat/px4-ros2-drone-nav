@@ -6,8 +6,10 @@
 #include <cinttypes>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <utility>
 
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
 #include "world_pipeline_3d.hpp"
@@ -265,6 +267,40 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
   RCLCPP_INFO(
       get_logger(), "PLANNER_WORLD_READY ready=%s source=%s", ready ? "true" : "false",
       config_.world.use_static_map ? "resident_static_esdf" : "raw_snapshot_esdf");
+}
+
+void ProductionMppiNode::onMovingBodyEvidence(
+    const msg::MovingBodyEvidence3D& message) {
+  // Sanity bound on untrusted wire data: the memory follows a handful of
+  // bodies, never a crowd of thousands.
+  constexpr std::size_t kMaximumBodies{256U};
+  auto evidence = std::make_shared<MovingBodyEvidence3D>();
+  evidence->stamp_ns = timeNanoseconds(message.header.stamp);
+  evidence->bodies.reserve(std::min(message.bodies.size(), kMaximumBodies));
+  for (const msg::MovingBody3D& body : message.bodies) {
+    if (evidence->bodies.size() >= kMaximumBodies) {
+      break;
+    }
+    const MovingBody3D read{
+        .centre_map = {body.centre_map.x, body.centre_map.y, body.centre_map.z},
+        .velocity_map_mps = {body.velocity_map_mps.x, body.velocity_map_mps.y, 0.0},
+        .radius_m = body.radius_m,
+        .bottom_m = body.bottom_m,
+        .top_m = body.top_m,
+        .age_s = body.age_s,
+        .voxels = body.voxels};
+    if (!std::isfinite(read.centre_map.x) || !std::isfinite(read.centre_map.y) ||
+        !std::isfinite(read.centre_map.z) || !std::isfinite(read.velocity_map_mps.x) ||
+        !std::isfinite(read.velocity_map_mps.y) || !std::isfinite(read.radius_m) ||
+        !std::isfinite(read.bottom_m) || !std::isfinite(read.top_m) ||
+        read.radius_m < 0.0 || read.top_m < read.bottom_m) {
+      continue;
+    }
+    evidence->bodies.push_back(read);
+  }
+  if (planning_cycle_coordinator_ != nullptr) {
+    planning_cycle_coordinator_->setMovingBodyEvidence(std::move(evidence));
+  }
 }
 
 void ProductionMppiNode::onLatestSensorObstacleScan(

@@ -1,8 +1,11 @@
 #include "obstacle_memory_3d_worker.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <limits>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace drone_city_nav {
@@ -15,7 +18,12 @@ ObstacleMemory3DWorker::ObstacleMemory3DWorker(
     : node_{node},
       memory_{bounds, memory_config},
       mapping_lifecycle_{minimum_mapping_altitude_m},
-      transport_{node, std::move(frame_id), gazebo_aligned_rviz_axes_swapped},
+      transport_{node, frame_id, gazebo_aligned_rviz_axes_swapped},
+      moving_body_pub_{node.create_publisher<msg::MovingBodyEvidence3D>(
+          node.declare_parameter<std::string>(
+              "moving_body_evidence_topic", "/drone_city_nav/moving_body_evidence_3d"),
+          rclcpp::SensorDataQoS{})},
+      frame_id_{std::move(frame_id)},
       mailbox_{scan_queue_capacity},
       worker_{[this](const std::stop_token token) { workerLoop(token); }} {
 }
@@ -39,6 +47,31 @@ bool ObstacleMemory3DWorker::enqueue(PersistentLidarScan3D scan) {
     dropped_scans_.fetch_add(1U, std::memory_order_relaxed);
   }
   return dropped;
+}
+
+void ObstacleMemory3DWorker::publishMovingBodies(
+    const std::int64_t acquisition_stamp_ns) {
+  msg::MovingBodyEvidence3D message;
+  message.header.stamp = rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME};
+  message.header.frame_id = frame_id_;
+  message.sequence = ++moving_body_sequence_;
+  for (const MovingBody3D& body : memory_.movingBodies()) {
+    msg::MovingBody3D output;
+    output.centre_map.x = body.centre_map.x;
+    output.centre_map.y = body.centre_map.y;
+    output.centre_map.z = body.centre_map.z;
+    output.velocity_map_mps.x = body.velocity_map_mps.x;
+    output.velocity_map_mps.y = body.velocity_map_mps.y;
+    output.velocity_map_mps.z = body.velocity_map_mps.z;
+    output.radius_m = body.radius_m;
+    output.bottom_m = body.bottom_m;
+    output.top_m = body.top_m;
+    output.age_s = body.age_s;
+    output.voxels = static_cast<std::uint32_t>(
+        std::min<std::size_t>(body.voxels, std::numeric_limits<std::uint32_t>::max()));
+    message.bodies.push_back(output);
+  }
+  moving_body_pub_->publish(message);
 }
 
 void ObstacleMemory3DWorker::workerLoop(const std::stop_token stop_token) {
@@ -76,6 +109,7 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
                       .beams = scan.beams,
                       .acquisition_stamp_ns = scan.acquisition_stamp_ns});
   const ObstacleMemory3DChanges changes = memory_.takeChanges();
+  publishMovingBodies(scan.acquisition_stamp_ns);
   const auto integration_finished = std::chrono::steady_clock::now();
   const bool transport_coalesced = transport_.enqueue(
       memory_.grid(), changes, rclcpp::Time{scan.acquisition_stamp_ns, RCL_ROS_TIME},
@@ -101,7 +135,7 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       "dynamic_forgotten=%zu transitions=%zu decayed=%zu decayed_total=%zu "
       "moving_hits=%zu moving_cleared=%zu moving_expired=%zu moving_promoted=%zu "
       "moving_joined=%zu "
-      "moving_voxels=%zu revision=%" PRIu64
+      "moving_voxels=%zu followed_bodies=%zu swept_voxels=%zu revision=%" PRIu64
       " queue_age_ms=%.3f integration_ms=%.3f transport_enqueue_ms=%.3f "
       "evidence_interval_ms=%.3f stale_acquisition=%s scan_dropped_total=%" PRIu64
       " transport_coalesced=%s debug=%s",
@@ -113,9 +147,9 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       forgotten_cooperative_voxels, stats.state_transitions, stats.decayed_voxels,
       memory_.decayedVoxelTotal(), stats.moving_hits, stats.moving_cleared,
       stats.moving_expired, stats.moving_promoted, stats.moving_joined,
-      stats.moving_voxels, memory_.revision(), queue_age_ms, integration_ms,
-      transport_enqueue_ms, 1000.0 * stats.evidence_interval_s,
-      stats.stale_acquisition ? "true" : "false",
+      stats.moving_voxels, stats.followed_bodies, stats.swept_voxels,
+      memory_.revision(), queue_age_ms, integration_ms, transport_enqueue_ms,
+      1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
       dropped_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");
 }

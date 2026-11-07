@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/cooperative_passage_execution.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
+#include "drone_city_nav/moving_body_tracker_3d.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
@@ -10,6 +11,7 @@
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -166,6 +168,10 @@ public:
 
   [[nodiscard]] bool goalCaptureLatchedFor(const Point3& mission_goal) const noexcept;
   [[nodiscard]] PlanningCycleOutcome3D prepare(const PlanningCycleRequest3D& request);
+  // The bodies the memory follows moving (K66), the newest reading, for the
+  // speed policy: set from the subscription's thread, read by the cycle.
+  void
+  setMovingBodyEvidence(std::shared_ptr<const MovingBodyEvidence3D> evidence) noexcept;
 
 private:
   // Clearance of the horizon execution currently owns, against the world as it
@@ -190,6 +196,7 @@ private:
   // The vehicle's positions along the last 60 m flown, every half metre: the
   // way back the speed policy leaves open (specification K15, I3).
   std::deque<Point3> flown_path_;
+  std::atomic<std::shared_ptr<const MovingBodyEvidence3D>> moving_body_evidence_;
   // Where the vehicle stood when its forward sensor went blind along the
   // motion: the blind hold's target while it stays blind.
   std::optional<Point3> blind_hold_position_;

@@ -171,6 +171,92 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
   return limit_mps;
 }
 
+// Roadmap item 21, specification K66: a body the memory follows moving owes
+// the stopping law in every direction, unlike a wall beside the motion (which
+// owes none: a wall does not step into the path). The speed the vehicle may
+// carry toward a body is the one it can stop from before the body's envelope
+// and the clearance, less what the body itself closes while the vehicle
+// stops; the reference is bounded by that speed over the share of the
+// commanded motion that closes on the body. A motion that does not close on
+// the body owes it nothing, so the vehicle can always leave one that walks
+// up to it; inside the envelope the body validation is the authority.
+[[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
+                                            const MppiSpeedPolicyConfig& config,
+                                            double& nearest_m) noexcept {
+  StoppingCapability capability = config.stopping_capability;
+  capability.reaction_latency_s +=
+      config.reference_tracking_lag_s + (std::isfinite(input.moving_body_age_s)
+                                             ? std::max(0.0, input.moving_body_age_s)
+                                             : 0.0);
+  const Vec3 faced = mppiSpeedPolicyFacedDirection(input);
+  const double faced_norm = std::hypot(std::hypot(faced.x, faced.y), faced.z);
+  const Point3 at{input.state.x, input.state.y, input.state.z};
+  const Vec3 velocity{static_cast<double>(input.state.vx),
+                      static_cast<double>(input.state.vy),
+                      static_cast<double>(input.state.vz)};
+  constexpr double kLeastClosingShare{0.1};
+  double limit_mps = std::numeric_limits<double>::infinity();
+  for (const MovingBody3D& body : input.followed_bodies) {
+    const double dx = at.x - body.centre_map.x;
+    const double dy = at.y - body.centre_map.y;
+    const double horizontal = std::hypot(dx, dy);
+    const double gap_h = std::max(0.0, horizontal - body.radius_m);
+    const double over = at.z - body.top_m;
+    const double under = body.bottom_m - at.z;
+    const double gap_v = std::max({0.0, over, under});
+    const double gap = std::hypot(gap_h, gap_v);
+    nearest_m = std::min(nearest_m, gap);
+    if (!(gap > 1.0e-6) || !(horizontal > 1.0e-9)) {
+      continue;
+    }
+    // The direction from the vehicle to the nearest point of the envelope.
+    double vertical = 0.0;
+    if (over > 0.0) {
+      vertical = -gap_v;
+    } else if (under > 0.0) {
+      vertical = gap_v;
+    }
+    const Vec3 toward{-dx / horizontal * gap_h / gap, -dy / horizontal * gap_h / gap,
+                      vertical / gap};
+    const double share =
+        faced_norm > 1.0e-9
+            ? (faced.x * toward.x + faced.y * toward.y + faced.z * toward.z) /
+                  faced_norm
+            : 1.0;
+    const double flown_closing =
+        velocity.x * toward.x + velocity.y * toward.y + velocity.z * toward.z;
+    if (share <= 0.0 && flown_closing <= 0.0) {
+      continue;
+    }
+    // The body closes at its speed whichever way it walks: it could turn at
+    // once (roadmap item 21 stage 2; the sweep is narrowed along the velocity,
+    // the law is not).
+    const double body_closing =
+        std::hypot(body.velocity_map_mps.x, body.velocity_map_mps.y);
+    double available_m = gap - config.moving_body_clearance_m;
+    double allowed_mps = 0.0;
+    if (available_m > 0.0) {
+      allowed_mps = stoppingLimitedSpeed(available_m, 0.0, capability,
+                                         config.sensor_braking_contract,
+                                         input.forward_acceleration_mps2);
+      if (body_closing > 0.0) {
+        // The body keeps coming while the vehicle reacts and brakes.
+        const double stop_s =
+            capability.reaction_latency_s +
+            allowed_mps / capability.guaranteed_horizontal_deceleration_mps2;
+        available_m -= body_closing * stop_s;
+        allowed_mps = available_m > 0.0
+                          ? stoppingLimitedSpeed(available_m, 0.0, capability,
+                                                 config.sensor_braking_contract,
+                                                 input.forward_acceleration_mps2)
+                          : 0.0;
+      }
+    }
+    limit_mps = std::min(limit_mps, allowed_mps / std::max(share, kLeastClosingShare));
+  }
+  return limit_mps;
+}
+
 void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
@@ -185,7 +271,8 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.clearance_response_time_s > 0.0) ||
       !(config.clearance_minimum_progress_speed_mps >= 0.0) ||
       !(config.reference_speed_rise_mps2 > 0.0) ||
-      !(config.reference_tracking_lag_s >= 0.0)) {
+      !(config.reference_tracking_lag_s >= 0.0) ||
+      !(config.moving_body_clearance_m >= 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
 }
@@ -575,12 +662,15 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps = std::min(
-      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
-       result.sensor_braking_limit_mps, result.goal_limit_mps,
-       result.route_endpoint_limit_mps, result.route_constraint_limit_mps,
-       result.blocked_route_limit_mps, result.clearance_limit_mps,
-       result.route_clearance_limit_mps, result.unobserved_frontier_limit_mps});
+  result.moving_body_limit_mps =
+      movingBodyLimitedSpeed(input, config, result.nearest_moving_body_m);
+  result.reference_speed_mps =
+      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
+                result.curvature_limit_mps, result.sensor_braking_limit_mps,
+                result.goal_limit_mps, result.route_endpoint_limit_mps,
+                result.route_constraint_limit_mps, result.blocked_route_limit_mps,
+                result.clearance_limit_mps, result.route_clearance_limit_mps,
+                result.unobserved_frontier_limit_mps, result.moving_body_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
@@ -594,6 +684,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::pair{result.route_clearance_limit_mps, MppiSpeedLimiter::kRouteClearance},
       std::pair{result.unobserved_frontier_limit_mps,
                 MppiSpeedLimiter::kUnobservedFrontier},
+      std::pair{result.moving_body_limit_mps, MppiSpeedLimiter::kMovingBody},
   };
   result.active_limiter = std::min_element(limits.begin(), limits.end(),
                                            [](const auto& first, const auto& second) {
@@ -693,6 +784,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "route_clearance";
     case MppiSpeedLimiter::kUnobservedFrontier:
       return "unobserved_frontier";
+    case MppiSpeedLimiter::kMovingBody:
+      return "moving_body";
   }
   return "unknown";
 }

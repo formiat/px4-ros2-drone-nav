@@ -201,6 +201,13 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
       std::max(0.0, declare_parameter<double>("moving_life_s", 3.0));
   memory_config.moving_stand_s =
       std::max(0.0, declare_parameter<double>("moving_stand_s", 5.0));
+  // K66: the sweep of a body followed moving, and how the bodies are followed.
+  memory_config.moving_sweep_s =
+      std::max(0.0, declare_parameter<double>("moving_sweep_s", 1.5));
+  memory_config.moving_match_m =
+      std::max(0.0, declare_parameter<double>("moving_match_m", 1.0));
+  memory_config.moving_least_voxels = static_cast<std::size_t>(std::max<std::int64_t>(
+      1, declare_parameter<std::int64_t>("moving_least_voxels", 4)));
   const LidarMappingYawConfig yaw_config = declareLidarMappingYawConfig(*this);
   use_px4_heading_for_scan_ = yaw_config.use_px4_heading;
   initial_heading_rad_ = yaw_config.initial_heading_rad;

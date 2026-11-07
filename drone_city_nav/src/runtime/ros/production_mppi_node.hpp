@@ -15,6 +15,7 @@
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
+#include "drone_city_nav/moving_body_tracker_3d.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
@@ -24,6 +25,7 @@
 #include "drone_city_nav/msg/cooperative_passage_intent.hpp"
 #include "drone_city_nav/msg/latest_sensor_obstacle_scan.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
+#include "drone_city_nav/msg/moving_body_evidence3_d.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/navigation_health.hpp"
@@ -131,8 +133,8 @@ public:
 
 private:
   void onLocalState(const AutopilotLocalState& message);
-  void onAutopilotStatus(const AutopilotStatus& status);
-  void onGroundContact(const AutopilotGroundContact& contact);
+  void onAutopilotStatus(const AutopilotStatus& message);
+  void onGroundContact(const AutopilotGroundContact& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message,
                                const rclcpp::MessageInfo& info);
@@ -141,6 +143,7 @@ private:
   void onLatestSensorObstacleScan(const msg::LatestSensorObstacleScan& message,
                                   const rclcpp::MessageInfo& info);
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
+  void onMovingBodyEvidence(const msg::MovingBodyEvidence3D& message);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
   void recordAppliedControlDiscontinuityLocked() noexcept;
@@ -507,6 +510,9 @@ private:
   rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;
   rclcpp::Subscription<msg::LatestSensorObstacleScan>::SharedPtr
       latest_sensor_obstacle_scan_sub_;
+  // The bodies the memory follows moving (roadmap item 21, K66), the
+  // newest reading, for the speed policy.
+  rclcpp::Subscription<msg::MovingBodyEvidence3D>::SharedPtr moving_body_evidence_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr light_headroom_sub_;
   std::atomic<double> light_headroom_{1.0};
   std::atomic<std::int64_t> light_headroom_stamp_ns_{0};

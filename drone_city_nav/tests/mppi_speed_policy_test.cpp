@@ -7,6 +7,8 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -315,7 +317,7 @@ TEST(MppiSpeedPolicyTest, MemoryAnswersForAMotionAForwardSensorDoesNotFace) {
   config.sensor_braking_contract.forward_vertical_half_angle_rad = 1.5707963267948966;
 
   // A lidar that sees the whole sphere does not care where the vehicle looks.
-  config.sensor_braking_contract.forward_horizontal_half_angle_rad = 3.141592653589793;
+  config.sensor_braking_contract.forward_horizontal_half_angle_rad = std::numbers::pi;
   EXPECT_GT(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps, 10.0);
 }
 
@@ -1042,6 +1044,75 @@ TEST(MppiSpeedPolicyTest, RouteConstraintLimitOverridesCruiseSpeed) {
 
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, 5.0);
   EXPECT_DOUBLE_EQ(result.route_constraint_limit_mps, 5.0);
+}
+
+TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing) {
+  // Roadmap item 21 (K66): the vehicle flies +x at 3 m/s with the route ahead;
+  // a body 4 m ahead bounds the reference to the speed it can stop from before
+  // the body's envelope and the clearance, a body walking toward it tighter,
+  // one behind it not at all, and one it flies straight over not either.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  allowHighSensorBrakingSpeed(config);
+  config.stopping_capability.reaction_latency_s = 0.1;
+  config.moving_body_clearance_m = 0.6;
+  std::vector<RouteSample3D> route;
+  route.reserve(40);
+  for (int index = 0; index < 40; ++index) {
+    route.push_back(
+        RouteSample3D{.position = {index * 0.5, 0.0, 2.0}, .tangent = {1.0, 0.0, 0.0}});
+  }
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.route = route;
+  input.state.z = 2.0F;
+  input.state.vx = 3.0F;
+  const double unbounded = evaluateMppiSpeedPolicy(config, input).reference_speed_mps;
+
+  const MovingBody3D standing{.centre_map = {4.3, 0.0, 1.85},
+                              .radius_m = 0.3,
+                              .bottom_m = 1.0,
+                              .top_m = 2.7,
+                              .age_s = 1.0,
+                              .voxels = 14U};
+  std::array bodies{standing};
+  input.followed_bodies = bodies;
+  const MppiSpeedPolicyResult ahead = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(ahead.active_limiter, MppiSpeedLimiter::kMovingBody);
+  EXPECT_STREQ(mppiSpeedLimiterName(ahead.active_limiter), "moving_body");
+  EXPECT_LT(ahead.moving_body_limit_mps, unbounded);
+  EXPECT_NEAR(ahead.nearest_moving_body_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(ahead.moving_body_limit_mps,
+              stoppingLimitedSpeed(4.0 - 0.6, 0.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-9);
+
+  bodies[0].velocity_map_mps = {-1.5, 0.0, 0.0};
+  const MppiSpeedPolicyResult walking = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(walking.moving_body_limit_mps, ahead.moving_body_limit_mps);
+  // Walking away it is met as if it could turn back at once: as tight.
+  bodies[0].velocity_map_mps = {1.5, 0.0, 0.0};
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps,
+                   walking.moving_body_limit_mps);
+
+  bodies[0].velocity_map_mps = {};
+  bodies[0].centre_map.x = -4.3;
+  const MppiSpeedPolicyResult behind = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(std::isinf(behind.moving_body_limit_mps));
+  EXPECT_NE(behind.active_limiter, MppiSpeedLimiter::kMovingBody);
+
+  // Straight over the body's top: the commanded motion does not close on it.
+  bodies[0].centre_map.x = 0.0;
+  input.state.z = 4.0F;
+  const MppiSpeedPolicyResult over = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(std::isinf(over.moving_body_limit_mps));
+  // Two metres before it, 1.3 m over its top: the approach closes on it, and
+  // the law bites over the share that does.
+  bodies[0].centre_map.x = 2.0;
+  const MppiSpeedPolicyResult approach = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(approach.active_limiter, MppiSpeedLimiter::kMovingBody);
+  EXPECT_LT(approach.moving_body_limit_mps, unbounded);
 }
 
 } // namespace

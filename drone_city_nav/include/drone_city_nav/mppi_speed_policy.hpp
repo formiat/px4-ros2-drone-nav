@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/executed_horizon_clearance_3d.hpp"
+#include "drone_city_nav/moving_body_tracker_3d.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
@@ -28,6 +29,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kClearance,
   kRouteClearance,
   kUnobservedFrontier,
+  kMovingBody,
 };
 
 struct MppiSpeedPolicyConfig {
@@ -65,6 +67,9 @@ struct MppiSpeedPolicyConfig {
   // matched, so its whole is the pixel grid it samples; a lidar's frame
   // carries every beam, and zero leaves the frame's own count as the whole.
   std::size_t sensor_expected_beam_count{0U};
+  // Roadmap item 21 (specification K66): what the vehicle keeps between its
+  // centre and a moving body's envelope, the body's reach and its own radius.
+  double moving_body_clearance_m{0.6};
 };
 
 // The share of its beams a frame observes (roadmap item 17 stage 0) that
@@ -164,6 +169,9 @@ struct MppiSpeedPolicyInput {
   // makes it up (roadmap item 17 stage 7); absent for a sensor that brings
   // its own.
   std::optional<double> sensor_light_headroom{};
+  // The bodies the memory follows moving (K66), and how old that reading is.
+  std::span<const MovingBody3D> followed_bodies{};
+  double moving_body_age_s{0.0};
 };
 
 struct MppiSpeedPolicyResult {
@@ -180,6 +188,9 @@ struct MppiSpeedPolicyResult {
   double clearance_limit_mps{std::numeric_limits<double>::infinity()};
   double route_clearance_limit_mps{std::numeric_limits<double>::infinity()};
   double unobserved_frontier_limit_mps{std::numeric_limits<double>::infinity()};
+  // The moving bodies' law (K66) and the nearest body's gap it read.
+  double moving_body_limit_mps{std::numeric_limits<double>::infinity()};
+  double nearest_moving_body_m{std::numeric_limits<double>::infinity()};
   // The observed range the frontier limiter read the contract with.
   double unobserved_frontier_range_m{std::numeric_limits<double>::infinity()};
   // The range memory answered with for a motion the forward sensor did not

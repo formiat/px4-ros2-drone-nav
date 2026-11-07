@@ -254,6 +254,9 @@ void ProductionMppiConfigLoader::declareControl() {
       control.tracking_error_tube.response_time_s;
   control.speed_policy.clearance_minimum_progress_speed_mps =
       control.tracking_error_tube.minimum_progress_speed_mps;
+  // Roadmap item 21 (K66): the clearance kept from a moving body's envelope.
+  control.speed_policy.moving_body_clearance_m =
+      declare<double>("moving_body_clearance_m", 0.6);
 
   mppi.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(config_.world.physical_footprint.radius_m),

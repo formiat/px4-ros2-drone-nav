@@ -289,6 +289,11 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
                              : std::nullopt;
 }
 
+void PlanningCycleCoordinator3D::setMovingBodyEvidence(
+    std::shared_ptr<const MovingBodyEvidence3D> evidence) noexcept {
+  moving_body_evidence_.store(std::move(evidence), std::memory_order_release);
+}
+
 PlanningCycleOutcome3D
 PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   PlanningCycleOutcome3D output;
@@ -523,6 +528,18 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
     speed_policy_input.sensor_evidence_age_s =
         request.now_ns > frame.acquisitionStampNs()
             ? static_cast<double>(request.now_ns - frame.acquisitionStampNs()) * 1.0e-9
+            : 0.0;
+  }
+  // The bodies the memory follows moving (K66), charged with the age of the
+  // scan they were read on.
+  const std::shared_ptr<const MovingBodyEvidence3D> moving_body_evidence =
+      moving_body_evidence_.load(std::memory_order_acquire);
+  if (moving_body_evidence != nullptr) {
+    const MovingBodyEvidence3D& bodies = *moving_body_evidence;
+    speed_policy_input.followed_bodies = bodies.bodies;
+    speed_policy_input.moving_body_age_s =
+        request.now_ns > bodies.stamp_ns
+            ? static_cast<double>(request.now_ns - bodies.stamp_ns) * 1.0e-9
             : 0.0;
   }
   // A forward sensor that does not see all around leaves memory to answer for

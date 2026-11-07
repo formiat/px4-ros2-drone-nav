@@ -48,6 +48,7 @@ struct ProductionMppiWorldTopics {
   std::string latest_sensor_obstacle_scan{
       "/drone_city_nav/latest_sensor_obstacle_scan"};
   std::string obstacle_memory_status{"/drone_city_nav/obstacle_memory_status"};
+  std::string moving_body_evidence{"/drone_city_nav/moving_body_evidence_3d"};
 };
 
 struct ProductionMppiPlanningTopics {

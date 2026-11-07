@@ -258,6 +258,10 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.route_clearance_limit_mps)
        << " unobserved_frontier_speed_limit_mps="
        << finiteOrNegative(speed_policy.unobserved_frontier_limit_mps)
+       << " moving_body_speed_limit_mps="
+       << finiteOrNegative(speed_policy.moving_body_limit_mps)
+       << " nearest_moving_body_m="
+       << finiteOrNegative(speed_policy.nearest_moving_body_m)
        << " unobserved_frontier_range_m="
        << finiteOrNegative(speed_policy.unobserved_frontier_range_m)
        << " unfaced_observed_range_m="

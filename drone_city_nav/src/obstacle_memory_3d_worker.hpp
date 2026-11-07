@@ -3,6 +3,7 @@
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mapping_lifecycle.hpp"
+#include "drone_city_nav/msg/moving_body_evidence3_d.hpp"
 #include "drone_city_nav/obstacle_memory_3d.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -62,11 +63,17 @@ public:
 private:
   void workerLoop(std::stop_token stop_token);
   void process(PersistentLidarScan3D scan);
+  void publishMovingBodies(std::int64_t acquisition_stamp_ns);
 
   rclcpp::Node& node_;
   ObstacleMemory3D memory_;
   MappingLifecycle mapping_lifecycle_;
   ObstacleMemoryTransport3D transport_;
+  // The bodies the memory follows moving (K66), to the planner with every
+  // scan.
+  rclcpp::Publisher<msg::MovingBodyEvidence3D>::SharedPtr moving_body_pub_;
+  std::uint64_t moving_body_sequence_{0U};
+  std::string frame_id_;
   BoundedFifoMailbox<PersistentLidarScan3D> mailbox_;
   std::atomic<bool> armed_seen_{false};
   std::atomic<bool> armed_{false};

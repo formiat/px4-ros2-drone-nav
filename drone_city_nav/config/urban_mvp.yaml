@@ -145,6 +145,15 @@ obstacle_memory_3d_node:
     # behaves; what is static stays (K10). 0 turns the layer off.
     moving_life_s: 3.0
     moving_stand_s: 5.0
+    # K66: the layer's voxels are followed as bodies between scans (a body
+    # is the one last seen within moving_match_m, a cluster under
+    # moving_least_voxels is a return), and a body followed moving sweeps
+    # the volume its measured velocity carries it through in moving_sweep_s:
+    # occupied between scans, so the planner keeps out of where the body is
+    # going. 0 sweeps nothing. The bodies go to the planner with every scan.
+    moving_sweep_s: 1.5
+    moving_match_m: 1.0
+    moving_least_voxels: 4
     # The rate the memory's snapshots and deltas reach the controller at.
     # Measured on the urban flights r346 to r351 with the delivery of every
     # hop instrumented: DDS delivers a snapshot in 0.15 ms at p50 and 0.3 ms

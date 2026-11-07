@@ -91,6 +91,8 @@ rosidl_generate_interfaces(
   ${PROJECT_NAME}
   "msg/ObstacleMemoryStatus.msg"
   "msg/LatestSensorObstacleScan.msg"
+  "msg/MovingBody3D.msg"
+  "msg/MovingBodyEvidence3D.msg"
   "msg/ObservedObstacleChunk3D.msg"
   "msg/RawObstacleDelta3D.msg"
   "msg/RawObstacleSnapshot3D.msg"
@@ -343,6 +345,7 @@ add_drone_city_nav_layer(
   src/lidar_scan_patterns_3d.cpp
   src/lidar_self_filter.cpp
   src/mapping_lifecycle.cpp
+  src/moving_body_tracker_3d.cpp
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_3d_moving.cpp
   src/obstacle_memory_transport_policy_3d.cpp
@@ -587,6 +590,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/lidar_self_filter.hpp
     include/drone_city_nav/map_to_sdf_transform.hpp
     include/drone_city_nav/mapping_lifecycle.hpp
+    include/drone_city_nav/moving_body_tracker_3d.hpp
     include/drone_city_nav/observed_esdf_3d.hpp
     include/drone_city_nav/observed_occupancy_grid_3d.hpp
     include/drone_city_nav/obstacle_memory_3d.hpp
@@ -2083,6 +2087,11 @@ if(BUILD_TESTING)
   target_compile_features(persistent_planner_acceptance_fixture_test PRIVATE cxx_std_20)
   target_link_libraries(persistent_planner_acceptance_fixture_test drone_city_nav_core)
   enable_project_warnings(persistent_planner_acceptance_fixture_test)
+
+  ament_add_gtest(moving_body_tracker_3d_test tests/moving_body_tracker_3d_test.cpp)
+  target_compile_features(moving_body_tracker_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(moving_body_tracker_3d_test drone_city_nav_core)
+  enable_project_warnings(moving_body_tracker_3d_test)
 
   ament_add_gtest(obstacle_memory_3d_test tests/obstacle_memory_3d_test.cpp)
   target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
