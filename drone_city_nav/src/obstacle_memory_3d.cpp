@@ -211,6 +211,11 @@ cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
 
 } // namespace
 
+// An occupancy confirmed this often at most is young: a second of a sensor's
+// scans. A body stands in a voxel for less as it walks; a surface the vehicle
+// looks at collects more within its first seconds in view.
+constexpr std::uint16_t kYoungConfirmations{10U};
+
 ObstacleMemory3D::ObstacleMemory3D(const GridBounds3D& bounds,
                                    ObstacleMemory3DConfig config)
     : config_{config},
@@ -522,6 +527,8 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
           std::clamp(scores->scores.at(bit_index) + (occupied ? hit_delta : miss_delta),
                      minimum_score, maximum_score);
       scores->scores.at(bit_index) = after_score;
+      const std::uint16_t confirmations_before = scores->confirmations.at(bit_index);
+      const bool unobservable_before = grid_.isUnobservable(cell);
       if (occupied) {
         std::uint16_t& confirmations = scores->confirmations.at(bit_index);
         confirmations =
@@ -561,6 +568,13 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
         grid_chunk = grid_.findChunk(chunk_index);
         chunk_dirty = true;
         ++stats.state_transitions;
+      }
+      // A young occupancy that turned free was a body passing (K65): what
+      // stands young beside it is the body, moved on, and the layer takes it.
+      if (config_.moving_life_s > 0.0 && before == ObservedVoxelState::kOccupied &&
+          after != ObservedVoxelState::kOccupied &&
+          confirmations_before <= kYoungConfirmations && !unobservable_before) {
+        joinMoving(cell, now_ms, stats);
       }
       // An occupancy that only the dark the sensor looked into put there is
       // observed unobservable (specification K14) until a measured return
@@ -727,17 +741,63 @@ bool ObstacleMemory3D::heldMoving(const GridIndex3D cell) const noexcept {
           (std::uint64_t{1U} << (bit_index % 64U))) != 0U;
 }
 
+std::uint16_t ObstacleMemory3D::confirmationsAt(const GridIndex3D cell) const noexcept {
+  const auto scores = evidence_.find(ObservedOccupancyGrid3D::chunkIndex(cell));
+  return scores == evidence_.end() ? std::uint16_t{0U}
+                                   : scores->second.confirmations.at(
+                                         ObservedOccupancyGrid3D::localBitIndex(cell));
+}
+
+void ObstacleMemory3D::joinMoving(const GridIndex3D cell, const std::int64_t now_ms,
+                                  ObstacleMemory3DStats& stats) {
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
+        if ((dx == 0 && dy == 0 && dz == 0) || !grid_.contains(near) ||
+            !grid_.isOccupied(near) || grid_.isUnobservable(near) || heldMoving(near) ||
+            confirmationsAt(near) > kYoungConfirmations) {
+          continue;
+        }
+        const OccupancyChunkIndex3D chunk_index =
+            ObservedOccupancyGrid3D::chunkIndex(near);
+        const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(near);
+        MovingChunk& held = moving_[chunk_index];
+        held.held.at(bit_index / 64U) |= std::uint64_t{1U} << (bit_index % 64U);
+        ++held.count;
+        const auto stamp_ms = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            now_ms, 0, std::numeric_limits<std::int32_t>::max()));
+        held.since_ms.at(bit_index) = stamp_ms;
+        held.last_ms.at(bit_index) = stamp_ms;
+        const auto scores = evidence_.find(chunk_index);
+        if (scores != evidence_.end()) {
+          scores->second.scores.at(bit_index) =
+              static_cast<double>(config_.occupied_score);
+          scores->second.confirmations.at(bit_index) = 0U;
+        }
+        ++stats.moving_joined;
+      }
+    }
+  }
+}
+
 bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
   if (heldMoving(cell)) {
     return true;
   }
-  if (grid_.state(cell) != ObservedVoxelState::kFree) {
+  const bool occupied = grid_.isOccupied(cell);
+  if (occupied &&
+      (grid_.isUnobservable(cell) || confirmationsAt(cell) > kYoungConfirmations)) {
+    // A surface seen for long, or the dark: never a body.
     return false;
   }
-  // A voxel beside one the layer holds joins it: the cluster that shifts. A
-  // surface voxel's neighbour takes a return now and then from the range's
-  // noise: ordinary, as the surface is, unless the body walks there (r3013:
-  // a body turning a quarter metre from a wall left its wall-side cells).
+  // A voxel beside one the layer holds joins it, free, unknown or a young
+  // occupancy: the cluster that shifts. Away from the layer, a hit where free
+  // space had been observed is a body's appearance, a hit in unknown space or
+  // on a young occupancy is nothing yet, and a surface voxel's neighbour
+  // takes a return now and then from the range's noise: ordinary, as the
+  // surface is, unless the body walks there (r3013: a body turning a quarter
+  // metre from a wall left its wall-side cells).
   bool beside_ordinary{false};
   for (int dz = -1; dz <= 1; ++dz) {
     for (int dy = -1; dy <= 1; ++dy) {
@@ -754,7 +814,8 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
       }
     }
   }
-  return !beside_ordinary;
+  return !occupied && grid_.state(cell) == ObservedVoxelState::kFree &&
+         !beside_ordinary;
 }
 
 void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
