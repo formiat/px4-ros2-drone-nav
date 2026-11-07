@@ -136,6 +136,15 @@ obstacle_memory_3d_node:
     # darkness a blind frame marks (K14) no longer fades by itself either,
     # only when the vehicle sees through it again.
     decay_seconds_per_confirmation: 0.0
+    # The moving layer, roadmap item 21 (specification K65): a hit the
+    # thermal core marks a warm body's, or one where the memory held free
+    # space observed with no ordinary occupancy beside it, is held as moving:
+    # occupied at once, cleared by the first free ray through it, gone
+    # unobserved after moving_life_s, an ordinary occupancy once hit every
+    # scan for moving_stand_s. What is transient is told apart by how it
+    # behaves; what is static stays (K10). 0 turns the layer off.
+    moving_life_s: 3.0
+    moving_stand_s: 5.0
     # The rate the memory's snapshots and deltas reach the controller at.
     # Measured on the urban flights r346 to r351 with the delivery of every
     # hop instrumented: DDS delivers a snapshot in 0.15 ms at p50 and 0.3 ms

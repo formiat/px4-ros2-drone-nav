@@ -195,6 +195,12 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
       declare_parameter<std::int64_t>("free_score", -1), -100000, -1));
   memory_config.decay_seconds_per_confirmation =
       std::max(0.0, declare_parameter<double>("decay_seconds_per_confirmation", 0.0));
+  // Roadmap item 21 (K65): the moving layer's life unobserved and the stand
+  // that makes a body an ordinary occupancy.
+  memory_config.moving_life_s =
+      std::max(0.0, declare_parameter<double>("moving_life_s", 3.0));
+  memory_config.moving_stand_s =
+      std::max(0.0, declare_parameter<double>("moving_stand_s", 5.0));
   const LidarMappingYawConfig yaw_config = declareLidarMappingYawConfig(*this);
   use_px4_heading_for_scan_ = yaw_config.use_px4_heading;
   initial_heading_rad_ = yaw_config.initial_heading_rad;

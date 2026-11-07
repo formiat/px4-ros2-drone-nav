@@ -99,7 +99,8 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       "self_filtered=%zu persistent_self_filtered=%zu unobservable_on_path=%zu "
       "aerosol=%zu thin=%zu dropout=%zu dynamic_filtered=%zu "
       "dynamic_forgotten=%zu transitions=%zu decayed=%zu decayed_total=%zu "
-      "revision=%" PRIu64
+      "moving_hits=%zu moving_cleared=%zu moving_expired=%zu moving_promoted=%zu "
+      "moving_voxels=%zu revision=%" PRIu64
       " queue_age_ms=%.3f integration_ms=%.3f transport_enqueue_ms=%.3f "
       "evidence_interval_ms=%.3f stale_acquisition=%s scan_dropped_total=%" PRIu64
       " transport_coalesced=%s debug=%s",
@@ -109,9 +110,10 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       scan.persistent_self_filtered, scan.unobservable_on_path, scan.aerosol_beams,
       scan.thin_aerosol_beams, scan.dropout_beams, scan.cooperative_filtered,
       forgotten_cooperative_voxels, stats.state_transitions, stats.decayed_voxels,
-      memory_.decayedVoxelTotal(), memory_.revision(), queue_age_ms, integration_ms,
-      transport_enqueue_ms, 1000.0 * stats.evidence_interval_s,
-      stats.stale_acquisition ? "true" : "false",
+      memory_.decayedVoxelTotal(), stats.moving_hits, stats.moving_cleared,
+      stats.moving_expired, stats.moving_promoted, stats.moving_voxels,
+      memory_.revision(), queue_age_ms, integration_ms, transport_enqueue_ms,
+      1000.0 * stats.evidence_interval_s, stats.stale_acquisition ? "true" : "false",
       dropped_scans_.load(std::memory_order_relaxed),
       transport_coalesced ? "true" : "false", scan.publish_debug ? "true" : "false");
 }

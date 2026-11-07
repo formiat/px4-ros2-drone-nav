@@ -299,6 +299,127 @@ TEST(ObstacleMemory3D, RejectsReplayedAcquisitionWithoutChangingEvidence) {
   EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
 }
 
+// Roadmap item 21, specification K65: the moving layer.
+constexpr std::int64_t kSecondNs{1'000'000'000};
+
+[[nodiscard]] LidarBeam3D hitAlongX(const double range_m,
+                                    const bool warm_body = false) {
+  return LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                     .range_m = range_m,
+                     .hit = true,
+                     .valid = true,
+                     .warm_body = warm_body};
+}
+
+[[nodiscard]] LidarBeam3D missAlongX(const double range_m) {
+  return LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                     .range_m = range_m,
+                     .hit = false,
+                     .valid = true};
+}
+
+TEST(ObstacleMemory3D, AWarmBodysHitIsOccupiedAtOnceAndGoneWithTheFirstFreeRay) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  // The hall seen free to the wall at 12 m, three scans: the way is -8 and known free.
+  for (int scan = 0; scan < 3; ++scan) {
+    const std::array wall{hitAlongX(12.0)};
+    static_cast<void>(
+        memory.integrateScan({.origin_map = origin,
+                              .beams = wall,
+                              .acquisition_stamp_ns = (scan + 1) * kSecondNs}));
+  }
+  ASSERT_TRUE(memory.grid().isKnownFree({6, 1, 2}));
+  // A warm body at 5 m: occupied at once, held as moving.
+  const std::array body{hitAlongX(5.0, true)};
+  ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = origin, .beams = body, .acquisition_stamp_ns = 4 * kSecondNs});
+  EXPECT_EQ(stats.moving_hits, 1U);
+  EXPECT_EQ(stats.moving_voxels, 1U);
+  EXPECT_TRUE(memory.grid().isOccupied({6, 1, 2}));
+  // The body walked on: the first free ray through its voxel clears it.
+  const std::array gone{missAlongX(12.0)};
+  stats = memory.integrateScan(
+      {.origin_map = origin, .beams = gone, .acquisition_stamp_ns = 5 * kSecondNs});
+  EXPECT_EQ(stats.moving_cleared, 1U);
+  EXPECT_EQ(stats.moving_voxels, 0U);
+  EXPECT_EQ(memory.grid().state({6, 1, 2}), ObservedVoxelState::kUnknown);
+}
+
+TEST(ObstacleMemory3D, AMovingVoxelUnobservedExpiresAndOneThatStoodBecomesAWall) {
+  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                          .minimum_range_m = 0.1,
+                                                          .moving_life_s = 2.0,
+                                                          .moving_stand_s = 3.0}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  const std::array body{hitAlongX(5.0, true)};
+  static_cast<void>(memory.integrateScan(
+      {.origin_map = origin, .beams = body, .acquisition_stamp_ns = kSecondNs}));
+  ASSERT_TRUE(memory.grid().isOccupied({6, 1, 2}));
+  // Looked away: a scan elsewhere 2.5 s later, past the layer's life.
+  const std::array elsewhere{LidarBeam3D{
+      .direction_map = {0.0, 1.0, 0.0}, .range_m = 10.0, .hit = true, .valid = true}};
+  ObstacleMemory3DStats stats =
+      memory.integrateScan({.origin_map = origin,
+                            .beams = elsewhere,
+                            .acquisition_stamp_ns = 3'500'000'000});
+  EXPECT_EQ(stats.moving_expired, 1U);
+  EXPECT_EQ(memory.grid().state({6, 1, 2}), ObservedVoxelState::kUnknown);
+  // A body that stands under the sensor's eye for the stand's time is a wall from
+  // then: a free ray no longer clears it at once.
+  for (int scan = 0; scan <= 30; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = body,
+         .acquisition_stamp_ns =
+             10 * kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  EXPECT_EQ(stats.moving_promoted, 1U);
+  EXPECT_EQ(stats.moving_voxels, 0U);
+  const std::array gone{missAlongX(12.0)};
+  stats = memory.integrateScan(
+      {.origin_map = origin, .beams = gone, .acquisition_stamp_ns = 14 * kSecondNs});
+  EXPECT_EQ(stats.moving_cleared, 0U);
+  EXPECT_TRUE(memory.grid().isOccupied({6, 1, 2}));
+}
+
+TEST(ObstacleMemory3D, AHitInObservedFreeSpaceIsMovingEvidenceUnlessBesideAWall) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  for (int scan = 0; scan < 3; ++scan) {
+    const std::array wall{hitAlongX(12.0)};
+    static_cast<void>(
+        memory.integrateScan({.origin_map = origin,
+                              .beams = wall,
+                              .acquisition_stamp_ns = (scan + 1) * kSecondNs}));
+  }
+  // A cold body at 5 m, in the free hall: moving by its appearance where free
+  // space had been observed.
+  const std::array cold{hitAlongX(5.0)};
+  ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = origin, .beams = cold, .acquisition_stamp_ns = 4 * kSecondNs});
+  EXPECT_EQ(stats.moving_hits, 1U);
+  EXPECT_TRUE(memory.grid().isOccupied({6, 1, 2}));
+  // A return in the free voxel before the wall is the wall's own noise: ordinary.
+  const std::array noise{hitAlongX(11.0)};
+  stats = memory.integrateScan(
+      {.origin_map = origin, .beams = noise, .acquisition_stamp_ns = 5 * kSecondNs});
+  EXPECT_EQ(stats.moving_hits, 0U);
+  // With the layer off every hit is an ordinary one.
+  ObstacleMemory3D plain{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                         .minimum_range_m = 0.1,
+                                                         .moving_life_s = 0.0}};
+  const std::array body{hitAlongX(5.0, true)};
+  EXPECT_EQ(
+      plain
+          .integrateScan(
+              {.origin_map = origin, .beams = body, .acquisition_stamp_ns = kSecondNs})
+          .moving_hits,
+      0U);
+}
+
 TEST(ObstacleMemory3D, NoReturnMarksFreeSpaceThroughMaximumSensorRange) {
   constexpr GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 8, 8};
   ObstacleMemory3D memory{

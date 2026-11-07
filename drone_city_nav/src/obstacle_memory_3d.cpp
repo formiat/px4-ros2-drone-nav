@@ -260,6 +260,9 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   if (config_.decay_seconds_per_confirmation > 0.0 && scan.acquisition_stamp_ns > 0) {
     decayUnconfirmed(now_ms, stats);
   }
+  if (config_.moving_life_s > 0.0) {
+    settleMoving(now_ms, stats);
+  }
   // Every integrated scan is a revision, whether or not a voxel changed state:
   // the revision is published with the scan's stamp, and the consumer holds a
   // revision to one stamp and one content. A lidar's scan always moves some
@@ -310,7 +313,8 @@ GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk
 void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
                                           const bool measured,
                                           ScanEvidence& scan_evidence,
-                                          ScanEvidenceCursor& cursor) const {
+                                          ScanEvidenceCursor& cursor,
+                                          const bool moving) const {
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
   if (cursor.chunk == nullptr || !(cursor.chunk_index == chunk_index)) {
     // Node-based map: the element address stays valid across later inserts.
@@ -321,12 +325,15 @@ void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool oc
   const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(index);
   const std::size_t word_index = bit_index / 64U;
   const std::uint64_t bit = std::uint64_t{1U} << (bit_index % 64U);
-  chunk.observed[word_index] |= bit;
+  chunk.observed.at(word_index) |= bit;
   if (occupied) {
-    chunk.occupied[word_index] |= bit;
+    chunk.occupied.at(word_index) |= bit;
   }
   if (measured) {
-    chunk.measured[word_index] |= bit;
+    chunk.measured.at(word_index) |= bit;
+  }
+  if (moving) {
+    chunk.moving.at(word_index) |= bit;
   }
 }
 
@@ -443,17 +450,22 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
   EvidenceChunk* scores{nullptr};
   const ObservedOccupancyGrid3D::Chunk* grid_chunk = grid_.findChunk(chunk_index);
   bool chunk_dirty{false};
+  // The moving layer's voxels of this chunk (K65): looked up once a chunk.
+  const auto held_chunk = moving_.find(chunk_index);
+  MovingChunk* held = held_chunk != moving_.end() ? &held_chunk->second : nullptr;
   for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
        ++word_index) {
-    std::uint64_t remaining = chunk_evidence.observed[word_index];
-    const std::uint64_t occupied_word = chunk_evidence.occupied[word_index];
-    const std::uint64_t measured_word = chunk_evidence.measured[word_index];
+    std::uint64_t remaining = chunk_evidence.observed.at(word_index);
+    const std::uint64_t occupied_word = chunk_evidence.occupied.at(word_index);
+    const std::uint64_t measured_word = chunk_evidence.measured.at(word_index);
+    const std::uint64_t moving_word = chunk_evidence.moving.at(word_index);
     while (remaining != 0U) {
       const std::size_t bit_offset =
           static_cast<std::size_t>(std::countr_zero(remaining));
       remaining &= remaining - 1U;
       const std::size_t bit_index = word_index * 64U + bit_offset;
-      const bool occupied = (occupied_word & (std::uint64_t{1U} << bit_offset)) != 0U;
+      const std::uint64_t bit = std::uint64_t{1U} << bit_offset;
+      const bool occupied = (occupied_word & bit) != 0U;
       stats.occupied_voxel_updates += occupied ? 1U : 0U;
       stats.free_voxel_updates += occupied ? 0U : 1U;
       const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
@@ -463,15 +475,58 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       if (scores == nullptr) {
         scores = std::addressof(evidence_[chunk_index]);
       }
+      const bool in_layer = held != nullptr && (held->held.at(word_index) & bit) != 0U;
+      if (occupied && ((moving_word & bit) != 0U || in_layer)) {
+        // Moving evidence: occupied at once, at the state's threshold and with
+        // no confirmations built up, so that nothing of it outlives the layer.
+        if (held == nullptr) {
+          held = &moving_[chunk_index];
+        }
+        if (!in_layer) {
+          held->held.at(word_index) |= bit;
+          ++held->count;
+          held->since_ms.at(bit_index) = static_cast<std::int32_t>(now_ms);
+        }
+        held->last_ms.at(bit_index) = static_cast<std::int32_t>(now_ms);
+        scores->scores.at(bit_index) = static_cast<double>(config_.occupied_score);
+        scores->confirmations.at(bit_index) = 0U;
+        ++stats.moving_hits;
+        if (grid_.state(cell) != ObservedVoxelState::kOccupied) {
+          static_cast<void>(grid_.setState(cell, ObservedVoxelState::kOccupied));
+          grid_chunk = grid_.findChunk(chunk_index);
+          chunk_dirty = true;
+          ++stats.state_transitions;
+        }
+        if (grid_.setUnobservable(cell, false)) {
+          grid_chunk = grid_.findChunk(chunk_index);
+          chunk_dirty = true;
+        }
+        continue;
+      }
+      if (!occupied && in_layer) {
+        // A free ray through a moving voxel: the body is gone from it.
+        held->held.at(word_index) &= ~bit;
+        --held->count;
+        scores->scores.at(bit_index) = 0.0;
+        scores->confirmations.at(bit_index) = 0U;
+        ++stats.moving_cleared;
+        if (grid_.state(cell) != ObservedVoxelState::kUnknown) {
+          static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+          grid_chunk = grid_.findChunk(chunk_index);
+          chunk_dirty = true;
+          ++stats.state_transitions;
+        }
+        continue;
+      }
       const double after_score =
-          std::clamp(scores->scores[bit_index] + (occupied ? hit_delta : miss_delta),
+          std::clamp(scores->scores.at(bit_index) + (occupied ? hit_delta : miss_delta),
                      minimum_score, maximum_score);
-      scores->scores[bit_index] = after_score;
+      scores->scores.at(bit_index) = after_score;
       if (occupied) {
-        std::uint16_t& confirmations = scores->confirmations[bit_index];
+        std::uint16_t& confirmations = scores->confirmations.at(bit_index);
         confirmations =
             static_cast<std::uint16_t>(std::min<int>(confirmations + 1, 65535));
-        scores->confirmed_at_ms[bit_index] =
+        scores->confirmed_at_ms.at(bit_index) =
             static_cast<std::int32_t>(std::clamp<std::int64_t>(
                 now_ms, 0, std::numeric_limits<std::int32_t>::max()));
         if (decay_ms_per_confirmation > 0.0) {
@@ -498,7 +553,7 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
         after = ObservedVoxelState::kFree;
       }
       if (after == ObservedVoxelState::kFree) {
-        scores->confirmations[bit_index] = 0U;
+        scores->confirmations.at(bit_index) = 0U;
       }
       if (before != after) {
         static_cast<void>(grid_.setState(cell, after));
@@ -538,20 +593,20 @@ void ObstacleMemory3D::decayUnconfirmed(const std::int64_t now_ms,
     bool chunk_dirty{false};
     for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
          ++bit_index) {
-      const std::uint16_t confirmations = chunk.confirmations[bit_index];
+      const std::uint16_t confirmations = chunk.confirmations.at(bit_index);
       if (confirmations == 0U) {
         continue;
       }
       const std::int64_t decay_at_ms =
-          static_cast<std::int64_t>(chunk.confirmed_at_ms[bit_index]) +
+          static_cast<std::int64_t>(chunk.confirmed_at_ms.at(bit_index)) +
           static_cast<std::int64_t>(decay_ms_per_confirmation *
                                     static_cast<double>(confirmations));
       if (decay_at_ms > now_ms) {
         next_decay_ms = std::min(next_decay_ms, decay_at_ms);
         continue;
       }
-      chunk.confirmations[bit_index] = 0U;
-      chunk.scores[bit_index] = 0.0;
+      chunk.confirmations.at(bit_index) = 0U;
+      chunk.scores.at(bit_index) = 0.0;
       const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
       if (grid_.contains(cell) && grid_.state(cell) == ObservedVoxelState::kOccupied) {
         static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
@@ -616,13 +671,13 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   };
   const auto inGrazedSurface = [&](const GridIndex3D cell) {
     for (std::size_t axis = 0U; axis < 3U; ++axis) {
-      if (along[axis] >= kGrazingSine) {
+      if (along.at(axis) >= kGrazingSine) {
         continue;
       }
       // The unit steps along the normal and along the two axes in the plane.
       constexpr std::array<std::array<int, 3>, 3> kUnit{
           {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
-      const std::array<int, 3>& normal = kUnit[axis];
+      const std::array<int, 3>& normal = kUnit.at(axis);
       if (occupiedAt(cell, normal[0], normal[1], normal[2]) ||
           occupiedAt(cell, -normal[0], -normal[1], -normal[2])) {
         continue;
@@ -632,7 +687,7 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
         if (other == axis) {
           continue;
         }
-        const std::array<int, 3>& step = kUnit[other];
+        const std::array<int, 3>& step = kUnit.at(other);
         in_plane += occupiedAt(cell, step[0], step[1], step[2]) ? 1 : 0;
         in_plane += occupiedAt(cell, -step[0], -step[1], -step[2]) ? 1 : 0;
       }
@@ -651,7 +706,98 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
     }
   });
   if (hit_cell.has_value()) {
-    recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor);
+    const bool moving =
+        config_.moving_life_s > 0.0 && (beam.warm_body || movingEvidenceAt(*hit_cell));
+    recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor, moving);
+  }
+}
+
+bool ObstacleMemory3D::heldMoving(const GridIndex3D cell) const noexcept {
+  const auto chunk = moving_.find(ObservedOccupancyGrid3D::chunkIndex(cell));
+  if (chunk == moving_.end()) {
+    return false;
+  }
+  const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
+  return (chunk->second.held.at(bit_index / 64U) &
+          (std::uint64_t{1U} << (bit_index % 64U))) != 0U;
+}
+
+bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
+  if (heldMoving(cell)) {
+    return true;
+  }
+  if (grid_.state(cell) != ObservedVoxelState::kFree) {
+    return false;
+  }
+  // A surface voxel's neighbour takes a return now and then from the range's
+  // noise: ordinary, as the surface is. A body walks clear of the walls.
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        const GridIndex3D near{cell.x + dx, cell.y + dy, cell.z + dz};
+        if ((dx != 0 || dy != 0 || dz != 0) && grid_.contains(near) &&
+            grid_.isOccupied(near) && !heldMoving(near)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
+                                    ObstacleMemory3DStats& stats) {
+  const auto life_ms = static_cast<std::int64_t>(1000.0 * config_.moving_life_s);
+  const auto stand_ms = static_cast<std::int64_t>(1000.0 * config_.moving_stand_s);
+  for (auto chunk = moving_.begin(); chunk != moving_.end();) {
+    MovingChunk& held = chunk->second;
+    bool chunk_dirty{false};
+    for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
+         ++word_index) {
+      std::uint64_t remaining = held.held.at(word_index);
+      while (remaining != 0U) {
+        const std::size_t bit_offset =
+            static_cast<std::size_t>(std::countr_zero(remaining));
+        remaining &= remaining - 1U;
+        const std::size_t bit_index = word_index * 64U + bit_offset;
+        const std::int64_t since_last = now_ms - held.last_ms.at(bit_index);
+        const bool expired = since_last > life_ms;
+        const bool stood =
+            since_last == 0 && now_ms - held.since_ms.at(bit_index) >= stand_ms;
+        if (!expired && !stood) {
+          continue;
+        }
+        held.held.at(word_index) &= ~(std::uint64_t{1U} << bit_offset);
+        --held.count;
+        const GridIndex3D cell = cellFromChunkBit(chunk->first, bit_index);
+        const auto scores = evidence_.find(chunk->first);
+        if (expired) {
+          if (scores != evidence_.end()) {
+            scores->second.scores.at(bit_index) = 0.0;
+            scores->second.confirmations.at(bit_index) = 0U;
+          }
+          if (grid_.contains(cell) && grid_.isOccupied(cell)) {
+            static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+            chunk_dirty = true;
+            ++stats.state_transitions;
+          }
+          ++stats.moving_expired;
+        } else {
+          // Stood for the stand's time under the sensor's eye: a wall from now,
+          // with the score of one seen as long.
+          if (scores != evidence_.end()) {
+            scores->second.scores.at(bit_index) =
+                static_cast<double>(config_.maximum_score);
+          }
+          ++stats.moving_promoted;
+        }
+      }
+    }
+    if (chunk_dirty) {
+      dirty_chunks_[chunk->first] = true;
+    }
+    stats.moving_voxels += held.count;
+    chunk = held.count == 0U ? moving_.erase(chunk) : std::next(chunk);
   }
 }
 

@@ -55,6 +55,16 @@ struct ObstacleMemory3DConfig {
   // is gone in seconds, and a surface the vehicle comes back to is seen and
   // confirmed again. Zero keeps every occupancy for the flight.
   double decay_seconds_per_confirmation{0.0};
+  // Roadmap item 21, specification K65: the moving layer. A measured hit the
+  // thermal core marks a warm body's, or one in a voxel the memory holds
+  // observed free with no ordinary occupancy beside it (an occupancy that
+  // appeared where free space had been observed), is moving evidence: the
+  // voxel is occupied at once, cleared by the first free ray through it,
+  // gone unobserved after `moving_life_s`, and an ordinary occupancy once
+  // it has been hit every scan for `moving_stand_s` (a body that stood).
+  // Nought turns the layer off: every hit is an ordinary one.
+  double moving_life_s{3.0};
+  double moving_stand_s{5.0};
 };
 
 struct ObstacleMemory3DStats {
@@ -69,6 +79,13 @@ struct ObstacleMemory3DStats {
   std::size_t state_transitions{0U};
   // Occupied voxels this scan returned to unknown for want of confirmation.
   std::size_t decayed_voxels{0U};
+  // The moving layer (K65) this scan: hits held as moving, voxels cleared by
+  // a free ray, gone unobserved, become ordinary; and the voxels it holds.
+  std::size_t moving_hits{0U};
+  std::size_t moving_cleared{0U};
+  std::size_t moving_expired{0U};
+  std::size_t moving_promoted{0U};
+  std::size_t moving_voxels{0U};
   std::size_t outside_endpoints{0U};
   double evidence_interval_s{0.0};
   bool stale_acquisition{false};
@@ -103,6 +120,17 @@ private:
     // Hit by a return the sensor measured, not by a surface sample or the
     // dark it looked into (specification K14).
     OccupancyGrid3D::Chunk measured{};
+    // Hit as moving evidence (K65).
+    OccupancyGrid3D::Chunk moving{};
+  };
+
+  // The moving layer's voxels of a chunk: when each was first held and last
+  // hit, in milliseconds of the confirmations' clock.
+  struct MovingChunk {
+    OccupancyGrid3D::Chunk held{};
+    std::array<std::int32_t, OccupancyGrid3D::kVoxelsPerChunk> since_ms{};
+    std::array<std::int32_t, OccupancyGrid3D::kVoxelsPerChunk> last_ms{};
+    std::size_t count{0U};
   };
 
   using ScanEvidence = std::unordered_map<OccupancyChunkIndex3D, ScanEvidenceChunk,
@@ -137,8 +165,16 @@ private:
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
   void recordScanEvidence(GridIndex3D index, bool occupied, bool measured,
-                          ScanEvidence& scan_evidence,
-                          ScanEvidenceCursor& cursor) const;
+                          ScanEvidence& scan_evidence, ScanEvidenceCursor& cursor,
+                          bool moving = false) const;
+  // Whether a hit in this voxel is moving evidence by the voxel's state before
+  // the scan (K65): the layer holds it, or it is observed free with no
+  // ordinary occupancy among its 26 neighbours.
+  [[nodiscard]] bool movingEvidenceAt(GridIndex3D cell) const noexcept;
+  [[nodiscard]] bool heldMoving(GridIndex3D cell) const noexcept;
+  // The layer's voxels after a scan: the expired to unknown, the stood to
+  // ordinary occupancy.
+  void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
   [[nodiscard]] static GridIndex3D cellFromChunkBit(OccupancyChunkIndex3D chunk,
@@ -150,6 +186,8 @@ private:
       evidence_;
   std::unordered_map<OccupancyChunkIndex3D, bool, OccupancyChunkIndex3DHash>
       dirty_chunks_;
+  std::unordered_map<OccupancyChunkIndex3D, MovingChunk, OccupancyChunkIndex3DHash>
+      moving_;
   std::uint64_t revision_{0U};
   std::int64_t last_evidence_stamp_ns_{0};
   // The clock of the confirmations: the first stamped scan's time.
