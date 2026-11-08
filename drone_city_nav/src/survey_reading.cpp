@@ -232,6 +232,35 @@ struct Lattice {
     return within(cell, volume_low, volume_high);
   }
 
+  // The squared distance, in cells, from a cell to the volume's box: zero inside.
+  [[nodiscard]] int volumeDistance2(const GridIndex3D cell) const noexcept {
+    const auto axis = [](const int value, const int low, const int high) {
+      if (value < low) {
+        return low - value;
+      }
+      return value > high ? value - high : 0;
+    };
+    const int dx = axis(cell.x, volume_low.x, volume_high.x);
+    const int dy = axis(cell.y, volume_low.y, volume_high.y);
+    const int dz = axis(cell.z, volume_low.z, volume_high.z);
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  // Whether the unknown beyond a free cell leads into the volume: inside it,
+  // from one cell of the volume to another (the volume's face is not a
+  // frontier: the volume is the mission's order); outside it, to a cell no
+  // farther from the volume than the free cell, so that a way round the
+  // outside, which runs along the volume before it turns in, is followed
+  // (the register's row of 2026-11-04: the parts of the volume reached only
+  // round the outside got no frontier while frontiers were read inside it
+  // alone, 0.763 of the reachable truth covered).
+  [[nodiscard]] bool leadsIntoVolume(const GridIndex3D cell,
+                                     const GridIndex3D beyond) const noexcept {
+    const int from = volumeDistance2(cell);
+    const int to = volumeDistance2(beyond);
+    return from == 0 ? to == 0 : to <= from;
+  }
+
   [[nodiscard]] bool inFlood(const GridIndex3D cell) const noexcept {
     return within(cell, flood_low, flood_high);
   }
@@ -377,8 +406,9 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
   }
 }
 
-// The frontier cells: observed free inside the volume, a face neighbour
-// unknown inside the volume, not looked at, the neighbour not passed by the body.
+// The frontier cells: observed free in the flood's box, a face neighbour
+// unknown in the box that leads into the volume, not looked at, the neighbour
+// not passed by the body.
 [[nodiscard]] std::vector<GridIndex3D> frontierCells(const Lattice& lattice,
                                                      const SurveyCellSet& looked,
                                                      const SurveyCellSet& passed) {
@@ -388,9 +418,9 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
                           index.z * kChunkSize};
     const GridIndex3D high{low.x + kChunkSize - 1, low.y + kChunkSize - 1,
                            low.z + kChunkSize - 1};
-    if (high.x < lattice.volume_low.x || low.x > lattice.volume_high.x ||
-        high.y < lattice.volume_low.y || low.y > lattice.volume_high.y ||
-        high.z < lattice.volume_low.z || low.z > lattice.volume_high.z) {
+    if (high.x < lattice.flood_low.x || low.x > lattice.flood_high.x ||
+        high.y < lattice.flood_low.y || low.y > lattice.flood_high.y ||
+        high.z < lattice.flood_low.z || low.z > lattice.flood_high.z) {
       continue;
     }
     const ObservedOccupancyGrid3D::Chunk& chunk = storage.get();
@@ -402,7 +432,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
       const GridIndex3D cell{low.x + static_cast<int>(bit % kChunkSize),
                              low.y + static_cast<int>((bit / kChunkSize) % kChunkSize),
                              low.z + static_cast<int>(bit / kChunkArea)};
-      if (!lattice.inVolume(cell) || lattice.lookedAt(cell, looked)) {
+      if (!lattice.inFlood(cell) || lattice.lookedAt(cell, looked)) {
         continue;
       }
       for (const std::array<int, 3>& face : kFaces) {
@@ -413,7 +443,7 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
         // floor, is no frontier (r2758: 20 of 22 clusters on wall holes;
         // r2807: clusters under the floor, a vantage 0.6 m over it, a
         // contact, 489 frontiers chosen and no end in 1500 s).
-        if (lattice.inVolume(neighbour) &&
+        if (lattice.inFlood(neighbour) && lattice.leadsIntoVolume(cell, neighbour) &&
             lattice.grid->state(neighbour) == ObservedVoxelState::kUnknown &&
             lattice.fitsBody(neighbour) && !passed.contains(neighbour)) {
           cells.push_back(cell);

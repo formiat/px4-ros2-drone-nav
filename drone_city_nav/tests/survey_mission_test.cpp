@@ -534,5 +534,79 @@ TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
   EXPECT_TRUE(reading.complete());
 }
 
+// A volume whose inside is unseen, beside an observed corridor outside it: the
+// unknown between the corridor and the volume is a frontier (it leads into the
+// volume), the unknown on the corridor's far side is none (it leads away), and
+// the frontier has a vantage in the corridor.
+TEST(SurveyMissionTest, AFrontierOutsideTheVolumeIsReadWhenItLeadsIntoIt) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 32,
+                                            .height_cells = 32,
+                                            .depth_cells = 32}};
+  // The corridor: x from 5 to 7 m, the whole length in y, 4 m high, observed free.
+  for (int z = 0; z < 16; ++z) {
+    for (int y = 0; y < 32; ++y) {
+      for (int x = 20; x < 28; ++x) {
+        grid.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  SurveyConfig volume = config();
+  volume.volume_minimum = Point3{0.0, 0.0, 0.0};
+  volume.volume_maximum = Point3{4.0, 8.0, 4.0};
+  volume.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.5, .maximum_target_z_m = 3.5};
+  const SurveyReading reading = readSurvey(grid, Point3{6.0, 4.0, 2.0}, volume, {}, {});
+  EXPECT_TRUE(reading.complete());
+  EXPECT_TRUE(reading.frontier_set.contains(GridIndex3D{20, 10, 8}));
+  EXPECT_FALSE(reading.frontier_set.contains(GridIndex3D{27, 10, 8}));
+  EXPECT_FALSE(reading.frontier_set.contains(GridIndex3D{24, 10, 8}));
+  ASSERT_FALSE(reading.frontiers.empty());
+  EXPECT_GT(reading.frontiers.front().vantage.x, 5.0);
+  EXPECT_LT(reading.frontiers.front().vantage.x, 7.0);
+}
+
+// The volume is the level under a hall's floor, reached through an opening in
+// it: the hall's cells over the opening, outside the volume, are a frontier
+// (the unknown below leads into the volume) with a vantage in the hall.
+TEST(SurveyMissionTest, AnOpeningInTheFloorLeadsIntoTheVolumeBelow) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 32,
+                                            .height_cells = 32,
+                                            .depth_cells = 32}};
+  // The hall: 8 x 8 m, from 3.5 to 7 m up, observed free; its floor from 3 to
+  // 3.5 m occupied but for an opening of 2 x 2 m in the middle, unseen.
+  for (int z = 12; z < 28; ++z) {
+    for (int y = 0; y < 32; ++y) {
+      for (int x = 0; x < 32; ++x) {
+        const bool floor = z < 14;
+        const bool opening = x >= 12 && x < 20 && y >= 12 && y < 20;
+        if (floor && opening) {
+          continue;
+        }
+        grid.setState(GridIndex3D{x, y, z}, floor ? ObservedVoxelState::kOccupied
+                                                  : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  SurveyConfig volume = config();
+  volume.volume_minimum = Point3{0.0, 0.0, 0.0};
+  volume.volume_maximum = Point3{8.0, 8.0, 3.0};
+  volume.envelope =
+      FlightEnvelopeConfig{.minimum_target_z_m = 0.5, .maximum_target_z_m = 6.8};
+  const SurveyReading reading = readSurvey(grid, Point3{4.0, 4.0, 5.0}, volume, {}, {});
+  EXPECT_TRUE(reading.complete());
+  EXPECT_TRUE(reading.frontier_set.contains(GridIndex3D{15, 15, 14}));
+  EXPECT_FALSE(reading.frontier_set.contains(GridIndex3D{15, 15, 20}));
+  ASSERT_FALSE(reading.frontiers.empty());
+  EXPECT_GT(reading.frontiers.front().vantage.z, 4.9);
+}
+
 } // namespace
 } // namespace drone_city_nav
