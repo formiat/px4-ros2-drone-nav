@@ -395,6 +395,27 @@ ExecutedHorizonClearance3D executedClearance(const double distance_m,
   };
 }
 
+// A descent toward a floor two metres down the motion is braked by the
+// vertical deceleration, not the horizontal one (r3164).
+TEST(MppiSpeedPolicyTest, ADescentTowardAFloorIsBrakedByTheVerticalDeceleration) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.stopping_capability.guaranteed_vertical_deceleration_mps2 = 1.4;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vz = -2.0F;
+  input.executed_horizon_clearance = executedClearance(2.0, 0.0);
+  const MppiSpeedPolicyResult descent = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(descent.active_limiter, MppiSpeedLimiter::kClearance);
+  // v^2 = 2 a d + the progress floor squared, with the vertical 1.4 m/s^2 over
+  // 2 m: 2.57 m/s, less for the jerk ramp; the horizontal 4 m/s^2 would read 4.1.
+  EXPECT_LE(descent.clearance_limit_mps, std::sqrt(2.0 * 1.4 * 2.0 + 1.0) + 1.0e-6);
+  input.state.vz = 0.0F;
+  input.state.vx = 2.0F;
+  const MppiSpeedPolicyResult level = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_GT(level.clearance_limit_mps, 3.5);
+  EXPECT_LT(descent.clearance_limit_mps, level.clearance_limit_mps);
+}
+
 TEST(MppiSpeedPolicyTest,
      TheExecutedHorizonClearanceCapsTheReferenceSpeedAtTheTightPoint) {
   const MppiSpeedPolicyConfig config = clearanceLimiterConfig();

@@ -100,6 +100,53 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
   return Vec3{};
 }
 
+// The acceleration the airframe can apply along a direction when each axis
+// has its own bound: the horizontal figure for level flight, the vertical one
+// for a climb or a descent, between them the axis that saturates first; with
+// no direction at all (a vehicle at rest without a route) the horizontal one,
+// as the laws read before.
+[[nodiscard]] double alongDirection(const double horizontal_mps2,
+                                    const double vertical_mps2,
+                                    const Vec3& direction) noexcept {
+  const double horizontal = std::hypot(direction.x, direction.y);
+  const double length = std::hypot(horizontal, direction.z);
+  if (!(length > 1.0e-9)) {
+    return horizontal_mps2;
+  }
+  double limit = std::numeric_limits<double>::infinity();
+  if (horizontal / length > 1.0e-9) {
+    limit = std::min(limit, horizontal_mps2 / (horizontal / length));
+  }
+  if (std::abs(direction.z) / length > 1.0e-9) {
+    limit = std::min(limit, vertical_mps2 / (std::abs(direction.z) / length));
+  }
+  return limit;
+}
+
+// The stopping laws that stop short of evidence, of the goal, of the route's
+// end or of a turn brake along the motion: the deceleration and the
+// acceleration they charge are the airframe's along that direction. They
+// took the horizontal figures for every motion: a descent at 2.4 m/s toward
+// the survey's vantage 1.9 m over a floor was braked by 4 m/s^2 on paper and
+// by the airframe's 1.4 m/s^2 in the air, the clearance limit fell from 1.4 to
+// 0 m/s over 0.5 s while the vehicle lost 0.4 m/s^2, and the floor was touched
+// (r3164). The sensor-braking contract reads the direction itself.
+[[nodiscard]] MppiSpeedPolicyConfig alongMotion(const MppiSpeedPolicyConfig& config,
+                                                const Vec3& direction) {
+  MppiSpeedPolicyConfig along = config;
+  StoppingCapability& capability = along.stopping_capability;
+  capability.maximum_commanded_horizontal_deceleration_mps2 =
+      alongDirection(capability.maximum_commanded_horizontal_deceleration_mps2,
+                     capability.guaranteed_vertical_deceleration_mps2, direction);
+  capability.guaranteed_horizontal_deceleration_mps2 =
+      std::min(capability.guaranteed_horizontal_deceleration_mps2,
+               capability.maximum_commanded_horizontal_deceleration_mps2);
+  along.sensor_braking_contract.maximum_horizontal_acceleration_mps2 = alongDirection(
+      config.sensor_braking_contract.maximum_horizontal_acceleration_mps2,
+      config.sensor_braking_contract.maximum_vertical_acceleration_mps2, direction);
+  return along;
+}
+
 // The speed a contact is left at: where the body's own clearance is nil the
 // tube law admits nothing, and a vehicle resting against evidence could not
 // leave it. 1 m/s is a 0.075 m tube at the measured response horizon, inside
@@ -467,13 +514,14 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       routeEndpointHasTerminalStop3D(input.route_endpoint_semantics);
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
   const Vec3 braking_direction = motionDirection(input);
+  const MppiSpeedPolicyConfig along_motion = alongMotion(config, braking_direction);
   // The laws that stop the vehicle short of evidence, or of the end of what
   // was certified, owe the lag of the loop behind a falling reference. The
   // goal and the turn ahead do not: arriving late at their speed meets
   // nothing, and charged to the curvature law the lag doubled the share of
   // the flight that law bound (6.8 to 15.1 percent of the ticks, r457 to
   // r459 against r461 to r463) and took 0.3 m/s off the mean speed.
-  StoppingCapability law_capability = config.stopping_capability;
+  StoppingCapability law_capability = along_motion.stopping_capability;
   law_capability.reaction_latency_s += config.reference_tracking_lag_s;
   result.sensor_braking_limit_mps = sensorBrakingMaximumSpeedMps(
       config.sensor_braking_contract, config.stopping_capability,
@@ -519,8 +567,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                  Point3{input.state.x, input.state.y, input.state.z}) -
                           config.goal_margin_m);
     result.goal_limit_mps = stoppingLimitedSpeed(
-        goal_distance, 0.0, config.stopping_capability, config.sensor_braking_contract,
-        input.forward_acceleration_mps2);
+        goal_distance, 0.0, along_motion.stopping_capability,
+        along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
   }
   if (result.route_endpoint_stop_required &&
       input.route_endpoint_remaining_m.has_value()) {
@@ -538,8 +586,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                               Point3{input.state.x, input.state.y, input.state.z}));
     }
     result.route_endpoint_limit_mps = stoppingLimitedSpeed(
-        route_endpoint_distance, 0.0, law_capability, config.sensor_braking_contract,
-        input.forward_acceleration_mps2);
+        route_endpoint_distance, 0.0, law_capability,
+        along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
   }
   if (input.blocked_route_remaining_m.has_value()) {
     // The raw world blocks the route ahead and a replacement is not certified
@@ -550,7 +598,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.blocked_route_limit_mps = stoppingLimitedSpeed(
         std::max(0.0, *input.blocked_route_remaining_m -
                           config.sensor_braking_contract.physical_margin_m),
-        0.0, law_capability, config.sensor_braking_contract,
+        0.0, law_capability, along_motion.sensor_braking_contract,
         input.forward_acceleration_mps2);
   }
   if (input.executed_horizon_clearance.has_value() &&
@@ -573,11 +621,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the raw world and ends at rest, so "stop within the lateral clearance"
     // is not a physical requirement, and asking for it pinned every corridor
     // to the floor.
-    result.clearance_limit_mps =
-        std::min(result.clearance_limit_mps,
-                 clearanceLimitedSpeed(
-                     input.executed_horizon_clearance->constrained_samples, config,
-                     input.esdf_evidence_age_s, input.forward_acceleration_mps2));
+    result.clearance_limit_mps = std::min(
+        result.clearance_limit_mps,
+        clearanceLimitedSpeed(input.executed_horizon_clearance->constrained_samples,
+                              along_motion, input.esdf_evidence_age_s,
+                              input.forward_acceleration_mps2));
   }
   if (input.route_clearance.has_value() && input.route_clearance->constrained()) {
     // The same laws on the geometry the vehicle is committed to. The executed
@@ -592,7 +640,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.route_clearance_limit_mps =
         std::min(result.route_clearance_limit_mps,
                  clearanceLimitedSpeed(input.route_clearance->constrained_samples,
-                                       config, input.esdf_evidence_age_s,
+                                       along_motion, input.esdf_evidence_age_s,
                                        input.forward_acceleration_mps2));
   }
   std::optional<double> observed_range_m;
@@ -656,8 +704,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       const double turn_speed =
           std::sqrt(config.maximum_lateral_acceleration_mps2 / curvature);
       const double approach_limit = stoppingLimitedSpeed(
-          distance_to_turn_m, turn_speed, config.stopping_capability,
-          config.sensor_braking_contract, input.forward_acceleration_mps2);
+          distance_to_turn_m, turn_speed, along_motion.stopping_capability,
+          along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
       result.curvature_limit_mps = std::min(result.curvature_limit_mps, approach_limit);
     }
   }
