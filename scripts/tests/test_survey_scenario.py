@@ -109,6 +109,32 @@ class SurveyScenarioTest(unittest.TestCase):
             self.assertIn(f"make {target}\n",
                           (REPOSITORY / f"scripts/sim_finals_{name}.sh").read_text(encoding="utf-8"))
 
+    def test_the_cave_survey_orders_its_volume_round_the_point_to_point_start(self) -> None:
+        scenario_path = REPOSITORY / "drone_city_nav/config/cave_circuit_practice_01_survey_scenario.json"
+        scenario = SCENARIO_MODULE.load_point_to_point_scenario(scenario_path)
+        self.assertEqual(scenario["survey_volume_m"], (-29.25, 20.25, -0.75, 0.75, 80.25, 11.25))
+        self.assertEqual(scenario["mission_goal_sequence_m"], ((-14.25, 50.25, 4.23),))
+        flight = json.loads((REPOSITORY / "drone_city_nav/config/cave_circuit_practice_01_point_to_point_scenario.json")
+                            .read_text(encoding="utf-8"))
+        self.assertEqual(tuple(flight["vehicle"]["map_start_m"]), scenario["map_start_m"])
+        # The volume is 30 x 60 x 12 m round the start, its long side along the route's first leg (north).
+        low, high = scenario["survey_volume_m"][:3], scenario["survey_volume_m"][3:]
+        self.assertEqual(tuple(round(h - l, 2) for l, h in zip(low, high)), (30.0, 60.0, 12.0))
+        self.assertEqual(tuple(round((l + h) / 2, 2) for l, h in zip(low[:2], high[:2])),
+                         tuple(scenario["map_start_m"][:2]))
+        self.assertEqual(survey_coverage.scenario_frame(scenario_path), ((1.0, 39.0), (106.5, -368.0, -52.5)))
+        makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
+        self.assertIn("CAVE_SURVEY_VOLUME_M := -29.25,20.25,-0.75,0.75,80.25,11.25\n", makefile)
+        recipe = makefile[makefile.index("sim-cave-survey-headless: build"):]
+        recipe = recipe[:recipe.index("\n\n")]
+        for text in ("MISSION_TYPE=survey", "TRUTH_OCCUPANCY_3D_PATH=$(CAVE_TRUTH_OCCUPANCY_3D)",
+                     'RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(CAVE_SURVEY_VOLUME_M)}"'):
+            self.assertIn(text, recipe)
+        for name in ("survey_headless", "survey_gui", "survey_lidar_headless", "survey_lidar_gui"):
+            target = "sim-cave-" + name.replace("_", "-")
+            self.assertIn(f"make {target}\n",
+                          (REPOSITORY / f"scripts/sim_cave_{name}.sh").read_text(encoding="utf-8"))
+
     def test_the_survey_node_commands_on_the_operators_channel_beside_the_monitor(self) -> None:
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('executable="survey_mission_node"', launch)

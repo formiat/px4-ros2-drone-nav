@@ -179,6 +179,10 @@ sim-urban-survey-lidar-gui:
 # 2026-11-05; the volume ordered before it lay in the void round the shells).
 FINALS_SURVEY_SCENARIO_PATH := drone_city_nav/config/finals_prize_round_world_07_survey_scenario.json
 FINALS_SURVEY_VOLUME_M := 42,225,25,72,285,37
+# The cave's survey (the goal of 2026-11-05, part 2): the point-to-point start, a
+# volume of 30 x 60 x 12 m round it, its long side along the route's first leg.
+CAVE_SURVEY_SCENARIO_PATH := drone_city_nav/config/cave_circuit_practice_01_survey_scenario.json
+CAVE_SURVEY_VOLUME_M := -29.25,20.25,-0.75,0.75,80.25,11.25
 
 .PHONY: sim-finals-survey-headless
 sim-finals-survey-headless: build
@@ -223,6 +227,50 @@ sim-finals-survey-lidar-headless:
 
 sim-finals-survey-lidar-gui:
 	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-finals-survey-gui
+
+.PHONY: sim-cave-survey-headless
+sim-cave-survey-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment cave_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(CAVE_SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/cave_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=$(CAVE_SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		TRUTH_OCCUPANCY_3D_PATH=$(CAVE_TRUTH_OCCUPANCY_3D) \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(CAVE_SURVEY_VOLUME_M)}" \
+		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cave-survey-gui
+sim-cave-survey-gui: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment cave_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario $(CAVE_SURVEY_SCENARIO_PATH)
+	. external/environment-artifacts/derived/cave_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$SIM_DARK_WORLD_SDF_PATH" \
+		POINT_TO_POINT_SCENARIO_PATH=$(CAVE_SURVEY_SCENARIO_PATH) \
+		MISSION_TYPE=survey \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		./scripts/run_drone_nav_sim.sh
+
+.PHONY: sim-cave-survey-lidar-headless sim-cave-survey-lidar-gui
+sim-cave-survey-lidar-headless:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-cave-survey-headless
+
+sim-cave-survey-lidar-gui:
+	$(LIDAR_SCENARIO) $(MAKE) --no-print-directory sim-cave-survey-gui
 
 # Roadmap item 29: the large dark hall (environments/fixtures/dark_hall), the
 # point-to-point mission across it as the ordinary flight flies Urban's.
