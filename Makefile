@@ -106,6 +106,28 @@ sim-urban-point-to-point-headless: build
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
 
+# Roadmap item 11: the ordinary flight by a survey map. The map (a survey map artifact's
+# occupancy.occupancy3d, tools/survey_map.py) is the route's hint; the obstacle memory
+# and the sensors remain the law (I2), so the memory stays on.
+.PHONY: sim-urban-point-to-point-by-map-headless
+sim-urban-point-to-point-by-map-headless: build
+	python3 scripts/prepare_environment_simulation.py \
+		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
+		--scenario drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json
+	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
+		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
+		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
+		$(ORDINARY_FLIGHT) \
+		ENABLE_STATIC_MAP=true ENABLE_OBSTACLE_MEMORY=true LIDAR_PROFILE=3d \
+		STATIC_OCCUPANCY_3D_PATH="$${STATIC_OCCUPANCY_3D_PATH:?a survey map occupancy.occupancy3d, tools/survey_map.py}" \
+		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
+		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
+		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
+		HEADLESS=1 MISSION_CHECK=1 \
+		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
+		./scripts/run_drone_nav_sim.sh
+
 .PHONY: sim-urban-point-to-point-gui
 sim-urban-point-to-point-gui: build
 	python3 scripts/prepare_environment_simulation.py \

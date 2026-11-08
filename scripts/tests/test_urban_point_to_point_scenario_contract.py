@@ -83,7 +83,7 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # Urban's four targets, the dark hall's two (roadmap item 29), the
         # held-out worlds' four (roadmap item 33), the open sky's two
         # (roadmap item 39) and the survey's four on Urban and finals (roadmap item 34).
-        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 18)
+        self.assertEqual(makefile.count("--runtime-map-mode no-static"), 19)
         self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 18)
         self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", makefile)
         self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
