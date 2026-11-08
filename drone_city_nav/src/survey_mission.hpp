@@ -89,6 +89,12 @@ struct SurveyFrontier {
   double route_m{0.0};
   // The far vantage lies in observed space: a pass through it is possible.
   bool far_vantage_known{false};
+  // The vantage sees the cluster's frontier cell through observed free space;
+  // without one in sight the vantage is the open observed cell nearest the
+  // centroid within the sensor's reach, approached to see what opens from
+  // there (r3169: the stereo set ended with 127 clusters without a vantage
+  // at 0.78 of the volume).
+  bool sighted{true};
   std::vector<GridIndex3D> members;
 };
 
