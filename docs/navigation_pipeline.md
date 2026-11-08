@@ -576,10 +576,18 @@ reads the obstacle memory as the mission monitor does (the raw snapshot and
 its deltas), the vehicle's pose from the autopilot, the planner's route to
 its goal (`NavigationProgress`) and the monitor's events.
 
-- **A frontier** is an observed free cell inside the volume the scenario
-  orders (`survey_volume_m`, the map frame) with a face neighbour that is
-  unknown, inside the volume, and holds the body (no occupied cell within
-  0.55 m, inside the envelope's band of heights: K16's rule). A hole a ray
+- **A frontier** is an observed free cell in the flood's box (the volume
+  the scenario orders, `survey_volume_m` in the map frame, and 40 m round
+  it) with a face neighbour that is unknown, holds the body (no occupied
+  cell within 0.55 m, inside the envelope's band of heights: K16's rule) and
+  leads into the volume: inside the volume, a neighbour inside it; outside
+  it, a neighbour no farther from the volume than the free cell and within
+  the sensor's reach of the volume, so that a way round the outside, which
+  runs along the volume before it turns in, is followed where the sensor
+  can look into the volume from (frontiers read inside the volume alone
+  covered 0.763 of it, the parts reached only round the outside unseen; the
+  lidar set now covers it whole, r3166 to r3168; an entrance alone, unknown
+  strictly nearer the volume, found nothing new, r3157). A hole a ray
   left in a wall or a floor, or the unknown under the band, is no frontier
   (r2758: 20 of 22 clusters on wall holes; r2807: tens of thousands of
   frontier cells and no end). The volume's face is not a frontier. Frontier
@@ -633,8 +641,13 @@ its goal (`NavigationProgress`) and the monitor's events.
   vantage for 30 s (`unroutable`), or its way led the vehicle out of the
   flood's box (`left_domain`): by the planner's own map the cluster lies
   outside the reachable component. There is no list of frontiers tried.
-- **The end**: a complete reading with no cluster that has a vantage is
-  `SURVEY_DONE`; the survey sends `home`, the monitor gives the goal up for
+- **The end**: a complete reading with no frontier, or three complete
+  readings in a row with frontiers but no cluster that has a vantage, is
+  `SURVEY_DONE` (a vantage comes and goes with the vehicle's position and
+  the latest observations: r3153 ended at 0.88 of the volume on one reading
+  while the next found two; a chosen cluster is likewise kept for three
+  readings without a vantage before it is `unreachable`, r3161); the survey
+  sends `home`, the monitor gives the goal up for
   the start by the own track (K20), and the arrival there is the mission's
   success (`survey_home`), landing and disarm as any mission's (K30). The
   battery's return (K32) ends the survey the same way, by the monitor alone;
