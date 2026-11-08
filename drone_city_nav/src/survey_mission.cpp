@@ -342,6 +342,7 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
   }
   if (!target_.has_value()) {
     if (!reading_->frontiers.empty()) {
+      readings_without_vantage_ = 0U;
       target_ = reading_->frontiers.front();
       phase_ = Phase::kApproach;
       target_looked_ = false;
@@ -363,6 +364,12 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
           target_->route_m, reading_->frontiers.size());
       out.events.emplace_back(line.data());
     } else if (reading_->complete()) {
+      // No frontier at all ends the survey at once; frontiers without a vantage
+      // end it when readings in a row agree (kEndReadings).
+      if (reading_->clusters_without_vantage > 0U &&
+          ++readings_without_vantage_ < kEndReadings) {
+        return out;
+      }
       done_ = true;
       home_sent_ = true;
       out.command = SurveyCommand::kHome;

@@ -146,6 +146,11 @@ inline constexpr double kRiseRepeatS{30.0};
 // (r2804 stood 25 m east of it when a 10 m margin cut its component to a
 // pocket), and the planner's detours ran 40 m out (r2802).
 inline constexpr double kFloodMarginM{40.0};
+// The survey ends with frontiers left but none with a vantage only when this many
+// complete readings in a row say so: a vantage comes and goes with the vehicle's
+// position and the latest observations (r3153: one reading without a vantage sent
+// the survey home at 0.88 of the volume, the next reading found two).
+inline constexpr std::size_t kEndReadings{3U};
 
 struct SurveyStep {
   SurveyCommand command{SurveyCommand::kNone};
@@ -236,6 +241,8 @@ private:
   Point3 last_passed_position_{};
   bool passed_any_{false};
   bool done_{false};
+  // Complete readings in a row with frontiers left but no vantage.
+  std::size_t readings_without_vantage_{0U};
   bool home_sent_{false};
   std::size_t chosen_{0U};
   std::size_t observed_{0U};

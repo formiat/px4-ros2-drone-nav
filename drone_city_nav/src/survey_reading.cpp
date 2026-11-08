@@ -248,16 +248,19 @@ struct Lattice {
 
   // Whether the unknown beyond a free cell leads into the volume: inside it,
   // from one cell of the volume to another (the volume's face is not a
-  // frontier: the volume is the mission's order); outside it, to a cell no
-  // farther from the volume than the free cell and within the sensor's reach
-  // of the volume, so that a way round the outside, which runs along the
-  // volume before it turns in, is followed where the sensor can look into the
-  // volume from (the register's row of 2026-11-04: the parts of the volume
-  // reached only round the outside got no frontier while frontiers were read
-  // inside it alone, 0.763 of the reachable truth covered; r3146 to r3148
-  // covered it whole with frontiers read in the flood's box, and r3149 on the
-  // stereo set, 6.4 m of reach in a box 40 m wider than the volume, did not
-  // finish its survey in 1800 s).
+  // frontier: the volume is the mission's order); outside it, to a cell
+  // nearer the volume than the free cell and within the sensor's reach of the
+  // volume: an entrance seen from the outside, where the sensor can look into
+  // the volume from. The way along the outside to such an entrance is the
+  // planner's (unknown is free to it, I1), not a frontier: unknown no nearer
+  // the volume than the free cell is passed by. The register's row of
+  // 2026-11-04: the parts of the volume reached only round the outside got no
+  // frontier while frontiers were read inside it alone, 0.763 of the reachable
+  // truth covered; with frontiers read in the flood's box and unknown no
+  // farther from the volume counted, r3146 to r3148 covered it whole (610 to
+  // 1000 m flown), and the stereo set, 6.4 m of reach, did not finish its
+  // survey in its budget (r3149 in a box 40 m wider than the volume, r3155 in
+  // the band of its reach: 268 clusters left).
   [[nodiscard]] bool leadsIntoVolume(const GridIndex3D cell,
                                      const GridIndex3D beyond) const noexcept {
     const int from = volumeDistance2(cell);
@@ -266,7 +269,7 @@ struct Lattice {
       return to == 0;
     }
     const double reach_cells = config->sensor_reach_m / grid->bounds().resolution_m;
-    return to <= from && static_cast<double>(to) <= reach_cells * reach_cells + 1.0e-9;
+    return to < from && static_cast<double>(to) <= reach_cells * reach_cells + 1.0e-9;
   }
 
   [[nodiscard]] bool inFlood(const GridIndex3D cell) const noexcept {

@@ -534,6 +534,30 @@ TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
   EXPECT_TRUE(reading.complete());
 }
 
+// Frontiers left with no vantage end the survey only when three complete readings
+// in a row say so; no frontier at all ends it at once.
+TEST(SurveyMissionTest, FrontiersWithoutAVantageEndTheSurveyOnTheThirdReadingInARow) {
+  SurveyMission mission{config()};
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(room(false)));
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  SurveyReading waiting;
+  waiting.vehicle_placed = true;
+  waiting.frontier_cells = 40U;
+  waiting.clusters = 1U;
+  waiting.clusters_without_vantage = 1U;
+  mission.applyReading(waiting);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kNone);
+  mission.applyReading(waiting);
+  EXPECT_EQ(mission.step(4 * kSecond).command, SurveyCommand::kNone);
+  EXPECT_FALSE(mission.done());
+  mission.applyReading(waiting);
+  const SurveyStep step = mission.step(6 * kSecond);
+  EXPECT_EQ(step.command, SurveyCommand::kHome);
+  EXPECT_TRUE(mission.done());
+  ASSERT_EQ(step.events.size(), 1U);
+  EXPECT_EQ(step.events.front().rfind("SURVEY_DONE", 0), 0U);
+}
+
 // A volume whose inside is unseen, beside an observed corridor outside it: the
 // unknown between the corridor and the volume is a frontier (it leads into the
 // volume), the unknown on the corridor's far side is none (it leads away), and
