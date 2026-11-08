@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -295,37 +294,6 @@ TEST(SurveyMissionTest, AFrontierWithNoOpenVantageInSeenSpaceWaits) {
   EXPECT_EQ(reading.clusters_without_vantage, 1U);
   ASSERT_EQ(reading.frontiers.size(), 1U);
   EXPECT_NEAR(reading.frontiers.front().centroid.x, 9.875, 1.0e-9); // the door
-}
-
-// A frontier no vantage sees through observed free space is approached without
-// sight, after the ones in sight: a band of unknown across the room hides the
-// door from every open cell on the vehicle's side, and the band itself is a
-// frontier in sight.
-TEST(SurveyMissionTest, AFrontierWithNoVantageInSightIsApproachedAfterTheOnesInSight) {
-  ObservedOccupancyGrid3D grid = room(true);
-  for (int z = 5; z < 19; ++z) {
-    for (int y = 9; y < 39; ++y) {
-      for (int x = 28; x < 31; ++x) {
-        grid.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kUnknown);
-      }
-    }
-  }
-  // The band's west side, in sight; its east side and the door, seen by no
-  // vantage the known route reaches, approached from the vehicle's side.
-  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
-  EXPECT_EQ(reading.clusters, 3U);
-  EXPECT_EQ(reading.clusters_without_vantage, 0U);
-  ASSERT_EQ(reading.frontiers.size(), 3U);
-  EXPECT_TRUE(reading.frontiers.front().sighted);
-  EXPECT_LT(reading.frontiers.front().centroid.x, 7.5); // the band's west side
-  for (std::size_t index = 1U; index < reading.frontiers.size(); ++index) {
-    EXPECT_FALSE(reading.frontiers[index].sighted);
-    EXPECT_LT(reading.frontiers[index].vantage.x, 7.0);
-  }
-  EXPECT_TRUE(std::any_of(reading.frontiers.begin(), reading.frontiers.end(),
-                          [](const SurveyFrontier& frontier) {
-                            return std::abs(frontier.centroid.x - 9.875) < 1.0e-9;
-                          })); // the door
 }
 
 // The room with its east door and a second door in its north wall.

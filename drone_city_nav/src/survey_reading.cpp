@@ -526,8 +526,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
 // floor).
 [[nodiscard]] std::optional<GridIndex3D> snap(const Lattice& lattice,
                                               const Point3& point, const double reach_m,
-                                              const Point3& sight,
-                                              const bool line_of_sight = true) {
+                                              const Point3& sight) {
   // The search starts at the grid's cell nearest the point: a far vantage
   // beyond a frontier at the grid's edge lies outside it.
   const GridBounds3D& bounds = lattice.grid->bounds();
@@ -561,8 +560,7 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
   std::sort(candidates.begin(), candidates.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
   for (const auto& [distance, cell] : candidates) {
-    if (!line_of_sight ||
-        lineOfSight(*lattice.grid, lattice.grid->cellCenter(cell), sight)) {
+    if (lineOfSight(*lattice.grid, lattice.grid->cellCenter(cell), sight)) {
       return cell;
     }
   }
@@ -632,23 +630,6 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
       vantage = snap(lattice, frontier.centroid,
                      std::min(config.sensor_reach_m, kVantageReachM), frontier.sight);
     }
-    if (!vantage.has_value() &&
-        std::any_of(members.begin(), members.end(), [&lattice](const GridIndex3D cell) {
-          return lattice.reached(cell) != kUnreached;
-        })) {
-      // Nothing in sight, but the body reaches the cluster (K16's flood,
-      // unknown included): the open observed cell nearest the centroid
-      // within the sensor's reach, approached to see what opens from there.
-      // The stereo set's narrow observations leave most clusters without a
-      // line of sight through observed free space (r3169: 127 of 192
-      // clusters, the survey over at 0.78 of the volume). A cluster the body
-      // does not reach (under a floor, r2818) is not approached: the cell
-      // nearest it would stand over the floor.
-      vantage =
-          snap(lattice, frontier.centroid,
-               std::min(config.sensor_reach_m, kVantageReachM), frontier.sight, false);
-      frontier.sighted = false;
-    }
     if (!vantage.has_value()) {
       ++reading.clusters_without_vantage;
       continue;
@@ -666,12 +647,9 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
     frontier.members = std::move(members);
     reading.frontiers.push_back(std::move(frontier));
   }
-  // The clusters in sight first, nearest by the way through what was seen.
+  // Nearest by the way through what was seen.
   std::sort(reading.frontiers.begin(), reading.frontiers.end(),
             [](const SurveyFrontier& lhs, const SurveyFrontier& rhs) {
-              if (lhs.sighted != rhs.sighted) {
-                return lhs.sighted;
-              }
               return lhs.route_m != rhs.route_m ? lhs.route_m < rhs.route_m
                                                 : lhs.cells > rhs.cells;
             });
@@ -683,21 +661,17 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
 
 std::string summary(const SurveyReading& reading) {
   std::array<char, 320U> line{};
-  const std::size_t unsighted = static_cast<std::size_t>(
-      std::count_if(reading.frontiers.begin(), reading.frontiers.end(),
-                    [](const SurveyFrontier& frontier) { return !frontier.sighted; }));
-  std::snprintf(
-      line.data(), line.size(),
-      "SURVEY_READING frontier_cells=%zu clusters=%zu with_vantage=%zu "
-      "unsighted=%zu without_vantage=%zu reachable_voxels=%zu known_voxels=%zu "
-      "vehicle_placed=%s budget_exhausted=%s nearest_route_m=%.1f "
-      "reading_ms=%.0f",
-      reading.frontier_cells, reading.clusters, reading.frontiers.size(), unsighted,
-      reading.clusters_without_vantage, reading.reachable_voxels, reading.known_voxels,
-      reading.vehicle_placed ? "true" : "false",
-      reading.budget_exhausted ? "true" : "false",
-      reading.frontiers.empty() ? 0.0 : reading.frontiers.front().route_m,
-      reading.reading_ms);
+  std::snprintf(line.data(), line.size(),
+                "SURVEY_READING frontier_cells=%zu clusters=%zu with_vantage=%zu "
+                "without_vantage=%zu reachable_voxels=%zu known_voxels=%zu "
+                "vehicle_placed=%s budget_exhausted=%s nearest_route_m=%.1f "
+                "reading_ms=%.0f",
+                reading.frontier_cells, reading.clusters, reading.frontiers.size(),
+                reading.clusters_without_vantage, reading.reachable_voxels,
+                reading.known_voxels, reading.vehicle_placed ? "true" : "false",
+                reading.budget_exhausted ? "true" : "false",
+                reading.frontiers.empty() ? 0.0 : reading.frontiers.front().route_m,
+                reading.reading_ms);
   return line.data();
 }
 
