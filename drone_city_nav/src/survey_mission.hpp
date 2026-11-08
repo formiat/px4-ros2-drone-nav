@@ -146,10 +146,12 @@ inline constexpr double kRiseRepeatS{30.0};
 // (r2804 stood 25 m east of it when a 10 m margin cut its component to a
 // pocket), and the planner's detours ran 40 m out (r2802).
 inline constexpr double kFloodMarginM{40.0};
-// The survey ends with frontiers left but none with a vantage only when this many
-// complete readings in a row say so: a vantage comes and goes with the vehicle's
-// position and the latest observations (r3153: one reading without a vantage sent
-// the survey home at 0.88 of the volume, the next reading found two).
+// The survey ends with frontiers left but none with a vantage, and a chosen
+// cluster is given up as unreachable, only when this many complete readings in a
+// row say so: a vantage comes and goes with the vehicle's position and the
+// latest observations (r3153: one reading without a vantage sent the survey home
+// at 0.88 of the volume, the next reading found two; r3161: the chosen cluster
+// of 833 cells lost its vantage on the reading after its choice and was dropped).
 inline constexpr std::size_t kEndReadings{3U};
 
 struct SurveyStep {
@@ -241,8 +243,10 @@ private:
   Point3 last_passed_position_{};
   bool passed_any_{false};
   bool done_{false};
-  // Complete readings in a row with frontiers left but no vantage.
+  // Complete readings in a row with frontiers left but no vantage; and those in
+  // a row in which the chosen cluster had none.
   std::size_t readings_without_vantage_{0U};
+  std::size_t target_readings_without_vantage_{0U};
   bool home_sent_{false};
   std::size_t chosen_{0U};
   std::size_t observed_{0U};

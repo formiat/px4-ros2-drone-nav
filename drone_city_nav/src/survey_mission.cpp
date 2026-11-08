@@ -204,6 +204,7 @@ void SurveyMission::finishTarget(const char* outcome, SurveyStep& out) {
   look_since_ns_ = 0;
   route_unavailable_since_ns_ = 0;
   target_planner_route_m_ = 0.0;
+  target_readings_without_vantage_ = 0U;
   phase_ = Phase::kApproach;
 }
 
@@ -250,6 +251,9 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
         ++remaining;
         reachable = reachable || reading_->reachable_members.contains(cell);
       }
+    }
+    if (reachable) {
+      target_readings_without_vantage_ = 0U;
     }
     if (remaining * 10U < target_->cells) {
       ++observed_;
@@ -335,7 +339,10 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       looked_.insert(target_->members.begin(), target_->members.end());
       ++looked_count_;
       finishTarget("looked_at_on_pass", out);
-    } else if (!reachable && reading_->complete()) {
+    } else if (!reachable && reading_->complete() &&
+               ++target_readings_without_vantage_ >= kEndReadings) {
+      // The cluster's vantage gone for readings in a row: given up until a
+      // reading finds it one again.
       ++unreachable_;
       finishTarget("unreachable", out);
     }

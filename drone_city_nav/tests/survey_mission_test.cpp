@@ -558,6 +558,32 @@ TEST(SurveyMissionTest, FrontiersWithoutAVantageEndTheSurveyOnTheThirdReadingInA
   EXPECT_EQ(step.events.front().rfind("SURVEY_DONE", 0), 0U);
 }
 
+// A chosen cluster whose vantage the next readings lose is kept for three
+// complete readings before it is given up as unreachable.
+TEST(SurveyMissionTest, AChosenClusterKeepsItsVantageForThreeReadingsWithoutOne) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  SurveyMission mission{config()};
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  const SurveyReading sighted = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(sighted.frontiers.size(), 1U);
+  mission.applyReading(sighted);
+  EXPECT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  SurveyReading lost = sighted;
+  lost.frontiers.clear();
+  lost.reachable_members.clear();
+  lost.clusters_without_vantage = 1U;
+  mission.applyReading(lost);
+  EXPECT_TRUE(mission.step(4 * kSecond).events.empty());
+  mission.applyReading(lost);
+  EXPECT_TRUE(mission.step(6 * kSecond).events.empty());
+  mission.applyReading(lost);
+  const SurveyStep step = mission.step(8 * kSecond);
+  ASSERT_FALSE(step.events.empty());
+  EXPECT_EQ(step.events.front().rfind("SURVEY_FRONTIER unreachable", 0), 0U);
+  EXPECT_FALSE(mission.done());
+}
+
 // A volume whose inside is unseen, beside an observed corridor outside it: the
 // unknown between the corridor and the volume is a frontier (it leads into the
 // volume), the unknown on the corridor's far side is none (it leads away), and
