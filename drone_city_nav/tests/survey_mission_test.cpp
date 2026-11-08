@@ -567,6 +567,13 @@ TEST(SurveyMissionTest, AFrontierOutsideTheVolumeIsReadWhenItLeadsIntoIt) {
   ASSERT_FALSE(reading.frontiers.empty());
   EXPECT_GT(reading.frontiers.front().vantage.x, 5.0);
   EXPECT_LT(reading.frontiers.front().vantage.x, 7.0);
+  // A sensor that cannot look into the volume from the corridor reads no frontier
+  // there.
+  SurveyConfig short_reach = volume;
+  short_reach.sensor_reach_m = 0.5;
+  const SurveyReading unseen =
+      readSurvey(grid, Point3{6.0, 4.0, 2.0}, short_reach, {}, {});
+  EXPECT_EQ(unseen.frontier_cells, 0U);
 }
 
 // The volume is the level under a hall's floor, reached through an opening in
