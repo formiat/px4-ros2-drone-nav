@@ -6,6 +6,10 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The held-out worlds flown inside their shells (roadmap item 33, specification K55): twenty flights on one commit
+  without a contact; the cave world reached on both sets, the finals world's two levels reached by the lidar set in two
+  flights of five and by the stereo set in none (the planner's optimism in unknown space, I1, in the register); three
+  register rows of the old flights withdrawn, `tools/body_truth_clearance.py` reads a world's own truth grid.
 - Warm bodies that walk (roadmap item 21 stages 1a, 1 and 2; specification K64, K65, K66, F23): a walking body
   in the simulation (`scripts/moving_bodies.py`, the scenarios `sim-urban-walking-body`, `-oncoming`, `-side`), the
   thermal core's reading of bodies on both sets, the obstacle memory's moving layer (what moves is told by how it
