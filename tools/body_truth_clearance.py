@@ -1,14 +1,26 @@
-"""body_truth_clearance.py RUN...: the true body's clearance to the true location over a flight. The body is the
-stack's own model (cylinder radius 0.55 m, 0.23 m below and 0.35 m above its centre, upright), its centre the Gazebo
-model origin plus 0.24 m (base_link over the model's origin at its feet); the location is the 0.25 m
-truth voxelization (log/tools/truth25). Reported after the climb off the pad: the least clearance, where and when, and
-the seconds spent under 0.10 and 0.20 m. Evaluation only."""
+"""body_truth_clearance.py [--grid=PATH] [--map-to-sdf=X,Y,Z] RUN...: the true body's clearance to the true location
+over a flight. The body is the stack's own model (cylinder radius 0.55 m, 0.23 m below and 0.35 m above its centre,
+upright), its centre the Gazebo model origin plus 0.24 m (base_link over the model's origin at its feet); the location
+is the truth voxelization: the urban 0.25 m grid (log/tools/truth25) unless `--grid=` names another (a held-out world's
+0.5 m grid of external/environment-candidates/work, in the Gazebo frame: `--map-to-sdf=` then carries the canonical
+world's map_to_sdf offset, which the recorded map-frame poses are moved by). Reported after the climb off the pad: the
+least clearance, where and when, and the seconds spent under 0.10 and 0.20 m. Evaluation only."""
 import csv, sys
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, 'scripts')
 from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D
-OCC = Occupancy3D.load(Path('log/tools/truth25/urban_r025.occupancy3d'))
+GRID = Path('log/tools/truth25/urban_r025.occupancy3d')
+OFFSET = (0.0, 0.0, 0.0)
+RUNS = []
+for argument in sys.argv[1:]:
+    if argument.startswith('--grid='):
+        GRID = Path(argument.split('=', 1)[1])
+    elif argument.startswith('--map-to-sdf='):
+        OFFSET = tuple(float(v) for v in argument.split('=', 1)[1].split(','))
+    else:
+        RUNS.append(argument)
+OCC = Occupancy3D.load(GRID)
 B = OCC.bounds; RES = B.resolution_m; R, LO, UP, CENTRE = 0.55, 0.23, 0.35, 0.24
 def occupied(i, j, k):
     words = OCC.chunks.get((i // CHUNK_SIZE, j // CHUNK_SIZE, k // CHUNK_SIZE))
@@ -38,8 +50,9 @@ def clearance(x, y, z, reach=0.6):
                     best = d
     return best
 if __name__ == "__main__":
-    for run in sys.argv[1:]:
-        rows = [(float(r[0]), float(r[1]), float(r[2]), float(r[3])) for r in csv.reader(open(f'log/runs/{run}/gz_pose.csv'))]
+    for run in RUNS:
+        rows = [(float(r[0]), float(r[1]) + OFFSET[0], float(r[2]) + OFFSET[1], float(r[3]) + OFFSET[2])
+                for r in csv.reader(open(f'log/runs/{run}/gz_pose.csv'))]
         z0 = rows[0][3]
         start = next(n for n, r in enumerate(rows) if r[3] > z0 + 1.0)
         rows = rows[start::5]
