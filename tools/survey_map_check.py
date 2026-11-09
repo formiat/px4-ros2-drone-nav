@@ -11,6 +11,9 @@ by the manifest's offset.
               scripts/survey_coverage.py), the share the map observed
   alignment   from every occupied cell of the map, the distance to the nearest occupied cell of the truth: the median,
               p95 and the share beyond one cell; the frame shift as the mean vector to those nearest cells
+  displaced   the map's occupied cells farther than half a metre from the truth's, their sheets (components of forty
+              cells or more) and whether the truth's own surface is held beside each: a wall laid twice by an
+              estimate that drifted between two looks (roadmap item 41's measure)
   collision   the truth's occupied cells inside the volume that bound the reachable space (within the body's radius
               and a cell of a reachable cell): how many the map holds occupied, observed free ("false free": told
               sliver from missing surface by its depth off the map's own surface: the voxelization marks a cell at
@@ -131,6 +134,31 @@ def check(map_directory: Path, truth_path: Path, run_directory: Path | None, bod
         result["alignment"] = {"median_m": float(np.median(at)), "p95_m": float(np.percentile(at, 95)),
                                "beyond_one_cell_share": float((at > res + 1e-9).mean()),
                                "mean_shift_m": [float(v) for v in shift]}
+    # Displaced surfaces: the map's occupied cells farther than half a metre from any occupied cell of the truth,
+    # their sheets (26-connected components of forty cells or more) and, for the largest, whether the map holds
+    # the truth's own surface there too: a wall seen twice and laid twice (roadmap item 41's measure of what the
+    # estimate's error does to the memory).
+    if truth_occupied.any() and map_occupied.any():
+        far = map_occupied & (distance * res > 0.5 + 1e-9)
+        labels, count = ndimage.label(far, structure=np.ones((3, 3, 3)))
+        sizes = np.bincount(labels.ravel())
+        sizes[0] = 0
+        on_truth = map_occupied & (distance * res <= res + 1e-9)
+        off_held = ndimage.distance_transform_edt(~on_truth) * res if on_truth.any() else None
+        largest = []
+        for label in np.argsort(sizes)[::-1][:3]:
+            if sizes[label] < 40:
+                break
+            member = labels == label
+            off = distance[member] * res
+            held = 0.0
+            if off_held is not None:
+                nearest_truth = tuple(indices[axis][member] for axis in range(3))
+                held = float((off_held[nearest_truth] <= res + 1e-9).mean())
+            largest.append({"cells": int(sizes[label]), "off_truth_median_m": float(np.median(off)),
+                            "off_truth_max_m": float(off.max()), "truth_surface_held_share": held})
+        result["displaced"] = {"cells": int(far.sum()), "share": float(far.sum() / map_occupied.sum()),
+                               "sheets": int((sizes >= 40).sum()), "largest": largest}
     # Raw collision: the truth's occupied cells that bound the reachable space (within the body's radius and a
     # cell of a reachable cell: the body flying there can meet them), and what the map says of each.
     free_reachable = reachable & truth_free

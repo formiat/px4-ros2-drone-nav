@@ -125,6 +125,17 @@ class SurveyMapTest(unittest.TestCase):
         self.assertEqual(check["collision"]["false_free"], 0)
         self.assertEqual(check["collision"]["false_flyable_by_the_path"], 0)
         self.assertGreater(check["coverage"], 0.99)
+        self.assertEqual(check["displaced"]["cells"], 0)
+        # A second layer of the wall 0.75 m before it, as an estimate that drifted between two looks lays it.
+        doubled = occupied.copy()
+        doubled[13, :, 3:9] = True
+        write_run(self.root, "r2", observed, doubled, path)
+        survey_map.build("r2", self.root / "map2", None)
+        twice = survey_map_check.check(self.root / "map2", truth, self.root / "log/runs/r2")
+        self.assertEqual(twice["displaced"]["sheets"], 1)
+        self.assertEqual(twice["displaced"]["largest"][0]["cells"], 96)
+        self.assertAlmostEqual(twice["displaced"]["largest"][0]["off_truth_median_m"], 0.75)
+        self.assertGreater(twice["displaced"]["largest"][0]["truth_surface_held_share"], 0.9)
         # The truth holds a wall at y = 3 m the survey never saw (its cells observed free), and the path passes it.
         missed = occupied.copy()
         missed[:16, 12, 1:9] = True
