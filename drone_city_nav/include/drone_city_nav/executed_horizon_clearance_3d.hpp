@@ -166,4 +166,18 @@ measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
     const EsdfGrid3D& grid, std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint, double constraint_clearance_m);
 
+// Where the vertical motion the vehicle carries right now comes close to known
+// occupied evidence: the column the body sweeps under a descent, or over a
+// climb, `reach_m` along it, in the form of the executed horizon. The horizon
+// and the route are what the vehicle was asked to fly, and the vertical
+// channel follows them loosely: a descent that ran steeper than its route
+// passed the height it was to level at with a floor two metres under it,
+// which the horizon met 1.9 m ahead at 2.6 m/s (r3177). The column says what
+// the motion itself is heading into. Unavailable for a vehicle with no
+// vertical motion; unobserved space is not reported.
+[[nodiscard]] ExecutedHorizonClearance3D measureVerticalMotionClearance3D(
+    const Point3& position, double vertical_velocity_mps, double reach_m,
+    const EsdfGrid3D& grid, std::span<const float> esdf_m,
+    const SweptFootprintConfig& footprint, double constraint_clearance_m);
+
 } // namespace drone_city_nav

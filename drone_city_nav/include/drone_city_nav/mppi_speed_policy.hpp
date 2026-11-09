@@ -143,6 +143,12 @@ struct MppiSpeedPolicyInput {
   // the same tube and stopping laws read off it bound the reference before the
   // vehicle accelerates into the constraint.
   std::optional<ExecutedHorizonClearance3D> route_clearance;
+  // Where the column the vertical motion sweeps comes close to known occupied
+  // evidence, in the same form: what a descent or a climb is heading into,
+  // whatever the horizon and the route say of it. The same laws read off it
+  // bound the vertical speed, and the reference by the motion's vertical
+  // share.
+  std::optional<ExecutedHorizonClearance3D> vertical_motion_clearance;
   // Age of the evidence the clearance samples were measured on: the time from
   // the observation the ESDF was built from to now. The horizon and the route
   // are read off that field, and the raw validators judge on the scan that
@@ -153,6 +159,9 @@ struct MppiSpeedPolicyInput {
   // The measured acceleration along the horizontal velocity. The stopping
   // laws charge the jerk ramp from it to the full deceleration.
   double forward_acceleration_mps2{0.0};
+  // The measured acceleration along the vertical velocity, for the column's
+  // laws.
+  double vertical_forward_acceleration_mps2{0.0};
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
   std::optional<double> previous_reference_speed_mps;

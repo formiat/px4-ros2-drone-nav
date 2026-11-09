@@ -643,6 +643,31 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                        along_motion, input.esdf_evidence_age_s,
                                        input.forward_acceleration_mps2));
   }
+  if (input.vertical_motion_clearance.has_value() &&
+      input.vertical_motion_clearance->constrained()) {
+    // The same laws on the column the vertical motion sweeps. The horizon and
+    // the route bound what the vehicle was asked to fly; the vertical channel
+    // follows them loosely, and a descent that ran steeper than its route
+    // passed the height it was to level at, 2.2 m/s down with a floor two
+    // metres under it: the horizon met the floor 1.9 m ahead, and the laws
+    // had nothing to brake over (r3177, the floor touched at 0.7 m/s). The
+    // column bounds the vertical speed by what stops short of the surface
+    // under a descent or over a climb, and the reference by the motion's
+    // vertical share: a level flight over a floor owes it nothing.
+    const double speed_mps =
+        std::hypot(std::hypot(input.state.vx, input.state.vy), input.state.vz);
+    const double vertical_share =
+        speed_mps > 1.0e-6 ? std::abs(static_cast<double>(input.state.vz)) / speed_mps
+                           : 0.0;
+    if (vertical_share > 1.0e-6) {
+      const double vertical_limit_mps = clearanceLimitedSpeed(
+          input.vertical_motion_clearance->constrained_samples,
+          alongMotion(config, Vec3{0.0, 0.0, static_cast<double>(input.state.vz)}),
+          input.esdf_evidence_age_s, input.vertical_forward_acceleration_mps2);
+      result.clearance_limit_mps =
+          std::min(result.clearance_limit_mps, vertical_limit_mps / vertical_share);
+    }
+  }
   std::optional<double> observed_range_m;
   if (input.executed_horizon_clearance.has_value() &&
       input.executed_horizon_clearance->unobserved()) {

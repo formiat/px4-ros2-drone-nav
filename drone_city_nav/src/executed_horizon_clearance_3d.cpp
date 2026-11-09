@@ -146,6 +146,42 @@ measureRouteClearance3D(const std::span<const RouteSample3D> route,
   return result;
 }
 
+ExecutedHorizonClearance3D measureVerticalMotionClearance3D(
+    const Point3& position, const double vertical_velocity_mps, const double reach_m,
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m,
+    const SweptFootprintConfig& footprint, const double constraint_clearance_m) {
+  ExecutedHorizonClearance3D result;
+  const double step_m = static_cast<double>(grid.resolution_m);
+  if (!std::isfinite(vertical_velocity_mps) || vertical_velocity_mps == 0.0 ||
+      !std::isfinite(reach_m) || !(reach_m > 0.0) || !(step_m > 0.0) ||
+      esdf_m.empty() || !(constraint_clearance_m > 0.0)) {
+    return result;
+  }
+  result.available = true;
+  const SweptFootprintConfig body = bodyFootprint(footprint);
+  const double direction = vertical_velocity_mps < 0.0 ? -1.0 : 1.0;
+  const int steps = static_cast<int>(std::ceil(reach_m / step_m));
+  for (int step = 0; step < steps; ++step) {
+    const double travelled_m = static_cast<double>(step) * step_m;
+    const Point3 first{position.x, position.y, position.z + direction * travelled_m};
+    const Point3 second{position.x, position.y, first.z + direction * step_m};
+    const DerivedFootprintClearance3D clearance =
+        querySweptFootprintClearance3D(grid, esdf_m, first, second, footprint);
+    if (!clearance.evidence.known_clearance_observed) {
+      continue;
+    }
+    const double clearance_m = clearance.evidence.minimum_known_clearance_m;
+    result.minimum_clearance_m = std::min(result.minimum_clearance_m, clearance_m);
+    if (clearance_m < constraint_clearance_m) {
+      result.constrained_samples.push_back(ConstrainedHorizonSample3D{
+          .distance_m = travelled_m,
+          .clearance_m = clearance_m,
+          .body_clearance_m = bodyClearanceM(grid, esdf_m, first, second, body)});
+    }
+  }
+  return result;
+}
+
 std::optional<double>
 measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
                             const double from_station_m, const double lookahead_m,
@@ -261,8 +297,10 @@ double measureObservedRangeAlong3D(const ObservedOccupancyGrid3D& occupancy,
   // refused every motion it did not face.
   double observed_m = maximum_range_m;
   for (const Vec3& offset : offsets) {
-    for (double range_m = body_radius_m + step_m; range_m <= maximum_range_m;
-         range_m += step_m) {
+    const int steps = static_cast<int>(
+        std::floor((maximum_range_m - body_radius_m) / step_m + 1.0e-9));
+    for (int step = 1; step <= steps; ++step) {
+      const double range_m = body_radius_m + static_cast<double>(step) * step_m;
       const std::optional<GridIndex3D> cell =
           occupancy.worldToCell(Point3{origin.x + along.x * range_m + offset.x,
                                        origin.y + along.y * range_m + offset.y,

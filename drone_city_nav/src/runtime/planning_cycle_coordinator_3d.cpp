@@ -469,6 +469,24 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 config_.physical_footprint,
                 config_.executed_horizon_constraint_clearance_m)}
           : std::nullopt;
+  // The column the vertical motion sweeps, as far as that motion goes before
+  // it can stop: a second of it and the braking distance at the vertical
+  // deceleration the laws rely on.
+  const double vertical_velocity_mps = static_cast<double>(request.navigation.state.vz);
+  const std::optional<ExecutedHorizonClearance3D> vertical_motion_clearance =
+      request.world->distances_m != nullptr
+          ? std::optional<ExecutedHorizonClearance3D>{measureVerticalMotionClearance3D(
+                Point3{request.navigation.state.x, request.navigation.state.y,
+                       request.navigation.state.z},
+                vertical_velocity_mps,
+                std::abs(vertical_velocity_mps) +
+                    vertical_velocity_mps * vertical_velocity_mps /
+                        (2.0 * config_.speed_policy.stopping_capability
+                                   .guaranteed_vertical_deceleration_mps2),
+                request.world->grid, *request.world->distances_m,
+                config_.physical_footprint,
+                config_.executed_horizon_constraint_clearance_m)}
+          : std::nullopt;
   output.route_clearance_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 route_clearance_started)
@@ -495,6 +513,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
       .executed_horizon_clearance = executed_horizon_clearance,
       .route_observed_range_m = route_observed_range_m,
       .route_clearance = route_clearance,
+      .vertical_motion_clearance = vertical_motion_clearance,
       .esdf_evidence_age_s =
           request.world != nullptr && request.now_ns > request.world->source_stamp_ns
               ? static_cast<double>(request.now_ns - request.world->source_stamp_ns) *
@@ -502,6 +521,8 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               : 0.0,
       .forward_acceleration_mps2 =
           productionMppiForwardAcceleration3D(request.navigation).horizontal_mps2,
+      .vertical_forward_acceleration_mps2 =
+          productionMppiForwardAcceleration3D(request.navigation).vertical_mps2,
       .previous_reference_speed_mps = previous_reference_speed_mps_,
       .elapsed_since_previous_reference_s = reference_elapsed_s,
       .route_endpoint_semantics = route_endpoint_semantics,

@@ -2,8 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <numbers>
 #include <optional>
 #include <vector>
 
@@ -115,7 +117,7 @@ TEST(ExecutedHorizonClearance3DTest, TheRouteAheadReportsTheFrontierBeyondTheHor
   const std::optional<double> range_m = measureRouteObservedRange3D(
       routeAlongX(0.5, 20U), 2.0, 30.0, grid(), esdf(), pointFootprint());
   ASSERT_TRUE(range_m.has_value());
-  EXPECT_NEAR(*range_m, 7.0, 1.0e-6);
+  EXPECT_NEAR(range_m.value_or(-1.0), 7.0, 1.0e-6);
 }
 
 TEST(ExecutedHorizonClearance3DTest, TheRouteIsProbedNoFartherThanTheLookahead) {
@@ -235,7 +237,7 @@ TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceCarriesTheEstimatesVertical
                            .depth = 12,
                            .origin_z_m = 0.0F,
                            .outside_is_unknown = true};
-  std::vector<float> field(8U * 3U * 12U, 0.0F);
+  std::vector<float> field(std::size_t{8U} * 3U * 12U, 0.0F);
   for (int z = 0; z < 12; ++z) {
     for (int y = 0; y < 3; ++y) {
       for (int x = 0; x < 8; ++x) {
@@ -250,6 +252,7 @@ TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceCarriesTheEstimatesVertical
   footprint.body_upper_extent_m = 0.0;
   footprint.axial_samples = 2U;
   std::vector<RouteSample3D> route;
+  route.reserve(3U);
   for (int index = 0; index < 3; ++index) {
     route.push_back(RouteSample3D{.position = {0.5 + 0.5 * index, 0.375, 1.5},
                                   .tangent = {1.0, 0.0, 0.0},
@@ -380,6 +383,7 @@ TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothing
   // refused for it; the same drift kept up is, once it has travelled the
   // envelope's clearance.
   std::vector<MotionState3D> drifting;
+  drifting.reserve(30U);
   for (int step = 0; step < 30; ++step) {
     drifting.push_back(MotionState3D{.x = 5.6F + 0.015F * static_cast<float>(step),
                                      .y = 10.0F,
@@ -403,8 +407,47 @@ TEST(ExecutedHorizonClearance3DTest, AHorizonMayNotCarrySpeedAlongAMotionNothing
   EXPECT_EQ(first_unseen(braking), braking.size());
 
   // A lidar that sees all around refuses nothing.
-  contract.forward_horizontal_half_angle_rad = 3.141592653589793;
+  contract.forward_horizontal_half_angle_rad = std::numbers::pi;
   EXPECT_EQ(first_unseen(turning), turning.size());
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheColumnUnderADescentReportsTheFloor) {
+  // A 1 m lattice three cells wide and deep and twenty tall, a true distance
+  // field to a floor at z = 2. The vehicle at 12.5 m descends: the column under
+  // it comes within 2 m of the floor eight metres down, a segment sooner by the
+  // conservative query. A climb from there meets nothing, and a vehicle with
+  // no vertical motion has no column.
+  const EsdfGrid3D tall{.width = 3,
+                        .height = 3,
+                        .resolution_m = 1.0F,
+                        .origin_x_m = 0.0F,
+                        .origin_y_m = 0.0F,
+                        .depth = 20,
+                        .origin_z_m = 0.0F,
+                        .outside_is_unknown = true};
+  std::vector<float> field(std::size_t{3U} * 3U * 20U, 0.0F);
+  for (std::size_t z = 0U; z < 20U; ++z) {
+    for (std::size_t cell = 0U; cell < 9U; ++cell) {
+      field[z * 9U + cell] = std::max(0.0F, static_cast<float>(z) + 0.5F - 2.0F);
+    }
+  }
+  const Point3 vehicle{1.5, 1.5, 12.5};
+  const ExecutedHorizonClearance3D descent = measureVerticalMotionClearance3D(
+      vehicle, -2.0, 12.0, tall, field, pointFootprint(), 2.0);
+  ASSERT_TRUE(descent.available);
+  ASSERT_TRUE(descent.constrained());
+  EXPECT_GE(descent.distanceToConstraintM(), 6.0);
+  EXPECT_LE(descent.distanceToConstraintM(), 8.0);
+  EXPECT_LT(descent.constrainedClearanceM(), 2.0);
+  EXPECT_LE(descent.constrained_samples.back().body_clearance_m,
+            descent.constrained_samples.front().body_clearance_m);
+  const ExecutedHorizonClearance3D climb = measureVerticalMotionClearance3D(
+      vehicle, 2.0, 6.0, tall, field, pointFootprint(), 2.0);
+  EXPECT_TRUE(climb.available);
+  EXPECT_FALSE(climb.constrained());
+  EXPECT_FALSE(measureVerticalMotionClearance3D(vehicle, 0.0, 6.0, tall, field,
+                                                pointFootprint(), 2.0)
+                   .available);
 }
 
 TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceStopsAtTheLookahead) {

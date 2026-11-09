@@ -416,6 +416,38 @@ TEST(MppiSpeedPolicyTest, ADescentTowardAFloorIsBrakedByTheVerticalDeceleration)
   EXPECT_LT(descent.clearance_limit_mps, level.clearance_limit_mps);
 }
 
+// A descent is bound by the column under it whatever the horizon says: the
+// floor a metre and a half under a vehicle that the horizon has levelling
+// above it (r3177).
+TEST(MppiSpeedPolicyTest, ADescentIsBoundByTheColumnUnderIt) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.stopping_capability.guaranteed_vertical_deceleration_mps2 = 1.4;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vz = -2.2F;
+  const MppiSpeedPolicyResult free_fall = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NE(free_fall.active_limiter, MppiSpeedLimiter::kClearance);
+  input.vertical_motion_clearance = ExecutedHorizonClearance3D{
+      .available = true,
+      .constrained_samples = {ConstrainedHorizonSample3D{
+          .distance_m = 1.5, .clearance_m = 0.0, .body_clearance_m = 0.0}},
+      .minimum_clearance_m = 0.0,
+  };
+  const MppiSpeedPolicyResult descent = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(descent.active_limiter, MppiSpeedLimiter::kClearance);
+  // The body stops short of the floor: v^2 = 2 a d with the vertical
+  // 1.4 m/s^2 over 1.5 m, 2.05 m/s, less for the jerk ramp.
+  EXPECT_LE(descent.clearance_limit_mps, std::sqrt(2.0 * 1.4 * 1.5) + 1.0e-6);
+  EXPECT_GT(descent.clearance_limit_mps, 0.0);
+  // A level flight over the same floor that sinks a little owes the column
+  // its vertical share alone.
+  input.state.vx = 4.0F;
+  input.state.vz = -0.05F;
+  const MppiSpeedPolicyResult level = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_GT(level.clearance_limit_mps, config.cruise_speed_mps);
+  EXPECT_NE(level.active_limiter, MppiSpeedLimiter::kClearance);
+}
+
 TEST(MppiSpeedPolicyTest,
      TheExecutedHorizonClearanceCapsTheReferenceSpeedAtTheTightPoint) {
   const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
