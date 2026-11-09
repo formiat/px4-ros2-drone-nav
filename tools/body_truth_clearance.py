@@ -1,10 +1,12 @@
-"""body_truth_clearance.py [--grid=PATH] [--map-to-sdf=X,Y,Z] RUN...: the true body's clearance to the true location
+"""body_truth_clearance.py [--grid=PATH] [--map-to-sdf=X,Y,Z] [--cruise] RUN...: the true body's clearance to the true location
 over a flight. The body is the stack's own model (cylinder radius 0.55 m, 0.23 m below and 0.35 m above its centre,
 upright), its centre the Gazebo model origin plus 0.24 m (base_link over the model's origin at its feet); the location
 is the truth voxelization: the urban 0.25 m grid (log/tools/truth25) unless `--grid=` names another (a held-out world's
 0.5 m grid of external/environment-candidates/work, in the Gazebo frame: `--map-to-sdf=` then carries the canonical
 world's map_to_sdf offset, which the recorded map-frame poses are moved by). Reported after the climb off the pad: the
-least clearance, where and when, and the seconds spent under 0.10 and 0.20 m. Evaluation only."""
+least clearance, where and when, and the seconds spent under 0.10 and 0.20 m; with `--cruise` the reading ends where
+the vehicle last comes within 3 m of its final position over the ground, so that a landing (whose clearance is zero)
+does not answer for the flight. Evaluation only."""
 import csv, sys
 from pathlib import Path
 import numpy as np
@@ -13,8 +15,11 @@ from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D
 GRID = Path('log/tools/truth25/urban_r025.occupancy3d')
 OFFSET = (0.0, 0.0, 0.0)
 RUNS = []
+CRUISE = False
 for argument in sys.argv[1:]:
-    if argument.startswith('--grid='):
+    if argument == '--cruise':
+        CRUISE = True
+    elif argument.startswith('--grid='):
         GRID = Path(argument.split('=', 1)[1])
     elif argument.startswith('--map-to-sdf='):
         OFFSET = tuple(float(v) for v in argument.split('=', 1)[1].split(','))
@@ -55,7 +60,12 @@ if __name__ == "__main__":
                 for r in csv.reader(open(f'log/runs/{run}/gz_pose.csv'))]
         z0 = rows[0][3]
         start = next(n for n, r in enumerate(rows) if r[3] > z0 + 1.0)
-        rows = rows[start::5]
+        end = len(rows)
+        if CRUISE:
+            last = rows[-1]
+            end = 1 + max((n for n, r in enumerate(rows) if np.hypot(r[1] - last[1], r[2] - last[2]) > 3.0),
+                          default=len(rows) - 1)
+        rows = rows[start:end:5]
         cl = [(clearance(x, y, z + CENTRE), t, x, y, z + CENTRE) for t, x, y, z in rows]
         dt = np.median(np.diff([c[1] for c in cl]))
         m = min(cl)
