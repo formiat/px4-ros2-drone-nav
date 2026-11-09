@@ -46,6 +46,52 @@ may remain as a secondary generation or cross-validation tool. Every artifact
 must be versioned with the environment collision geometry, source provenance,
 coordinate transform, resolution, coverage evidence, and validation result.
 
+**Measured on 2026-11-09** (the goal of 2026-11-05, part 2; the stack's commits 1432d9e0 to d3b58453, the tools'
+c02b24ff to 780e8349). The item is not complete; this is what stands and what is left.
+
+The acquisition path exists: the survey mission (item 34) with its reach repaired, then `tools/survey_map.py`, which
+persists the memory's last snapshot of the volume as a static map artifact in the stack's own format with a manifest
+(the environment and its collision geometry, the run, the commit, the frame, the resolution, the volume, the
+coverage), then `tools/survey_map_check.py`, which validates the map against the world's truth voxelization at
+0.25 m (`log/tools/truth25`; the finals and the cave worlds voxelized for it): coverage, alignment, displaced
+surfaces and raw collision (specification K67). The survey's rules as amended are K59: frontiers read in the flood's
+box and kept when they lead into the volume (the parts reached only round the outside were the 0.763 of 2026-11-04),
+a chosen cluster and the survey's end confirmed by three readings. On the way the stopping laws were made to brake
+along the motion (K68) after a descent to a vantage touched a floor (r3164).
+
+The surveys (one at a time through `tools/fly_until_valid.sh`, the bags recorded; the stereo set at a real-time
+factor of 0.5):
+
+| Environment, volume | Set | Runs | Coverage of the volume | Flown, m | Ended, home, landed | Contact |
+|---|---|---|---|---|---|---|
+| Urban, the scenario's volume (52 x 46 x 16 m) | lidar | r3166 to r3168 | 1.00, 1.00, 1.00 | 656, 665, 631 | 3 of 3 | none |
+| Urban, the scenario's volume | stereo | r3169, r3191, r3192 | 0.78, 1.00, 0.78 | 660, 1297, 666 | 3 of 3 | none |
+| Urban, the start building whole (58 x 42.5 x 18 m) | lidar | r3189 | 1.00 | 943 (553 s) | yes | none |
+| Urban, the whole location (345 x 525 x 40 m) | lidar | r3190 | not surveyed: the reading's flood budget | 0 | no goal chosen | none |
+| Finals, the staging area (30 x 60 x 12 m) | lidar | r3176, r3177 | 0.91, 0.99 | 756, 132 | no | both: the estimate's slide along a straight tunnel (r3176), a dive between vantages (r3177) |
+| Cave, the start cavern (30 x 60 x 12 m) | lidar | r3178, r3179 | 1.00, 1.00 | 1706, 1428 | r3179 (r3178 not in 1800 s) | none |
+| Cave, the start cavern | stereo | r3193, r3194 | 1.00, 1.00 | 336, 287 | 2 of 2 | none |
+
+The maps (`log/tools/wbsm/part2/maps`, each with its manifest and its check):
+
+| Map | Coverage | Alignment, median / p95, m | Displaced sheets | False flyable by the flown path | Verdict |
+|---|---|---|---|---|---|
+| Urban lidar r3168 | 1.00 | 0.00 / 0.25 | none | 0 | pass |
+| Urban stereo r3169 | 0.77 | 0.25 / 0.75 | 6 (a wall of 1200 cells laid twice, 0.75 m apart) | 0 | pass |
+| Urban stereo r3191 | 1.00 | 0.25 / 0.50 | 14 | 0 | pass |
+| Finals lidar r3177 | 0.99 | 0.00 / 0.25 | none | 0 | pass (the flight itself ended in a contact) |
+| Cave lidar r3178 | 1.00 | 0.00 / 0.25 | 1 | 0 | pass |
+| Cave stereo r3193 | 1.00 | 0.00 / 0.35 | 3 | 0 | pass |
+
+What is left, each in the register (class (b)): the flight by a map is not flown: the static mode's route
+certification refuses a static world beside an observed one (r3187, r3188; the same flight without a map, r3185,
+reached B within 0.24 m), and "the map as the route's hint, the memory as the law" is not a mode the stack has; the
+finals survey ends in a contact on the lidar set (the lidar-inertial estimate's dead reckoning along a degenerate
+axis, r3176; a descent stopped without a margin, r3177); the stereo set's survey ends at 0.78 in two flights of
+three; the survey's reading is sized for a building (the whole location is beyond its budget, long stereo surveys
+slow the simulation); the stereo set lays walls twice (the displaced sheets: item 41's measure). The finals world's
+survey on the stereo set and the flight by a map on any set were not flown.
+
 This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
@@ -1519,6 +1565,51 @@ The stages:
    bar ours is read against.
 4. **Flown.** The survey and B and back on both sets, the open sky's loop
    on the stereo set without the signal.
+
+**Stage 0 measured on 2026-11-09** (the goal of 2026-11-05, part 2; the survey flights of item 11, every one a route
+that returns to its start, their bags recorded; `tools/estimate_error.py` for the estimate the planner flew by,
+`tools/replay_variant.sh` and `tools/replay_compare.py` with the true poses for the stereo estimate replayed without
+its aids, `tools/survey_map_check.py` for what the error did to the memory).
+
+| Route | Set | Runs | Length, m | Estimate's error, p95 / at the return, m | Home by the truth, m |
+|---|---|---|---|---|---|
+| Urban survey | lidar | r3146 to r3168, eleven flights | 591 to 1124 | 0.20 to 0.82 / 0.06 to 0.63 | 0.18 to 0.76 |
+| Urban survey, the building whole | lidar | r3189 | 906 | 0.25 / 0.17 | 0.58 |
+| Cave survey | lidar | r3179 | 1354 | 0.56 / 0.13 | 0.41 |
+| Urban survey | stereo | r3169, r3191, r3192 | 565, 1173, 594 | 0.88, 0.50, 0.29 / 0.49, 0.19, 0.16 | 0.72, 1.01, 0.37 |
+| Cave survey | stereo | r3193, r3194 | 304, 250 | 0.51, 0.30 / 0.05, 0.04 | 0.36, 0.24 |
+
+The stereo estimate replayed from the bags, its own pose against the truth (p50 / p95 / at the return, m):
+
+| Run | As flown | Without item 40's registration | Without the magnetometer's prior (K60) | Without both |
+|---|---|---|---|---|
+| r3169 (Urban, 565 m) | 0.58 / 0.92 / 0.50 | 0.56 / 0.82 / 0.57 | 0.47 / 0.82 / 0.31 | 0.48 / 0.88 / 0.51 |
+| r3193 (cave, 304 m) | 0.20 / 0.50 / 0.05 | | | 0.10 / 0.37 / 0.05 |
+| r3191 (Urban, 1173 m) | 0.17 / 0.50 / 0.17 (the flight) | | | 0.42 / 2.30 / 0.88 |
+
+The registration acted on 22 scans of 544 on r3169 and on 89 of 998 on r3191, by about two centimetres each. The
+open sky's returning route on the stereo set without the satellite signal was not flown in this part (the host was
+shared with the owner's work through the day; item 39's record holds the one-way drift, 1.1 to 3.8 percent of the
+path).
+
+The verdict by the rule of the part (the error decides a mission where home is acknowledged beyond the capture
+radius of 2.0 m by the truth, or a wall seen twice lies in the memory as two layers more than 0.5 m apart):
+
+- **The lidar set: deferred by the measurement**, as item 13 deferred it. Thirteen returning flights of 591 to 1354 m
+  come home within 0.76 m by the truth, the estimate within 0.63 m, and their maps hold no displaced sheet on Urban
+  and on the finals world (one of 134 cells in the cave). What fails the lidar set on a route that returns is not a
+  drift a closure would bound but the dead reckoning along a degenerate axis (r3176: 99.5 m in a straight tunnel,
+  the register).
+- **The stereo set: the item goes on.** Home is never acknowledged beyond the radius (five flights, 0.24 to 1.01 m).
+  On the routes of 300 to 600 m neither aid is what holds the return (0.31 to 0.57 m on r3169 with either or both
+  off, 0.05 m in the cave); on the route of 1173 m the estimate without them runs 2.30 m off at p95, beyond the
+  radius on the way, and comes home 0.88 m off against the flight's 0.17 m: the registration and the prior are what
+  keeps the long route. And the memory is doubled even with them: the stereo maps hold walls laid twice (`survey_map_check.py`'s
+  displaced sheets): on r3169 a wall of 1200 cells lies a second time 0.75 m from the true one, which the map holds
+  too, with five more sheets (13 percent of the map's occupied cells farther than 0.5 m from the truth, the frame's
+  scale 1.029); on r3191 fourteen sheets (3.7 percent), one of 270 cells 0.56 to 1.06 m off its wall. A wall laid
+  twice narrows a passage by its second layer and is what the K rule of the map counts against the stereo set
+  (K67's alignment bound of 1.0 m at p95). Stage 1 (the recognition) is where the stereo set's work starts.
 
 The navigation invariants hold: a closure is a measurement, never a rule
 about a place; a wrong closure is a crash and is counted as one.

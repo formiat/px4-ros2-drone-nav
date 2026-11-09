@@ -653,6 +653,13 @@ its goal (`NavigationProgress`) and the monitor's events.
   battery's return (K32) ends the survey the same way, by the monitor alone;
   the survey stops commanding at the monitor's first result or return event.
 
+**The survey's map** (roadmap item 11, specification K67): the memory's last raw snapshot of the volume is
+persisted by `tools/survey_map.py` as a static map artifact in the stack's own format (the occupied cells, the
+observed cells beside them, a manifest with the environment's collision geometry, the run, the commit, the frame
+and the coverage) and validated against the world's truth voxelization by `tools/survey_map_check.py`
+(coverage, alignment, displaced surfaces, raw collision). The flight by such a map is not flown yet: the static
+mode's route certification refuses a static world beside an observed one (the register).
+
 Every reading and decision is a log line: `SURVEY_READING`,
 `SURVEY_FRONTIER chosen|observed|looked_at|looked_at_on_pass|looked_at_from_vantage|pass|deferred|unreachable|unroutable|left_domain`,
 `SURVEY_RISE`, `SURVEY_COMMAND sent|accepted`, `SURVEY_DONE`, `SURVEY_STOPPED`.

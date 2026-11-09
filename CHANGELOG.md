@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Maps from the survey (roadmap item 11, specification K67, K59, K68, R9): the survey reads its frontiers in the flood's
+  box and keeps those that lead into the volume, a cluster and the survey's end are confirmed by three readings; the
+  stopping laws brake along the motion (the vertical figures for a descent); `tools/survey_map.py` persists a survey's
+  memory as a static map artifact and `tools/survey_map_check.py` validates it against the truth (coverage, alignment,
+  displaced surfaces, raw collision); the cave world's survey scenario, the urban survey's larger volumes and the
+  flight inside the surveyed volume. The flight by a map and the finals survey without a contact are the register's.
+- Roadmap item 41 stage 0 measured: what the estimates come home with on routes that return, with and without the
+  stereo estimate's registration and magnetometer prior (`tools/replay_variant.sh`, `estimate_error.py`'s end figure).
 - The held-out worlds flown inside their shells (roadmap item 33, specification K55): twenty flights on one commit
   without a contact; the cave world reached on both sets, the finals world's two levels reached by the lidar set in two
   flights of five and by the stereo set in none (the planner's optimism in unknown space, I1, in the register); three

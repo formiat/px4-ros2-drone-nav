@@ -539,6 +539,11 @@ metres flown and the frontier cells and clusters left. Every goal
 acknowledged along the way is held to the truth as any goal is. The mean
 flight speed is printed as a NOTE: R3 is the flight to a goal's.
 
+The survey's map (roadmap item 11) has its own tests, `scripts/tests/test_survey_map.py`: the artifact holds
+the snapshot's occupied cells in the stack's static format, and the check against a truth grid passes a map
+true to its world, counts a wall laid twice as a displaced sheet and fails a map that misses a wall by the
+flown path (the check is the host's: SciPy).
+
 ### Localization profile
 
 `validate_localization_profile` (`scripts/headless_runtime_evidence.py`)
