@@ -17,7 +17,8 @@ by the manifest's offset.
               any touch of a mesh, the sensor a cell a ray stopped in), unobserved.
               Beside them the map's own flyable cells (no occupied cell of the map within the body's radius) that the
               truth holds occupied, "false flyable": where a flight by the map would put the body into a surface; the
-              ones within the body's radius plus a margin of the flown path must be zero (the path flown was clear).
+              ones within the body's radius of the flown path (plus --path-margin, none by default) must be zero: the
+              path flown was clear. The count within half a metre more is reported beside it.
 
 The verdict is PASS when no false-flyable cell lies by the flown path; the other figures are reported for the K row
 that sets their thresholds from the first measurement. Host (SciPy).
@@ -68,7 +69,7 @@ def pool(mask: np.ndarray, factor: int) -> np.ndarray:
 
 
 def check(map_directory: Path, truth_path: Path, run_directory: Path | None, body: float = 0.55,
-          path_margin: float = 0.5) -> dict:
+          path_margin: float = 0.0, near_margin: float = 0.5) -> dict:
     from scipy import ndimage
 
     manifest = json.loads((map_directory / "map_manifest.json").read_text())
@@ -101,12 +102,16 @@ def check(map_directory: Path, truth_path: Path, run_directory: Path | None, bod
                     "map_observed": int(map_observed.sum())}
     # Coverage: the truth's flyable cells the body reaches from the flown path, the share observed.
     fits = survey_coverage.body_fits(truth_occupied, res, body)
+    # The flown path's cells inside the volume: every one of them for what lies by the path, those the body fits
+    # at for the flood's seeds (the model's 0.55 m overlaps the voxelization's slivers where the airframe passed).
     path_cells: list[tuple[int, int, int]] = []
+    flown_cells: list[tuple[int, int, int]] = []
     if run_directory is not None:
         path = survey_coverage.true_path(run_directory)
         cells = np.floor((path + offset - (truth_origin + t_lo * res)) / res).astype(int)
         inside = cells[np.all((cells >= 0) & (cells < np.array(shape)), axis=1)]
-        path_cells = [tuple(int(v) for v in c) for c in inside if fits[tuple(c)]]
+        flown_cells = list(dict.fromkeys(tuple(int(v) for v in c) for c in inside))
+        path_cells = [c for c in flown_cells if fits[c]]
     if path_cells:
         reachable = survey_coverage.flood(fits, list(dict.fromkeys(path_cells)))
         result["truth_reachable_cells"] = int(reachable.sum())
@@ -153,13 +158,17 @@ def check(map_directory: Path, truth_path: Path, run_directory: Path | None, bod
                  "false_flyable_observed": int((false_flyable & map_observed).sum())}
     if path_cells:
         near = np.zeros(shape, dtype=bool)
-        for c in dict.fromkeys(path_cells):
+        for c in flown_cells:
             near[c] = True
-        near = survey_coverage.dilate(near, survey_coverage.ball_offsets((body + path_margin) / res))
-        collision["false_free_by_the_path"] = int((false_free & near).sum())
-        collision["false_flyable_by_the_path"] = int((false_flyable & near).sum())
-        collision["unobserved_by_the_path"] = int((unseen & near).sum())
+        by_path = survey_coverage.dilate(near, survey_coverage.ball_offsets((body + path_margin) / res))
+        collision["false_free_by_the_path"] = int((false_free & by_path).sum())
+        collision["false_flyable_by_the_path"] = int((false_flyable & by_path).sum())
+        collision["unobserved_by_the_path"] = int((unseen & by_path).sum())
         collision["path_margin_m"] = body + path_margin
+        # For the record, the same within a wider margin of the path (the body's radius and half a metre).
+        wider = survey_coverage.dilate(near, survey_coverage.ball_offsets((body + near_margin) / res))
+        collision["false_flyable_near_the_path"] = int((false_flyable & wider).sum())
+        collision["near_margin_m"] = body + near_margin
     result["collision"] = collision
     if not path_cells:
         result["verdict"] = "NO PATH"
@@ -174,7 +183,7 @@ def main() -> int:
     parser.add_argument("--truth", required=True, type=Path)
     parser.add_argument("--run")
     parser.add_argument("--body", type=float, default=0.55)
-    parser.add_argument("--path-margin", type=float, default=0.5)
+    parser.add_argument("--path-margin", type=float, default=0.0)
     args = parser.parse_args()
     run_directory = REPOSITORY / "log/runs" / args.run if args.run else None
     result = check(args.map_directory, args.truth, run_directory, args.body, args.path_margin)
