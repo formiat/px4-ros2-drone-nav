@@ -1,0 +1,77 @@
+{
+  "schema": "drone_city_nav_point_to_point_scenario_v2",
+  "canonical_world": "../worlds/urban_circuit_practice_01.world3d.json",
+  "vehicle": {
+    "px4_model_target": "gz_x500_lidar_3d",
+    "gazebo_model_name": "x500_lidar_3d_0",
+    "map_start_m": [
+      0.749319792,
+      21.246976852,
+      7.74
+    ],
+    "yaw_rad": 2.4116276060443145
+  },
+  "mission_goal_sequence_m": [
+    [
+      -26.25,
+      12.75,
+      3.75
+    ]
+  ],
+  "inside": {
+    "tool": "tools/scenario_inside.py",
+    "grid": "external/environment-candidates/work/urban_practice_01_r050.occupancy3d",
+    "grid_sha256": "1070340f663c2462ea1b17ffc75c74f22153b9792b7b7c15ca12c1df29225fbb",
+    "rays": 128,
+    "reach_m": 40.0,
+    "enclosed_share": 0.9,
+    "world": {
+      "parts": 34,
+      "anchors_free": 34,
+      "anchors_in_the_tiles_component": 30,
+      "tiles_component_voxels": 22953642,
+      "void_voxels": 22953642,
+      "sealed_from_the_grids_faces": false
+    },
+    "points": [
+      {
+        "name": "start",
+        "map_m": [
+          0.749,
+          21.247,
+          9.74
+        ],
+        "rays_meeting_a_surface": 1.0,
+        "in_the_tiles_component": true,
+        "joined_to_the_grids_faces": true,
+        "floor_under_m": 2.0,
+        "ceiling_over_m": 7.5,
+        "passed": {
+          "rays": true,
+          "tiles": true,
+          "shells": true,
+          "floor": true
+        }
+      },
+      {
+        "name": "goal 1",
+        "map_m": [
+          -26.25,
+          12.75,
+          3.75
+        ],
+        "rays_meeting_a_surface": 1.0,
+        "in_the_tiles_component": true,
+        "joined_to_the_grids_faces": true,
+        "floor_under_m": 2.5,
+        "ceiling_over_m": 2.5,
+        "passed": {
+          "rays": true,
+          "tiles": true,
+          "shells": true,
+          "floor": true
+        }
+      }
+    ]
+  }
+}
