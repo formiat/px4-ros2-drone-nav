@@ -4967,7 +4967,11 @@ lidar sets at a real-time factor of 1.0, the cave cameras at 0.8, the finals cam
 worlds' own 0.5 m grids (`tools/body_truth_clearance.py --grid --map-to-sdf`), which mark a voxel occupied at any touch
 of a surface, so the least clearance reads 0.00 m on every flight without a contact and the column carries the seconds
 the body spent within 0.5 m of a surface instead; a 0.25 m voxelization of the two worlds (as the urban one in
-`log/tools/truth25`) is the register's.
+`log/tools/truth25`) was made after the series (`final_event_07_r025`, `cave_practice_01_r025`), and against it
+the body model's least clearance in cruise (`tools/body_truth_clearance.py --cruise`) reads 0.00 to 0.05 m on the
+finals world (0.8 to 16.1 s under 0.10 m) and 0.00 to 0.13 m in the cave (0.0 to 3.1 s under 0.10 m): the 0.55 m
+model against cells occupied at any touch of a mesh, no contact in Gazebo
+(`log/tools/wbsm/part2a/truth_clearance_r025.txt`).
 
 | World | Set | Run | R1, truth at B | R2 | Speed, m/s | Path / grid route, m | Within 0.5 m of a surface, s | Read to |
 |---|---|---|---|---|---|---|---|---|
