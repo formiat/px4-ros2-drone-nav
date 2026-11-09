@@ -755,8 +755,36 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
     }
     return false;
   };
+  // A surface the memory holds, for a free ray that ends at one: a measured
+  // occupancy outside the moving layer with another beside it (a surface has
+  // extent; a lone voxel is a return's noise, and the dark is not a surface).
+  const auto measuredOccupancy = [this](const GridIndex3D cell) {
+    return grid_.contains(cell) && grid_.isOccupied(cell) &&
+           !grid_.isUnobservable(cell) && !heldMoving(cell);
+  };
+  const auto heldSurface = [&](const GridIndex3D cell) {
+    if (!measuredOccupancy(cell)) {
+      return false;
+    }
+    for (int dz = -1; dz <= 1; ++dz) {
+      for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((dx != 0 || dy != 0 || dz != 0) &&
+              measuredOccupancy({cell.x + dx, cell.y + dy, cell.z + dz})) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+  bool behind_surface{false};
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
+      if (behind_surface) {
+        return;
+      }
+      behind_surface = config_.free_rays_end_at_surfaces && heldSurface(cell);
       // A voxel the layer holds is kept from the grazing rays as any surface
       // is (r3061: wall voxels the layer had taken were carved away by the
       // rays along the wall, and the vehicle met the wall at 4 m/s); a body's

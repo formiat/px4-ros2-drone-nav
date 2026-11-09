@@ -122,6 +122,46 @@ TEST(ObstacleMemory3D, AnEarlierFlightsMapIsTheFirstContentAndTheScansDecide) {
   EXPECT_EQ(memory.grid().state({0, 6, 0}), ObservedVoxelState::kFree);
 }
 
+TEST(ObstacleMemory3D, AFreeRayEndsAtASurfaceTheMemoryHolds) {
+  // A wall two voxels wide at x = 8, seen twice; then a return from behind it
+  // along the same line, as a matcher's outlier gives one. With the rule the
+  // wall's voxel takes the miss and keeps its state, and the voxels behind the
+  // wall stay unknown; without it the ray carves them free.
+  for (const bool rule : {true, false}) {
+    ObstacleMemory3D memory{kBounds,
+                            ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                   .minimum_range_m = 0.1,
+                                                   .free_rays_end_at_surfaces = rule}};
+    const std::array wall{LidarBeam3D{.direction_map = {8.0, 0.0, 0.0},
+                                      .range_m = 8.0,
+                                      .hit = true,
+                                      .valid = true},
+                          LidarBeam3D{.direction_map = {8.0, 1.0, 0.0},
+                                      .range_m = std::hypot(8.0, 1.0),
+                                      .hit = true,
+                                      .valid = true}};
+    for (int scan = 1; scan <= 2; ++scan) {
+      static_cast<void>(memory.integrateScan(
+          LidarScan3DView{.origin_map = {0.5, 0.5, 0.5},
+                          .beams = wall,
+                          .acquisition_stamp_ns = scan * 100'000'000LL}));
+    }
+    ASSERT_TRUE(memory.grid().isOccupied({8, 0, 0}));
+    ASSERT_TRUE(memory.grid().isOccupied({8, 1, 0}));
+    const std::array outlier{LidarBeam3D{
+        .direction_map = {1.0, 0.0, 0.0}, .range_m = 12.0, .hit = true, .valid = true}};
+    static_cast<void>(
+        memory.integrateScan(LidarScan3DView{.origin_map = {0.5, 0.5, 0.5},
+                                             .beams = outlier,
+                                             .acquisition_stamp_ns = 300'000'000LL}));
+    EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0})) << rule;
+    EXPECT_TRUE(memory.grid().isKnownFree({4, 0, 0})) << rule;
+    EXPECT_EQ(memory.grid().state({10, 0, 0}),
+              rule ? ObservedVoxelState::kUnknown : ObservedVoxelState::kFree)
+        << rule;
+  }
+}
+
 TEST(ObstacleMemory3D, DarknessIsUnobservableUntilAMeasuredReturnHitsIt) {
   // Specification K14: the dark a sensor looked into is occupied without a
   // measured hit, told apart from a surface for RViz; a measured return

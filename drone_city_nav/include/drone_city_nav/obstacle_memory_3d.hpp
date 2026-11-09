@@ -80,6 +80,14 @@ struct ObstacleMemory3DConfig {
   double moving_reach_m{0.5};
   double moving_match_m{1.0};
   std::size_t moving_least_voxels{4U};
+  // A free ray ends at a surface the memory holds: the voxel it crosses there
+  // takes the ray's miss, so a surface that is gone is still freed by what
+  // sees through it, and the voxels behind it take nothing. For a sensor
+  // whose range errs by voxels (the stereo pair: a matcher's outlier puts a
+  // return metres behind the surface it saw): the pair's rays carved free
+  // voxels under a floor it held occupied, over half its area 0.6 m down and
+  // to 1.4 m (r3212), and the survey's frontier was the sheet of them.
+  bool free_rays_end_at_surfaces{false};
 };
 
 // An occupancy confirmed this often at most is young: a second of a sensor's

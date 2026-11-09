@@ -93,6 +93,10 @@ VISION_MEMORY_OVERRIDES = {
     # The returns arrive at the left camera (config/sensor_extrinsics.yaml).
     **vision_memory_parameters(EXTRINSICS),
     "hit_weight": 2,
+    # The pair's range errs by voxels: its free rays end at a surface the
+    # memory holds (r3212: free voxels carved under a floor held occupied, the
+    # survey's frontier a sheet of them).
+    "free_rays_end_at_surfaces": True,
 }
 
 
