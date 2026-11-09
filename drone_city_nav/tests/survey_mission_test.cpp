@@ -536,6 +536,40 @@ TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
 
 // Frontiers left with no vantage end the survey only when three complete readings
 // in a row say so; no frontier at all ends it at once.
+TEST(SurveyMissionTest, AFrontierWiderThanTheSensorsReachIsLookedAtInParts) {
+  // A hall of 23.5 x 7.5 x 3.5 m observed whole but for its north wall: a
+  // sheet of frontier along the whole of it, one cluster. A screen stands
+  // half a metre before the sheet's middle six metres, and the cell nearest
+  // the cluster's centroid lies behind it, seen from no open place (r3169:
+  // one cluster through the whole hall, its one vantage saw nothing). The
+  // sheet is read by the cube of the sensor's reach, and its ends are seen.
+  ObservedOccupancyGrid3D grid{GridBounds3D{.origin_x = 0.0,
+                                            .origin_y = 0.0,
+                                            .origin_z = 0.0,
+                                            .resolution_m = kResolution,
+                                            .width_cells = 112,
+                                            .height_cells = 48,
+                                            .depth_cells = 24}};
+  for (int z = 4; z < 20; ++z) {
+    for (int y = 8; y < 39; ++y) {
+      for (int x = 8; x < 104; ++x) {
+        const bool wall = x == 8 || x == 103 || y == 8 || z == 4 || z == 19;
+        const bool screen = y == 36 && x >= 44 && x < 68;
+        grid.setState(GridIndex3D{x, y, z}, wall || screen
+                                                ? ObservedVoxelState::kOccupied
+                                                : ObservedVoxelState::kFree);
+      }
+    }
+  }
+  SurveyConfig hall = config();
+  hall.volume_maximum = Point3{28.0, 12.0, 6.0};
+  const SurveyReading reading = readSurvey(grid, Point3{6.0, 5.0, 3.0}, hall, {}, {});
+  ASSERT_TRUE(reading.complete());
+  EXPECT_EQ(reading.clusters, 4U);
+  EXPECT_GE(reading.frontiers.size(), 2U);
+  EXPECT_LE(reading.clusters_without_vantage, 2U);
+}
+
 TEST(SurveyMissionTest, FrontiersWithoutAVantageEndTheSurveyOnTheThirdReadingInARow) {
   SurveyMission mission{config()};
   mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(room(false)));

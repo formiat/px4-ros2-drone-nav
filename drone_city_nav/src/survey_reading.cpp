@@ -467,9 +467,15 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
   return cells;
 }
 
-// The 26-connected clusters of the frontier cells.
+// The 26-connected clusters of the frontier cells. A cluster wider than the
+// sensor's reach is not one place to look at: it is divided by the reach's
+// cube on the grid's own lattice, each part with its own vantage (r3169: what
+// the stereo set had left was one cluster of 32 thousand cells through the
+// whole hall, the free cells over a floor it had not seen joined to the
+// stairwell's; the one vantage by its centroid saw nothing of it and the
+// survey ended at 0.78 of the volume, the lower level never looked into).
 [[nodiscard]] std::vector<std::vector<GridIndex3D>>
-clustersOf(const std::vector<GridIndex3D>& cells) {
+clustersOf(const std::vector<GridIndex3D>& cells, const int reach_cells) {
   std::unordered_map<GridIndex3D, std::size_t, GridIndex3DHash, GridIndex3DEqual> index;
   index.reserve(cells.size());
   for (std::size_t i = 0U; i < cells.size(); ++i) {
@@ -513,7 +519,29 @@ clustersOf(const std::vector<GridIndex3D>& cells) {
   std::vector<std::vector<GridIndex3D>> result;
   result.reserve(groups.size());
   for (auto& [root, members] : groups) {
-    result.push_back(std::move(members));
+    GridIndex3D low = members.front();
+    GridIndex3D high = low;
+    for (const GridIndex3D cell : members) {
+      low = GridIndex3D{std::min(low.x, cell.x), std::min(low.y, cell.y),
+                        std::min(low.z, cell.z)};
+      high = GridIndex3D{std::max(high.x, cell.x), std::max(high.y, cell.y),
+                         std::max(high.z, cell.z)};
+    }
+    if (std::max({high.x - low.x, high.y - low.y, high.z - low.z}) < reach_cells) {
+      result.push_back(std::move(members));
+      continue;
+    }
+    std::unordered_map<GridIndex3D, std::vector<GridIndex3D>, GridIndex3DHash,
+                       GridIndex3DEqual>
+        parts;
+    for (const GridIndex3D cell : members) {
+      parts[GridIndex3D{cell.x / reach_cells, cell.y / reach_cells,
+                        cell.z / reach_cells}]
+          .push_back(cell);
+    }
+    for (auto& [cube, part] : parts) {
+      result.push_back(std::move(part));
+    }
   }
   return result;
 }
@@ -581,7 +609,9 @@ SurveyReading readSurvey(const ObservedOccupancyGrid3D& grid, const Point3& vehi
   reading.frontier_set.insert(cells.begin(), cells.end());
   flood(lattice, vehicle, reading);
   const double resolution = grid.bounds().resolution_m;
-  for (std::vector<GridIndex3D>& members : clustersOf(cells)) {
+  const int reach_cells =
+      std::max(1, static_cast<int>(std::ceil(config.sensor_reach_m / resolution)));
+  for (std::vector<GridIndex3D>& members : clustersOf(cells, reach_cells)) {
     if (members.size() < config.cluster_minimum_cells) {
       continue;
     }
