@@ -49,7 +49,8 @@ public:
                          const ObstacleMemory3DConfig& memory_config,
                          double minimum_mapping_altitude_m, std::string frame_id,
                          bool gazebo_aligned_rviz_axes_swapped,
-                         std::size_t scan_queue_capacity = 8U);
+                         std::size_t scan_queue_capacity = 8U,
+                         const OccupancyGrid3D* prior = nullptr);
   ~ObstacleMemory3DWorker();
 
   ObstacleMemory3DWorker(const ObstacleMemory3DWorker&) = delete;

@@ -107,24 +107,21 @@ sim-urban-point-to-point-headless: build
 		./scripts/run_drone_nav_sim.sh
 
 # Roadmap item 11: the point-to-point flight inside the urban survey's volume (the goal at
-# the west corridor's low end), by a survey map when STATIC_OCCUPANCY_3D_PATH names one (a
-# survey map artifact's occupancy.occupancy3d, tools/survey_map.py) and without it
-# otherwise. The map is the route's hint; the obstacle memory and the sensors remain the
-# law (I2), so the memory stays on.
+# the west corridor's low end), by a survey map when MEMORY_PRIOR_OCCUPANCY_3D_PATH names
+# one (a survey map artifact's occupancy.occupancy3d, tools/survey_map.py) and without it
+# otherwise. The map is the obstacle memory's first content; the memory and the sensors
+# remain the law (I2): what the flight sees confirms a cell of the map or frees it.
 IN_VOLUME_SCENARIO_PATH := drone_city_nav/config/urban_circuit_practice_01_point_to_point_in_volume_scenario.json
 .PHONY: sim-urban-point-to-point-in-volume-headless
 sim-urban-point-to-point-in-volume-headless: build
 	python3 scripts/prepare_environment_simulation.py \
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario $(IN_VOLUME_SCENARIO_PATH)
-	survey_map="$${STATIC_OCCUPANCY_3D_PATH:-}"; \
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
 		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=$(IN_VOLUME_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
-		ENABLE_STATIC_MAP="$$([ -n "$$survey_map" ] && echo true || echo false)" \
-		STATIC_OCCUPANCY_3D_PATH="$$survey_map" \
-		ENABLE_OBSTACLE_MEMORY=true LIDAR_PROFILE=3d \
+		ENABLE_STATIC_MAP=false ENABLE_OBSTACLE_MEMORY=true LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(SURVEY_VOLUME_M)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \

@@ -242,10 +242,20 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           declare_parameter<std::int64_t>("lidar_memory_scan_queue_capacity", 8), 1,
           128));
+  // The map of an earlier flight the memory starts from (roadmap item 11);
+  // empty for a memory that starts empty.
+  const std::string prior_occupancy_3d_path =
+      declare_parameter<std::string>("prior_occupancy_3d_path", "");
   if (persistent_memory_enabled_) {
+    const std::optional<OccupancyGrid3D> prior =
+        prior_occupancy_3d_path.empty()
+            ? std::nullopt
+            : std::optional<OccupancyGrid3D>{
+                  OccupancyGrid3D::load(prior_occupancy_3d_path)};
     memory_worker_ = std::make_unique<ObstacleMemory3DWorker>(
         *this, bounds_, memory_config, min_mapping_altitude_m_, frame_id_,
-        gazebo_aligned_rviz_axes_swapped_, memory_scan_queue_capacity);
+        gazebo_aligned_rviz_axes_swapped_, memory_scan_queue_capacity,
+        prior.has_value() ? std::addressof(*prior) : nullptr);
   }
 
   projection_config_.max_lidar_range_m = scan_config_.maximum_range_m;

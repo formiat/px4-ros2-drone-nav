@@ -84,6 +84,44 @@ TEST(ObstacleMemory3D, SurfaceOnlyBeamMarksItsEndpointWithoutCarvingFreeSpace) {
   EXPECT_EQ(memory.grid().state({0, 0, 0}), ObservedVoxelState::kUnknown);
 }
 
+TEST(ObstacleMemory3D, AnEarlierFlightsMapIsTheFirstContentAndTheScansDecide) {
+  // Roadmap item 11: a map of two cells laid into an empty memory. Both are
+  // occupied before any scan; a ray that stops in the first confirms it, and
+  // the free rays of four scans through the second free it: what the vehicle
+  // sees decides where the map and the world differ.
+  OccupancyGrid3D prior{kBounds};
+  prior.setOccupied({8, 0, 0});
+  prior.setOccupied({0, 6, 0});
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::uint64_t empty_revision = memory.revision();
+  EXPECT_EQ(memory.seed(prior), 2U);
+  EXPECT_GT(memory.revision(), empty_revision);
+  EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0}));
+  EXPECT_TRUE(memory.grid().isOccupied({0, 6, 0}));
+  EXPECT_TRUE(memory.takeChanges().full_reset);
+  // Laid twice, nothing more is laid: the cells are no longer unknown.
+  EXPECT_EQ(memory.seed(prior), 0U);
+  const std::array beams{
+      LidarBeam3D{
+          .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true},
+      LidarBeam3D{.direction_map = {0.0, 1.0, 0.0},
+                  .range_m = 12.0,
+                  .hit = true,
+                  .valid = true}};
+  for (int scan = 1; scan <= 4; ++scan) {
+    static_cast<void>(memory.integrateScan(
+        LidarScan3DView{.origin_map = {0.5, 0.5, 0.5},
+                        .beams = beams,
+                        .acquisition_stamp_ns = scan * 100'000'000LL}));
+    EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0})) << "scan " << scan;
+    if (scan < 4) {
+      EXPECT_TRUE(memory.grid().isOccupied({0, 6, 0})) << "scan " << scan;
+    }
+  }
+  EXPECT_EQ(memory.grid().state({0, 6, 0}), ObservedVoxelState::kFree);
+}
+
 TEST(ObstacleMemory3D, DarknessIsUnobservableUntilAMeasuredReturnHitsIt) {
   // Specification K14: the dark a sensor looked into is occupied without a
   // measured hit, told apart from a surface for RViz; a measured return

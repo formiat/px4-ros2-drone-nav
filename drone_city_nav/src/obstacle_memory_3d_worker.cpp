@@ -17,7 +17,8 @@ ObstacleMemory3DWorker::ObstacleMemory3DWorker(
     rclcpp::Node& node, const GridBounds3D& bounds,
     const ObstacleMemory3DConfig& memory_config,
     const double minimum_mapping_altitude_m, std::string frame_id,
-    const bool gazebo_aligned_rviz_axes_swapped, const std::size_t scan_queue_capacity)
+    const bool gazebo_aligned_rviz_axes_swapped, const std::size_t scan_queue_capacity,
+    const OccupancyGrid3D* const prior)
     : node_{node},
       memory_{bounds, memory_config},
       mapping_lifecycle_{minimum_mapping_altitude_m},
@@ -27,8 +28,15 @@ ObstacleMemory3DWorker::ObstacleMemory3DWorker(
               "moving_body_evidence_topic", "/drone_city_nav/moving_body_evidence_3d"),
           rclcpp::SensorDataQoS{})},
       frame_id_{std::move(frame_id)},
-      mailbox_{scan_queue_capacity},
-      worker_{[this](const std::stop_token token) { workerLoop(token); }} {
+      mailbox_{scan_queue_capacity} {
+  // An earlier flight's map is the memory's first content (roadmap item 11),
+  // laid before the first scan is integrated.
+  if (prior != nullptr) {
+    RCLCPP_INFO(node_.get_logger(),
+                "OBSTACLE_MEMORY_PRIOR occupied_voxels=%zu laid_voxels=%zu",
+                prior->occupiedVoxelCount(), memory_.seed(*prior));
+  }
+  worker_ = std::jthread{[this](const std::stop_token token) { workerLoop(token); }};
 }
 
 ObstacleMemory3DWorker::~ObstacleMemory3DWorker() {

@@ -241,6 +241,14 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             description="Enable route release after a perceived stall.",
         ),
         DeclareLaunchArgument(
+            "memory_prior_occupancy_3d_path",
+            default_value="",
+            description=(
+                "Optional occupancy3d map of an earlier flight the obstacle memory "
+                "starts from (roadmap item 11). Leave empty for an empty memory."
+            ),
+        ),
+        DeclareLaunchArgument(
             "static_occupancy_3d_path",
             default_value="",
             description=(

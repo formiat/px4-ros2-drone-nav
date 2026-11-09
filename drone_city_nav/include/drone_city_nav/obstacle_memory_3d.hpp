@@ -131,6 +131,13 @@ public:
   ObstacleMemory3D(const GridBounds3D& bounds, ObstacleMemory3DConfig config = {});
 
   [[nodiscard]] ObstacleMemory3DStats integrateScan(const LidarScan3DView& scan);
+  // Lays an earlier flight's map into the memory as its first content
+  // (roadmap item 11): every occupied cell of the map that the memory holds
+  // unknown becomes an ordinary occupancy at the occupied threshold, old
+  // enough to be a surface and not a body. The scans then decide by the
+  // memory's own law: a hit confirms the cell, the free rays of four scans
+  // through it free it. Returns the cells laid.
+  std::size_t seed(const OccupancyGrid3D& prior);
   [[nodiscard]] std::size_t
   forgetDynamicVolumes(std::span<const DynamicAgentLidarVolume> volumes);
   void reset();

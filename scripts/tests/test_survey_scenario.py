@@ -190,6 +190,29 @@ class SurveyScenarioTest(unittest.TestCase):
         self.assertIn("RAW_SNAPSHOT_BOUNDS_M SURVEY_COVERAGE_MINIMUM",
                       (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8"))
 
+    def test_a_survey_map_is_the_memorys_first_content(self) -> None:
+        # Roadmap item 11: the flight by a survey's map is an ordinary no-static flight whose obstacle memory
+        # starts from the map (MEMORY_PRIOR_OCCUPANCY_3D_PATH), through the container, the manifest and the launch.
+        self.assertIn("  MEMORY_PRIOR_OCCUPANCY_3D_PATH\n",
+                      (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
+        self.assertIn("    MEMORY_PRIOR_OCCUPANCY_3D_PATH \\\n",
+                      (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8"))
+        runner = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn('memory_prior_occupancy_3d_path:="${memory_prior_occupancy_3d_path}"', runner)
+        self.assertIn("The memory's prior map was not found", runner)
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('{"prior_occupancy_3d_path": memory_prior_path}', launch)
+        self.assertIn('"memory_prior_occupancy_3d_path"',
+                      (REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8"))
+        self.assertIn('declare_parameter<std::string>("prior_occupancy_3d_path", "")',
+                      (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8"))
+        makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
+        target = makefile[makefile.index("sim-urban-point-to-point-in-volume-headless: build"):]
+        target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
+        self.assertIn("--runtime-map-mode no-static", target)
+        self.assertIn("ENABLE_STATIC_MAP=false", target)
+        self.assertNotIn("STATIC_OCCUPANCY_3D_PATH", target)
+
     def test_the_coverage_of_a_room_read_from_the_records(self) -> None:
         # A 16 x 12 x 6 m box at 0.25 m: a room of 8 x 8 x 4 m observed whole with a door in the east wall;
         # the truth at 0.5 m holds the same walls; the path crosses the room.

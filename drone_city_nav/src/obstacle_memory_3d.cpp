@@ -400,6 +400,52 @@ std::size_t ObstacleMemory3D::forgetDynamicVolumes(
   return forgotten_voxels;
 }
 
+std::size_t ObstacleMemory3D::seed(const OccupancyGrid3D& prior) {
+  const GridBounds3D& bounds = prior.bounds();
+  const int chunk = OccupancyGrid3D::kChunkSize;
+  std::size_t laid{0U};
+  for (int chunk_z = 0; chunk_z * chunk < bounds.depth_cells; ++chunk_z) {
+    for (int chunk_y = 0; chunk_y * chunk < bounds.height_cells; ++chunk_y) {
+      for (int chunk_x = 0; chunk_x * chunk < bounds.width_cells; ++chunk_x) {
+        const OccupancyChunkIndex3D prior_chunk{chunk_x, chunk_y, chunk_z};
+        const OccupancyGrid3D::Chunk* const words = prior.findChunk(prior_chunk);
+        if (words == nullptr) {
+          continue;
+        }
+        for (std::size_t word_index = 0U; word_index < words->size(); ++word_index) {
+          std::uint64_t remaining = words->at(word_index);
+          while (remaining != 0U) {
+            const std::size_t bit_offset =
+                static_cast<std::size_t>(std::countr_zero(remaining));
+            remaining &= remaining - 1U;
+            // The map's cell by its centre: the two lattices need not share
+            // an origin.
+            const std::optional<GridIndex3D> cell = grid_.worldToCell(prior.cellCenter(
+                cellFromChunkBit(prior_chunk, word_index * 64U + bit_offset)));
+            if (!cell.has_value() ||
+                grid_.state(*cell) != ObservedVoxelState::kUnknown) {
+              continue;
+            }
+            const OccupancyChunkIndex3D chunk_index =
+                ObservedOccupancyGrid3D::chunkIndex(*cell);
+            EvidenceChunk& evidence = evidence_[chunk_index];
+            const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(*cell);
+            evidence.scores.at(bit_index) = static_cast<double>(config_.occupied_score);
+            evidence.confirmations.at(bit_index) = kYoungConfirmations + 1U;
+            static_cast<void>(grid_.setState(*cell, ObservedVoxelState::kOccupied));
+            dirty_chunks_[chunk_index] = true;
+            ++laid;
+          }
+        }
+      }
+    }
+  }
+  if (laid > 0U) {
+    ++revision_;
+  }
+  return laid;
+}
+
 void ObstacleMemory3D::reset() {
   grid_.clear();
   evidence_.clear();

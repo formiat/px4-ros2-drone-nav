@@ -167,6 +167,9 @@ def generate_launch_description():
         "route_stall_recovery_enabled"
     )
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
+    memory_prior_occupancy_3d_path = LaunchConfiguration(
+        "memory_prior_occupancy_3d_path"
+    )
     static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
     static_free_space_topology_3d_path = LaunchConfiguration(
         "static_free_space_topology_3d_path"
@@ -393,6 +396,13 @@ def generate_launch_description():
         obstacle_memory_parameters = [params_file.perform(context), LIDAR_PARAMETERS]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
+        # An earlier flight's map as the memory's first content (roadmap item
+        # 11): the navigation memory's alone, not the vision shadow's.
+        memory_prior_path = memory_prior_occupancy_3d_path.perform(context).strip()
+        if memory_prior_path:
+            obstacle_memory_parameters.append(
+                {"prior_occupancy_3d_path": memory_prior_path}
+            )
         production_mppi_parameters = [
             params_file.perform(context),
             {

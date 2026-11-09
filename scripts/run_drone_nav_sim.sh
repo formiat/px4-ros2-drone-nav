@@ -384,6 +384,17 @@ static_occupancy_3d_path_override=""
 if [[ -n "${STATIC_OCCUPANCY_3D_PATH:-}" ]]; then
   static_occupancy_3d_path_override="$(make_abs_path "${STATIC_OCCUPANCY_3D_PATH}")"
 fi
+# Roadmap item 11: the map of an earlier flight the obstacle memory starts
+# from (a survey's artifact, tools/survey_map.py); the flight is an ordinary
+# no-static one, and the memory stays the law.
+memory_prior_occupancy_3d_path=""
+if [[ -n "${MEMORY_PRIOR_OCCUPANCY_3D_PATH:-}" ]]; then
+  memory_prior_occupancy_3d_path="$(make_abs_path "${MEMORY_PRIOR_OCCUPANCY_3D_PATH}")"
+  if [[ ! -f "${memory_prior_occupancy_3d_path}" ]]; then
+    echo "The memory's prior map was not found: ${memory_prior_occupancy_3d_path}" >&2
+    exit 1
+  fi
+fi
 static_esdf_3d_cache_path_override=""
 if [[ -n "${STATIC_ESDF_3D_CACHE_PATH:-}" ]]; then
   static_esdf_3d_cache_path_override="$(make_abs_path "${STATIC_ESDF_3D_CACHE_PATH}")"
@@ -866,6 +877,11 @@ fi
 if [[ -n "${static_occupancy_3d_path_override}" ]]; then
   ros_launch_args+=(
     static_occupancy_3d_path:="${static_occupancy_3d_path_override}"
+  )
+fi
+if [[ -n "${memory_prior_occupancy_3d_path}" ]]; then
+  ros_launch_args+=(
+    memory_prior_occupancy_3d_path:="${memory_prior_occupancy_3d_path}"
   )
 fi
 if [[ -n "${static_esdf_3d_cache_path_override}" ]]; then
