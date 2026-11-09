@@ -81,6 +81,14 @@ struct LidarInertialOdometryConfig {
   std::size_t minimum_matched_points{200U};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.01};
+  // How long the IMU may carry a degenerate axis, scan after scan, before
+  // the estimate is no longer healthy. Nothing corrects the accelerometer's
+  // bias along such an axis, and the velocity there runs away with it: in a
+  // straight tunnel the estimate was 17 m off after 13 s and 99.5 m off
+  // after 43 s, healthy throughout, and the vehicle flew on it into the
+  // tunnel's end (r3176). The point-to-point flights of the same world carry
+  // runs of 4 to 9 s, the estimate within 1.4 m.
+  double maximum_degenerate_dead_reckoning_s{10.0};
   // An observed axis whose registered position lies farther from the prior
   // than this many standard deviations of the prior and the measurement
   // together is no measurement for that scan either.

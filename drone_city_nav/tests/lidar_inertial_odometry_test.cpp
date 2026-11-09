@@ -330,7 +330,8 @@ TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
 // A flight along a bare corridor: two seconds of constant acceleration,
 // then cruise. The IMU samples every 10 ms, `imu_offset_ns` before the
 // scans' own stamps.
-void flyTheCorridor(const std::int64_t imu_offset_ns) {
+void flyTheCorridor(const std::int64_t imu_offset_ns,
+                    const double dead_reckoning_bound_s = 60.0) {
   std::vector<Eigen::Vector3d> corridor;
   for (int i = -160; i <= 160; ++i) {
     const double x = 0.25 * i;
@@ -345,7 +346,11 @@ void flyTheCorridor(const std::int64_t imu_offset_ns) {
       corridor.emplace_back(x, y, -4.0);
     }
   }
-  LidarInertialOdometry odometry{testConfig()};
+  // The corridor's fifteen seconds measure the IMU's carrying of the axis;
+  // the bound on it has its own test.
+  LidarInertialOdometryConfig config = testConfig();
+  config.maximum_degenerate_dead_reckoning_s = dead_reckoning_bound_s;
+  LidarInertialOdometry odometry{config};
   const Eigen::Vector3d start{-30.0, 0.0, -2.0};
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
@@ -356,6 +361,8 @@ void flyTheCorridor(const std::int64_t imu_offset_ns) {
   const std::int64_t first_scan = kSecond;
   LidarInertialEstimate estimate;
   std::size_t degenerate_scans = 0U;
+  std::size_t unhealthy_scans = 0U;
+  std::int64_t run_start = -1;
   for (int k = 0; k <= 150; ++k) {
     const std::int64_t stamp = first_scan + k * kSecond / 10;
     const double seconds = 1.0e-9 * static_cast<double>(stamp - first_scan);
@@ -379,9 +386,28 @@ void flyTheCorridor(const std::int64_t imu_offset_ns) {
       }
     }
     estimate = odometry.addScan(stamp, scan);
-    ASSERT_TRUE(estimate.healthy) << "scan " << k;
     degenerate_scans += estimate.degenerate_axes > 0U ? 1U : 0U;
+    if (dead_reckoning_bound_s < 15.0) {
+      // The run of degenerate scans the estimate is in, and how long the IMU
+      // has carried the axis: healthy within the bound, not beyond it.
+      if (estimate.degenerate_axes > 0U) {
+        run_start = run_start < 0 ? stamp : run_start;
+        const double carried_s = 1.0e-9 * static_cast<double>(stamp - run_start);
+        ASSERT_EQ(estimate.healthy, carried_s <= dead_reckoning_bound_s)
+            << "scan " << k;
+        unhealthy_scans += estimate.healthy ? 0U : 1U;
+      } else if (estimate.healthy) {
+        run_start = -1;
+      }
+      continue;
+    }
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
     EXPECT_LT((estimate.position_ned_m - truth).norm(), 0.6) << "scan " << k;
+  }
+  if (dead_reckoning_bound_s < 15.0) {
+    EXPECT_GT(unhealthy_scans, 0U);
+    EXPECT_FALSE(estimate.healthy);
+    return;
   }
   EXPECT_GT(degenerate_scans, 100U);
   EXPECT_NEAR(estimate.velocity_ned_mps.x(), speed, 0.2);
@@ -393,6 +419,13 @@ void flyTheCorridor(const std::int64_t imu_offset_ns) {
 
 TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
   flyTheCorridor(0);
+}
+
+// The IMU carries a degenerate axis for so long and no longer: nothing
+// corrects the accelerometer's bias along it, and the estimate that ran on
+// through a straight tunnel was 99.5 m off after 43 s (r3176).
+TEST(LidarInertialOdometryTest, ACorridorLongerThanTheImuCarriesEndsTheHealth) {
+  flyTheCorridor(0, 5.0);
 }
 
 // The last IMU sample before a scan lies up to a transport period before

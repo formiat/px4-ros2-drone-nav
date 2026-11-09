@@ -274,6 +274,9 @@ struct LidarInertialOdometry::Impl {
   bool has_keyframe{false};
   bool has_registered{false};
   bool holding{false};
+  // The stamp of the first scan of the run of scans with a degenerate axis
+  // the estimate is in; zero outside one.
+  std::int64_t degenerate_since_ns{0};
 
   struct Propagated {
     std::int64_t stamp_ns{0};
@@ -686,6 +689,17 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
         }
       }
     }
+  }
+  // The IMU carries a degenerate axis only so long (the configuration's
+  // word on r3176); the run ends with a scan that observes every axis.
+  if (healthy && estimate.degenerate_axes > 0U) {
+    if (impl.degenerate_since_ns == 0) {
+      impl.degenerate_since_ns = stamp_ns;
+    }
+    healthy = 1.0e-9 * static_cast<double>(stamp_ns - impl.degenerate_since_ns) <=
+              impl.config.maximum_degenerate_dead_reckoning_s;
+  } else if (healthy) {
+    impl.degenerate_since_ns = 0;
   }
   if (healthy) {
     impl.stamp_ns = stamp_ns;

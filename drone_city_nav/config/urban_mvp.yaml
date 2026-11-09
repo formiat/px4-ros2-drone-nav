@@ -941,6 +941,13 @@ lidar_inertial_odometry_node:
     # 0.25 and at 0.01 and 0.005 0.19 to 0.20, and with no degenerate axis at
     # all 0.63.
     minimum_information_per_point: 0.01
+    # How long the IMU may carry a degenerate axis, scan after scan, before
+    # the estimate is unhealthy: the accelerometer's bias is corrected by
+    # nothing along it. In a straight tunnel of the finals world the estimate
+    # ran 17 m off in 13 s and 99.5 m in 43 s with healthy=true (r3176); the
+    # point-to-point flights of that world carry runs of 4 to 9 s within
+    # 1.4 m, Urban and the cave none.
+    maximum_degenerate_dead_reckoning_s: 10.0
     # An observed axis whose registered position lies farther from the prior
     # than this many standard deviations of the prior and the measurement
     # together is no measurement for that scan either. On r399, at the

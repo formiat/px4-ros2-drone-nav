@@ -75,6 +75,9 @@ public:
         "maximum_residual_rms_m", config.maximum_residual_rms_m);
     config.minimum_information_per_point = declare_parameter<double>(
         "minimum_information_per_point", config.minimum_information_per_point);
+    config.maximum_degenerate_dead_reckoning_s =
+        declare_parameter<double>("maximum_degenerate_dead_reckoning_s",
+                                  config.maximum_degenerate_dead_reckoning_s);
     config.innovation_gate_sigma = declare_parameter<double>(
         "innovation_gate_sigma", config.innovation_gate_sigma);
     config.gyro_bias_gain =
