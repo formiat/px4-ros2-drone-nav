@@ -12,7 +12,8 @@ scenario=$1; first=$2; attempts=$3; directory=$4
 flag=log/tools/record_until_pass.txt; rm -f "$flag"
 for number in $(seq "$first" $((first + attempts - 1))); do
   run="r$number"; log="log/runs/$run/ros_drone_nav.log"; stalled=""
-  ./tools/record_flight.sh "$scenario" "$run" "$directory" > /dev/null 2>&1 &
+  # In a session of its own: the take's processes (the flight, the renderer) are stopped as its group.
+  setsid ./tools/record_flight.sh "$scenario" "$run" "$directory" > /dev/null 2>&1 &
   flight=$!
   while kill -0 "$flight" 2> /dev/null; do
     sleep 20
@@ -27,8 +28,9 @@ for number in $(seq "$first" $((first + attempts - 1))); do
       stalled=STALLED
     fi
     if [ -n "$stalled" ]; then
-      # By the process table: a pattern search of command lines would match this script's own.
-      kill $(ps -eo pid,args | awk '/tools\/record_flight.sh|tools\/series2.sh|scripts\/record_flight_video.py/ && !/awk/ {print $1}') 2> /dev/null
+      # The take's own process group, by the PID kept at its start: a search of the process table by command
+      # line matches whatever else holds the same text.
+      kill -- "-$flight" 2> /dev/null
       sleep 2; ./scripts/stop_sim.sh > /dev/null 2>&1
       rm -f "$directory/${scenario}_${run}"_*.mp4
       break

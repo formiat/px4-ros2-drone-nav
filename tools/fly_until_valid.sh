@@ -24,8 +24,9 @@ for number in $(seq "$first" $((first + attempts - 1))); do
     [ -f "log/runs/$run/resources.csv" ] || continue
     if ! verdict=$(python3 tools/rtf_watchdog.py "$run" "${watch[@]}" --factor "${REAL_TIME_FACTOR:-1.0}"); then
       stopped="${verdict#WATCHDOG slow $run }"
-      # By the process table: a pattern search of command lines would match this script's own.
-      kill $(ps -eo pid,args | awk '/tools\/series2.sh/ && !/awk/ {print $1}') 2> /dev/null
+      # The flight's own process, by the PID kept at its start: a search of the process table by command line
+      # matches whatever else holds the same text.
+      kill "$flight" 2> /dev/null
       sleep 2; ./scripts/stop_sim.sh > /dev/null 2>&1
       break
     fi
