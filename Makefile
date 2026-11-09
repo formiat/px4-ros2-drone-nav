@@ -117,11 +117,13 @@ sim-urban-point-to-point-in-volume-headless: build
 	python3 scripts/prepare_environment_simulation.py \
 		--environment urban_circuit_practice_01 --runtime-map-mode no-static \
 		--scenario $(IN_VOLUME_SCENARIO_PATH)
+	survey_map="$${STATIC_OCCUPANCY_3D_PATH:-}"; \
 	. external/environment-artifacts/derived/urban_circuit_practice_01/runtime/environment.env; \
 		SIM_WORLD_SDF_PATH="$$([ "$${CAMERA_PROFILE:-stereo_tof}" = none ] && printf '%s' "$$SIM_SENSOR_WORLD_SDF_PATH" || printf '%s' "$$SIM_DARK_WORLD_SDF_PATH")" \
 		POINT_TO_POINT_SCENARIO_PATH=$(IN_VOLUME_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
-		ENABLE_STATIC_MAP="$$([ -n "$${STATIC_OCCUPANCY_3D_PATH:-}" ] && echo true || echo false)" \
+		ENABLE_STATIC_MAP="$$([ -n "$$survey_map" ] && echo true || echo false)" \
+		STATIC_OCCUPANCY_3D_PATH="$$survey_map" \
 		ENABLE_OBSTACLE_MEMORY=true LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(SURVEY_VOLUME_M)}" \
 		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
