@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""replay_compare.py FLIGHT_BAG REPLAY_BAG: the replayed stack's outputs against the flight's (roadmap item 27 block
+"""replay_compare.py FLIGHT_BAG REPLAY_BAG [TRUTH_CSV]: the replayed stack's outputs against the flight's (roadmap item 27 block
 6, tools/replay_stack.sh): the estimators' poses matched by their stamps (the distance's median, 95th percentile
 and largest over the matched pairs, and how many of either side found no match), the trajectory setpoints matched by
 their stamps (the nearest within 5 ms: the setpoint carries the stamp of its own tick, whose phase the replay's
 timer does not share), the share equal in position, velocity and yaw, the largest differences, the mission's
 events in order (the first that differs). The verdict against the replay's contract: the matched poses' 95th
-percentile within 0.05 m. Run in the dev container (rosbag2_py)."""
+percentile within 0.05 m. With the flight's true poses (TRUTH_CSV, log/runs/RUN/gz_pose.csv) each estimate's
+horizontal error against the truth is printed for the flight and for the replay (median, 95th percentile and the
+median of the last fifty poses: what the estimate comes home with; roadmap item 41 stage 0, tools/replay_variant.sh).
+Run in the dev container (rosbag2_py)."""
 
 from __future__ import annotations
 
+import bisect
+import csv
 import math
 import sys
 from pathlib import Path
@@ -153,8 +158,25 @@ def compare_events(flight: list[str], replay: list[str]) -> str:
     return f"event {first + 1} differs: flight '{flight[first][:80]}' replay '{replay[first][:80]}'"
 
 
+def truth_errors(poses: list, truth: list[list[float]]) -> str:
+    """The poses' horizontal error against the true pose at their stamps."""
+    stamps = [row[0] for row in truth]
+    errors = []
+    for _, message in poses:
+        index = min(bisect.bisect_left(stamps, stamp_ns(message) * 1.0e-9), len(truth) - 1)
+        errors.append(math.hypot(message.pose.position.x - truth[index][1], message.pose.position.y - truth[index][2]))
+    if not errors:
+        return "no poses"
+    return (f"p50 {percentile(errors, 0.5):.2f} p95 {percentile(errors, 0.95):.2f} "
+            f"end {percentile(errors[-50:], 0.5):.2f} m over {len(errors)} poses")
+
+
 def main() -> int:
     flight_path, replay_path = Path(sys.argv[1]), Path(sys.argv[2])
+    truth = None
+    if len(sys.argv) > 3:
+        with open(sys.argv[3], newline="") as stream:
+            truth = [[float(v) for v in row[:4]] for row in csv.reader(stream) if row and row[0][:1].isdigit()]
     topics = (*POSE_TOPICS, SETPOINT_TOPIC, EVENTS_TOPIC)
     flight, replay = read_bag(flight_path, topics), read_bag(replay_path, topics)
     verdict = True
@@ -164,6 +186,9 @@ def main() -> int:
         line, ok = compare_poses(flight[topic], replay[topic])
         verdict = verdict and ok
         print(f"{'OK' if ok else 'FAIL'}: {topic}: {line}")
+        if truth:
+            print(f"NOTE: {topic} against the truth: the flight {truth_errors(flight[topic], truth)}; "
+                  f"the replay {truth_errors(replay[topic], truth)}")
     print(f"NOTE: {SETPOINT_TOPIC}: {compare_setpoints(flight[SETPOINT_TOPIC], replay[SETPOINT_TOPIC])}")
     print(f"NOTE: {EVENTS_TOPIC}: "
           f"{compare_events([m.data for _, m in flight[EVENTS_TOPIC]], [m.data for _, m in replay[EVENTS_TOPIC]])}")

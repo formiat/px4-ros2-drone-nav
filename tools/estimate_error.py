@@ -3,7 +3,9 @@
 item 35, K52; the register's row on the heading drift): for each run, from `log/runs/RUN/mppi/mppi_track.jsonl` (the
 estimate's position at every planner tick) against `log/runs/RUN/gz_pose.csv` (the true pose on the simulation clock),
 after the first ten seconds, the vertical rest offset of 0.24 m (K22) removed: the horizontal error's median, 95th
-percentile and maximum, the vertical error's median and 95th percentile of its magnitude with its extremes, and a
+percentile, maximum and its value at the flight's end (the median of the last fifty ticks: the error a route that
+returns comes home with, roadmap item 41 stage 0), the vertical error's median and 95th percentile of its magnitude
+with its extremes, and a
 similarity fit of the estimate's path to the truth's about the start (the turn of the estimate's frame in degrees,
 its scale, the rms of what remains), which tells a heading drift from a scale error or noise. Works for both sensor
 sets, since both estimates reach the planner the same way.
@@ -52,7 +54,8 @@ def error_of(run: str) -> str:
     remainder = b - (a @ rotation.T) * scale
     path = np.linalg.norm(np.diff(tru[:, :2], axis=0), axis=1).sum()
     return (f"{run}: n={len(pairs)} path {path:.0f} m | horizontal p50 {np.percentile(horizontal, 50):.2f} "
-            f"p95 {np.percentile(horizontal, 95):.2f} max {horizontal.max():.2f} m | vertical |p50| "
+            f"p95 {np.percentile(horizontal, 95):.2f} max {horizontal.max():.2f} end {np.median(horizontal[-50:]):.2f} m "
+            f"| vertical |p50| "
             f"{np.percentile(np.abs(vertical), 50):.2f} |p95| {np.percentile(np.abs(vertical), 95):.2f} "
             f"min {vertical.min():+.2f} max {vertical.max():+.2f} m | frame turn {math.degrees(yaw):+.2f} deg "
             f"scale {scale:.4f} remainder rms {np.hypot(remainder[:, 0], remainder[:, 1]).std():.2f} m")
