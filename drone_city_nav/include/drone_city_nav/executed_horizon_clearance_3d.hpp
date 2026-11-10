@@ -92,10 +92,13 @@ struct ExecutedHorizonClearance3D {
 // grid are not constraints: unknown space stays traversable and carries no
 // penalty, and the body validation remains the only hard authority. The first
 // such sample is recorded as the end of the observed range along the motion.
+// The field is a window round the vehicle: where it holds no answer, `memory`
+// is asked whether the body's sweep was observed (specification K74).
 [[nodiscard]] ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const FiniteMotionHorizon3D& horizon, std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, std::span<const float> esdf_m,
-    const SweptFootprintConfig& footprint, double constraint_clearance_m);
+    const SweptFootprintConfig& footprint, double constraint_clearance_m,
+    const ObservedOccupancyGrid3D* memory = nullptr);
 
 // Route length from `from_station_m` to the start of the first route segment
 // whose body envelope reaches space the evidence has not observed, probing no
@@ -109,7 +112,8 @@ struct ExecutedHorizonClearance3D {
 measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_station_m,
                             double lookahead_m, const EsdfGrid3D& grid,
                             std::span<const float> esdf_m,
-                            const SweptFootprintConfig& footprint);
+                            const SweptFootprintConfig& footprint,
+                            const ObservedOccupancyGrid3D* memory = nullptr);
 
 // How far from `origin` along `direction` the memory has observed every voxel
 // the body sweeps, probing no farther than `maximum_range_m`. The distance

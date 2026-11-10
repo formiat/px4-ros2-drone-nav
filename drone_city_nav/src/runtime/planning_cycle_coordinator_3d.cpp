@@ -281,10 +281,15 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
   const std::size_t first_remaining_state_index =
       std::min(static_cast<std::size_t>(elapsed_ns / control_interval_ns),
                horizon->states.size() - 2U);
+  // The field's window ends before the memory does: beyond it the memory says
+  // what was observed (specification K74).
   const ExecutedHorizonClearance3D clearance = measureExecutedHorizonClearance3D(
       *horizon, first_remaining_state_index, request.world->grid,
       *request.world->distances_m, config_.physical_footprint,
-      config_.executed_horizon_constraint_clearance_m);
+      config_.executed_horizon_constraint_clearance_m,
+      request.latest_raw_world != nullptr && request.latest_raw_world->valid()
+          ? &request.latest_raw_world->occupancy()
+          : nullptr);
   return clearance.available ? std::optional<ExecutedHorizonClearance3D>{clearance}
                              : std::nullopt;
 }
@@ -451,7 +456,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 route, output.route.projection.station_m,
                 config_.route_execution.latest_sensor_route_lookahead_m,
                 request.world->grid, *request.world->distances_m,
-                config_.physical_footprint)
+                config_.physical_footprint,
+                request.latest_raw_world != nullptr && request.latest_raw_world->valid()
+                    ? &request.latest_raw_world->occupancy()
+                    : nullptr)
           : std::nullopt;
   // The clearance of the route ahead, read by the same tube and stopping laws
   // as the executed horizon and over the same lookahead as the scan check.

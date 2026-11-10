@@ -120,6 +120,43 @@ TEST(ExecutedHorizonClearance3DTest, TheRouteAheadReportsTheFrontierBeyondTheHor
   EXPECT_NEAR(range_m.value_or(-1.0), 7.0, 1.0e-6);
 }
 
+TEST(ExecutedHorizonClearance3DTest, TheMemoryAnswersWhereTheFieldsWindowEnds) {
+  // The field knows the first ten metres along x and nothing beyond: its
+  // window's edge. The memory holds the space observed free to 16 m. Without
+  // the memory the seen ends at the window (seven metres of route, nine of
+  // horizon); with it, where the memory's own observation ends: the segment
+  // that leaves x = 15.5 for 16.5 (r3254: a lidar that had seen 35 m of free
+  // air flown as if the seen ended at the window's edge).
+  ObservedOccupancyGrid3D memory{GridBounds3D{
+      .resolution_m = 0.25, .width_cells = 80, .height_cells = 12, .depth_cells = 12}};
+  for (int x = 0; x < 64; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      for (int z = 0; z < 12; ++z) {
+        memory.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+      }
+    }
+  }
+  const std::optional<double> without = measureRouteObservedRange3D(
+      routeAlongX(0.5, 20U), 2.0, 30.0, grid(), esdf(), pointFootprint());
+  ASSERT_TRUE(without.has_value());
+  EXPECT_NEAR(without.value_or(-1.0), 7.0, 1.0e-6);
+  const std::optional<double> with = measureRouteObservedRange3D(
+      routeAlongX(0.5, 20U), 2.0, 30.0, grid(), esdf(), pointFootprint(), &memory);
+  ASSERT_TRUE(with.has_value());
+  EXPECT_NEAR(with.value_or(-1.0), 13.0, 1.0e-6);
+  const ExecutedHorizonClearance3D horizon = measureExecutedHorizonClearance3D(
+      horizonAlongX(0.5F, 20U), 0U, grid(), esdf(), pointFootprint(), 0.1, &memory);
+  ASSERT_TRUE(horizon.available);
+  EXPECT_NEAR(horizon.distanceToUnobservedM(), 15.0, 1.0e-6);
+  // A memory that has not looked there either changes nothing.
+  const ObservedOccupancyGrid3D blank{GridBounds3D{
+      .resolution_m = 0.25, .width_cells = 80, .height_cells = 12, .depth_cells = 12}};
+  EXPECT_NEAR(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 30.0, grid(),
+                                          esdf(), pointFootprint(), &blank)
+                  .value_or(-1.0),
+              7.0, 1.0e-6);
+}
+
 TEST(ExecutedHorizonClearance3DTest, TheRouteIsProbedNoFartherThanTheLookahead) {
   EXPECT_FALSE(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 5.0, grid(),
                                            esdf(), pointFootprint())
