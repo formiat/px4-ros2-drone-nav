@@ -6,6 +6,10 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- A flight's record in a viewer without the stack (roadmap item 42, specification K73): `tools/view_flight.sh <run>` opens
+  the stack bag in Lichtblick with a layout a sensor set (`tools/viewer/`) and the run's other records beside it
+  (`tools/flight_records_mcap.py`: the true pose, the obstacle memory, the speed laws, the budgets); nothing is built or
+  sourced.
 - Maps from the survey (roadmap item 11, specification K67, K59, K68, R9): the survey reads its frontiers in the flood's
   box and keeps those that lead into the volume, a cluster and the survey's end are confirmed by three readings; the
   stopping laws brake along the motion (the vertical figures for a descent); `tools/survey_map.py` persists a survey's

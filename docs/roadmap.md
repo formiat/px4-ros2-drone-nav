@@ -1548,40 +1548,6 @@ sets (the figure measured against stage 0's), no closure is accepted
 wrongly over the acceptance series and the recordings, the references'
 figures stand beside ours, and R3's mean speed is kept. Size L.
 
-## 42. The Flight's Record In A Viewer Without The Stack
-
-**Type:** tooling, independent recurring workstream; recorded on 2026-11-05
-at the project owner's word. Size S.
-
-**Hard prerequisites:** the stack bag (K62) and the recording's bag (K26).
-
-**Validation environment:** the kept bags (`log/tools/replay/regression/`).
-
-A flight's record is read today through the tools of `tools/` and through
-RViz, which needs the workspace built and the messages' package sourced. A
-viewer that opens an MCAP bag by itself (Foxglove, which the field names
-and the PX4 community uses; Lichtblick, its open fork; Rerun and
-PlotJuggler weighed beside them: the licence, the offline use, the custom
-messages of `drone_city_nav`) shows the same flight to someone without the
-stack: the obstacle memory, the estimate against the truth, the mission's
-events, the pair's frames, the autopilot's streams on one time line.
-
-1. The viewer chosen on a kept bag, by what it opens without the workspace
-   (the custom messages through the bag's embedded schemas) and by its
-   licence.
-2. A layout kept in the repository for each sensor set: the map, the pose
-   and the truth, the events, the frames, the speeds and the budgets; one
-   documented command from a run's number to the open record.
-3. The recording's bag written as MCAP, if the viewer needs it (it is
-   SQLite today).
-
-Nothing of the stack depends on it, and the recordings of A11 keep their
-approved layout: the viewer is for reading a flight, not for the videos.
-
-This item is complete when a kept bag of each sensor set opens in the
-chosen viewer by one documented command on a machine without the
-workspace, with the panels above, and `tools/README.md` names it.
-
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
@@ -5304,3 +5270,67 @@ reachable part of an environment before it persists the map. The 2D lidar path (
 with the first 3D static map and went before it, on 2026-09-26 (59f55e1f):
 a static-map request now refuses to start while the environment has no 3D
 static occupancy, which is what this item delivers.
+
+### 42. The Flight's Record In A Viewer Without The Stack (Completed)
+
+**Type:** tooling, independent recurring workstream; recorded on 2026-11-05
+at the project owner's word. Size S.
+
+**Hard prerequisites:** the stack bag (K62) and the recording's bag (K26).
+
+**Validation environment:** the kept bags (`log/tools/replay/regression/`).
+
+A flight's record is read today through the tools of `tools/` and through
+RViz, which needs the workspace built and the messages' package sourced. A
+viewer that opens an MCAP bag by itself (Foxglove, which the field names
+and the PX4 community uses; Lichtblick, its open fork; Rerun and
+PlotJuggler weighed beside them: the licence, the offline use, the custom
+messages of `drone_city_nav`) shows the same flight to someone without the
+stack: the obstacle memory, the estimate against the truth, the mission's
+events, the pair's frames, the autopilot's streams on one time line.
+
+1. The viewer chosen on a kept bag, by what it opens without the workspace
+   (the custom messages through the bag's embedded schemas) and by its
+   licence.
+2. A layout kept in the repository for each sensor set: the map, the pose
+   and the truth, the events, the frames, the speeds and the budgets; one
+   documented command from a run's number to the open record.
+3. The recording's bag written as MCAP, if the viewer needs it (it is
+   SQLite today).
+
+Nothing of the stack depends on it, and the recordings of A11 keep their
+approved layout: the viewer is for reading a flight, not for the videos.
+
+**Done on 2026-11-10** (the goal of 2026-11-05, part 3; specification K73). The viewer is Lichtblick, the open fork,
+pinned at 1.30.0. The candidates, by their own sources read on 2026-11-09 (the licences and the offline use had been
+written into this item from memory):
+
+| Candidate | Licence | Offline, account | The stack's MCAP bag | Verdict |
+|---|---|---|---|---|
+| Lichtblick 1.30.0 of 2026-10-22 (the repository's `LICENSE`, its releases, its documentation of local data and of the command line) | MPL-2.0 | offline, no account, telemetry off | opened here: every topic with its type, the stack's and the autopilot's messages read by the 24 to 26 `ros2msg` definitions a bag embeds | chosen |
+| Foxglove (its pricing page, its documentation of the standalone licence, its announcement of 2024-03-11) | closed source since 2.0; a free plan of three users | the desktop application asks for a sign-in on its first start; without an account only the Enterprise plan's standalone licence | not tried | fails the rule of no account |
+| Rerun 0.42.0 of 2026-11-04 (the repository, its MCAP reference) | Apache-2.0 and MIT | offline, no account | reads MCAP; the standard ROS 2 types become views, the stack's own are decoded by reflection into components without one | not chosen: the stack's messages have no view |
+| PlotJuggler 4.1.0 of 2026-11-05 (the repository) | MPL-2.0 | offline, no account | not tried | not tried: the first candidate that met every rule was taken |
+
+One command opens a flight: `./tools/view_flight.sh <run>` for a run flown with `RECORD_STACK_BAG=true`, or the
+directory of a kept bag (`./tools/view_flight.sh log/tools/replay/regression/r2944`, `.../r2918`: the camera set's
+and the lidar set's kept bags open so, nothing built or sourced); `./tools/view_flight.sh --install` fetches the
+pinned release (its digest checked) and the `mcap` Python package into `/data/gazebo/tools`. The layouts are in the
+repository, one a sensor set (`tools/viewer/stereo_tof.json`, `tools/viewer/lidar.json`), with these panels: the
+scene (the obstacle memory's occupied voxels, the true pose and path, the estimate's pose, the lidar's or the
+time-of-flight returns), the pair's frames (the thermal frame on the lidar set), the mission's events and the active
+speed limiter as state bands, the last mission event's text, the speeds (the reference, the commanded, the true, the
+state's velocity), the estimate against the truth with the clearance and the sensor's range, the budgets (the CPU
+cores of the stack's processes, the real-time factor).
+
+The stack bag holds what the stack heard and said; the true pose, the obstacle memory, the speed laws' record and
+the budgets are records of the run's directory. `tools/flight_records_mcap.py` writes them once into
+`<run>/view/records.mcap` on the simulation clock the bag is recorded on, in the viewer's own JSON schemas, and the
+viewer opens both files on one time line (r3226 on the stereo set: 57 thousand messages, 6.5 MiB, in 22 s; r3232 on
+the lidar set). A directory with the bag alone opens the bag alone. The recording's bag stays SQLite: the viewer
+opens it as it is (r1408's `render_bag_0.db3`; its topics are standard types). The pictures of the layouts are in
+`log/tools/wbsm/part3`.
+
+This item is complete when a kept bag of each sensor set opens in the
+chosen viewer by one documented command on a machine without the
+workspace, with the panels above, and `tools/README.md` names it.

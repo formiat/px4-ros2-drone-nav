@@ -369,6 +369,17 @@ events in order. Measured on 2026-11-04 (the goal of 2026-11-02, part 4): the ca
 autopilot's side: the vehicle's motion is the recording's, so a changed
 setpoint is measured, not flown (roadmap item 27 block 6).
 
+A flight's record is read by eye without the stack (roadmap item 42, specification K73):
+`./tools/view_flight.sh <run>` opens the run's stack bag in Lichtblick with the layout of its sensor set
+(`tools/viewer/`): the obstacle memory with the true and the estimated pose, the pair's frames, the mission's
+events and the active speed limiter, the speeds, the estimate's error, the budgets, on one time line. The bag is
+read by the message definitions embedded in it, so nothing is built or sourced; the run's other records
+(`gz_pose.csv`, the raw snapshots, `mppi/mppi_track.jsonl`, `resources.csv`) are written beside it once by
+`tools/flight_records_mcap.py` (`<run>/view/records.mcap`). A kept bag opens the same way
+(`./tools/view_flight.sh log/tools/replay/regression/r2944`); `./tools/view_flight.sh --install` fetches the
+viewer and the `mcap` package once. `scripts/tests/test_view_flight.py` holds the layouts to the topics the bag
+and the records carry.
+
 Since 2026-11-05 the replay is the measure of the stack's determinism (the
 owner's decision, roadmap item 36, specification K53) and a gate: one bag a
 sensor set is kept under `log/tools/replay/regression/<run>/` (the bag with the
