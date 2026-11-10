@@ -20,9 +20,15 @@ Both are empty by default because every current mission runs no-static. The
 sparse static world describes the same geometry as the Gazebo world and is used
 only in static mode. `production_mppi_node`, not `obstacle_memory_3d_node`,
 owns this map. Derived regions, portals, and traversal edges are stored in the
-separate fingerprint-bound FreeSpaceTopology3D artifact. No environment has a
-3D static map yet (roadmap item 11); a static-map request refuses to start
-without one.
+separate fingerprint-bound FreeSpaceTopology3D artifact. A static-map request
+refuses to start without an occupancy, and the mode certifies no route today
+(the debt register).
+
+A survey's map (`tools/survey_map.py`, roadmap item 11) is not a static world:
+`MEMORY_PRIOR_OCCUPANCY_3D_PATH` hands it to the obstacle memory, which lays its
+occupied cells as its first content before the first scan (specification K71,
+`OBSTACLE_MEMORY_PRIOR` in the log). The cells are ordinary occupancies at the
+occupied threshold: a hit confirms one, the free rays of four scans free it.
 
 ## 3D Lidar Input
 
@@ -61,6 +67,15 @@ surface interpolation, the left camera's mount as the extrinsic, two hits to a
 voxel). With `NAVIGATION_SENSOR_PROFILE=lidar` and the camera set mounted, a
 second instance integrates them in shadow on `/drone_city_nav/vision_shadow/*`
 beside the lidar's, and nothing consumes it.
+
+A vision memory's free rays end at a surface the memory holds (specification
+K72, `free_rays_end_at_surfaces`): the voxel a ray crosses there, a measured
+occupancy with another beside it, takes the ray's miss, and the voxels behind
+it take nothing from that ray. A matcher's outlier puts a return metres behind
+the surface it saw, and the ray to it carved the space under a floor free: over
+half the hall's area 0.6 m down (r3212), a sheet of frontier no survey could look
+into. A surface that is gone is still freed by what sees through it. The lidar's
+memory keeps the rule off.
 
 What a vision memory does not have is the lidar's view all around: space
 beside and behind the vehicle stays unknown until the pair has faced it.

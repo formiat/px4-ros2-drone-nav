@@ -592,7 +592,13 @@ its goal (`NavigationProgress`) and the monitor's events.
   (r2758: 20 of 22 clusters on wall holes; r2807: tens of thousands of
   frontier cells and no end). The volume's face is not a frontier. Frontier
   cells cluster by 26-connectivity; a cluster under
-  `frontier_cluster_minimum_cells` (8) is noise.
+  `frontier_cluster_minimum_cells` (8) is noise. A cluster wider than the
+  sensor's reach is divided by the reach's cube, each part with its own
+  vantage (r3169: one cluster of 32 thousand cells through the whole hall,
+  its one vantage saw nothing). Unknown in a pocket, a face-connected piece
+  smaller than the body's ball of cells (33), makes no frontier (r3225: the
+  voxels the moving layer returns to unknown by ones and twos, 616 clusters
+  chosen and no end).
 - **The reachable component** is the flood of K16 from the vehicle through
   the cells the body fits in, unknown included, inside the volume and 40 m
   round it, in the envelope's band of heights, under a voxel budget; a
@@ -657,8 +663,10 @@ its goal (`NavigationProgress`) and the monitor's events.
 persisted by `tools/survey_map.py` as a static map artifact in the stack's own format (the occupied cells, the
 observed cells beside them, a manifest with the environment's collision geometry, the run, the commit, the frame
 and the coverage) and validated against the world's truth voxelization by `tools/survey_map_check.py`
-(coverage, alignment, displaced surfaces, raw collision). The flight by such a map is not flown yet: the static
-mode's route certification refuses a static world beside an observed one (the register).
+(coverage, alignment, displaced surfaces, raw collision). A flight starts from such a map with
+`MEMORY_PRIOR_OCCUPANCY_3D_PATH` (specification K71): the obstacle memory lays the map's occupied cells as its first
+content before the first scan, a hit confirms a cell and the free rays of four scans free it, and the planner
+stays in no-static mode (`./scripts/sim_urban_point_to_point_in_volume_headless.sh`).
 
 Every reading and decision is a log line: `SURVEY_READING`,
 `SURVEY_FRONTIER chosen|observed|looked_at|looked_at_on_pass|looked_at_from_vantage|pass|deferred|unreachable|unroutable|left_domain`,

@@ -542,7 +542,7 @@ flight speed is printed as a NOTE: R3 is the flight to a goal's.
 The survey's map (roadmap item 11) has its own tests, `scripts/tests/test_survey_map.py`: the artifact holds
 the snapshot's occupied cells in the stack's static format, and the check against a truth grid passes a map
 true to its world, counts a wall laid twice as a displaced sheet and fails a map that misses a wall by the
-flown path (the check is the host's: SciPy).
+flown path (the check is the host's: SciPy). The map as the memory's first content (K71) is `ObstacleMemory3D.AnEarlierFlightsMapIsTheFirstContentAndTheScansDecide`; the stereo memory's free rays (K72) `AFreeRayEndsAtASurfaceTheMemoryHolds`; the survey's division and pockets (K59) `AFrontierWiderThanTheSensorsReachIsLookedAtInParts` and `APocketOfUnknownSmallerThanTheBodyIsNoFrontier`; the column under a descent (K69) `TheColumnUnderADescentReportsTheFloor` and `ADescentIsBoundByTheColumnUnderIt`; the bound on a degenerate axis (K70) `ACorridorLongerThanTheImuCarriesEndsTheHealth`. A memory built again from a flight's bag on the checked-out code (`tools/replay_memory.sh`) is read layer by layer with `tools/memory_layers.py`.
 
 ### Localization profile
 

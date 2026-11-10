@@ -326,10 +326,11 @@ The first three IDs use versioned release artifacts. The remaining IDs are
 local evaluation candidates and report a clear error if their cached source
 assets are absent.
 
-The 3D lidar is the one lidar profile (`LIDAR_PROFILE=3d`). A static-map
-flight (`ENABLE_STATIC_MAP=true`) needs a 3D static occupancy of its
-environment (`STATIC_OCCUPANCY_3D_PATH`); none exists yet, so the request
-refuses to start until roadmap item 11 delivers one.
+The 3D lidar is the one lidar profile (`LIDAR_PROFILE=3d`). A flight by a
+survey's map hands the map to the obstacle memory as its first content
+(`MEMORY_PRIOR_OCCUPANCY_3D_PATH`, roadmap item 11). The planner's static mode
+(`ENABLE_STATIC_MAP=true`, `STATIC_OCCUPANCY_3D_PATH`) refuses to start without
+an occupancy and certifies no route today (the debt register).
 
 Since roadmap item 14 closed, every simulation entry point flies on cameras:
 `CAMERA_PROFILE=stereo_tof` mounts a forward stereo pair (1280 x 960, 120

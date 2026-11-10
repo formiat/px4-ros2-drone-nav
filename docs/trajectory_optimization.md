@@ -240,6 +240,14 @@ doing:
   r457 to r459, of which 0.10 s is the reaction latency already charged); the
   curvature and goal laws do not, since arriving late at their speed meets
   nothing. The sensor-braking contract keeps its own worst-case ramp.
+- The same laws read the column the vertical motion sweeps (specification
+  K69): under a descent or over a climb, a second of the motion and its
+  braking distance at the guaranteed vertical deceleration. The horizon and
+  the route are what the vehicle was asked to fly, and the vertical channel
+  follows them loosely: a descent that ran 2.1 m under its route met the
+  floor 1.9 m ahead at 2.6 m/s (r3177). The column bounds the vertical speed,
+  and the reference by the motion's vertical share; a level flight over a
+  floor owes it nothing.
 - Evidence beside the motion owes no braking distance. The horizon is
   validated by the body against the raw world and ends at rest, so "stop
   within the lateral clearance" is not a physical requirement; asking for it

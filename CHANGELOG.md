@@ -11,7 +11,13 @@ release names the asset tags it was validated with.
   stopping laws brake along the motion (the vertical figures for a descent); `tools/survey_map.py` persists a survey's
   memory as a static map artifact and `tools/survey_map_check.py` validates it against the truth (coverage, alignment,
   displaced surfaces, raw collision); the cave world's survey scenario, the urban survey's larger volumes and the
-  flight inside the surveyed volume. The flight by a map and the finals survey without a contact are the register's.
+  flight inside the surveyed volume. A survey's map is the obstacle memory's first content
+  (`MEMORY_PRIOR_OCCUPANCY_3D_PATH`, K71) and is flown by on both sets. The stereo set's survey covers its volume whole
+  and ends: a frontier cluster wider than the sensor's reach is read in parts and a pocket of unknown smaller than the
+  body is no frontier (K59), and the stereo memory's free rays end at a surface the memory holds (K72). The finals
+  survey flies without a contact: the stopping laws read the column the vertical motion sweeps (K69), and the
+  lidar-inertial estimate is unhealthy after ten seconds on a degenerate axis (K70). `tools/memory_layers.py`,
+  `tools/survey_frontier_parts.py` and `tools/replay_memory.sh` read a memory after the flight.
 - Roadmap item 41 stage 0 measured: what the estimates come home with on routes that return, with and without the
   stereo estimate's registration and magnetometer prior (`tools/replay_variant.sh`, `estimate_error.py`'s end figure).
 - The held-out worlds flown inside their shells (roadmap item 33, specification K55): twenty flights on one commit

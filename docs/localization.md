@@ -84,7 +84,11 @@ Per scan:
    registration the measurement, its variance from the registration's
    information along each translational axis floored at 3.2 cm. An axis
    with under 0.01 of information per matched point is degenerate (a bare
-   corridor leaves its own axis free) and carries no measurement; an axis
+   corridor leaves its own axis free) and carries no measurement, the IMU
+   carrying it for at most `maximum_degenerate_dead_reckoning_s` (10 s) of
+   scans in a row, after which the estimate is unhealthy until a scan
+   observes every axis (specification K70: 99.5 m off after 43 s of a
+   straight tunnel, r3176); an axis
    whose registered position lies more than five standard deviations of
    the prior and the measurement from the prior is gated for that scan;
 5. a keyframe is inserted every 0.5 m or 0.17 rad at the registered

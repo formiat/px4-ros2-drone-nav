@@ -364,7 +364,9 @@ Simulation scripts translate environment variables such as
 `ENABLE_STATIC_MAP`, `ENABLE_RVIZ`, and camera toggles into launch arguments
 or temporary parameter overrides. The 3D lidar is the one lidar profile
 (`LIDAR_PROFILE=3d`); a static-map flight needs `STATIC_OCCUPANCY_3D_PATH`
-and refuses to start without it.
+and refuses to start without it. `MEMORY_PRIOR_OCCUPANCY_3D_PATH` names a
+survey's map the obstacle memory starts from (specification K71; the node's
+`prior_occupancy_3d_path`).
 `CAMERA_PROFILE=none|stereo_tof` and `NAVIGATION_SENSOR_PROFILE=lidar|stereo_tof`
 select the sensor set and what navigates on it; both default to `stereo_tof`
 everywhere (`launch/sensor_profile.py` holds the defaults, what the set

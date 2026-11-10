@@ -452,11 +452,11 @@ px4_max_climb_speed_mps="$(
 )"
 px4_max_descent_speed_mps="${px4_max_climb_speed_mps}"
 if bool_is_true "${active_static_map}"; then
-  # A static-map flight needs a 3D static map of its environment, and none
-  # exists yet (roadmap item 11): the request refuses to start instead of
-  # flying an ordinary flight under a name that promises a map.
+  # A static-map flight refuses to start without a 3D static occupancy instead
+  # of flying an ordinary flight under a name that promises a map. A survey's
+  # map (roadmap item 11) goes to the memory: MEMORY_PRIOR_OCCUPANCY_3D_PATH.
   if [[ -z "${static_occupancy_3d_path_override}" ]]; then
-    echo "ENABLE_STATIC_MAP=true needs a 3D static occupancy for this environment (STATIC_OCCUPANCY_3D_PATH); none exists yet, see roadmap item 11" >&2
+    echo "ENABLE_STATIC_MAP=true needs a 3D static occupancy for this environment (STATIC_OCCUPANCY_3D_PATH); a survey's map is flown by MEMORY_PRIOR_OCCUPANCY_3D_PATH" >&2
     exit 1
   fi
   for static_artifact in \
