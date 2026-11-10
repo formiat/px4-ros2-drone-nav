@@ -36,6 +36,7 @@ from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
     LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
+    OPEN_SKY_LIDAR_OBSERVABILITY,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -307,9 +308,11 @@ def generate_launch_description():
             )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         survey_volume = None
+        flight_profile = "cave"
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
             survey_volume = scenario["survey_volume_m"]
+            flight_profile = scenario["flight_profile"]
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
             # PX4 reports NED local positions; the canonical world decides how
             # north and east map onto the map axes, so every node that turns a
@@ -442,6 +445,8 @@ def generate_launch_description():
         cameras_mounted = cameras == "stereo_tof"
         if navigation_sensors == "lidar":
             production_mppi_parameters.append(LIDAR_OBSERVABILITY)
+            if flight_profile == "open_sky":
+                production_mppi_parameters.append(OPEN_SKY_LIDAR_OBSERVABILITY)
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             # The launch's one obstacle memory is the vision memory.

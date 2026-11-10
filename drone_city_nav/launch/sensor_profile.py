@@ -92,6 +92,21 @@ LIDAR_OBSERVABILITY = {
     "carried_light_output_topic": "",
 }
 
+# The open sky's flight profile for a navigating lidar (roadmap item 39 stage
+# 5, specification K75). The cave profiles guarantee the detection of a 0.25 m
+# voxel, which two beams a degree apart straddle within 14 m; the open sky's
+# obstacles (trunks, masts, walls: nothing under half a metre is modelled or
+# promised) are straddled within 0.5 / tan(1 deg) = 28.6 m, inside the 35 m
+# the lidar ranges to. The distance field's window (20 m either way) is
+# recentred while 17 m of it still lie ahead: at 12 m of margin a tight place
+# on the route entered the field 12 m ahead of a vehicle that needs 18 m to
+# stop from 12 m/s. What the lidar saw beyond the window the memory answers
+# for (K74).
+OPEN_SKY_LIDAR_OBSERVABILITY = {
+    "guaranteed_lidar_detection_range_m": 28.0,
+    "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
+}
+
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body
 # forward-right-down). Two hits make a voxel occupied, not one: a matcher's

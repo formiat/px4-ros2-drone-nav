@@ -1,6 +1,7 @@
 {
   "schema": "drone_city_nav_canonical_world_v1",
   "frame_id": "map",
+  "flight_profile": "open_sky",
   "gazebo_world_name": "open_sky_baylands_collisions",
   "map_to_sdf": {
     "sdf_x_from": "map_x",

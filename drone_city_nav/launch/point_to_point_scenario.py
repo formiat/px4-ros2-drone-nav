@@ -185,6 +185,11 @@ def load_point_to_point_scenario(
     if not isinstance(transform, dict):
         raise ValueError("canonical world is missing map_to_sdf")
     navigation = _navigation_profile(world, document)
+    # The kind of space the world is, stated with the world: a cave (the
+    # default) or the open sky, whose flight profile the launch applies.
+    flight_profile = world.get("flight_profile", "cave")
+    if flight_profile not in ("cave", "open_sky"):
+        raise ValueError("canonical world flight_profile must be cave or open_sky")
 
     vehicle = document.get("vehicle")
     if not isinstance(vehicle, dict):
@@ -226,6 +231,7 @@ def load_point_to_point_scenario(
         "minimum_target_z_m": minimum_target_z,
         "maximum_target_z_m": maximum_target_z,
         "launch_platforms": _launch_platforms(document),
+        "flight_profile": flight_profile,
     }
 
 

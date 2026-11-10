@@ -212,6 +212,7 @@ def select(args):
     world = {
         "schema": "drone_city_nav_canonical_world_v1",
         "frame_id": "map",
+        "flight_profile": "open_sky",
         "gazebo_world_name": args.gazebo_world_name,
         "map_to_sdf": {
             "sdf_x_from": "map_x", "sdf_x_scale": 1.0, "sdf_x_offset_m": round(float(offset[0]), 3),

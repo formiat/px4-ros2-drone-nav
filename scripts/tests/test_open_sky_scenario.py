@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import runpy
 import math
 import unittest
 from pathlib import Path
@@ -53,6 +54,35 @@ class OpenSkyScenarioTest(unittest.TestCase):
         points = [scenario["map_start_m"], *goals]
         for straight, (a, b) in zip(selection["straight_distances_m"], zip(points, points[1:])):
             self.assertAlmostEqual(math.dist(a, b), straight, delta=0.1)
+
+    def test_the_world_states_the_open_skys_profile_and_the_launch_applies_it(self) -> None:
+        # Roadmap item 39 stage 5 (specification K75): the world says what kind of space it is; a navigating
+        # lidar on it guarantees the open sky's obstacles (0.5 m and more) to 28 m and keeps 17 m of the distance
+        # field ahead; the targets' speed ceiling is the profile's.
+        world = json.loads(WORLD_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(world["flight_profile"], "open_sky")
+        self.assertIn('"flight_profile": "open_sky"',
+                      (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
+        launch = REPOSITORY / "drone_city_nav/launch"
+        scenario_module = runpy.run_path(str(launch / "point_to_point_scenario.py"))
+        load = scenario_module["load_point_to_point_scenario"]
+        self.assertEqual(load(REPOSITORY / "drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json")[
+            "flight_profile"], "open_sky")
+        self.assertEqual(load(REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json")[
+            "flight_profile"], "cave")
+        profile = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_LIDAR_OBSERVABILITY"]
+        self.assertAlmostEqual(profile["guaranteed_lidar_detection_range_m"], 28.0)
+        self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"], 0.5 / math.tan(math.radians(1.0)))
+        self.assertAlmostEqual(profile["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
+        text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
+                      'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
+        makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
+        for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
+            target = makefile[makefile.index(name):]
+            target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
+            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12}"', target)
+            self.assertIn('ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-13}"', target)
 
     def test_the_fixture_is_the_manifests_and_the_targets_set_nothing_of_urban(self) -> None:
         manifest = yaml.safe_load((REPOSITORY / "environments/environment_manifest.yaml").read_text(encoding="utf-8"))
