@@ -130,6 +130,10 @@ private:
   bool mission_landing_{false};
   Point2 mission_landing_local_{};
   double mission_landing_yaw_rad_{0.0};
+  // The lowest altitude the mission landing's descent has reached and when:
+  // a descent that gains nothing for a second stands on the ground.
+  double mission_landing_lowest_altitude_m_{std::numeric_limits<double>::infinity()};
+  std::int64_t mission_landing_progress_ns_{0};
   bool rviz_drone_follow_tf_enabled_{true};
   bool position_valid_{false};
   bool vehicle_status_seen_{false};

@@ -59,13 +59,16 @@ void MppiOffboardNode::onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
       (!candidate.valid() || payload_admissible || admission.stale ||
        admission.conflict || admission.retired_capacity_exhausted ||
        admission.prospective_capacity_exhausted)) {
-    const char* const reason = admission.conflict ? "identity_content_conflict"
-                               : admission.stale  ? "stale_identity"
-                               : admission.retired_capacity_exhausted
-                                   ? "retired_identity_capacity_exhausted"
-                               : admission.prospective_capacity_exhausted
-                                   ? "prospective_identity_capacity_exhausted"
-                                   : "invalid_identity";
+    const char* reason = "invalid_identity";
+    if (admission.conflict) {
+      reason = "identity_content_conflict";
+    } else if (admission.stale) {
+      reason = "stale_identity";
+    } else if (admission.retired_capacity_exhausted) {
+      reason = "retired_identity_capacity_exhausted";
+    } else if (admission.prospective_capacity_exhausted) {
+      reason = "prospective_identity_capacity_exhausted";
+    }
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                          "EXECUTION_HORIZON rejected producer=%" PRIu64
                          " sequence=%" PRIu64 " current_producer=%" PRIu64
@@ -77,11 +80,12 @@ void MppiOffboardNode::onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
   }
   if (payload_status != ExecutionHorizonPayloadStatus::kValid || expired ||
       rearm_blocked) {
-    const std::string_view rejection_reason =
-        payload_status != ExecutionHorizonPayloadStatus::kValid
-            ? executionHorizonPayloadStatusName(payload_status)
-        : expired ? std::string_view{"expired_validity_window"}
-                  : std::string_view{"vehicle_disarmed_require_new_identity"};
+    std::string_view rejection_reason{"vehicle_disarmed_require_new_identity"};
+    if (payload_status != ExecutionHorizonPayloadStatus::kValid) {
+      rejection_reason = executionHorizonPayloadStatusName(payload_status);
+    } else if (expired) {
+      rejection_reason = "expired_validity_window";
+    }
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                          "EXECUTION_HORIZON rejected sequence=%" PRIu64
                          " previous=%" PRIu64 " reason=%.*s",
@@ -198,12 +202,34 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
 // a landing where the vehicle stands, on the floor below it, and the
 // autopilot's own disarm once it detects the landing (COM_DISARM_LAND). The
 // position is held where the landing began and the vehicle descends at the
-// blind descent's 0.5 m/s, which the touchdown rule (A9) admits.
+// blind descent's 0.5 m/s, which the touchdown rule (A9) admits. A landed
+// vehicle holds no position: the estimate stepped 0.75 m under one standing
+// on the ground, the hold answered with tilt, and the vehicle went over onto
+// a rotor before the autopilot disarmed it (r3261; r881 for the dead-reckoned
+// landing). A descent that gains nothing for a second stands on the ground,
+// and from there the setpoint is the level one.
 void MppiOffboardNode::publishMissionLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
-  setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-      nowMicros(), mission_landing_local_, std::numeric_limits<double>::quiet_NaN(),
-      mission_landing_yaw_rad_, -kLandingSpeedMps));
+  constexpr double kDescentProgressM{0.05};
+  constexpr std::int64_t kGroundedAfterNs{1'000'000'000};
+  constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
+  const std::int64_t now_ns = now().nanoseconds();
+  if (altitude_m_ < mission_landing_lowest_altitude_m_ - kDescentProgressM) {
+    mission_landing_lowest_altitude_m_ = altitude_m_;
+    mission_landing_progress_ns_ = now_ns;
+  }
+  if (now_ns - mission_landing_progress_ns_ > kGroundedAfterNs) {
+    setpoint_pub_->publish(
+        buildMppiTrajectorySetpoint(nowMicros(), Point2{0.0, 0.0}, -kLandingSpeedMps,
+                                    Point2{0.0, 0.0}, nan, nan, 0.0));
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                         "MISSION_LANDING grounded=true altitude_m=%.2f",
+                         mapAltitudeM());
+    return;
+  }
+  setpoint_pub_->publish(
+      buildPositionTrajectorySetpoint(nowMicros(), mission_landing_local_, nan,
+                                      mission_landing_yaw_rad_, -kLandingSpeedMps));
   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                        "MISSION_LANDING descending=true altitude_m=%.2f",
                        mapAltitudeM());
@@ -342,7 +368,8 @@ void MppiOffboardNode::publishUnavailablePathHoldSetpoint() {
           : altitude_m_;
   const bool pinned_now = unavailable_path_hold_pin_.acquire(
       Point3{hold_local.x, hold_local.y, hold_altitude_m});
-  const Point3& target = *unavailable_path_hold_pin_.pin();
+  const Point3 target = unavailable_path_hold_pin_.pin().value_or(
+      Point3{hold_local.x, hold_local.y, hold_altitude_m});
   if (pinned_now) {
     const Point2 map_target =
         px4_map_transform_.localPositionToMap(Point2{target.x, target.y});
