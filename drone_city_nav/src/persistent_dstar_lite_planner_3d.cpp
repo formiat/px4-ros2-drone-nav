@@ -157,6 +157,8 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
       return "spatial_search";
     case SpatialRouteCandidateSource3D::kExecutionTimeRefinement:
       return "execution_time_refinement";
+    case SpatialRouteCandidateSource3D::kOverflight:
+      return "overflight";
   }
   return "invalid";
 }

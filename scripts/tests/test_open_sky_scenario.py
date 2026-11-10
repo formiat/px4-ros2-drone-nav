@@ -57,7 +57,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
 
     def test_the_world_states_the_open_skys_profile_and_the_launch_applies_it(self) -> None:
         # Roadmap item 39 stage 5 (specification K75): the world says what kind of space it is; a navigating
-        # lidar on it guarantees the open sky's obstacles (0.5 m and more) to 28 m and keeps 17 m of the distance
+        # lidar on it guarantees the open sky's obstacles (0.75 m and more) to its 35 m and keeps 17 m of the distance
         # field ahead; the targets' speed ceiling is the profile's.
         world = json.loads(WORLD_PATH.read_text(encoding="utf-8"))
         self.assertEqual(world["flight_profile"], "open_sky")
@@ -71,14 +71,23 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertEqual(load(REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json")[
             "flight_profile"], "cave")
         profile = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_LIDAR_OBSERVABILITY"]
-        self.assertAlmostEqual(profile["guaranteed_lidar_detection_range_m"], 28.0)
-        self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"], 0.5 / math.tan(math.radians(1.0)))
+        self.assertAlmostEqual(profile["guaranteed_lidar_detection_range_m"], 35.0)
+        self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.75)
+        self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"],
+                             profile["guaranteed_obstacle_size_m"] / math.tan(math.radians(1.0)))
+        self.assertAlmostEqual(profile["latest_sensor_obstacle_maximum_age_ms"], 300.0)
         self.assertAlmostEqual(profile["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
-        self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.5)
+        self.assertAlmostEqual(profile["persistent_planner_overflight_margin_m"], 5.0)
+        # The open sky has no roof: the memory's box and the world's ceiling stand 16 m over the caves' box.
+        box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
+        self.assertAlmostEqual(box, 56.0)
+        self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)
+        self.assertIn("box_size[2] + 16.0 - 1.0", (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
+        self.assertIn('if flight_profile == "open_sky":\n            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)', text)
         memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<double>("guaranteed_obstacle_size_m", 0.0)', memory)
         self.assertIn("2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)", memory)
@@ -86,7 +95,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
         for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
             target = makefile[makefile.index(name):]
             target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
-            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12}"', target)
+            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12.5}"', target)
             self.assertIn('ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-13}"', target)
 
     def test_the_fixture_is_the_manifests_and_the_targets_set_nothing_of_urban(self) -> None:

@@ -222,7 +222,9 @@ def select(args):
         "navigation": {
             "initial_altitude_m": round(float(start_map[2] + climb), 3),
             "minimum_target_z_m": round(float(box_origin[2] + 1.0), 3),
-            "maximum_target_z_m": round(float(box_origin[2] + box_size[2] - 1.0), 3),
+            # The open sky has no roof: the memory's box is 16 m taller on it
+            # (drone_city_nav/launch/sensor_profile.py, OPEN_SKY_MEMORY).
+            "maximum_target_z_m": round(float(box_origin[2] + box_size[2] + 16.0 - 1.0), 3),
         },
         "environment": {"manifest_id": args.world_id},
     }

@@ -540,6 +540,13 @@ private:
   [[nodiscard]] std::optional<std::vector<Point3>>
   rebaseIncumbent(const std::vector<Point3>& incumbent, const Point3& start,
                   const Point3& goal) const;
+  // The open sky's leg over everything the memory holds, where the profile
+  // plans one and the raw world clears it (specification K76).
+  [[nodiscard]] std::optional<std::vector<Point3>>
+  overflightPath(const Point3& start, const Point3& goal) const;
+  // Offers that leg where no route is held; whether the route held is one.
+  bool holdOverflight(const PersistentPlannerRequest3D& request,
+                      PlannerUpdate3D& update);
   [[nodiscard]] FlightPathTimeProfile3D
   pathTimeProfile(const std::vector<Point3>& path, const Vec3& initial_velocity) const;
   [[nodiscard]] std::optional<SpatialRouteCandidate3D>

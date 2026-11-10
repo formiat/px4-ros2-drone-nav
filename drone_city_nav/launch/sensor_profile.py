@@ -95,21 +95,36 @@ LIDAR_OBSERVABILITY = {
 # The open sky's flight profile for a navigating lidar (roadmap item 39 stage
 # 5, specification K75). The cave profiles guarantee the detection of a 0.25 m
 # voxel, which two beams a degree apart straddle within 14 m; the open sky's
-# obstacles (trunks, masts, walls: nothing under half a metre is modelled or
-# promised) are straddled within 0.5 / tan(1 deg) = 28.6 m, inside the 35 m
-# the lidar ranges to. The distance field's window (20 m either way) is
+# obstacles at range are crowns and buildings, and what the profile promises
+# to see there is three voxels across (0.75 m), which the beams straddle to
+# 43 m: the lidar's whole 35 m. What is thinner is seen from the voxel's 14 m
+# and under the leg's margin (K76). The latest scan answers within 0.3 s (its
+# age in flight is 0.13 s, 0.23 s at most, r3259 and r3261; the caves' bound
+# of 0.6 s capped the rollouts at 9.9 m/s under a law that admitted 11.3).
+# The distance field's window (20 m either way) is
 # recentred while 17 m of it still lie ahead: at 12 m of margin a tight place
 # on the route entered the field 12 m ahead of a vehicle that needs 18 m to
 # stop from 12 m/s. What the lidar saw beyond the window the memory answers
 # for (K74), and the memory keeps the scan as far as a heading of one standard
 # deviation places a hit within two of the promised obstacles of its surface
-# (38 m at 1.5 degrees, so the lidar's whole 35 m; two voxels kept 19 m of it
+# (57 m at 1.5 degrees, so the lidar's whole 35 m; two voxels kept 19 m of it
 # and the seen ended there, r3256).
+# The leg is flown over everything the memory holds, five metres over the
+# highest obstacle seen (K76): the route the sensors admit the cruise on, with
+# no search between the legs (a search from nothing for a goal 500 m away held
+# the vehicle 25 to 38 s at every goal, r3259).
 OPEN_SKY_LIDAR_OBSERVABILITY = {
-    "guaranteed_lidar_detection_range_m": 28.0,
-    "guaranteed_obstacle_size_m": 0.5,
+    "guaranteed_lidar_detection_range_m": 35.0,
+    "guaranteed_obstacle_size_m": 0.75,
+    "latest_sensor_obstacle_maximum_age_ms": 300.0,
     "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
+    "persistent_planner_overflight_margin_m": 5.0,
 }
+
+# The open sky has no roof: the memory's box stands 16 m over the caves' 40 m
+# (the canonical world's ceiling with it, tools/open_sky_scenario.py), over
+# the park's tallest crown and the leg's margin.
+OPEN_SKY_MEMORY = {"grid_depth_m": 56.0}
 
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body

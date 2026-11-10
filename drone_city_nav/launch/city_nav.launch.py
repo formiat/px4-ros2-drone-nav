@@ -37,6 +37,7 @@ from sensor_profile import (
     LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
     OPEN_SKY_LIDAR_OBSERVABILITY,
+    OPEN_SKY_MEMORY,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -407,6 +408,8 @@ def generate_launch_description():
             obstacle_memory_parameters.append(
                 {"prior_occupancy_3d_path": memory_prior_path}
             )
+        if flight_profile == "open_sky":
+            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)
         production_mppi_parameters = [
             params_file.perform(context),
             {

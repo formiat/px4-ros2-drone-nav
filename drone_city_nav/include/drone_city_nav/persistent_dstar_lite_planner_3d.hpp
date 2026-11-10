@@ -42,6 +42,9 @@ enum class SpatialRouteCandidateSource3D : std::uint8_t {
   // sensor; any route that reaches the goal replaces it, and the searches run
   // on as though the vehicle held none.
   kFeasibilityClosestApproach,
+  // The open sky's leg over everything the memory holds (specification K76):
+  // found without a search, and while it is held the searches idle.
+  kOverflight,
 };
 
 [[nodiscard]] constexpr bool spatialRouteCandidateReachesGoal3D(
@@ -121,6 +124,9 @@ struct PersistentPlannerConfig3D {
   // goal only from nodes within this distance; a raw sweep across the whole
   // remaining route on every expansion would dominate the search budget.
   double feasibility_goal_connector_reach_m{40.0};
+  // The open sky's leg (specification K76): what the route keeps over the
+  // highest obstacle the memory holds. Nought (the caves) plans no such leg.
+  double overflight_margin_m{0.0};
   // Clearance reach of the feasibility-first search's ranking. The search
   // prices its edges with the same soft clearance ranking as the D* search,
   // but derives node clearances only within this shorter reach, so the first

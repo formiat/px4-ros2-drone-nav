@@ -99,6 +99,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("persistent_planner_goal_tolerance_m", 2.0);
   planner.feasibility_goal_connector_reach_m =
       declare<double>("persistent_planner_feasibility_goal_connector_reach_m", 40.0);
+  planner.overflight_margin_m =
+      std::max(0.0, declare<double>("persistent_planner_overflight_margin_m", 0.0));
   planner.feasibility_clearance_ranking_distance_m = declare<double>(
       "persistent_planner_feasibility_clearance_ranking_distance_m", 2.0);
   const std::int64_t connector_search_radius_cells =

@@ -431,7 +431,7 @@ sim-finals-point-to-point-gui: build
 # location's: under the sun the lamp's outage read 3.6 s and K12 sent r2614
 # home), the mission window the kilometres' own. Nothing of the urban
 # location is set. The speed ceiling is the open sky's profile
-# (specification V3, K75): the cruise 12 m/s, the limit 13 m/s; the sensor
+# (specification V3, K75): the cruise 12.5 m/s, the limit 13 m/s; the sensor
 # set's braking contract decides what of it is flown.
 OPEN_SKY_SCENARIO_PATH := drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json
 OPEN_SKY_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/open_sky_baylands_r050.occupancy3d
@@ -447,7 +447,7 @@ sim-open-sky-point-to-point-headless: build
 		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(OPEN_SKY_TRUTH_OCCUPANCY_3D)}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-13}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
@@ -464,7 +464,7 @@ sim-open-sky-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=$(OPEN_SKY_SCENARIO_PATH) \
 		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12}" \
+		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12.5}" \
 		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-13}" \
 		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
