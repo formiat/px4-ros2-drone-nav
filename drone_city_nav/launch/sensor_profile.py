@@ -79,6 +79,19 @@ STEREO_TOF_OBSERVABILITY = {
     "sensor_expected_beam_count": (1280 // 4) * (960 // 4),
 }
 
+# What a planner that navigates by the lidar does not read: the pair's own
+# readings of its frame (the light's headroom, the silent patch, the void, the
+# carried light's output). With the camera set mounted beside the lidar (the
+# open sky's full set: the lidar for the obstacles, the pair for the estimate)
+# the depth node publishes them, and they bounded the lidar's range by the
+# pair's lamp (r3253). An empty topic is not subscribed.
+LIDAR_OBSERVABILITY = {
+    "light_headroom_topic": "",
+    "silent_range_topic": "",
+    "void_range_topic": "",
+    "carried_light_output_topic": "",
+}
+
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body
 # forward-right-down). Two hits make a voxel occupied, not one: a matcher's

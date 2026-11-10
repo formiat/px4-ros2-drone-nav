@@ -34,6 +34,7 @@ from localization_profile import (
 )
 from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
+    LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
@@ -439,6 +440,8 @@ def generate_launch_description():
                       "sensor_vertical_fov_rad": 1.8326}
             )
         cameras_mounted = cameras == "stereo_tof"
+        if navigation_sensors == "lidar":
+            production_mppi_parameters.append(LIDAR_OBSERVABILITY)
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             # The launch's one obstacle memory is the vision memory.

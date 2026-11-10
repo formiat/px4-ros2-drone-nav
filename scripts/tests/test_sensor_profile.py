@@ -100,6 +100,22 @@ class SensorProfileTest(unittest.TestCase):
         self.assertIn('"DEFAULT_NAVIGATION_SENSOR_PROFILE"', multi)
         self.assertIn("planner_params.update(_STEREO_TOF_OBSERVABILITY)", multi)
         self.assertIn("memory_params.update(_VISION_MEMORY_OVERRIDES)", multi)
+
+    def test_the_lidars_planner_reads_none_of_the_pairs_readings(self) -> None:
+        # The open sky's full set mounts the cameras beside a navigating lidar: the pair's lamp and silence are
+        # not the lidar's (r3253: the contract's 14 m read down to 10.9 m). An empty topic is not subscribed.
+        observability = SUPPORT["LIDAR_OBSERVABILITY"]
+        self.assertEqual(set(observability),
+                         {"light_headroom_topic", "silent_range_topic", "void_range_topic",
+                          "carried_light_output_topic"})
+        self.assertTrue(all(value == "" for value in observability.values()))
+        launch = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('if navigation_sensors == "lidar":\n            production_mppi_parameters.append(LIDAR_OBSERVABILITY)',
+                      launch)
+        node = (REPO_ROOT / "drone_city_nav/src/runtime/ros/production_mppi_node_interfaces.cpp").read_text(
+            encoding="utf-8")
+        for topic in ("light_headroom", "silent_range", "void_range", "carried_light_output"):
+            self.assertIn(f"if (!config_.world.topics.{topic}.empty()) {{", node)
         runner = (REPO_ROOT / "scripts/run_drone_nav_sim.sh").read_text()
         self.assertEqual(2, runner.count('camera_profile:="${camera_profile}"'))
         self.assertEqual(

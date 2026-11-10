@@ -617,40 +617,52 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_subscription_options);
   }
-  // The forward camera's light headroom (roadmap item 17 stage 7); a lidar
-  // publishes none.
-  light_headroom_sub_ = create_subscription<std_msgs::msg::Float64>(
-      config_.world.topics.light_headroom, rclcpp::SensorDataQoS{},
-      [this](const std_msgs::msg::Float64::SharedPtr message) {
-        light_headroom_.store(message->data, std::memory_order_relaxed);
-        light_headroom_stamp_ns_.store(get_clock()->now().nanoseconds(),
+  // The pair's readings of its own frame: the light's headroom (roadmap item
+  // 17 stage 7), the silent patch, the void, the carried light's output. A
+  // topic left empty is not read: the planner of a vehicle that navigates by
+  // the lidar reads none of them even with the camera set mounted, where the
+  // pair's lamp bounded the lidar's range (r3253: the contract's 14 m read
+  // down to 10.9 m under the sun).
+  if (!config_.world.topics.light_headroom.empty()) {
+    light_headroom_sub_ = create_subscription<std_msgs::msg::Float64>(
+        config_.world.topics.light_headroom, rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          light_headroom_.store(message->data, std::memory_order_relaxed);
+          light_headroom_stamp_ns_.store(get_clock()->now().nanoseconds(),
+                                         std::memory_order_relaxed);
+        },
+        sensor_evidence_subscription_options);
+  }
+  if (!config_.world.topics.silent_range.empty()) {
+    silent_range_sub_ = create_subscription<std_msgs::msg::Float64>(
+        config_.world.topics.silent_range, rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          silent_range_.store(message->data, std::memory_order_relaxed);
+          silent_range_stamp_ns_.store(get_clock()->now().nanoseconds(),
                                        std::memory_order_relaxed);
-      },
-      sensor_evidence_subscription_options);
-  silent_range_sub_ = create_subscription<std_msgs::msg::Float64>(
-      config_.world.topics.silent_range, rclcpp::SensorDataQoS{},
-      [this](const std_msgs::msg::Float64::SharedPtr message) {
-        silent_range_.store(message->data, std::memory_order_relaxed);
-        silent_range_stamp_ns_.store(get_clock()->now().nanoseconds(),
+        },
+        sensor_evidence_subscription_options);
+  }
+  if (!config_.world.topics.void_range.empty()) {
+    void_range_sub_ = create_subscription<std_msgs::msg::Float64>(
+        config_.world.topics.void_range, rclcpp::SensorDataQoS{},
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          void_range_.store(message->data, std::memory_order_relaxed);
+          void_range_stamp_ns_.store(get_clock()->now().nanoseconds(),
                                      std::memory_order_relaxed);
-      },
-      sensor_evidence_subscription_options);
-  void_range_sub_ = create_subscription<std_msgs::msg::Float64>(
-      config_.world.topics.void_range, rclcpp::SensorDataQoS{},
-      [this](const std_msgs::msg::Float64::SharedPtr message) {
-        void_range_.store(message->data, std::memory_order_relaxed);
-        void_range_stamp_ns_.store(get_clock()->now().nanoseconds(),
-                                   std::memory_order_relaxed);
-      },
-      sensor_evidence_subscription_options);
-  light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
-      config_.world.topics.carried_light_output, rclcpp::QoS{1}.reliable(),
-      [this](const std_msgs::msg::Float64::SharedPtr message) {
-        light_reading_.store(message->data, std::memory_order_relaxed);
-        light_reading_stamp_ns_.store(get_clock()->now().nanoseconds(),
-                                      std::memory_order_relaxed);
-      },
-      sensor_evidence_subscription_options);
+        },
+        sensor_evidence_subscription_options);
+  }
+  if (!config_.world.topics.carried_light_output.empty()) {
+    light_reading_sub_ = create_subscription<std_msgs::msg::Float64>(
+        config_.world.topics.carried_light_output, rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::Float64::SharedPtr message) {
+          light_reading_.store(message->data, std::memory_order_relaxed);
+          light_reading_stamp_ns_.store(get_clock()->now().nanoseconds(),
+                                        std::memory_order_relaxed);
+        },
+        sensor_evidence_subscription_options);
+  }
   latest_sensor_obstacle_scan_sub_ = create_subscription<msg::LatestSensorObstacleScan>(
       config_.world.topics.latest_sensor_obstacle_scan, rclcpp::SensorDataQoS{},
       [this](const msg::LatestSensorObstacleScan::SharedPtr message,

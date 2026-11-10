@@ -111,8 +111,9 @@ TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
   EXPECT_FALSE(input.expire(last_ns + kSecond / 4).has_value());
   const std::optional<GnssTrustVerdict> gone = input.expire(last_ns + 2 * kSecond);
   ASSERT_TRUE(gone.has_value());
-  EXPECT_FALSE(gone->trusted);
-  EXPECT_EQ(gone->reason, "no_fix");
+  const GnssTrustVerdict lost = gone.value_or(GnssTrustVerdict{});
+  EXPECT_FALSE(lost.trusted);
+  EXPECT_EQ(lost.reason, "no_fix");
   EXPECT_FALSE(input.trusted());
   EXPECT_FALSE(input.expire(last_ns + 3 * kSecond).has_value());
   // The fixes back: the first steps the clock, the agreement restarts, the
@@ -127,6 +128,44 @@ TEST(GnssTrustTest, NoFixWithinTheClockGateEndsTheTrustOncePerOutage) {
     EXPECT_EQ(decision.verdict.trusted, i >= 151) << i;
   }
   EXPECT_TRUE(input.expire(sample.arrival_ns + 2 * kSecond).has_value());
+}
+
+TEST(GnssTrustTest, AFixThatMovesWithItsOwnVelocityDoesNotStep) {
+  // A vehicle at 12 m/s north moves 0.4 m between fixes thirty a second: the
+  // step is its own motion, not a leap (r3253: 0.18 m a fix at 5.5 m/s read
+  // against the gate of 0.16 m ended the trust fifteen times). A fix 3 m to
+  // the side of where that motion puts it steps by those 3 m.
+  GnssInputConfig config;
+  config.trust = gates();
+  config.reference_fixes = 1U;
+  GnssInput input{config};
+  constexpr double kMetresPerDegree{111'132.0};
+  GnssFixSample sample{.stamp_ns = 0,
+                       .valid = true,
+                       .latitude_deg = 37.4,
+                       .longitude_deg = -121.9,
+                       .altitude_m = 40.0,
+                       .velocity_ned_mps = {12.0, 0.0, 0.0},
+                       .horizontal_sigma_m = 0.9,
+                       .vertical_sigma_m = 1.5,
+                       .speed_sigma_mps = 0.3};
+  GnssInputDecision decision;
+  for (int i = 0; i <= 60; ++i) {
+    sample.stamp_ns = i * kSecond / 30;
+    sample.arrival_ns = sample.stamp_ns;
+    sample.latitude_deg =
+        37.4 + 12.0 * static_cast<double>(i) / 30.0 / kMetresPerDegree;
+    decision = input.fix(sample, false, nullptr);
+    if (i >= 2) {
+      EXPECT_LT(decision.reading.position_step_m, 0.02) << i;
+      EXPECT_NE(decision.verdict.reason, "jump") << i;
+    }
+  }
+  sample.stamp_ns += kSecond / 30;
+  sample.arrival_ns = sample.stamp_ns;
+  sample.latitude_deg += (12.0 / 30.0 + 3.0) / kMetresPerDegree;
+  decision = input.fix(sample, false, nullptr);
+  EXPECT_NEAR(decision.reading.position_step_m, 3.0, 0.05);
 }
 
 TEST(GnssTrustTest, TheEstimatorsDriftWhileUnaidedWidensTheResidualsGate) {

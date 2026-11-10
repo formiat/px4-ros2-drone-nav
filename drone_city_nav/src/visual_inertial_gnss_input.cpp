@@ -1,6 +1,7 @@
 #include "visual_inertial_gnss_input.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -76,9 +77,9 @@ GnssFixSample gnssFixSample(const AutopilotGnssFix& fix,
 
 std::string GnssInput::summary(const GnssInputDecision& decision,
                                const AutopilotGnssFix& fix, const std::uint64_t fused) {
-  char line[512];
+  std::array<char, 512> line{};
   std::snprintf(
-      line, sizeof line,
+      line.data(), line.size(),
       "GNSS_TRUST trusted=%s agreeing=%s agreeing_s=%.1f reason=%s residual_m=%.2f "
       "normalised=%.2f velocity_mps=%.2f velocity_normalised=%.2f self_mps=%.2f "
       "step_m=%.2f "
@@ -92,7 +93,7 @@ std::string GnssInput::summary(const GnssInputDecision& decision,
       decision.reading.clock_step_s, static_cast<unsigned>(fix.fix_type),
       fix.horizontal_accuracy_m, static_cast<unsigned long long>(fused),
       decision.unaided_drift_m);
-  return line;
+  return line.data();
 }
 
 GnssInputDecision
@@ -130,7 +131,15 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
     const double dt =
         static_cast<double>(sample.stamp_ns - previous_->stamp_ns) * 1.0e-9;
     decision.reading.clock_step_s = dt;
-    decision.reading.position_step_m = (ned - *previous_ned_m_).norm();
+    // The step the fix's own motion does not explain: its position against
+    // the previous one carried at the two fixes' mean velocity. The bare
+    // step is the vehicle's speed read as a leap: 0.18 m a fix at 5.5 m/s
+    // against a gate of 0.16 m measured at 1.5 m/s, and the trust ended
+    // fifteen times in one honest flight (r3253).
+    decision.reading.position_step_m =
+        (ned - *previous_ned_m_ -
+         0.5 * dt * (previous_->velocity_ned_mps + sample.velocity_ned_mps))
+            .norm();
     if (dt > 1.0e-3) {
       decision.reading.self_disagreement_mps =
           (sample.velocity_ned_mps - (ned - *previous_ned_m_) / dt).norm();
