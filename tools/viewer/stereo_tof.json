@@ -1,0 +1,431 @@
+{
+  "configById": {
+    "3D!scene": {
+      "cameraState": {
+        "distance": 70,
+        "perspective": true,
+        "phi": 52,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          -6,
+          22,
+          6
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 35,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-none",
+      "followTf": "map",
+      "scene": {
+        "backgroundColor": "#0d0f14",
+        "transforms": {
+          "showLabel": false,
+          "visible": false
+        }
+      },
+      "transforms": {},
+      "topics": {
+        "/records/memory/occupied": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo",
+          "pointSize": 4,
+          "pointShape": "square"
+        },
+        "/records/truth/pose": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            1.6,
+            0.35,
+            0.35
+          ],
+          "color": "#2bd45aff"
+        },
+        "/records/truth/path": {
+          "visible": true,
+          "type": "line",
+          "lineWidth": 0.12,
+          "gradient": [
+            "#2bd45aff",
+            "#2bd45aff"
+          ]
+        },
+        "/drone_city_nav/visual_inertial_odometry/pose": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            1.6,
+            0.35,
+            0.35
+          ],
+          "color": "#ff9a1fff"
+        },
+        "/tof/front/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        },
+        "/tof/down/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        },
+        "/tof/up/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        },
+        "/tof/left/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        },
+        "/tof/right/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        },
+        "/tof/back/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "flat",
+          "flatColor": "#ffffffcc",
+          "pointSize": 2
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "frameLocked": true,
+          "label": "Grid",
+          "instanceId": "grid",
+          "layerId": "foxglove.Grid",
+          "size": 400,
+          "divisions": 40,
+          "lineWidth": 1,
+          "color": "#248eff30",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "order": 1
+        }
+      },
+      "publish": {},
+      "imageMode": {},
+      "lichtblickPanelTitle": "Memory, truth (green), estimate (orange)"
+    },
+    "Plot!speed": {
+      "paths": [
+        {
+          "value": "/records/mppi/track.reference_speed_mps",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "reference"
+        },
+        {
+          "value": "/records/mppi/track.commanded_speed_mps",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "commanded"
+        },
+        {
+          "value": "/records/truth/speed.speed_mps",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "true"
+        },
+        {
+          "value": "/records/truth/speed.vertical_mps",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "true vertical"
+        },
+        {
+          "value": "/drone_city_nav/vehicle_state.velocity.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "state vx"
+        },
+        {
+          "value": "/drone_city_nav/vehicle_state.velocity.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "state vy"
+        },
+        {
+          "value": "/drone_city_nav/vehicle_state.velocity.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "state vz"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "lichtblickPanelTitle": "Speed, m/s"
+    },
+    "Plot!estimate": {
+      "paths": [
+        {
+          "value": "/records/estimate/error.horizontal_m",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "horizontal error"
+        },
+        {
+          "value": "/records/estimate/error.vertical_m",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "vertical error"
+        },
+        {
+          "value": "/records/mppi/track.minimum_esdf_m",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "ESDF minimum"
+        },
+        {
+          "value": "/drone_city_nav/mppi/navigation_progress.sensor_measured_range_m",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "sensor's measured range"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "lichtblickPanelTitle": "Estimate against the truth, m; clearance, m"
+    },
+    "Plot!budget": {
+      "paths": [
+        {
+          "value": "/records/budget/production_mppi_node.cpu_cores",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "production_mppi_node"
+        },
+        {
+          "value": "/records/budget/gazebo_stereo_depth_node.cpu_cores",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "gazebo_stereo_depth_node"
+        },
+        {
+          "value": "/records/budget/obstacle_memory_3d_node.cpu_cores",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "obstacle_memory_3d_node"
+        },
+        {
+          "value": "/records/budget/mppi_offboard_node.cpu_cores",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "mppi_offboard_node"
+        },
+        {
+          "value": "/records/budget/host.real_time_factor",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "real-time factor"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "lichtblickPanelTitle": "Budgets: CPU cores; real-time factor"
+    },
+    "StateTransitions!events": {
+      "paths": [
+        {
+          "value": "/drone_city_nav/mission_events.data",
+          "timestampMethod": "receiveTime",
+          "label": "mission"
+        },
+        {
+          "value": "/records/mppi/track.limiter",
+          "timestampMethod": "receiveTime",
+          "label": "speed limiter"
+        },
+        {
+          "value": "/drone_city_nav/vehicle_state.airborne",
+          "timestampMethod": "receiveTime",
+          "label": "airborne"
+        }
+      ],
+      "isSynced": true,
+      "lichtblickPanelTitle": "Mission events, speed limiter"
+    },
+    "RawMessages!events": {
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "topicPath": "/drone_city_nav/mission_events",
+      "fontSize": 12,
+      "lichtblickPanelTitle": "Mission event"
+    },
+    "Image!0": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 45,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {},
+      "imageMode": {
+        "imageTopic": "/stereo/left/image",
+        "synchronize": false
+      },
+      "lichtblickPanelTitle": "Left camera"
+    },
+    "Image!1": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 45,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {},
+      "imageMode": {
+        "imageTopic": "/stereo/right/image",
+        "synchronize": false
+      },
+      "lichtblickPanelTitle": "Right camera"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "column",
+    "splitPercentage": 64,
+    "first": {
+      "direction": "row",
+      "splitPercentage": 58,
+      "first": "3D!scene",
+      "second": {
+        "direction": "column",
+        "splitPercentage": 52,
+        "first": {
+          "direction": "row",
+          "first": "Image!0",
+          "second": "Image!1",
+          "splitPercentage": 50
+        },
+        "second": {
+          "direction": "column",
+          "splitPercentage": 55,
+          "first": "StateTransitions!events",
+          "second": "RawMessages!events"
+        }
+      }
+    },
+    "second": {
+      "direction": "row",
+      "splitPercentage": 34,
+      "first": "Plot!speed",
+      "second": {
+        "direction": "row",
+        "splitPercentage": 50,
+        "first": "Plot!estimate",
+        "second": "Plot!budget"
+      }
+    }
+  }
+}
