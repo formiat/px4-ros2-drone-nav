@@ -198,7 +198,8 @@ private:
   std::deque<Point3> flown_path_;
   std::atomic<std::shared_ptr<const MovingBodyEvidence3D>> moving_body_evidence_;
   // Where the vehicle stood when its forward sensor went blind along the
-  // motion: the blind hold's target while it stays blind.
+  // motion or its route's free remainder was spent: the hold's target while
+  // that lasts.
   std::optional<Point3> blind_hold_position_;
 };
 

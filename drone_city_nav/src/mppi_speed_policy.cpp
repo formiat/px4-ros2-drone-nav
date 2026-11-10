@@ -824,8 +824,15 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       along.guaranteed_detection_range_m > 0.0 &&
       along.guaranteed_detection_range_m <=
           along.physical_margin_m + kBlindRangeAboveMarginM;
+  // A route with no free metre left ahead of the stop's margin holds the
+  // vehicle the same way: on a target the minimum lookahead ahead, re-taken
+  // each tick from where the vehicle is, a degree of residual tilt carried it
+  // on at 0.2 m/s through the margin and into the crown it had stopped for
+  // (r3258, 2.2 m in 12 s, a rotor on a branch at 0.1 m/s).
+  result.route_remainder_spent = input.blocked_route_remaining_m.has_value() &&
+                                 result.blocked_route_limit_mps <= 0.0;
   result.target_lookahead_m =
-      result.blind_along_motion
+      result.blind_along_motion || result.route_remainder_spent
           ? 0.0
           : std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                        config.minimum_target_lookahead_m,

@@ -232,6 +232,10 @@ struct MppiSpeedPolicyResult {
   // The forward sensor is blind along the motion and nothing is observed
   // along it: the vehicle holds where it stands.
   bool blind_along_motion{false};
+  // The raw world stands on the route within the stop's margin: the route
+  // leaves no free metre ahead, and the vehicle holds where it stands until
+  // the route changes.
+  bool route_remainder_spent{false};
   SensorBrakingAssessment3D sensor_braking_assessment{};
   MppiSpeedLimiter active_limiter{MppiSpeedLimiter::kGoal};
   RouteEndpointSemantics3D route_endpoint_semantics{

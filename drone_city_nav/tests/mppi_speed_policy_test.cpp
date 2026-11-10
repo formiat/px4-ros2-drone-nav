@@ -366,9 +366,21 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   EXPECT_LT(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 5.0));
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.blocked_route_limit_mps);
 
+  EXPECT_FALSE(result.route_remainder_spent);
+  EXPECT_GT(result.target_lookahead_m, 0.0);
+
+  // Within the margin the route leaves no free metre: nothing is admitted and
+  // the target is not led ahead of the vehicle (r3258).
+  input.blocked_route_remaining_m = 2.5;
+  const MppiSpeedPolicyResult spent = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(spent.route_remainder_spent);
+  EXPECT_DOUBLE_EQ(spent.reference_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(spent.target_lookahead_m, 0.0);
+
   input.blocked_route_remaining_m = std::nullopt;
   const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
   EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kBlockedRoute);
+  EXPECT_FALSE(open.route_remainder_spent);
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
 }
 

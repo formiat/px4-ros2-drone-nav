@@ -660,15 +660,21 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // A route's projection moves on with the vehicle, so a target on it drew a
   // blind vehicle on at a third of a metre a second (r809), and so did its own
   // position taken afresh each tick (r811, 1.8 m in 30 s): the hold is where
-  // the vehicle stood when it went blind, until it sees again.
-  if (output.controller.speed_policy.blind_along_motion) {
+  // the vehicle stood when it went blind, until it sees again. A route whose
+  // free remainder is spent holds the vehicle the same way, where it stood
+  // when the last free metre went, until the route changes (r3258).
+  const bool rest_in_place = output.controller.speed_policy.blind_along_motion ||
+                             output.controller.speed_policy.route_remainder_spent;
+  if (rest_in_place) {
     if (!blind_hold_position_.has_value()) {
       blind_hold_position_ = position;
     }
     target.x = static_cast<float>(blind_hold_position_->x);
     target.y = static_cast<float>(blind_hold_position_->y);
     target.z = static_cast<float>(blind_hold_position_->z);
-    output.controller.target_source = "blind_hold";
+    output.controller.target_source = output.controller.speed_policy.blind_along_motion
+                                          ? "blind_hold"
+                                          : "route_remainder_hold";
   } else {
     blind_hold_position_.reset();
   }
@@ -828,8 +834,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // A hold in place follows no route: with the route and its route-directed
   // candidate in the rollouts a blind vehicle held on its route at 0.1 to
   // 0.2 m/s past its hold point into the dark over B (r813).
-  const bool hold_in_place =
-      route_control.hold_xy || output.controller.speed_policy.blind_along_motion;
+  const bool hold_in_place = route_control.hold_xy || rest_in_place;
   const mppi::DeterministicCandidateKind deterministic_candidate =
       planningDeterministicCandidate(output.controller.planning_state,
                                      output.route.usable, output.route.projection.valid,
