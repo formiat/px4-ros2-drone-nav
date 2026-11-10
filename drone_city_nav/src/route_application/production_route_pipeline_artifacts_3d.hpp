@@ -160,6 +160,13 @@ struct ProductionMaterializedRouteProposal3D {
 // Admission is a report about a candidate. It does not mutate or own the
 // resident world and cannot become an execution owner by itself.
 struct RouteAdmissionReport3D {
+  // The preparation's stages on the wall clock: the rebase and validation, the
+  // trajectory's compile, the admission and replacement assessments, and the
+  // certification.
+  double rebase_ms{0.0};
+  double compile_ms{0.0};
+  double assessment_ms{0.0};
+  double certification_ms{0.0};
   StaticRouteCandidateValidation candidate_validation{};
   CertifiedRouteReserveAssessment3D certified_reserve{};
   RouteActivationAssessment3D assessment{};

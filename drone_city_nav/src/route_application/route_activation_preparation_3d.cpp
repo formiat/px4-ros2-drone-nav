@@ -6,6 +6,7 @@
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -399,11 +400,28 @@ prepareRouteActivation3D(RouteActivationPreparationRequest3D request,
   if (state.transaction == nullptr) {
     return std::move(state.prepared);
   }
+  const auto since_ms = [](const std::chrono::steady_clock::time_point started) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                     started)
+        .count();
+  };
+  auto started = std::chrono::steady_clock::now();
   state = rebaseAndValidate(std::move(state), config);
+  const double rebase_ms = since_ms(started);
+  started = std::chrono::steady_clock::now();
   state = compile(std::move(state), trajectory_compiler);
+  const double compile_ms = since_ms(started);
+  started = std::chrono::steady_clock::now();
   state = assessAdmission(std::move(state), config);
   state = assessReplacement(std::move(state), config);
+  const double assessment_ms = since_ms(started);
+  started = std::chrono::steady_clock::now();
   state = certify(std::move(state), config);
+  RouteAdmissionReport3D& report = state.prepared.result.admission;
+  report.rebase_ms = rebase_ms;
+  report.compile_ms = compile_ms;
+  report.assessment_ms = assessment_ms;
+  report.certification_ms = since_ms(started);
   return makePendingDraft(std::move(state));
 }
 
