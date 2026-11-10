@@ -135,6 +135,13 @@ struct RouteLifecycleUpdate3D {
   RouteCandidateDisposition3D candidate_disposition{
       RouteCandidateDisposition3D::kContinueForImprovement};
   std::size_t activation_attempts{0U};
+  // The last activation attempt's stages on the wall clock: the candidate's
+  // materialization, the activation's preparation (compile and certify) and
+  // its commit. An attempt longer than the world's revision interval is
+  // superseded every time (r3265).
+  double activation_materialization_ms{0.0};
+  double activation_preparation_ms{0.0};
+  double activation_commit_ms{0.0};
   bool search_running{false};
   bool search_superseded_by_activation{false};
   // The search's gate was cleared by a release that queued a fresh search;

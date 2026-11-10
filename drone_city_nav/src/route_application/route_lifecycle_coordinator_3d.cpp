@@ -301,6 +301,7 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
               ? std::shared_ptr<const CertifiedRouteSuffix3D>{materialization_execution,
                                                               active_route}
               : nullptr;
+      const auto materialization_started = std::chrono::steady_clock::now();
       ProductionRouteMaterialization3D materialization =
           route_materializer_.materialize(RouteMaterializationRequest3D{
               .transaction = transaction,
@@ -315,6 +316,11 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
       result.geometry_optimization_fallback =
           materialization.geometry_optimization_fallback;
 
+      const auto preparation_started = std::chrono::steady_clock::now();
+      result.activation_materialization_ms =
+          std::chrono::duration<double, std::milli>(preparation_started -
+                                                    materialization_started)
+              .count();
       PreparedRouteActivation3D prepared =
           route_activation_coordinator_.prepare(RouteActivationPreparationRequest3D{
               .transaction = transaction,
@@ -323,8 +329,13 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
               .planning_latency = planningLatencyStatistics(),
               .blocked_replacement_held_s = blockedReplacementHeldSeconds(*transaction),
           });
+      const auto commit_started = std::chrono::steady_clock::now();
+      result.activation_preparation_ms = std::chrono::duration<double, std::milli>(
+                                             commit_started - preparation_started)
+                                             .count();
       RouteActivationCommitResult3D committed =
           config_.activation_commit_boundary(std::move(prepared), commit_operation);
+      result.activation_commit_ms = elapsedMilliseconds(commit_started);
       activation = std::move(committed.result);
       result.candidate_disposition = classifyCandidateDisposition(
           *transaction, planner_update.planner_telemetry, activation.admission);

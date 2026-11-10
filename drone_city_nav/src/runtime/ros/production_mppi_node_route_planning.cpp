@@ -420,7 +420,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "route_start=(%.2f,%.2f,%.2f) time_objective_s=%.3f eta_s=%.3f "
       "translation_s=%.3f turn_s=%.3f "
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
-      "smoothing_ms=%.3f raw_connector_validated=%s "
+      "smoothing_ms=%.3f activation_attempts=%zu materialization_ms=%.3f "
+      "preparation_ms=%.3f commit_ms=%.3f raw_connector_validated=%s "
       "raw_suffix_validated=%s route_fingerprint=%" PRIu64,
       plan.planned_on_revision, plan.mission_epoch, admission.snapshot_raw_revision,
       planner_input, planner_progress, plan.search_state_reused ? "true" : "false",
@@ -490,7 +491,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       telemetry.planner.estimated_translation_time_s,
       telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,
       update.route_planning_ms, materialization_telemetry.candidate_validation_ms,
-      materialization_telemetry.route_smoothing_ms,
+      materialization_telemetry.route_smoothing_ms, update.activation_attempts,
+      update.activation_materialization_ms, update.activation_preparation_ms,
+      update.activation_commit_ms,
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
       materialized.fingerprint);
