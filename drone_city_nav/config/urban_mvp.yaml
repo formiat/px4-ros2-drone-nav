@@ -818,22 +818,25 @@ visual_inertial_odometry_node:
     # subscribed, nothing is paid); the launch names the simulation relay's
     # topic on the hybrid profile. The trust is one measurement, the fix's
     # disagreement with the estimator over a window (gnss_trust.hpp). The
-    # gates are twice the 99th percentile of the readings over the three
-    # measuring flights of the open sky without faults (r2626 to r2628 on
-    # 5d071431, 1.6 km each, 3268 one-second readings, tools/gnss_gates.py):
-    # the position residual normalised p99 0.35, the velocity residual
-    # normalised p99 0.63, the fix's disagreement with itself p99 1.00 m/s,
-    # the position's step between fixes p99 0.08 m at 30 Hz (0.16 m is one
-    # fix at 4.8 m/s: a faster flight would read every fix as a jump, which
-    # the self gate catches without the speed), the clock's step p99 0.036 s
-    # (one lost fix reads 0.066 s, two read a step). A gate changes only
-    # with a new measurement of the distribution, never under a result.
+    # gates are twice the 99th percentile of the readings over three honest
+    # flights of the open sky at its profile (r3262 to r3264 on 39b30072 and
+    # 76cc43b4, 1.5 km each at 7.5 to 8.4 m/s and 38 to 48 m over the
+    # ground, 659 one-second readings, the gates open, tools/gnss_gates.py):
+    # the position residual normalised p99 1.05, the velocity residual
+    # normalised p99 0.93, the fix's disagreement with itself p99 1.00 m/s,
+    # the position's step beyond its own motion p99 0.03 m at 30 Hz, the
+    # clock's step p99 0.036 s (one lost fix reads 0.066 s, two read a
+    # step). The gates of r2626 to r2628 (1.5 m/s, 12 m over the ground)
+    # were 0.70 and 1.26: at the profile's speed and height the estimate's
+    # residual against an honest fix is 0.94 m at p50, and the trust ended
+    # in honest flight. A gate changes only with a new measurement of the
+    # distribution, never under a result.
     gnss_topic: ""
     gnss_window_s: 5.0
-    gnss_position_gate: 0.70
-    gnss_velocity_gate: 1.26
+    gnss_position_gate: 2.10
+    gnss_velocity_gate: 1.86
     gnss_self_gate_mps: 2.0
-    gnss_jump_gate_m: 0.16
+    gnss_jump_gate_m: 0.06
     gnss_clock_step_gate_s: 0.072
     gnss_reference_fixes: 30
     gnss_sigma_floor_m: 0.5
