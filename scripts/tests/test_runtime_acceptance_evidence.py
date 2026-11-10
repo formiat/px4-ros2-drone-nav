@@ -326,6 +326,35 @@ class RuntimeManifestTest(unittest.TestCase):
                 )
                 self.assertEqual(errors == [], passes, errors)
 
+    def test_the_open_skys_mean_speed_answers_to_r8(self) -> None:
+        # R8 (the owner, 2026-10-29): 10 m/s at least on the open sky, the flight's
+        # floor 20 percent under it (8 m/s), on either sensor set; under 10 m/s a
+        # flight counts and is noted against R8.
+        for path_m, profile, passes in ((2700.0, "lidar", True), (2370.0, "lidar", False),
+                                        (2700.0, "stereo_tof", True)):
+            with self.subTest(path_m=path_m, profile=profile):
+                errors: list[str] = []
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    validator.validate_mean_flight_speed(
+                        self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0),
+                        "open_sky")
+                self.assertEqual(errors == [], passes, errors)
+                if passes:
+                    self.assertIn("under the target 10 m/s (R8)", stdout.getvalue())
+
+    def test_the_kind_of_space_is_read_from_the_scenarios_world(self) -> None:
+        config = SCRIPTS.parent / "drone_city_nav/config"
+        errors: list[str] = []
+        self.assertEqual(validator.scenario_flight_profile(
+            str(config / "open_sky_baylands_point_to_point_scenario.json"), errors), "open_sky")
+        self.assertEqual(validator.scenario_flight_profile(
+            str(config / "urban_circuit_practice_01_point_to_point_scenario.json"), errors), "cave")
+        self.assertEqual(validator.scenario_flight_profile("", errors), "cave")
+        self.assertEqual(errors, [])
+        validator.scenario_flight_profile(str(config / "no_such_scenario.json"), errors)
+        self.assertEqual(len(errors), 1)
+
     def test_mean_flight_speed_under_the_target_is_noted_for_the_register(self) -> None:
         # 1.00 m/s on the stereo set counts (above the floor of 0.93) and is
         # noted as 13.8 percent under the target of 1.16 (R3): the series it

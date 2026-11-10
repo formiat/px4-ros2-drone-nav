@@ -418,6 +418,22 @@ def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
         )
 
 
+def scenario_flight_profile(scenario_path: str, errors: list[str]) -> str:
+    """The kind of space the scenario's canonical world states (specification K75):
+    `cave` without a scenario or where the world states none."""
+    if not scenario_path:
+        return "cave"
+    try:
+        scenario = Path(scenario_path)
+        world = Path(json.loads(scenario.read_text(encoding="utf-8"))["canonical_world"])
+        if not world.is_absolute():
+            world = scenario.parent / world
+        return str(json.loads(world.read_text(encoding="utf-8")).get("flight_profile", "cave"))
+    except (OSError, KeyError, ValueError) as error:
+        errors.append(f"FAIL: the scenario's world states its flight profile ({error})")
+        return "cave"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -566,6 +582,7 @@ def main() -> int:
             or args.mission_type == "survey" else errors,
             overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
+            scenario_flight_profile(overrides.get("POINT_TO_POINT_SCENARIO_PATH", ""), errors),
         )
         validate_controller_dynamics(
             args.runtime_manifest.parent, ros_log, notes,

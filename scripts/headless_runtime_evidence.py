@@ -108,6 +108,11 @@ MINIMUM_MEAN_FLIGHT_SPEED_MPS = round(
     TARGET_MEAN_FLIGHT_SPEED_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
 MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = round(
     TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
+# R8 (the owner, 2026-10-29): the open sky's profile, 10 m/s at least, whatever the
+# sensor set; a flight counts down to the same shortfall under it as under R3.
+TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS = 10.0
+MINIMUM_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS = round(
+    TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
 
 TICK_POSITION_PATTERN = (
     r"\[(\d+\.\d+)\] \[production_mppi_node\]: PRODUCTION_MPPI_TICK [^\n]*?"
@@ -371,7 +376,8 @@ def simulation_time_at(pairs: list[tuple[float, float]], wall_s: float) -> float
 
 def validate_mean_flight_speed(ros_log: str, errors: list[str],
                                navigation_sensor_profile: str = "lidar",
-                               truth_path: Path | None = None) -> None:
+                               truth_path: Path | None = None,
+                               flight_profile: str = "cave") -> None:
     """The path the vehicle flew between mission readiness and the successful
     result over the simulation time that passed between them. The project
     owner's decision of 2026-09-25: the wall clock measured this until then,
@@ -383,6 +389,11 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
                          else MINIMUM_MEAN_FLIGHT_SPEED_MPS)
     target_speed_mps = (TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS if stereo
                         else TARGET_MEAN_FLIGHT_SPEED_MPS)
+    requirement = "R3"
+    if flight_profile == "open_sky":
+        minimum_speed_mps = MINIMUM_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
+        target_speed_mps = TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
+        requirement = "R8"
     readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
     result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
     if readiness is None or result is None:
@@ -441,7 +452,7 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
     if speed_mps < target_speed_mps:
         shortfall = 100.0 * (1.0 - speed_mps / target_speed_mps)
         print(f"NOTE: mean flight speed is {shortfall:.1f} % under the target "
-              f"{target_speed_mps:.3g} m/s (R3): a series under the target goes "
+              f"{target_speed_mps:.3g} m/s ({requirement}): a series under the target goes "
               "to the technical debt as an attempt to return to it")
 
 
