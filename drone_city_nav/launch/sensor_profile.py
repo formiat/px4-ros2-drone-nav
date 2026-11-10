@@ -104,6 +104,7 @@ LIDAR_OBSERVABILITY = {
 # for (K74).
 OPEN_SKY_LIDAR_OBSERVABILITY = {
     "guaranteed_lidar_detection_range_m": 28.0,
+    "guaranteed_obstacle_size_m": 0.5,
     "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
 }
 

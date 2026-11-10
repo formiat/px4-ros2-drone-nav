@@ -74,6 +74,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertAlmostEqual(profile["guaranteed_lidar_detection_range_m"], 28.0)
         self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"], 0.5 / math.tan(math.radians(1.0)))
         self.assertAlmostEqual(profile["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
+        self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.5)
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)

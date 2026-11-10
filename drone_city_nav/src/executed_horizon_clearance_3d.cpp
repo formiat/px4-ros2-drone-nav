@@ -71,9 +71,44 @@ bodyFootprint(const SweptFootprintConfig& footprint) {
 // memory holds observed: a lidar that had seen 35 m of free air was flown as
 // if the seen ended 12 to 20 m ahead (r3254: the frontier read at the window's
 // edge). Where the field has no answer the memory is asked.
+// Whether the memory has observed a voxel at the scale of an obstacle
+// `block` voxels a side: the voxel itself, or, in every block of that side
+// that holds it, some voxel a beam went through. An obstacle of that size
+// that held the voxel would fill one of those blocks, and a block with an
+// observed voxel in it is free there or shows its surface.
+[[nodiscard]] bool observedAtScale(const ObservedOccupancyGrid3D& occupancy,
+                                   const GridIndex3D cell, const int block) {
+  if (occupancy.isKnown(cell)) {
+    return true;
+  }
+  if (block <= 1) {
+    return false;
+  }
+  for (int oz = 0; oz < block; ++oz) {
+    for (int oy = 0; oy < block; ++oy) {
+      for (int ox = 0; ox < block; ++ox) {
+        bool observed{false};
+        for (int z = 0; z < block && !observed; ++z) {
+          for (int y = 0; y < block && !observed; ++y) {
+            for (int x = 0; x < block && !observed; ++x) {
+              observed = occupancy.isKnown(
+                  GridIndex3D{cell.x - ox + x, cell.y - oy + y, cell.z - oz + z});
+            }
+          }
+        }
+        if (!observed) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] bool memoryObservedSegment(const ObservedOccupancyGrid3D& occupancy,
                                          const Point3& first, const Point3& second,
-                                         const double body_radius_m) {
+                                         const double body_radius_m,
+                                         const double obstacle_size_m) {
   const double step_m = 0.5 * occupancy.bounds().resolution_m;
   if (!(step_m > 0.0)) {
     return false;
@@ -104,6 +139,9 @@ bodyFootprint(const SweptFootprintConfig& footprint) {
       Vec3{-other.x * body_radius_m, -other.y * body_radius_m,
            -other.z * body_radius_m},
   };
+  const int block = std::max(
+      1,
+      static_cast<int>(std::lround(obstacle_size_m / occupancy.bounds().resolution_m)));
   const int steps = std::max(1, static_cast<int>(std::ceil(length / step_m)));
   for (int step = 0; step <= steps; ++step) {
     const double travelled_m =
@@ -113,7 +151,7 @@ bodyFootprint(const SweptFootprintConfig& footprint) {
           occupancy.worldToCell(Point3{first.x + along.x * travelled_m + offset.x,
                                        first.y + along.y * travelled_m + offset.y,
                                        first.z + along.z * travelled_m + offset.z});
-      if (!cell.has_value() || !occupancy.isKnown(*cell)) {
+      if (!cell.has_value() || !observedAtScale(occupancy, *cell, block)) {
         return false;
       }
     }
@@ -127,7 +165,7 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const FiniteMotionHorizon3D& horizon, const std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, const std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint, const double constraint_clearance_m,
-    const ObservedOccupancyGrid3D* const memory) {
+    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m) {
   ExecutedHorizonClearance3D result;
   if (horizon.states.size() < 2U ||
       first_remaining_state_index + 1U >= horizon.states.size() || esdf_m.empty() ||
@@ -145,7 +183,8 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
         querySweptFootprintClearance3D(grid, esdf_m, first, second, footprint);
     if (clearance.evidence.unknown_exposure && !result.unobserved_distance_m &&
         (memory == nullptr ||
-         !memoryObservedSegment(*memory, first, second, footprint.body_radius_m))) {
+         !memoryObservedSegment(*memory, first, second, footprint.body_radius_m,
+                                memory_obstacle_size_m))) {
       result.unobserved_distance_m = travelled_m;
     }
     if (clearance.evidence.known_clearance_observed) {
@@ -242,12 +281,11 @@ ExecutedHorizonClearance3D measureVerticalMotionClearance3D(
   return result;
 }
 
-std::optional<double>
-measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
-                            const double from_station_m, const double lookahead_m,
-                            const EsdfGrid3D& grid, const std::span<const float> esdf_m,
-                            const SweptFootprintConfig& footprint,
-                            const ObservedOccupancyGrid3D* const memory) {
+std::optional<double> measureRouteObservedRange3D(
+    const std::span<const RouteSample3D> route, const double from_station_m,
+    const double lookahead_m, const EsdfGrid3D& grid,
+    const std::span<const float> esdf_m, const SweptFootprintConfig& footprint,
+    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m) {
   if (route.size() < 2U || !std::isfinite(from_station_m) ||
       !std::isfinite(lookahead_m) || !(lookahead_m > 0.0) || esdf_m.empty()) {
     return std::nullopt;
@@ -262,8 +300,9 @@ measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
     const DerivedFootprintClearance3D clearance = querySweptFootprintClearance3D(
         grid, esdf_m, previous, sample.position, footprint);
     if (clearance.evidence.unknown_exposure &&
-        (memory == nullptr || !memoryObservedSegment(*memory, previous, sample.position,
-                                                     footprint.body_radius_m))) {
+        (memory == nullptr ||
+         !memoryObservedSegment(*memory, previous, sample.position,
+                                footprint.body_radius_m, memory_obstacle_size_m))) {
       return std::max(0.0, previous_station_m - from_station_m);
     }
     if (sample.station_m >= end_station_m) {

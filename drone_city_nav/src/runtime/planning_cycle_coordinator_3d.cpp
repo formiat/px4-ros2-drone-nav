@@ -289,7 +289,8 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
       config_.executed_horizon_constraint_clearance_m,
       request.latest_raw_world != nullptr && request.latest_raw_world->valid()
           ? &request.latest_raw_world->occupancy()
-          : nullptr);
+          : nullptr,
+      config_.speed_policy.guaranteed_obstacle_size_m);
   return clearance.available ? std::optional<ExecutedHorizonClearance3D>{clearance}
                              : std::nullopt;
 }
@@ -459,7 +460,8 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 config_.physical_footprint,
                 request.latest_raw_world != nullptr && request.latest_raw_world->valid()
                     ? &request.latest_raw_world->occupancy()
-                    : nullptr)
+                    : nullptr,
+                config_.speed_policy.guaranteed_obstacle_size_m)
           : std::nullopt;
   // The clearance of the route ahead, read by the same tube and stopping laws
   // as the executed horizon and over the same lookahead as the scan check.

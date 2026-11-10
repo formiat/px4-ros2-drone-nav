@@ -137,6 +137,8 @@ void ProductionMppiConfigLoader::declareControl() {
       .vertical_physical_margin_m =
           declare<double>("vertical_sensor_braking_physical_margin_m", 0.0),
   };
+  control.speed_policy.guaranteed_obstacle_size_m =
+      std::max(0.0, declare<double>("guaranteed_obstacle_size_m", 0.0));
   control.speed_policy.sensor_expected_beam_count =
       static_cast<std::size_t>(std::max<std::int64_t>(
           0, declare<std::int64_t>("sensor_expected_beam_count", 0)));

@@ -157,6 +157,33 @@ TEST(ExecutedHorizonClearance3DTest, TheMemoryAnswersWhereTheFieldsWindowEnds) {
               7.0, 1.0e-6);
 }
 
+TEST(ExecutedHorizonClearance3DTest, TheMemoryIsReadAtTheScaleOfThePromisedObstacle) {
+  // Beyond 14 m beams a degree apart leave voxels no beam went through: here
+  // every second voxel along every axis from x = 10 m on, as far as 16 m. Read
+  // voxel by voxel the seen ends at the first of them; at the scale of an
+  // obstacle of half a metre (two voxels) none could hold one unseen, and the
+  // seen ends where nothing was observed at all.
+  ObservedOccupancyGrid3D memory{GridBounds3D{
+      .resolution_m = 0.25, .width_cells = 80, .height_cells = 12, .depth_cells = 12}};
+  for (int x = 0; x < 64; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      for (int z = 0; z < 12; ++z) {
+        if (x < 40 || (x % 2 == 0 && y % 2 == 0 && z % 2 == 0)) {
+          memory.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree);
+        }
+      }
+    }
+  }
+  EXPECT_NEAR(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 30.0, grid(),
+                                          esdf(), pointFootprint(), &memory)
+                  .value_or(-1.0),
+              7.0, 1.0e-6);
+  EXPECT_NEAR(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 30.0, grid(),
+                                          esdf(), pointFootprint(), &memory, 0.5)
+                  .value_or(-1.0),
+              13.0, 1.0e-6);
+}
+
 TEST(ExecutedHorizonClearance3DTest, TheRouteIsProbedNoFartherThanTheLookahead) {
   EXPECT_FALSE(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 5.0, grid(),
                                            esdf(), pointFootprint())

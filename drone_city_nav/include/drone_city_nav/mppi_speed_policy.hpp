@@ -67,6 +67,13 @@ struct MppiSpeedPolicyConfig {
   // matched, so its whole is the pixel grid it samples; a lidar's frame
   // carries every beam, and zero leaves the frame's own count as the whole.
   std::size_t sensor_expected_beam_count{0U};
+  // The smallest obstacle the profile promises to see at the guaranteed range
+  // (specification K75): the scale the memory is read at for what was
+  // observed beyond the distance field's window. Beams a degree apart leave
+  // voxels of 0.25 m untouched past 14 m, and no obstacle of this size hides
+  // among them while every block of it holds a voxel a beam went through.
+  // Nought reads the memory voxel by voxel.
+  double guaranteed_obstacle_size_m{0.0};
   // Roadmap item 21 (specification K66): what the vehicle keeps between its
   // centre and a moving body's envelope, the body's reach and its own radius.
   double moving_body_clearance_m{0.6};
