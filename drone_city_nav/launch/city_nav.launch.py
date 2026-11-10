@@ -447,6 +447,14 @@ def generate_launch_description():
             production_mppi_parameters.append(LIDAR_OBSERVABILITY)
             if flight_profile == "open_sky":
                 production_mppi_parameters.append(OPEN_SKY_LIDAR_OBSERVABILITY)
+                # The memory places its hits at the same scale (K75).
+                obstacle_memory_parameters.append(
+                    {
+                        "guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[
+                            "guaranteed_obstacle_size_m"
+                        ]
+                    }
+                )
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             # The launch's one obstacle memory is the vision memory.

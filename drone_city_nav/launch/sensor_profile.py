@@ -101,7 +101,10 @@ LIDAR_OBSERVABILITY = {
 # recentred while 17 m of it still lie ahead: at 12 m of margin a tight place
 # on the route entered the field 12 m ahead of a vehicle that needs 18 m to
 # stop from 12 m/s. What the lidar saw beyond the window the memory answers
-# for (K74).
+# for (K74), and the memory keeps the scan as far as a heading of one standard
+# deviation places a hit within two of the promised obstacles of its surface
+# (38 m at 1.5 degrees, so the lidar's whole 35 m; two voxels kept 19 m of it
+# and the seen ended there, r3256).
 OPEN_SKY_LIDAR_OBSERVABILITY = {
     "guaranteed_lidar_detection_range_m": 28.0,
     "guaranteed_obstacle_size_m": 0.5,

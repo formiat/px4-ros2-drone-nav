@@ -164,12 +164,19 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
   // heading standard deviation still lands its hit within two voxels of
   // the surface it came from; beyond that the same wall seen at different
   // headings became several rotated copies of itself, and single hits
-  // landed in the corridors between them.
+  // landed in the corridors between them. The unit is the scale of what the
+  // profile promises to see: a voxel in the caves, whose passages are a few
+  // voxels wide, and guaranteed_obstacle_size_m where the profile names one
+  // (half a metre on the open sky, specification K75), where a trunk a metre
+  // aside of itself at 35 m closes nothing and is placed again as it nears.
   const double heading_uncertainty_rad =
       declare_parameter<double>("lidar_pose_heading_uncertainty_rad", 0.0);
+  const double placement_unit_m =
+      std::max(bounds_.resolution_m,
+               declare_parameter<double>("guaranteed_obstacle_size_m", 0.0));
   const double heading_bounded_range_m =
       heading_uncertainty_rad > 0.0
-          ? 2.0 * bounds_.resolution_m / std::tan(heading_uncertainty_rad)
+          ? 2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)
           : scan_config_.maximum_range_m;
   memory_config.maximum_range_m =
       std::min(scan_config_.maximum_range_m, heading_bounded_range_m);

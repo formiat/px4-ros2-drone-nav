@@ -78,6 +78,10 @@ class OpenSkyScenarioTest(unittest.TestCase):
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
+        self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
+        memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")
+        self.assertIn('declare_parameter<double>("guaranteed_obstacle_size_m", 0.0)', memory)
+        self.assertIn("2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)", memory)
         makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
         for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
             target = makefile[makefile.index(name):]
