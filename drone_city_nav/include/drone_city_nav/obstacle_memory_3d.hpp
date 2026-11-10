@@ -88,6 +88,12 @@ struct ObstacleMemory3DConfig {
   // voxels under a floor it held occupied, over half its area 0.6 m down and
   // to 1.4 m (r3212), and the survey's frontier was the sheet of them.
   bool free_rays_end_at_surfaces{false};
+  // The threads a scan's rays are traced on (specification K75). A ray reads
+  // the memory as it stood before the scan and writes only the scan's own
+  // evidence, so each thread traces its share of the beams into evidence of
+  // its own, and the shares are joined by OR before any voxel changes: the
+  // memory is the one a single thread makes.
+  int integration_threads{1};
 };
 
 // An occupancy confirmed this often at most is young: a second of a sensor's

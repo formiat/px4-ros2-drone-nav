@@ -81,6 +81,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
         # The open sky has no roof: the memory's box and the world's ceiling stand 16 m over the caves' box.
         box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
         self.assertAlmostEqual(box, 56.0)
+        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["integration_threads"], 4)
         self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)
         self.assertIn("box_size[2] + 16.0 - 1.0", (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")

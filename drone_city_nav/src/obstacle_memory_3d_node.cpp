@@ -221,6 +221,8 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
   // space behind a surface the memory holds.
   memory_config.free_rays_end_at_surfaces =
       declare_parameter<bool>("free_rays_end_at_surfaces", false);
+  memory_config.integration_threads = static_cast<int>(std::clamp<std::int64_t>(
+      declare_parameter<std::int64_t>("integration_threads", 1), 1, 64));
   const LidarMappingYawConfig yaw_config = declareLidarMappingYawConfig(*this);
   use_px4_heading_for_scan_ = yaw_config.use_px4_heading;
   initial_heading_rad_ = yaw_config.initial_heading_rad;

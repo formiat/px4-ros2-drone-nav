@@ -7,7 +7,9 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -199,9 +201,10 @@ cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
   return std::isfinite(config.maximum_range_m) && config.maximum_range_m > 0.0 &&
          std::isfinite(config.minimum_range_m) && config.minimum_range_m >= 0.0 &&
          config.minimum_range_m < config.maximum_range_m && config.scan_stride > 0 &&
-         config.hit_weight > 0 && config.miss_weight > 0 &&
-         config.minimum_score <= config.free_score && config.free_score < 0 &&
-         config.occupied_score > 0 && config.occupied_score <= config.maximum_score &&
+         config.integration_threads > 0 && config.hit_weight > 0 &&
+         config.miss_weight > 0 && config.minimum_score <= config.free_score &&
+         config.free_score < 0 && config.occupied_score > 0 &&
+         config.occupied_score <= config.maximum_score &&
          config.free_score < config.occupied_score &&
          std::isfinite(config.nominal_evidence_interval_s) &&
          config.nominal_evidence_interval_s > 0.0 &&
@@ -234,21 +237,66 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   }
   liftSweep();
   const std::size_t stride = static_cast<std::size_t>(config_.scan_stride);
-  ScanEvidence scan_evidence;
-  for (std::size_t index = 0U; index < scan.beams.size(); index += stride) {
-    const LidarBeam3D& beam = scan.beams[index];
-    const double direction_norm = vectorNorm(beam.direction_map);
-    if (!beam.valid || !std::isfinite(beam.range_m) ||
-        beam.range_m < config_.minimum_range_m || !(direction_norm > 1.0e-9) ||
-        !std::isfinite(direction_norm)) {
-      ++stats.invalid_beams;
-      continue;
+  const auto trace_beams = [&](const std::size_t first, const std::size_t last,
+                               ScanEvidence& evidence, ObstacleMemory3DStats& share) {
+    for (std::size_t index = first; index < last; index += stride) {
+      const LidarBeam3D& beam = scan.beams[index];
+      const double direction_norm = vectorNorm(beam.direction_map);
+      if (!beam.valid || !std::isfinite(beam.range_m) ||
+          beam.range_m < config_.minimum_range_m || !(direction_norm > 1.0e-9) ||
+          !std::isfinite(direction_norm)) {
+        ++share.invalid_beams;
+        continue;
+      }
+      ++share.processed_beams;
+      share.hit_beams += beam.hit ? 1U : 0U;
+      share.miss_beams += beam.hit ? 0U : 1U;
+      share.surface_beams += beam.surface_only ? 1U : 0U;
+      integrateRay(scan.origin_map, beam, evidence, share);
     }
-    ++stats.processed_beams;
-    stats.hit_beams += beam.hit ? 1U : 0U;
-    stats.miss_beams += beam.hit ? 0U : 1U;
-    stats.surface_beams += beam.surface_only ? 1U : 0U;
-    integrateRay(scan.origin_map, beam, scan_evidence, stats);
+  };
+  ScanEvidence scan_evidence;
+  const std::size_t threads = static_cast<std::size_t>(config_.integration_threads);
+  const std::size_t traced = (scan.beams.size() + stride - 1U) / stride;
+  if (threads <= 1U || traced < 2U * threads) {
+    trace_beams(0U, scan.beams.size(), scan_evidence, stats);
+  } else {
+    // Contiguous shares of the traced beams, each starting on the stride.
+    const std::size_t share_beams = ((traced + threads - 1U) / threads) * stride;
+    const auto share_end = [&](const std::size_t share) {
+      return std::min(scan.beams.size(), (share + 1U) * share_beams);
+    };
+    std::vector<ScanEvidence> evidence(threads - 1U);
+    std::vector<ObstacleMemory3DStats> shares(threads - 1U);
+    {
+      std::vector<std::jthread> workers;
+      workers.reserve(threads - 1U);
+      for (std::size_t share = 1U; share < threads; ++share) {
+        workers.emplace_back([&, share] {
+          trace_beams(std::min(scan.beams.size(), share * share_beams),
+                      share_end(share), evidence.at(share - 1U), shares.at(share - 1U));
+        });
+      }
+      trace_beams(0U, share_end(0U), scan_evidence, stats);
+    }
+    for (std::size_t share = 0U; share + 1U < threads; ++share) {
+      for (const auto& [chunk_index, chunk] : evidence.at(share)) {
+        ScanEvidenceChunk& joined = scan_evidence[chunk_index];
+        for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
+          joined.observed.at(word) |= chunk.observed.at(word);
+          joined.occupied.at(word) |= chunk.occupied.at(word);
+          joined.measured.at(word) |= chunk.measured.at(word);
+          joined.moving.at(word) |= chunk.moving.at(word);
+        }
+      }
+      const ObstacleMemory3DStats& traced_share = shares.at(share);
+      stats.invalid_beams += traced_share.invalid_beams;
+      stats.processed_beams += traced_share.processed_beams;
+      stats.hit_beams += traced_share.hit_beams;
+      stats.miss_beams += traced_share.miss_beams;
+      stats.surface_beams += traced_share.surface_beams;
+      stats.outside_endpoints += traced_share.outside_endpoints;
+    }
   }
   if (decay_epoch_ns_ <= 0 && scan.acquisition_stamp_ns > 0) {
     decay_epoch_ns_ = scan.acquisition_stamp_ns;

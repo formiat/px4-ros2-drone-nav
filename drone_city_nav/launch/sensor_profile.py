@@ -123,8 +123,11 @@ OPEN_SKY_LIDAR_OBSERVABILITY = {
 
 # The open sky has no roof: the memory's box stands 16 m over the caves' 40 m
 # (the canonical world's ceiling with it, tools/open_sky_scenario.py), over
-# the park's tallest crown and the leg's margin.
-OPEN_SKY_MEMORY = {"grid_depth_m": 56.0}
+# the park's tallest crown and the leg's margin. A scan traced to 35 m took
+# one thread 0.48 s and the memory integrated one scan in four; the seen it
+# published was a second old and stood 23 m ahead at 10 m/s (r3262, r3263):
+# four threads trace it (K75).
+OPEN_SKY_MEMORY = {"grid_depth_m": 56.0, "integration_threads": 4}
 
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body

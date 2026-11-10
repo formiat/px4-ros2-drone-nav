@@ -245,6 +245,72 @@ TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   EXPECT_GT(memory.revision(), 0U);
 }
 
+// A scan's rays traced on four threads make the memory one thread makes
+// (specification K75): every voxel's state and every count the same, scan
+// after scan, hits and misses, a floor grazed and a wall met.
+TEST(ObstacleMemory3D, RaysTracedOnSeveralThreadsMakeTheMemoryOneThreadMakes) {
+  std::vector<LidarBeam3D> beams;
+  for (int elevation = -40; elevation <= 40; elevation += 5) {
+    for (int azimuth = 0; azimuth < 360; azimuth += 3) {
+      const double a = static_cast<double>(azimuth) * std::numbers::pi / 180.0;
+      const double e = static_cast<double>(elevation) * std::numbers::pi / 180.0;
+      const Vec3 direction{std::cos(e) * std::cos(a), std::cos(e) * std::sin(a),
+                           std::sin(e)};
+      // A wall at x = 26, the floor at z = 0; beyond 14 m nothing returns.
+      double range_m = 14.0;
+      bool hit = false;
+      if (direction.x > 1.0e-6) {
+        const double to_wall = (26.0 - 16.5) / direction.x;
+        if (to_wall < range_m) {
+          range_m = to_wall;
+          hit = true;
+        }
+      }
+      if (direction.z < -1.0e-6) {
+        const double to_floor = -8.5 / direction.z;
+        if (to_floor < range_m) {
+          range_m = to_floor;
+          hit = true;
+        }
+      }
+      beams.push_back(LidarBeam3D{
+          .direction_map = direction, .range_m = range_m, .hit = hit, .valid = true});
+    }
+  }
+  beams.push_back(LidarBeam3D{.direction_map = {1.0, 0.0, 0.0}, .range_m = 5.0});
+  ObstacleMemory3D one{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  ObstacleMemory3D four{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                        .minimum_range_m = 0.1,
+                                                        .integration_threads = 4}};
+  for (int scan = 0; scan < 3; ++scan) {
+    const LidarScan3DView view{
+        .origin_map = {16.5 - static_cast<double>(scan), 16.5, 8.5},
+        .beams = beams,
+        .acquisition_stamp_ns = 1'000'000'000LL * (scan + 1)};
+    const ObstacleMemory3DStats single = one.integrateScan(view);
+    const ObstacleMemory3DStats threaded = four.integrateScan(view);
+    EXPECT_EQ(threaded.processed_beams, single.processed_beams);
+    EXPECT_EQ(threaded.invalid_beams, single.invalid_beams);
+    EXPECT_EQ(threaded.hit_beams, single.hit_beams);
+    EXPECT_EQ(threaded.miss_beams, single.miss_beams);
+    EXPECT_EQ(threaded.state_transitions, single.state_transitions);
+    EXPECT_EQ(threaded.free_voxel_updates, single.free_voxel_updates);
+    EXPECT_EQ(threaded.occupied_voxel_updates, single.occupied_voxel_updates);
+  }
+  EXPECT_GT(one.grid().occupiedVoxelCount(), 0U);
+  EXPECT_EQ(four.grid().knownVoxelCount(), one.grid().knownVoxelCount());
+  EXPECT_EQ(four.grid().occupiedVoxelCount(), one.grid().occupiedVoxelCount());
+  for (int z = 0; z < kBounds.depth_cells; ++z) {
+    for (int y = 0; y < kBounds.height_cells; ++y) {
+      for (int x = 0; x < kBounds.width_cells; ++x) {
+        ASSERT_EQ(four.grid().state({x, y, z}), one.grid().state({x, y, z}))
+            << x << "," << y << "," << z;
+      }
+    }
+  }
+}
+
 TEST(ObstacleMemory3D, ARayGrazingAFloorCarvesNoVoxelOfIt) {
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
