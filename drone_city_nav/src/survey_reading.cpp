@@ -6,9 +6,11 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -84,6 +86,9 @@ struct Lattice {
   std::vector<std::uint8_t> known;
   std::vector<std::uint32_t> known_distance;
   std::vector<std::array<int, 3>> open_ball;
+  // The cells of the body's ball: what a piece of unknown holds at least when
+  // the body is in it.
+  std::size_t body_cells{0U};
   // Within the look's footprint of a cell looked at.
   std::vector<std::uint8_t> looked_near;
 
@@ -183,6 +188,7 @@ struct Lattice {
         }
       }
     }
+    body_cells = ball.size();
     for (const auto& [index, storage] : grid->chunks()) {
       const GridIndex3D low{index.x * kChunkSize, index.y * kChunkSize,
                             index.z * kChunkSize};
@@ -418,13 +424,56 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
   }
 }
 
+// Whether an unknown cell lies in a pocket: a face-connected piece of unknown
+// in the flood's box with fewer cells than the body's ball. The moving layer
+// returns a voxel to unknown when its hit is not seen again (K65), and the
+// pair's stray returns in open air left unknown voxels by ones and twos all
+// through a hall already seen: each a cluster of ten frontier cells, 616 of
+// them chosen in 2100 s at a median of eleven cells with the volume covered
+// since the twelve hundredth, and no end (r3225). A pocket holds nothing the
+// body could be in unseen. The verdict of every cell visited is kept.
+[[nodiscard]] bool inPocket(const Lattice& lattice, const GridIndex3D unknown,
+                            std::unordered_map<GridIndex3D, bool, GridIndex3DHash,
+                                               GridIndex3DEqual>& verdicts) {
+  if (const auto known = verdicts.find(unknown); known != verdicts.end()) {
+    return known->second;
+  }
+  std::vector<GridIndex3D> piece{unknown};
+  std::unordered_set<GridIndex3D, GridIndex3DHash, GridIndex3DEqual> seen{unknown};
+  bool pocket{true};
+  for (std::size_t next = 0U; next < piece.size() && pocket; ++next) {
+    for (const std::array<int, 3>& face : kFaces) {
+      const GridIndex3D neighbour{piece[next].x + face[0], piece[next].y + face[1],
+                                  piece[next].z + face[2]};
+      if (!lattice.inFlood(neighbour) ||
+          lattice.grid->state(neighbour) != ObservedVoxelState::kUnknown ||
+          !seen.insert(neighbour).second) {
+        continue;
+      }
+      // A piece that joins one already judged is that piece.
+      const auto known = verdicts.find(neighbour);
+      piece.push_back(neighbour);
+      if ((known != verdicts.end() && !known->second) ||
+          piece.size() >= lattice.body_cells) {
+        pocket = false;
+        break;
+      }
+    }
+  }
+  for (const GridIndex3D cell : piece) {
+    verdicts[cell] = pocket;
+  }
+  return pocket;
+}
+
 // The frontier cells: observed free in the flood's box, a face neighbour
-// unknown in the box that leads into the volume, not looked at, the neighbour
-// not passed by the body.
+// unknown in the box that leads into the volume and is no pocket, not looked
+// at, the neighbour not passed by the body.
 [[nodiscard]] std::vector<GridIndex3D> frontierCells(const Lattice& lattice,
                                                      const SurveyCellSet& looked,
                                                      const SurveyCellSet& passed) {
   std::vector<GridIndex3D> cells;
+  std::unordered_map<GridIndex3D, bool, GridIndex3DHash, GridIndex3DEqual> pockets;
   for (const auto& [index, storage] : lattice.grid->chunks()) {
     const GridIndex3D low{index.x * kChunkSize, index.y * kChunkSize,
                           index.z * kChunkSize};
@@ -457,7 +506,8 @@ void flood(Lattice& lattice, const Point3& vehicle, SurveyReading& reading) {
         // contact, 489 frontiers chosen and no end in 1500 s).
         if (lattice.inFlood(neighbour) && lattice.leadsIntoVolume(cell, neighbour) &&
             lattice.grid->state(neighbour) == ObservedVoxelState::kUnknown &&
-            lattice.fitsBody(neighbour) && !passed.contains(neighbour)) {
+            lattice.fitsBody(neighbour) && !passed.contains(neighbour) &&
+            !inPocket(lattice, neighbour, pockets)) {
           cells.push_back(cell);
           break;
         }

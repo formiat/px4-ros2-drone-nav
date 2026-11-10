@@ -536,6 +536,33 @@ TEST(SurveyMissionTest, TheVolumeFaceIsNotAFrontier) {
 
 // Frontiers left with no vantage end the survey only when three complete readings
 // in a row say so; no frontier at all ends it at once.
+TEST(SurveyMissionTest, APocketOfUnknownSmallerThanTheBodyIsNoFrontier) {
+  // The closed room with three voxels of its air returned to unknown, as the
+  // moving layer leaves a stray return (r3225: 616 clusters of such pockets
+  // chosen and no end): no frontier, the survey is done. The same room with a
+  // block of unknown the body's size in its air has one.
+  ObservedOccupancyGrid3D pocket = room(false);
+  for (const int x : {20, 21, 22}) {
+    pocket.setState(GridIndex3D{x, 24, 12}, ObservedVoxelState::kUnknown);
+  }
+  const SurveyReading none = readSurvey(pocket, kVehicle, config(), {}, {});
+  ASSERT_TRUE(none.complete());
+  EXPECT_EQ(none.frontier_cells, 0U);
+  EXPECT_EQ(none.clusters, 0U);
+  ObservedOccupancyGrid3D block = room(false);
+  for (int z = 10; z < 14; ++z) {
+    for (int y = 22; y < 26; ++y) {
+      for (int x = 20; x < 24; ++x) {
+        block.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kUnknown);
+      }
+    }
+  }
+  const SurveyReading one = readSurvey(block, kVehicle, config(), {}, {});
+  ASSERT_TRUE(one.complete());
+  EXPECT_GE(one.frontier_cells, 8U);
+  EXPECT_EQ(one.clusters, 1U);
+}
+
 TEST(SurveyMissionTest, AFrontierWiderThanTheSensorsReachIsLookedAtInParts) {
   // A hall of 23.5 x 7.5 x 3.5 m observed whole but for its north wall: a
   // sheet of frontier along the whole of it, one cluster. A screen stands
