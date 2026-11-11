@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# airframe_envelope.sh [SPEED...]: the simulated airframe's envelope by a direct experiment, without the stack
+# airframe_envelope.sh [--vertical] [SPEED...]: the simulated airframe's envelope by a direct experiment, without the stack
 # (roadmap item 39 stage 5): the autopilot's own SITL of the x500 in its default world (flat ground, no wind), a
 # pilot's script in place of the stack (tools/airframe_envelope.py: offboard velocity setpoints, as the stack
 # commands), and for every SPEED (5 10 12 15 20 m/s unless given) three runs out and back at 30 m: the time and the
 # distance to the speed, the speed held, the tilt and the motors' share of their top speed while it is held, then
 # the setpoint dropped to nought: the distance and the time to rest, the mean and the peak deceleration, the tilt,
-# the height lost. The autopilot's horizontal speed limit is raised to its parameter's top (20 m/s) and its tilt
+# the height lost. With --vertical every SPEED (3 5 m/s unless given) is a vertical one, flown up and down by turns
+# and brought to rest: the vertical distance and the deceleration of the stop (the stack's vertical laws read it).
+# The autopilot's horizontal speed limit is raised to its parameter's top (20 m/s) and its tilt
 # limit left at the flights' (MPC_TILTMAX_AIR); nothing else differs from a flight's parameters that the experiment
 # reads. The table and the samples go to log/tools/airframe_envelope/<stamp>/. Host; the experiment runs in the
 # dev container. Never beside a flight: it is a simulation of its own.

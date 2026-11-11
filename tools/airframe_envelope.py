@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""airframe_envelope.py --out DIR [SPEED...] | --out DIR --report: the pilot's script of tools/airframe_envelope.sh
-(roadmap item 39 stage 5) and its report.
+"""airframe_envelope.py --out DIR [--vertical] [SPEED...] | --out DIR --report: the pilot's script of
+tools/airframe_envelope.sh (roadmap item 39 stage 5) and its report.
+
+With --vertical every SPEED is a vertical one, four runs each, up and down by turns: the horizontal position held,
+the vertical velocity SPEED commanded until it is held (or the height band ends it: up to 70 m, down to 20 m), then
+nought until rest: the vertical distance and the time to rest, the mean and the peak deceleration, the tilt and the
+motors.
 
 The script arms the autopilot's SITL vehicle in offboard, climbs to 30 m and, for every SPEED, three times: commands
 the horizontal velocity SPEED (out along north, back along south, so the runs stay over the start), waits until the
@@ -30,7 +35,7 @@ REST_TIMEOUT_S = 30.0
 MOTOR_TOP_RADPS = 1000.0   # the x500 model's maxRotVelocity
 
 
-def fly(out: Path, speeds: list[float]) -> int:
+def fly(out: Path, speeds: list[float], vertical: bool = False) -> int:
     import rclpy
     from px4_msgs.msg import (OffboardControlMode, TrajectorySetpoint, VehicleAttitude, VehicleCommand,
                               VehicleLocalPosition)
@@ -52,6 +57,8 @@ def fly(out: Path, speeds: list[float]) -> int:
             self.position = None
             self.tilt_deg = 0.0
             self.velocity_north = 0.0     # the commanded velocity along north
+            self.velocity_down = 0.0      # the commanded vertical velocity (NED, down positive)
+            self.hold = (0.0, 0.0, -HEIGHT_M)  # the position the vertical runs hold
             self.phase = "boot"
             self.samples = csv.writer((out / "samples.csv").open("w", newline=""))
             self.samples.writerow(["t_s", "x", "y", "z", "vx", "vy", "vz", "tilt_deg", "phase", "commanded_mps",
@@ -87,8 +94,9 @@ def fly(out: Path, speeds: list[float]) -> int:
             self.command_pub.publish(message)
 
         def tick(self) -> None:
+            vertical = self.phase.startswith("v")
             mode = OffboardControlMode()
-            mode.position = self.phase in ("boot", "climb")
+            mode.position = self.phase in ("boot", "climb") or vertical
             mode.velocity = self.phase not in ("boot", "climb")
             mode.timestamp = self.stamp()
             self.mode_pub.publish(mode)
@@ -96,6 +104,12 @@ def fly(out: Path, speeds: list[float]) -> int:
             if self.phase in ("boot", "climb"):
                 setpoint.position = [0.0, 0.0, -HEIGHT_M]
                 setpoint.velocity = [nan, nan, nan]
+            elif self.phase == "vrest":
+                setpoint.position = [self.hold[0], self.hold[1], self.hold[2]]
+                setpoint.velocity = [nan, nan, nan]
+            elif vertical:
+                setpoint.position = [self.hold[0], self.hold[1], nan]
+                setpoint.velocity = [nan, nan, self.velocity_down]
             else:
                 setpoint.position = [nan, nan, -HEIGHT_M]
                 setpoint.velocity = [self.velocity_north, 0.0, nan]
@@ -142,6 +156,45 @@ def fly(out: Path, speeds: list[float]) -> int:
         if abs(-pilot.position.z - HEIGHT_M) < 0.5 and speed() < 0.3:
             break
     spin(3.0)
+    if vertical:
+        total = len(speeds) * 4
+        done = 0
+        print(f"runs start: {total} vertical runs", flush=True)
+        for commanded in speeds:
+            for repeat in range(4):
+                up = repeat % 2 == 0
+                name = f"{commanded:g}:{'up' if up else 'down'}:{repeat // 2}"
+                pilot.hold = (pilot.position.x, pilot.position.y, pilot.position.z)
+                pilot.phase = f"vreach:{name}"
+                pilot.velocity_down = -commanded if up else commanded
+                started = now()
+                held_since = None
+                while now() - started < REACH_TIMEOUT_S:
+                    spin(0.05)
+                    height = -pilot.position.z
+                    if (up and height > 70.0) or (not up and height < 20.0):
+                        break
+                    if abs(abs(pilot.position.vz) - commanded) <= HOLD_TOLERANCE_MPS:
+                        held_since = held_since if held_since is not None else now()
+                        if now() - held_since >= 1.0:
+                            break
+                    else:
+                        held_since = None
+                pilot.phase = f"vbrake:{name}"
+                pilot.velocity_down = 0.0
+                started = now()
+                while now() - started < REST_TIMEOUT_S and abs(pilot.position.vz) > REST_MPS:
+                    spin(0.02)
+                pilot.hold = (pilot.position.x, pilot.position.y, pilot.position.z)
+                pilot.phase = "vrest"
+                spin(4.0)
+                done += 1
+                print(f"runs {done}/{total}: {name}", flush=True)
+        pilot.phase = "land"
+        pilot.command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
+        spin(2.0)
+        rclpy.shutdown()
+        return 0
     total = len(speeds) * 3
     done = 0
     print(f"runs start: {total} runs", flush=True)
@@ -247,6 +300,46 @@ def report(out: Path) -> int:
                max(float(r["tilt_deg"]) for r in brake), motor_peak(brake_wall[0], brake_wall[-1]), bz[0] - min(bz))
         by_speed.setdefault(float(commanded), []).append(row)
         lines.append(" | ".join(f"{value:.2f}" if isinstance(value, float) else str(value) for value in row))
+    vertical_rows: dict[tuple[float, str], list[tuple]] = {}
+    for name in phases:
+        if not name.startswith("vreach:"):
+            continue
+        _, commanded, direction, repeat = name.split(":")
+        reach = phases[name]
+        brake = phases.get(f"vbrake:{commanded}:{direction}:{repeat}", [])
+        if len(reach) < 5 or len(brake) < 5:
+            continue
+        reached = statistics.fmean(abs(float(r["vz"])) for r in reach[-20:])
+        bt = [float(r["t_s"]) for r in brake]
+        bv = [abs(float(r["vz"])) for r in brake]
+        bz = [-float(r["z"]) for r in brake]
+        distance = abs(bz[-1] - bz[0])
+        peak = 0.0
+        for i in range(len(bt)):
+            j = next((k for k in range(i, len(bt)) if bt[k] - bt[i] >= 0.5), None)
+            if j is not None:
+                peak = max(peak, (bv[i] - bv[j]) / (bt[j] - bt[i]))
+        brake_wall = [float(r["wall_s"]) for r in brake]
+        row = (float(commanded), direction, int(repeat) + 1, reached, distance, bt[-1] - bt[0],
+               bv[0] ** 2 / (2.0 * distance) if distance > 0 else float("nan"), peak,
+               max(float(r["tilt_deg"]) for r in brake), motor_peak(brake_wall[0], brake_wall[-1]))
+        vertical_rows.setdefault((float(commanded), direction), []).append(row)
+    if vertical_rows:
+        lines = ["vertical m/s | direction | run | reached m/s | brake distance m | brake time s | mean decel m/s2 | "
+                 "peak decel m/s2 | brake tilt deg | motors peak"]
+        for key in sorted(vertical_rows):
+            for row in vertical_rows[key]:
+                lines.append(" | ".join(f"{value:.2f}" if isinstance(value, float) else str(value)
+                                        for value in row))
+        lines.append("")
+        lines.append("medians a vertical speed and direction:")
+        for (commanded, direction), runs in sorted(vertical_rows.items()):
+            medians = [statistics.median(run[k] for run in runs) for k in range(3, 10)]
+            lines.append(f"{commanded:g} m/s {direction} over {len(runs)} runs | "
+                         + " | ".join(f"{value:.2f}" for value in medians))
+        (out / "summary.txt").write_text("\n".join(lines) + "\n")
+        print("\n".join(lines))
+        return 0
     lines.append("")
     lines.append("medians a speed:")
     for commanded in sorted(by_speed):
@@ -263,10 +356,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--report", action="store_true")
+    parser.add_argument("--vertical", action="store_true")
     parser.add_argument("speeds", nargs="*", type=float)
     args = parser.parse_args()
     if args.report:
         return report(args.out)
+    if args.vertical:
+        return fly(args.out, args.speeds or [3.0, 5.0], vertical=True)
     return fly(args.out, args.speeds or [5.0, 10.0, 12.0, 15.0, 20.0])
 
 
