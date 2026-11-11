@@ -94,6 +94,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('if flight_profile == "open_sky":\n            production_mppi_parameters.append(OPEN_SKY_DYNAMICS)',
                       text)
+        self.assertIn('shadow=navigation_sensors == "lidar" and flight_profile != "open_sky"', text)
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)

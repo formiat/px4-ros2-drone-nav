@@ -633,7 +633,11 @@ def generate_launch_description():
                     obstacle_memory_overrides,
                     gazebo_world_name,
                     gazebo_model_name,
-                    shadow=navigation_sensors == "lidar",
+                    # Nothing consumes the shadow memory; on the open sky it
+                    # took a core the lidar's memory and the planner wanted
+                    # (its scans 0.11 s each beside the lidar's 0.32, on a host
+                    # whose eight cores the stack filled, r3282).
+                    shadow=navigation_sensors == "lidar" and flight_profile != "open_sky",
                     visual_inertial_overrides=visual_inertial_overrides,
                     image_topic_suffix=image_suffix,
                     tof_topic_suffix=sensor_suffix,

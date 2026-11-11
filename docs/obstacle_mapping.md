@@ -66,7 +66,8 @@ topics, with the overrides of `launch/sensor_profile.py` (hit-only returns, no
 surface interpolation, the left camera's mount as the extrinsic, two hits to a
 voxel). With `NAVIGATION_SENSOR_PROFILE=lidar` and the camera set mounted, a
 second instance integrates them in shadow on `/drone_city_nav/vision_shadow/*`
-beside the lidar's, and nothing consumes it.
+beside the lidar's, and nothing consumes it; not on the open sky, where the core
+it takes is the lidar's memory's and the planner's.
 
 A vision memory's free rays end at a surface the memory holds (specification
 K72, `free_rays_end_at_surfaces`): the voxel a ray crosses there, a measured
