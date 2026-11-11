@@ -28,6 +28,14 @@ constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
 // onto the ground (r3294).
 constexpr double kLevelApproachM{5.0};
 
+// The height over the goal's the descent ends at, the approach's 5 m coming
+// down the rest: the descents ran 0.4 to 1.1 m under their feet (r3307 to
+// r3310), and a foot at the goal's own height put the vehicle under its
+// route's lowest point, where the speed law holds a descent's reference at
+// nought (specification K78), and brought it to the goal from below, climbing
+// at 0.5 to 2.5 m/s and at 0.4 to 1.7 m/s in the plane (r3305 to r3310).
+constexpr double kApproachDropM{1.0};
+
 // The horizontal distance from a point to the leg's ground track.
 [[nodiscard]] double trackDistanceM(const double x, const double y, const Point3& start,
                                     const Point3& goal) noexcept {
@@ -103,8 +111,9 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3
 // the goals took 20 s each). The level is the highest obstacle seen there plus
 // the margin, under the envelope's
 // ceiling and no lower than either end; the vehicle climbs to it along the leg
-// and comes down along it at the gentlest slant the raw world clears, to the
-// goal's height 5 m short of it, and flies the rest level. Unknown space on the way is
+// and comes down along it at the gentlest slant the raw world clears, to a
+// metre over the goal's height 5 m short of it, and comes down that metre over
+// the rest. Unknown space on the way is
 // free (I1): what stands in it is seen from the sensor's range, and the route is taken
 // again from where the vehicle then is. Nothing is searched: with the leg held the
 // lattice searches idle.
@@ -128,9 +137,9 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
                 top_m.has_value() ? *top_m + config_.overflight_margin_m : start.z}));
   const double direction_x = (goal.x - start.x) / horizontal_m;
   const double direction_y = (goal.y - start.y) / horizontal_m;
-  // The last metres into the goal are flown level at its height where they fit
-  // and clear, so the descent stops at their beginning in flight and the goal
-  // is a stop in the plane. Stopping both at the goal, the vehicle braked in the
+  // The last metres into the goal are flown a metre down from the descent's
+  // foot where they fit and clear, so the descent all but stops at their
+  // beginning in flight. Stopping both at the goal, the vehicle braked in the
   // plane first and its descent ran on under it, 0.5 to 1.8 m past the route's
   // end, whose recovery cost 5 to 16 s at a goal (r3274, r3287, r3289).
   for (const double approach_m : {kLevelApproachM, 0.0}) {
@@ -138,8 +147,9 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
     if (!(run_m > config_.minimum_horizontal_step_m)) {
       continue;
     }
-    const Point3 foot{goal.x - direction_x * approach_m,
-                      goal.y - direction_y * approach_m, goal.z};
+    const Point3 foot{
+        goal.x - direction_x * approach_m, goal.y - direction_y * approach_m,
+        approach_m > 0.0 ? std::min(level_m, goal.z + kApproachDropM) : goal.z};
     const auto clears =
         [&](std::vector<Point3> path) -> std::optional<std::vector<Point3>> {
       if (approach_m > 0.0) {
@@ -155,7 +165,7 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
     // at its height and then down, before the leg is climbed again. A descent a
     // crown had closed sent the vehicle 25 m back up to the level and cost it
     // 20 s (r3261).
-    const double remaining_descent_m = start.z - goal.z;
+    const double remaining_descent_m = start.z - foot.z;
     if (remaining_descent_m > 0.0 &&
         run_m <= kSlantRunsPerMetre.front() * remaining_descent_m +
                      config_.minimum_horizontal_step_m) {
@@ -173,7 +183,7 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
       }
     }
     const double climb_m = std::max(0.0, level_m - start.z);
-    const double descent_m = std::max(0.0, level_m - goal.z);
+    const double descent_m = std::max(0.0, level_m - foot.z);
     for (const double descent_run : kSlantRunsPerMetre) {
       for (const double climb_run : kSlantRunsPerMetre) {
         const double climb_run_m = climb_run * climb_m;
