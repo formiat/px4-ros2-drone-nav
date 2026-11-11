@@ -82,9 +82,14 @@ class OpenSkyScenarioTest(unittest.TestCase):
         box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
         self.assertAlmostEqual(box, 56.0)
         self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["integration_threads"], 4)
+        dynamics = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_DYNAMICS"]
+        self.assertAlmostEqual(dynamics["maximum_vertical_acceleration_mps2"], 3.0)
+        self.assertNotIn("guaranteed_vertical_stopping_deceleration_mps2", dynamics)
         self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)
         self.assertIn("box_size[2] + 16.0 - 1.0", (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn('if flight_profile == "open_sky":\n            production_mppi_parameters.append(OPEN_SKY_DYNAMICS)',
+                      text)
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)

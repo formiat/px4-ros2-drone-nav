@@ -129,6 +129,15 @@ OPEN_SKY_LIDAR_OBSERVABILITY = {
 # four threads trace it (K75).
 OPEN_SKY_MEMORY = {"grid_depth_m": 56.0, "integration_threads": 4}
 
+# The open sky's vertical dynamics (V3): the vertical acceleration the horizon
+# plans with is 3 m/s^2 against the airframe's measured vertical stops of 6.8
+# to 8.0 m/s^2 from 3 and 5 m/s (tools/airframe_envelope.sh --vertical), so
+# that a climb from rest is not the caves' 1.4 m/s^2 (the climbs of r3272 flew
+# at 4.2 m/s under a reference of 8.8). The guaranteed vertical stopping
+# deceleration stays the caves' 1.4, measured on the arrests the stack flies:
+# the contract stops every horizon at it until the arrests measure more.
+OPEN_SKY_DYNAMICS = {"maximum_vertical_acceleration_mps2": 3.0}
+
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body
 # forward-right-down). Two hits make a voxel occupied, not one: a matcher's

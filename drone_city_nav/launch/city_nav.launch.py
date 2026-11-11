@@ -37,6 +37,7 @@ from sensor_profile import (
     LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
     OPEN_SKY_LIDAR_OBSERVABILITY,
+    OPEN_SKY_DYNAMICS,
     OPEN_SKY_MEMORY,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
@@ -446,6 +447,8 @@ def generate_launch_description():
                       "sensor_vertical_fov_rad": 1.8326}
             )
         cameras_mounted = cameras == "stereo_tof"
+        if flight_profile == "open_sky":
+            production_mppi_parameters.append(OPEN_SKY_DYNAMICS)
         if navigation_sensors == "lidar":
             production_mppi_parameters.append(LIDAR_OBSERVABILITY)
             if flight_profile == "open_sky":
