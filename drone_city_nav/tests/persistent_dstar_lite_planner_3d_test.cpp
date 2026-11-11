@@ -683,12 +683,21 @@ TEST(PersistentDStarLitePlanner3DTest,
   const Point3 first_start{1.5, 3.5, 2.5};
   const Point3 moved_start{5.5, 3.5, 2.5};
   const Point3 goal{14.5, 3.5, 2.5};
-  const PlannerUpdate3D initial =
-      planner.plan(request(first_start, goal, world(occupancy, 1U)));
+  PersistentPlannerRequest3D initial_request =
+      request(first_start, goal, world(occupancy, 1U));
+  initial_request.session_id = 1U;
+  const PlannerUpdate3D initial = planner.plan(initial_request);
   ASSERT_TRUE(initial.publishable());
 
-  const PlannerUpdate3D moved =
-      planner.plan(request(moved_start, goal, world(occupancy, 1U)));
+  // The incumbent is rebased where the moved start lies on it, which is the
+  // straight remainder already: nothing strictly better is left to publish in
+  // the same session, and a session the consumer opens receives it.
+  PersistentPlannerRequest3D moved_request =
+      request(moved_start, goal, world(occupancy, 1U));
+  moved_request.session_id = 1U;
+  EXPECT_FALSE(planner.plan(moved_request).publishable());
+  moved_request.session_id = 2U;
+  const PlannerUpdate3D moved = planner.plan(moved_request);
 
   ASSERT_TRUE(moved.publishable());
   EXPECT_TRUE(moved.telemetry.search_state_reused);

@@ -107,6 +107,51 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
   expectRawValid(descent.points, *crown, planner.config().physical_footprint);
 }
 
+// A vehicle on the leg's level joins the leg where it is, not at the nearest
+// of its vertices: that lay 88 m behind it, and the route rebased there flew
+// back to it and along the same line forward again (r3280, r3287, r3288).
+TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
+  for (int x = 0; x < 60; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  for (int y = 0; y < 12; ++y) {
+    for (int z = 1; z < 6; ++z) {
+      ASSERT_TRUE(occupancy->setState({20, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.overflight_margin_m = 3.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 goal{56.5, 5.5, 2.5};
+  PersistentPlannerRequest3D first =
+      request(Point3{2.5, 5.5, 2.5}, goal, world(occupancy, 1U));
+  first.session_id = 1U;
+  ASSERT_TRUE(planner.plan(first).publishable());
+
+  // Over the wall at the level, nine metres past the climb's top and nineteen
+  // short of the descent's; a replan opens a new session, which receives the
+  // rebased leg (r3288's route generations 2 and 3).
+  const Point3 on_leg{24.5, 5.5, 9.0};
+  PersistentPlannerRequest3D moved_request =
+      request(on_leg, goal, world(occupancy, 1U));
+  moved_request.session_id = 2U;
+  const PlannerUpdate3D moved = planner.plan(moved_request);
+
+  ASSERT_TRUE(moved.publishable());
+  EXPECT_TRUE(moved.telemetry.incumbent_retained);
+  const SpatialRouteCandidate3D& leg = candidate(moved);
+  EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
+  ASSERT_EQ(leg.points.size(), 3U);
+  EXPECT_NEAR(leg.points[1].x, 43.5, 1.0e-9);
+  for (const Point3& point : leg.points) {
+    EXPECT_GE(point.x, on_leg.x - 1.0e-9);
+  }
+}
+
 TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
