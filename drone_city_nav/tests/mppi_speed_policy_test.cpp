@@ -1086,30 +1086,33 @@ TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
 
   const MppiSpeedPolicyResult descending = evaluateMppiSpeedPolicy(config, input);
 
+  // 0.55 of the vertical guarantee: the descent's deceleration while the
+  // plane brakes too.
   StoppingCapability vertical = config.stopping_capability;
-  vertical.maximum_commanded_horizontal_deceleration_mps2 = 1.4;
+  vertical.maximum_commanded_horizontal_deceleration_mps2 = 0.55 * 1.4;
+  vertical.guaranteed_horizontal_deceleration_mps2 = 0.55 * 1.4;
   vertical.reaction_latency_s += config.reference_tracking_lag_s;
   SensorBrakingContract3D vertical_contract = config.sensor_braking_contract;
   vertical_contract.maximum_horizontal_acceleration_mps2 =
       config.sensor_braking_contract.maximum_vertical_acceleration_mps2;
   const double speed_mps = std::hypot(1.0, 4.0);
   EXPECT_NEAR(descending.route_endpoint_limit_mps,
-              stoppingLimitedSpeed(3.5, 0.0, vertical, vertical_contract, 0.0) *
+              stoppingLimitedSpeed(3.0, 0.0, vertical, vertical_contract, 0.0) *
                   speed_mps / 4.0,
               1.0e-6);
   EXPECT_LT(descending.route_endpoint_limit_mps,
             stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
                                  config.sensor_braking_contract, 0.0));
 
-  // Level at the goal's height, the descent law has nothing to brake.
+  // Level at the goal's height, its jitter included, the descent law has
+  // nothing to brake.
   input.state.z = 16.0F;
-  input.state.vz = 0.0F;
+  input.state.vz = -0.2F;
   input.state.vx = 4.0F;
   const MppiSpeedPolicyResult level = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_NEAR(level.route_endpoint_limit_mps,
-              stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
-                                   config.sensor_braking_contract, 0.0),
-              1.0e-6);
+  EXPECT_GE(level.route_endpoint_limit_mps,
+            stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
+                                 config.sensor_braking_contract, 0.0));
 }
 
 TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {

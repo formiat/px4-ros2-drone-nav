@@ -590,17 +590,21 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
     // A descent stops at the lowest height the route still has to fly, where
     // the route's vertical speed is nought, wherever the distance along it or
-    // in the plane stands, at the vertical deceleration the airframe is owed.
-    // Read off the distance alone, a vehicle that ran past its route's corner
-    // and came down beside the goal kept 4 to 7 m/s of the goal law while it
-    // passed the goal's height, and r3294 struck the ground 6.7 m under it.
-    // Half a metre under that height is the route end's own tolerance, so a
-    // level flight's vertical jitter is not braked.
-    constexpr double kRouteFloorToleranceM{0.5};
+    // in the plane stands. Read off the distance alone, a vehicle that ran
+    // past its route's corner and came down beside the goal kept 4 to 7 m/s of
+    // the goal law while it passed the goal's height, and r3294 struck the
+    // ground 6.7 m under it. The deceleration is the one a descent is flown at
+    // while the plane brakes too, 0.55 of the vertical guarantee: 0.7 to
+    // 0.8 m/s^2 against the guarantee's 1.4 (r3272, r3291, r3305), and read at
+    // the whole of it the descents reached their feet at 2.4 to 2.8 m/s and
+    // ran 1.2 to 3 m under them. A descent slower than 0.3 m/s is a level
+    // flight's jitter and is not braked.
+    constexpr double kCombinedBrakingShare{0.55};
+    constexpr double kLevelDescentMps{0.3};
     const double descent_mps = -static_cast<double>(input.state.vz);
     const double speed_mps =
         std::hypot(std::hypot(input.state.vx, input.state.vy), input.state.vz);
-    if (!input.route.empty() && descent_mps > 1.0e-6 && speed_mps > 1.0e-6) {
+    if (!input.route.empty() && descent_mps > kLevelDescentMps) {
       const double ahead_station_m =
           input.route.back().station_m - *input.route_endpoint_remaining_m;
       double lowest_z_m = input.route.back().position.z;
@@ -612,10 +616,14 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       const MppiSpeedPolicyConfig downward = alongMotion(config, Vec3{0.0, 0.0, -1.0});
       StoppingCapability vertical_capability = downward.stopping_capability;
       vertical_capability.reaction_latency_s += config.reference_tracking_lag_s;
+      vertical_capability.maximum_commanded_horizontal_deceleration_mps2 *=
+          kCombinedBrakingShare;
+      vertical_capability.guaranteed_horizontal_deceleration_mps2 =
+          std::min(vertical_capability.guaranteed_horizontal_deceleration_mps2,
+                   vertical_capability.maximum_commanded_horizontal_deceleration_mps2);
       const double descent_limit_mps = stoppingLimitedSpeed(
-          static_cast<double>(input.state.z) - lowest_z_m + kRouteFloorToleranceM, 0.0,
-          vertical_capability, downward.sensor_braking_contract,
-          input.vertical_forward_acceleration_mps2);
+          static_cast<double>(input.state.z) - lowest_z_m, 0.0, vertical_capability,
+          downward.sensor_braking_contract, input.vertical_forward_acceleration_mps2);
       result.route_endpoint_limit_mps = std::min(
           result.route_endpoint_limit_mps, descent_limit_mps * speed_mps / descent_mps);
     }
