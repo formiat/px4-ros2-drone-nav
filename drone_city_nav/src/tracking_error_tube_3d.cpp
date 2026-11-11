@@ -170,16 +170,108 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   return margin_m;
 }
 
+// Whether a chunk of `grid` that meets the box [low, high] holds an occupied
+// voxel, chunk by chunk and so never short of the truth. A box that leaves the
+// grid meets one: outside the grid the sweep decides.
+template<typename Grid, typename OccupiedWords>
+[[nodiscard]] bool occupiedChunkMeetsBox(const Grid& grid, const Point3& low,
+                                         const Point3& high,
+                                         const OccupiedWords& occupied_words) {
+  const GridBounds3D& bounds = grid.bounds();
+  const auto cell = [&bounds](const double coordinate, const double origin) {
+    return static_cast<int>(std::floor((coordinate - origin) / bounds.resolution_m));
+  };
+  const int minimum_x = cell(low.x, bounds.origin_x);
+  const int minimum_y = cell(low.y, bounds.origin_y);
+  const int minimum_z = cell(low.z, bounds.origin_z);
+  const int maximum_x = cell(high.x, bounds.origin_x);
+  const int maximum_y = cell(high.y, bounds.origin_y);
+  const int maximum_z = cell(high.z, bounds.origin_z);
+  if (minimum_x < 0 || minimum_y < 0 || minimum_z < 0 ||
+      maximum_x >= bounds.width_cells || maximum_y >= bounds.height_cells ||
+      maximum_z >= bounds.depth_cells) {
+    return true;
+  }
+  constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
+  for (int chunk_z = minimum_z / kChunkSize; chunk_z <= maximum_z / kChunkSize;
+       ++chunk_z) {
+    for (int chunk_y = minimum_y / kChunkSize; chunk_y <= maximum_y / kChunkSize;
+         ++chunk_y) {
+      for (int chunk_x = minimum_x / kChunkSize; chunk_x <= maximum_x / kChunkSize;
+           ++chunk_x) {
+        const auto* const chunk =
+            grid.findChunk(OccupancyChunkIndex3D{chunk_x, chunk_y, chunk_z});
+        if (chunk != nullptr &&
+            std::ranges::any_of(occupied_words(*chunk),
+                                [](const std::uint64_t word) { return word != 0U; })) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Whether nothing occupied lies within reach of the segment: of the tube's
+// widest margin and of the body, upright or leaning, with its clearance. The
+// sweep then accepts the segment and every margin query returns its cap, so
+// the segment's ceiling is the tube's ceiling without either. In open air a
+// 500 m leg's sweeps and margin queries took 140 ms a profile, twice an
+// activation, against a world that changes every 200 to 250 ms (r3265, r3267).
+[[nodiscard]] bool segmentNeighbourhoodHoldsNoOccupancy(
+    const TrackingErrorTubeWorld3D& world, const Point3& first, const Point3& second,
+    const SweptFootprintConfig& physical_footprint, const double maximum_body_tilt_rad,
+    const double maximum_margin_m) {
+  const SweptFootprintConfig leaning =
+      tiltEnvelopedFootprint(physical_footprint, maximum_body_tilt_rad);
+  double resolution_m{0.0};
+  if (world.observed_occupancy != nullptr) {
+    resolution_m = world.observed_occupancy->bounds().resolution_m;
+  } else if (world.occupancy != nullptr) {
+    resolution_m = world.occupancy->bounds().resolution_m;
+  }
+  const double reach_m =
+      maximum_margin_m + physical_footprint.safe_clearance_threshold_m + resolution_m +
+      std::max({leaning.radius_m, leaning.lower_extent_m, leaning.upper_extent_m,
+                physical_footprint.radius_m, physical_footprint.lower_extent_m,
+                physical_footprint.upper_extent_m});
+  const Point3 low{std::min(first.x, second.x) - reach_m,
+                   std::min(first.y, second.y) - reach_m,
+                   std::min(first.z, second.z) - reach_m};
+  const Point3 high{std::max(first.x, second.x) + reach_m,
+                    std::max(first.y, second.y) + reach_m,
+                    std::max(first.z, second.z) + reach_m};
+  if (world.observed_occupancy == nullptr && world.occupancy == nullptr) {
+    return false;
+  }
+  return (world.observed_occupancy == nullptr ||
+          !occupiedChunkMeetsBox(
+              *world.observed_occupancy, low, high,
+              [](const ObservedOccupancyGrid3D::Chunk& chunk)
+                  -> const OccupancyGrid3D::Chunk& { return chunk.occupied; })) &&
+         (world.occupancy == nullptr ||
+          !occupiedChunkMeetsBox(
+              *world.occupancy, low, high,
+              [](const OccupancyGrid3D::Chunk& chunk) -> const OccupancyGrid3D::Chunk& {
+                return chunk;
+              }));
+}
+
 [[nodiscard]] double segmentSpeedLimitMps(
     const TrackingErrorTubeWorld3D& world, const Point3& first, const Point3& second,
     const SweptFootprintConfig& physical_footprint,
-    const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps) noexcept {
+    const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps) {
+  const double maximum_margin_m = trackingErrorTubeRadiusM(config, maximum_speed_mps);
+  if (segmentNeighbourhoodHoldsNoOccupancy(world, first, second, physical_footprint,
+                                           config.maximum_body_tilt_rad,
+                                           maximum_margin_m)) {
+    return maximum_speed_mps;
+  }
   // The physical body stays the only hard authority; the tube only shapes the
   // speed ceiling above it.
   if (!segmentAccepted(world, first, second, physical_footprint)) {
     return std::numeric_limits<double>::quiet_NaN();
   }
-  const double maximum_margin_m = trackingErrorTubeRadiusM(config, maximum_speed_mps);
   const double margin_m =
       segmentInflationMarginM(world, first, second, physical_footprint,
                               config.maximum_body_tilt_rad, maximum_margin_m);

@@ -135,6 +135,6 @@ struct TrackingErrorTubeProfileReport3D {
     std::span<const RouteSample3D> route, const TrackingErrorTubeWorld3D& world,
     const SweptFootprintConfig& physical_footprint,
     const TrackingErrorTubeConfig3D& config, double maximum_speed_mps,
-    TrackingErrorTubeProfileReport3D* report = nullptr);
+    TrackingErrorTubeProfileReport3D* outcome = nullptr);
 
 } // namespace drone_city_nav

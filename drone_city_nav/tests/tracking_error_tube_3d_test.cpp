@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -137,6 +138,46 @@ TEST(TrackingErrorTube3DTest, NarrowPhysicalPassageReducesSpeedInsteadOfPathClea
   EXPECT_LT(tube.maximum_tracking_error_m, 0.75);
 }
 
+// Open air is admitted at the ceiling without the sweep, and a passage along
+// the way still constrains as before (r3265, r3267: a 500 m leg's profile took
+// 140 ms of sweeps that could only return the ceiling).
+TEST(TrackingErrorTube3DTest, OpenAirIsAdmittedAtTheCeilingAndAPassageStillConstrains) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{
+      .origin_x = -1.0,
+      .origin_y = -2.0,
+      .origin_z = 0.0,
+      .resolution_m = 0.1,
+      .width_cells = 1000,
+      .height_cells = 40,
+      .depth_cells = 40,
+  }};
+  for (int z = 0; z < 40; ++z) {
+    for (int x = 800; x < 830; ++x) {
+      ASSERT_TRUE(occupancy.setState({x, 7, z}, ObservedVoxelState::kOccupied));
+      ASSERT_TRUE(occupancy.setState({x, 32, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {95.0, 0.0, 2.0}}, 0.5, 5.0);
+  const TrackingErrorTubeProfile3D tube = makeTrackingErrorTubeProfile3D(
+      route,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &occupancy,
+          .occupied_content_fingerprint =
+              occupancy.occupiedSnapshot().contentFingerprint(),
+      },
+      SweptFootprintConfig{}, TrackingErrorTubeConfig3D{.response_time_s = 0.15}, 5.0);
+
+  ASSERT_TRUE(tube.valid);
+  EXPECT_GT(tube.constrained_segment_count, 0U);
+  EXPECT_LT(tube.minimum_speed_limit_mps, 4.0);
+  for (std::size_t index = 0U; index < route.size(); ++index) {
+    if (route[index].position.x < 70.0) {
+      EXPECT_DOUBLE_EQ(tube.speed_limits_mps.at(index), 5.0) << index;
+    }
+  }
+}
+
 TEST(TrackingErrorTube3DTest, ConstraintDescriptionNamesTheConstrainedStationRanges) {
   ObservedOccupancyGrid3D occupancy{testBounds()};
   addPassageWalls(occupancy);
@@ -150,10 +191,10 @@ TEST(TrackingErrorTube3DTest, ConstraintDescriptionNamesTheConstrainedStationRan
   ASSERT_FALSE(description.empty());
   // The walls run along the whole route, so one range spans it end to end and
   // names the profile's lowest limit.
-  char expected_limit[32];
-  std::snprintf(expected_limit, sizeof(expected_limit), ":%.2f@",
+  std::array<char, 32> expected_limit{};
+  std::snprintf(expected_limit.data(), expected_limit.size(), ":%.2f@",
                 tube.minimum_speed_limit_mps);
-  EXPECT_NE(description.find(expected_limit), std::string::npos) << description;
+  EXPECT_NE(description.find(expected_limit.data()), std::string::npos) << description;
   EXPECT_EQ(description.find(';'), std::string::npos) << description;
   EXPECT_EQ(description.rfind("0.0-", 0U), 0U) << description;
 
