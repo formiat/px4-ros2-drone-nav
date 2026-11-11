@@ -17,8 +17,6 @@ enum class OffboardSetpointMode : std::uint8_t {
   kPositionHold,
   kTrajectoryPositionTracking,
   kVelocityCruise,
-  // An acceleration alone: a grounded vehicle's thrust at its floor (K30).
-  kAcceleration,
 };
 
 struct VehicleCommandEndpoint {

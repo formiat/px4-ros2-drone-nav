@@ -16,8 +16,6 @@ offboardSetpointModeName(const OffboardSetpointMode mode) noexcept {
       return "trajectory_position_tracking";
     case OffboardSetpointMode::kVelocityCruise:
       return "velocity_cruise";
-    case OffboardSetpointMode::kAcceleration:
-      return "acceleration";
   }
   return "unknown";
 }
@@ -41,7 +39,7 @@ buildOffboardControlMode(const std::uint64_t timestamp_us,
   msg.position = mode == OffboardSetpointMode::kPositionHold ||
                  mode == OffboardSetpointMode::kTrajectoryPositionTracking;
   msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
-  msg.acceleration = mode == OffboardSetpointMode::kAcceleration;
+  msg.acceleration = false;
   msg.attitude = false;
   msg.body_rate = false;
   msg.thrust_and_torque = false;

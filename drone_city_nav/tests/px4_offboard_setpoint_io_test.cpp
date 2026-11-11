@@ -27,15 +27,6 @@ TEST(Px4OffboardSetpointIo, BuildsPositionAndVelocityControlModes) {
   EXPECT_FALSE(velocity.position);
   EXPECT_TRUE(velocity.velocity);
   EXPECT_FALSE(velocity.acceleration);
-
-  // A grounded vehicle's thrust at its floor is an acceleration alone (K30).
-  const auto acceleration =
-      buildOffboardControlMode(14U, OffboardSetpointMode::kAcceleration);
-  EXPECT_FALSE(acceleration.position);
-  EXPECT_FALSE(acceleration.velocity);
-  EXPECT_TRUE(acceleration.acceleration);
-  EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kAcceleration),
-               "acceleration");
 }
 
 TEST(Px4OffboardSetpointIo, BrakingHoldOpposesTheVelocityAtTheBrakingAcceleration) {

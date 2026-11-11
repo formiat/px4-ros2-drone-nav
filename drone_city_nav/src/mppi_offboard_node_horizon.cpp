@@ -206,45 +206,46 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
 // vehicle holds no position: the estimate stepped 0.75 m under one standing
 // on the ground, the hold answered with tilt, and the vehicle went over onto
 // a rotor before the autopilot disarmed it (r3261; r881 for the dead-reckoned
-// landing). A descent that gains nothing for a second stands on the ground,
-// and from there to the disarm the setpoint is the level one: the estimate's
-// altitude creeps down under a vehicle on the ground, and read as a descent
-// again it handed the vehicle back to the position hold, which tipped r3271
-// over 4 s after its touchdown. On the ground the setpoint is an acceleration
-// of g downwards and of nought in the plane, no velocity: the collective thrust
-// at its floor, so that the autopilot detects the landing and disarms at once.
-// Under a descent of 0.5 m/s held by the velocity loop the autopilot detected
-// no landing on the park's mesh, the vehicle stood on the ground with the
-// descent's thrust and turned over 3 to 5 s later (r3271, r3275, r3283; the
-// clean landings logged "Landing detected", the flipped ones none).
+// landing). A descent that has flowed at 0.35 m/s and then stays slower than
+// 0.15 m/s for 0.2 s stands on the ground, and from there to the disarm the
+// setpoint is the level one, latched: the estimate's altitude creeps down
+// under a vehicle on the ground, and read as a descent again it handed the
+// vehicle back to the position hold, which tipped r3271 over 4 s after its
+// touchdown. On the ground the descent's 0.5 m/s stays in the setpoint with g
+// fed forward downwards and nought in the plane: the collective thrust at its
+// floor at once, and the descent commanded that the autopilot's land detector
+// needs to read a ground contact (1.1 LNDMC_Z_VEL_MAX under the climb rate's
+// control). The velocity loop alone wound the thrust down over seconds, and a
+// vehicle whose first leg met the park's mesh rotating at 23 deg/s, over the
+// detector's 20, stood with the descent's thrust and turned over 2 s later
+// (r3271, r3275, r3283); g without the descent left the detector without a
+// contact (r3284), and an acceleration alone under the acceleration flag set
+// its minimal thrust (MPC_MANTHR_MIN + 0.01) under the controller's floor
+// (MPC_THR_MIN, r3287): neither disarmed.
 void MppiOffboardNode::publishMissionLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
-  constexpr double kDescentProgressM{0.05};
-  constexpr std::int64_t kGroundedAfterNs{1'000'000'000};
+  constexpr double kDescentFlowingMps{0.35};
+  constexpr double kStoppedMps{0.15};
+  constexpr std::int64_t kGroundedAfterNs{200'000'000};
   constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
   constexpr double kGravityMps2{9.80665};
   const std::int64_t now_ns = now().nanoseconds();
-  if (altitude_m_ < mission_landing_lowest_altitude_m_ - kDescentProgressM) {
-    mission_landing_lowest_altitude_m_ = altitude_m_;
+  mission_landing_descent_flowing_ =
+      mission_landing_descent_flowing_ || velocity_up_mps_ < -kDescentFlowingMps;
+  if (!mission_landing_descent_flowing_ || velocity_up_mps_ < -kStoppedMps) {
     mission_landing_progress_ns_ = now_ns;
   }
   mission_landing_grounded_ = mission_landing_grounded_ ||
                               now_ns - mission_landing_progress_ns_ > kGroundedAfterNs;
   if (mission_landing_grounded_) {
-    // An acceleration alone is a setpoint only under the acceleration flag:
-    // under the position one the autopilot read it as no setpoint and failed
-    // safe (r3284, r3285).
-    offboard_mode_pub_->publish(
-        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kAcceleration));
-    setpoint_pub_->publish(buildMppiTrajectorySetpoint(
-        nowMicros(), Point2{nan, nan}, nan, Point2{0.0, 0.0}, -kGravityMps2, nan, 0.0));
+    setpoint_pub_->publish(
+        buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan}, -kLandingSpeedMps,
+                                    Point2{0.0, 0.0}, -kGravityMps2, nan, 0.0));
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                          "MISSION_LANDING grounded=true altitude_m=%.2f",
                          mapAltitudeM());
     return;
   }
-  offboard_mode_pub_->publish(
-      buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
   setpoint_pub_->publish(
       buildPositionTrajectorySetpoint(nowMicros(), mission_landing_local_, nan,
                                       mission_landing_yaw_rad_, -kLandingSpeedMps));

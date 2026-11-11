@@ -380,8 +380,8 @@ void MppiOffboardNode::controlTick() {
     return;
   }
   if (mission_landing_) {
-    // The landing publishes its control mode with its setpoint: a position
-    // until the vehicle stands, an acceleration from then on (K30).
+    offboard_mode_pub_->publish(
+        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
     publishMissionLandingSetpoint();
     publishUnavailableControlFeedback();
     return;
