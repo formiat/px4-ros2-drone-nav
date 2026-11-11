@@ -210,7 +210,10 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
 // and from there to the disarm the setpoint is the level one: the estimate's
 // altitude creeps down under a vehicle on the ground, and read as a descent
 // again it handed the vehicle back to the position hold, which tipped r3271
-// over 4 s after its touchdown.
+// over 4 s after its touchdown. On the ground the plane is set by an
+// acceleration of nought and no velocity: a velocity of nought there is a
+// velocity loop whose integrator the legs hold, and its tilt grew for 3 to 5 s
+// under r3271 and r3275 until the vehicle pivoted on a leg and turned over.
 void MppiOffboardNode::publishMissionLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
   constexpr double kDescentProgressM{0.05};
@@ -225,7 +228,7 @@ void MppiOffboardNode::publishMissionLandingSetpoint() {
                               now_ns - mission_landing_progress_ns_ > kGroundedAfterNs;
   if (mission_landing_grounded_) {
     setpoint_pub_->publish(
-        buildMppiTrajectorySetpoint(nowMicros(), Point2{0.0, 0.0}, -kLandingSpeedMps,
+        buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan}, -kLandingSpeedMps,
                                     Point2{0.0, 0.0}, nan, nan, 0.0));
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                          "MISSION_LANDING grounded=true altitude_m=%.2f",
