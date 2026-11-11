@@ -206,6 +206,24 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
 
 bool PersistentDStarLitePlanner3DImpl::holdOverflight(
     const PersistentPlannerRequest3D& request, PlannerUpdate3D& update) {
+  // A held leg is taken again from where the vehicle is at every update, at no
+  // lower a level than the vehicle's own: so it stays the leg over everything
+  // the memory holds as the memory grows, and its start is the vehicle, not a
+  // join. Held as it was first taken, a crown seen since within the leg's
+  // reach and under its margin, which the bare body still cleared, left it the
+  // incumbent: a consumer that released it as blocked was handed the same leg
+  // three times and threaded the crowns at 0.6 to 1 m/s for 12 s (r3297).
+  if (const SpatialRouteCandidate3D* const held = coordinator_.incumbent();
+      held != nullptr && held->source == SpatialRouteCandidateSource3D::kOverflight) {
+    if (std::optional<std::vector<Point3>> path =
+            overflightPath(request.start, exact_goal_)) {
+      if (std::optional<SpatialRouteCandidate3D> again = makeCandidate(
+              std::move(*path), SpatialRouteCandidateSource3D::kOverflight,
+              request.velocity)) {
+        coordinator_.retain(std::move(*again));
+      }
+    }
+  }
   if (coordinator_.incumbent() == nullptr) {
     if (std::optional<std::vector<Point3>> path =
             overflightPath(request.start, exact_goal_)) {

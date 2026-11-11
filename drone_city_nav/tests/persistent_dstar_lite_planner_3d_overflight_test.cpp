@@ -161,6 +161,45 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   }
 }
 
+// A crown seen since the leg was taken, beside it within its reach and taller
+// than the leg clears by its margin, does not block the bare body: the leg is
+// taken again over it all the same (r3297 was handed the same leg three times
+// by a consumer that had released it as blocked, and threaded the crowns).
+TEST(PersistentDStarLitePlanner3DTest, AHeldLegTheMemoryHasOutgrownIsTakenAgain) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
+  for (int x = 0; x < 60; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.overflight_margin_m = 3.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{2.5, 5.5, 6.0};
+  const Point3 goal{56.5, 5.5, 2.5};
+  PersistentPlannerRequest3D first = request(start, goal, world(occupancy, 1U));
+  first.session_id = 1U;
+  const PlannerUpdate3D level = planner.plan(first);
+  ASSERT_TRUE(level.publishable());
+  EXPECT_DOUBLE_EQ(highestPointZ(candidate(level).points), 6.0);
+
+  // Seven metres tall, three aside of the track: the leg at six clears it.
+  auto crown = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
+  for (int z = 1; z < 7; ++z) {
+    ASSERT_TRUE(crown->setState({30, 8, z}, ObservedVoxelState::kOccupied));
+  }
+  PersistentPlannerRequest3D released = request(
+      Point3{10.5, 5.5, 6.0}, goal, world(crown, 2U, {OccupancyChunkIndex3D{1, 0, 0}}));
+  released.session_id = 2U;
+  const PlannerUpdate3D over = planner.plan(released);
+
+  ASSERT_TRUE(over.publishable());
+  EXPECT_EQ(candidate(over).source, SpatialRouteCandidateSource3D::kOverflight);
+  EXPECT_DOUBLE_EQ(highestPointZ(candidate(over).points), 10.0);
+  expectRawValid(candidate(over).points, *crown, planner.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
