@@ -136,14 +136,15 @@ OPEN_SKY_MEMORY = {
 }
 
 # The open sky's vertical dynamics (V3): the vertical acceleration the horizon
-# plans with is 2 m/s^2, so that a climb from rest is not the caves' 1.4 m/s^2
+# plans with is 3 m/s^2, so that a climb from rest is not the caves' 1.4 m/s^2
 # (the climbs of r3272 flew at 4.2 m/s under a reference of 8.8). The flight
 # airframe hovers at 0.79 of its collective thrust (the autopilot's hover
 # thrust estimate over r3292, a linear thrust model): at level it has 2.6 m/s^2
-# upwards at most, and less tilted. The bench's vertical stops of 6.8 to
+# upwards at most, and less tilted; the bench's vertical stops of 6.8 to
 # 8.0 m/s^2 (tools/airframe_envelope.sh --vertical) were the bare x500's, which
-# hovers at 0.6; planned at 3 the descents' stops ran the collective into its
-# top while the plane braked too and came 0.5 to 2.6 m past their ends. The guaranteed vertical stopping
+# hovers at 0.6. Planned at 2 the stops fell deeper still: a stop's rest at
+# speed came into the ground's clearance near a goal, the execution was
+# revoked, and r3294 struck the ground (r3295 came 4 m under a goal). The guaranteed vertical stopping
 # deceleration stays the caves' 1.4, measured on the arrests the stack flies:
 # the contract stops every horizon at it until the arrests measure more. The
 # control jerk is 18 m/s^3 (the caves' 12): from 10 to 20 m/s the airframe
@@ -151,7 +152,7 @@ OPEN_SKY_MEMORY = {
 # (the bench's samples, 2026-11-10); at 12 the contract counted 0.83 s of a
 # stop's onset, 11 m of the lidar's range at 13 m/s.
 OPEN_SKY_DYNAMICS = {
-    "maximum_vertical_acceleration_mps2": 2.0,
+    "maximum_vertical_acceleration_mps2": 3.0,
     "maximum_control_jerk_mps3": 18.0,
 }
 
