@@ -22,6 +22,12 @@ namespace drone_city_nav {
 // the capture radius: the capture itself is only acknowledged while the vehicle stays
 // inside it, and a latched planner flies no route, so a vehicle that drifted out would
 // otherwise stay out with nothing left to bring it back.
+// Rest is what the goal's hold can certify: the speed within its tolerance and
+// the applied acceleration within the hold's. A vehicle turning back after
+// running past its goal passes through nought under 3.4 m/s^2; latched there,
+// its hold was refused for the 4 s its route's lease lasted (r3309; every one
+// of the 14 latches of r3296 to r3309 whose hold was refused as stale at the
+// latch itself waited 1.3 to 7.5 s, the ten unrefused ones 1.3 s at most).
 struct MissionGoalCaptureConfig {
   double capture_radius_m{2.0};
   double stationary_speed_tolerance_mps{kStationaryExecutionHoldSpeedToleranceMps};
@@ -30,6 +36,7 @@ struct MissionGoalCaptureConfig {
 struct MissionGoalCaptureObservation {
   Point3 mission_goal{};
   mppi::State state{};
+  double applied_acceleration_mps2{0.0};
   bool terminal_route_available{false};
   std::int64_t stamp_ns{0};
 };
