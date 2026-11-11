@@ -425,6 +425,15 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
         result.activation.admission.blocked_replacement_deferred) {
       return false;
     }
+    // A candidate the world moved under between capture and commit is no
+    // search that failed either: the search has nothing left to search (the
+    // open sky's leg is found in one update) and the candidate stands. Latched,
+    // every lost race waited the whole retry interval for the same race: r3265
+    // and r3267 stood at a goal for 500 s on 282 and 302 of them.
+    if (result.activation.admission.activation_status ==
+        StaticRouteActivationStatus::kActivationSnapshotSuperseded) {
+      return false;
+    }
     const std::shared_ptr<const ExecutionPlan3D> resident_execution =
         execution_supervisor_.plan();
     const std::uint64_t resident_generation =
