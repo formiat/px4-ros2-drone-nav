@@ -141,8 +141,15 @@ OPEN_SKY_MEMORY = {
 # that a climb from rest is not the caves' 1.4 m/s^2 (the climbs of r3272 flew
 # at 4.2 m/s under a reference of 8.8). The guaranteed vertical stopping
 # deceleration stays the caves' 1.4, measured on the arrests the stack flies:
-# the contract stops every horizon at it until the arrests measure more.
-OPEN_SKY_DYNAMICS = {"maximum_vertical_acceleration_mps2": 3.0}
+# the contract stops every horizon at it until the arrests measure more. The
+# control jerk is 18 m/s^3 (the caves' 12): from 10 to 20 m/s the airframe
+# reaches the contract's 5 m/s^2 of braking in 0.16 to 0.22 s, 23 to 31 m/s^3
+# (the bench's samples, 2026-11-10); at 12 the contract counted 0.83 s of a
+# stop's onset, 11 m of the lidar's range at 13 m/s.
+OPEN_SKY_DYNAMICS = {
+    "maximum_vertical_acceleration_mps2": 3.0,
+    "maximum_control_jerk_mps3": 18.0,
+}
 
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body
