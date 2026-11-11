@@ -97,8 +97,10 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
   };
   LidarAcquisitionPoseResult acquisition;
   std::uint64_t pose_generation{0U};
+  std::uint64_t frame_epoch{0U};
   {
     const std::scoped_lock pose_lock{pose_history_mutex_};
+    frame_epoch = frame_epoch_;
     acquisition = resolveLidarAcquisitionBeamPoses(
         lidar_pose_history_, timing, 1U, acquisition_pose_config_,
         use_px4_heading_for_scan_ ? std::nullopt
@@ -349,6 +351,7 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
         .cooperative_filtered = cooperative_filtered,
         .altitude_valid = pose.altitude_valid,
         .publish_debug = publish_current_cloud,
+        .frame_epoch = frame_epoch,
     });
   }
   const auto processing_finished = std::chrono::steady_clock::now();

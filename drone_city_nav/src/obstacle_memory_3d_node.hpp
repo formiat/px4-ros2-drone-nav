@@ -153,6 +153,11 @@ private:
   MappingYawTracker mapping_yaw_tracker_;
   MappingYawSource last_mapping_yaw_source_{MappingYawSource::kUnavailable};
   LidarPoseHistory lidar_pose_history_;
+  // The autopilot's frame (specification K77): its resets beyond the
+  // tolerance, and the last state the next is read against.
+  std::uint64_t frame_epoch_{0U};
+  std::optional<AutopilotLocalState> last_local_state_;
+  std::int64_t last_local_state_receive_ns_{0};
   Px4RosTimeMapper time_mapper_;
   LidarAcquisitionPoseConfig acquisition_pose_config_{};
   LidarPoseSourceStampConfig pose_source_stamp_config_{};

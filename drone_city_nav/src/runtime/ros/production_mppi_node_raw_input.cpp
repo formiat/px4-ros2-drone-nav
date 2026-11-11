@@ -107,6 +107,22 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
                  update.state.producer_instance_id,
                  update.state.obstacle_snapshot_revision);
   }
+  if (result.status == RawWorldCommitStatus3D::kCommitted) {
+    // Specification K77: the world of a lineage the frame reset did not see
+    // is the memory rebuilt in the new frame, and the navigation is taken
+    // back in it.
+    const auto input_lock = evidence_boundary_.input();
+    if (navigation_frame_reset_unresolved_ &&
+        update.state.producer_instance_id != frame_reset_raw_producer_instance_id_) {
+      navigation_frame_reset_unresolved_ = false;
+      RCLCPP_WARN(get_logger(),
+                  "LOCAL_POSITION frame_reset_resolved=true producer=%" PRIu64
+                  " previous_producer=%" PRIu64 " revision=%" PRIu64,
+                  update.state.producer_instance_id,
+                  frame_reset_raw_producer_instance_id_,
+                  update.state.obstacle_snapshot_revision);
+    }
+  }
 }
 
 void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {

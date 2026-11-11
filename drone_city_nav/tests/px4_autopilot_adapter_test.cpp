@@ -72,6 +72,27 @@ TEST(Px4AutopilotAdapter, ReadsTheNedEstimateInTheMapFrame) {
   EXPECT_NE(state.payload_fingerprint, 0U);
 }
 
+// Specification K77: a reset that moves the estimate beyond the tolerance, or
+// that cannot be carried over its interval, is a new frame; within it, or
+// without a reset, the same frame.
+TEST(Px4AutopilotAdapter, AResetBeyondTheToleranceIsANewFrame) {
+  AutopilotLocalState previous;
+  previous.position = Point3{10.0, 20.0, 30.0};
+  previous.velocity = Vec3{13.0, 0.0, 0.0};
+  AutopilotLocalState current = previous;
+  current.position = Point3{11.3 + 3.5, 20.0, 30.0};
+  EXPECT_FALSE(autopilotFrameReset(previous, current, 0.1));
+  current.xy_reset_counter = 1U;
+  EXPECT_TRUE(autopilotFrameReset(previous, current, 0.1));
+  current.position = Point3{11.3 + 0.5, 20.0, 30.0};
+  EXPECT_FALSE(autopilotFrameReset(previous, current, 0.1));
+  EXPECT_TRUE(autopilotFrameReset(previous, current, 0.5));
+  current.xy_reset_counter = 0U;
+  current.z_reset_counter = 1U;
+  current.position = Point3{11.3, 20.0, 34.0};
+  EXPECT_TRUE(autopilotFrameReset(previous, current, 0.1));
+}
+
 TEST(Px4AutopilotAdapter, AnUnusableHeadingOrAccelerationIsReportedAsSuch) {
   px4_msgs::msg::VehicleLocalPosition message = validLocalPosition();
   message.heading_good_for_control = false;

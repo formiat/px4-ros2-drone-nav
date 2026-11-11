@@ -65,6 +65,25 @@ void ObstacleMemory3DNode::onLocalState(const AutopilotLocalState& message) {
   {
     const std::scoped_lock pose_lock{pose_history_mutex_};
     const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+    // Specification K77: a reset of the autopilot's estimate beyond the
+    // tolerance is a new frame. The poses after it are not the poses before,
+    // and what the memory built in the old frame is cleared before the first
+    // scan of the new one is integrated.
+    if (last_local_state_.has_value() &&
+        autopilotFrameReset(
+            *last_local_state_, message,
+            1.0e-9 *
+                static_cast<double>(receive_stamp_ns - last_local_state_receive_ns_))) {
+      ++frame_epoch_;
+      lidar_pose_history_.startNewGeneration();
+      RCLCPP_WARN(get_logger(),
+                  "LIDAR3D_FRAME_RESET frame_epoch=%" PRIu64
+                  " xy_reset_counter=%u z_reset_counter=%u action=clear_memory",
+                  frame_epoch_, static_cast<unsigned>(message.xy_reset_counter),
+                  static_cast<unsigned>(message.z_reset_counter));
+    }
+    last_local_state_ = message;
+    last_local_state_receive_ns_ = receive_stamp_ns;
     const bool heading_ready = px4HeadingReadyForMapping(
         message.yaw_rad, message.heading_variance_rad2, maximum_heading_variance_rad2_);
     const MappingYawSelection mapping_yaw =

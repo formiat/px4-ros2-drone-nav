@@ -134,6 +134,16 @@ void ObstacleMemory3DWorker::workerLoop(const std::stop_token stop_token) {
 
 void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
   const auto started = std::chrono::steady_clock::now();
+  // Specification K77: the first scan of a new frame finds the memory of the
+  // old one cleared; the lidar fills its range again in the scan itself.
+  if (scan.frame_epoch > frame_epoch_) {
+    frame_epoch_ = scan.frame_epoch;
+    memory_.reset();
+    RCLCPP_WARN(node_.get_logger(),
+                "LIDAR3D_MEMORY frame_reset=true frame_epoch=%" PRIu64
+                " action=cleared",
+                frame_epoch_);
+  }
   if (armed_seen_.load(std::memory_order_acquire)) {
     mapping_lifecycle_.updateArmed(armed_.load(std::memory_order_acquire));
   }

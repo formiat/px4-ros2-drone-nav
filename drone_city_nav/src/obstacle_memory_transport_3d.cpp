@@ -176,6 +176,10 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
   ++sequence_;
   if (update.changes.full_reset) {
     dirty_chunks_since_base_.clear();
+    // A cleared memory is a new lineage (specification K77): its consumers
+    // take it over as they take a restarted producer's, and nothing of the
+    // cleared one is read as its continuation.
+    producer_instance_id_ = createRawObstacleProducerInstanceId();
   }
   dirty_chunks_since_base_.insert(update.changes.dirty_chunks.begin(),
                                   update.changes.dirty_chunks.end());

@@ -412,6 +412,9 @@ private:
   // Cleared only by node restart. Safe recovery needs one coordinated
   // planner/offboard/world transform handoff, not a callback-local correction.
   bool navigation_frame_reset_unresolved_{false};
+  // The raw world's lineage when the frame reset was latched: a world of
+  // another lineage is the memory rebuilt in the new frame (K77).
+  std::uint64_t frame_reset_raw_producer_instance_id_{0U};
   // The autopilot's reset counters are held against the first state the
   // stack accepted as authoritative, not the first message: an autopilot
   // aligning its estimator to a source it is still admitting resets its

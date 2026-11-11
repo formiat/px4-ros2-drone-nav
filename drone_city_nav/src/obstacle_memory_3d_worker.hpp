@@ -41,6 +41,8 @@ struct PersistentLidarScan3D {
   std::size_t cooperative_filtered{0U};
   bool altitude_valid{false};
   bool publish_debug{false};
+  // The autopilot's frame the scan's poses are in (specification K77).
+  std::uint64_t frame_epoch{0U};
 };
 
 class ObstacleMemory3DWorker final {
@@ -80,6 +82,8 @@ private:
   std::atomic<bool> armed_seen_{false};
   std::atomic<bool> armed_{false};
   std::atomic<std::uint64_t> dropped_scans_{0U};
+  // The autopilot's frame the memory is built in (specification K77).
+  std::uint64_t frame_epoch_{0U};
   std::jthread worker_;
 };
 

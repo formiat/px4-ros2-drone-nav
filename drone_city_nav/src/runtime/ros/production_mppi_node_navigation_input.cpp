@@ -9,6 +9,7 @@
 #include <numbers>
 
 #include "production_mppi_node.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -25,10 +26,10 @@ namespace {
 // goal: the camera estimate ran a metre off over a featureless floor, came
 // back onto the truth in one step, and the autopilot's reset of 1.02 m
 // followed. A larger shift, or a timestamp epoch reset, still closes it.
-constexpr double kFrameResetToleranceM{3.0};
+constexpr double kFrameResetToleranceM{kAutopilotFrameResetToleranceM};
 // The longest receive interval the previous sample's velocity is carried
 // over to measure that shift; the autopilot publishes every 16 ms.
-constexpr double kFrameResetMaximumIntervalS{0.2};
+constexpr double kFrameResetMaximumIntervalS{kAutopilotFrameResetMaximumIntervalS};
 
 } // namespace
 
@@ -171,9 +172,12 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
       // shift: on r375 it reported 7.96 m for a published step of 0.26 m.
       // A larger shift, an interval too long to carry the velocity over, or
       // a timestamp epoch reset is a frame the stack cannot repair in this
-      // callback: offboard setpoint conversion and world producers use the
-      // same frame, so the navigation stays unavailable until a coordinated
-      // handoff or node restart.
+      // callback: the obstacle memory was built in the old frame. The memory
+      // clears itself on the same reset and publishes under a new lineage, and
+      // the navigation stays unavailable until the world of that lineage
+      // arrives (specification K77; queueRawWorld3D). Latched for the flight,
+      // a 3.77 m reset on the satellite fix's return held r3268 and r3269 for
+      // the rest of theirs.
       const double interval_s =
           1.0e-9 * static_cast<double>(navigation.receive_stamp_ns -
                                        navigation_.receive_stamp_ns);
@@ -200,6 +204,11 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
                     static_cast<unsigned>(navigation.z_reset_counter));
       } else {
         navigation_frame_reset_unresolved_ = true;
+        const RawWorldIngressSnapshot3D raw_world = raw_world_ingress_->snapshot();
+        frame_reset_raw_producer_instance_id_ =
+            raw_world.latest_raw_world != nullptr
+                ? raw_world.latest_raw_world->version().producer_instance_id
+                : 0U;
         RCLCPP_ERROR(
             get_logger(),
             "LOCAL_POSITION frame_reset_unresolved=true timestamp_epoch_reset=%s "

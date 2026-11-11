@@ -3,6 +3,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 
 namespace drone_city_nav {
@@ -118,5 +119,33 @@ struct AutopilotBattery {
 struct AutopilotGroundContact {
   bool detected{false};
 };
+
+// A reset of the autopilot's estimate (its xy or z reset counter changed) is
+// a new frame when it moved the estimate farther than the tolerance, the new
+// position read against the previous one carried at its velocity over the
+// receive interval, or when the interval is too long to carry it (specification
+// K77). Within the tolerance it is the same frame: the autopilot aligning its
+// estimator moves its position by centimetres (r372).
+inline constexpr double kAutopilotFrameResetToleranceM{3.0};
+inline constexpr double kAutopilotFrameResetMaximumIntervalS{0.2};
+
+[[nodiscard]] inline bool autopilotFrameReset(const AutopilotLocalState& previous,
+                                              const AutopilotLocalState& current,
+                                              const double interval_s) noexcept {
+  if (current.xy_reset_counter == previous.xy_reset_counter &&
+      current.z_reset_counter == previous.z_reset_counter) {
+    return false;
+  }
+  if (!(interval_s > 0.0) || interval_s > kAutopilotFrameResetMaximumIntervalS) {
+    return true;
+  }
+  const double dx =
+      current.position.x - (previous.position.x + previous.velocity.x * interval_s);
+  const double dy =
+      current.position.y - (previous.position.y + previous.velocity.y * interval_s);
+  const double dz =
+      current.position.z - (previous.position.z + previous.velocity.z * interval_s);
+  return !(std::sqrt(dx * dx + dy * dy + dz * dz) <= kAutopilotFrameResetToleranceM);
+}
 
 } // namespace drone_city_nav
