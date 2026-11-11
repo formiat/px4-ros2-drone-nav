@@ -376,6 +376,9 @@ private:
   // longer than the stall grace while carrying a route is not flying it; see
   // the stalled-route release in the planning tick.
   std::int64_t last_moving_stamp_ns_{0};
+  // When a route held to a crawl by clearance in level flight was last
+  // released for the planner's leg over the seen (the planning tick).
+  std::int64_t last_constrained_leg_release_stamp_ns_{0};
   // The route the stall is being measured on; a new route restarts the clock.
   std::uint64_t last_moving_route_generation_{0U};
   std::int64_t last_planning_tick_entry_ns_{0};

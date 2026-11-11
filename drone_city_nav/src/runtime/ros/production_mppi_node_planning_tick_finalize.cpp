@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -197,6 +198,37 @@ void ProductionMppiNode::finalizePlanningTick(
                 " stalled_s=%.1f action=release_route_and_search_from_the_vehicle",
                 committed_route->identity.generation, stalled_s);
     requestRouteRelease(RouteReleaseReason3D::kStalled,
+                        committed_route->identity.generation);
+  }
+  // Where the planner has a leg over the seen to give (K76), a route the
+  // clearance of what was seen since holds under half the cruise in level
+  // flight is released as a blocked one is, and the vehicle is handed that
+  // leg instead of threading what it could fly over: r3297 and r3298 flew
+  // 12 s of their first legs at 0.6 to 4 m/s between crowns reaching their
+  // 36 m, the planner's leg risen meanwhile and never delivered, because a
+  // successor has to be faster by the routes' compiled times and the crawl
+  // is in neither. Further from the route's end than the sensor sees, the
+  // end's own surroundings are not the cause; one release in a stall's grace.
+  constexpr double kLevelVerticalSpeedMps{0.25};
+  const bool clearance_bound =
+      speed_policy.active_limiter == MppiSpeedLimiter::kClearance ||
+      speed_policy.active_limiter == MppiSpeedLimiter::kRouteClearance;
+  if (config_.planning.persistent_planner.overflight_margin_m > 0.0 &&
+      committed_route != nullptr && !goal_capture.latched && clearance_bound &&
+      speed_policy.reference_speed_mps <
+          0.5 * config_.control.speed_policy.cruise_speed_mps &&
+      std::abs(static_cast<double>(navigation.state.vz)) < kLevelVerticalSpeedMps &&
+      committed_route->remainingM() >
+          config_.control.speed_policy.sensor_braking_contract
+              .guaranteed_detection_range_m &&
+      static_cast<double>(now_ns - last_constrained_leg_release_stamp_ns_) / 1.0e9 >=
+          kStalledRouteReleaseGraceS) {
+    last_constrained_leg_release_stamp_ns_ = now_ns;
+    RCLCPP_WARN(get_logger(),
+                "CONSTRAINED_LEG_RELEASE route_generation=%" PRIu64
+                " reference_mps=%.2f action=release_route_for_the_leg_over_the_seen",
+                committed_route->identity.generation, speed_policy.reference_speed_mps);
+    requestRouteRelease(RouteReleaseReason3D::kBlocked,
                         committed_route->identity.generation);
   }
   const bool finite_braking_tail_active =
