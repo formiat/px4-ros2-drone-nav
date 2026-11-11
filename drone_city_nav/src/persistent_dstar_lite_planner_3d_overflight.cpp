@@ -20,10 +20,13 @@ namespace {
 // crowns' tops, where the trees not yet seen stand (r3261).
 constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
 
-// The level metres flown into a goal at its height: room for the stop in the
-// plane from the corner (6 m/s stops in 3.6 m at the open sky's braking of
-// 5 m/s^2, specification V3).
-constexpr double kLevelApproachM{5.0};
+// The level metres flown into a goal at its height: room for the descent's
+// stop in flight before the stop in the plane begins. The flight airframe has
+// 2.6 m/s^2 upwards at most, 1.4 while it brakes in the plane at 5 m/s^2:
+// a descent of 3 to 5 m/s stops in 1.5 to 2.5 s, 6 to 12 m at the corner's
+// speed; at 5 m the two stops overlapped and the descent ran on 1 to 2.6 m
+// under the goal's height (r3292).
+constexpr double kLevelApproachM{10.0};
 
 // The horizontal distance from a point to the leg's ground track.
 [[nodiscard]] double trackDistanceM(const double x, const double y, const Point3& start,
@@ -101,7 +104,7 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3
 // the margin, under the envelope's
 // ceiling and no lower than either end; the vehicle climbs to it along the leg
 // and comes down along it at the gentlest slant the raw world clears, to the
-// goal's height 5 m short of it, and flies the rest level. Unknown space on the way is
+// goal's height 10 m short of it, and flies the rest level. Unknown space on the way is
 // free (I1): what stands in it is seen from the sensor's range, and the route is taken
 // again from where the vehicle then is. Nothing is searched: with the leg held the
 // lattice searches idle.

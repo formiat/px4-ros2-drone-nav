@@ -41,13 +41,13 @@ TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemory
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
   EXPECT_STREQ(spatialRouteCandidateSource3DName(leg.source), "overflight");
   // The wall's top at 6 m and the margin: the climb and the descent slant at
-  // two metres a metre, 13 m each for the 6.5 m, and the last 5 m into the
+  // two metres a metre, 13 m each for the 6.5 m, and the last 10 m into the
   // goal are level at its height.
   ASSERT_EQ(leg.points.size(), 5U);
   EXPECT_DOUBLE_EQ(highestPointZ(leg.points), 9.0);
   EXPECT_NEAR(leg.points[1].x, 15.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[2].x, 38.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[3].x, 51.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[2].x, 33.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[3].x, 46.5, 1.0e-9);
   EXPECT_NEAR(leg.points[3].z, goal.z, 1.0e-9);
   expectRawValid(leg.points, *occupancy, planner.config().physical_footprint);
   // Nothing was searched, and nothing is left to search.
@@ -94,15 +94,15 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
     ASSERT_TRUE(update.publishable());
     EXPECT_EQ(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
     // 16 m out and 9.5 m up: inside the two-to-one cone, the straight line to
-    // the level approach's foot 5 m short of the goal, and the approach.
+    // the level approach's foot 10 m short of the goal, and the approach.
     ASSERT_EQ(candidate(update).points.size(), 3U);
-    EXPECT_NEAR(candidate(update).points[1].x, 51.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[1].x, 46.5, 1.0e-9);
     EXPECT_NEAR(candidate(update).points[1].z, goal.z, 1.0e-9);
   }
   // A crown on that line: level at 12 m, then down where it clears, over the
   // crown.
   auto crown = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
-  ASSERT_TRUE(crown->setState({44, 5, 8}, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(crown->setState({42, 5, 8}, ObservedVoxelState::kOccupied));
   PersistentDStarLitePlanner3D planner{config};
   const PlannerUpdate3D update = planner.plan(request(start, goal, world(crown, 1U)));
   ASSERT_TRUE(update.publishable());
@@ -110,7 +110,7 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
   EXPECT_EQ(descent.source, SpatialRouteCandidateSource3D::kOverflight);
   ASSERT_GE(descent.points.size(), 4U);
   const Point3& foot = descent.points[descent.points.size() - 2U];
-  EXPECT_NEAR(foot.x, 51.5, 1.0e-9);
+  EXPECT_NEAR(foot.x, 46.5, 1.0e-9);
   EXPECT_NEAR(foot.z, goal.z, 1.0e-9);
   EXPECT_DOUBLE_EQ(highestPointZ(descent.points), 12.0);
   expectRawValid(descent.points, *crown, planner.config().physical_footprint);
@@ -141,7 +141,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   first.session_id = 1U;
   ASSERT_TRUE(planner.plan(first).publishable());
 
-  // Over the wall at the level, nine metres past the climb's top and fourteen
+  // Over the wall at the level, nine metres past the climb's top and nine
   // short of the descent's; a replan opens a new session, which receives the
   // rebased leg (r3288's route generations 2 and 3).
   const Point3 on_leg{24.5, 5.5, 9.0};
@@ -155,7 +155,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   const SpatialRouteCandidate3D& leg = candidate(moved);
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
   ASSERT_EQ(leg.points.size(), 4U);
-  EXPECT_NEAR(leg.points[1].x, 38.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[1].x, 33.5, 1.0e-9);
   for (const Point3& point : leg.points) {
     EXPECT_GE(point.x, on_leg.x - 1.0e-9);
   }
