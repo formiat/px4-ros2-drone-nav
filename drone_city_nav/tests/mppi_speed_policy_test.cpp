@@ -1104,6 +1104,18 @@ TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
             stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
                                  config.sensor_braking_contract, 0.0));
 
+  // High over the route's lowest point the descent has room, and the plane's
+  // law binds at 0.6 of its deceleration: the thrust is one.
+  input.state.x = 0.0F;
+  input.state.z = 60.0F;
+  input.state.vx = 8.0F;
+  input.state.vz = -0.4F;
+  const MppiSpeedPolicyResult shared = evaluateMppiSpeedPolicy(config, input);
+  input.state.vz = -0.2F;
+  const MppiSpeedPolicyResult whole = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(shared.route_endpoint_limit_mps, 0.9 * whole.route_endpoint_limit_mps);
+  EXPECT_GT(shared.route_endpoint_limit_mps, 0.7 * whole.route_endpoint_limit_mps);
+
   // Level at the goal's height, its jitter included, the descent law has
   // nothing to brake.
   input.state.z = 16.0F;

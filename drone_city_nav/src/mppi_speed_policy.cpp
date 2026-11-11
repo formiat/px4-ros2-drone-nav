@@ -600,6 +600,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // ran 1.2 to 3 m under them. A descent slower than 0.3 m/s is a level
     // flight's jitter and is not braked.
     constexpr double kCombinedBrakingShare{0.55};
+    constexpr double kCombinedPlaneShare{0.6};
     constexpr double kLevelDescentMps{0.3};
     const double descent_mps = -static_cast<double>(input.state.vz);
     const double speed_mps =
@@ -614,18 +615,28 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         }
       }
       const MppiSpeedPolicyConfig downward = alongMotion(config, Vec3{0.0, 0.0, -1.0});
+      const auto shared = [](StoppingCapability capability, const double share) {
+        capability.maximum_commanded_horizontal_deceleration_mps2 *= share;
+        capability.guaranteed_horizontal_deceleration_mps2 =
+            std::min(capability.guaranteed_horizontal_deceleration_mps2,
+                     capability.maximum_commanded_horizontal_deceleration_mps2);
+        return capability;
+      };
       StoppingCapability vertical_capability = downward.stopping_capability;
       vertical_capability.reaction_latency_s += config.reference_tracking_lag_s;
-      vertical_capability.maximum_commanded_horizontal_deceleration_mps2 *=
-          kCombinedBrakingShare;
-      vertical_capability.guaranteed_horizontal_deceleration_mps2 =
-          std::min(vertical_capability.guaranteed_horizontal_deceleration_mps2,
-                   vertical_capability.maximum_commanded_horizontal_deceleration_mps2);
       const double descent_limit_mps = stoppingLimitedSpeed(
-          static_cast<double>(input.state.z) - lowest_z_m, 0.0, vertical_capability,
+          static_cast<double>(input.state.z) - lowest_z_m, 0.0,
+          shared(vertical_capability, kCombinedBrakingShare),
           downward.sensor_braking_contract, input.vertical_forward_acceleration_mps2);
-      result.route_endpoint_limit_mps = std::min(
-          result.route_endpoint_limit_mps, descent_limit_mps * speed_mps / descent_mps);
+      // The thrust is one: beside a descent being arrested the motion braked at
+      // 2.6 to 3.9 m/s^2 of the 5 its law charged, and the goals were passed at
+      // 1.2 to 2.2 m/s (r3311, r3312). The law charges 0.6 of it on a descent.
+      const double plane_limit_mps = stoppingLimitedSpeed(
+          route_endpoint_distance, 0.0, shared(law_capability, kCombinedPlaneShare),
+          along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
+      result.route_endpoint_limit_mps =
+          std::min({result.route_endpoint_limit_mps, plane_limit_mps,
+                    descent_limit_mps * speed_mps / descent_mps});
     }
   }
   if (input.blocked_route_remaining_m.has_value()) {
