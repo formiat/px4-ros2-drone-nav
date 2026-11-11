@@ -819,23 +819,24 @@ visual_inertial_odometry_node:
     # topic on the hybrid profile. The trust is one measurement, the fix's
     # disagreement with the estimator over a window (gnss_trust.hpp). The
     # gates are twice the 99th percentile of the readings over three honest
-    # flights of the open sky at its profile (r3262 to r3264 on 39b30072 and
-    # 76cc43b4, 1.5 km each at 7.5 to 8.4 m/s and 38 to 48 m over the
-    # ground, 659 one-second readings, the gates open, tools/gnss_gates.py):
-    # the position residual normalised p99 1.05, the velocity residual
-    # normalised p99 0.93, the fix's disagreement with itself p99 1.00 m/s,
-    # the position's step beyond its own motion p99 0.03 m at 30 Hz, the
-    # clock's step p99 0.036 s (one lost fix reads 0.066 s, two read a
-    # step). The gates of r2626 to r2628 (1.5 m/s, 12 m over the ground)
-    # were 0.70 and 1.26: at the profile's speed and height the estimate's
-    # residual against an honest fix is 0.94 m at p50, and the trust ended
-    # in honest flight. A gate changes only with a new measurement of the
+    # flights of the open sky at its profile (r3270, r3271 and r3273 on
+    # f13d6b37 and 344af1de, 1.5 km each at 8.3 to 8.8 m/s, 13 m/s on the
+    # legs and 40 to 48 m over the ground, 606 one-second readings, the gates
+    # open, tools/gnss_gates.py): the position residual normalised p99 1.44,
+    # the velocity residual normalised p99 1.57, the fix's disagreement with
+    # itself p99 0.93 m/s, the position's step beyond its own motion p99
+    # 0.03 m at 30 Hz, the clock's step p99 0.036 s (one lost fix reads
+    # 0.066 s, two read a step). The gates of r3262 to r3264 (7.5 to 8.4 m/s,
+    # 10.6 on the legs) were 2.10 and 1.86 and ended the trust in honest
+    # flight at 13 m/s (r3268, r3269: the velocity residual 3.24 m/s,
+    # normalised 4.07, at the same place of the second leg); those of r2626
+    # to r2628 (1.5 m/s) 0.70 and 1.26. A gate changes only with a new measurement of the
     # distribution, never under a result.
     gnss_topic: ""
     gnss_window_s: 5.0
-    gnss_position_gate: 2.10
-    gnss_velocity_gate: 1.86
-    gnss_self_gate_mps: 2.0
+    gnss_position_gate: 2.88
+    gnss_velocity_gate: 3.14
+    gnss_self_gate_mps: 1.86
     gnss_jump_gate_m: 0.06
     gnss_clock_step_gate_s: 0.072
     gnss_reference_fixes: 30
