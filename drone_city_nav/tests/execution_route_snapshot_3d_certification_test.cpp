@@ -4,6 +4,10 @@
 namespace drone_city_nav {
 namespace {
 
+// Every optional read below is asserted to hold a value first; the analyzer
+// does not follow the assertion's return.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteExecutionRecognizesACopiedCertificateByInstanceId) {
   SnapshotFixture3D fixture;
@@ -86,7 +90,9 @@ TEST(ExecutionRouteSnapshot3DTest, DerivesPlannedEndpointSemanticsFromTheProposa
   CertifiedRouteSuffix3D tampered_mission = *mission;
   tampered_mission.planned_endpoint_semantics = RouteEndpointSemantics3D::kContinuation;
   EXPECT_FALSE(tampered_mission.valid());
+  // A value no enumerator names, on purpose.
   tampered_mission.planned_endpoint_semantics =
+      // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
       static_cast<RouteEndpointSemantics3D>(255U);
   EXPECT_FALSE(tampered_mission.valid());
 
@@ -567,16 +573,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   FiniteMotionHorizon3D crossing;
   crossing.controls.reserve(121U);
   for (std::size_t index = 0U; index < 50U; ++index) {
-    crossing.controls.push_back(MotionControl3D{.ax = 0.344F});
+    crossing.controls.push_back(MotionControl3D{.ax = 0.36F});
   }
   for (std::size_t index = 0U; index < 50U; ++index) {
-    crossing.controls.push_back(MotionControl3D{.ax = -0.344F});
+    crossing.controls.push_back(MotionControl3D{.ax = -0.36F});
   }
   for (std::size_t index = 0U; index < 10U; ++index) {
-    crossing.controls.push_back(MotionControl3D{.ax = -0.4F});
+    crossing.controls.push_back(MotionControl3D{.ax = -0.55F});
   }
   for (std::size_t index = 0U; index < 10U; ++index) {
-    crossing.controls.push_back(MotionControl3D{.ax = 0.4F});
+    crossing.controls.push_back(MotionControl3D{.ax = 0.55F});
   }
   crossing.controls.push_back(MotionControl3D{});
   crossing.nominal_prefix_control_count = crossing.controls.size();
@@ -588,8 +594,9 @@ TEST(ExecutionRouteSnapshot3DTest,
                                active->route()->validation_policy->dynamics()));
   }
   ASSERT_TRUE(finiteMotionHorizonHasTerminalRestState3D(crossing));
-  EXPECT_GT(std::ranges::max(crossing.states, {}, &MotionState3D::x).x, 10.5F);
-  EXPECT_LT(crossing.states.back().x, 10.5F);
+  // The end at 10 m and its tolerance of 0.75 m (specification K79).
+  EXPECT_GT(std::ranges::max(crossing.states, {}, &MotionState3D::x).x, 10.75F);
+  EXPECT_LT(crossing.states.back().x, 10.75F);
 
   EXPECT_FALSE(certifyFiniteExecution3D(
                    *active, *active->route(),
@@ -894,6 +901,8 @@ TEST(ExecutionRouteSnapshot3DTest,
                 .status,
             ExecutionRouteTransitionStatus3D::kNonMonotonicProgress);
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 } // namespace
 } // namespace drone_city_nav

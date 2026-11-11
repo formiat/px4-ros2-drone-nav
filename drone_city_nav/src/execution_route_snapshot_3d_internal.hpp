@@ -22,7 +22,13 @@ inline constexpr double kCompletionStationToleranceM{0.5};
 inline constexpr double kFiniteStopPositionToleranceM{0.25};
 inline constexpr double kMaximumRouteCrossTrackM{
     kFiniteExecutionRouteCrossTrackToleranceM3D};
-inline constexpr double kTerminalBoundaryToleranceM{0.5};
+// How far past its end, along its last segment, a route is still flown: what
+// the goal's capture takes for arrived (its approach ends within 0.75 m of
+// the goal, mission_goal_capture.cpp). At 0.5 m a vehicle resting 0.58 m
+// past its goal was captured and its route called exceeded at once; the stop
+// that followed owned it for its lease of 4 s before the capture's hold
+// could stand (r3307; 5.1 to 6.4 s at every goal of r3308).
+inline constexpr double kTerminalBoundaryToleranceM{0.75};
 inline constexpr double kTerminalBoundaryActivationDistanceM{10.0};
 inline constexpr double kMaximumStationCreditPerTravel{1.0};
 using observed_world_content_3d::kFnvOffset;
