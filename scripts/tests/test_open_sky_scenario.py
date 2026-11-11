@@ -96,8 +96,10 @@ class OpenSkyScenarioTest(unittest.TestCase):
         for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
             target = makefile[makefile.index(name):]
             target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
-            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-12.5}"', target)
-            self.assertIn('ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-13}"', target)
+            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-15}"', target)
+            self.assertIn('ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-15}"', target)
+            self.assertIn('MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-5}"',
+                          target)
 
     def test_the_fixture_is_the_manifests_and_the_targets_set_nothing_of_urban(self) -> None:
         manifest = yaml.safe_load((REPOSITORY / "environments/environment_manifest.yaml").read_text(encoding="utf-8"))
