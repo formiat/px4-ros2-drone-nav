@@ -86,7 +86,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
             runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"][
                 "obstacle_memory_3d_transport_rate_hz"], 5.0)
         dynamics = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_DYNAMICS"]
-        self.assertAlmostEqual(dynamics["maximum_vertical_acceleration_mps2"], 3.0)
+        self.assertAlmostEqual(dynamics["maximum_vertical_acceleration_mps2"], 1.5)
         self.assertAlmostEqual(dynamics["maximum_control_jerk_mps3"], 18.0)
         self.assertNotIn("guaranteed_vertical_stopping_deceleration_mps2", dynamics)
         self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)

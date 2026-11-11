@@ -209,9 +209,9 @@ void ProductionMppiNode::finalizePlanningTick(
   // successor has to be faster by the routes' compiled times and the crawl
   // is in neither. Further from the route's end than the sensor sees, the
   // end's own surroundings are not the cause; one release in a stall's grace.
-  // The vehicle is at the bound or over it: one at rest under a bound it has
-  // not reached is leaving a goal, not held (r3300 and r3301 released the
-  // routes they had just been handed, three times at rest).
+  // The vehicle moves, at the bound or over it: one at rest is leaving a goal
+  // or the stall's own case, not held (r3300 to r3302 released the routes they
+  // had just been handed, four times at rest).
   constexpr double kLevelVerticalSpeedMps{0.25};
   const bool clearance_bound =
       speed_policy.active_limiter == MppiSpeedLimiter::kClearance ||
@@ -220,6 +220,7 @@ void ProductionMppiNode::finalizePlanningTick(
       committed_route != nullptr && !goal_capture.latched && clearance_bound &&
       speed_policy.reference_speed_mps <
           0.5 * config_.control.speed_policy.cruise_speed_mps &&
+      vehicle_speed_mps > kStationaryExecutionHoldSpeedToleranceMps &&
       vehicle_speed_mps >= speed_policy.reference_speed_mps &&
       std::abs(static_cast<double>(navigation.state.vz)) < kLevelVerticalSpeedMps &&
       committed_route->remainingM() >
