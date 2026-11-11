@@ -82,6 +82,9 @@ class OpenSkyScenarioTest(unittest.TestCase):
         box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
         self.assertAlmostEqual(box, 56.0)
         self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["integration_threads"], 4)
+        self.assertAlmostEqual(
+            runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"][
+                "obstacle_memory_3d_transport_rate_hz"], 5.0)
         dynamics = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_DYNAMICS"]
         self.assertAlmostEqual(dynamics["maximum_vertical_acceleration_mps2"], 3.0)
         self.assertNotIn("guaranteed_vertical_stopping_deceleration_mps2", dynamics)

@@ -126,8 +126,14 @@ OPEN_SKY_LIDAR_OBSERVABILITY = {
 # the park's tallest crown and the leg's margin. A scan traced to 35 m took
 # one thread 0.48 s and the memory integrated one scan in four; the seen it
 # published was a second old and stood 23 m ahead at 10 m/s (r3262, r3263):
-# four threads trace it (K75).
-OPEN_SKY_MEMORY = {"grid_depth_m": 56.0, "integration_threads": 4}
+# four threads trace it (K75). It publishes at the distance field's 5 Hz: at
+# the caves' 2 Hz a revision waited up to half a second for its publication,
+# and the seen was 0.76 s old at p50 and 26.6 m ahead at 12 m/s (r3274).
+OPEN_SKY_MEMORY = {
+    "grid_depth_m": 56.0,
+    "integration_threads": 4,
+    "obstacle_memory_3d_transport_rate_hz": 5.0,
+}
 
 # The open sky's vertical dynamics (V3): the vertical acceleration the horizon
 # plans with is 3 m/s^2 against the airframe's measured vertical stops of 6.8
