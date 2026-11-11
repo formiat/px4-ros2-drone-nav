@@ -207,7 +207,10 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
 // on the ground, the hold answered with tilt, and the vehicle went over onto
 // a rotor before the autopilot disarmed it (r3261; r881 for the dead-reckoned
 // landing). A descent that gains nothing for a second stands on the ground,
-// and from there the setpoint is the level one.
+// and from there to the disarm the setpoint is the level one: the estimate's
+// altitude creeps down under a vehicle on the ground, and read as a descent
+// again it handed the vehicle back to the position hold, which tipped r3271
+// over 4 s after its touchdown.
 void MppiOffboardNode::publishMissionLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
   constexpr double kDescentProgressM{0.05};
@@ -218,7 +221,9 @@ void MppiOffboardNode::publishMissionLandingSetpoint() {
     mission_landing_lowest_altitude_m_ = altitude_m_;
     mission_landing_progress_ns_ = now_ns;
   }
-  if (now_ns - mission_landing_progress_ns_ > kGroundedAfterNs) {
+  mission_landing_grounded_ = mission_landing_grounded_ ||
+                              now_ns - mission_landing_progress_ns_ > kGroundedAfterNs;
+  if (mission_landing_grounded_) {
     setpoint_pub_->publish(
         buildMppiTrajectorySetpoint(nowMicros(), Point2{0.0, 0.0}, -kLandingSpeedMps,
                                     Point2{0.0, 0.0}, nan, nan, 0.0));
