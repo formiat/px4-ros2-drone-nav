@@ -424,6 +424,57 @@ TEST(RawObstacle3DRos, ProspectiveDeltaCannotResurrectAsSameIdentityFullSnapshot
   EXPECT_EQ(activated.evidence_observation.receive_stamp_ns, kFirstRawReceipt);
 }
 
+// A producer waiting for the authority publishes more revisions than the
+// capacity holds: each supersedes the one before, and the newest is taken over
+// at the handoff (r3281: a memory cleared on a frame reset was refused for the
+// rest of the flight once its fifth snapshot found the capacity counted full).
+TEST(RawObstacle3DRos, AWaitingProducersNewerSnapshotsSupersedeItsOlderOnes) {
+  ObservedOccupancyGrid3D initial_grid{kBounds};
+  static_cast<void>(initial_grid.setState({2, 3, 4}, ObservedVoxelState::kFree));
+  RawObstacleDeltaAccumulator3D accumulator;
+  ProducerEpochAdmissionState epoch = authorizedEpoch(42U);
+  ASSERT_TRUE(applySnapshot(accumulator,
+                            makeRawObstacleSnapshot3D(
+                                initial_grid, headerAt(1'000'000'000LL), 42U, 1U),
+                            epoch, 1'010'000'000LL)
+                  .accepted());
+  ObservedOccupancyGrid3D rebuilt{kBounds};
+  static_cast<void>(rebuilt.setState({20, 3, 4}, ObservedVoxelState::kOccupied));
+  for (std::uint64_t revision = 1U; revision <= 6U; ++revision) {
+    const std::int64_t stamp_ns =
+        11'000'000'000LL + static_cast<std::int64_t>(revision) * 100'000'000LL;
+    EXPECT_EQ(applySnapshot(
+                  accumulator,
+                  makeRawObstacleSnapshot3D(rebuilt, headerAt(stamp_ns), 84U, revision),
+                  epoch, stamp_ns + 10'000'000LL)
+                  .status,
+              RawObstacleGridUpdateStatus3D::kProducerEpochPending)
+        << revision;
+  }
+  const ProducerEpochAdmissionResult pending =
+      admitProducerEpoch(kAdmissionConfig, epoch,
+                         ProducerEpochObservation{.producer_instance_id = 84U,
+                                                  .sequence = 1U,
+                                                  .source_stamp_ns = 12'000'000'000LL,
+                                                  .receive_stamp_ns = 12'010'000'000LL,
+                                                  .content_fingerprint = 201U},
+                         12'020'000'000LL);
+  const ProducerEpochAdmissionResult handoff =
+      admitProducerEpoch(kAdmissionConfig, pending.next_state,
+                         ProducerEpochObservation{.producer_instance_id = 84U,
+                                                  .sequence = 2U,
+                                                  .source_stamp_ns = 12'100'000'000LL,
+                                                  .receive_stamp_ns = 12'110'000'000LL,
+                                                  .content_fingerprint = 202U},
+                         12'120'000'000LL);
+  ASSERT_EQ(handoff.status, ProducerEpochAdmissionStatus::kAcceptedProducerHandoff);
+  const RawObstacleGridUpdate3D taken = accumulator.synchronizeProducerEpoch(
+      handoff.next_state, 12'130'000'000LL, kAdmissionConfig);
+  EXPECT_TRUE(taken.accepted());
+  EXPECT_EQ(taken.state.producer_instance_id, 84U);
+  EXPECT_EQ(taken.state.obstacle_snapshot_revision, 6U);
+}
+
 TEST(RawObstacle3DRos, ProspectiveHigherDeltaBlocksLowerFullUntilStrictlyNewerFull) {
   ObservedOccupancyGrid3D initial_grid{kBounds};
   static_cast<void>(initial_grid.setState({2, 3, 4}, ObservedVoxelState::kFree));

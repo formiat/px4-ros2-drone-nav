@@ -188,7 +188,7 @@ validChunks(const std::span<const msg::ObservedObstacleChunk3D> chunks,
       return false;
     }
     for (std::size_t word = 0U; word < message.occupied_words.size(); ++word) {
-      if ((message.occupied_words[word] & ~message.observed_words[word]) != 0U) {
+      if ((message.occupied_words.at(word) & ~message.observed_words.at(word)) != 0U) {
         return false;
       }
     }
@@ -357,7 +357,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
             .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   for (std::size_t index = 0U; index < prospective_identity_count_; ++index) {
-    ProspectiveIdentity& pending = prospective_identities_[index];
+    ProspectiveIdentity& pending = prospective_identities_.at(index);
     if (pending.observation.producer_instance_id != observation.producer_instance_id ||
         pending.observation.sequence != observation.sequence) {
       continue;
@@ -415,6 +415,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
       }
       full_reset = !state_.occupancy ||
                    snapshot.producer_instance_id != state_.producer_instance_id ||
+                   !bounds.has_value() ||
                    !sameBounds(*bounds, state_.occupancy->bounds());
       if (!full_reset) {
         dirty_chunks = changedChunkIndices(*state_.occupancy, *grid);
@@ -447,6 +448,13 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
             .dirty_chunks = {},
             .status = RawObstacleGridUpdateStatus3D::kStale};
   }
+  // A newer observation of a waiting producer supersedes its older ones: the
+  // capacity bounds the producers waiting for the authority, not the revisions
+  // one of them publishes while it waits. Counted per revision, a memory that
+  // cleared itself after a frame reset and published four snapshots before its
+  // predecessor went stale was refused for the rest of the flight (r3281).
+  pruneProspectiveIdentities(observation.producer_instance_id,
+                             observation.sequence - 1U);
   if (prospective_identity_capacity_exhausted_) {
     return {.state = state_,
             .dirty_chunks = {},
@@ -461,13 +469,15 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
   const bool sequence_regression =
       observation.sequence <
       prospectiveSequenceHighWater(observation.producer_instance_id);
-  const RawObstacleGridUpdateStatus3D terminal_status =
-      sequence_regression ? RawObstacleGridUpdateStatus3D::kStale
-      : !contract_valid   ? RawObstacleGridUpdateStatus3D::kInvalidMessage
-      : !producerEpochObservationFresh(config, observation, now_ns)
-          ? RawObstacleGridUpdateStatus3D::kStale
-          : RawObstacleGridUpdateStatus3D::kProducerEpochPending;
-  prospective_identities_[prospective_identity_count_] =
+  RawObstacleGridUpdateStatus3D terminal_status{
+      RawObstacleGridUpdateStatus3D::kProducerEpochPending};
+  if (sequence_regression ||
+      (contract_valid && !producerEpochObservationFresh(config, observation, now_ns))) {
+    terminal_status = RawObstacleGridUpdateStatus3D::kStale;
+  } else if (!contract_valid) {
+    terminal_status = RawObstacleGridUpdateStatus3D::kInvalidMessage;
+  }
+  prospective_identities_.at(prospective_identity_count_) =
       ProspectiveIdentity{.observation = observation,
                           .state = {},
                           .terminal_status = terminal_status,
@@ -477,7 +487,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
   if (terminal_status == RawObstacleGridUpdateStatus3D::kProducerEpochPending) {
     std::optional<ObservedOccupancyGrid3D> grid = reconstruct();
     if (grid.has_value()) {
-      prospective_identities_[prospective_identity_count_].state =
+      prospective_identities_.at(prospective_identity_count_).state =
           RawObstacleGridState3D{
               .producer_instance_id = snapshot.producer_instance_id,
               .base_snapshot_revision = snapshot.obstacle_snapshot_revision,
@@ -486,9 +496,9 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
                   std::make_shared<const ObservedOccupancyGrid3D>(std::move(*grid)),
           };
     } else {
-      prospective_identities_[prospective_identity_count_].terminal_status =
+      prospective_identities_.at(prospective_identity_count_).terminal_status =
           RawObstacleGridUpdateStatus3D::kInvalidMessage;
-      prospective_identities_[prospective_identity_count_].contract_valid = false;
+      prospective_identities_.at(prospective_identity_count_).contract_valid = false;
     }
   }
   ++prospective_identity_count_;
@@ -496,7 +506,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
       .state = state_,
       .dirty_chunks = {},
       .status =
-          prospective_identities_[prospective_identity_count_ - 1U].terminal_status};
+          prospective_identities_.at(prospective_identity_count_ - 1U).terminal_status};
 }
 
 RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
@@ -518,7 +528,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
             .status = RawObstacleGridUpdateStatus3D::kInvalidMessage};
   }
   for (std::size_t index = 0U; index < prospective_identity_count_; ++index) {
-    ProspectiveIdentity& pending = prospective_identities_[index];
+    ProspectiveIdentity& pending = prospective_identities_.at(index);
     if (pending.observation.producer_instance_id != observation.producer_instance_id ||
         pending.observation.sequence != observation.sequence) {
       continue;
@@ -543,6 +553,10 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
               .dirty_chunks = {},
               .status = RawObstacleGridUpdateStatus3D::kStale};
     }
+    // As for a snapshot: the waiting producer's newer revision supersedes its
+    // older ones.
+    pruneProspectiveIdentities(observation.producer_instance_id,
+                               observation.sequence - 1U);
     if (prospective_identity_capacity_exhausted_) {
       return {.state = state_,
               .dirty_chunks = {},
@@ -557,15 +571,18 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
     const bool sequence_regression =
         observation.sequence <
         prospectiveSequenceHighWater(observation.producer_instance_id);
-    const RawObstacleGridUpdateStatus3D terminal_status =
-        sequence_regression ? RawObstacleGridUpdateStatus3D::kStale
-        : !external_contract_valid || source_stamp_ns <= 0 || receive_stamp_ns <= 0
-            ? RawObstacleGridUpdateStatus3D::kInvalidMessage
-        : !producerEpochObservationFresh(config, observation, now_ns)
-            ? RawObstacleGridUpdateStatus3D::kStale
-        : authority.valid() ? RawObstacleGridUpdateStatus3D::kBaseUnavailable
-                            : RawObstacleGridUpdateStatus3D::kProducerEpochUnavailable;
-    prospective_identities_[prospective_identity_count_] = ProspectiveIdentity{
+    RawObstacleGridUpdateStatus3D terminal_status{
+        authority.valid() ? RawObstacleGridUpdateStatus3D::kBaseUnavailable
+                          : RawObstacleGridUpdateStatus3D::kProducerEpochUnavailable};
+    const bool contract_valid =
+        external_contract_valid && source_stamp_ns > 0 && receive_stamp_ns > 0;
+    if (sequence_regression || (contract_valid && !producerEpochObservationFresh(
+                                                      config, observation, now_ns))) {
+      terminal_status = RawObstacleGridUpdateStatus3D::kStale;
+    } else if (!contract_valid) {
+      terminal_status = RawObstacleGridUpdateStatus3D::kInvalidMessage;
+    }
+    prospective_identities_.at(prospective_identity_count_) = ProspectiveIdentity{
         .observation = observation,
         .state = {},
         .terminal_status = terminal_status,
@@ -583,12 +600,15 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::apply(
     const ProducerEvidenceAdmissionResult admission = admitProducerEvidence(
         config, evidence_admission_, authority, observation, false, now_ns, false);
     evidence_admission_ = admission.next_state;
-    const RawObstacleGridUpdateStatus3D status =
-        admission.status == ProducerEvidenceAdmissionStatus::kRejectedIdentityConflict
-            ? RawObstacleGridUpdateStatus3D::kIdentityConflict
-        : admission.status == ProducerEvidenceAdmissionStatus::kRejectedIdentityCapacity
-            ? RawObstacleGridUpdateStatus3D::kProducerEpochCapacity
-            : RawObstacleGridUpdateStatus3D::kBaseUnavailable;
+    RawObstacleGridUpdateStatus3D status{
+        RawObstacleGridUpdateStatus3D::kBaseUnavailable};
+    if (admission.status ==
+        ProducerEvidenceAdmissionStatus::kRejectedIdentityConflict) {
+      status = RawObstacleGridUpdateStatus3D::kIdentityConflict;
+    } else if (admission.status ==
+               ProducerEvidenceAdmissionStatus::kRejectedIdentityCapacity) {
+      status = RawObstacleGridUpdateStatus3D::kProducerEpochCapacity;
+    }
     return {
         .state = state_,
         .dirty_chunks = {},
@@ -659,19 +679,19 @@ void RawObstacleDeltaAccumulator3D::pruneProspectiveIdentities(
   std::size_t write_index{0U};
   for (std::size_t read_index = 0U; read_index < prospective_identity_count_;
        ++read_index) {
-    const ProspectiveIdentity& pending = prospective_identities_[read_index];
+    const ProspectiveIdentity& pending = prospective_identities_.at(read_index);
     const bool remove =
         pending.observation.producer_instance_id == producer_instance_id &&
         pending.observation.sequence <= sequence;
     if (!remove) {
       if (write_index != read_index) {
-        prospective_identities_[write_index] = pending;
+        prospective_identities_.at(write_index) = pending;
       }
       ++write_index;
     }
   }
   for (std::size_t index = write_index; index < prospective_identity_count_; ++index) {
-    prospective_identities_[index] = ProspectiveIdentity{};
+    prospective_identities_.at(index) = ProspectiveIdentity{};
   }
   prospective_identity_count_ = write_index;
 }
@@ -680,10 +700,10 @@ std::uint64_t RawObstacleDeltaAccumulator3D::prospectiveSequenceHighWater(
     const std::uint64_t producer_instance_id) const noexcept {
   std::uint64_t high_water{0U};
   for (std::size_t index = 0U; index < prospective_identity_count_; ++index) {
-    if (prospective_identities_[index].observation.producer_instance_id ==
+    if (prospective_identities_.at(index).observation.producer_instance_id ==
         producer_instance_id) {
       high_water =
-          std::max(high_water, prospective_identities_[index].observation.sequence);
+          std::max(high_water, prospective_identities_.at(index).observation.sequence);
     }
   }
   return high_water;
@@ -695,18 +715,18 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::synchronizeProducerEpoch(
   std::size_t write_index{0U};
   for (std::size_t read_index = 0U; read_index < prospective_identity_count_;
        ++read_index) {
-    ProspectiveIdentity& pending = prospective_identities_[read_index];
+    ProspectiveIdentity& pending = prospective_identities_.at(read_index);
     const bool keep =
         !producerEpochRetired(producer_epoch, pending.observation.producer_instance_id);
     if (keep) {
       if (write_index != read_index) {
-        prospective_identities_[write_index] = std::move(pending);
+        prospective_identities_.at(write_index) = std::move(pending);
       }
       ++write_index;
     }
   }
   for (std::size_t index = write_index; index < prospective_identity_count_; ++index) {
-    prospective_identities_[index] = ProspectiveIdentity{};
+    prospective_identities_.at(index) = ProspectiveIdentity{};
   }
   prospective_identity_count_ = write_index;
 
@@ -724,12 +744,12 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::synchronizeProducerEpoch(
   }
   std::optional<std::size_t> selected;
   for (std::size_t index = 0U; index < prospective_identity_count_; ++index) {
-    const ProspectiveIdentity& pending = prospective_identities_[index];
+    const ProspectiveIdentity& pending = prospective_identities_.at(index);
     if (pending.full_snapshot &&
         pending.observation.producer_instance_id == authority.producer_instance_id &&
         (!selected.has_value() ||
          pending.observation.sequence >
-             prospective_identities_[*selected].observation.sequence)) {
+             prospective_identities_.at(*selected).observation.sequence)) {
       selected = index;
     }
   }
@@ -746,7 +766,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::synchronizeProducerEpoch(
             .dirty_chunks = {},
             .status = RawObstacleGridUpdateStatus3D::kProducerEpochUnavailable};
   }
-  const ProspectiveIdentity selected_pending = prospective_identities_[*selected];
+  const ProspectiveIdentity selected_pending = prospective_identities_.at(*selected);
   if (selected_pending.identity_conflicted) {
     return {.state = state_,
             .dirty_chunks = {},
@@ -762,7 +782,7 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::synchronizeProducerEpoch(
   write_index = 0U;
   for (std::size_t read_index = 0U; read_index < prospective_identity_count_;
        ++read_index) {
-    const ProspectiveIdentity& pending = prospective_identities_[read_index];
+    const ProspectiveIdentity& pending = prospective_identities_.at(read_index);
     const bool remove =
         read_index == *selected ||
         (admission.install_evidence &&
@@ -771,13 +791,13 @@ RawObstacleGridUpdate3D RawObstacleDeltaAccumulator3D::synchronizeProducerEpoch(
          pending.observation.sequence <= selected_pending.observation.sequence);
     if (!remove) {
       if (write_index != read_index) {
-        prospective_identities_[write_index] = pending;
+        prospective_identities_.at(write_index) = pending;
       }
       ++write_index;
     }
   }
   for (std::size_t index = write_index; index < prospective_identity_count_; ++index) {
-    prospective_identities_[index] = ProspectiveIdentity{};
+    prospective_identities_.at(index) = ProspectiveIdentity{};
   }
   prospective_identity_count_ = write_index;
   return {
