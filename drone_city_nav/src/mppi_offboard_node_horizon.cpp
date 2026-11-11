@@ -210,15 +210,19 @@ void MppiOffboardNode::publishDeadReckoningLandingSetpoint(const bool descending
 // and from there to the disarm the setpoint is the level one: the estimate's
 // altitude creeps down under a vehicle on the ground, and read as a descent
 // again it handed the vehicle back to the position hold, which tipped r3271
-// over 4 s after its touchdown. On the ground the plane is set by an
-// acceleration of nought and no velocity: a velocity of nought there is a
-// velocity loop whose integrator the legs hold, and its tilt grew for 3 to 5 s
-// under r3271 and r3275 until the vehicle pivoted on a leg and turned over.
+// over 4 s after its touchdown. On the ground the setpoint is an acceleration
+// of g downwards and of nought in the plane, no velocity: the collective thrust
+// at its floor, so that the autopilot detects the landing and disarms at once.
+// Under a descent of 0.5 m/s held by the velocity loop the autopilot detected
+// no landing on the park's mesh, the vehicle stood on the ground with the
+// descent's thrust and turned over 3 to 5 s later (r3271, r3275, r3283; the
+// clean landings logged "Landing detected", the flipped ones none).
 void MppiOffboardNode::publishMissionLandingSetpoint() {
   constexpr double kLandingSpeedMps{0.5};
   constexpr double kDescentProgressM{0.05};
   constexpr std::int64_t kGroundedAfterNs{1'000'000'000};
   constexpr double nan{std::numeric_limits<double>::quiet_NaN()};
+  constexpr double kGravityMps2{9.80665};
   const std::int64_t now_ns = now().nanoseconds();
   if (altitude_m_ < mission_landing_lowest_altitude_m_ - kDescentProgressM) {
     mission_landing_lowest_altitude_m_ = altitude_m_;
@@ -227,9 +231,8 @@ void MppiOffboardNode::publishMissionLandingSetpoint() {
   mission_landing_grounded_ = mission_landing_grounded_ ||
                               now_ns - mission_landing_progress_ns_ > kGroundedAfterNs;
   if (mission_landing_grounded_) {
-    setpoint_pub_->publish(
-        buildMppiTrajectorySetpoint(nowMicros(), Point2{nan, nan}, -kLandingSpeedMps,
-                                    Point2{0.0, 0.0}, nan, nan, 0.0));
+    setpoint_pub_->publish(buildMppiTrajectorySetpoint(
+        nowMicros(), Point2{nan, nan}, nan, Point2{0.0, 0.0}, -kGravityMps2, nan, 0.0));
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                          "MISSION_LANDING grounded=true altitude_m=%.2f",
                          mapAltitudeM());
