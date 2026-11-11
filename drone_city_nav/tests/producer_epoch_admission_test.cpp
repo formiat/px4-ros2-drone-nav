@@ -335,24 +335,59 @@ TEST(ProducerEpochAdmissionTest, StaleFutureAndClockRewindFailClosed) {
 
 TEST(ProducerEpochAdmissionTest, RejectedIdentityCapacityLatchesFailClosed) {
   ProducerEpochAdmissionState state;
-  for (std::uint64_t sequence = 1U; sequence <= kProducerRejectedIdentityCapacity;
-       ++sequence) {
+  for (std::uint64_t producer = 1U; producer <= kProducerRejectedIdentityCapacity;
+       ++producer) {
     const ProducerEpochAdmissionResult rejected =
-        admit(state, observation(7U, sequence, 0, 900, 100U + sequence), 920);
+        admit(state, observation(producer, 1U, 0, 900, 100U + producer), 920);
     ASSERT_EQ(rejected.status, ProducerEpochAdmissionStatus::kRejectedInvalid);
     state = rejected.next_state;
   }
   const ProducerEpochAdmissionResult overflow =
       admit(state,
-            observation(7U, kProducerRejectedIdentityCapacity + 1U, 0, 900, 999U), 920);
+            observation(kProducerRejectedIdentityCapacity + 1U, 1U, 0, 900, 999U), 920);
   ASSERT_EQ(overflow.status, ProducerEpochAdmissionStatus::kRejectedIdentityCapacity);
   EXPECT_TRUE(overflow.next_state.rejected_identity_capacity_exhausted);
 
   const ProducerEpochAdmissionResult fresh = admit(
       overflow.next_state,
-      observation(7U, kProducerRejectedIdentityCapacity + 2U, 900, 910, 1'000U), 920);
+      observation(kProducerRejectedIdentityCapacity + 2U, 1U, 900, 910, 1'000U), 920);
   EXPECT_EQ(fresh.status, ProducerEpochAdmissionStatus::kRejectedIdentityCapacity);
   EXPECT_FALSE(fresh.install_observation);
+}
+
+// A new lineage publishes while its predecessor is still fresh: each of its
+// rejected statuses supersedes the one before, and the producer is taken over
+// once the predecessor is stale (r3286: a memory cleared on a frame reset
+// published five statuses a second while its predecessor stayed fresh for
+// 5 s, and counted per revision they filled the capacity of eight for good).
+TEST(ProducerEpochAdmissionTest,
+     ANewLineagesStatusesWhileItsPredecessorIsFreshHoldOneClaim) {
+  ProducerEpochAdmissionState state =
+      admit({}, observation(7U, 10U, 900, 910, 101U), 920).next_state;
+  for (std::uint64_t sequence = 1U; sequence <= kProducerRejectedIdentityCapacity + 1U;
+       ++sequence) {
+    const std::int64_t step = 10 * static_cast<std::int64_t>(sequence);
+    const ProducerEpochAdmissionResult rejected =
+        admit(state, observation(8U, sequence, 900 + step, 905 + step, 200U + sequence),
+              910 + step);
+    ASSERT_EQ(rejected.status,
+              ProducerEpochAdmissionStatus::kRejectedCurrentProducerFresh)
+        << sequence;
+    EXPECT_EQ(rejected.next_state.rejected_identity_count, 1U);
+    state = rejected.next_state;
+  }
+  const ProducerEpochAdmissionResult pending =
+      admit(state, observation(8U, 10U, 1'000, 1'005, 210U), 1'010);
+  ASSERT_EQ(pending.status, ProducerEpochAdmissionStatus::kPendingProducerHandoff);
+  const ProducerEpochAdmissionResult handoff =
+      admit(pending.next_state, observation(8U, 11U, 1'010, 1'015, 211U), 1'020);
+  ASSERT_EQ(handoff.status, ProducerEpochAdmissionStatus::kAcceptedProducerHandoff);
+  EXPECT_EQ(handoff.next_state.current_producer_instance_id, 8U);
+  EXPECT_EQ(handoff.next_state.rejected_identity_count, 0U);
+
+  const ProducerEpochAdmissionResult superseded =
+      admit(handoff.next_state, observation(8U, 5U, 960, 1'025, 205U), 1'030);
+  EXPECT_EQ(superseded.status, ProducerEpochAdmissionStatus::kRejectedRegression);
 }
 
 TEST(ProducerEvidenceAdmissionTest,

@@ -59,21 +59,22 @@ terminalEvidenceStatus(const ProducerEvidenceAdmissionStatus status) noexcept {
     return false;
   }
   for (std::size_t index = 0U; index < count; ++index) {
-    const ProducerEpochRejectedIdentity& identity = identities[index];
+    const ProducerEpochRejectedIdentity& identity = identities.at(index);
     if (identity.producer_instance_id == 0U || identity.sequence == 0U ||
         identity.content_fingerprint == 0U ||
         !terminalEpochStatus(identity.terminal_status)) {
       return false;
     }
     for (std::size_t previous = 0U; previous < index; ++previous) {
-      if (identities[previous].producer_instance_id == identity.producer_instance_id &&
-          identities[previous].sequence == identity.sequence) {
+      if (identities.at(previous).producer_instance_id ==
+              identity.producer_instance_id &&
+          identities.at(previous).sequence == identity.sequence) {
         return false;
       }
     }
   }
   for (std::size_t index = count; index < identities.size(); ++index) {
-    const ProducerEpochRejectedIdentity& identity = identities[index];
+    const ProducerEpochRejectedIdentity& identity = identities.at(index);
     if (identity.producer_instance_id != 0U || identity.sequence != 0U ||
         identity.source_stamp_ns != 0 || identity.first_receive_stamp_ns != 0 ||
         identity.content_fingerprint != 0U) {
@@ -88,8 +89,8 @@ terminalEvidenceStatus(const ProducerEvidenceAdmissionStatus status) noexcept {
         identities,
     const std::size_t count, const ProducerEpochObservation& observation) noexcept {
   for (std::size_t index = 0U; index < count; ++index) {
-    if (identities[index].producer_instance_id == observation.producer_instance_id &&
-        identities[index].sequence == observation.sequence) {
+    if (identities.at(index).producer_instance_id == observation.producer_instance_id &&
+        identities.at(index).sequence == observation.sequence) {
       return index;
     }
   }
@@ -103,6 +104,28 @@ sameRejectedIdentity(const ProducerEpochRejectedIdentity& identity,
          identity.content_fingerprint == observation.content_fingerprint;
 }
 
+void eraseRejectedIdentitiesThrough(
+    std::array<ProducerEpochRejectedIdentity, kProducerRejectedIdentityCapacity>&
+        identities,
+    std::size_t& count, const std::uint64_t producer_instance_id,
+    const std::uint64_t sequence) noexcept {
+  std::size_t write_index{0U};
+  for (std::size_t read_index = 0U; read_index < count; ++read_index) {
+    if (identities.at(read_index).producer_instance_id == producer_instance_id &&
+        identities.at(read_index).sequence <= sequence) {
+      continue;
+    }
+    if (write_index != read_index) {
+      identities.at(write_index) = identities.at(read_index);
+    }
+    ++write_index;
+  }
+  for (std::size_t index = write_index; index < count; ++index) {
+    identities.at(index) = ProducerEpochRejectedIdentity{};
+  }
+  count = write_index;
+}
+
 [[nodiscard]] bool rememberRejectedIdentity(
     std::array<ProducerEpochRejectedIdentity, kProducerRejectedIdentityCapacity>&
         identities,
@@ -111,10 +134,19 @@ sameRejectedIdentity(const ProducerEpochRejectedIdentity& identity,
   if (findRejectedIdentity(identities, count, observation).has_value()) {
     return true;
   }
+  // A producer's newer rejected identity supersedes its older ones: the
+  // sequence high water it claims rejects them as regressions, and the
+  // capacity bounds the producers rejected, not the revisions one of them
+  // publishes. Counted per revision, a memory cleared on a frame reset, whose
+  // predecessor stayed fresh for the observation age of 5 s, exhausted it in
+  // 1.6 s at 5 statuses a second and was refused for the rest of the flight
+  // (r3286).
+  eraseRejectedIdentitiesThrough(identities, count, observation.producer_instance_id,
+                                 observation.sequence - 1U);
   if (count == identities.size()) {
     return false;
   }
-  identities[count] = ProducerEpochRejectedIdentity{
+  identities.at(count) = ProducerEpochRejectedIdentity{
       .producer_instance_id = observation.producer_instance_id,
       .sequence = observation.sequence,
       .source_stamp_ns = observation.source_stamp_ns,
@@ -126,28 +158,6 @@ sameRejectedIdentity(const ProducerEpochRejectedIdentity& identity,
   return true;
 }
 
-void eraseRejectedIdentitiesThrough(
-    std::array<ProducerEpochRejectedIdentity, kProducerRejectedIdentityCapacity>&
-        identities,
-    std::size_t& count, const std::uint64_t producer_instance_id,
-    const std::uint64_t sequence) noexcept {
-  std::size_t write_index{0U};
-  for (std::size_t read_index = 0U; read_index < count; ++read_index) {
-    if (identities[read_index].producer_instance_id == producer_instance_id &&
-        identities[read_index].sequence <= sequence) {
-      continue;
-    }
-    if (write_index != read_index) {
-      identities[write_index] = identities[read_index];
-    }
-    ++write_index;
-  }
-  for (std::size_t index = write_index; index < count; ++index) {
-    identities[index] = ProducerEpochRejectedIdentity{};
-  }
-  count = write_index;
-}
-
 [[nodiscard]] bool validRejectedEvidenceIdentities(
     const std::array<ProducerEvidenceRejectedIdentity,
                      kProducerRejectedIdentityCapacity>& identities,
@@ -156,22 +166,24 @@ void eraseRejectedIdentitiesThrough(
     return false;
   }
   for (std::size_t index = 0U; index < count; ++index) {
-    const ProducerEvidenceRejectedIdentity& identity = identities[index];
+    const ProducerEvidenceRejectedIdentity& identity = identities.at(index);
     if (identity.authority_generation == 0U || identity.producer_instance_id == 0U ||
         identity.sequence == 0U || identity.content_fingerprint == 0U ||
         !terminalEvidenceStatus(identity.terminal_status)) {
       return false;
     }
     for (std::size_t previous = 0U; previous < index; ++previous) {
-      if (identities[previous].authority_generation == identity.authority_generation &&
-          identities[previous].producer_instance_id == identity.producer_instance_id &&
-          identities[previous].sequence == identity.sequence) {
+      if (identities.at(previous).authority_generation ==
+              identity.authority_generation &&
+          identities.at(previous).producer_instance_id ==
+              identity.producer_instance_id &&
+          identities.at(previous).sequence == identity.sequence) {
         return false;
       }
     }
   }
   for (std::size_t index = count; index < identities.size(); ++index) {
-    const ProducerEvidenceRejectedIdentity& identity = identities[index];
+    const ProducerEvidenceRejectedIdentity& identity = identities.at(index);
     if (identity.authority_generation != 0U || identity.producer_instance_id != 0U ||
         identity.sequence != 0U || identity.source_stamp_ns != 0 ||
         identity.first_receive_stamp_ns != 0 || identity.content_fingerprint != 0U ||
@@ -188,9 +200,9 @@ void eraseRejectedIdentitiesThrough(
     const std::size_t count, const std::uint64_t authority_generation,
     const ProducerEpochObservation& observation) noexcept {
   for (std::size_t index = 0U; index < count; ++index) {
-    if (identities[index].authority_generation == authority_generation &&
-        identities[index].producer_instance_id == observation.producer_instance_id &&
-        identities[index].sequence == observation.sequence) {
+    if (identities.at(index).authority_generation == authority_generation &&
+        identities.at(index).producer_instance_id == observation.producer_instance_id &&
+        identities.at(index).sequence == observation.sequence) {
       return index;
     }
   }
@@ -219,7 +231,7 @@ sameRejectedEvidenceIdentity(const ProducerEvidenceRejectedIdentity& identity,
   if (count == identities.size()) {
     return false;
   }
-  identities[count] = ProducerEvidenceRejectedIdentity{
+  identities.at(count) = ProducerEvidenceRejectedIdentity{
       .authority_generation = authority_generation,
       .producer_instance_id = observation.producer_instance_id,
       .sequence = observation.sequence,
@@ -240,7 +252,7 @@ void eraseRejectedEvidenceIdentitiesThrough(
     const std::uint64_t producer_instance_id, const std::uint64_t sequence) noexcept {
   std::size_t write_index{0U};
   for (std::size_t read_index = 0U; read_index < count; ++read_index) {
-    const ProducerEvidenceRejectedIdentity& identity = identities[read_index];
+    const ProducerEvidenceRejectedIdentity& identity = identities.at(read_index);
     if (identity.authority_generation < authority_generation ||
         (identity.authority_generation == authority_generation &&
          identity.producer_instance_id == producer_instance_id &&
@@ -248,12 +260,12 @@ void eraseRejectedEvidenceIdentitiesThrough(
       continue;
     }
     if (write_index != read_index) {
-      identities[write_index] = identity;
+      identities.at(write_index) = identity;
     }
     ++write_index;
   }
   for (std::size_t index = write_index; index < count; ++index) {
-    identities[index] = ProducerEvidenceRejectedIdentity{};
+    identities.at(index) = ProducerEvidenceRejectedIdentity{};
   }
   count = write_index;
 }
@@ -335,19 +347,19 @@ validAdmissionState(const ProducerEpochAdmissionState& state) noexcept {
     return false;
   }
   for (std::size_t index = 0U; index < state.retired_producer_count; ++index) {
-    const std::uint64_t retired = state.retired_producer_instance_ids[index];
+    const std::uint64_t retired = state.retired_producer_instance_ids.at(index);
     if (retired == 0U || retired == state.current_producer_instance_id) {
       return false;
     }
     for (std::size_t previous = 0U; previous < index; ++previous) {
-      if (retired == state.retired_producer_instance_ids[previous]) {
+      if (retired == state.retired_producer_instance_ids.at(previous)) {
         return false;
       }
     }
   }
   for (std::size_t index = state.retired_producer_count;
        index < state.retired_producer_instance_ids.size(); ++index) {
-    if (state.retired_producer_instance_ids[index] != 0U) {
+    if (state.retired_producer_instance_ids.at(index) != 0U) {
       return false;
     }
   }
@@ -401,7 +413,7 @@ void installEvidence(ProducerEvidenceAdmissionState& state,
     for (std::size_t read_index = 0U; read_index < state.rejected_identity_count;
          ++read_index) {
       const ProducerEvidenceRejectedIdentity& identity =
-          state.rejected_identities[read_index];
+          state.rejected_identities.at(read_index);
       const bool superseded_delta =
           !identity.full_snapshot &&
           identity.authority_generation == authority.generation &&
@@ -410,13 +422,13 @@ void installEvidence(ProducerEvidenceAdmissionState& state,
         continue;
       }
       if (write_index != read_index) {
-        state.rejected_identities[write_index] = identity;
+        state.rejected_identities.at(write_index) = identity;
       }
       ++write_index;
     }
     for (std::size_t index = write_index; index < state.rejected_identity_count;
          ++index) {
-      state.rejected_identities[index] = ProducerEvidenceRejectedIdentity{};
+      state.rejected_identities.at(index) = ProducerEvidenceRejectedIdentity{};
     }
     state.rejected_identity_count = write_index;
   }
@@ -439,7 +451,7 @@ bool producerEpochRetired(const ProducerEpochAdmissionState& state,
     return false;
   }
   for (std::size_t index = 0U; index < state.retired_producer_count; ++index) {
-    if (state.retired_producer_instance_ids[index] == producer_instance_id) {
+    if (state.retired_producer_instance_ids.at(index) == producer_instance_id) {
       return true;
     }
   }
@@ -493,7 +505,8 @@ admitProducerEpoch(const ProducerEpochAdmissionConfig& config,
   if (const std::optional<std::size_t> rejected = findRejectedIdentity(
           state.rejected_identities, state.rejected_identity_count, observation);
       rejected.has_value()) {
-    const ProducerEpochRejectedIdentity& claimed = state.rejected_identities[*rejected];
+    const ProducerEpochRejectedIdentity& claimed =
+        state.rejected_identities.at(*rejected);
     if (sameRejectedIdentity(claimed, observation)) {
       result.status = claimed.terminal_status;
       return result;
@@ -537,7 +550,7 @@ admitProducerEpoch(const ProducerEpochAdmissionConfig& config,
         std::max(claimed_sequence_high_water, state.pending_sequence);
   }
   for (std::size_t index = 0U; index < state.rejected_identity_count; ++index) {
-    const ProducerEpochRejectedIdentity& rejected = state.rejected_identities[index];
+    const ProducerEpochRejectedIdentity& rejected = state.rejected_identities.at(index);
     if (rejected.producer_instance_id == observation.producer_instance_id) {
       claimed_sequence_high_water =
           std::max(claimed_sequence_high_water, rejected.sequence);
@@ -639,9 +652,8 @@ admitProducerEpoch(const ProducerEpochAdmissionConfig& config,
     return result;
   }
 
-  result.next_state
-      .retired_producer_instance_ids[result.next_state.retired_producer_count] =
-      state.current_producer_instance_id;
+  result.next_state.retired_producer_instance_ids.at(
+      result.next_state.retired_producer_count) = state.current_producer_instance_id;
   ++result.next_state.retired_producer_count;
   eraseRejectedIdentitiesThrough(
       result.next_state.rejected_identities, result.next_state.rejected_identity_count,
@@ -752,7 +764,7 @@ admitProducerEvidence(const ProducerEpochAdmissionConfig& config,
           result.next_state.rejected_identity_count, authority.generation, observation);
       rejected.has_value()) {
     const ProducerEvidenceRejectedIdentity& claimed =
-        result.next_state.rejected_identities[*rejected];
+        result.next_state.rejected_identities.at(*rejected);
     if (sameRejectedEvidenceIdentity(claimed, observation, full_snapshot)) {
       result.status = claimed.terminal_status;
       return result;
@@ -799,7 +811,8 @@ admitProducerEvidence(const ProducerEpochAdmissionConfig& config,
     claimed_sequence_high_water = state.sequence;
   }
   for (std::size_t index = 0U; index < state.rejected_identity_count; ++index) {
-    const ProducerEvidenceRejectedIdentity& rejected = state.rejected_identities[index];
+    const ProducerEvidenceRejectedIdentity& rejected =
+        state.rejected_identities.at(index);
     // A rejected delta claims nothing about the order of the snapshot it is
     // based on; only rejected snapshots and installed evidence bound one.
     if (rejected.authority_generation == authority.generation &&
