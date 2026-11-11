@@ -110,9 +110,9 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
 TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
-  // A mast off the leg, taller than the ceiling leaves a margin over.
+  // A mast on the leg, taller than the ceiling leaves a margin over.
   for (int z = 0; z < 18; ++z) {
-    ASSERT_TRUE(occupancy->setState({30, 1, z}, ObservedVoxelState::kOccupied));
+    ASSERT_TRUE(occupancy->setState({30, 8, z}, ObservedVoxelState::kOccupied));
   }
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
@@ -125,6 +125,30 @@ TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   EXPECT_EQ(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
   // The ceiling of 20 m less one vertical step, not 18 m and the margin.
   EXPECT_DOUBLE_EQ(highestPointZ(candidate(update).points), 19.0);
+}
+
+// What stands aside of the leg's track, beyond the planner's clearance reach,
+// does not raise it (r3273).
+TEST(PersistentDStarLitePlanner3DTest, AMastAsideOfTheLegDoesNotRaiseIt) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 24, 24});
+  for (int z = 0; z < 15; ++z) {
+    ASSERT_TRUE(occupancy->setState({30, 20, z}, ObservedVoxelState::kOccupied));
+  }
+  for (int z = 0; z < 4; ++z) {
+    ASSERT_TRUE(occupancy->setState({30, 6, z}, ObservedVoxelState::kOccupied));
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.overflight_margin_m = 3.0;
+  PersistentDStarLitePlanner3D planner{config};
+
+  const PlannerUpdate3D update = planner.plan(
+      request(Point3{2.5, 5.5, 2.5}, Point3{56.5, 5.5, 2.5}, world(occupancy, 1U)));
+
+  ASSERT_TRUE(update.publishable());
+  EXPECT_EQ(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
+  // The post on the track (4 m) and the margin; the mast 14.5 m aside is not read.
+  EXPECT_DOUBLE_EQ(highestPointZ(candidate(update).points), 7.0);
 }
 
 TEST(PersistentDStarLitePlanner3DTest, ACaveProfilePlansNoSuchLeg) {

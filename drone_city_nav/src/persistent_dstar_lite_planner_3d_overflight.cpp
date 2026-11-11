@@ -2,6 +2,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <numbers>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -18,15 +20,38 @@ namespace {
 // crowns' tops, where the trees not yet seen stand (r3261).
 constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
 
-// The top of the highest occupied voxel the memory holds.
+// The horizontal distance from a point to the leg's ground track.
+[[nodiscard]] double trackDistanceM(const double x, const double y, const Point3& start,
+                                    const Point3& goal) noexcept {
+  const double dx = goal.x - start.x;
+  const double dy = goal.y - start.y;
+  const double length_squared = dx * dx + dy * dy;
+  const double along =
+      length_squared > 0.0
+          ? std::clamp(((x - start.x) * dx + (y - start.y) * dy) / length_squared, 0.0,
+                       1.0)
+          : 0.0;
+  return std::hypot(x - start.x - along * dx, y - start.y - along * dy);
+}
+
+// The top of the highest occupied voxel the memory holds within `corridor_m`
+// of the leg's ground track.
 [[nodiscard]] std::optional<double>
-highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy) noexcept {
+highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3& start,
+                          const Point3& goal, const double corridor_m) noexcept {
   constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
-  constexpr std::size_t kLayerWords{static_cast<std::size_t>(kChunkSize * kChunkSize) /
-                                    64U};
+  const GridBounds3D& bounds = occupancy.bounds();
+  const double chunk_m = static_cast<double>(kChunkSize) * bounds.resolution_m;
+  // A chunk's centre lies within half its diagonal of each of its cells.
+  const double chunk_reach_m = corridor_m + chunk_m * std::numbers::sqrt2 / 2.0;
   std::optional<int> top_cell;
   for (const auto& [index, storage] : occupancy.chunks()) {
     if (top_cell.has_value() && (index.z + 1) * kChunkSize - 1 <= *top_cell) {
+      continue;
+    }
+    if (trackDistanceM(bounds.origin_x + (static_cast<double>(index.x) + 0.5) * chunk_m,
+                       bounds.origin_y + (static_cast<double>(index.y) + 0.5) * chunk_m,
+                       start, goal) > chunk_reach_m) {
       continue;
     }
     const OccupancyGrid3D::Chunk& occupied = storage->occupied;
@@ -35,10 +60,20 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy) noexcept {
       if (top_cell.has_value() && cell_z <= *top_cell) {
         break;
       }
-      const std::size_t first_word = static_cast<std::size_t>(layer) * kLayerWords;
       bool layer_occupied{false};
-      for (std::size_t word = 0U; word < kLayerWords; ++word) {
-        layer_occupied = layer_occupied || occupied.at(first_word + word) != 0U;
+      for (int row = 0; row < kChunkSize && !layer_occupied; ++row) {
+        for (int column = 0; column < kChunkSize && !layer_occupied; ++column) {
+          const GridIndex3D cell{index.x * kChunkSize + column,
+                                 index.y * kChunkSize + row, cell_z};
+          const std::size_t bit = ObservedOccupancyGrid3D::localBitIndex(cell);
+          layer_occupied =
+              (occupied.at(bit / 64U) & (std::uint64_t{1U} << (bit % 64U))) != 0U &&
+              trackDistanceM(bounds.origin_x + (static_cast<double>(cell.x) + 0.5) *
+                                                   bounds.resolution_m,
+                             bounds.origin_y + (static_cast<double>(cell.y) + 0.5) *
+                                                   bounds.resolution_m,
+                             start, goal) <= corridor_m;
+        }
       }
       if (layer_occupied) {
         top_cell = cell_z;
@@ -49,14 +84,16 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy) noexcept {
   if (!top_cell.has_value()) {
     return std::nullopt;
   }
-  const GridBounds3D& bounds = occupancy.bounds();
   return bounds.origin_z + static_cast<double>(*top_cell + 1) * bounds.resolution_m;
 }
 
 } // namespace
 
-// The open sky's leg (specification K76): over everything the memory holds.
-// The level is the highest obstacle seen plus the margin, under the envelope's
+// The open sky's leg (specification K76): over everything the memory holds
+// along it, within the planner's clearance reach of its ground track (a crown
+// 40 m aside of the leg raised every leg of r3273 to 49 m, and its descents to
+// the goals took 20 s each). The level is the highest obstacle seen there plus
+// the margin, under the envelope's
 // ceiling and no lower than either end; the vehicle climbs to it along the leg
 // and comes down along it to the goal, at the gentlest slant the raw world
 // clears. Unknown space on the way is free (I1): what stands in it is seen
@@ -74,8 +111,8 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
   }
   const double ceiling_m =
       config_.flight_envelope.maximum_target_z_m - config_.minimum_vertical_step_m;
-  const std::optional<double> top_m =
-      highestObservedObstacleZM(*world_.observed_occupancy);
+  const std::optional<double> top_m = highestObservedObstacleZM(
+      *world_.observed_occupancy, start, goal, config_.clearance_ranking_distance_m);
   const double level_m = std::min(
       ceiling_m,
       std::max({start.z, goal.z,
