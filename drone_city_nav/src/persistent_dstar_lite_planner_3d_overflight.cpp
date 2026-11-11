@@ -20,6 +20,11 @@ namespace {
 // crowns' tops, where the trees not yet seen stand (r3261).
 constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
 
+// The level metres flown into a goal at its height: room for the stop in the
+// plane from the corner (6 m/s stops in 3.6 m at the open sky's braking of
+// 5 m/s^2, specification V3).
+constexpr double kLevelApproachM{5.0};
+
 // The horizontal distance from a point to the leg's ground track.
 [[nodiscard]] double trackDistanceM(const double x, const double y, const Point3& start,
                                     const Point3& goal) noexcept {
@@ -95,10 +100,11 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3
 // the goals took 20 s each). The level is the highest obstacle seen there plus
 // the margin, under the envelope's
 // ceiling and no lower than either end; the vehicle climbs to it along the leg
-// and comes down along it to the goal, at the gentlest slant the raw world
-// clears. Unknown space on the way is free (I1): what stands in it is seen
-// from the sensor's range, and the route is taken again from where the vehicle
-// then is. Nothing is searched: with the leg held the lattice searches idle.
+// and comes down along it at the gentlest slant the raw world clears, to the
+// goal's height 5 m short of it, and flies the rest level. Unknown space on the way is
+// free (I1): what stands in it is seen from the sensor's range, and the route is taken
+// again from where the vehicle then is. Nothing is searched: with the leg held the
+// lattice searches idle.
 std::optional<std::vector<Point3>>
 PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
                                                  const Point3& goal) const {
@@ -119,54 +125,76 @@ PersistentDStarLitePlanner3DImpl::overflightPath(const Point3& start,
                 top_m.has_value() ? *top_m + config_.overflight_margin_m : start.z}));
   const double direction_x = (goal.x - start.x) / horizontal_m;
   const double direction_y = (goal.y - start.y) / horizontal_m;
-  // On the way down already (inside the gentlest descent's cone over the
-  // goal): the rest of the descent is taken from where the vehicle is, level
-  // at its height and then down, before the leg is climbed again. A descent a
-  // crown had closed sent the vehicle 25 m back up to the level and cost it
-  // 20 s (r3261).
-  const double remaining_descent_m = start.z - goal.z;
-  if (remaining_descent_m > 0.0 &&
-      horizontal_m <= kSlantRunsPerMetre.front() * remaining_descent_m +
-                          config_.minimum_horizontal_step_m) {
-    for (const double descent_run : kSlantRunsPerMetre) {
-      const double descent_run_m =
-          std::min(horizontal_m, descent_run * remaining_descent_m);
-      std::vector<Point3> path{start};
-      if (horizontal_m - descent_run_m > 1.0e-6) {
-        path.push_back(Point3{goal.x - direction_x * descent_run_m,
-                              goal.y - direction_y * descent_run_m, start.z});
-      }
-      path.push_back(goal);
-      if (lattice_.pathTraversable(path)) {
-        return path;
-      }
+  // The last metres into the goal are flown level at its height where they fit
+  // and clear, so the descent stops at their beginning in flight and the goal
+  // is a stop in the plane. Stopping both at the goal, the vehicle braked in the
+  // plane first and its descent ran on under it, 0.5 to 1.8 m past the route's
+  // end, whose recovery cost 5 to 16 s at a goal (r3274, r3287, r3289).
+  for (const double approach_m : {kLevelApproachM, 0.0}) {
+    const double run_m = horizontal_m - approach_m;
+    if (!(run_m > config_.minimum_horizontal_step_m)) {
+      continue;
     }
-  }
-  const double climb_m = std::max(0.0, level_m - start.z);
-  const double descent_m = std::max(0.0, level_m - goal.z);
-  for (const double descent_run : kSlantRunsPerMetre) {
-    for (const double climb_run : kSlantRunsPerMetre) {
-      const double climb_run_m = climb_run * climb_m;
-      const double descent_run_m = descent_run * descent_m;
-      // A height that is not there has one slant, not three.
-      if (climb_run_m + descent_run_m > horizontal_m ||
-          (!(climb_m > 0.0) && climb_run != kSlantRunsPerMetre.front()) ||
-          (!(descent_m > 0.0) && descent_run != kSlantRunsPerMetre.front())) {
-        continue;
+    const Point3 foot{goal.x - direction_x * approach_m,
+                      goal.y - direction_y * approach_m, goal.z};
+    const auto clears =
+        [&](std::vector<Point3> path) -> std::optional<std::vector<Point3>> {
+      if (approach_m > 0.0) {
+        path.push_back(goal);
       }
-      std::vector<Point3> path{start};
-      const auto append = [&path](const Point3& point) {
-        if (distance3D(path.back(), point) > 1.0e-6) {
-          path.push_back(point);
-        }
-      };
-      append(Point3{start.x + direction_x * climb_run_m,
-                    start.y + direction_y * climb_run_m, level_m});
-      append(Point3{goal.x - direction_x * descent_run_m,
-                    goal.y - direction_y * descent_run_m, level_m});
-      append(goal);
       if (path.size() >= 2U && lattice_.pathTraversable(path)) {
         return path;
+      }
+      return std::nullopt;
+    };
+    // On the way down already (inside the gentlest descent's cone over the
+    // goal): the rest of the descent is taken from where the vehicle is, level
+    // at its height and then down, before the leg is climbed again. A descent a
+    // crown had closed sent the vehicle 25 m back up to the level and cost it
+    // 20 s (r3261).
+    const double remaining_descent_m = start.z - goal.z;
+    if (remaining_descent_m > 0.0 &&
+        run_m <= kSlantRunsPerMetre.front() * remaining_descent_m +
+                     config_.minimum_horizontal_step_m) {
+      for (const double descent_run : kSlantRunsPerMetre) {
+        const double descent_run_m = std::min(run_m, descent_run * remaining_descent_m);
+        std::vector<Point3> path{start};
+        if (run_m - descent_run_m > 1.0e-6) {
+          path.push_back(Point3{foot.x - direction_x * descent_run_m,
+                                foot.y - direction_y * descent_run_m, start.z});
+        }
+        path.push_back(foot);
+        if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
+          return cleared;
+        }
+      }
+    }
+    const double climb_m = std::max(0.0, level_m - start.z);
+    const double descent_m = std::max(0.0, level_m - goal.z);
+    for (const double descent_run : kSlantRunsPerMetre) {
+      for (const double climb_run : kSlantRunsPerMetre) {
+        const double climb_run_m = climb_run * climb_m;
+        const double descent_run_m = descent_run * descent_m;
+        // A height that is not there has one slant, not three.
+        if (climb_run_m + descent_run_m > run_m ||
+            (!(climb_m > 0.0) && climb_run != kSlantRunsPerMetre.front()) ||
+            (!(descent_m > 0.0) && descent_run != kSlantRunsPerMetre.front())) {
+          continue;
+        }
+        std::vector<Point3> path{start};
+        const auto append = [&path](const Point3& point) {
+          if (distance3D(path.back(), point) > 1.0e-6) {
+            path.push_back(point);
+          }
+        };
+        append(Point3{start.x + direction_x * climb_run_m,
+                      start.y + direction_y * climb_run_m, level_m});
+        append(Point3{foot.x - direction_x * descent_run_m,
+                      foot.y - direction_y * descent_run_m, level_m});
+        append(foot);
+        if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
+          return cleared;
+        }
       }
     }
   }
