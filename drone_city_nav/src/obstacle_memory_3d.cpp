@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -255,6 +256,12 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
       integrateRay(scan.origin_map, beam, evidence, share);
     }
   };
+  const auto since_ms = [](const std::chrono::steady_clock::time_point started) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                     started)
+        .count();
+  };
+  const auto trace_started = std::chrono::steady_clock::now();
   ScanEvidence scan_evidence;
   const std::size_t threads = static_cast<std::size_t>(config_.integration_threads);
   const std::size_t traced = (scan.beams.size() + stride - 1U) / stride;
@@ -305,9 +312,13 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
       scan.acquisition_stamp_ns > 0 && decay_epoch_ns_ > 0
           ? (scan.acquisition_stamp_ns - decay_epoch_ns_) / 1'000'000
           : 0;
+  stats.trace_ms = since_ms(trace_started);
+  const auto apply_started = std::chrono::steady_clock::now();
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
     applyChunkEvidence(chunk_index, chunk_evidence, now_ms, stats);
   }
+  stats.apply_ms = since_ms(apply_started);
+  const auto layers_started = std::chrono::steady_clock::now();
   if (config_.decay_seconds_per_confirmation > 0.0 && scan.acquisition_stamp_ns > 0) {
     decayUnconfirmed(now_ms, stats);
   }
@@ -315,6 +326,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     settleMoving(now_ms, stats);
     followMoving(scan_evidence, scan.origin_map, now_ms, stats);
   }
+  stats.layers_ms = since_ms(layers_started);
   // Every integrated scan is a revision, whether or not a voxel changed state:
   // the revision is published with the scan's stamp, and the consumer holds a
   // revision to one stamp and one content. A lidar's scan always moves some

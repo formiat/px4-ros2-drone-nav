@@ -128,6 +128,11 @@ struct ObstacleMemory3DStats {
   std::size_t followed_bodies{0U};
   std::size_t swept_voxels{0U};
   std::size_t outside_endpoints{0U};
+  // The integration's stages on the wall clock: the rays' trace, the
+  // evidence's application to the voxels, and the decay with the moving layer.
+  double trace_ms{0.0};
+  double apply_ms{0.0};
+  double layers_ms{0.0};
   double evidence_interval_s{0.0};
   bool stale_acquisition{false};
 };
