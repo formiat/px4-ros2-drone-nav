@@ -1057,6 +1057,61 @@ TEST(MppiSpeedPolicyTest, MissionStopAlsoHonorsItsCertifiedRouteEndpoint) {
   EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
 }
 
+// A descent stops at the lowest height the route still has to fly, whatever
+// the distance along it: a vehicle that ran past the route's corner and came
+// down beside the goal kept the distance law's speed while it passed the
+// goal's height, and r3294 struck the ground under it.
+TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
+  config.stopping_capability.guaranteed_vertical_deceleration_mps2 = 1.4;
+  allowHighSensorBrakingSpeed(config);
+  // Down from 30 m to the goal's height 10 m out, then level into the goal.
+  const std::array route{
+      RouteSample3D{.position = Point3{0.0, 0.0, 30.0}, .station_m = 0.0},
+      RouteSample3D{.position = Point3{10.0, 0.0, 16.0}, .station_m = 17.2},
+      RouteSample3D{.position = Point3{20.0, 0.0, 16.0}, .station_m = 27.2},
+  };
+  MppiSpeedPolicyInput input;
+  input.mission_goal = route.back().position;
+  input.route = route;
+  input.route_endpoint_remaining_m = 20.0;
+  input.route_endpoint_semantics = RouteEndpointSemantics3D::kMissionStop;
+  input.state.x = 17.0F;
+  input.state.z = 19.0F;
+  input.state.vx = 1.0F;
+  input.state.vz = -4.0F;
+
+  const MppiSpeedPolicyResult descending = evaluateMppiSpeedPolicy(config, input);
+
+  StoppingCapability vertical = config.stopping_capability;
+  vertical.maximum_commanded_horizontal_deceleration_mps2 = 1.4;
+  vertical.reaction_latency_s += config.reference_tracking_lag_s;
+  SensorBrakingContract3D vertical_contract = config.sensor_braking_contract;
+  vertical_contract.maximum_horizontal_acceleration_mps2 =
+      config.sensor_braking_contract.maximum_vertical_acceleration_mps2;
+  const double speed_mps = std::hypot(1.0, 4.0);
+  EXPECT_NEAR(descending.route_endpoint_limit_mps,
+              stoppingLimitedSpeed(3.5, 0.0, vertical, vertical_contract, 0.0) *
+                  speed_mps / 4.0,
+              1.0e-6);
+  EXPECT_LT(descending.route_endpoint_limit_mps,
+            stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
+                                 config.sensor_braking_contract, 0.0));
+
+  // Level at the goal's height, the descent law has nothing to brake.
+  input.state.z = 16.0F;
+  input.state.vz = 0.0F;
+  input.state.vx = 4.0F;
+  const MppiSpeedPolicyResult level = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NEAR(level.route_endpoint_limit_mps,
+              stoppingLimitedSpeed(20.0, 0.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-6);
+}
+
 TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {
   MppiSpeedPolicyConfig config;
   MppiSpeedPolicyInput input;
