@@ -231,6 +231,11 @@ void MppiOffboardNode::publishMissionLandingSetpoint() {
   mission_landing_grounded_ = mission_landing_grounded_ ||
                               now_ns - mission_landing_progress_ns_ > kGroundedAfterNs;
   if (mission_landing_grounded_) {
+    // An acceleration alone is a setpoint only under the acceleration flag:
+    // under the position one the autopilot read it as no setpoint and failed
+    // safe (r3284, r3285).
+    offboard_mode_pub_->publish(
+        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kAcceleration));
     setpoint_pub_->publish(buildMppiTrajectorySetpoint(
         nowMicros(), Point2{nan, nan}, nan, Point2{0.0, 0.0}, -kGravityMps2, nan, 0.0));
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -238,6 +243,8 @@ void MppiOffboardNode::publishMissionLandingSetpoint() {
                          mapAltitudeM());
     return;
   }
+  offboard_mode_pub_->publish(
+      buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
   setpoint_pub_->publish(
       buildPositionTrajectorySetpoint(nowMicros(), mission_landing_local_, nan,
                                       mission_landing_yaw_rad_, -kLandingSpeedMps));

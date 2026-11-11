@@ -270,8 +270,8 @@ MppiOffboardNode::MppiOffboardNode()
   constexpr std::size_t kTofDownUnit{4U};
   constexpr double kRingElevationRad{0.16};
   for (std::size_t unit = 0U; unit < kTofRingUnits; ++unit) {
-    const std::string side{kTofRingSides[unit]};
-    tof_ring_subs_[unit] = create_subscription<sensor_msgs::msg::PointCloud2>(
+    const std::string side{kTofRingSides.at(unit)};
+    tof_ring_subs_.at(unit) = create_subscription<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("tof_" + side + "_topic",
                                        "/tof/" + side + "/points"),
         rclcpp::SensorDataQoS{}.keep_last(1),
@@ -292,7 +292,7 @@ MppiOffboardNode::MppiOffboardNode()
               nearest_m = std::min(nearest_m, range_m);
             }
           }
-          tof_ring_nearest_m_[unit] = std::make_pair(now(), nearest_m);
+          tof_ring_nearest_m_.at(unit) = std::make_pair(now(), nearest_m);
         });
   }
   offboard_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
@@ -323,7 +323,7 @@ TofRingRanges MppiOffboardNode::freshTofRingRanges() const {
   const rclcpp::Time current = now();
   const auto fresh = [&](const std::size_t unit) -> std::optional<double> {
     const std::optional<std::pair<rclcpp::Time, double>>& reading =
-        tof_ring_nearest_m_[unit];
+        tof_ring_nearest_m_.at(unit);
     if (!reading.has_value() || (current - reading->first).seconds() > kFreshS) {
       return std::nullopt;
     }
@@ -380,8 +380,8 @@ void MppiOffboardNode::controlTick() {
     return;
   }
   if (mission_landing_) {
-    offboard_mode_pub_->publish(
-        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    // The landing publishes its control mode with its setpoint: a position
+    // until the vehicle stands, an acceleration from then on (K30).
     publishMissionLandingSetpoint();
     publishUnavailableControlFeedback();
     return;
