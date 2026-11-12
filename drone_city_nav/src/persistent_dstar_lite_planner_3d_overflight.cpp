@@ -17,8 +17,11 @@ namespace {
 // Horizontal metres a climb or a descent takes per metre of height, steepest
 // last: a slant keeps the leg's speed, and a vertical line is flown from rest.
 // A gentler one than two to one spends its last hundred metres under the
-// crowns' tops, where the trees not yet seen stand (r3261).
-constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
+// crowns' tops, where the trees not yet seen stand (r3261). Half a metre a
+// metre stands before the vertical line: the first leg's climb, which no
+// gentler slant cleared from two metres over the ground, was 23 m straight up
+// in 5.5 s with no way made along the leg (r3323).
+constexpr std::array<double, 4U> kSlantRunsPerMetre{2.0, 1.0, 0.5, 0.0};
 
 // The level metres flown into a goal at its height: room for the stop in the
 // plane from the corner (6 m/s stops in 3.6 m at the open sky's braking of
