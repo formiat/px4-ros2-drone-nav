@@ -1127,6 +1127,39 @@ TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
                                  config.sensor_braking_contract, 0.0));
 }
 
+TEST(MppiSpeedPolicyTest, AnArrivalsLastMetresFallNoFasterThanTheLoopFollows) {
+  MppiSpeedPolicyConfig config;
+  config.goal_margin_m = 0.125;
+  allowHighSensorBrakingSpeed(config);
+  const std::array route{
+      RouteSample3D{.position = Point3{0.0, 0.0, 16.0}, .station_m = 0.0},
+      RouteSample3D{.position = Point3{20.0, 0.0, 16.0}, .station_m = 20.0},
+  };
+  MppiSpeedPolicyInput input;
+  input.mission_goal = route.back().position;
+  input.terminal_goal_limit_enabled = true;
+  input.route = route;
+  input.route_endpoint_remaining_m = 1.2;
+  input.route_endpoint_semantics = RouteEndpointSemantics3D::kMissionStop;
+  input.state.x = 18.8F;
+  input.state.z = 16.0F;
+  input.state.vx = 1.0F;
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  // 1.2 m short of the route's end at a time constant of 1.2 s; the goal's law
+  // counts from its margin.
+  EXPECT_NEAR(result.route_endpoint_limit_mps, 1.0, 1.0e-3);
+  EXPECT_NEAR(result.goal_limit_mps, (1.2 - config.goal_margin_m) / 1.2, 1.0e-3);
+  EXPECT_LT(result.route_endpoint_limit_mps,
+            stoppingLimitedSpeed(1.2, 0.0, config.stopping_capability,
+                                 config.sensor_braking_contract, 0.0));
+
+  // A local stop is no arrival: the route goes on from it.
+  input.route_endpoint_semantics = RouteEndpointSemantics3D::kLocalStop;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).route_endpoint_limit_mps, 1.0);
+}
+
 TEST(MppiSpeedPolicyTest, TerminalRouteUsesMissionGoalLimitOnly) {
   MppiSpeedPolicyConfig config;
   MppiSpeedPolicyInput input;
