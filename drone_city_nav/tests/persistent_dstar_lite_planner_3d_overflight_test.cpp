@@ -198,6 +198,18 @@ TEST(PersistentDStarLitePlanner3DTest, AHeldLegTheMemoryHasOutgrownIsTakenAgain)
   EXPECT_EQ(candidate(over).source, SpatialRouteCandidateSource3D::kOverflight);
   EXPECT_DOUBLE_EQ(highestPointZ(candidate(over).points), 10.0);
   expectRawValid(candidate(over).points, *crown, planner.config().physical_footprint);
+
+  // In flight at 10 m/s the step of 4 m is climbed over the run of that speed
+  // at 2.5 m/s of climb, 16 m, not over the 8 m of two to one.
+  PersistentPlannerRequest3D flying = request(
+      Point3{10.5, 5.5, 6.0}, goal, world(crown, 2U, {OccupancyChunkIndex3D{1, 0, 0}}));
+  flying.session_id = 3U;
+  flying.velocity = Vec3{10.0, 0.0, 0.0};
+  const PlannerUpdate3D step = planner.plan(flying);
+  ASSERT_TRUE(step.publishable());
+  ASSERT_GE(candidate(step).points.size(), 3U);
+  EXPECT_NEAR(candidate(step).points[1].x, 26.5, 1.0e-9);
+  EXPECT_NEAR(candidate(step).points[1].z, 10.0, 1.0e-9);
 }
 
 TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
