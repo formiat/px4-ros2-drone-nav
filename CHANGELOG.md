@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- A stop rejection's throttled log line now carries the exact input state and
+  prior control, their identities and timing, the raw-map and latest-sensor
+  identities and timestamps, the minimum control count and the
+  validation-policy fingerprint, so a recorded rejection can be matched to the
+  evidence it used. Verified against the approach recording: the logged pose,
+  map revision and sensor acquisition and receipt times reproduce the bag. The
+  line does not retain the rejected horizon or prove offboard receipt.
+
 - A flight's record in a viewer without the stack (roadmap item 42, specification K73): `tools/view_flight.sh <run>` opens
   the stack bag in Lichtblick with a layout a sensor set (`tools/viewer/`) and the run's other records beside it
   (`tools/flight_records_mcap.py`: the true pose, the obstacle memory, the speed laws, the budgets); nothing is built or

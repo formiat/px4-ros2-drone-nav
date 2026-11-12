@@ -99,12 +99,30 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
                                        /*retire_route_on_expiry=*/false);
     }
     if (prepared.status != ExecutionStopStatus3D::kAtRest) {
+      const auto& input = cycle.evidence.execution_input;
+      const auto& sensor = cycle.evidence.latest_sensor_evidence;
+      const auto& policy = cycle.evidence.selected_policy != nullptr
+                               ? cycle.evidence.selected_policy
+                               : config_.execution.validation_policy;
+      const auto& state = cycle.evidence.exact_initial_state;
+      const auto& control = cycle.evidence.exact_previous_control;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STOP_EXECUTION published=false status=%s transition=%.*s "
           "detail=%.*s certification=%.*s certification_dynamics=%s "
           "certification_path=%s clearance_reduction=%.2f failure_segment=%zu "
-          "speed_mps=%.2f replacement_failure=%s",
+          "speed_mps=%.2f replacement_failure=%s "
+          "cycle_ns=%" PRId64 " input_present=%d input_sequence=%" PRIu64
+          " pose_revision=%" PRIu64 " pose_source_us=%" PRIu64
+          " pose_receive_ns=%" PRId64 " control_source=%u control_producer=%" PRIu64
+          " control_sequence=%" PRIu64 " control_source_ns=%" PRId64
+          " control_receive_ns=%" PRId64
+          " state=(%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g) "
+          "previous_control=(%.9g,%.9g,%.9g,%.9g) minimum_controls=%zu "
+          "raw_producer=%" PRIu64 " raw_base=%" PRIu64 " raw_revision=%" PRIu64
+          " sensor_producer=%" PRIu64 " sensor_sequence=%" PRIu64
+          " sensor_acquisition_ns=%" PRId64 " sensor_receive_ns=%" PRId64
+          " policy_fingerprint=%" PRIu64,
           executionStopStatus3DName(prepared.status),
           static_cast<int>(
               executionRouteTransitionStatus3DName(prepared.transition_status).size()),
@@ -120,7 +138,34 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
               prepared.certification.path_validation_status),
           prepared.certification.clearance_reduction,
           prepared.certification.path_validation_failure_segment_index,
-          prepared.initial_speed_mps, productionMppiExecutionReasonName(reason));
+          prepared.initial_speed_mps, productionMppiExecutionReasonName(reason),
+          cycle.controller.now_ns, input != nullptr ? 1 : 0,
+          input != nullptr ? input->captureSequence() : std::uint64_t{0},
+          input != nullptr ? input->poseRevision() : std::uint64_t{0},
+          input != nullptr ? input->poseSourceTimestampUs() : std::uint64_t{0},
+          input != nullptr ? input->poseReceiveStampNs() : std::int64_t{0},
+          input != nullptr ? static_cast<unsigned>(input->previousControlSource()) : 0U,
+          input != nullptr ? input->previousControlSourceProducerInstanceId()
+                           : std::uint64_t{0},
+          input != nullptr ? input->previousControlSourceSequence() : std::uint64_t{0},
+          input != nullptr ? input->previousControlSourceStampNs() : std::int64_t{0},
+          input != nullptr ? input->previousControlReceiveStampNs() : std::int64_t{0},
+          state.x, state.y, state.z, state.vx, state.vy, state.vz, state.yaw,
+          state.yaw_rate, control.ax, control.ay, control.az, control.yaw_accel,
+          cycle.controller.resultRef().controls.size(),
+          observed_raw_world != nullptr
+              ? observed_raw_world->version().producer_instance_id
+              : std::uint64_t{0},
+          observed_raw_world != nullptr
+              ? observed_raw_world->version().base_snapshot_revision
+              : std::uint64_t{0},
+          observed_raw_world != nullptr ? observed_raw_world->version().revision
+                                        : std::uint64_t{0},
+          sensor != nullptr ? sensor->producerInstanceId() : std::uint64_t{0},
+          sensor != nullptr ? sensor->sequence() : std::uint64_t{0},
+          sensor != nullptr ? sensor->acquisitionStampNs() : std::int64_t{0},
+          sensor != nullptr ? sensor->receiveStampNs() : std::int64_t{0},
+          policy != nullptr ? policy->contentFingerprint() : std::uint64_t{0});
     }
     return publication;
   }

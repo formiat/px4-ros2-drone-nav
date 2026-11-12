@@ -321,6 +321,21 @@ under the preparation). `at_rest` and `resident_stop_current` are not failures
 and are not logged: the vehicle is already standing, or the stop that owns it is
 still executable.
 
+The same throttled rejection line records the exact input state and previous
+control, input and pose identities and timestamps, control source and identity,
+minimum control count, raw-map and latest-sensor identities and timestamps,
+and the validation-policy fingerprint. `control_source` is the numeric
+`ExecutionPreviousControlEvidenceSource3D` enum: `1` offboard feedback, `2`
+measured acceleration, `3` assumed zero, `4` engine fallback, `0` unknown. On
+`1` the control identity is the horizon's producer, sequence and stamps. On `2`
+there is no producer and `control_sequence` carries the navigation source
+timestamp in microseconds, not an orderable sequence. On `3` it is the input's
+own capture sequence. A missing input is marked by `input_present=0`; zero
+world or sensor identity means that evidence was absent.
+The line is throttled to one per second and does not itself retain the rejected
+horizon, the matching map or scan, or prove offboard receipt. Save those inputs
+separately when reconstructing a stop.
+
 `STOP_EXECUTION completed=true speed_mps=<s> position=(x,y,z)
 action=revoke_and_hold_locally` reports that the stop has brought the vehicle to
 rest: the execution is revoked, the offboard holds the position, and the next
