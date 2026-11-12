@@ -152,14 +152,6 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
 // the 0.16 m the 0.55 m body model keeps beyond the rotor tips (0.39 m).
 constexpr double kContactDepartureSpeedMps{1.0};
 
-// An arrival's last metres fall as an exponential of this time constant. The
-// stopping law's own tail falls with its latency, 0.4 s, which is the loop's
-// lag (0.25 to 0.40 s over seven flights): asked to follow its own time
-// constant the loop carried 2.70 m/s 0.72 m short of a goal where the law read
-// 1.25, and passed its goals at 1.2 to 2.1 m/s (r3311 to r3314). Three lags.
-// A local stop is no arrival: the route goes on from it before it is reached.
-constexpr double kArrivalTailS{1.2};
-
 // The tightest speed a set of constrained samples admits: the tube law at each
 // sample, and the stopping law for what the vehicle may carry on the way to
 // it. The tightest answer wins.
@@ -516,11 +508,9 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         std::max(0.0, distance3D(input.mission_goal,
                                  Point3{input.state.x, input.state.y, input.state.z}) -
                           config.goal_margin_m);
-    result.goal_limit_mps = std::min(
-        goal_distance / kArrivalTailS,
-        stoppingLimitedSpeed(goal_distance, 0.0, along_motion.stopping_capability,
-                             along_motion.sensor_braking_contract,
-                             input.forward_acceleration_mps2));
+    result.goal_limit_mps = stoppingLimitedSpeed(
+        goal_distance, 0.0, along_motion.stopping_capability,
+        along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
   }
   if (result.route_endpoint_stop_required &&
       input.route_endpoint_remaining_m.has_value()) {
@@ -540,10 +530,6 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.route_endpoint_limit_mps = stoppingLimitedSpeed(
         route_endpoint_distance, 0.0, law_capability,
         along_motion.sensor_braking_contract, input.forward_acceleration_mps2);
-    if (input.route_endpoint_semantics == RouteEndpointSemantics3D::kMissionStop) {
-      result.route_endpoint_limit_mps = std::min(
-          result.route_endpoint_limit_mps, route_endpoint_distance / kArrivalTailS);
-    }
     // A descent stops at the lowest height the route still has to fly, where
     // the route's vertical speed is nought, wherever the distance along it or
     // in the plane stands. Read off the distance alone, a vehicle that ran
