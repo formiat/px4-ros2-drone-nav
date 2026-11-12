@@ -275,6 +275,12 @@ public:
                            const Eigen::Vector3d& sigma_m,
                            double unaided_drift_m = 0.0);
 
+  // The velocity of a fix the trust law admits, fused as the position is: a
+  // filter that flies a turn and a climb-out in the dark on its inertia alone
+  // carried 2.4 to 2.8 m/s of velocity error where the fix's own velocity was
+  // true, and then read that fix as the liar (specification K56).
+  void addAbsoluteVelocity(const Eigen::Vector3d& velocity_ned_mps, double sigma_mps);
+
   // The pair's judgment of its latest frame (specification K46): a void
   // frame, empty to the light's reach under a sound light, or not. Read at
   // the next frame while younger than 0.6 s (a few periods of the pair).

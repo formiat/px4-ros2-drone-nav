@@ -44,6 +44,8 @@ struct GnssInputDecision {
   bool fuse{false}; // the fix goes to the filter
   Eigen::Vector3d position_ned_m{Eigen::Vector3d::Zero()};
   Eigen::Vector3d sigma_m{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d velocity_ned_mps{Eigen::Vector3d::Zero()};
+  double speed_sigma_mps{0.0};
   GnssFixReading reading;
   GnssTrustVerdict verdict;
   double position_residual_m{0.0};
@@ -98,6 +100,7 @@ public:
   // A fix back at an offset beyond that drift stays rejected (return_offset,
   // 50 m, against 4 percent of the path since the outage).
   static constexpr double kUnaidedDriftShare{0.04};
+  static constexpr double kFusedSpeedSigmaFloorMps{0.5};
   [[nodiscard]] std::optional<GnssTrustVerdict> expire(std::int64_t now_ns) noexcept;
 
   // The log line of a fix: the trust's state and every reading behind it.

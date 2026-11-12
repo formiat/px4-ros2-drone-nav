@@ -38,4 +38,20 @@ void VisualInertialOdometry::addAbsolutePosition(const Eigen::Vector3d& position
   impl_->update(jacobian, residual);
 }
 
+void VisualInertialOdometry::addAbsoluteVelocity(
+    const Eigen::Vector3d& velocity_ned_mps, const double sigma_mps) {
+  if (!impl_->initialized || !velocity_ned_mps.allFinite() ||
+      !std::isfinite(sigma_mps) || !(sigma_mps > 0.0)) {
+    return;
+  }
+  Eigen::MatrixXd jacobian = Eigen::MatrixXd::Zero(3, impl_->covariance.rows());
+  Eigen::VectorXd residual{3};
+  const double weight = impl_->config.observation_noise / sigma_mps;
+  for (Eigen::Index axis = 0; axis < 3; ++axis) {
+    jacobian(axis, kVelocity + axis) = weight;
+    residual(axis) = weight * (velocity_ned_mps(axis) - impl_->velocity(axis));
+  }
+  impl_->update(jacobian, residual);
+}
+
 } // namespace drone_city_nav

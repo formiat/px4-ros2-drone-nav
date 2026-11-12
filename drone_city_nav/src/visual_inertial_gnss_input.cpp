@@ -169,6 +169,11 @@ GnssInput::fix(const GnssFixSample& sample, const bool estimator_initialized,
     const Eigen::Vector3d velocity_residual =
         sample.velocity_ned_mps - predicted->velocity_ned_mps;
     const double speed_sigma = std::max(sample.speed_sigma_mps, 0.1);
+    decision.velocity_ned_mps = sample.velocity_ned_mps;
+    // The fused velocity's sigma is no finer than half a metre a second: it
+    // bounds the filter's velocity, and leaves its fine motion to the inertia
+    // and the features.
+    decision.speed_sigma_mps = std::max(speed_sigma, kFusedSpeedSigmaFloorMps);
     decision.velocity_residual_mps = velocity_residual.norm();
     decision.reading.velocity_residual_normalised = normalised(
         velocity_residual, predicted->velocity_variance_m2ps2 +

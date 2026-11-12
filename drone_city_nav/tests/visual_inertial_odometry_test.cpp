@@ -226,6 +226,41 @@ TEST(VisualInertialOdometry, TheImuAloneCarriesTheMotionAndItsUncertaintyGrows) 
   EXPECT_GT(flight.last.position_variance_m2.x(), 1.0e-4);
 }
 
+TEST(VisualInertialOdometry, AnAbsoluteVelocityPullsTheFiltersVelocity) {
+  // A filter at rest over its features, then fixes whose velocity stands
+  // 2.5 m/s from its own: a second of them at 30 Hz moves it toward them, and
+  // not past them (the velocity the trust law reads the next fix against).
+  const VisualInertialOdometryConfig config = testConfig();
+  std::mt19937 generator{7U};
+  const std::vector<Eigen::Vector3d> points = landmarks(generator);
+  VisualInertialOdometry odometry{config};
+  odometry.initialize(0, Motion::position(0.0), 0.0);
+  std::int64_t imu_stamp = 0;
+  std::int64_t stamp = 0;
+  for (std::int64_t frame = 1; frame <= 40; ++frame) {
+    stamp = frame * kFramePeriodNs;
+    for (; imu_stamp <= stamp; imu_stamp += kImuPeriodNs) {
+      odometry.addImu(Motion::imu(imu_stamp, Eigen::Vector3d::Zero()));
+    }
+    static_cast<void>(
+        odometry.addFrame(stamp, observe(config, static_cast<double>(stamp) * 1.0e-9,
+                                         points, config.observation_noise, generator)));
+  }
+  const std::int64_t after = stamp + 1'000'000;
+  const Eigen::Vector3d before = odometry.predicted(after).velocity_ned_mps;
+  const Eigen::Vector3d fix = before + Eigen::Vector3d{2.5, 0.0, 0.0};
+  for (int count = 0; count < 30; ++count) {
+    odometry.addAbsoluteVelocity(fix, 0.5);
+  }
+  const double pulled = (odometry.predicted(after).velocity_ned_mps - before).x() / 2.5;
+  EXPECT_GT(pulled, 0.05);
+  EXPECT_LT(pulled, 1.0 + 1.0e-6);
+  // A velocity that is no number, or without a sigma, is not fused.
+  const Eigen::Vector3d held = odometry.predicted(after).velocity_ned_mps;
+  odometry.addAbsoluteVelocity(fix + Eigen::Vector3d{5.0, 0.0, 0.0}, 0.0);
+  EXPECT_NEAR((odometry.predicted(after).velocity_ned_mps - held).norm(), 0.0, 1.0e-9);
+}
+
 TEST(VisualInertialOdometry, AHoleTheFilterCannotBridgeLeavesItUnhealthy) {
   // r720, r723: a hole of seconds, and the estimate that came out of it was
   // published as healthy. A hole within the unaided timeout is bridged; one
