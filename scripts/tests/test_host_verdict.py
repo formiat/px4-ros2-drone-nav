@@ -36,6 +36,11 @@ class HostVerdictTest(unittest.TestCase):
     def test_a_starved_estimator_voids_a_flight_at_real_time(self) -> None:
         self.assertEqual([], HOST.verdict("lidar", 1.0, 1.0, 1.0, 180.0))
         self.assertTrue(HOST.verdict("lidar", 1.0, 1.0, 1.0, 900.0))
+        # r3361: two seconds of poses 430 and 447 ms old under a 95th percentile
+        # of 137 ms, the autopilot's position lost; 288 ms at most on a sound host.
+        self.assertTrue(HOST.verdict("stereo_tof", 0.82, 1.0, 1.0, 137.0, 447.0))
+        self.assertEqual([], HOST.verdict("stereo_tof", 0.82, 1.0, 1.0, 58.0, 288.0))
+        self.assertEqual(5, HOST.ESTIMATOR_START_REPORTS)
         line = ("[lidar_inertial_odometry_node]: LIDAR_INERTIAL_ODOMETRY healthy=true "
                 "published=true scan_ms=70.1 imu_lag_ms=0.0 imu_gap_max_ms=12.0 "
                 "pose_age_max_ms=164.5 imu_samples=7")

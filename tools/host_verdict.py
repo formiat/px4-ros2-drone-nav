@@ -5,7 +5,9 @@ A flight counts when the simulator kept its profile's share (0.82 at the median 
 lidar) of the real-time factor the run asked for (REAL_TIME_FACTOR in the manifest, 1.0 when absent), the resource
 sampler's one-second record has no gap of 2 s or more (a frozen host, A6), and the estimator's poses left for the
 autopilot young: a host that starves the estimator keeps the simulator at real time and still flies another vehicle
-(r1053, r1066: poses 0.7 to 1.3 s old, the autopilot's position lost, a crash). The speed is
+(r1053, r1066: poses 0.7 to 1.3 s old, the autopilot's position lost, a crash), over the flight at the 95th
+percentile and in every second of it past the estimator's start (r3361: 430 and 447 ms for two seconds, the position
+lost, a crash, under a 95th percentile of 137 ms). The speed is
 measured on the simulation clock and survives a slow host; what does not is the flight itself: a simulator slower than
 the onboard loop flies the vehicle with a faster computer than it has, and a host that stalls the loop crashes it.
 Prints "HOST valid ..." or "HOST VOID ..." per run and exits 1 when any run is void."""
@@ -22,11 +24,17 @@ MINIMUM_REAL_TIME_FACTOR_P50 = {"stereo_tof": 0.82, "lidar": 0.97}
 MAXIMUM_SAMPLER_GAP_S = 2.0
 # The oldest pose of each second of the estimator's report, at the 95th percentile over the flight.
 MAXIMUM_POSE_AGE_P95_MS = 300.0
+# And of any second past the estimator's first reports, which carry its start: of 880 flights kept on 2026-11-12 the
+# oldest pose past them was over 300 ms in the starved ones alone (385 to 797 ms; 288 ms at most in the rest), and at
+# the start in twenty sound ones (370 to 1800 ms in the reports 0 to 2).
+MAXIMUM_POSE_AGE_MS = 300.0
+ESTIMATOR_START_REPORTS = 5
 POSE_AGE_PATTERN = re.compile(r"_INERTIAL_ODOMETRY healthy=.*? pose_age_max_ms=([\d.]+)")
 
 
 def verdict(profile: str, real_time_factor_p50: float | None, largest_gap_s: float,
-            requested_factor: float = 1.0, pose_age_p95_ms: float = 0.0) -> list[str]:
+            requested_factor: float = 1.0, pose_age_p95_ms: float = 0.0,
+            pose_age_max_ms: float = 0.0) -> list[str]:
     """Why the flight does not count; empty when it does."""
     reasons = []
     floor = MINIMUM_REAL_TIME_FACTOR_P50[profile] * requested_factor
@@ -38,6 +46,8 @@ def verdict(profile: str, real_time_factor_p50: float | None, largest_gap_s: flo
         reasons.append(f"the host froze for {largest_gap_s:.1f} s")
     if pose_age_p95_ms > MAXIMUM_POSE_AGE_P95_MS:
         reasons.append(f"the estimator's poses were {pose_age_p95_ms:.0f} ms old at p95")
+    elif pose_age_max_ms > MAXIMUM_POSE_AGE_MS:
+        reasons.append(f"the estimator's oldest pose was {pose_age_max_ms:.0f} ms old")
     return reasons
 
 
@@ -62,10 +72,11 @@ def inspect(run: str) -> list[str]:
     except OSError:
         log = ""
     # An estimator that publishes nothing to the autopilot reports an age of zero.
-    ages = sorted(age for age in map(float, POSE_AGE_PATTERN.findall(log)) if age > 0.0)
+    reported = [age for age in map(float, POSE_AGE_PATTERN.findall(log)) if age > 0.0]
+    ages = sorted(reported)
     pose_age_p95_ms = ages[int(0.95 * (len(ages) - 1))] if ages else 0.0
     return verdict(profile, median, gap, float(overrides.get("REAL_TIME_FACTOR", 1.0)),
-                   pose_age_p95_ms)
+                   pose_age_p95_ms, max(reported[ESTIMATOR_START_REPORTS:], default=0.0))
 
 
 def main() -> int:
