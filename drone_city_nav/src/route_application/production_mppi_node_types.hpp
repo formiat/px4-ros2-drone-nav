@@ -99,6 +99,9 @@ struct ProductionNavigationObjective {
   std::int64_t stamp_ns{0};
   bool continuous_tracking{false};
   bool immediate_hold{false};
+  // A mission's waypoint with another after it: the vehicle leaves the goal
+  // at once and is captured where it rests past it.
+  bool leg_follows{false};
 };
 
 // One coherent objective transition. The minimum tracking-route requirement is

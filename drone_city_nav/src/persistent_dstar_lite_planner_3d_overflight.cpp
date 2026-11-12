@@ -39,13 +39,6 @@ constexpr double kStepClimbRateMps{2.5};
 // A vehicle already coming down inside the gentlest cone goes straight to the
 // descent's foot.
 constexpr double kGentlestDescentRun{4.0};
-
-// A slanted climb is also tried from this far straight up: the ground a
-// vehicle took off from closes every slant from where it stands, the first
-// leg was taken before the takeoff, climbed its whole 26 m on the spot and
-// gathered its speed at the top, 14.8 s to 100 m out against the 11.5 to
-// 13.6 s of the legs climbed along a slant (r3364, r3366).
-constexpr double kClimbStepM{3.0};
 constexpr double kDescendingMps{0.5};
 
 // The level metres flown into a goal at its height: room for the stop in the
@@ -241,36 +234,31 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
       std::optional<std::vector<Point3>> soonest;
       double soonest_s{std::numeric_limits<double>::infinity()};
       for (const double climb_run : climb_runs) {
-        for (const double step_m : {0.0, kClimbStepM}) {
-          const double climb_run_m = climb_run * (climb_m - step_m);
-          const double descent_run_m = descent_run * descent_m;
-          // A height that is not there has one slant, not three, and a climb
-          // on the spot no step.
-          if (climb_run_m + descent_run_m > run_m ||
-              (!(climb_m > 0.0) && climb_run != climb_runs.front()) ||
-              (!(descent_m > 0.0) && descent_run != descent_runs.front()) ||
-              (step_m > 0.0 && !(climb_run_m > 0.0))) {
-            continue;
+        const double climb_run_m = climb_run * climb_m;
+        const double descent_run_m = descent_run * descent_m;
+        // A height that is not there has one slant, not three.
+        if (climb_run_m + descent_run_m > run_m ||
+            (!(climb_m > 0.0) && climb_run != climb_runs.front()) ||
+            (!(descent_m > 0.0) && descent_run != descent_runs.front())) {
+          continue;
+        }
+        std::vector<Point3> path{start};
+        const auto append = [&path](const Point3& point) {
+          if (distance3D(path.back(), point) > 1.0e-6) {
+            path.push_back(point);
           }
-          std::vector<Point3> path{start};
-          const auto append = [&path](const Point3& point) {
-            if (distance3D(path.back(), point) > 1.0e-6) {
-              path.push_back(point);
-            }
-          };
-          append(Point3{start.x, start.y, start.z + step_m});
-          append(Point3{start.x + direction_x * climb_run_m,
-                        start.y + direction_y * climb_run_m, level_m});
-          append(Point3{foot.x - direction_x * descent_run_m,
-                        foot.y - direction_y * descent_run_m, level_m});
-          append(foot);
-          if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
-            const FlightPathTimeProfile3D profile = pathTimeProfile(*cleared, velocity);
-            if (const double ranked_s = lattice_.rankedPathTimeS(*cleared, profile);
-                profile.valid && ranked_s < soonest_s) {
-              soonest_s = ranked_s;
-              soonest = std::move(cleared);
-            }
+        };
+        append(Point3{start.x + direction_x * climb_run_m,
+                      start.y + direction_y * climb_run_m, level_m});
+        append(Point3{foot.x - direction_x * descent_run_m,
+                      foot.y - direction_y * descent_run_m, level_m});
+        append(foot);
+        if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
+          const FlightPathTimeProfile3D profile = pathTimeProfile(*cleared, velocity);
+          if (const double ranked_s = lattice_.rankedPathTimeS(*cleared, profile);
+              profile.valid && ranked_s < soonest_s) {
+            soonest_s = ranked_s;
+            soonest = std::move(cleared);
           }
         }
       }

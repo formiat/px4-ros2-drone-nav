@@ -216,6 +216,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                           config_.planning.configured_mission_objective_enabled ? 1U
                                                                                 : 0U,
                       .sample_sequence = 0U,
+                      .leg_follows = config_.planning.mission_waypoints.size() > 1U,
                   }),
               .minimum_tracking_route_mission_epoch = 0U,
               .minimum_tracking_route_sample_sequence = 0U,

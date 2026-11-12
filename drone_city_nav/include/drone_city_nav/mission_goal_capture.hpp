@@ -14,8 +14,10 @@ namespace drone_city_nav {
 // goal, and the goal hold then pins the vehicle where it came to rest rather
 // than at the exact goal coordinate. The approach has ended where the goal
 // limiter brings the vehicle to rest, near the goal, wherever inside the
-// radius a vehicle that came that near then rests, or where it rests
-// without getting closer: a vehicle the clearance laws slow to a crawl
+// radius a vehicle that came that near then rests when another leg follows
+// the goal (a mission's last goal is landed on where the vehicle is captured,
+// and what stands 1.6 m beside a goal is not the goal's own floor: r3368), or
+// where it rests without getting closer: a vehicle the clearance laws slow to a crawl
 // inside the radius is still approaching, and was latched 1.9 m short with
 // the estimate 2.8 m off, 4.3 m from the goal in truth (r772). Latching while still
 // moving would hand the goal to a stationary hold that cannot be certified, with no
@@ -32,6 +34,8 @@ struct MissionGoalCaptureObservation {
   Point3 mission_goal{};
   mppi::State state{};
   bool terminal_route_available{false};
+  // Another leg follows this goal: the vehicle leaves it at once.
+  bool leg_follows{false};
   std::int64_t stamp_ns{0};
 };
 

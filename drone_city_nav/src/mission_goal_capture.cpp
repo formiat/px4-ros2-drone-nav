@@ -21,7 +21,10 @@ namespace {
 // 1.2 m from them, and one resting beyond this radius was flown back to it
 // for 2 to 3 s before the capture (r3354 to r3362). So has one that moved
 // away from its goal inside the radius, faster than a rest: it passed the
-// goal, 0.87 m beside it at the nearest in r3363.
+// goal, 0.87 m beside it at the nearest in r3363. Only where another leg
+// follows: the mission's last goal is landed on where the vehicle is
+// captured, and captured 1.58 m past it the vehicle came down on what stood
+// there (r3368).
 constexpr double kApproachEndRadiusM{0.75};
 // Resting without closing this much on the goal for this long, the vehicle
 // has come as close as it will.
@@ -100,7 +103,8 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   }
   const bool approach_ended =
       resting_inside_capture_radius &&
-      (reached_approach_end_ ||
+      (result.distance_m <= kApproachEndRadiusM ||
+       (observation.leg_follows && reached_approach_end_) ||
        observation.stamp_ns - resting_closest_stamp_ns_ >= kRestingStallNs);
   if (!latched_ && observation.terminal_route_available && approach_ended) {
     latched_ = true;

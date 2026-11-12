@@ -445,6 +445,8 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 .mission_goal = request.mission_goal,
                 .state = request.navigation.state,
                 .terminal_route_available = route_reaches_mission_goal,
+                .leg_follows =
+                    request.objective != nullptr && request.objective->leg_follows,
                 .stamp_ns = request.now_ns,
             })
           : MissionGoalCaptureResult{};

@@ -357,43 +357,5 @@ TEST(PersistentDStarLitePlanner3DTest, AClimbIsAsSteepAsTheEvidenceBesideItAsks)
   EXPECT_LT(climbTopX(12), 12.0);
 }
 
-// A slant that what stands by the vehicle closes is climbed from a step
-// straight up: a vehicle on the ground behind a hedge does not climb its whole
-// height on the spot (r3364, r3366).
-TEST(PersistentDStarLitePlanner3DTest,
-     ASlantClosedWhereTheVehicleStandsIsClimbedFromAStepUp) {
-  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
-      GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
-  for (int x = 0; x < 60; ++x) {
-    for (int y = 0; y < 12; ++y) {
-      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
-    }
-  }
-  // A hedge five metres tall across the leg, a step from the vehicle: every
-  // slant from where it stands runs into it, and the level is 8 m.
-  for (int y = 0; y < 12; ++y) {
-    for (int z = 1; z < 5; ++z) {
-      ASSERT_TRUE(occupancy->setState({3, y, z}, ObservedVoxelState::kOccupied));
-    }
-  }
-  PersistentPlannerConfig3D config = testConfig();
-  config.overflight_margin_m = 3.0;
-  PersistentDStarLitePlanner3D planner{config};
-  const Point3 start{2.5, 5.5, 2.5};
-
-  const PlannerUpdate3D update =
-      planner.plan(request(start, Point3{56.5, 5.5, 2.5}, world(occupancy, 1U)));
-
-  ASSERT_TRUE(update.publishable());
-  const SpatialRouteCandidate3D& leg = candidate(update);
-  EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
-  ASSERT_GE(leg.points.size(), 4U);
-  EXPECT_NEAR(leg.points[1].x, start.x, 1.0e-9);
-  EXPECT_NEAR(leg.points[1].z, start.z + 3.0, 1.0e-9);
-  EXPECT_GT(leg.points[2].x, start.x + 1.0);
-  EXPECT_DOUBLE_EQ(leg.points[2].z, 8.0);
-  expectRawValid(leg.points, *occupancy, planner.config().physical_footprint);
-}
-
 } // namespace
 } // namespace drone_city_nav

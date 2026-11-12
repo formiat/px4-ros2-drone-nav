@@ -266,6 +266,9 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
                           .sample_sequence = 0U,
                           .stamp_ns = commit_now_ns,
                           .immediate_hold = false,
+                          .leg_follows =
+                              mission_waypoint_sequence_->activeIndex() + 1U <
+                              mission_waypoint_sequence_->waypointCount(),
                       }),
               }),
           std::memory_order_release);

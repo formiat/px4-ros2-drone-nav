@@ -96,21 +96,29 @@ TEST(MissionGoalCaptureLatchTest, AVehiclePastItsGoalIsCapturedWhereItRests) {
   mppi::State state;
   state.y = 10.0F;
   state.z = 18.0F;
-  const auto at = [&](const float x, const float vx) {
+  const auto at = [&](MissionGoalCaptureLatch& goal, const float x, const float vx,
+                      const bool leg_follows) {
     state.x = x;
     state.vx = vx;
-    return latch
+    return goal
         .update(MissionGoalCaptureObservation{
             .mission_goal = Point3{10.0, 10.0, 18.0},
             .state = state,
             .terminal_route_available = true,
+            .leg_follows = leg_follows,
             .stamp_ns = 1'000'000'000,
         })
         .latched;
   };
-  EXPECT_FALSE(at(9.7F, 2.0F));
-  EXPECT_FALSE(at(10.6F, 1.0F));
-  EXPECT_TRUE(at(11.1F, 0.1F));
+  EXPECT_FALSE(at(latch, 9.7F, 2.0F, true));
+  EXPECT_FALSE(at(latch, 10.6F, 1.0F, true));
+  EXPECT_TRUE(at(latch, 11.1F, 0.1F, true));
+  // The mission's last goal is landed on where the vehicle is captured: there
+  // the same vehicle is captured only back within the approach's end (r3368).
+  MissionGoalCaptureLatch last;
+  EXPECT_FALSE(at(last, 9.7F, 2.0F, false));
+  EXPECT_FALSE(at(last, 11.1F, 0.1F, false));
+  EXPECT_TRUE(at(last, 10.6F, 0.1F, false));
   // Past the goal 0.9 m beside it, never nearer, and at rest 1 m beyond
   // (r3363).
   MissionGoalCaptureLatch beside;
@@ -123,6 +131,7 @@ TEST(MissionGoalCaptureLatchTest, AVehiclePastItsGoalIsCapturedWhereItRests) {
             .mission_goal = Point3{10.0, 10.0, 18.0},
             .state = state,
             .terminal_route_available = true,
+            .leg_follows = true,
             .stamp_ns = 1'000'000'000,
         })
         .latched;
