@@ -325,5 +325,37 @@ TEST(PersistentDStarLitePlanner3DTest, ACaveProfilePlansNoSuchLeg) {
   EXPECT_NE(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
 }
 
+// Of the climbs that clear, the leg takes the one the time model flies
+// soonest: two to one where nothing stands beside it, steeper where a post
+// does (r3346, r3350, r3352).
+TEST(PersistentDStarLitePlanner3DTest, AClimbIsAsSteepAsTheEvidenceBesideItAsks) {
+  const auto climbTopX = [](const int post_x) {
+    auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+        GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
+    for (int x = 0; x < 60; ++x) {
+      for (int y = 0; y < 12; ++y) {
+        EXPECT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+      }
+    }
+    // A post eight metres tall a metre off the leg: the level is 11 m.
+    for (int z = 1; z < 8; ++z) {
+      EXPECT_TRUE(occupancy->setState({post_x, 6, z}, ObservedVoxelState::kOccupied));
+    }
+    PersistentPlannerConfig3D config = testConfig();
+    config.overflight_margin_m = 3.0;
+    config.clearance_ranking_weight = 1.5;
+    PersistentDStarLitePlanner3D planner{config};
+    const PlannerUpdate3D update = planner.plan(
+        request(Point3{2.5, 5.5, 2.5}, Point3{56.5, 5.5, 2.5}, world(occupancy, 1U)));
+    EXPECT_TRUE(update.publishable());
+    EXPECT_DOUBLE_EQ(highestPointZ(candidate(update).points), 11.0);
+    return candidate(update).points.at(1).x;
+  };
+  // Past the climb's top the post leaves the climb its 17 m for 8.5 m.
+  EXPECT_NEAR(climbTopX(30), 19.5, 1.0e-9);
+  // Beside the two-to-one slant, at its height: the climb is steeper.
+  EXPECT_LT(climbTopX(12), 12.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

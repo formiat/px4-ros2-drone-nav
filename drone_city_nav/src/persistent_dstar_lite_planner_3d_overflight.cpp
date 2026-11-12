@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <utility>
@@ -138,8 +139,7 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3
 // again from where the vehicle then is. Nothing is searched: with the leg held the
 // lattice searches idle.
 std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightPath(
-    const Point3& start, const Point3& goal, const double speed_mps,
-    const double descent_mps) const {
+    const Point3& start, const Point3& goal, const Vec3& velocity) const {
   if (!(config_.overflight_margin_m > 0.0) || world_.observed_occupancy == nullptr) {
     return std::nullopt;
   }
@@ -202,7 +202,7 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
         run_m <= kGentlestDescentRun * remaining_descent_m +
                      config_.minimum_horizontal_step_m) {
       for (const double descent_run :
-           slants_after(descent_mps > kDescendingMps ? kGentlestDescentRun
+           slants_after(-velocity.z > kDescendingMps ? kGentlestDescentRun
                                                      : flown_descent_run)) {
         const double descent_run_m = std::min(run_m, descent_run * remaining_descent_m);
         std::vector<Point3> path{start};
@@ -221,11 +221,18 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
     // The climb's slants: the vehicle's own first, where it is gentler.
     std::vector<double> climb_runs{kSlantRunsPerMetre.begin(),
                                    kSlantRunsPerMetre.end()};
-    if (const double flown_run = speed_mps / kStepClimbRateMps;
+    if (const double flown_run = std::hypot(velocity.x, velocity.y) / kStepClimbRateMps;
         flown_run > climb_runs.front()) {
       climb_runs.insert(climb_runs.begin(), flown_run);
     }
     for (const double descent_run : descent_runs) {
+      // Of the climbs that clear, the one the time model flies soonest: a
+      // slant beside a crown is as slow as its clearance makes it. The first
+      // that cleared, two to one, passed 0.2 m off the crowns by a goal in
+      // three flights of nine, and its climb took 10 to 13 s against 5
+      // (r3346, r3350, r3352).
+      std::optional<std::vector<Point3>> soonest;
+      double soonest_s{std::numeric_limits<double>::infinity()};
       for (const double climb_run : climb_runs) {
         const double climb_run_m = climb_run * climb_m;
         const double descent_run_m = descent_run * descent_m;
@@ -247,8 +254,16 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
                       foot.y - direction_y * descent_run_m, level_m});
         append(foot);
         if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
-          return cleared;
+          const FlightPathTimeProfile3D profile = pathTimeProfile(*cleared, velocity);
+          if (const double ranked_s = lattice_.rankedPathTimeS(*cleared, profile);
+              profile.valid && ranked_s < soonest_s) {
+            soonest_s = ranked_s;
+            soonest = std::move(cleared);
+          }
         }
+      }
+      if (soonest.has_value()) {
+        return soonest;
       }
     }
   }
@@ -266,9 +281,8 @@ bool PersistentDStarLitePlanner3DImpl::holdOverflight(
   // three times and threaded the crowns at 0.6 to 1 m/s for 12 s (r3297).
   if (const SpatialRouteCandidate3D* const held = coordinator_.incumbent();
       held != nullptr && held->source == SpatialRouteCandidateSource3D::kOverflight) {
-    if (std::optional<std::vector<Point3>> path = overflightPath(
-            request.start, exact_goal_,
-            std::hypot(request.velocity.x, request.velocity.y), -request.velocity.z)) {
+    if (std::optional<std::vector<Point3>> path =
+            overflightPath(request.start, exact_goal_, request.velocity)) {
       if (std::optional<SpatialRouteCandidate3D> again = makeCandidate(
               std::move(*path), SpatialRouteCandidateSource3D::kOverflight,
               request.velocity)) {
@@ -277,9 +291,8 @@ bool PersistentDStarLitePlanner3DImpl::holdOverflight(
     }
   }
   if (coordinator_.incumbent() == nullptr) {
-    if (std::optional<std::vector<Point3>> path = overflightPath(
-            request.start, exact_goal_,
-            std::hypot(request.velocity.x, request.velocity.y), -request.velocity.z)) {
+    if (std::optional<std::vector<Point3>> path =
+            overflightPath(request.start, exact_goal_, request.velocity)) {
       if (std::optional<SpatialRouteCandidate3D> candidate = makeCandidate(
               std::move(*path), SpatialRouteCandidateSource3D::kOverflight,
               request.velocity)) {
