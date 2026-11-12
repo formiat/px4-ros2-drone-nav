@@ -55,8 +55,8 @@ private:
   Point3 mission_goal_{};
   bool mission_initialized_{false};
   bool latched_{false};
-  // Whether the vehicle has come within the approach's end of the goal since
-  // it entered the radius.
+  // Whether the vehicle has come within the approach's end of the goal, or
+  // has moved away from the goal, since it entered the radius.
   bool reached_approach_end_{false};
   // The closest the vehicle has rested to the goal inside the radius, and
   // when it got there; unset while it moves or is outside.

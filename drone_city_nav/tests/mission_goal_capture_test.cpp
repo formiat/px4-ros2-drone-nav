@@ -111,6 +111,28 @@ TEST(MissionGoalCaptureLatchTest, AVehiclePastItsGoalIsCapturedWhereItRests) {
   EXPECT_FALSE(at(9.7F, 2.0F));
   EXPECT_FALSE(at(10.6F, 1.0F));
   EXPECT_TRUE(at(11.1F, 0.1F));
+  // Past the goal 0.9 m beside it, never nearer, and at rest 1 m beyond
+  // (r3363).
+  MissionGoalCaptureLatch beside;
+  state.y = 10.9F;
+  state.x = 10.0F;
+  state.vx = 1.0F;
+  const auto beside_at = [&] {
+    return beside
+        .update(MissionGoalCaptureObservation{
+            .mission_goal = Point3{10.0, 10.0, 18.0},
+            .state = state,
+            .terminal_route_available = true,
+            .stamp_ns = 1'000'000'000,
+        })
+        .latched;
+  };
+  EXPECT_FALSE(beside_at());
+  state.x = 10.5F;
+  EXPECT_FALSE(beside_at());
+  state.vx = 0.1F;
+  EXPECT_TRUE(beside_at());
+  state.y = 10.0F;
   // One that never came near and rests as far short is still approaching.
   MissionGoalCaptureLatch short_of_it;
   state.x = 8.9F;

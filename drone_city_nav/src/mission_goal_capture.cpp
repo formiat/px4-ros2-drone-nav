@@ -19,7 +19,9 @@ namespace {
 // approach wherever inside the radius it then rests: arriving from 13 m/s the
 // open sky's vehicle passed its goals by 0.2 to 0.4 m and rested 0.35 to
 // 1.2 m from them, and one resting beyond this radius was flown back to it
-// for 2 to 3 s before the capture (r3354 to r3362).
+// for 2 to 3 s before the capture (r3354 to r3362). So has one that moved
+// away from its goal inside the radius, faster than a rest: it passed the
+// goal, 0.87 m beside it at the nearest in r3363.
 constexpr double kApproachEndRadiusM{0.75};
 // Resting without closing this much on the goal for this long, the vehicle
 // has come as close as it will.
@@ -66,9 +68,20 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   result.speed_mps = std::hypot(std::hypot(observation.state.vx, observation.state.vy),
                                 observation.state.vz);
   const bool inside_capture_radius = result.distance_m <= config_.capture_radius_m;
+  const double receding_mps =
+      result.distance_m > 0.0
+          ? ((static_cast<double>(observation.state.x) - mission_goal_.x) *
+                 static_cast<double>(observation.state.vx) +
+             (static_cast<double>(observation.state.y) - mission_goal_.y) *
+                 static_cast<double>(observation.state.vy) +
+             (static_cast<double>(observation.state.z) - mission_goal_.z) *
+                 static_cast<double>(observation.state.vz)) /
+                result.distance_m
+          : 0.0;
   reached_approach_end_ =
       inside_capture_radius &&
-      (reached_approach_end_ || result.distance_m <= kApproachEndRadiusM);
+      (reached_approach_end_ || result.distance_m <= kApproachEndRadiusM ||
+       receding_mps > config_.stationary_speed_tolerance_mps);
   const bool resting_inside_capture_radius =
       inside_capture_radius &&
       result.speed_mps <= config_.stationary_speed_tolerance_mps;
