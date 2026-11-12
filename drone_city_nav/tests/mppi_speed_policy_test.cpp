@@ -1087,7 +1087,7 @@ TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
   const MppiSpeedPolicyResult descending = evaluateMppiSpeedPolicy(config, input);
 
   // 0.55 of the vertical guarantee: the descent's deceleration while the
-  // plane brakes too.
+  // plane brakes too; the law aims half a metre under the lowest height.
   StoppingCapability vertical = config.stopping_capability;
   vertical.maximum_commanded_horizontal_deceleration_mps2 = 0.55 * 1.4;
   vertical.guaranteed_horizontal_deceleration_mps2 = 0.55 * 1.4;
@@ -1097,7 +1097,7 @@ TEST(MppiSpeedPolicyTest, ADescentStopsAtTheRoutesLowestRemainingHeight) {
       config.sensor_braking_contract.maximum_vertical_acceleration_mps2;
   const double speed_mps = std::hypot(1.0, 4.0);
   EXPECT_NEAR(descending.route_endpoint_limit_mps,
-              stoppingLimitedSpeed(3.0, 0.0, vertical, vertical_contract, 0.0) *
+              stoppingLimitedSpeed(3.5, 0.0, vertical, vertical_contract, 0.0) *
                   speed_mps / 4.0,
               1.0e-6);
   EXPECT_LT(descending.route_endpoint_limit_mps,

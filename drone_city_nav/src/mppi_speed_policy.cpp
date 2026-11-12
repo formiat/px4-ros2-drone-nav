@@ -543,6 +543,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // flight's jitter and is not braked.
     constexpr double kCombinedBrakingShare{0.55};
     constexpr double kCombinedPlaneShare{0.6};
+    // Half a metre under that height the law still admits a descent: read at
+    // the height itself it gave nought to a vehicle under it, the reference
+    // fell to nought and came back within tenths of a second at the foot of
+    // every descent, and the speed swung from 4.2 to 2.8 to 4.9 m/s (r3316).
+    constexpr double kDescentAimUnderM{0.5};
     constexpr double kLevelDescentMps{0.3};
     const double descent_mps = -static_cast<double>(input.state.vz);
     const double speed_mps =
@@ -567,7 +572,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       StoppingCapability vertical_capability = downward.stopping_capability;
       vertical_capability.reaction_latency_s += config.reference_tracking_lag_s;
       const double descent_limit_mps = stoppingLimitedSpeed(
-          static_cast<double>(input.state.z) - lowest_z_m, 0.0,
+          static_cast<double>(input.state.z) - lowest_z_m + kDescentAimUnderM, 0.0,
           shared(vertical_capability, kCombinedBrakingShare),
           downward.sensor_braking_contract, input.vertical_forward_acceleration_mps2);
       // The thrust is one: beside a descent being arrested the motion braked at
