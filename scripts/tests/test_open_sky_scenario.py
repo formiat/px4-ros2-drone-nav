@@ -99,6 +99,8 @@ class OpenSkyScenarioTest(unittest.TestCase):
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
         self.assertIn('if flight_profile == "open_sky":\n            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)', text)
+        self.assertIn('if flight_profile == "open_sky":\n            offboard_overrides.update(OPEN_SKY_TAKEOFF)', text)
+        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_TAKEOFF"], {"takeoff_hover_s": 0.5})
         memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<double>("guaranteed_obstacle_size_m", 0.0)', memory)
         self.assertIn("2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)", memory)

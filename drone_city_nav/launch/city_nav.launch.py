@@ -39,6 +39,7 @@ from sensor_profile import (
     OPEN_SKY_LIDAR_OBSERVABILITY,
     OPEN_SKY_DYNAMICS,
     OPEN_SKY_MEMORY,
+    OPEN_SKY_TAKEOFF,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -533,6 +534,8 @@ def generate_launch_description():
                     offboard_overrides[
                         "unavailable_path_braking_acceleration_mps2"
                     ] = override
+        if flight_profile == "open_sky":
+            offboard_overrides.update(OPEN_SKY_TAKEOFF)
         vio_arguments = apply_budget_relay(  # roadmap item 36 (K53): the loop's wiring
             budget_relay.perform(context), navigation_sensors, production_mppi_parameters,
             offboard_overrides, visual_inertial_overrides, lidar_inertial_overrides,
