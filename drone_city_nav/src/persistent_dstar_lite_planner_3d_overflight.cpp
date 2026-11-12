@@ -39,6 +39,13 @@ constexpr double kStepClimbRateMps{2.5};
 // A vehicle already coming down inside the gentlest cone goes straight to the
 // descent's foot.
 constexpr double kGentlestDescentRun{4.0};
+
+// A descent's first metres along the leg are flown at half its slant: one
+// corner of the slant's whole angle, filleted over the route's 6 m, bound the
+// reference at 11.8 to 12.3 m/s by the curvature law, and the vehicle came
+// over the top of every descent at 10 m/s of its 13.5 (r3385, r3387). Two
+// corners of half the angle, their fillets apart, bind neither.
+constexpr double kDescentEaseRunM{12.0};
 constexpr double kDescendingMps{0.5};
 
 // The level metres flown into a goal at its height: room for the stop in the
@@ -233,9 +240,15 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
       // (r3346, r3350, r3352).
       std::optional<std::vector<Point3>> soonest;
       double soonest_s{std::numeric_limits<double>::infinity()};
+      // The eased top, where the descent is tall enough to hold it.
+      const double ease_drop_m =
+          descent_run > 0.0 ? kDescentEaseRunM / (2.0 * descent_run) : 0.0;
+      const bool eased = descent_run > 0.0 && descent_m > 2.0 * ease_drop_m;
+      const double slant_run_m =
+          descent_run * (descent_m - (eased ? ease_drop_m : 0.0));
+      const double descent_run_m = slant_run_m + (eased ? kDescentEaseRunM : 0.0);
       for (const double climb_run : climb_runs) {
         const double climb_run_m = climb_run * climb_m;
-        const double descent_run_m = descent_run * descent_m;
         // A height that is not there has one slant, not three.
         if (climb_run_m + descent_run_m > run_m ||
             (!(climb_m > 0.0) && climb_run != climb_runs.front()) ||
@@ -252,6 +265,10 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
                       start.y + direction_y * climb_run_m, level_m});
         append(Point3{foot.x - direction_x * descent_run_m,
                       foot.y - direction_y * descent_run_m, level_m});
+        if (eased) {
+          append(Point3{foot.x - direction_x * slant_run_m,
+                        foot.y - direction_y * slant_run_m, level_m - ease_drop_m});
+        }
         append(foot);
         if (std::optional<std::vector<Point3>> cleared = clears(std::move(path))) {
           const FlightPathTimeProfile3D profile = pathTimeProfile(*cleared, velocity);

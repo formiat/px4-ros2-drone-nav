@@ -42,14 +42,16 @@ TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemory
   EXPECT_STREQ(spatialRouteCandidateSource3DName(leg.source), "overflight");
   // The wall's top at 6 m and the margin: the climb slants at two metres a
   // metre, 13 m for its 6.5 m, and the descent at the time model's speeds, 5
-  // over 2 m/s, 13.75 m for its 5.5 m, to a metre over the goal's height 5 m
-  // short of it.
-  ASSERT_EQ(leg.points.size(), 5U);
+  // over 2 m/s, its first 12 m at half that slant (2.4 m down) and 7.75 m for
+  // the 3.1 m left, to a metre over the goal's height 5 m short of it.
+  ASSERT_EQ(leg.points.size(), 6U);
   EXPECT_DOUBLE_EQ(highestPointZ(leg.points), 9.0);
   EXPECT_NEAR(leg.points[1].x, 15.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[2].x, 37.75, 1.0e-9);
-  EXPECT_NEAR(leg.points[3].x, 51.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[3].z, goal.z + 1.0, 1.0e-9);
+  EXPECT_NEAR(leg.points[2].x, 31.75, 1.0e-9);
+  EXPECT_NEAR(leg.points[3].x, 43.75, 1.0e-9);
+  EXPECT_NEAR(leg.points[3].z, 6.6, 1.0e-9);
+  EXPECT_NEAR(leg.points[4].x, 51.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[4].z, goal.z + 1.0, 1.0e-9);
   expectRawValid(leg.points, *occupancy, planner.config().physical_footprint);
   // Nothing was searched, and nothing is left to search.
   EXPECT_EQ(update.telemetry.expansions, 0U);
@@ -155,8 +157,8 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   EXPECT_TRUE(moved.telemetry.incumbent_retained);
   const SpatialRouteCandidate3D& leg = candidate(moved);
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
-  ASSERT_EQ(leg.points.size(), 4U);
-  EXPECT_NEAR(leg.points[1].x, 37.75, 1.0e-9);
+  ASSERT_EQ(leg.points.size(), 5U);
+  EXPECT_NEAR(leg.points[1].x, 31.75, 1.0e-9);
   for (const Point3& point : leg.points) {
     EXPECT_GE(point.x, on_leg.x - 1.0e-9);
   }
@@ -234,16 +236,19 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
   config.time_model.maximum_vertical_speed_mps = 4.5;
   const Point3 goal{116.5, 5.5, 2.5};
   {
-    // At the level, 100 m before the foot: the descent's 15.5 m take 46.5 m.
+    // At the level, 100 m before the foot: the descent's 15.5 m take 52.5 m,
+    // 2 m of them over the first 12 m.
     PersistentDStarLitePlanner3D planner{config};
     PersistentPlannerRequest3D flying =
         request(Point3{11.5, 5.5, 19.0}, goal, world(occupancy, 1U));
     const PlannerUpdate3D update = planner.plan(flying);
     ASSERT_TRUE(update.publishable());
-    ASSERT_EQ(candidate(update).points.size(), 4U);
-    EXPECT_NEAR(candidate(update).points[1].x, 111.5 - 46.5, 1.0e-9);
+    ASSERT_EQ(candidate(update).points.size(), 5U);
+    EXPECT_NEAR(candidate(update).points[1].x, 111.5 - 52.5, 1.0e-9);
     EXPECT_NEAR(candidate(update).points[1].z, 19.0, 1.0e-9);
-    EXPECT_NEAR(candidate(update).points[2].x, 111.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[2].x, 111.5 - 40.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[2].z, 17.0, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[3].x, 111.5, 1.0e-9);
   }
   {
     // Half way down that descent, slowed to 6 m/s: straight to the foot, not
