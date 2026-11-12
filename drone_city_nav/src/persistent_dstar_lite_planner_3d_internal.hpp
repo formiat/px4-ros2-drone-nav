@@ -543,7 +543,8 @@ private:
   // The open sky's leg over everything the memory holds, where the profile
   // plans one and the raw world clears it (specification K76).
   [[nodiscard]] std::optional<std::vector<Point3>>
-  overflightPath(const Point3& start, const Point3& goal, double speed_mps) const;
+  overflightPath(const Point3& start, const Point3& goal, double speed_mps,
+                 double descent_mps) const;
   // Offers that leg where no route is held; whether the route held is one.
   bool holdOverflight(const PersistentPlannerRequest3D& request,
                       PlannerUpdate3D& update);

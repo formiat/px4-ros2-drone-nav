@@ -212,6 +212,52 @@ TEST(PersistentDStarLitePlanner3DTest, AHeldLegTheMemoryHasOutgrownIsTakenAgain)
   EXPECT_NEAR(candidate(step).points[1].z, 10.0, 1.0e-9);
 }
 
+// A vehicle in flight at its leg's level begins its descent as long as its
+// speed asks (13.5 m/s at 4.5 m/s of descent, three to one), and one already
+// under the level goes straight to the descent's foot, whatever its speed.
+TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 120, 12, 24});
+  for (int x = 0; x < 120; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  // A mast off the leg sets the leg's level at 19 m.
+  for (int z = 1; z < 16; ++z) {
+    ASSERT_TRUE(occupancy->setState({10, 1, z}, ObservedVoxelState::kOccupied));
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.overflight_margin_m = 3.0;
+  const Point3 goal{116.5, 5.5, 2.5};
+  {
+    // At the level, 100 m before the foot: the descent's 15.5 m take 46.5 m.
+    PersistentDStarLitePlanner3D planner{config};
+    PersistentPlannerRequest3D flying =
+        request(Point3{11.5, 5.5, 19.0}, goal, world(occupancy, 1U));
+    flying.velocity = Vec3{13.5, 0.0, 0.0};
+    const PlannerUpdate3D update = planner.plan(flying);
+    ASSERT_TRUE(update.publishable());
+    ASSERT_EQ(candidate(update).points.size(), 4U);
+    EXPECT_NEAR(candidate(update).points[1].x, 111.5 - 46.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[1].z, 19.0, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[2].x, 111.5, 1.0e-9);
+  }
+  {
+    // Half way down that descent, slowed to 6 m/s: straight to the foot, not
+    // back up to the level.
+    PersistentDStarLitePlanner3D planner{config};
+    PersistentPlannerRequest3D descending =
+        request(Point3{88.25, 5.5, 11.25}, goal, world(occupancy, 1U));
+    descending.velocity = Vec3{6.0, 0.0, -2.0};
+    const PlannerUpdate3D update = planner.plan(descending);
+    ASSERT_TRUE(update.publishable());
+    ASSERT_EQ(candidate(update).points.size(), 3U);
+    EXPECT_NEAR(candidate(update).points[1].x, 111.5, 1.0e-9);
+    EXPECT_DOUBLE_EQ(highestPointZ(candidate(update).points), 11.25);
+  }
+}
+
 TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
