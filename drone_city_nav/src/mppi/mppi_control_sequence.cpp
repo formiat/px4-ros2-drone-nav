@@ -306,25 +306,6 @@ std::vector<Control> buildGuideDirectedSeed(
 // (r3320). 1.5 s is 1.6 rad/s.
 constexpr float kStraightConnectorSettleTimeS{1.5F};
 
-// The loop flies the connector's deceleration a response lag late, by which
-// the vehicle has run on at its speed: from a command's onset to the
-// deceleration's 0.26 s, and 0.15 s more to its whole (r3357). The connector's
-// maneuver is solved for the vehicle where that lag puts it; the settling
-// gains past it hold the vehicle's own state, a lead there being more
-// velocity gain than a lagging loop bears. Solved for where it is,
-// its deceleration grew tick by tick as the vehicle fell behind it, 2.5 to
-// 5 m/s^2 commanded against 1 to 2.5 flown over a goal's last 4 m, and the
-// goals were passed at 1.3 to 2.5 m/s and returned to from 0.6 to 1.1 m past
-// them (r3354 to r3358).
-constexpr float kStraightConnectorResponseLagS{0.3F};
-
-[[nodiscard]] State ledByResponseLag(State state) noexcept {
-  state.x += kStraightConnectorResponseLagS * state.vx;
-  state.y += kStraightConnectorResponseLagS * state.vy;
-  state.z += kStraightConnectorResponseLagS * state.vz;
-  return state;
-}
-
 // Shortest duration in which the cubic connector's peak acceleration
 // (6 d / T^2 from rest), peak speed (1.5 d / T) and the deceleration of the
 // current speed along the interval fit the dynamics; never longer than the
@@ -444,9 +425,8 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
   // Stretching the maneuver over the whole horizon instead re-solves every
   // tick for "rest at the horizon end", so a vehicle near a route end would
   // creep toward it at ever smaller accelerations without reaching it.
-  const float maneuver_duration_s =
-      straightConnectorDurationS(ledByResponseLag(initial), terminal_route,
-                                 reference_speed_mps, dynamics, horizon_duration_s);
+  const float maneuver_duration_s = straightConnectorDurationS(
+      initial, terminal_route, reference_speed_mps, dynamics, horizon_duration_s);
   std::vector<Control> seed(steps);
   State predicted = initial;
   Control previous = previous_applied_control;
@@ -462,15 +442,12 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
     // geometry above.
     const float position_gain = 6.0F * inverse_remaining_s * inverse_remaining_s;
     const float velocity_gain = 4.0F * inverse_remaining_s;
-    const State led = maneuver_duration_s - elapsed_s > kStraightConnectorSettleTimeS
-                          ? ledByResponseLag(predicted)
-                          : predicted;
     seed[index] = Control{
-        .ax = position_gain * (terminal_route.x_m - led.x) -
+        .ax = position_gain * (terminal_route.x_m - predicted.x) -
               velocity_gain * predicted.vx + dynamics.linear_drag_1ps * predicted.vx,
-        .ay = position_gain * (terminal_route.y_m - led.y) -
+        .ay = position_gain * (terminal_route.y_m - predicted.y) -
               velocity_gain * predicted.vy + dynamics.linear_drag_1ps * predicted.vy,
-        .az = position_gain * (terminal_route.z_m - led.z) -
+        .az = position_gain * (terminal_route.z_m - predicted.z) -
               velocity_gain * predicted.vz + dynamics.linear_drag_1ps * predicted.vz,
         .yaw_accel = -velocity_gain * predicted.yaw_rate,
     };

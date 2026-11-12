@@ -207,9 +207,7 @@ TEST(MppiVulkanEngineParity, TheVulkanEngineRanksAndUpdatesAsTheOtherEnginesDo) 
   RecordProperty("cuda_vulkan_control_gap_mps2", std::to_string(cuda_gaps.control));
   RecordProperty("cuda_vulkan_weight_gap_relative", std::to_string(cuda_gaps.weight));
   RecordProperty("cuda_vulkan_cost_gap_relative", std::to_string(cuda_gaps.cost));
-  // 5e-5 m/s^2 as against the host since the connector is led by the response
-  // lag (specification K83, K54): 2.9e-5 on this scenario, 1.4e-6 before.
-  EXPECT_LT(cuda_gaps.control, 5.0e-5F);
+  EXPECT_LT(cuda_gaps.control, 1.0e-5F);
   EXPECT_LT(cuda_gaps.weight, 1.0e-5F);
   EXPECT_LT(cuda_gaps.cost, 1.0e-5F);
 #endif
