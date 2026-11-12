@@ -40,13 +40,14 @@ TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemory
   const SpatialRouteCandidate3D& leg = candidate(update);
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
   EXPECT_STREQ(spatialRouteCandidateSource3DName(leg.source), "overflight");
-  // The wall's top at 6 m and the margin: the climb and the descent slant at
-  // two metres a metre, 13 m for the climb's 6.5 m and 11 m for the descent's
-  // 5.5 m, to a metre over the goal's height 5 m short of it.
+  // The wall's top at 6 m and the margin: the climb slants at two metres a
+  // metre, 13 m for its 6.5 m, and the descent at the time model's speeds, 5
+  // over 2 m/s, 13.75 m for its 5.5 m, to a metre over the goal's height 5 m
+  // short of it.
   ASSERT_EQ(leg.points.size(), 5U);
   EXPECT_DOUBLE_EQ(highestPointZ(leg.points), 9.0);
   EXPECT_NEAR(leg.points[1].x, 15.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[2].x, 40.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[2].x, 37.75, 1.0e-9);
   EXPECT_NEAR(leg.points[3].x, 51.5, 1.0e-9);
   EXPECT_NEAR(leg.points[3].z, goal.z + 1.0, 1.0e-9);
   expectRawValid(leg.points, *occupancy, planner.config().physical_footprint);
@@ -141,7 +142,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   first.session_id = 1U;
   ASSERT_TRUE(planner.plan(first).publishable());
 
-  // Over the wall at the level, nine metres past the climb's top and sixteen
+  // Over the wall at the level, nine metres past the climb's top and thirteen
   // short of the descent's; a replan opens a new session, which receives the
   // rebased leg (r3288's route generations 2 and 3).
   const Point3 on_leg{24.5, 5.5, 9.0};
@@ -155,7 +156,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   const SpatialRouteCandidate3D& leg = candidate(moved);
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
   ASSERT_EQ(leg.points.size(), 4U);
-  EXPECT_NEAR(leg.points[1].x, 40.5, 1.0e-9);
+  EXPECT_NEAR(leg.points[1].x, 37.75, 1.0e-9);
   for (const Point3& point : leg.points) {
     EXPECT_GE(point.x, on_leg.x - 1.0e-9);
   }
@@ -212,9 +213,9 @@ TEST(PersistentDStarLitePlanner3DTest, AHeldLegTheMemoryHasOutgrownIsTakenAgain)
   EXPECT_NEAR(candidate(step).points[1].z, 10.0, 1.0e-9);
 }
 
-// A vehicle in flight at its leg's level begins its descent as long as its
-// speed asks (13.5 m/s at 4.5 m/s of descent, three to one), and one already
-// under the level goes straight to the descent's foot, whatever its speed.
+// A descent is as long as the leg's speed over the vehicle's speed of descent
+// asks (13.5 m/s over 4.5, three to one), and a vehicle already coming down
+// goes straight to the descent's foot.
 TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 120, 12, 24});
@@ -229,13 +230,14 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
   }
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
+  config.time_model.maximum_horizontal_speed_mps = 13.5;
+  config.time_model.maximum_vertical_speed_mps = 4.5;
   const Point3 goal{116.5, 5.5, 2.5};
   {
     // At the level, 100 m before the foot: the descent's 15.5 m take 46.5 m.
     PersistentDStarLitePlanner3D planner{config};
     PersistentPlannerRequest3D flying =
         request(Point3{11.5, 5.5, 19.0}, goal, world(occupancy, 1U));
-    flying.velocity = Vec3{13.5, 0.0, 0.0};
     const PlannerUpdate3D update = planner.plan(flying);
     ASSERT_TRUE(update.publishable());
     ASSERT_EQ(candidate(update).points.size(), 4U);

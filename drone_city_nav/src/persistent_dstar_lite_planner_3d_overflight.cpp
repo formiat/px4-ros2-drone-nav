@@ -29,14 +29,14 @@ constexpr std::array<double, 3U> kSlantRunsPerMetre{2.0, 1.0, 0.0};
 // and the vehicle slowed to 6.8 m/s for it and lost 1.6 s (r3330).
 constexpr double kStepClimbRateMps{2.5};
 
-// The vertical speed a vehicle in flight begins its descent at: the descent is
-// as long as its speed over this, no gentler than four to one, so the leg's
-// speed is carried into it. Two to one asks 6.75 m/s of descent at 13.5 m/s,
-// over the 5 m/s the vehicle descends at, and the reference fell to 9.7 m/s
-// at the top of every descent (r3338). A vehicle already coming down inside
-// the gentlest cone goes straight to the descent's foot, whatever its speed
-// has become since.
-constexpr double kDescentRateMps{4.5};
+// A descent is as long as the leg's speed over the vehicle's speed of descent
+// asks (the time model's two, 15 and 5 m/s on the open sky: three to one), no
+// gentler than four to one, so the leg's speed is carried into it. Two to one
+// asks 6.75 m/s of descent at 13.5 m/s, and the vehicle slowed to 8 to 9 m/s
+// at the top of every descent (r3338, r3342). Read from the vehicle's speed
+// when the leg is taken, the slant was two to one on every leg taken at rest.
+// A vehicle already coming down inside the gentlest cone goes straight to the
+// descent's foot.
 constexpr double kGentlestDescentRun{4.0};
 constexpr double kDescendingMps{0.5};
 
@@ -194,8 +194,9 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
       }
       return runs;
     };
-    const double flown_descent_run =
-        std::min(kGentlestDescentRun, speed_mps / kDescentRateMps);
+    const double flown_descent_run = std::min(
+        kGentlestDescentRun, config_.time_model.maximum_horizontal_speed_mps /
+                                 config_.time_model.maximum_vertical_speed_mps);
     const std::vector<double> descent_runs = slants_after(flown_descent_run);
     if (remaining_descent_m > 0.0 &&
         run_m <= kGentlestDescentRun * remaining_descent_m +
