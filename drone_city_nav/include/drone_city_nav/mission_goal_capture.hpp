@@ -13,7 +13,8 @@ namespace drone_city_nav {
 // of its approach: the capture radius is the mission's acceptance of the
 // goal, and the goal hold then pins the vehicle where it came to rest rather
 // than at the exact goal coordinate. The approach has ended where the goal
-// limiter brings the vehicle to rest, near the goal, or where it rests
+// limiter brings the vehicle to rest, near the goal, wherever inside the
+// radius a vehicle that came that near then rests, or where it rests
 // without getting closer: a vehicle the clearance laws slow to a crawl
 // inside the radius is still approaching, and was latched 1.9 m short with
 // the estimate 2.8 m off, 4.3 m from the goal in truth (r772). Latching while still
@@ -54,6 +55,9 @@ private:
   Point3 mission_goal_{};
   bool mission_initialized_{false};
   bool latched_{false};
+  // Whether the vehicle has come within the approach's end of the goal since
+  // it entered the radius.
+  bool reached_approach_end_{false};
   // The closest the vehicle has rested to the goal inside the radius, and
   // when it got there; unset while it moves or is outside.
   std::optional<double> resting_closest_m_;

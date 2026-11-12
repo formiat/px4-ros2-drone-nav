@@ -15,7 +15,11 @@ namespace {
 
 // The goal limiter brings the vehicle to rest 0.125 m before the goal; over
 // fifteen lit flights it latched 0.07 to 0.54 m from the goal by estimate
-// (r737 to r765).
+// (r737 to r765). A vehicle that came this near its goal has ended its
+// approach wherever inside the radius it then rests: arriving from 13 m/s the
+// open sky's vehicle passed its goals by 0.2 to 0.4 m and rested 0.35 to
+// 1.2 m from them, and one resting beyond this radius was flown back to it
+// for 2 to 3 s before the capture (r3354 to r3362).
 constexpr double kApproachEndRadiusM{0.75};
 // Resting without closing this much on the goal for this long, the vehicle
 // has come as close as it will.
@@ -52,6 +56,7 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
     mission_goal_ = observation.mission_goal;
     mission_initialized_ = true;
     latched_ = false;
+    reached_approach_end_ = false;
     resting_closest_m_.reset();
   }
 
@@ -61,6 +66,9 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   result.speed_mps = std::hypot(std::hypot(observation.state.vx, observation.state.vy),
                                 observation.state.vz);
   const bool inside_capture_radius = result.distance_m <= config_.capture_radius_m;
+  reached_approach_end_ =
+      inside_capture_radius &&
+      (reached_approach_end_ || result.distance_m <= kApproachEndRadiusM);
   const bool resting_inside_capture_radius =
       inside_capture_radius &&
       result.speed_mps <= config_.stationary_speed_tolerance_mps;
@@ -79,7 +87,7 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   }
   const bool approach_ended =
       resting_inside_capture_radius &&
-      (result.distance_m <= kApproachEndRadiusM ||
+      (reached_approach_end_ ||
        observation.stamp_ns - resting_closest_stamp_ns_ >= kRestingStallNs);
   if (!latched_ && observation.terminal_route_available && approach_ended) {
     latched_ = true;

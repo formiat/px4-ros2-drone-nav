@@ -89,6 +89,42 @@ TEST(MissionGoalCaptureLatchTest, LatchesAtOnceWhereTheApproachEnds) {
                   .newly_latched);
 }
 
+TEST(MissionGoalCaptureLatchTest, AVehiclePastItsGoalIsCapturedWhereItRests) {
+  // Past the goal at 2 m/s, 0.3 m from it at the nearest, and at rest 1.1 m
+  // beyond: the approach ended at the goal (r3357).
+  MissionGoalCaptureLatch latch;
+  mppi::State state;
+  state.y = 10.0F;
+  state.z = 18.0F;
+  const auto at = [&](const float x, const float vx) {
+    state.x = x;
+    state.vx = vx;
+    return latch
+        .update(MissionGoalCaptureObservation{
+            .mission_goal = Point3{10.0, 10.0, 18.0},
+            .state = state,
+            .terminal_route_available = true,
+            .stamp_ns = 1'000'000'000,
+        })
+        .latched;
+  };
+  EXPECT_FALSE(at(9.7F, 2.0F));
+  EXPECT_FALSE(at(10.6F, 1.0F));
+  EXPECT_TRUE(at(11.1F, 0.1F));
+  // One that never came near and rests as far short is still approaching.
+  MissionGoalCaptureLatch short_of_it;
+  state.x = 8.9F;
+  state.vx = 0.1F;
+  EXPECT_FALSE(short_of_it
+                   .update(MissionGoalCaptureObservation{
+                       .mission_goal = Point3{10.0, 10.0, 18.0},
+                       .state = state,
+                       .terminal_route_available = true,
+                       .stamp_ns = 1'000'000'000,
+                   })
+                   .latched);
+}
+
 TEST(MissionGoalCaptureLatchTest, ACrawlTowardTheGoalIsNoCapture) {
   // The clearance laws slow the vehicle below the rest tolerance inside the
   // radius; while it still closes on the goal the approach goes on (r772).
