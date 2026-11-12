@@ -51,6 +51,28 @@ TEST(ObstacleMemoryTransportPolicy3DTest, RebasesWhenDeltaApproachesSnapshotSize
             ObstacleMemoryTransportDecision3D::kSnapshot);
 }
 
+TEST(ObstacleMemoryTransportPolicy3DTest, AnUnchangedWorldIsPublishedAgain) {
+  ObstacleMemoryTransportPolicy3D policy;
+  policy.recordSnapshot(1U, kSecondNs);
+
+  // Scans that changed nothing: no delta to send, and the snapshot again once
+  // it is 2 s old.
+  EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
+                .now_ns = 2 * kSecondNs,
+                .revision = 11U,
+                .current_chunk_count = 100U,
+                .dirty_chunk_count = 0U,
+            }),
+            ObstacleMemoryTransportDecision3D::kNone);
+  EXPECT_EQ(policy.decide(ObstacleMemoryTransportPolicy3DInput{
+                .now_ns = 3 * kSecondNs,
+                .revision = 21U,
+                .current_chunk_count = 100U,
+                .dirty_chunk_count = 0U,
+            }),
+            ObstacleMemoryTransportDecision3D::kSnapshot);
+}
+
 TEST(ObstacleMemoryTransportPolicy3DTest, MaximumAgeEventuallyRebasesSmallDelta) {
   ObstacleMemoryTransportPolicy3D policy{
       ObstacleMemoryTransportPolicy3DConfig{10.0, 30.0, 0.75}};

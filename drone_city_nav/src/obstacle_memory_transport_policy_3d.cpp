@@ -28,13 +28,25 @@ ObstacleMemoryTransportDecision3D ObstacleMemoryTransportPolicy3D::decide(
   if (input.full_reset || base_snapshot_revision_ == 0U) {
     return ObstacleMemoryTransportDecision3D::kSnapshot;
   }
-  if (input.revision <= base_snapshot_revision_ || input.dirty_chunk_count == 0U) {
+  if (input.revision <= base_snapshot_revision_) {
     return ObstacleMemoryTransportDecision3D::kNone;
   }
 
   const std::int64_t elapsed_ns =
       std::max<std::int64_t>(0, input.now_ns - last_snapshot_ns_);
   const double elapsed_s = static_cast<double>(elapsed_ns) * 1.0e-9;
+  if (input.dirty_chunk_count == 0U) {
+    // Scans integrated since the snapshot changed nothing, and a delta of no
+    // chunk is no delta: the snapshot goes out again, so the world its
+    // consumers hold stays as young as the scans. They read one older than 5 s
+    // as lost, and a memory with nothing to change (73 m up over the open sky
+    // after a frame reset, no voxel occupied) published nothing: the mission
+    // stood until its time ran out (r3315).
+    constexpr double kUnchangedWorldPeriodS{2.0};
+    return elapsed_s >= kUnchangedWorldPeriodS
+               ? ObstacleMemoryTransportDecision3D::kSnapshot
+               : ObstacleMemoryTransportDecision3D::kNone;
+  }
   const double dirty_ratio = input.current_chunk_count == 0U
                                  ? 1.0
                                  : static_cast<double>(input.dirty_chunk_count) /
