@@ -206,6 +206,19 @@ observePassageGeometry(const WorldSnapshot3D& world, const Point3& actual_positi
   };
 }
 
+// The latest frame's cone of clear sight while the frame is no older than the
+// evidence the braking contract admits (specification K85).
+[[nodiscard]] const LatestSensorClearSight3D*
+freshClearSight(const PlanningCycleRequest3D& request,
+                const SensorBrakingContract3D& contract) noexcept {
+  const auto& frame = request.latest_sensor_evidence;
+  return frame != nullptr && frame->valid() &&
+                 static_cast<double>(request.now_ns - frame->acquisitionStampNs()) <=
+                     1.0e9 * contract.maximum_evidence_age_s
+             ? &frame->clearSight()
+             : nullptr;
+}
+
 } // namespace
 
 bool PlanningCycleRequest3D::valid() const noexcept {
@@ -290,7 +303,8 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
       request.latest_raw_world != nullptr && request.latest_raw_world->valid()
           ? &request.latest_raw_world->occupancy()
           : nullptr,
-      config_.speed_policy.guaranteed_obstacle_size_m);
+      config_.speed_policy.guaranteed_obstacle_size_m,
+      freshClearSight(request, config_.speed_policy.sensor_braking_contract));
   return clearance.available ? std::optional<ExecutedHorizonClearance3D>{clearance}
                              : std::nullopt;
 }
@@ -462,15 +476,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                     ? &request.latest_raw_world->occupancy()
                     : nullptr,
                 config_.speed_policy.guaranteed_obstacle_size_m,
-                request.latest_sensor_evidence != nullptr &&
-                        request.latest_sensor_evidence->valid() &&
-                        static_cast<double>(
-                            request.now_ns -
-                            request.latest_sensor_evidence->acquisitionStampNs()) <=
-                            1.0e9 * config_.speed_policy.sensor_braking_contract
-                                        .maximum_evidence_age_s
-                    ? &request.latest_sensor_evidence->clearSight()
-                    : nullptr)
+                freshClearSight(request, config_.speed_policy.sensor_braking_contract))
           : std::nullopt;
   // The clearance of the route ahead, read by the same tube and stopping laws
   // as the executed horizon and over the same lookahead as the scan check.

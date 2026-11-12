@@ -102,7 +102,8 @@ struct ExecutedHorizonClearance3D {
     const EsdfGrid3D& grid, std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint, double constraint_clearance_m,
     const ObservedOccupancyGrid3D* memory = nullptr,
-    double memory_obstacle_size_m = 0.0);
+    double memory_obstacle_size_m = 0.0,
+    const LatestSensorClearSight3D* sight = nullptr);
 
 // Route length from `from_station_m` to the start of the first route segment
 // whose body envelope reaches space the evidence has not observed, probing no

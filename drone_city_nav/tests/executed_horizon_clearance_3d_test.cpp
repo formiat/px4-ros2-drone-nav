@@ -570,6 +570,14 @@ TEST(ExecutedHorizonClearance3DTest,
               7.0, 1.0e-6);
   EXPECT_FALSE(clearSightCoversSegment(
       LatestSensorClearSight3D{}, route.at(3U).position, route.at(4U).position, 0.0));
+
+  // The executed horizon reads the same cone: its seen, which the field ends
+  // nine metres along it, reaches towards the cone's range.
+  const ExecutedHorizonClearance3D horizon =
+      measureExecutedHorizonClearance3D(horizonAlongX(0.5F, 20U), 0U, grid(), esdf(),
+                                        pointFootprint(), 0.1, nullptr, 0.0, &sight);
+  ASSERT_TRUE(horizon.available);
+  EXPECT_GT(horizon.distanceToUnobservedM(), 9.5);
 }
 
 } // namespace

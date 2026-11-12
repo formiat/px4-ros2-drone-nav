@@ -165,7 +165,8 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const FiniteMotionHorizon3D& horizon, const std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, const std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint, const double constraint_clearance_m,
-    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m) {
+    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m,
+    const LatestSensorClearSight3D* const sight) {
   ExecutedHorizonClearance3D result;
   if (horizon.states.size() < 2U ||
       first_remaining_state_index + 1U >= horizon.states.size() || esdf_m.empty() ||
@@ -184,7 +185,10 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     if (clearance.evidence.unknown_exposure && !result.unobserved_distance_m &&
         (memory == nullptr ||
          !memoryObservedSegment(*memory, first, second, footprint.body_radius_m,
-                                memory_obstacle_size_m))) {
+                                memory_obstacle_size_m)) &&
+        (sight == nullptr ||
+         !clearSightCoversSegment(*sight, first, second,
+                                  footprint.body_radius_m + memory_obstacle_size_m))) {
       result.unobserved_distance_m = travelled_m;
     }
     if (clearance.evidence.known_clearance_observed) {

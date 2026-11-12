@@ -386,11 +386,12 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
       "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
       " source=%zu hits=%zu surface_samples=%zu invalid=%zu "
       "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
-      " memory_scan_dropped=%s debug=%s",
+      " memory_scan_dropped=%s debug=%s clear_sight_m=%.1f",
       acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
       hit_points_body.size(), surface_samples.size(), latest.invalid_beam_count,
       acquisition_age_ms, processing_ms, alignment_coalesced_clouds_,
-      memory_scan_dropped ? "true" : "false", publish_current_cloud ? "true" : "false");
+      memory_scan_dropped ? "true" : "false", publish_current_cloud ? "true" : "false",
+      latest.clear_sight.range_m);
   return PendingPointCloudDisposition::kConsumed;
 }
 
