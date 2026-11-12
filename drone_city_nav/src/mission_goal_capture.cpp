@@ -64,6 +64,8 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   const bool resting_inside_capture_radius =
       inside_capture_radius &&
       result.speed_mps <= config_.stationary_speed_tolerance_mps &&
+      std::abs(observation.state.yaw_rate) <=
+          kStationaryExecutionHoldYawRateToleranceRadps &&
       observation.applied_acceleration_mps2 <=
           kStationaryExecutionHoldAccelerationToleranceMps2;
   if (latched_ && !inside_capture_radius) {

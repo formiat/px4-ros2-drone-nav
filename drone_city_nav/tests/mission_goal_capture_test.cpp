@@ -106,6 +106,17 @@ TEST(MissionGoalCaptureLatchTest, AVehicleStillAcceleratedIsNotAtRest) {
                        .stamp_ns = 1'000'000'000,
                    })
                    .latched);
+  // Its gaze still turning back.
+  state.yaw_rate = 0.8F;
+  EXPECT_FALSE(latch
+                   .update(MissionGoalCaptureObservation{
+                       .mission_goal = Point3{10.0, 10.0, 18.0},
+                       .state = state,
+                       .terminal_route_available = true,
+                       .stamp_ns = 1'020'000'000,
+                   })
+                   .latched);
+  state.yaw_rate = 0.25F;
   EXPECT_TRUE(latch
                   .update(MissionGoalCaptureObservation{
                       .mission_goal = Point3{10.0, 10.0, 18.0},

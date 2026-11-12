@@ -23,7 +23,9 @@ namespace drone_city_nav {
 // inside it, and a latched planner flies no route, so a vehicle that drifted out would
 // otherwise stay out with nothing left to bring it back.
 // Rest is what the goal's hold can certify: the speed within its tolerance and
-// the applied acceleration within the hold's. A vehicle turning back after
+// the yaw rate and the applied acceleration within the hold's (a gaze turning
+// back at 0.7 to 0.9 rad/s was latched at five latches of twelve, r3309, r3311
+// and r3312, and its hold refused until the lease ended). A vehicle turning back after
 // running past its goal passes through nought under 3.4 m/s^2; latched there,
 // its hold was refused for the 4 s its route's lease lasted (r3309; every one
 // of the 14 latches of r3296 to r3309 whose hold was refused as stale at the
