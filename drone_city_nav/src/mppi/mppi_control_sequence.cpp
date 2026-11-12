@@ -298,9 +298,13 @@ std::vector<Control> buildGuideDirectedSeed(
 }
 
 // Time constant of the rest-settling gains once the connector's maneuver is
-// over: gentle enough to stay stable at the control interval, firm enough to
-// hold the terminal point against drag and drift.
-constexpr float kStraightConnectorSettleTimeS{0.5F};
+// over: gentle enough for the loop that flies them, firm enough to hold the
+// terminal point against drag and drift. At 0.5 s the gains (24 /s^2 and 8 /s,
+// a natural frequency of 4.9 rad/s) were stiffer than a loop that lags 0.25 to
+// 0.40 s follows: under the jerk limit alone a return from 0.8 m did not
+// settle within the horizon, and the goals were crossed two and three times
+// (r3320). 1.5 s is 1.6 rad/s.
+constexpr float kStraightConnectorSettleTimeS{1.5F};
 
 // Shortest duration in which the cubic connector's peak acceleration
 // (6 d / T^2 from rest), peak speed (1.5 d / T) and the deceleration of the
@@ -309,18 +313,24 @@ constexpr float kStraightConnectorSettleTimeS{0.5F};
 // vehicle already faster than the requested speed never longer than the cubic
 // reaches its terminal without passing it (3 d / v).
 [[nodiscard]] float straightConnectorDurationS(const State& initial,
-                                               const RouteSample& initial_route,
                                                const RouteSample& terminal_route,
-                                               const float chord_length_m,
                                                const float reference_speed_mps,
                                                const DynamicsConfig& dynamics,
                                                const float horizon_duration_s) {
+  // The distance is the vehicle's own to the terminal, not its projection's
+  // onto the route: past a route's end the projection is the terminal itself,
+  // the distance read nought and the maneuver was given the whole horizon, a
+  // slack return under which a vehicle 0.8 m past its goal at 0.85 m/s drifted
+  // to 3.3 m from it and stood there for 2.5 s (r3320).
+  const float chord_length_m = std::hypot(
+      std::hypot(terminal_route.x_m - initial.x, terminal_route.y_m - initial.y),
+      terminal_route.z_m - initial.z);
   if (!(chord_length_m > 1.0e-3F)) {
     return horizon_duration_s;
   }
-  const float direction_x = (terminal_route.x_m - initial_route.x_m) / chord_length_m;
-  const float direction_y = (terminal_route.y_m - initial_route.y_m) / chord_length_m;
-  const float direction_z = (terminal_route.z_m - initial_route.z_m) / chord_length_m;
+  const float direction_x = (terminal_route.x_m - initial.x) / chord_length_m;
+  const float direction_y = (terminal_route.y_m - initial.y) / chord_length_m;
+  const float direction_z = (terminal_route.z_m - initial.z) / chord_length_m;
   const float horizontal_component = std::hypot(direction_x, direction_y);
   const float vertical_component = std::abs(direction_z);
   float acceleration_limit_mps2 = std::numeric_limits<float>::infinity();
@@ -415,9 +425,8 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
   // Stretching the maneuver over the whole horizon instead re-solves every
   // tick for "rest at the horizon end", so a vehicle near a route end would
   // creep toward it at ever smaller accelerations without reaching it.
-  const float maneuver_duration_s =
-      straightConnectorDurationS(initial, initial_route, terminal_route, chord_length_m,
-                                 reference_speed_mps, dynamics, horizon_duration_s);
+  const float maneuver_duration_s = straightConnectorDurationS(
+      initial, terminal_route, reference_speed_mps, dynamics, horizon_duration_s);
   std::vector<Control> seed(steps);
   State predicted = initial;
   Control previous = previous_applied_control;

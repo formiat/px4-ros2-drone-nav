@@ -241,6 +241,36 @@ TEST(MppiControlSequenceTest, AFastVehicleNearARouteEndIsNotLedPastIt) {
   EXPECT_NEAR(state.vx, 0.0F, 0.1F);
 }
 
+TEST(MppiControlSequenceTest, AVehiclePastARouteEndComesStraightBackToIt) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 2.5F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 2.5F},
+  };
+  constexpr std::size_t kSteps{80U};
+  // 0.8 m past the route's end and still leaving it at 0.85 m/s.
+  const State initial{.x = 3.3F, .vx = 0.85F};
+
+  const std::vector<Control> seed = buildFiniteRouteDirectedSeed(
+      initial, State{.x = 2.5F}, route, 2.5F, 1.3F, dynamics, kSteps, Control{});
+
+  ASSERT_EQ(seed.size(), kSteps);
+  State state = initial;
+  State after_two_and_a_half_seconds = initial;
+  for (std::size_t step = 0U; step < seed.size(); ++step) {
+    state = integrateReference(state, seed[step], dynamics);
+    if (step + 1U == 50U) {
+      after_two_and_a_half_seconds = state;
+    }
+  }
+  // Given the whole horizon the return was a slack one, still a third of a
+  // metre out by then; given the distance it is back and at rest.
+  EXPECT_NEAR(after_two_and_a_half_seconds.x, 2.5F, 0.15F);
+  EXPECT_NEAR(state.x, 2.5F, 0.1F);
+  EXPECT_NEAR(state.vx, 0.0F, 0.1F);
+}
+
 TEST(MppiControlSequenceTest, RouteDirectedSeedReachesANearRouteEndWithinTheHorizon) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.05F;
@@ -264,9 +294,10 @@ TEST(MppiControlSequenceTest, RouteDirectedSeedReachesANearRouteEndWithinTheHori
     }
   }
   // A connector stretched over the whole four-second horizon would only
-  // arrive at its very end; the shortest feasible maneuver arrives well
-  // before the horizon is half over and rests there.
-  EXPECT_LT(arrival_step, kSteps / 2U);
+  // arrive at its very end; the shortest feasible maneuver, settled at the
+  // time constant the loop follows (1.5 s), arrives within two thirds of the
+  // horizon and rests there.
+  EXPECT_LT(arrival_step, 2U * kSteps / 3U);
   EXPECT_NEAR(state.x, 2.5F, 0.1F);
   EXPECT_NEAR(state.vx, 0.0F, 0.1F);
   // The jerk limit ramps the first controls; the maneuver itself demands far
