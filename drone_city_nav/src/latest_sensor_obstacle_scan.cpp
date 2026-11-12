@@ -2,7 +2,9 @@
 
 #include "drone_city_nav/producer_instance_id.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <unordered_map>
 
 namespace drone_city_nav {
@@ -90,6 +92,30 @@ thinnedNearestReturns(const std::span<const Point3> hit_points_body_frd,
 
 std::uint64_t createLatestSensorObstacleProducerInstanceId() noexcept {
   return createProducerInstanceId(kLatestSensorProducerDomain);
+}
+
+double clearSightRangeM(const std::span<const LidarBeam3D> beams, const Vec3& axis_map,
+                        const double half_angle_rad) noexcept {
+  const double axis_norm = std::hypot(axis_map.x, axis_map.y, axis_map.z);
+  if (!(half_angle_rad > 0.0) || !(axis_norm > 1.0e-9)) {
+    return 0.0;
+  }
+  const double cosine = std::cos(half_angle_rad);
+  double range_m = std::numeric_limits<double>::infinity();
+  for (const LidarBeam3D& beam : beams) {
+    const double norm =
+        std::hypot(beam.direction_map.x, beam.direction_map.y, beam.direction_map.z);
+    if (!(norm > 1.0e-9) ||
+        (beam.direction_map.x * axis_map.x + beam.direction_map.y * axis_map.y +
+         beam.direction_map.z * axis_map.z) < cosine * norm * axis_norm) {
+      continue;
+    }
+    if (!beam.valid || !std::isfinite(beam.range_m) || !(beam.range_m > 0.0)) {
+      return 0.0;
+    }
+    range_m = std::min(range_m, beam.range_m);
+  }
+  return std::isfinite(range_m) ? range_m : 0.0;
 }
 
 } // namespace drone_city_nav

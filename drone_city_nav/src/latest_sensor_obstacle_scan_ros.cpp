@@ -45,6 +45,12 @@ msg::LatestSensorObstacleScan makeLatestSensorObstacleScanMessage(
       scan.source_beam_count, std::numeric_limits<std::uint32_t>::max()));
   message.invalid_beam_count = static_cast<std::uint32_t>(std::min<std::size_t>(
       scan.invalid_beam_count, std::numeric_limits<std::uint32_t>::max()));
+  message.clear_sight_axis_map.x = scan.clear_sight.axis_map.x;
+  message.clear_sight_axis_map.y = scan.clear_sight.axis_map.y;
+  message.clear_sight_axis_map.z = scan.clear_sight.axis_map.z;
+  message.clear_sight_half_angle_rad =
+      static_cast<float>(scan.clear_sight.half_angle_rad);
+  message.clear_sight_range_m = static_cast<float>(scan.clear_sight.range_m);
   return message;
 }
 

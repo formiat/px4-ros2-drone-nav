@@ -1,6 +1,8 @@
 #pragma once
 
+#include "drone_city_nav/latest_sensor_clear_sight_3d.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/obstacle_memory_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -25,8 +27,18 @@ struct LatestSensorObstacleScanBuildResult {
   std::vector<Point3> hit_points_body_frd;
   std::size_t source_beam_count{0U};
   std::size_t invalid_beam_count{0U};
+  LatestSensorClearSight3D clear_sight{};
   bool valid{false};
 };
+
+// The range of a frame's clear sight about `axis_map`: the nearest return of
+// the beams within `half_angle_rad` of it, a miss counting at its own range.
+// Nought when no beam lies in the cone or one of them is not valid: a beam
+// that did not answer (a dropout, the body's own shadow) saw nothing, and
+// the cone is clear only where every beam looked.
+[[nodiscard]] double clearSightRangeM(std::span<const LidarBeam3D> beams,
+                                      const Vec3& axis_map,
+                                      double half_angle_rad) noexcept;
 
 [[nodiscard]] LatestSensorObstacleScanBuildResult
 buildLatestSensorObstacleScan(const LatestSensorObstacleScanBuildInput& input);

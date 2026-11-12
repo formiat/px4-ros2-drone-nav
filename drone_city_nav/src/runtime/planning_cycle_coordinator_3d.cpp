@@ -461,7 +461,16 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 request.latest_raw_world != nullptr && request.latest_raw_world->valid()
                     ? &request.latest_raw_world->occupancy()
                     : nullptr,
-                config_.speed_policy.guaranteed_obstacle_size_m)
+                config_.speed_policy.guaranteed_obstacle_size_m,
+                request.latest_sensor_evidence != nullptr &&
+                        request.latest_sensor_evidence->valid() &&
+                        static_cast<double>(
+                            request.now_ns -
+                            request.latest_sensor_evidence->acquisitionStampNs()) <=
+                            1.0e9 * config_.speed_policy.sensor_braking_contract
+                                        .maximum_evidence_age_s
+                    ? &request.latest_sensor_evidence->clearSight()
+                    : nullptr)
           : std::nullopt;
   // The clearance of the route ahead, read by the same tube and stopping laws
   // as the executed horizon and over the same lookahead as the scan check.

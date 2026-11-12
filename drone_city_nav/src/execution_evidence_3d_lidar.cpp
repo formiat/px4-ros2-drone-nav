@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_evidence_3d.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -31,15 +32,12 @@ validLatestSensorCapture(const LatestSensorEvidenceCapture3D& capture) noexcept 
       capture.invalid_beam_count >= capture.source_beam_count ||
       capture.hit_points_map_m.size() > capture.source_beam_count ||
       capture.invalid_beam_count >
-          capture.source_beam_count - capture.hit_points_map_m.size()) {
+          capture.source_beam_count - capture.hit_points_map_m.size() ||
+      !latestSensorClearSightValid(capture.clear_sight)) {
     return false;
   }
-  for (const Point3& point : capture.hit_points_map_m) {
-    if (!finitePoint(point)) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(capture.hit_points_map_m,
+                             [](const Point3& point) { return finitePoint(point); });
 }
 
 // Cell size of the hit point index. A swept segment of the horizon reaches a
@@ -56,6 +54,14 @@ latestSensorSourceFingerprint(const LatestSensorEvidenceCapture3D& capture) noex
   hashValue(hash, static_cast<std::uint64_t>(capture.acquisition_stamp_ns));
   hashValue(hash, static_cast<std::uint64_t>(capture.source_beam_count));
   hashValue(hash, static_cast<std::uint64_t>(capture.invalid_beam_count));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.origin_map.x));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.origin_map.y));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.origin_map.z));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.axis_map.x));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.axis_map.y));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.axis_map.z));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.half_angle_rad));
+  hashValue(hash, canonicalDoubleBits(capture.clear_sight.range_m));
   hashValue(hash, static_cast<std::uint64_t>(capture.hit_points_map_m.size()));
   for (const Point3& point : capture.hit_points_map_m) {
     hashValue(hash, canonicalDoubleBits(point.x));
@@ -81,7 +87,7 @@ latestSensorFingerprint(const LatestSensorEvidenceCapture3D& capture,
 } // namespace
 
 VersionedLatestSensorEvidence3D::VersionedLatestSensorEvidence3D(
-    CaptureToken, LatestSensorEvidenceCapture3D capture)
+    CaptureToken /*token*/, LatestSensorEvidenceCapture3D capture)
     : capture_{std::move(capture)},
       indexed_hit_points_{capture_.hit_points_map_m, kLatestSensorIndexCellSizeM},
       source_content_fingerprint_{latestSensorSourceFingerprint(capture_)},
@@ -130,6 +136,11 @@ std::size_t VersionedLatestSensorEvidence3D::sourceBeamCount() const noexcept {
 
 std::size_t VersionedLatestSensorEvidence3D::invalidBeamCount() const noexcept {
   return capture_.invalid_beam_count;
+}
+
+const LatestSensorClearSight3D&
+VersionedLatestSensorEvidence3D::clearSight() const noexcept {
+  return capture_.clear_sight;
 }
 
 const std::vector<Point3>&

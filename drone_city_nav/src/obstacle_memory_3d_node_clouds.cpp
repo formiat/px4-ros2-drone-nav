@@ -319,6 +319,26 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
   latest.source_beam_count = decoded.beams.size();
   const std::size_t dynamic_filtered = cooperative_filtered;
   latest.invalid_beam_count = projection_invalid + dynamic_filtered + self_filtered;
+  // The cone of clear sight along the travel since the frame before: a vehicle
+  // that has moved less than 0.3 m has no direction to report one about.
+  constexpr double kClearSightTravelM{0.3};
+  if (const std::optional<Point3> previous_origin =
+          std::exchange(previous_scan_origin_map_, ray_origin);
+      latest_scan_clear_sight_half_angle_rad_ > 0.0 && previous_origin.has_value()) {
+    const Vec3 travel{ray_origin.x - previous_origin->x,
+                      ray_origin.y - previous_origin->y,
+                      ray_origin.z - previous_origin->z};
+    const double travel_m = std::hypot(travel.x, travel.y, travel.z);
+    if (travel_m >= kClearSightTravelM) {
+      const Vec3 axis{travel.x / travel_m, travel.y / travel_m, travel.z / travel_m};
+      latest.clear_sight = LatestSensorClearSight3D{
+          .origin_map = ray_origin,
+          .axis_map = axis,
+          .half_angle_rad = latest_scan_clear_sight_half_angle_rad_,
+          .range_m = clearSightRangeM(memory_beams, axis,
+                                      latest_scan_clear_sight_half_angle_rad_)};
+    }
+  }
   latest.valid = true;
   latest_scan_pub_->publish(makeLatestSensorObstacleScanMessage(
       latest, source_header, frame_id_, acquisition_stamp_ns,

@@ -66,6 +66,13 @@ latestSensorRawWireFingerprint(const msg::LatestSensorObstacleScan& message) noe
   }
   hashLatestSensorWireValue(hash, message.source_beam_count);
   hashLatestSensorWireValue(hash, message.invalid_beam_count);
+  hash_double(message.clear_sight_axis_map.x);
+  hash_double(message.clear_sight_axis_map.y);
+  hash_double(message.clear_sight_axis_map.z);
+  hashLatestSensorWireValue(
+      hash, std::bit_cast<std::uint32_t>(message.clear_sight_half_angle_rad));
+  hashLatestSensorWireValue(hash,
+                            std::bit_cast<std::uint32_t>(message.clear_sight_range_m));
   return hash == 0U ? 1U : hash;
 }
 
@@ -390,7 +397,19 @@ void ProductionMppiNode::onLatestSensorObstacleScan(
       .source_beam_count = message.source_beam_count,
       .invalid_beam_count = message.invalid_beam_count,
       .hit_points_map_m = {},
+      .clear_sight = {},
   };
+  // A cone the wire carries malformed is no cone; the frame's returns stand.
+  if (const LatestSensorClearSight3D sight{
+          .origin_map = frame.origin_map_m,
+          .axis_map =
+              Vec3{message.clear_sight_axis_map.x, message.clear_sight_axis_map.y,
+                   message.clear_sight_axis_map.z},
+          .half_angle_rad = static_cast<double>(message.clear_sight_half_angle_rad),
+          .range_m = static_cast<double>(message.clear_sight_range_m)};
+      latestSensorClearSightValid(sight)) {
+    capture.clear_sight = sight;
+  }
   capture.hit_points_map_m.reserve(message.hit_points_body_frd.size());
   for (const geometry_msgs::msg::Point32& point : message.hit_points_body_frd) {
     const Point3 body_point{point.x, point.y, point.z};

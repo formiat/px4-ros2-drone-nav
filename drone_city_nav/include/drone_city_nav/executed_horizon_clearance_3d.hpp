@@ -3,6 +3,7 @@
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/esdf_grid_3d.hpp"
+#include "drone_city_nav/latest_sensor_clear_sight_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/sensor_braking_contract_3d.hpp"
@@ -117,7 +118,8 @@ measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_st
                             std::span<const float> esdf_m,
                             const SweptFootprintConfig& footprint,
                             const ObservedOccupancyGrid3D* memory = nullptr,
-                            double memory_obstacle_size_m = 0.0);
+                            double memory_obstacle_size_m = 0.0,
+                            const LatestSensorClearSight3D* sight = nullptr);
 
 // How far from `origin` along `direction` the memory has observed every voxel
 // the body sweeps, probing no farther than `maximum_range_m`. The distance

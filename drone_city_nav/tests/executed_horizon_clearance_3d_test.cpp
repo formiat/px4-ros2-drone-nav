@@ -532,5 +532,45 @@ TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceIgnoresUnobservedSpace) {
   EXPECT_FALSE(clearance.unobserved());
 }
 
+TEST(ExecutedHorizonClearance3DTest,
+     TheLatestFramesClearSightReachesPastTheMemorysSeen) {
+  // The field knows the first ten metres and the memory nothing: the seen ends
+  // seven metres along the route. A frame taken at the vehicle that looked
+  // 13 m down the route through a cone of clear sight carries the seen to the
+  // last sample whose body fits inside its range: x = 14.5, twelve metres of
+  // route.
+  const std::vector<RouteSample3D> route = routeAlongX(0.5, 20U);
+  const LatestSensorClearSight3D sight{.origin_map = route.at(2U).position,
+                                       .axis_map = Vec3{1.0, 0.0, 0.0},
+                                       .half_angle_rad = 0.105,
+                                       .range_m = 13.0};
+  ASSERT_TRUE(latestSensorClearSightValid(sight));
+  EXPECT_NEAR(measureRouteObservedRange3D(route, 2.0, 30.0, grid(), esdf(),
+                                          pointFootprint(), nullptr, 0.0, &sight)
+                  .value_or(-1.0),
+              12.0, 1.0e-6);
+
+  // A body's margin about the route has to fit the cone: at 1.3 m it does not
+  // nearer than 12.4 m, which is past this frame's range.
+  SweptFootprintConfig body = pointFootprint();
+  body.body_radius_m = 0.55;
+  EXPECT_NEAR(measureRouteObservedRange3D(route, 2.0, 30.0, grid(), esdf(), body,
+                                          nullptr, 0.75, &sight)
+                  .value_or(-1.0),
+              7.0, 1.0e-6);
+
+  // A cone looking the other way, or none, changes nothing.
+  const LatestSensorClearSight3D behind{.origin_map = route.at(2U).position,
+                                        .axis_map = Vec3{-1.0, 0.0, 0.0},
+                                        .half_angle_rad = 0.105,
+                                        .range_m = 13.0};
+  EXPECT_NEAR(measureRouteObservedRange3D(route, 2.0, 30.0, grid(), esdf(),
+                                          pointFootprint(), nullptr, 0.0, &behind)
+                  .value_or(-1.0),
+              7.0, 1.0e-6);
+  EXPECT_FALSE(clearSightCoversSegment(
+      LatestSensorClearSight3D{}, route.at(3U).position, route.at(4U).position, 0.0));
+}
+
 } // namespace
 } // namespace drone_city_nav

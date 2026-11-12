@@ -194,5 +194,39 @@ TEST(LatestSensorObstacleScanTest, CreatesStableNonzeroProducerEpochValues) {
   EXPECT_NE(first, second);
 }
 
+TEST(LatestSensorObstacleScanTest,
+     ClearSightIsTheConesNearestReturnWhereEveryBeamLooked) {
+  const Vec3 axis{1.0, 0.0, 0.0};
+  // Three beams inside a cone of 6 degrees and one far outside it.
+  std::vector<LidarBeam3D> beams{
+      LidarBeam3D{.direction_map = Vec3{1.0, 0.0, 0.0}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{
+          .direction_map = Vec3{1.0, 0.05, 0.0}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{
+          .direction_map = Vec3{1.0, 0.0, -0.05}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{.direction_map = Vec3{0.0, 1.0, 0.0},
+                  .range_m = 4.0,
+                  .hit = true,
+                  .valid = true},
+  };
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.105), 35.0);
+
+  // A return inside the cone ends the clear sight at its range.
+  beams.at(1).hit = true;
+  beams.at(1).range_m = 20.0;
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.105), 20.0);
+
+  // A beam that did not answer saw nothing: no cone.
+  beams.at(2).valid = false;
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.105), 0.0);
+
+  // One outside the cone takes nothing from it, and an empty cone is none.
+  beams.at(2).valid = true;
+  beams.at(3).valid = false;
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.105), 20.0);
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, Vec3{0.0, 0.0, 1.0}, 0.105), 0.0);
+  EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.0), 0.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

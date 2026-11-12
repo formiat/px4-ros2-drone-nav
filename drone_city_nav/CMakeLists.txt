@@ -336,6 +336,7 @@ add_drone_city_nav_layer(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_obstacle_distance_3d.cpp
+  src/latest_sensor_clear_sight_3d.cpp
   src/latest_sensor_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_beam_observation.cpp
@@ -583,6 +584,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
     include/drone_city_nav/grid_config.hpp
     include/drone_city_nav/grid_overlay.hpp
     include/drone_city_nav/known_obstacle_distance_3d.hpp
+    include/drone_city_nav/latest_sensor_clear_sight_3d.hpp
     include/drone_city_nav/latest_sensor_obstacle_scan.hpp
     include/drone_city_nav/lidar_acquisition_pose.hpp
     include/drone_city_nav/lidar_beam_observation.hpp

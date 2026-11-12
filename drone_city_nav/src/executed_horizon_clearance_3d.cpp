@@ -285,7 +285,8 @@ std::optional<double> measureRouteObservedRange3D(
     const std::span<const RouteSample3D> route, const double from_station_m,
     const double lookahead_m, const EsdfGrid3D& grid,
     const std::span<const float> esdf_m, const SweptFootprintConfig& footprint,
-    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m) {
+    const ObservedOccupancyGrid3D* const memory, const double memory_obstacle_size_m,
+    const LatestSensorClearSight3D* const sight) {
   if (route.size() < 2U || !std::isfinite(from_station_m) ||
       !std::isfinite(lookahead_m) || !(lookahead_m > 0.0) || esdf_m.empty()) {
     return std::nullopt;
@@ -302,7 +303,13 @@ std::optional<double> measureRouteObservedRange3D(
     if (clearance.evidence.unknown_exposure &&
         (memory == nullptr ||
          !memoryObservedSegment(*memory, previous, sample.position,
-                                footprint.body_radius_m, memory_obstacle_size_m))) {
+                                footprint.body_radius_m, memory_obstacle_size_m)) &&
+        // What the memory has not been handed yet the latest frame may have
+        // looked through: its scans reach the memory 0.74 s old, and the seen
+        // stood 22 to 27 m ahead of a lidar that sees 35 m (r3324, r3325).
+        (sight == nullptr ||
+         !clearSightCoversSegment(*sight, previous, sample.position,
+                                  footprint.body_radius_m + memory_obstacle_size_m))) {
       return std::max(0.0, previous_station_m - from_station_m);
     }
     if (sample.station_m >= end_station_m) {

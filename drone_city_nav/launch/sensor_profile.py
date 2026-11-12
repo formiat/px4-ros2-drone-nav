@@ -133,6 +133,10 @@ OPEN_SKY_MEMORY = {
     "grid_depth_m": 56.0,
     "integration_threads": 4,
     "obstacle_memory_3d_transport_rate_hz": 5.0,
+    # The cone of clear sight a frame reports along the travel (K85): 6 degrees
+    # hold a body and the promised obstacle (1.3 m) about a straight route from
+    # 12.4 m out, where the memory's own seen still stands.
+    "latest_scan_clear_sight_half_angle_rad": 0.105,
 }
 
 # The open sky's vertical dynamics (V3): the vertical acceleration the horizon

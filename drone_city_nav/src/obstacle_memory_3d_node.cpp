@@ -412,6 +412,8 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
         cloud_subscription_options);
   }
 
+  latest_scan_clear_sight_half_angle_rad_ =
+      declare_parameter<double>("latest_scan_clear_sight_half_angle_rad", 0.0);
   latest_scan_pub_ = create_publisher<msg::LatestSensorObstacleScan>(
       declare_parameter<std::string>("latest_sensor_obstacle_scan_topic",
                                      "/drone_city_nav/latest_sensor_obstacle_scan"),
