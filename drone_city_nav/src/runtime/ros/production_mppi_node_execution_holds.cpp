@@ -231,6 +231,24 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       return completed;
     }
   }
+  // At a captured goal the route's horizon is finished the same way once the
+  // vehicle rests: the hold's transfer was refused through it (it still
+  // commanded motion, or the gaze still turned), and left to its lease of 4 s
+  // the capture waited 5.2 to 7.7 s of the wall clock at every goal (r3317;
+  // 1.3 s where the transfer was not refused). Revoked, the vehicle is held
+  // where it stands and the capture's hold is armed from the revoked plan.
+  if (mission_goal_hold && cycle.route.execution.source_snapshot != nullptr &&
+      cycle.route.execution.source_snapshot->finiteExecution() != nullptr &&
+      vehicleAtRest(cycle.evidence.exact_initial_state)) {
+    ProductionMppiExecutionPublication finished = publishExecutionRevocation(
+        reason, cycle.controller.now_ns, /*physical_route_invalidation=*/true);
+    if (finished.published) {
+      RCLCPP_INFO(
+          get_logger(),
+          "GOAL_CAPTURE route_horizon_revoked=true action=hold_locally_and_rearm");
+      return finished;
+    }
+  }
   bool retention_physically_rejected{false};
   bool resident_trajectory_clear{false};
   // At the mission goal the route is finished: re-leasing its finite path
@@ -399,7 +417,7 @@ ProductionMppiNode::publishRestHold(const ProductionMppiExecutionCycle& cycle,
   // all the same gives way to the measured rest.
   rest_hold_anchor_.release();
   static_cast<void>(rest_hold_anchor_.acquire(measured_rest));
-  Point3 rest_position = *rest_hold_anchor_.pin();
+  Point3 rest_position = rest_hold_anchor_.pin().value_or(measured_rest);
   // A plan that owns nothing has no resident evidence an explicit transfer
   // could certify the hold against; the rest hold on such a plan is the
   // stationary rearm, from the input the planning tick labelled for it.
