@@ -543,11 +543,16 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // flight's jitter and is not braked.
     constexpr double kCombinedBrakingShare{0.55};
     constexpr double kCombinedPlaneShare{0.6};
-    // Half a metre under that height the law still admits a descent: read at
-    // the height itself it gave nought to a vehicle under it, the reference
-    // fell to nought and came back within tenths of a second at the foot of
-    // every descent, and the speed swung from 4.2 to 2.8 to 4.9 m/s (r3316).
-    constexpr double kDescentAimUnderM{0.5};
+    // At that height and under it the law still admits the descent a quarter
+    // of a metre stops: read at the height itself it gave nought to a vehicle
+    // under it, the reference fell to nought and came back within tenths of a
+    // second at the foot of every descent, and the speed swung from 4.2 to
+    // 2.8 to 4.9 m/s (r3316). Aimed half a metre under the height instead,
+    // the descents ended there and further: 0.1 to 0.5 m under their goals
+    // off a three to one slant and 1.2 m off a one to one, and the climb back
+    // at 0.3 to 1 m/s kept the vehicle from rest for 1 to 3 s at a goal
+    // (r3363 to r3379).
+    constexpr double kDescentFloorM{0.25};
     constexpr double kLevelDescentMps{0.3};
     const double descent_mps = -static_cast<double>(input.state.vz);
     const double speed_mps =
@@ -572,8 +577,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       StoppingCapability vertical_capability = downward.stopping_capability;
       vertical_capability.reaction_latency_s += config.reference_tracking_lag_s;
       const double descent_limit_mps = stoppingLimitedSpeed(
-          static_cast<double>(input.state.z) - lowest_z_m + kDescentAimUnderM, 0.0,
-          shared(vertical_capability, kCombinedBrakingShare),
+          std::max(static_cast<double>(input.state.z) - lowest_z_m, kDescentFloorM),
+          0.0, shared(vertical_capability, kCombinedBrakingShare),
           downward.sensor_braking_contract, input.vertical_forward_acceleration_mps2);
       // The thrust is one: beside a descent being arrested the motion braked at
       // 2.6 to 3.9 m/s^2 of the 5 its law charged, and the goals were passed at
