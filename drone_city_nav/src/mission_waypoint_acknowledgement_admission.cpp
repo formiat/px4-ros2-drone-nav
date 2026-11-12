@@ -8,6 +8,11 @@
 namespace drone_city_nav {
 namespace {
 
+// Two nodes read the simulation's clock a step apart: an acknowledgement was
+// received 4 ms before it was stamped, rejected for it, and its waypoint's
+// arrival went unlogged (r3323, one flight of sixty). Five steps of 4 ms.
+constexpr std::int64_t kNodeClockStepToleranceNs{20'000'000};
+
 [[nodiscard]] std::uint64_t canonicalDoubleBits(const double value) noexcept {
   if (value == 0.0) {
     return 0U;
@@ -60,7 +65,7 @@ sameAcknowledgement(const MissionWaypointAcknowledgementCandidate& first,
 prospectiveIdentityIndex(const MissionWaypointAcknowledgementAdmissionState& state,
                          const std::uint64_t producer_instance_id) noexcept {
   for (std::size_t index = 0U; index < state.prospective_identity_count; ++index) {
-    if (state.prospective_identity_claims[index].candidate.producer_instance_id ==
+    if (state.prospective_identity_claims.at(index).candidate.producer_instance_id ==
         producer_instance_id) {
       return index;
     }
@@ -96,12 +101,12 @@ void eraseProspectiveIdentity(MissionWaypointAcknowledgementAdmissionState& stat
                               const std::size_t erased_index) noexcept {
   for (std::size_t index = erased_index + 1U; index < state.prospective_identity_count;
        ++index) {
-    state.prospective_identity_claims[index - 1U] =
-        state.prospective_identity_claims[index];
+    state.prospective_identity_claims.at(index - 1U) =
+        state.prospective_identity_claims.at(index);
   }
   if (state.prospective_identity_count > 0U) {
     --state.prospective_identity_count;
-    state.prospective_identity_claims[state.prospective_identity_count] = {};
+    state.prospective_identity_claims.at(state.prospective_identity_count) = {};
   }
 }
 
@@ -183,7 +188,8 @@ bool MissionWaypointAcknowledgementCandidate::identityValid() const noexcept {
         active_waypoint_index == completed_waypoint_count));
   return identityClaimable() && horizon_producer_instance_id == producer_instance_id &&
          horizon_sequence != 0U && offboard_producer_instance_id != 0U &&
-         source_stamp_ns > 0 && receive_stamp_ns >= source_stamp_ns &&
+         source_stamp_ns > 0 &&
+         receive_stamp_ns + kNodeClockStepToleranceNs >= source_stamp_ns &&
          horizon_valid_from_ns > 0 && horizon_valid_until_ns > horizon_valid_from_ns &&
          source_stamp_ns >= horizon_valid_from_ns &&
          source_stamp_ns < horizon_valid_until_ns &&
@@ -233,19 +239,19 @@ bool MissionWaypointAcknowledgementAdmissionState::valid() const noexcept {
     return false;
   }
   for (std::size_t index = 0U; index < retired_producer_count; ++index) {
-    const std::uint64_t retired = retired_producer_instance_ids[index];
+    const std::uint64_t retired = retired_producer_instance_ids.at(index);
     if (retired == 0U || retired == current.producer_instance_id) {
       return false;
     }
     for (std::size_t prior = 0U; prior < index; ++prior) {
-      if (retired_producer_instance_ids[prior] == retired) {
+      if (retired_producer_instance_ids.at(prior) == retired) {
         return false;
       }
     }
   }
   for (std::size_t index = retired_producer_count;
        index < retired_producer_instance_ids.size(); ++index) {
-    if (retired_producer_instance_ids[index] != 0U) {
+    if (retired_producer_instance_ids.at(index) != 0U) {
       return false;
     }
   }
@@ -256,14 +262,14 @@ bool MissionWaypointAcknowledgementAdmissionState::valid() const noexcept {
   }
   for (std::size_t index = 0U; index < prospective_identity_count; ++index) {
     const MissionWaypointProspectiveIdentityClaim& claim =
-        prospective_identity_claims[index];
+        prospective_identity_claims.at(index);
     if (!claim.valid() ||
         claim.candidate.producer_instance_id == current.producer_instance_id ||
         producerRetired(claim.candidate.producer_instance_id)) {
       return false;
     }
     for (std::size_t prior = 0U; prior < index; ++prior) {
-      if (prospective_identity_claims[prior].candidate.producer_instance_id ==
+      if (prospective_identity_claims.at(prior).candidate.producer_instance_id ==
           claim.candidate.producer_instance_id) {
         return false;
       }
@@ -271,7 +277,7 @@ bool MissionWaypointAcknowledgementAdmissionState::valid() const noexcept {
   }
   for (std::size_t index = prospective_identity_count;
        index < prospective_identity_claims.size(); ++index) {
-    if (!prospective_identity_claims[index].empty()) {
+    if (!prospective_identity_claims.at(index).empty()) {
       return false;
     }
   }
@@ -283,8 +289,8 @@ bool MissionWaypointAcknowledgementAdmissionState::producerRetired(
   if (retired_producer_count > retired_producer_instance_ids.size()) {
     return false;
   }
-  const auto retired_end = retired_producer_instance_ids.begin() +
-                           static_cast<std::ptrdiff_t>(retired_producer_count);
+  const auto* const retired_end = retired_producer_instance_ids.begin() +
+                                  static_cast<std::ptrdiff_t>(retired_producer_count);
   return producer_instance_id != 0U &&
          std::find(retired_producer_instance_ids.begin(), retired_end,
                    producer_instance_id) != retired_end;
@@ -367,7 +373,7 @@ MissionWaypointAcknowledgementAdmissionResult admitMissionWaypointAcknowledgemen
   bool prospective_temporal_progress{true};
   if (prospective_index.has_value()) {
     MissionWaypointProspectiveIdentityClaim& claim =
-        result.next_state.prospective_identity_claims[*prospective_index];
+        result.next_state.prospective_identity_claims.at(*prospective_index);
     if (candidate.acknowledgement_sequence < claim.candidate.acknowledgement_sequence) {
       result.stale = true;
       return result;
@@ -408,7 +414,7 @@ MissionWaypointAcknowledgementAdmissionResult admitMissionWaypointAcknowledgemen
       return result;
     }
     prospective_index = state.prospective_identity_count;
-    result.next_state.prospective_identity_claims[*prospective_index] =
+    result.next_state.prospective_identity_claims.at(*prospective_index) =
         makeProspectiveClaim(candidate);
     ++result.next_state.prospective_identity_count;
     result.state_advanced = true;
@@ -439,9 +445,8 @@ MissionWaypointAcknowledgementAdmissionResult admitMissionWaypointAcknowledgemen
     return result;
   }
 
-  result.next_state
-      .retired_producer_instance_ids[result.next_state.retired_producer_count] =
-      state.current.producer_instance_id;
+  result.next_state.retired_producer_instance_ids.at(
+      result.next_state.retired_producer_count) = state.current.producer_instance_id;
   ++result.next_state.retired_producer_count;
   installCurrentIdentity(result.next_state, candidate);
   eraseProspectiveIdentity(result.next_state, *prospective_index);

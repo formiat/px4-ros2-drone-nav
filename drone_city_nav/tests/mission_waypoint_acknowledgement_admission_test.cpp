@@ -52,6 +52,21 @@ acknowledgement(const std::uint64_t producer = 11U, const std::uint64_t sequence
 }
 
 TEST(MissionWaypointAcknowledgementAdmissionTest,
+     AReceiversClockAStepBehindTheSendersIsNoRejection) {
+  // Received 4 ms before it was stamped: the two nodes read the simulation's
+  // clock a step apart.
+  EXPECT_TRUE(
+      admitMissionWaypointAcknowledgement(
+          {}, acknowledgement(11U, 1U, 1U, 0U, 4'000'000'000LL, 3'996'000'000LL))
+          .accept);
+  // Half a second before is no clock step.
+  EXPECT_FALSE(
+      admitMissionWaypointAcknowledgement(
+          {}, acknowledgement(11U, 1U, 1U, 0U, 4'000'000'000LL, 3'500'000'000LL))
+          .accept);
+}
+
+TEST(MissionWaypointAcknowledgementAdmissionTest,
      ReplaysExactlyOnceAndRejectsReorderedSequence) {
   const MissionWaypointAcknowledgementCandidate second =
       acknowledgement(11U, 3U, 2U, 1U, 5'000'000'000LL, 5'010'000'000LL);
