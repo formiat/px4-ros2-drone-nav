@@ -211,6 +211,36 @@ TEST(MppiControlSequenceTest, RouteSeedTracksThreeDimensionalTangentVelocity) {
   EXPECT_GT(seed.front().az, 1.0F);
 }
 
+TEST(MppiControlSequenceTest, AFastVehicleNearARouteEndIsNotLedPastIt) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 2.5F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 2.5F},
+  };
+  constexpr std::size_t kSteps{80U};
+  // A metre short of the route's end at 2 m/s and braking, under a reference
+  // of 0.6 m/s: the maneuver's speed asks for 2.5 s, the vehicle's for 1.5 s.
+  const State initial{.x = 1.5F, .vx = 2.0F};
+
+  const std::vector<Control> seed =
+      buildFiniteRouteDirectedSeed(initial, State{.x = 2.5F}, route, 1.5F, 0.6F,
+                                   dynamics, kSteps, Control{.ax = -2.0F});
+
+  ASSERT_EQ(seed.size(), kSteps);
+  State state = initial;
+  float farthest_x = state.x;
+  for (const Control& control : seed) {
+    state = integrateReference(state, control, dynamics);
+    farthest_x = std::max(farthest_x, state.x);
+  }
+  // Given 2.5 s the cubic ran 0.14 m past the end and came back; given three
+  // distances over the speed it stops there.
+  EXPECT_LT(farthest_x, 2.5F + 0.05F) << "final x " << state.x << " vx " << state.vx;
+  EXPECT_NEAR(state.x, 2.5F, 0.1F);
+  EXPECT_NEAR(state.vx, 0.0F, 0.1F);
+}
+
 TEST(MppiControlSequenceTest, RouteDirectedSeedReachesANearRouteEndWithinTheHorizon) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.05F;

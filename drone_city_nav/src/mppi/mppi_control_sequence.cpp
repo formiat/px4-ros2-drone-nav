@@ -305,7 +305,9 @@ constexpr float kStraightConnectorSettleTimeS{0.5F};
 // Shortest duration in which the cubic connector's peak acceleration
 // (6 d / T^2 from rest), peak speed (1.5 d / T) and the deceleration of the
 // current speed along the interval fit the dynamics; never longer than the
-// horizon, so a distant terminal keeps the whole horizon as before.
+// horizon, so a distant terminal keeps the whole horizon as before, and for a
+// vehicle already faster than the requested speed never longer than the cubic
+// reaches its terminal without passing it (3 d / v).
 [[nodiscard]] float straightConnectorDurationS(const State& initial,
                                                const RouteSample& initial_route,
                                                const RouteSample& terminal_route,
@@ -347,7 +349,17 @@ constexpr float kStraightConnectorSettleTimeS{0.5F};
       std::max(0.0F, initial.vx * direction_x + initial.vy * direction_y +
                          initial.vz * direction_z);
   const float stopping_bound_s = speed_along_mps / acceleration_limit_mps2;
-  return std::clamp(std::max({acceleration_bound_s, speed_bound_s, stopping_bound_s}),
+  // A vehicle that carries more speed along the interval than the maneuver
+  // asks for is given no longer than three distances over that speed: over a
+  // longer duration the cubic runs past its terminal and comes back to it.
+  // A goal 1 m ahead of a vehicle at 2 m/s under a reference near nought was
+  // given the whole horizon, 4 s, and a path half a metre past the goal: the
+  // goals of r3311 to r3318 were passed at 1.2 to 2.7 m/s and returned to.
+  const float monotone_bound_s = speed_along_mps > 1.0e-3F
+                                     ? 3.0F * chord_length_m / speed_along_mps
+                                     : horizon_duration_s;
+  return std::clamp(std::max({acceleration_bound_s, stopping_bound_s,
+                              std::min(speed_bound_s, monotone_bound_s)}),
                     2.0F * dynamics.dt_s, horizon_duration_s);
 }
 
