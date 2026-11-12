@@ -536,12 +536,17 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // past its route's corner and came down beside the goal kept 4 to 7 m/s of
     // the goal law while it passed the goal's height, and r3294 struck the
     // ground 6.7 m under it. The deceleration is the one a descent is flown at
-    // while the plane brakes too, 0.55 of the vertical guarantee: 0.7 to
-    // 0.8 m/s^2 against the guarantee's 1.4 (r3272, r3291, r3305), and read at
-    // the whole of it the descents reached their feet at 2.4 to 2.8 m/s and
-    // ran 1.2 to 3 m under them. A descent slower than 0.3 m/s is a level
-    // flight's jitter and is not braked.
-    constexpr double kCombinedBrakingShare{0.55};
+    // while the plane brakes too, 0.8 of the vertical guarantee. Beside a plane
+    // charged its whole 5 m/s^2 the descents were arrested at 0.7 to 0.8 m/s^2
+    // of the guarantee's 1.4 (r3272, r3291, r3305), and read at the whole of
+    // it they reached their feet at 2.4 to 2.8 m/s and ran 1.2 to 3 m under
+    // them. Since the plane is charged 0.6 of its deceleration on a descent
+    // the thrust leaves the descent 2.2 m/s^2 beside it, and the 0.55 kept
+    // from before was the law's binding part over the last 45 m of every
+    // descent, 9.9 m/s where the plane's law read 13.2 (r3382, r3385). A
+    // descent slower than 0.3 m/s is a level flight's jitter and is not
+    // braked.
+    constexpr double kCombinedBrakingShare{0.8};
     constexpr double kCombinedPlaneShare{0.6};
     // At that height and under it the law still admits the descent a quarter
     // of a metre stops: read at the height itself it gave nought to a vehicle
