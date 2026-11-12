@@ -42,16 +42,17 @@ TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemory
   EXPECT_STREQ(spatialRouteCandidateSource3DName(leg.source), "overflight");
   // The wall's top at 6 m and the margin: the climb slants at two metres a
   // metre, 13 m for its 6.5 m, and the descent at the time model's speeds, 5
-  // over 2 m/s, its first 12 m at half that slant (2.4 m down) and 7.75 m for
-  // the 3.1 m left, to a metre over the goal's height 5 m short of it.
+  // over 2 m/s, its first 12 m at half that slant (2.4 m down) and 6.5 m for
+  // the 2.6 m left, to a metre and a half over the goal's height 5 m short of
+  // it.
   ASSERT_EQ(leg.points.size(), 6U);
   EXPECT_DOUBLE_EQ(highestPointZ(leg.points), 9.0);
   EXPECT_NEAR(leg.points[1].x, 15.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[2].x, 31.75, 1.0e-9);
-  EXPECT_NEAR(leg.points[3].x, 43.75, 1.0e-9);
+  EXPECT_NEAR(leg.points[2].x, 33.0, 1.0e-9);
+  EXPECT_NEAR(leg.points[3].x, 45.0, 1.0e-9);
   EXPECT_NEAR(leg.points[3].z, 6.6, 1.0e-9);
   EXPECT_NEAR(leg.points[4].x, 51.5, 1.0e-9);
-  EXPECT_NEAR(leg.points[4].z, goal.z + 1.0, 1.0e-9);
+  EXPECT_NEAR(leg.points[4].z, goal.z + 1.5, 1.0e-9);
   expectRawValid(leg.points, *occupancy, planner.config().physical_footprint);
   // Nothing was searched, and nothing is left to search.
   EXPECT_EQ(update.telemetry.expansions, 0U);
@@ -96,11 +97,12 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
         planner.plan(request(start, goal, world(occupancy, 1U)));
     ASSERT_TRUE(update.publishable());
     EXPECT_EQ(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
-    // 16 m out and 9.5 m up: inside the two-to-one cone, the straight line to
-    // the level approach's foot 5 m short of the goal, and the approach.
+    // 16 m out and 9.5 m up, 11 m and 8 m from the foot: inside the cone, the
+    // straight line to the approach's foot 5 m short of the goal, and the
+    // approach.
     ASSERT_EQ(candidate(update).points.size(), 3U);
     EXPECT_NEAR(candidate(update).points[1].x, 51.5, 1.0e-9);
-    EXPECT_NEAR(candidate(update).points[1].z, goal.z + 1.0, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[1].z, goal.z + 1.5, 1.0e-9);
   }
   // A crown on that line: level at 12 m, then down where it clears, over the
   // crown.
@@ -114,7 +116,7 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
   ASSERT_GE(descent.points.size(), 4U);
   const Point3& foot = descent.points[descent.points.size() - 2U];
   EXPECT_NEAR(foot.x, 51.5, 1.0e-9);
-  EXPECT_NEAR(foot.z, goal.z + 1.0, 1.0e-9);
+  EXPECT_NEAR(foot.z, goal.z + 1.5, 1.0e-9);
   EXPECT_DOUBLE_EQ(highestPointZ(descent.points), 12.0);
   expectRawValid(descent.points, *crown, planner.config().physical_footprint);
 }
@@ -158,7 +160,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
   const SpatialRouteCandidate3D& leg = candidate(moved);
   EXPECT_EQ(leg.source, SpatialRouteCandidateSource3D::kOverflight);
   ASSERT_EQ(leg.points.size(), 5U);
-  EXPECT_NEAR(leg.points[1].x, 31.75, 1.0e-9);
+  EXPECT_NEAR(leg.points[1].x, 33.0, 1.0e-9);
   for (const Point3& point : leg.points) {
     EXPECT_GE(point.x, on_leg.x - 1.0e-9);
   }
@@ -236,17 +238,17 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
   config.time_model.maximum_vertical_speed_mps = 4.5;
   const Point3 goal{116.5, 5.5, 2.5};
   {
-    // At the level, 100 m before the foot: the descent's 15.5 m take 52.5 m,
-    // 2 m of them over the first 12 m.
+    // At the level, 100 m before the foot: the descent's 15 m take 51 m, 2 m
+    // of them over the first 12 m.
     PersistentDStarLitePlanner3D planner{config};
     PersistentPlannerRequest3D flying =
         request(Point3{11.5, 5.5, 19.0}, goal, world(occupancy, 1U));
     const PlannerUpdate3D update = planner.plan(flying);
     ASSERT_TRUE(update.publishable());
     ASSERT_EQ(candidate(update).points.size(), 5U);
-    EXPECT_NEAR(candidate(update).points[1].x, 111.5 - 52.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[1].x, 111.5 - 51.0, 1.0e-9);
     EXPECT_NEAR(candidate(update).points[1].z, 19.0, 1.0e-9);
-    EXPECT_NEAR(candidate(update).points[2].x, 111.5 - 40.5, 1.0e-9);
+    EXPECT_NEAR(candidate(update).points[2].x, 111.5 - 39.0, 1.0e-9);
     EXPECT_NEAR(candidate(update).points[2].z, 17.0, 1.0e-9);
     EXPECT_NEAR(candidate(update).points[3].x, 111.5, 1.0e-9);
   }

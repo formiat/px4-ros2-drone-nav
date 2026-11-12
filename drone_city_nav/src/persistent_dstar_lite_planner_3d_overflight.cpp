@@ -61,8 +61,12 @@ constexpr double kLevelApproachM{5.0};
 // r3310), and a foot at the goal's own height put the vehicle under its
 // route's lowest point, where the speed law holds a descent's reference at
 // nought (specification K78), and brought it to the goal from below, climbing
-// at 0.5 to 2.5 m/s and at 0.4 to 1.7 m/s in the plane (r3305 to r3310).
-constexpr double kApproachDropM{1.0};
+// at 0.5 to 2.5 m/s and at 0.4 to 1.7 m/s in the plane (r3305 to r3310). Off
+// the three to one slant the descents run 1.2 to 1.9 m under their feet: over
+// a foot a metre high the vehicle came to its goals 0.2 to 0.9 m under them
+// and climbed back at 0.25 to 0.4 m/s, over a rest's 0.25 m/s for 1 to 3 s
+// after it had stopped in the plane (r3386 to r3393).
+constexpr double kApproachDropM{1.5};
 
 // The horizontal distance from a point to the leg's ground track.
 [[nodiscard]] double trackDistanceM(const double x, const double y, const Point3& start,
