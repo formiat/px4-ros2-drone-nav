@@ -430,10 +430,6 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           ? goal_capture_latch_.update(MissionGoalCaptureObservation{
                 .mission_goal = request.mission_goal,
                 .state = request.navigation.state,
-                .applied_acceleration_mps2 =
-                    std::hypot(request.execution_input->previousControl().ax,
-                               request.execution_input->previousControl().ay,
-                               request.execution_input->previousControl().az),
                 .terminal_route_available = route_reaches_mission_goal,
                 .stamp_ns = request.now_ns,
             })

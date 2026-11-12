@@ -89,46 +89,6 @@ TEST(MissionGoalCaptureLatchTest, LatchesAtOnceWhereTheApproachEnds) {
                   .newly_latched);
 }
 
-TEST(MissionGoalCaptureLatchTest, AVehicleStillAcceleratedIsNotAtRest) {
-  MissionGoalCaptureLatch latch;
-  mppi::State state;
-  state.x = 9.5F;
-  state.y = 10.0F;
-  state.z = 18.0F;
-  state.vx = 0.1F;
-  // Turning back after running past the goal: nought of speed under 3.4 m/s^2.
-  EXPECT_FALSE(latch
-                   .update(MissionGoalCaptureObservation{
-                       .mission_goal = Point3{10.0, 10.0, 18.0},
-                       .state = state,
-                       .applied_acceleration_mps2 = 3.4,
-                       .terminal_route_available = true,
-                       .stamp_ns = 1'000'000'000,
-                   })
-                   .latched);
-  // Its gaze still turning back.
-  state.yaw_rate = 0.8F;
-  EXPECT_FALSE(latch
-                   .update(MissionGoalCaptureObservation{
-                       .mission_goal = Point3{10.0, 10.0, 18.0},
-                       .state = state,
-                       .terminal_route_available = true,
-                       .stamp_ns = 1'020'000'000,
-                   })
-                   .latched);
-  state.yaw_rate = 0.25F;
-  EXPECT_TRUE(latch
-                  .update(MissionGoalCaptureObservation{
-                      .mission_goal = Point3{10.0, 10.0, 18.0},
-                      .state = state,
-                      .applied_acceleration_mps2 =
-                          kStationaryExecutionHoldAccelerationToleranceMps2,
-                      .terminal_route_available = true,
-                      .stamp_ns = 1'040'000'000,
-                  })
-                  .newly_latched);
-}
-
 TEST(MissionGoalCaptureLatchTest, ACrawlTowardTheGoalIsNoCapture) {
   // The clearance laws slow the vehicle below the rest tolerance inside the
   // radius; while it still closes on the goal the approach goes on (r772).

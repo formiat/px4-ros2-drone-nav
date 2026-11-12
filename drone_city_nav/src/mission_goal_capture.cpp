@@ -63,11 +63,7 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   const bool inside_capture_radius = result.distance_m <= config_.capture_radius_m;
   const bool resting_inside_capture_radius =
       inside_capture_radius &&
-      result.speed_mps <= config_.stationary_speed_tolerance_mps &&
-      std::abs(observation.state.yaw_rate) <=
-          kStationaryExecutionHoldYawRateToleranceRadps &&
-      observation.applied_acceleration_mps2 <=
-          kStationaryExecutionHoldAccelerationToleranceMps2;
+      result.speed_mps <= config_.stationary_speed_tolerance_mps;
   if (latched_ && !inside_capture_radius) {
     // Outside the radius the capture cannot be acknowledged, and only a route
     // brings the vehicle back inside: the goal is open again until the
