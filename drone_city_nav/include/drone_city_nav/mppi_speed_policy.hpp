@@ -255,6 +255,20 @@ struct MppiSpeedPolicyResult {
 // there is none. Zero when neither names one.
 [[nodiscard]] Vec3 mppiSpeedPolicyFacedDirection(const MppiSpeedPolicyInput& input);
 
+// Roadmap item 21, specification K66: a body the memory follows moving owes
+// the stopping law in every direction, unlike a wall beside the motion (which
+// owes none: a wall does not step into the path). The speed the vehicle may
+// carry toward a body is the one it can stop from before the body's envelope
+// and the clearance, less what the body itself closes while the vehicle
+// stops; the reference is bounded by that speed over the share of the
+// commanded motion that closes on the body. A motion that does not close on
+// the body owes it nothing, so the vehicle can always leave one that walks
+// up to it; inside the envelope the body validation is the authority.
+// `nearest_m` takes the least gap to a body's envelope where that is less.
+[[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
+                                            const MppiSpeedPolicyConfig& config,
+                                            double& nearest_m) noexcept;
+
 // The contract is read with the input's measured frame where it has one.
 [[nodiscard]] MppiSpeedPolicyResult
 evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& configured,

@@ -505,6 +505,7 @@ add_drone_city_nav_layer(
   src/mppi_nominal_reseed.cpp
   src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
+  src/mppi_speed_policy_moving_body.cpp
   src/mppi_speed_policy_stopping.cpp)
 target_sources(drone_city_nav_control
                PRIVATE src/mppi/trajectory_reference_adapter_3d.cpp)
