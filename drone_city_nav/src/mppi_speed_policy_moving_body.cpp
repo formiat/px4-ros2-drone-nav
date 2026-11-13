@@ -14,6 +14,11 @@ double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
       config.reference_tracking_lag_s + (std::isfinite(input.moving_body_age_s)
                                              ? std::max(0.0, input.moving_body_age_s)
                                              : 0.0);
+  capability.maximum_commanded_horizontal_deceleration_mps2 =
+      std::min(capability.maximum_commanded_horizontal_deceleration_mps2,
+               kBodyLawDecelerationMps2);
+  capability.guaranteed_horizontal_deceleration_mps2 = std::min(
+      capability.guaranteed_horizontal_deceleration_mps2, kBodyLawDecelerationMps2);
   const Vec3 faced = mppiSpeedPolicyFacedDirection(input);
   const double faced_norm = std::hypot(std::hypot(faced.x, faced.y), faced.z);
   const Point3 at{input.state.x, input.state.y, input.state.z};

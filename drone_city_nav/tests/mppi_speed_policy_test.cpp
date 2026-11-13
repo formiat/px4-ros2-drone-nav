@@ -1269,6 +1269,10 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   input.state.vx = 3.0F;
   const double unbounded = evaluateMppiSpeedPolicy(config, input).reference_speed_mps;
 
+  // The law charges the deceleration a falling reference is followed at.
+  StoppingCapability followed = config.stopping_capability;
+  followed.maximum_commanded_horizontal_deceleration_mps2 = kBodyLawDecelerationMps2;
+  followed.guaranteed_horizontal_deceleration_mps2 = kBodyLawDecelerationMps2;
   const MovingBody3D standing{.centre_map = {4.3, 0.0, 1.85},
                               .radius_m = 0.3,
                               .bottom_m = 1.0,
@@ -1283,7 +1287,7 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   EXPECT_LT(ahead.moving_body_limit_mps, unbounded);
   EXPECT_NEAR(ahead.nearest_moving_body_m, 4.0, 1.0e-9);
   EXPECT_NEAR(ahead.moving_body_limit_mps,
-              stoppingLimitedSpeed(4.0 - 0.6, 0.0, config.stopping_capability,
+              stoppingLimitedSpeed(4.0 - 0.6, 0.0, followed,
                                    config.sensor_braking_contract, 0.0),
               1.0e-9);
 
@@ -1334,7 +1338,7 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   const MppiSpeedPolicyResult unseen = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(unseen.active_limiter, MppiSpeedLimiter::kMovingBody);
   EXPECT_NEAR(unseen.moving_body_limit_mps,
-              stoppingLimitedSpeed(1.3 - 0.6, 0.0, config.stopping_capability,
+              stoppingLimitedSpeed(1.3 - 0.6, 0.0, followed,
                                    config.sensor_braking_contract, 0.0),
               1.0e-9);
 }

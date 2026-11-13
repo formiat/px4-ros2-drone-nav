@@ -265,6 +265,15 @@ struct MppiSpeedPolicyResult {
 // the body owes it nothing, so the vehicle can always leave one that walks
 // up to it; inside the envelope the body validation is the authority.
 // `nearest_m` takes the least gap to a body's envelope where that is less.
+//
+// The reference this law lowers is followed, not commanded as a stop: under a
+// falling reference the airframe slows 1.1 m/s^2 at the median (133 episodes
+// of the reference 0.8 m/s or more under the speed for half a second, r3446,
+// r3447, r3478 to r3480 and r3484: 0.64 at the lower quartile, 1.74 at the
+// upper), not the 4 m/s^2 of a stop. Charged the stop's, the law let 2.2 to
+// 2.4 m/s within 2.2 to 3.1 m of a body, and the vehicle came over it at
+// 2.3 m/s with its reference at 0.3 (r3484).
+inline constexpr double kBodyLawDecelerationMps2{1.0};
 [[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
                                             const MppiSpeedPolicyConfig& config,
                                             double& nearest_m) noexcept;
