@@ -142,6 +142,11 @@ class StateWordsTest(unittest.TestCase):
         self.assertIn('--sdf-to-map-offset="$(sdf_to_map_offset)" --mission "${mission_type}" \\\n', runtime)
         render = (REPOSITORY / "tools" / "render_flight.sh").read_text()
         self.assertIn('survey) target="sim-urban-survey-headless" ;;', render)
+        # The surveys of the start building and of the held-out worlds are recorded as the urban one is.
+        self.assertIn('finals-survey) target="sim-finals-survey-headless"', render)
+        self.assertIn('cave-survey) target="sim-cave-survey-headless"', render)
+        self.assertIn("urban_circuit_practice_01_survey_building_scenario.json SURVEY_VOLUME_M=-30,3.5,0,28,46,18",
+                      render)
 
     def test_the_injected_satellite_fault_stands_beside_the_verdict(self) -> None:
         # The owner's request of 2026-11-05: the viewer sees the fault begin and the verdict follow. The variant's

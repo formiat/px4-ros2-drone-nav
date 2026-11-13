@@ -3,7 +3,8 @@
 # light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall, dark-void across it at 12 m (item 31),
 # finals on the held-out finals world (item 33), open-sky on the open sky (item 39), survey for the survey mission on
 # Urban (item 34: no goal, the frontiers of the memory, home with the map; the stereo set flew its acceptance at a
-# factor of 0.8, which the caller's variable gives);
+# factor of 0.8, which the caller's variable gives), survey-building for the same over the start building whole,
+# finals-survey and cave-survey for the held-out worlds' surveys (the stereo set's surveys of 2026-11 flew at 0.5);
 # the stereo set only) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
 # passes through to the flight: the stereo set's smoke flights held 0.8, K25; the smoke scenarios are not flown since
 # 2026-10-24, specification F4)
@@ -19,6 +20,13 @@ case $scenario in
   dark-hall) target="sim-dark-hall-headless" ;;
   dark-void) target="sim-dark-void-headless" ;;
   survey) target="sim-urban-survey-headless" ;;
+  # The urban survey's larger volume (the start building whole, 58 x 42.5 x 18 m) and the held-out worlds' surveys
+  # (the goal of 2026-11-05, part 5): the mission's order, nothing of the flight's parameters.
+  survey-building)
+    target="sim-urban-survey-headless SURVEY_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_survey_building_scenario.json SURVEY_VOLUME_M=-30,3.5,0,28,46,18"
+    export SMOKE_DURATION_S="${SMOKE_DURATION_S:-3600}" ;;
+  finals-survey) target="sim-finals-survey-headless"; export SMOKE_DURATION_S="${SMOKE_DURATION_S:-1800}" ;;
+  cave-survey) target="sim-cave-survey-headless"; export SMOKE_DURATION_S="${SMOKE_DURATION_S:-1800}" ;;
   # The held-out finals world (roadmap item 33) and the open sky (item 39): the flight's own targets; the factor's
   # variable and the profile's (LOCALIZATION_PROFILE, GNSS_FAULTS, LIGHT_FAULTS) pass through to the flight.
   finals) target="sim-finals-point-to-point-headless" ;;
