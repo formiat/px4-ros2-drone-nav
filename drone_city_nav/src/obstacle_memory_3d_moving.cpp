@@ -243,9 +243,15 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
           warm_cells.push_back(cell);
         }
         if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
-            !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations &&
-            !besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
-          cells.push_back(cell);
+            !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
+          // A body a quarter metre from a wall is young occupancies the layer
+          // does not take (they stand beside the wall's): what a body read
+          // before is read on by, as by the layer's voxels (r3496: unread at
+          // the wall, 2.1 m from the vehicle, and passed at 2.7 m/s).
+          held.push_back(cell);
+          if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
+            cells.push_back(cell);
+          }
         }
       }
     }
@@ -255,7 +261,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // have walked from where it was last seen.
   const std::vector<MovingBody3D> read_before = std::move(followed_bodies_);
   const std::vector<std::int64_t> warm_before = std::move(followed_warm_ms_);
-  const auto life_ms = static_cast<std::int64_t>(1000.0 * config_.moving_life_s);
+  // A body the core has not marked for the stand's time is an occupancy like
+  // any (K65). The layer's life was too short a hold: a body pacing 2 to 4 m
+  // before a waiting vehicle walks out of the core's field at either end of
+  // its walk for seconds (r3496).
+  const auto stand_ms = static_cast<std::int64_t>(1000.0 * config_.moving_stand_s);
   const double elapsed_s =
       followed_ms_ > 0 ? static_cast<double>(now_ms - followed_ms_) * 1.0e-3 : 0.0;
   followed_ms_ = now_ms;
@@ -340,7 +350,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         warm_ms = std::max(warm_ms, warm_before[before]);
       }
     }
-    const bool read = warm_ms > 0 && now_ms - warm_ms <= life_ms;
+    const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
     if (read) {
       followed_bodies_.push_back(body);
       followed_bodies_.back().warm = true;
@@ -359,15 +369,16 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     }
   }
   // A body read before whose cluster this scan does not show is read on while
-  // the layer holds a voxel where it may be, the core's last mark on it no
-  // older than the layer's life: at the moments that counted the cluster was
+  // the layer holds a voxel, or the scan hit a young occupancy, where it may
+  // be, the core's last mark on it no older than the stand's time: at the
+  // moments that counted the cluster was
   // not there (r3475, r3476: the body 0.6 to 3 m from the vehicle, the law
   // released, the vehicle flown over it at 2.6 m/s).
   const std::size_t seen = followed_bodies_.size();
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
     const double reach_m = reachM(read) - config_.moving_match_m;
-    if (now_ms - warm_before[before] > life_ms ||
+    if (now_ms - warm_before[before] > stand_ms ||
         std::ranges::any_of(std::span{followed_bodies_}.first(seen),
                             [&](const MovingBody3D& body) {
                               return within(read, body.centre_map, reachM(read));
