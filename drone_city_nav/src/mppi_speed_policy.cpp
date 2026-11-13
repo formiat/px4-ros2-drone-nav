@@ -315,9 +315,9 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
         // The body keeps coming while the vehicle reacts and brakes, and has
         // walked since its cluster was last seen. It walks the floor: its way
         // is taken from the horizontal gap, and the height the vehicle keeps
-        // over its head is not the body's to close. An unseen body within its
-        // walk of the vehicle may stand anywhere about it: the level motion is
-        // charged whole.
+        // over its head is not the body's to close. Within its walk of the
+        // vehicle it may stand anywhere about it by then: the level motion is
+        // charged whole (r3480: passed 0.3 m beside at 1.3 m/s, the share nil).
         const double walked_m =
             body_closing *
             (capability.reaction_latency_s + body.unseen_s +
@@ -329,7 +329,7 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
                                                  config.sensor_braking_contract,
                                                  input.forward_acceleration_mps2)
                           : 0.0;
-        if (body.unseen_s > 0.0 && gap_h <= walked_m && faced_norm > 1.0e-9) {
+        if (gap_h <= walked_m && faced_norm > 1.0e-9) {
           charged_share = std::max(share, std::hypot(faced.x, faced.y) / faced_norm);
         }
       }

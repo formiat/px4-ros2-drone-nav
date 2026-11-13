@@ -178,6 +178,24 @@ TEST(ThermalBodyTest, ABodyIsRangedByTheHitsInItsSilhouetteAndItsReturnsAreItsOw
       sightBodies(regions, {}, 0.02, ThermalBodyConfig{});
   ASSERT_EQ(by_size.size(), 1U);
   EXPECT_NEAR(by_size.front().range_m, std::sqrt(18300.0 / 742.0), 1e-9);
+  // More of the silhouette's hits on the wall behind than on the body: it is
+  // ranged by the hits that stand where its size puts it (r3479).
+  std::vector<StereoDepthReturn> behind;
+  behind.reserve(7U);
+  for (int i = 0; i < 2; ++i) {
+    behind.push_back(
+        {.point = Point3{5.0 * towards.x, 5.0 * towards.y + 0.05 * i, 5.0 * towards.z},
+         .hit = true});
+  }
+  for (int i = -2; i <= 2; ++i) {
+    behind.push_back({.point = Point3{12.0 * towards.x, 12.0 * towards.y + 0.05 * i,
+                                      12.0 * towards.z},
+                      .hit = true});
+  }
+  const std::vector<ThermalBodySighting> before_the_wall =
+      sightBodies(regions, behind, 0.02, ThermalBodyConfig{});
+  ASSERT_EQ(before_the_wall.size(), 1U);
+  EXPECT_NEAR(before_the_wall.front().range_m, 5.0, 0.01);
   // Hits that put the region 25 m off make it a wall's width: no body.
   std::vector<StereoDepthReturn> far;
   far.push_back({.point = Point3{25.0 * towards.x, 25.0 * towards.y, 25.0 * towards.z},

@@ -140,9 +140,9 @@ TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnce) {
   ASSERT_EQ(tracker.bodies().size(), 1U);
   EXPECT_TRUE(tracker.bodies().front().warm);
   EXPECT_FALSE(tracker.bodies().front().moving());
-  // A scan the core did not sight it in: the body followed keeps its class.
+  // The class is the scan's: the memory keeps who it read (K66).
   tracker.update(standing, {}, kBounds, 1100);
-  EXPECT_TRUE(tracker.bodies().front().warm);
+  EXPECT_FALSE(tracker.bodies().front().warm);
   // Under half its voxels warm, a column first seen is no warm body.
   MovingBodyTracker3D other;
   other.update(standing, std::span{warm}.first(6), kBounds, 1000);

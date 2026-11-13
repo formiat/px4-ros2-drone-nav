@@ -31,9 +31,10 @@ struct MovingBody3D {
   // How long the body has been followed.
   double age_s{0.0};
   std::size_t voxels{0U};
-  // Half its voxels at least were hit, in some scan, by returns the thermal
-  // core sighted a warm body in (specification K64): a body by its class,
-  // before it is seen to move.
+  // Half its voxels at least were hit, this scan, by returns the thermal core
+  // sighted a warm body in (specification K64): a body by its class, before
+  // it is seen to move. The memory hands the planner a body it read by its
+  // class a moment ago under the same word.
   bool warm{false};
   // How long ago its cluster was last seen: nought while it is, and up to the
   // moving layer's life while the memory still holds voxels where it stood.

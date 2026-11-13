@@ -83,6 +83,10 @@ struct ThermalBodyConfig {
   // squared for a body 0.5 m across and 1.7 m tall (the rig: 15300 to 20800
   // from 5 to 20 m; 0.85 m2 at the core's focal length is 18300).
   double body_pixel_metres_squared{18300.0};
+  // How far from the range its size gives a hit in a body's silhouette may
+  // stand and be the body's, a share of that range (the rig's 15300 to 20800
+  // are 8 percent of the range either way; the source's share).
+  double size_range_error_share{0.2};
   // The widest and the tallest a region of a body's size is at its range: a
   // person and half a metre of error either way. A warm wall is wider.
   double widest_m{1.0};

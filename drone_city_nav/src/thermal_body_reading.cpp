@@ -157,6 +157,18 @@ sightBodies(const std::span<const ThermalBody> regions,
       }
     }
     double range_m = region.range_by_size_m;
+    // The hits that put the body where its size does are its own: the rest of
+    // the silhouette's frame is what stands behind it. Ranged by the median
+    // of them all, a body 10 to 20 m off was put on the wall 3.5 to 10 m
+    // behind it in one sighting of four, and that wall's returns were marked
+    // a warm body's (r3479).
+    const auto apart = [&](const double range) {
+      return std::abs(range - region.range_by_size_m) >
+             config.size_range_error_share * region.range_by_size_m;
+    };
+    if (region.range_by_size_m > 0.0 && !std::ranges::all_of(ranges, apart)) {
+      std::erase_if(ranges, apart);
+    }
     if (!ranges.empty()) {
       std::nth_element(ranges.begin(),
                        ranges.begin() + static_cast<std::ptrdiff_t>(ranges.size() / 2U),
