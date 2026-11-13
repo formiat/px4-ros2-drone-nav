@@ -52,7 +52,8 @@ struct Cluster {
 // The voxels of one scan clustered by 26-connectivity, each cluster read as a
 // body: the mean of its centres, its horizontal reach and its height.
 [[nodiscard]] std::vector<Cluster>
-clusterBodies(const std::span<const GridIndex3D> cells, const GridBounds3D& bounds,
+clusterBodies(const std::span<const GridIndex3D> cells,
+              const std::span<const GridIndex3D> warm_cells, const GridBounds3D& bounds,
               const MovingBodyTrackerConfig3D& config) {
   std::unordered_map<GridIndex3D, std::size_t, CellKeyHash> index_of;
   index_of.reserve(cells.size());
@@ -115,6 +116,11 @@ clusterBodies(const std::span<const GridIndex3D> cells, const GridBounds3D& boun
       continue;
     }
     body.voxels = group.size();
+    const auto warm = static_cast<std::size_t>(
+        std::ranges::count_if(group, [&](const GridIndex3D cell) {
+          return std::ranges::find(warm_cells, cell) != warm_cells.end();
+        }));
+    body.warm = 2U * warm >= group.size();
     clusters.push_back(Cluster{.body = body, .cells = std::move(group)});
   }
   // The largest first, so that a body split by an occlusion keeps its track
@@ -173,9 +179,10 @@ MovingBodyTracker3D::MovingBodyTracker3D(const MovingBodyTrackerConfig3D& config
 }
 
 void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
+                                 const std::span<const GridIndex3D> warm_cells,
                                  const GridBounds3D& bounds,
                                  const std::int64_t now_ms) {
-  std::vector<Cluster> seen = clusterBodies(cells, bounds, config_);
+  std::vector<Cluster> seen = clusterBodies(cells, warm_cells, bounds, config_);
   std::vector<Track> next;
   next.reserve(seen.size());
   std::vector<bool> taken(tracks_.size(), false);
@@ -200,6 +207,14 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       taken[nearest] = true;
       Track& before = tracks_[nearest];
       track.first_ms = before.first_ms;
+      track.first_centre_map = before.first_centre_map;
+      // A body by its class stays one while it is followed: the core sights
+      // it nine times a second and the scans come ten.
+      body.warm = body.warm || before.body.warm;
+      body.walked_m =
+          std::max(before.body.walked_m,
+                   std::hypot(body.centre_map.x - track.first_centre_map.x,
+                              body.centre_map.y - track.first_centre_map.y));
       track.cells_since_first = std::move(before.cells_since_first);
       track.recent = std::move(before.recent);
       track.previous_cells = std::move(before.cells);
@@ -241,6 +256,7 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       }
     } else {
       track.first_ms = now_ms;
+      track.first_centre_map = body.centre_map;
       track.cells_since_first = cluster.cells;
     }
     track.recent.push_back(

@@ -247,6 +247,10 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
 // commanded motion that closes on the body. A motion that does not close on
 // the body owes it nothing, so the vehicle can always leave one that walks
 // up to it; inside the envelope the body validation is the authority.
+// The fastest walk of the bodies the scenarios know (the goal of 2026-11-05,
+// part 1: 1.0 to 1.5 m/s).
+constexpr double kWarmBodyWalkMps{1.5};
+
 [[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
                                             const MppiSpeedPolicyConfig& config,
                                             double& nearest_m) noexcept {
@@ -297,9 +301,13 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
     }
     // The body closes at its speed whichever way it walks: it could turn at
     // once (roadmap item 21 stage 2; the sweep is narrowed along the velocity,
-    // the law is not).
-    const double body_closing =
-        std::hypot(body.velocity_map_mps.x, body.velocity_map_mps.y);
+    // the law is not). A warm body's not yet measured walking is charged a
+    // person's walk: read by its class before it is seen to move, it may be
+    // walking at the vehicle (r3465: closed on at 7 m/s, 1.2 of them its own).
+    double body_closing = std::hypot(body.velocity_map_mps.x, body.velocity_map_mps.y);
+    if (!body.moving() && body.warm) {
+      body_closing = kWarmBodyWalkMps;
+    }
     double available_m = gap - config.moving_body_clearance_m;
     double allowed_mps = 0.0;
     if (available_m > 0.0) {

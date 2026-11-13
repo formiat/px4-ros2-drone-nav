@@ -294,6 +294,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
           joined.occupied.at(word) |= chunk.occupied.at(word);
           joined.measured.at(word) |= chunk.measured.at(word);
           joined.moving.at(word) |= chunk.moving.at(word);
+          joined.warm.at(word) |= chunk.warm.at(word);
         }
       }
       const ObstacleMemory3DStats& traced_share = shares.at(share);
@@ -377,8 +378,8 @@ GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk
 void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
                                           const bool measured,
                                           ScanEvidence& scan_evidence,
-                                          ScanEvidenceCursor& cursor,
-                                          const bool moving) const {
+                                          ScanEvidenceCursor& cursor, const bool moving,
+                                          const bool warm) const {
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
   if (cursor.chunk == nullptr || !(cursor.chunk_index == chunk_index)) {
     // Node-based map: the element address stays valid across later inserts.
@@ -398,6 +399,9 @@ void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool oc
   }
   if (moving) {
     chunk.moving.at(word_index) |= bit;
+  }
+  if (warm) {
+    chunk.warm.at(word_index) |= bit;
   }
 }
 
@@ -859,7 +863,8 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   if (hit_cell.has_value()) {
     const bool moving =
         config_.moving_life_s > 0.0 && (beam.warm_body || movingEvidenceAt(*hit_cell));
-    recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor, moving);
+    recordScanEvidence(*hit_cell, true, true, scan_evidence, cursor, moving,
+                       moving && beam.warm_body);
   }
 }
 

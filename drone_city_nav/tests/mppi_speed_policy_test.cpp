@@ -1290,6 +1290,14 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   bodies[0].velocity_map_mps = {-1.5, 0.0, 0.0};
   const MppiSpeedPolicyResult walking = evaluateMppiSpeedPolicy(config, input);
   EXPECT_LT(walking.moving_body_limit_mps, ahead.moving_body_limit_mps);
+  // A warm body not yet seen to move is met as one walking a person's walk at
+  // the vehicle (r3465): as tight as the body measured walking 1.5 m/s.
+  bodies[0].velocity_map_mps = {};
+  bodies[0].warm = true;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps,
+                   walking.moving_body_limit_mps);
+  bodies[0].warm = false;
+  bodies[0].velocity_map_mps = {-1.5, 0.0, 0.0};
   // Walking away it is met as if it could turn back at once: as tight.
   bodies[0].velocity_map_mps = {1.5, 0.0, 0.0};
   EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps,

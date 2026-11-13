@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 #include <vector>
 
 namespace drone_city_nav {
@@ -40,7 +41,7 @@ TEST(MovingBodyTracker3D, TwoColumnsApartAreTwoBodiesOfTheirSize) {
   for (int x = 60; x < 66; ++x) {
     cells.push_back({x, 50, 5});
   }
-  tracker.update(cells, kBounds, 1000);
+  tracker.update(cells, {}, kBounds, 1000);
   ASSERT_EQ(tracker.bodies().size(), 2U);
   const MovingBody3D& body = tracker.bodies().front();
   EXPECT_EQ(body.voxels, 14U);
@@ -56,7 +57,7 @@ TEST(MovingBodyTracker3D, AWalkingColumnReadsItsSpeedAndAStandingOneNone) {
   // 1.2 m/s along x: 0.12 m a scan, a cell every other scan.
   for (int scan = 0; scan <= 20; ++scan) {
     const int x = 10 + static_cast<int>(std::floor(0.12 * scan / 0.25));
-    tracker.update(column(x, 10), kBounds,
+    tracker.update(column(x, 10), {}, kBounds,
                    1000 + static_cast<std::int64_t>(scan) * 100);
   }
   ASSERT_EQ(tracker.bodies().size(), 1U);
@@ -67,7 +68,7 @@ TEST(MovingBodyTracker3D, AWalkingColumnReadsItsSpeedAndAStandingOneNone) {
   EXPECT_NEAR(walking.age_s, 2.0, 1.0e-9);
   // The column stops: a few scans later it stands.
   for (int scan = 21; scan <= 40; ++scan) {
-    tracker.update(column(19, 10), kBounds,
+    tracker.update(column(19, 10), {}, kBounds,
                    1000 + static_cast<std::int64_t>(scan) * 100);
   }
   ASSERT_EQ(tracker.bodies().size(), 1U);
@@ -76,7 +77,7 @@ TEST(MovingBodyTracker3D, AWalkingColumnReadsItsSpeedAndAStandingOneNone) {
   EXPECT_EQ(tracker.cells(0).size(), 14U);
   EXPECT_EQ(tracker.previousCells(0).size(), 14U);
   // Gone from the layer, gone from the tracker.
-  tracker.update({}, kBounds, 5100);
+  tracker.update({}, {}, kBounds, 5100);
   EXPECT_TRUE(tracker.bodies().empty());
   EXPECT_TRUE(tracker.cells(0).empty());
 }
@@ -90,7 +91,7 @@ TEST(MovingBodyTracker3D, ASurfaceComingIntoViewIsNoBodyAndNoStep) {
     for (int z = 4; z < 8; ++z) {
       patch.push_back({10 + step, 10, z});
     }
-    tracker.update(patch, kBounds, 1000 + static_cast<std::int64_t>(step) * 100);
+    tracker.update(patch, {}, kBounds, 1000 + static_cast<std::int64_t>(step) * 100);
     if (!tracker.bodies().empty()) {
       EXPECT_FALSE(tracker.bodies().front().moving()) << step;
     }
@@ -114,7 +115,7 @@ TEST(MovingBodyTracker3D, ASurfacesNoiseIsNoStep) {
         patch.push_back({x, 10, z});
       }
     }
-    tracker.update(patch, kBounds, 1000 + static_cast<std::int64_t>(scan) * 100);
+    tracker.update(patch, {}, kBounds, 1000 + static_cast<std::int64_t>(scan) * 100);
     ASSERT_EQ(tracker.bodies().size(), 1U);
     EXPECT_FALSE(tracker.bodies().front().moving()) << scan;
   }
@@ -122,11 +123,44 @@ TEST(MovingBodyTracker3D, ASurfacesNoiseIsNoStep) {
 
 TEST(MovingBodyTracker3D, AColumnFarFromWhereItWasIsANewBody) {
   MovingBodyTracker3D tracker;
-  tracker.update(column(10, 10), kBounds, 1000);
-  tracker.update(column(30, 10), kBounds, 1100);
+  tracker.update(column(10, 10), {}, kBounds, 1000);
+  tracker.update(column(30, 10), {}, kBounds, 1100);
   ASSERT_EQ(tracker.bodies().size(), 1U);
   EXPECT_DOUBLE_EQ(tracker.bodies().front().age_s, 0.0);
   EXPECT_FALSE(tracker.bodies().front().moving());
+}
+
+// K64, K66: the core's class reads a body before its step does (r3465), and a
+// walk carries a body from its place while a skin shifts about where it is.
+TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnceAndAWalkCarriesItAway) {
+  MovingBodyTracker3D tracker;
+  const std::vector<GridIndex3D> standing = column(10, 10);
+  // Half the column's voxels hit by a warm body's returns: a body by its class.
+  const std::vector<GridIndex3D> warm(standing.begin(), standing.begin() + 7);
+  tracker.update(standing, warm, kBounds, 1000);
+  ASSERT_EQ(tracker.bodies().size(), 1U);
+  EXPECT_TRUE(tracker.bodies().front().warm);
+  EXPECT_FALSE(tracker.bodies().front().moving());
+  EXPECT_DOUBLE_EQ(tracker.bodies().front().walked_m, 0.0);
+  // A scan the core did not sight it in: the body followed keeps its class.
+  tracker.update(standing, {}, kBounds, 1100);
+  EXPECT_TRUE(tracker.bodies().front().warm);
+  // Under half its voxels warm, a column first seen is no warm body.
+  MovingBodyTracker3D other;
+  other.update(standing, std::span{warm}.first(6), kBounds, 1000);
+  EXPECT_FALSE(other.bodies().front().warm);
+  // A column walking 1.2 m/s stands a metre from its first place within a
+  // second; one shifting a cell there and back never does.
+  MovingBodyTracker3D walk;
+  MovingBodyTracker3D shift;
+  for (int scan = 0; scan <= 10; ++scan) {
+    const std::int64_t now_ms = 1000 + static_cast<std::int64_t>(scan) * 100;
+    walk.update(column(10 + static_cast<int>(std::floor(0.12 * scan / 0.25)), 10), {},
+                kBounds, now_ms);
+    shift.update(column(10 + scan % 2, 10), {}, kBounds, now_ms);
+  }
+  EXPECT_GE(walk.bodies().front().walked_m, 1.0);
+  EXPECT_LE(shift.bodies().front().walked_m, 0.25);
 }
 
 TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {

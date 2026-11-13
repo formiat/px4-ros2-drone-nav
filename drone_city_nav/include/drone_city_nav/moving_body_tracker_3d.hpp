@@ -26,6 +26,14 @@ struct MovingBody3D {
   // How long the body has been followed.
   double age_s{0.0};
   std::size_t voxels{0U};
+  // Half its voxels at least were hit, in some scan, by returns the thermal
+  // core sighted a warm body in (specification K64): a body by its class,
+  // before it is seen to move.
+  bool warm{false};
+  // The farthest its centre has stood from where it was first seen: a walk
+  // carries a body away from its place, a surface's young skin shifts about
+  // where it is.
+  double walked_m{0.0};
 
   [[nodiscard]] bool moving() const noexcept {
     return velocity_map_mps.x != 0.0 || velocity_map_mps.y != 0.0;
@@ -76,9 +84,11 @@ class MovingBodyTracker3D {
 public:
   explicit MovingBodyTracker3D(const MovingBodyTrackerConfig3D& config = {});
 
-  // The voxels this scan, by their cell indices on the grid, at the scan's
-  // time on the memory's clock.
-  void update(std::span<const GridIndex3D> cells, const GridBounds3D& bounds,
+  // The voxels this scan, by their cell indices on the grid, and those among
+  // them a warm body's return hit this scan, at the scan's time on the
+  // memory's clock.
+  void update(std::span<const GridIndex3D> cells,
+              std::span<const GridIndex3D> warm_cells, const GridBounds3D& bounds,
               std::int64_t now_ms);
   void clear();
   [[nodiscard]] const std::vector<MovingBody3D>& bodies() const noexcept;
@@ -102,6 +112,7 @@ private:
     Vec3 velocity_map_mps{};
     std::int64_t first_ms{0};
     std::int64_t last_ms{0};
+    Point3 first_centre_map{};
     std::vector<GridIndex3D> cells;
     std::vector<GridIndex3D> previous_cells;
     std::vector<GridIndex3D> cells_since_first;

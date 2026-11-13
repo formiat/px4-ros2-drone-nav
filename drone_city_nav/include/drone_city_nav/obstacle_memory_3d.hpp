@@ -177,6 +177,8 @@ private:
     OccupancyGrid3D::Chunk measured{};
     // Hit as moving evidence (K65).
     OccupancyGrid3D::Chunk moving{};
+    // Hit by a return the thermal core sighted a warm body in (K64).
+    OccupancyGrid3D::Chunk warm{};
   };
 
   // The moving layer's voxels of a chunk: when each was first held and last
@@ -221,7 +223,7 @@ private:
                                                ObstacleMemory3DStats& stats);
   void recordScanEvidence(GridIndex3D index, bool occupied, bool measured,
                           ScanEvidence& scan_evidence, ScanEvidenceCursor& cursor,
-                          bool moving = false) const;
+                          bool moving = false, bool warm = false) const;
   // Whether a hit in this voxel is moving evidence by the voxel's state before
   // the scan (K65): the layer holds it, or it is observed free with no
   // ordinary occupancy among its 26 neighbours.

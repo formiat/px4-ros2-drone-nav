@@ -85,11 +85,12 @@ void ObstacleMemory3DWorker::logNearestBodies(const Point3& origin) {
     }
     std::array<char, 160> item{};
     std::snprintf(item.data(), item.size(),
-                  " [%.1f %.1f %.1f r%.2f h%.2f v%.2f,%.2f n%zu a%.1f d%.1f]",
+                  " [%.1f %.1f %.1f r%.2f h%.2f v%.2f,%.2f n%zu a%.1f d%.1f %s w%.1f]",
                   body->centre_map.x, body->centre_map.y, body->centre_map.z,
                   body->radius_m, body->top_m - body->bottom_m,
                   body->velocity_map_mps.x, body->velocity_map_mps.y, body->voxels,
-                  body->age_s, distance3D(body->centre_map, origin));
+                  body->age_s, distance3D(body->centre_map, origin),
+                  body->warm ? "warm" : "step", body->walked_m);
     text += item.data();
   }
   RCLCPP_INFO_THROTTLE(node_.get_logger(), *node_.get_clock(), 1000,
@@ -115,6 +116,7 @@ void ObstacleMemory3DWorker::publishMovingBodies(
     output.bottom_m = body.bottom_m;
     output.top_m = body.top_m;
     output.age_s = body.age_s;
+    output.warm = body.warm;
     output.voxels = static_cast<std::uint32_t>(
         std::min<std::size_t>(body.voxels, std::numeric_limits<std::uint32_t>::max()));
     message.bodies.push_back(output);

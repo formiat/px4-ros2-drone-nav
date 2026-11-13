@@ -203,6 +203,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // passed it). What remains of the body, its column clear of the wall, is
   // enough.
   std::vector<GridIndex3D> cells;
+  std::vector<GridIndex3D> warm_cells;
   for (const auto& [chunk_index, chunk] : moving_) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
          ++word_index) {
@@ -227,6 +228,10 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         remaining &= remaining - 1U;
         const GridIndex3D cell =
             cellFromChunkBit(chunk_index, word_index * 64U + bit_offset);
+        if ((chunk_evidence.warm.at(word_index) & (std::uint64_t{1U} << bit_offset)) !=
+            0U) {
+          warm_cells.push_back(cell);
+        }
         if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
             !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations &&
             !besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
@@ -235,7 +240,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       }
     }
   }
-  tracker_.update(cells, grid_.bounds(), now_ms);
+  tracker_.update(cells, warm_cells, grid_.bounds(), now_ms);
   followed_bodies_.clear();
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
@@ -250,7 +255,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // along the wall with the vehicle (r3035: walls 14 to 18 m off read as
     // bodies at 0.5 to 3 m/s); a body stands clear of surfaces but for its
     // feet.
-    if (2U * hugging_cells > tracker_.cells(index).size()) {
+    if (!body.warm && 2U * hugging_cells > tracker_.cells(index).size()) {
       continue;
     }
     if (body.moving()) {
@@ -296,9 +301,21 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // it a body is a few scattered voxels, and so is a far wall's skin
     // (r3037: such skins 11 to 18 m off read as bodies at 0.5 to 3 m/s).
     constexpr double kReadsBodiesWithinM{12.0};
-    if (body.moving() && 2U * held_cells >= tracker_.cells(index).size() &&
-        std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) <=
-            kReadsBodiesWithinM) {
+    // A cluster without the core's class is read once it has walked: its
+    // centre a metre from where it was first seen. Three scans' step alone
+    // read a surface's young skin as a body, 7 to 20 times in an ordinary
+    // flight (r3441 to r3450: clusters 0.3 to 0.8 s old, 4 to 20 voxels, on
+    // the walls' near sides; the three that lasted 2 to 7 s stayed within
+    // 0.6 m of their places). A warm body's (K64) is read at once and at any
+    // range it clusters at: an oncoming body the vehicle closed on at 5 to
+    // 7 m/s was first read after the vehicle had passed over it (r3465,
+    // r3466), the core having sighted it from 28 m and more.
+    constexpr double kWalkedM{1.0};
+    if (body.warm ||
+        (body.moving() && body.walked_m >= kWalkedM &&
+         2U * held_cells >= tracker_.cells(index).size() &&
+         std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) <=
+             kReadsBodiesWithinM)) {
       followed_bodies_.push_back(body);
     }
   }
