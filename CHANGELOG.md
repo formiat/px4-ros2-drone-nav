@@ -6,6 +6,15 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The open sky at 10 m/s (roadmap item 39 stage 5, specification R8, V3, K75 to K85, A7): on the full set, the 3D
+  lidar for the obstacles and the camera set for the estimate with the satellite fix fused whole while it is
+  trusted, the 1.6 km route through three goals is flown at 10.26 m/s mean over five counted flights (10.22 to
+  10.33), without a contact. The open sky's speed profile is read from the airframe's measured envelope
+  (`tools/airframe_envelope.sh`); the planner offers the leg over everything the memory holds without a search;
+  the latest scan's cone of clear sight counts as observed range; a descent is brought to nought at its route's
+  lowest height; a goal another leg follows captures a vehicle that passed it where it rests; the memory's line
+  is handed over after a reset of the autopilot's frame; the host's verdict voids a flight whose estimator sent
+  the autopilot a pose older than 300 ms.
 - A flight's record in a viewer without the stack (roadmap item 42, specification K73): `tools/view_flight.sh <run>` opens
   the stack bag in Lichtblick with a layout a sensor set (`tools/viewer/`) and the run's other records beside it
   (`tools/flight_records_mcap.py`: the true pose, the obstacle memory, the speed laws, the budgets); nothing is built or

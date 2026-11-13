@@ -253,6 +253,24 @@ Initial search heading uses a cascade:
 2. previous accepted-route tangent at low speed;
 3. mission direction when no accepted route exists.
 
+### The Open Sky's Leg
+
+Where the planner is given a margin to fly over what it has seen
+(`persistent_planner_overflight_margin_m`, 5 m on the open sky and nought in
+the caves; specification K76) it offers, before any search, the leg over
+everything the memory holds: the level is the top of the highest obstacle
+within the clearance reach of the leg's ground track plus the margin; the
+climb is the one of two to one, one to one and straight up that the body's
+sweep clears and the clearance-ranked time model flies soonest; the descent
+is as long as the leg's speed over the vehicle's speed of descent asks, its
+first 12 m at half that slant, to a foot a metre and a half over the goal
+5 m short of it. Unknown space on the leg is free (I1). The held leg is
+taken again from where the vehicle is at every update, so what is seen
+since raises it; the consumer is handed the risen leg when its own route
+is released, and a route the clearance law holds under half the cruise in
+level flight is released for it (`CONSTRAINED_LEG_RELEASE`). While the leg
+is held the lattice searches idle.
+
 ## 4. Target And Speed Policy
 
 The planner selects a lookahead point on the active persistent route. World
@@ -308,6 +326,23 @@ that hold immediately;
 recovery does not wait for the vehicle to become stationary. Loss of the
 persistent route first preserves any still-executable finite path, and clearance tiers do
 not trigger this hold.
+
+### The Open Sky's Speed Laws
+
+The open sky flies the same laws on its own profile (specification V3, K75):
+cruise and limit 15 m/s, 5 m/s^2 in the plane, read from the airframe's
+measured envelope. Three readings are the open sky's own. The unobserved
+frontier's law counts as observed what the latest scan's cone of clear sight
+along the motion reaches (K85), on the route's measure and the executed
+horizon's alike: the memory integrates a scan later than the vehicle at
+14 m/s needs it. On a descent the route end's law takes the least of three
+(K78): the distance to the end at the whole deceleration, the same at 0.6 of
+it (the thrust is one, and the descent's arrest takes its share), and the
+speed at which the descent comes to nought at the route's lowest height
+still to fly, at 0.8 of the vertical guarantee with the loop's lag. And a
+goal another leg follows captures a vehicle that passed it where it rests
+inside the capture radius, while the mission's last goal, which is landed
+on, keeps the rest within 0.75 m (K79).
 
 ## 5. Constrained Route Spans
 
