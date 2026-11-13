@@ -1424,8 +1424,9 @@ trust's normalisation its allowance and inflates the whole window's
 translation before the fix is fused (584d4341, 4c8ca7eb, e6b6d563). Stages
 3 and 4 remain.
 
-**Stage 5 done on 2026-11-12** (337d262f; the goal of 2026-11-05, part 4). R8 is
-measured: five counted flights of the 1.6 km route on 337d262f, r3399 and r3401 to r3404, 10.222, 10.269, 10.328, 10.230 and 10.239 m/s, 10.258 m/s mean (145.5 to 147.1 s), no contact, every goal within its rule (0.84 to 1.07 m from the truth at the acknowledgement).
+**Stage 5 done on 2026-11-13** (d5188337; the goal of 2026-11-05, part 4). R8 is
+measured: five counted flights of the 1.6 km route on d5188337, r3451 to r3455, 10.313, 10.168, 10.151, 10.442 and 10.043 m/s, 10.223 m/s mean (143.9 to 149.6 s), no contact, every goal within its rule (0.58 to 1.48 m from the truth at the acknowledgement).
+The stage was first flown whole on 337d262f on 2026-11-12 (r3399 and r3401 to r3404, 10.258 m/s mean); the cave's acceptance there left one lidar flight under a flight's floor (r3416, 1.762 m/s against 1.82: the clearance laws compared the body's clearance to the millimetre and held the vehicle at references it does not fly), and with that repaired (K18's contact clearance, bb539716) the whole stage was flown anew.
 The set is the full one: the 3D lidar for the obstacles (35 m), the camera
 set for the estimate, the satellite fix fused whole while it is trusted
 (K56). What the stage built, each from a measurement of the flights before
@@ -1441,12 +1442,11 @@ the connector to a route's end (K83); the latest scan's cone of clear sight
 as observed range (K85). The cruise is 13.5 to 14 m/s under the sensor's
 braking contract (14.7 m/s at 35 m); of a flight's 146 s the climbs take 25,
 the descents 23 and the three goals 12. A flight with the signal lost for
-90 s kept the trust's rule and its goals and flew 7.69 m/s (r3405: two
-resets of the autopilot's frame, the memory's line waited for 15 and 19 s);
-the camera set alone flies the route at the pair's contract, 1.59 to
-1.65 m/s (r3406 to r3408). The cave's acceptance on the same commit:
-the camera set r3411 to r3415 at 1.361, 1.497, 1.405, 1.394 and 1.424 m/s (1.416 mean against R3's 1.16), the goal 0.72 to 1.85 m from the truth, no contact and no failing line;
-the lidar set r3416 to r3420 at 1.762, 2.058, 2.539, 1.912 and 2.372 m/s (2.129 mean against 2.28, within R3's 20 percent), the goal 0.28 to 0.59 m from the truth, no contact, r3416 under a flight's floor of 1.82 by its stops at the route's tight passage (the register's attempt row), and five more flights as a measurement, r3421 to r3425, 1.930 to 2.387 m/s (2.165 mean), none under the floor.
+90 s flew 7.53 m/s (r3456: the trust withdrawn and returned by its rule, the first goal acknowledged some 29 s into the loss 9.99 m from the truth, beyond the 4.84 m F22 allows by the estimate's published uncertainty; on 337d262f r3405 flew 7.69 m/s with that goal 2.75 m off and within its rule: the register's row);
+the camera set alone flies the route at the pair's contract, 1.69 to
+1.74 m/s (r3457 to r3459; 1.59 to 1.65 on 337d262f). The cave's acceptance on the same commit:
+the camera set r3441 to r3445 at 1.363, 1.332, 1.436, 1.451 and 1.349 m/s (1.386 mean against R3's 1.16), no contact, the goal 0.96 to 2.00 m from the truth, r3443's 2.00 m failing the capture radius's line (the register's row on the stereo set's acknowledgements);
+the lidar set r3446 to r3450 at 2.248, 2.410, 2.397, 2.378 and 2.204 m/s (2.327 mean against R3's 2.28), the goal 0.13 to 0.53 m from the truth, no contact, no failing line and no route released as stalled.
 What the stage leaves is in the register: the arrival's tails, the landing
 beside a goal, the handover after a frame reset, the first leg's climb on
 the spot and the tick's tail on the open sky.

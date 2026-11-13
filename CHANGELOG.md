@@ -6,10 +6,15 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The clearance laws read a contact within 0.02 m (specification K18): the laws of the motion under execution and of
+  the route compared the body's clearance to the millimetre and held the vehicle at references of 0.04 to 0.14 m/s,
+  which the airframe does not fly, until the position's noise freed it; a body within 0.02 m of evidence is now in
+  contact and a contact ahead is reached at 0.27 m/s. The lidar set flies the location at 2.16 to 2.41 m/s over ten
+  flights with no route released as stalled (1.76 to 2.54 before, none to eight releases a flight).
 - The open sky at 10 m/s (roadmap item 39 stage 5, specification R8, V3, K75 to K85, A7): on the full set, the 3D
   lidar for the obstacles and the camera set for the estimate with the satellite fix fused whole while it is
-  trusted, the 1.6 km route through three goals is flown at 10.26 m/s mean over five counted flights (10.22 to
-  10.33), without a contact. The open sky's speed profile is read from the airframe's measured envelope
+  trusted, the 1.6 km route through three goals is flown at 10.22 m/s mean over five counted flights (10.04 to
+  10.44), without a contact. The open sky's speed profile is read from the airframe's measured envelope
   (`tools/airframe_envelope.sh`); the planner offers the leg over everything the memory holds without a search;
   the latest scan's cone of clear sight counts as observed range; a descent is brought to nought at its route's
   lowest height; a goal another leg follows captures a vehicle that passed it where it rests; the memory's line
