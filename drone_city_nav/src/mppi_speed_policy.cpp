@@ -152,6 +152,24 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
 // the 0.16 m the 0.55 m body model keeps beyond the rotor tips (0.39 m).
 constexpr double kContactDepartureSpeedMps{1.0};
 
+// The body's clearance under which the measure reads a contact. The laws of
+// the motion under execution and of the route compared clearances to the
+// millimetre on a distance field of 0.25 m cells: where the body's measure ran
+// at nil along a passage, a sample at 0.005 m and one at nought were "closer"
+// and "not", and the reference stood at the tube of millimetres, 0.04 to
+// 0.14 m/s, which the airframe does not fly (a reference of 0.1 m/s is flown
+// at 0.06), until the position's noise put the body's own measure at nought:
+// of the 465 s the route's law held ten lidar flights under 1 m/s, 336 were
+// at tubes of 0.01 m or less (r3416 to r3435), r3416 stood 32 s so and r3435
+// swung 172 s about one point. 0.02 m is the clearance the body model had
+// from a wall when its rotor touched (r286): a contact in everything but the
+// comparison. Its tube, 0.27 m/s at the 0.075 s response horizon, is the
+// least the two laws ask on the way to a contact, just over the speed the
+// stack calls rest. The column under a vertical motion reads the measure as
+// it is: a descent is still brought to nought before the estimate's vertical
+// error (K27).
+constexpr double kContactClearanceM{0.02};
+
 // The tightest speed a set of constrained samples admits: the tube law at each
 // sample, and the stopping law for what the vehicle may carry on the way to
 // it. The tightest answer wins.
@@ -159,7 +177,7 @@ constexpr double kContactDepartureSpeedMps{1.0};
 clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
                       const MppiSpeedPolicyConfig& config, const double evidence_age_s,
                       const double forward_acceleration_mps2,
-                      const double standing_body_clearance_m) noexcept {
+                      const double contact_clearance_m) noexcept {
   // The samples were measured on evidence this old, and the validators judge
   // on what arrived since: the free path to each sample is known only as of
   // then. The interval is latency in the stopping law, as the sensor-braking
@@ -176,11 +194,12 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
   // the floor, a slab over a doorway took the body model's last centimetres
   // with a tenth of a metre of tracking error, the stop that followed rolled
   // the vehicle 17 degrees and a rotor touched the slab (r837).
-  double current_body_clearance_m = standing_body_clearance_m;
+  double current_body_clearance_m = std::numeric_limits<double>::infinity();
   for (const ConstrainedHorizonSample3D& sample : samples) {
     if (!(sample.distance_m > 0.0)) {
       current_body_clearance_m =
-          std::min(current_body_clearance_m, sample.body_clearance_m);
+          std::min(current_body_clearance_m,
+                   std::max(sample.body_clearance_m, contact_clearance_m));
     }
   }
   double limit_mps = std::numeric_limits<double>::infinity();
@@ -198,12 +217,13 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
                  static_cast<double>(mppi::tubeAdmissibleSpeedMps(
                      static_cast<float>(std::max(0.0, sample.clearance_m)),
                      static_cast<float>(config.clearance_response_time_s))));
+    const double body_clearance_m =
+        std::max(sample.body_clearance_m, contact_clearance_m);
     const double body_admissible_mps = std::max(
-        sample.body_clearance_m >= current_body_clearance_m ? kContactDepartureSpeedMps
-                                                            : 0.0,
-        std::isfinite(sample.body_clearance_m)
+        body_clearance_m >= current_body_clearance_m ? kContactDepartureSpeedMps : 0.0,
+        std::isfinite(body_clearance_m)
             ? static_cast<double>(mppi::tubeAdmissibleSpeedMps(
-                  static_cast<float>(std::max(0.0, sample.body_clearance_m)),
+                  static_cast<float>(std::max(0.0, body_clearance_m)),
                   static_cast<float>(config.clearance_response_time_s)))
             : std::numeric_limits<double>::infinity());
     const double admissible_speed_mps =
@@ -216,44 +236,6 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
                                       forward_acceleration_mps2)));
   }
   return limit_mps;
-}
-
-// How far from a point of its route a vehicle still stands on it: the
-// estimate's error the body's clearance is measured with (specification K27),
-// two cells of the evidence grid.
-constexpr double kRouteStandingReachM{0.5};
-
-// The body's clearance where the vehicle's route has it standing. The motion
-// under execution measures "closer than the body stands now" from the vehicle
-// itself, the route from the vehicle's place on it, and the two disagreed by
-// centimetres: on a route whose body stood in contact by its measure, which
-// the route's law leaves at the contact's speed, a vehicle a quarter of a
-// metre beside the line kept a centimetre of its own, every motion back to
-// the line stood closer than that, and the law asked 0.1 m/s, which the
-// airframe does not fly: r3416 stood 23 s of its 267 so, fifteen lidar flights
-// 78 s (r3219 to r3223, r3416 to r3425), until the position's noise put the
-// body in contact by its own measure too. A vehicle on its route stands as
-// close to evidence as the route does there.
-[[nodiscard]] double
-routeStandingBodyClearanceM(const MppiSpeedPolicyInput& input) noexcept {
-  double clearance_m = std::numeric_limits<double>::infinity();
-  if (!input.route_clearance.has_value() || input.route.empty()) {
-    return clearance_m;
-  }
-  const Point3 position{static_cast<double>(input.state.x),
-                        static_cast<double>(input.state.y),
-                        static_cast<double>(input.state.z)};
-  if (distance3D(input.route[nearestGuideIndex(input.state, input.route)].position,
-                 position) > kRouteStandingReachM) {
-    return clearance_m;
-  }
-  for (const ConstrainedHorizonSample3D& sample :
-       input.route_clearance->constrained_samples) {
-    if (!(sample.distance_m > 0.0)) {
-      clearance_m = std::min(clearance_m, sample.body_clearance_m);
-    }
-  }
-  return clearance_m;
 }
 
 // Roadmap item 21, specification K66: a body the memory follows moving owes
@@ -671,8 +653,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         result.clearance_limit_mps,
         clearanceLimitedSpeed(input.executed_horizon_clearance->constrained_samples,
                               along_motion, input.esdf_evidence_age_s,
-                              input.forward_acceleration_mps2,
-                              routeStandingBodyClearanceM(input)));
+                              input.forward_acceleration_mps2, kContactClearanceM));
   }
   if (input.route_clearance.has_value() && input.route_clearance->constrained()) {
     // The same laws on the geometry the vehicle is committed to. The executed
@@ -684,12 +665,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the raw validator rejected the horizon and stopped the vehicle again.
     // The route's clearance profile does not move with the speed, so it bounds
     // the reference before the horizon grows into the constraint.
-    result.route_clearance_limit_mps =
-        std::min(result.route_clearance_limit_mps,
-                 clearanceLimitedSpeed(input.route_clearance->constrained_samples,
-                                       along_motion, input.esdf_evidence_age_s,
-                                       input.forward_acceleration_mps2,
-                                       std::numeric_limits<double>::infinity()));
+    result.route_clearance_limit_mps = std::min(
+        result.route_clearance_limit_mps,
+        clearanceLimitedSpeed(input.route_clearance->constrained_samples, along_motion,
+                              input.esdf_evidence_age_s,
+                              input.forward_acceleration_mps2, kContactClearanceM));
   }
   if (input.vertical_motion_clearance.has_value() &&
       input.vertical_motion_clearance->constrained()) {
@@ -711,8 +691,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       const double vertical_limit_mps = clearanceLimitedSpeed(
           input.vertical_motion_clearance->constrained_samples,
           alongMotion(config, Vec3{0.0, 0.0, static_cast<double>(input.state.vz)}),
-          input.esdf_evidence_age_s, input.vertical_forward_acceleration_mps2,
-          std::numeric_limits<double>::infinity());
+          input.esdf_evidence_age_s, input.vertical_forward_acceleration_mps2, 0.0);
       result.clearance_limit_mps =
           std::min(result.clearance_limit_mps, vertical_limit_mps / vertical_share);
     }

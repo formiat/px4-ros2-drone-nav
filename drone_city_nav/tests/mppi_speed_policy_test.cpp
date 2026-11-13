@@ -796,61 +796,56 @@ TEST(MppiSpeedPolicyTest, AContactIsLeftAtTheFloorAndApproachedAtItsTube) {
   EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
 }
 
-// r3416: the route's body in contact where the vehicle stands on it, the
-// vehicle a quarter of a metre beside the line with a centimetre of its own.
-TEST(MppiSpeedPolicyTest, AVehicleOnItsRouteStandsAsCloseAsTheRouteDoes) {
+// r3416, r3435: the body's measure at nil along a passage, a sample at half a
+// centimetre and one at nought.
+TEST(MppiSpeedPolicyTest, ABodyWithinTwoCentimetresOfEvidenceIsInContact) {
   MppiSpeedPolicyConfig config = clearanceLimiterConfig();
   config.clearance_minimum_progress_speed_mps = 3.0;
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
-  const std::vector<RouteSample3D> route{
-      RouteSample3D{.position = Point3{0.0, 0.0, 5.0}, .tangent = Vec3{1.0, 0.0, 0.0}},
-      RouteSample3D{.position = Point3{1.0, 0.0, 5.0},
-                    .tangent = Vec3{1.0, 0.0, 0.0},
-                    .station_m = 1.0}};
-  input.route = route;
-  input.state.z = 5.25F;
-  ExecutedHorizonClearance3D motion = executedClearance(0.0, 0.0);
-  motion.constrained_samples.front().body_clearance_m = 0.01;
-  motion.constrained_samples.push_back(ConstrainedHorizonSample3D{
-      .distance_m = 0.01, .clearance_m = 0.0, .body_clearance_m = 0.0});
-  input.executed_horizon_clearance = motion;
+  const double contact_tube_mps = static_cast<double>(mppi::tubeAdmissibleSpeedMps(
+      0.02F, static_cast<float>(config.clearance_response_time_s)));
 
-  // The route unmeasured: the motion back to the line stands closer than the
-  // vehicle does, its tube admits nothing, and the stopping law a centimetre.
-  const double approached_mps = stoppingLimitedSpeed(
-      0.01, 0.0, config.stopping_capability, config.sensor_braking_contract, 0.0);
-  ASSERT_LT(approached_mps, 0.5);
-  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
-              approached_mps, 1.0e-6);
+  // Half a centimetre where the body stands and nought a third of a metre on:
+  // both a contact, left at the floor, by the motion's law and the route's.
+  ExecutedHorizonClearance3D passage = executedClearance(0.0, 0.0);
+  passage.constrained_samples.front().body_clearance_m = 0.005;
+  passage.constrained_samples.push_back(ConstrainedHorizonSample3D{
+      .distance_m = 0.3, .clearance_m = 0.0, .body_clearance_m = 0.0});
+  input.executed_horizon_clearance = passage;
+  input.route_clearance = passage;
+  MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NEAR(result.clearance_limit_mps, 1.0, 1.0e-6);
+  EXPECT_NEAR(result.route_clearance_limit_mps, 1.0, 1.0e-6);
 
-  // The route's body in contact at the vehicle's place: the motion stands no
-  // closer than the route does, and is flown at the speed a contact is left at.
-  ExecutedHorizonClearance3D on_route = executedClearance(0.0, 0.0);
-  on_route.constrained_samples.front().body_clearance_m = 0.0;
-  input.route_clearance = on_route;
-  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
+  // A fifth of a metre where it stands: the contact is reached at the tube of
+  // two centimetres, however near, never at nought.
+  for (const double distance_m : {0.1, 0.001}) {
+    passage.constrained_samples.front().body_clearance_m = 0.2;
+    passage.constrained_samples.back().distance_m = distance_m;
+    input.executed_horizon_clearance = passage;
+    input.route_clearance = passage;
+    result = evaluateMppiSpeedPolicy(config, input);
+    const double approached_mps =
+        stoppingLimitedSpeed(distance_m, contact_tube_mps, config.stopping_capability,
+                             config.sensor_braking_contract, 0.0);
+    EXPECT_NEAR(result.clearance_limit_mps, approached_mps, 1.0e-6);
+    EXPECT_NEAR(result.route_clearance_limit_mps, approached_mps, 1.0e-6);
+    EXPECT_GE(result.clearance_limit_mps, contact_tube_mps);
+    EXPECT_LT(result.clearance_limit_mps, 1.0);
+  }
 
-  // The route's body with 0.2 m of its own: a motion to nil is still closer.
-  on_route.constrained_samples.front().body_clearance_m = 0.2;
-  input.route_clearance = on_route;
-  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
-              approached_mps, 1.0e-6);
-
-  // The route's contact a metre ahead of the vehicle's place is not where it
-  // stands.
-  on_route.constrained_samples.front().body_clearance_m = 0.0;
-  on_route.constrained_samples.front().distance_m = 1.0;
-  input.route_clearance = on_route;
-  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
-              approached_mps, 1.0e-6);
-
-  // Further from the route than the estimate's error, the vehicle is not on it.
-  on_route.constrained_samples.front().distance_m = 0.0;
-  input.route_clearance = on_route;
-  input.state.z = 5.75F;
-  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
-              approached_mps, 1.0e-6);
+  // The column under a descent reads the measure as it is: half a centimetre
+  // and nought five centimetres down are not one contact, and the descent is
+  // brought to nought.
+  config.stopping_capability.guaranteed_vertical_deceleration_mps2 = 1.4;
+  input.executed_horizon_clearance.reset();
+  input.route_clearance.reset();
+  input.state.vz = -1.0F;
+  passage.constrained_samples.front().body_clearance_m = 0.005;
+  passage.constrained_samples.back().distance_m = 0.05;
+  input.vertical_motion_clearance = passage;
+  EXPECT_LT(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0);
 }
 
 TEST(MppiSpeedPolicyTest, ATightPointBehindAMildOneStillBindsTheReference) {
