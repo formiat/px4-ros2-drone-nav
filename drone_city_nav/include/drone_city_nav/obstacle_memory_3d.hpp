@@ -265,6 +265,10 @@ private:
   MovingBodyTracker3D tracker_;
   // The bodies the layer holds, of the tracker's; the planner reads these.
   std::vector<MovingBody3D> followed_bodies_;
+  // The bodies in whose envelopes the layer grows (K65): those, and the
+  // clusters seen to move that the planner does not read.
+  std::vector<MovingBody3D> enveloped_bodies_;
+  std::int64_t followed_ms_{0};
   // The voxels the sweep holds occupied and the state each had before.
   std::vector<std::pair<GridIndex3D, ObservedVoxelState>> swept_;
   std::uint64_t revision_{0U};

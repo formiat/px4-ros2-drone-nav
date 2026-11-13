@@ -247,10 +247,6 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
 // commanded motion that closes on the body. A motion that does not close on
 // the body owes it nothing, so the vehicle can always leave one that walks
 // up to it; inside the envelope the body validation is the authority.
-// The fastest walk of the bodies the scenarios know (the goal of 2026-11-05,
-// part 1: 1.0 to 1.5 m/s).
-constexpr double kWarmBodyWalkMps{1.5};
-
 [[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
                                             const MppiSpeedPolicyConfig& config,
                                             double& nearest_m) noexcept {
@@ -277,7 +273,7 @@ constexpr double kWarmBodyWalkMps{1.5};
     const double gap_v = std::max({0.0, over, under});
     const double gap = std::hypot(gap_h, gap_v);
     nearest_m = std::min(nearest_m, gap);
-    if (!(gap > 1.0e-6) || !(horizontal > 1.0e-9)) {
+    if (!(gap > 1.0e-6)) {
       continue;
     }
     // The direction from the vehicle to the nearest point of the envelope.
@@ -287,8 +283,8 @@ constexpr double kWarmBodyWalkMps{1.5};
     } else if (under > 0.0) {
       vertical = gap_v;
     }
-    const Vec3 toward{-dx / horizontal * gap_h / gap, -dy / horizontal * gap_h / gap,
-                      vertical / gap};
+    const double level = horizontal > 1.0e-9 ? gap_h / (horizontal * gap) : 0.0;
+    const Vec3 toward{-dx * level, -dy * level, vertical / gap};
     const double share =
         faced_norm > 1.0e-9
             ? (faced.x * toward.x + faced.y * toward.y + faced.z * toward.z) /
@@ -296,7 +292,7 @@ constexpr double kWarmBodyWalkMps{1.5};
             : 1.0;
     const double flown_closing =
         velocity.x * toward.x + velocity.y * toward.y + velocity.z * toward.z;
-    if (share <= 0.0 && flown_closing <= 0.0) {
+    if (body.unseen_s <= 0.0 && share <= 0.0 && flown_closing <= 0.0) {
       continue;
     }
     // The body closes at its speed whichever way it walks: it could turn at
@@ -310,24 +306,36 @@ constexpr double kWarmBodyWalkMps{1.5};
     }
     double available_m = gap - config.moving_body_clearance_m;
     double allowed_mps = 0.0;
+    double charged_share = share;
     if (available_m > 0.0) {
       allowed_mps = stoppingLimitedSpeed(available_m, 0.0, capability,
                                          config.sensor_braking_contract,
                                          input.forward_acceleration_mps2);
       if (body_closing > 0.0) {
-        // The body keeps coming while the vehicle reacts and brakes.
-        const double stop_s =
-            capability.reaction_latency_s +
-            allowed_mps / capability.guaranteed_horizontal_deceleration_mps2;
-        available_m -= body_closing * stop_s;
+        // The body keeps coming while the vehicle reacts and brakes, and has
+        // walked since its cluster was last seen. It walks the floor: its way
+        // is taken from the horizontal gap, and the height the vehicle keeps
+        // over its head is not the body's to close. An unseen body within its
+        // walk of the vehicle may stand anywhere about it: the level motion is
+        // charged whole.
+        const double walked_m =
+            body_closing *
+            (capability.reaction_latency_s + body.unseen_s +
+             allowed_mps / capability.guaranteed_horizontal_deceleration_mps2);
+        available_m = std::hypot(std::max(0.0, gap_h - walked_m), gap_v) -
+                      config.moving_body_clearance_m;
         allowed_mps = available_m > 0.0
                           ? stoppingLimitedSpeed(available_m, 0.0, capability,
                                                  config.sensor_braking_contract,
                                                  input.forward_acceleration_mps2)
                           : 0.0;
+        if (body.unseen_s > 0.0 && gap_h <= walked_m && faced_norm > 1.0e-9) {
+          charged_share = std::max(share, std::hypot(faced.x, faced.y) / faced_norm);
+        }
       }
     }
-    limit_mps = std::min(limit_mps, allowed_mps / std::max(share, kLeastClosingShare));
+    limit_mps =
+        std::min(limit_mps, allowed_mps / std::max(charged_share, kLeastClosingShare));
   }
   return limit_mps;
 }

@@ -207,14 +207,9 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       taken[nearest] = true;
       Track& before = tracks_[nearest];
       track.first_ms = before.first_ms;
-      track.first_centre_map = before.first_centre_map;
       // A body by its class stays one while it is followed: the core sights
       // it nine times a second and the scans come ten.
       body.warm = body.warm || before.body.warm;
-      body.walked_m =
-          std::max(before.body.walked_m,
-                   std::hypot(body.centre_map.x - track.first_centre_map.x,
-                              body.centre_map.y - track.first_centre_map.y));
       track.cells_since_first = std::move(before.cells_since_first);
       track.recent = std::move(before.recent);
       track.previous_cells = std::move(before.cells);
@@ -256,7 +251,6 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
       }
     } else {
       track.first_ms = now_ms;
-      track.first_centre_map = body.centre_map;
       track.cells_since_first = cluster.cells;
     }
     track.recent.push_back(

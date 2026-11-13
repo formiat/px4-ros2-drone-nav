@@ -296,7 +296,8 @@ void ProductionMppiNode::onMovingBodyEvidence(
         .top_m = body.top_m,
         .age_s = body.age_s,
         .voxels = body.voxels,
-        .warm = body.warm};
+        .warm = body.warm,
+        .unseen_s = std::isfinite(body.unseen_s) ? std::max(0.0, body.unseen_s) : 0.0};
     if (!std::isfinite(read.centre_map.x) || !std::isfinite(read.centre_map.y) ||
         !std::isfinite(read.centre_map.z) || !std::isfinite(read.velocity_map_mps.x) ||
         !std::isfinite(read.velocity_map_mps.y) || !std::isfinite(read.radius_m) ||

@@ -10,6 +10,11 @@
 
 namespace drone_city_nav {
 
+// The fastest walk of the bodies the scenarios know (the goal of 2026-11-05,
+// part 1: 1.0 to 1.5 m/s): what a warm body is charged while its own walk is
+// not measured or its cluster not seen.
+inline constexpr double kWarmBodyWalkMps{1.5};
+
 // Roadmap item 21, specification K66: a body the obstacle memory follows, as
 // the planner reads it: where it stands, how fast its centre was measured
 // moving, and its envelope.
@@ -30,10 +35,9 @@ struct MovingBody3D {
   // core sighted a warm body in (specification K64): a body by its class,
   // before it is seen to move.
   bool warm{false};
-  // The farthest its centre has stood from where it was first seen: a walk
-  // carries a body away from its place, a surface's young skin shifts about
-  // where it is.
-  double walked_m{0.0};
+  // How long ago its cluster was last seen: nought while it is, and up to the
+  // moving layer's life while the memory still holds voxels where it stood.
+  double unseen_s{0.0};
 
   [[nodiscard]] bool moving() const noexcept {
     return velocity_map_mps.x != 0.0 || velocity_map_mps.y != 0.0;
@@ -112,7 +116,6 @@ private:
     Vec3 velocity_map_mps{};
     std::int64_t first_ms{0};
     std::int64_t last_ms{0};
-    Point3 first_centre_map{};
     std::vector<GridIndex3D> cells;
     std::vector<GridIndex3D> previous_cells;
     std::vector<GridIndex3D> cells_since_first;

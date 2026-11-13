@@ -1320,6 +1320,23 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   const MppiSpeedPolicyResult approach = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(approach.active_limiter, MppiSpeedLimiter::kMovingBody);
   EXPECT_LT(approach.moving_body_limit_mps, unbounded);
+  // Walking 1.5 m/s under that approach it takes its way from the horizontal
+  // gap alone: the vehicle is left what stops over the height it keeps above
+  // the head, not nought.
+  bodies[0].velocity_map_mps = {-1.5, 0.0, 0.0};
+  const MppiSpeedPolicyResult under = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_LT(under.moving_body_limit_mps, approach.moving_body_limit_mps);
+  EXPECT_GT(under.moving_body_limit_mps, 0.0);
+  // Unseen for a second it may stand anywhere within its walk: straight over
+  // where it was last seen, the level motion is charged whole.
+  bodies[0].centre_map.x = 0.0;
+  bodies[0].unseen_s = 1.0;
+  const MppiSpeedPolicyResult unseen = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(unseen.active_limiter, MppiSpeedLimiter::kMovingBody);
+  EXPECT_NEAR(unseen.moving_body_limit_mps,
+              stoppingLimitedSpeed(1.3 - 0.6, 0.0, config.stopping_capability,
+                                   config.sensor_braking_contract, 0.0),
+              1.0e-9);
 }
 
 } // namespace

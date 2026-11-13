@@ -130,9 +130,8 @@ TEST(MovingBodyTracker3D, AColumnFarFromWhereItWasIsANewBody) {
   EXPECT_FALSE(tracker.bodies().front().moving());
 }
 
-// K64, K66: the core's class reads a body before its step does (r3465), and a
-// walk carries a body from its place while a skin shifts about where it is.
-TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnceAndAWalkCarriesItAway) {
+// K64, K66: the core's class reads a body before its step does (r3465).
+TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnce) {
   MovingBodyTracker3D tracker;
   const std::vector<GridIndex3D> standing = column(10, 10);
   // Half the column's voxels hit by a warm body's returns: a body by its class.
@@ -141,7 +140,6 @@ TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnceAndAWalkCarriesItAway) {
   ASSERT_EQ(tracker.bodies().size(), 1U);
   EXPECT_TRUE(tracker.bodies().front().warm);
   EXPECT_FALSE(tracker.bodies().front().moving());
-  EXPECT_DOUBLE_EQ(tracker.bodies().front().walked_m, 0.0);
   // A scan the core did not sight it in: the body followed keeps its class.
   tracker.update(standing, {}, kBounds, 1100);
   EXPECT_TRUE(tracker.bodies().front().warm);
@@ -149,18 +147,6 @@ TEST(MovingBodyTracker3D, AWarmColumnIsABodyAtOnceAndAWalkCarriesItAway) {
   MovingBodyTracker3D other;
   other.update(standing, std::span{warm}.first(6), kBounds, 1000);
   EXPECT_FALSE(other.bodies().front().warm);
-  // A column walking 1.2 m/s stands a metre from its first place within a
-  // second; one shifting a cell there and back never does.
-  MovingBodyTracker3D walk;
-  MovingBodyTracker3D shift;
-  for (int scan = 0; scan <= 10; ++scan) {
-    const std::int64_t now_ms = 1000 + static_cast<std::int64_t>(scan) * 100;
-    walk.update(column(10 + static_cast<int>(std::floor(0.12 * scan / 0.25)), 10), {},
-                kBounds, now_ms);
-    shift.update(column(10 + scan % 2, 10), {}, kBounds, now_ms);
-  }
-  EXPECT_GE(walk.bodies().front().walked_m, 1.0);
-  EXPECT_LE(shift.bodies().front().walked_m, 0.25);
 }
 
 TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {

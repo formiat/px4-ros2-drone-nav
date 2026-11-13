@@ -655,9 +655,10 @@ TEST(ObstacleMemory3D, ABodyFirstSeenInUnknownSpaceJoinsTheLayerOnceItIsSeenToMo
       EXPECT_EQ(stats.moving_joined, 0U) << scan;
     }
   }
-  // The fifth scan put the block a cell on: seen to move, held from now.
+  // The fifth scan put the block a cell on: seen to move, held from now, and
+  // without the core's class no body the planner reads (K66).
   EXPECT_GE(stats.moving_joined, 4U);
-  EXPECT_EQ(stats.followed_bodies, 1U);
+  EXPECT_EQ(stats.followed_bodies, 0U);
   ASSERT_TRUE(memory.grid().isOccupied({7, 1, 2}));
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = coldBlockAt(origin, 7.1),
@@ -851,6 +852,23 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
     beam.range_m = 12.0;
     beam.warm_body = false;
   }
+  // First a scan that shows no cluster of a body's height, its rays through
+  // the column's upper rows alone: the body is read on where the layer still
+  // holds its voxels, unseen and unswept (r3475, r3476).
+  std::vector<LidarBeam3D> upper;
+  for (const LidarBeam3D& beam : gone) {
+    if (origin.z + beam.direction_map.z * 5.0 > origin.z) {
+      upper.push_back(beam);
+    }
+  }
+  ASSERT_EQ(upper.size(), 6U);
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = upper,
+                                .acquisition_stamp_ns = kSecondNs + 2'050'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
+  EXPECT_TRUE(memory.movingBodies().front().warm);
+  EXPECT_EQ(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'100'000'000});
