@@ -17,7 +17,11 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   walk sweeps (the walk's rectangle, the body's radius and a tenth of a metre of the range's noise wider; from 0.3 m
   over the floor, above the floor's own two rows of cells, to the body's height) that lie farther than 0.6 m from
   where the body stood at the snapshot's stamp: an occupancy where there is free air. A wall the walk comes within
-  a quarter of a metre of lies outside the volume; the floor's rows under it do too. The largest count over the
+  a quarter of a metre of lies outside the volume; the floor's rows under it do too. The cells ahead of the body
+  along its walk that the memory's sweep lays between scans (specification K66: the body's cylinder and a person's
+  reach, carried along its velocity for 1.5 s, occupied by no measurement and lifted before every scan) are the
+  sweep's, not a trace: counted as a trace they read "stale" by the age of the body's pass before (r3484, r3485,
+  r3491: every stale cell 1.1 to 2.2 m ahead of the body). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
   back, specification K65) and the oldest trace cell's age: the longest, over the snapshots, since the body last
@@ -48,6 +52,7 @@ NEAR_M = 10.0
 APART_M = 0.6
 NOISE_M, OVER_FLOOR_M = 0.1, 0.3
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
+SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
 
 
@@ -161,6 +166,25 @@ def planner_events(run: Path, near: list[float]) -> tuple[int, int, bool]:
     return collisions, stops, contact
 
 
+def walk_at(body, stamps: list[float], t_s: float) -> tuple[float, float]:
+    """The body's velocity at t, from the truth's rows either side of it."""
+    index = min(max(bisect.bisect_left(stamps, t_s), 1), len(body) - 1)
+    before, after = body[index - 1], body[index]
+    dt = after[0] - before[0]
+    return ((after[1] - before[1]) / dt, (after[2] - before[2]) / dt) if dt > 0.0 else (0.0, 0.0)
+
+
+def in_the_sweep(centres, place, walk: tuple[float, float], resolution_m: float):
+    """The cells the memory's sweep may hold ahead of a body at `place` walking at `walk` (K66)."""
+    speed = math.hypot(*walk)
+    if speed < 1.0e-6:
+        return np.zeros(len(centres), dtype=bool)
+    along = ((centres[:, 0] - place[1]) * walk[0] + (centres[:, 1] - place[2]) * walk[1]) / speed
+    across = np.abs((centres[:, 0] - place[1]) * walk[1] - (centres[:, 1] - place[2]) * walk[0]) / speed
+    wide = BODY_RADIUS_M + REACH_M + NOISE_M + resolution_m
+    return (along > 0.0) & (along <= SWEEP_SPEED_SLACK * SWEEP_S * speed + wide) & (across <= wide)
+
+
 def swept_volume(body) -> tuple[float, ...]:
     xs, ys = [row[1] for row in body], [row[2] for row in body]
     pad = BODY_RADIUS_M + NOISE_M
@@ -204,6 +228,7 @@ def trace(run: Path, body, near: list[float]) -> tuple[int, int, int, float, int
         centres = origin + (cells + 0.5) * res
         inside = np.all((centres >= volume[:3]) & (centres <= volume[3:]), axis=1)
         apart = inside & (np.hypot(centres[:, 0] - place[1], centres[:, 1] - place[2]) > APART_M)
+        apart &= ~in_the_sweep(centres, place, walk_at(body, stamps, t_s), res)
         counts.append((t_s, int(apart.sum())))
         for centre in centres[apart]:
             age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)

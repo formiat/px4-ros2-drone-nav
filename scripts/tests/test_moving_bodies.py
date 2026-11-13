@@ -87,6 +87,23 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertEqual(0.0, gap)
         self.assertAlmostEqual(0.6, over)
 
+    def test_the_sweep_ahead_of_the_body_is_no_trace(self) -> None:
+        import numpy as np  # noqa: PLC0415
+        # A body at (40, -16) walking 1.2 m/s along +y: its rows a fifth of a second apart.
+        body = [(0.2 * k, 40.0, -18.0 + 0.24 * k, 1.0) for k in range(20)]
+        stamps = [row[0] for row in body]
+        place = self.tool.at(body, stamps, 1.67)
+        walk = self.tool.walk_at(body, stamps, 1.67)
+        self.assertAlmostEqual(0.0, walk[0])
+        self.assertAlmostEqual(1.2, walk[1])
+        centres = np.array([[40.0, place[2] + 1.8, 2.0],   # ahead, within 1.5 s of the walk: the sweep
+                            [40.0, place[2] - 1.8, 2.0],   # behind: a trace
+                            [40.0, place[2] + 4.0, 2.0],   # ahead beyond the sweep: a trace
+                            [42.0, place[2] + 1.0, 2.0]])  # beside the walk: a trace
+        self.assertEqual([True, False, False, False],
+                         list(self.tool.in_the_sweep(centres, place, walk, 0.25)))
+        self.assertFalse(self.tool.in_the_sweep(centres, place, (0.0, 0.0), 0.25).any())
+
     def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
         self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
         self.assertAlmostEqual(4.0 * 0.3 + 16.0 / 8.0, self.tool.stop_way_m(4.0))
