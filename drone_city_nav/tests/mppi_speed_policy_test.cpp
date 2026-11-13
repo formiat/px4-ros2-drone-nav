@@ -796,6 +796,63 @@ TEST(MppiSpeedPolicyTest, AContactIsLeftAtTheFloorAndApproachedAtItsTube) {
   EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
 }
 
+// r3416: the route's body in contact where the vehicle stands on it, the
+// vehicle a quarter of a metre beside the line with a centimetre of its own.
+TEST(MppiSpeedPolicyTest, AVehicleOnItsRouteStandsAsCloseAsTheRouteDoes) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.clearance_minimum_progress_speed_mps = 3.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  const std::vector<RouteSample3D> route{
+      RouteSample3D{.position = Point3{0.0, 0.0, 5.0}, .tangent = Vec3{1.0, 0.0, 0.0}},
+      RouteSample3D{.position = Point3{1.0, 0.0, 5.0},
+                    .tangent = Vec3{1.0, 0.0, 0.0},
+                    .station_m = 1.0}};
+  input.route = route;
+  input.state.z = 5.25F;
+  ExecutedHorizonClearance3D motion = executedClearance(0.0, 0.0);
+  motion.constrained_samples.front().body_clearance_m = 0.01;
+  motion.constrained_samples.push_back(ConstrainedHorizonSample3D{
+      .distance_m = 0.01, .clearance_m = 0.0, .body_clearance_m = 0.0});
+  input.executed_horizon_clearance = motion;
+
+  // The route unmeasured: the motion back to the line stands closer than the
+  // vehicle does, its tube admits nothing, and the stopping law a centimetre.
+  const double approached_mps = stoppingLimitedSpeed(
+      0.01, 0.0, config.stopping_capability, config.sensor_braking_contract, 0.0);
+  ASSERT_LT(approached_mps, 0.5);
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
+              approached_mps, 1.0e-6);
+
+  // The route's body in contact at the vehicle's place: the motion stands no
+  // closer than the route does, and is flown at the speed a contact is left at.
+  ExecutedHorizonClearance3D on_route = executedClearance(0.0, 0.0);
+  on_route.constrained_samples.front().body_clearance_m = 0.0;
+  input.route_clearance = on_route;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
+
+  // The route's body with 0.2 m of its own: a motion to nil is still closer.
+  on_route.constrained_samples.front().body_clearance_m = 0.2;
+  input.route_clearance = on_route;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
+              approached_mps, 1.0e-6);
+
+  // The route's contact a metre ahead of the vehicle's place is not where it
+  // stands.
+  on_route.constrained_samples.front().body_clearance_m = 0.0;
+  on_route.constrained_samples.front().distance_m = 1.0;
+  input.route_clearance = on_route;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
+              approached_mps, 1.0e-6);
+
+  // Further from the route than the estimate's error, the vehicle is not on it.
+  on_route.constrained_samples.front().distance_m = 0.0;
+  input.route_clearance = on_route;
+  input.state.z = 5.75F;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps,
+              approached_mps, 1.0e-6);
+}
+
 TEST(MppiSpeedPolicyTest, ATightPointBehindAMildOneStillBindsTheReference) {
   // A mild constraint nearby must not hide a tight one a few metres behind
   // it: every constrained sample is folded, and the tightest answer wins.
