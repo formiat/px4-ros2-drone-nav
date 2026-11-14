@@ -21,7 +21,11 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   along its walk that the memory's sweep lays between scans (specification K66: the body's cylinder and a person's
   reach, carried along its velocity for 1.5 s, occupied by no measurement and lifted before every scan) are the
   sweep's, not a trace: counted as a trace they read "stale" by the age of the body's pass before (r3484, r3485,
-  r3491: every stale cell 1.1 to 2.2 m ahead of the body). The largest count over the
+  r3491: every stale cell 1.1 to 2.2 m ahead of the body). So are the cells of the places the memory itself kept at
+  the snapshot's stamp, read off the flight's log (the FOLLOWED_BODIES line of the scan before the stamp): about a
+  body it reads whose walk is not measured, a person's walk in the sweep's time on every side; along the measured
+  velocity of one that walks and of a cluster seen to step within that walk of the vehicle (r3569: every stale cell
+  3.3 to 3.5 m ahead of the body, the rim of the place kept every way). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
   back, specification K65) and the oldest trace cell's age: the longest, over the snapshots, since the body last
@@ -53,7 +57,11 @@ APART_M = 0.6
 NOISE_M, OVER_FLOOR_M = 0.1, 0.3
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
+WALK_MPS, VEHICLES_OWN_M = 1.5, 1.0
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
+READ = re.compile(r"\[(\d+\.\d+)\] \[obstacle_memory_3d_node\]: FOLLOWED_BODIES followed=\d+ stepping=\d+ nearest=(.*)")
+READ_BODY = re.compile(r"\[(-?[\d.]+) (-?[\d.]+) -?[\d.]+ r([\d.]+) h[\d.]+ v(-?[\d.]+),(-?[\d.]+) n\d+ a[\d.]+ d[\d.]+ "
+                       r"(warm|step) u([\d.]+)\]")
 
 
 def stop_way_m(speed_mps: float) -> float:
@@ -185,6 +193,45 @@ def in_the_sweep(centres, place, walk: tuple[float, float], resolution_m: float)
     return (along > 0.0) & (along <= SWEEP_SPEED_SLACK * SWEEP_S * speed + wide) & (across <= wide)
 
 
+def read_places(run: Path) -> list[tuple[float, list[tuple[float, float, float, float, float, bool, float]]]]:
+    """What the memory read at every scan that read anything, on the simulation's clock: each body's or stepping
+    cluster's place, radius and velocity, whether the planner read it as a body, and how long it was unseen."""
+    track = run / "mppi" / "mppi_track.jsonl"
+    log = (run / "ros_drone_nav.log").read_text(errors="replace")
+    anchors = clock_anchors(log, track) if track.exists() else []
+    if not anchors:
+        return []
+    places = []
+    for found in READ.finditer(log):
+        places.append((sim_time(anchors, float(found.group(1))),
+                       [(float(x), float(y), float(radius), float(vx), float(vy), word == "warm", float(unseen))
+                        for x, y, radius, vx, vy, word, unseen in READ_BODY.findall(found.group(2))]))
+    return sorted(places)
+
+
+def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: float):
+    """The cells the memory holds occupied by no measurement about what it read (K66): the place of a body whose
+    walk is not measured, a person's walk in the sweep's time wide on every side; the way of one that walks, and
+    of a cluster seen to step within that walk of the vehicle, along its measured velocity."""
+    kept = np.zeros(len(centres), dtype=bool)
+    for x, y, radius, vx, vy, body, unseen_s in read:
+        if unseen_s > 0.0:
+            continue
+        wide = radius + REACH_M + resolution_m
+        speed = math.hypot(vx, vy)
+        if speed <= 0.0:
+            if body:
+                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S
+            continue
+        if not body and math.hypot(x - vehicle[0], y - vehicle[1]) > (
+                radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):
+            continue
+        along = ((centres[:, 0] - x) * vx + (centres[:, 1] - y) * vy) / speed
+        across = ((centres[:, 0] - x) * vy - (centres[:, 1] - y) * vx) / speed
+        kept |= np.hypot(along - np.clip(along, 0.0, speed * SWEEP_S), across) <= wide
+    return kept
+
+
 def swept_volume(body) -> tuple[float, ...]:
     xs, ys = [row[1] for row in body], [row[2] for row in body]
     pad = BODY_RADIUS_M + NOISE_M
@@ -200,11 +247,14 @@ def trace_age_s(body, stamps: list[float], centre: tuple[float, float], t_s: flo
     return t_s - stamps[0]
 
 
-def trace(run: Path, body, near: list[float]) -> tuple[int, int, int, float, int]:
+def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int, float, int]:
     """The body's trace over the snapshots: the largest count of occupied cells where the body is not, the count in
     the last snapshot, the stale cells over the snapshots, the oldest trace cell's age, and the snapshots read."""
     volume = swept_volume(body)
     stamps = [row[0] for row in body]
+    places = read_places(run) if truth else []
+    place_stamps = [row[0] for row in places]
+    truth_stamps = [row[0] for row in truth] if truth else []
     counts = []
     stale = 0
     oldest_s = 0.0
@@ -229,6 +279,10 @@ def trace(run: Path, body, near: list[float]) -> tuple[int, int, int, float, int
         inside = np.all((centres >= volume[:3]) & (centres <= volume[3:]), axis=1)
         apart = inside & (np.hypot(centres[:, 0] - place[1], centres[:, 1] - place[2]) > APART_M)
         apart &= ~in_the_sweep(centres, place, walk_at(body, stamps, t_s), res)
+        scan = bisect.bisect_right(place_stamps, t_s) - 1
+        if scan >= 0 and t_s - place_stamps[scan] <= STAMP_SLACK_S:
+            vehicle = at(truth, truth_stamps, t_s)
+            apart &= ~in_a_kept_place(centres, places[scan][1], (vehicle[1], vehicle[2]), res)
         counts.append((t_s, int(apart.sum())))
         for centre in centres[apart]:
             age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)
@@ -253,7 +307,7 @@ def main() -> int:
         for index, body in sorted(read_bodies(run).items()):
             met = meeting(truth, body)
             collisions, stops, contact = planner_events(run, met["near"])
-            most, last, stale, oldest_s, snapshots = trace(run, body, met["near"])
+            most, last, stale, oldest_s, snapshots = trace(run, body, met["near"], truth)
             print(f"| {run.name} | {index} | {met['t_s']:.1f} | {met['distance_m']:.2f} ({met['gap_m']:.2f}, "
                   f"{met['over_m']:+.2f}) | {met['speed_mps']:.2f} / {met['speed_before_mps']:.2f} | "
                   f"{met['closing_mps']:.2f} | {met['margin_m']:+.2f} | {collisions}, {stops} | "

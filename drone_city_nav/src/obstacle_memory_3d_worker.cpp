@@ -61,8 +61,9 @@ bool ObstacleMemory3DWorker::enqueue(PersistentLidarScan3D scan) {
 }
 
 void ObstacleMemory3DWorker::logNearestBodies(const Point3& origin) {
-  // The bodies the memory follows, the five nearest the vehicle, once a
-  // second: what the planner's law and the sweep stand on.
+  // The bodies the memory follows, the five nearest the vehicle, every scan
+  // that has any: what the planner's law and the sweep stand on, and what
+  // tools/body_encounters.py tells a kept place from a body's trace by.
   // After them the clusters seen to move that it does not read ("step").
   const std::vector<MovingBody3D>& bodies = memory_.movingBodies();
   const std::vector<MovingBody3D>& stepping = memory_.steppingClusters();
@@ -98,9 +99,9 @@ void ObstacleMemory3DWorker::logNearestBodies(const Point3& origin) {
                   body->warm ? "warm" : "step", body->unseen_s);
     text += item.data();
   }
-  RCLCPP_INFO_THROTTLE(node_.get_logger(), *node_.get_clock(), 1000,
-                       "FOLLOWED_BODIES followed=%zu stepping=%zu nearest=%s",
-                       bodies.size(), stepping.size(), text.c_str());
+  RCLCPP_INFO(node_.get_logger(),
+              "FOLLOWED_BODIES followed=%zu stepping=%zu nearest=%s", bodies.size(),
+              stepping.size(), text.c_str());
 }
 
 void ObstacleMemory3DWorker::publishMovingBodies(

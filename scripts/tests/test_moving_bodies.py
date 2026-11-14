@@ -104,6 +104,36 @@ class BodyEncountersTest(unittest.TestCase):
                          list(self.tool.in_the_sweep(centres, place, walk, 0.25)))
         self.assertFalse(self.tool.in_the_sweep(centres, place, (0.0, 0.0), 0.25).any())
 
+    def test_a_place_the_memory_keeps_is_no_trace(self) -> None:
+        import numpy as np  # noqa: PLC0415
+        centres = np.array([[40.0, -13.0, 2.0],   # 3 m beside a body read with no walk measured: its place
+                            [40.0, -12.0, 2.0],   # 4 m: beyond it
+                            [42.0, -16.0, 2.0],   # 2 m ahead of one that walks along +x: its way
+                            [38.0, -16.0, 2.0]])  # 2 m behind it: a trace
+        standing = [(40.0, -16.0, 0.3, 0.0, 0.0, True, 0.0)]
+        self.assertEqual([True, False, True, True],
+                         list(self.tool.in_a_kept_place(centres, standing, (30.0, -16.0), 0.25)))
+        walking = [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.0)]
+        self.assertEqual([False, False, True, False],
+                         list(self.tool.in_a_kept_place(centres, walking, (30.0, -16.0), 0.25)))
+        # Unseen it keeps nothing; a cluster seen to step keeps its way only within a walk of the vehicle.
+        self.assertFalse(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.4)],
+                                                   (30.0, -16.0), 0.25).any())
+        stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, False, 0.0)]
+        self.assertFalse(self.tool.in_a_kept_place(centres, stepping, (30.0, -16.0), 0.25).any())
+        self.assertEqual([False, False, True, False],
+                         list(self.tool.in_a_kept_place(centres, stepping, (37.0, -16.0), 0.25)))
+        self.assertFalse(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 0.0, 0.0, False, 0.0)],
+                                                   (37.0, -16.0), 0.25).any())
+        line = ("[obstacle_memory_3d_node-4] [INFO] [1794650000.5] [obstacle_memory_3d_node]: FOLLOWED_BODIES "
+                "followed=1 stepping=1 nearest= [35.8 -16.4 2.2 r0.52 h1.75 v0.00,0.00 n41 a0.0 d5.1 warm u0.0] "
+                "[33.4 -15.6 2.4 r0.50 h1.50 v0.39,-0.06 n25 a0.7 d1.7 step u0.0]")
+        found = self.tool.READ.search(line)
+        self.assertIsNotNone(found)
+        self.assertEqual([("35.8", "-16.4", "0.52", "0.00", "0.00", "warm", "0.0"),
+                          ("33.4", "-15.6", "0.50", "0.39", "-0.06", "step", "0.0")],
+                         self.tool.READ_BODY.findall(found.group(2)))
+
     def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
         self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
         self.assertAlmostEqual(4.0 * 0.3 + 16.0 / 8.0, self.tool.stop_way_m(4.0))
