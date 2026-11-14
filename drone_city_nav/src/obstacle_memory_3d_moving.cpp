@@ -273,6 +273,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     }
   }
   tracker_.update(cells, warm_cells, grid_.bounds(), now_ms);
+  stats.warm_voxels = warm_cells.size();
+  stats.body_clusters = tracker_.bodies().size();
   // The bodies the planner read on the scan before, and how far each may
   // have walked from where it was last seen.
   const std::vector<MovingBody3D> read_before = std::move(followed_bodies_);

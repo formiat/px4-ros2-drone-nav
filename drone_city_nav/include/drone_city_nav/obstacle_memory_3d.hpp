@@ -127,6 +127,10 @@ struct ObstacleMemory3DStats {
   // laid.
   std::size_t followed_bodies{0U};
   std::size_t swept_voxels{0U};
+  // What the following stood on this scan: the voxels a warm body's returns
+  // hit (K64) and the clusters of a body's size.
+  std::size_t warm_voxels{0U};
+  std::size_t body_clusters{0U};
   std::size_t outside_endpoints{0U};
   // The integration's stages on the wall clock: the rays' trace, the
   // evidence's application to the voxels, and the decay with the moving layer.
