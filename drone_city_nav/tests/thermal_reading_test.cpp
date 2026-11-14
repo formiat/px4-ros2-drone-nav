@@ -196,6 +196,24 @@ TEST(ThermalBodyTest, ABodyIsRangedByTheHitsInItsSilhouetteAndItsReturnsAreItsOw
       sightBodies(regions, behind, 0.02, ThermalBodyConfig{});
   ASSERT_EQ(before_the_wall.size(), 1U);
   EXPECT_NEAR(before_the_wall.front().range_m, 5.0, 0.01);
+  // Hits that stand where its size puts it nowhere: the nearest quarter of
+  // them is the body, the wall behind it the rest (r3584).
+  std::vector<StereoDepthReturn> nearest;
+  nearest.reserve(8U);
+  for (int i = 0; i < 3; ++i) {
+    nearest.push_back(
+        {.point = Point3{3.6 * towards.x, 3.6 * towards.y + 0.03 * i, 3.6 * towards.z},
+         .hit = true});
+  }
+  for (int i = -2; i <= 2; ++i) {
+    nearest.push_back({.point = Point3{12.0 * towards.x, 12.0 * towards.y + 0.05 * i,
+                                       12.0 * towards.z},
+                       .hit = true});
+  }
+  const std::vector<ThermalBodySighting> by_the_nearest =
+      sightBodies(regions, nearest, 0.02, ThermalBodyConfig{});
+  ASSERT_EQ(by_the_nearest.size(), 1U);
+  EXPECT_NEAR(by_the_nearest.front().range_m, 3.6, 0.01);
   // Hits that put the region 25 m off make it a wall's width: no body.
   std::vector<StereoDepthReturn> far;
   far.push_back({.point = Point3{25.0 * towards.x, 25.0 * towards.y, 25.0 * towards.z},

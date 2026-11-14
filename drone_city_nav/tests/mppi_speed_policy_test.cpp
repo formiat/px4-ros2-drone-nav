@@ -1357,15 +1357,25 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   input.state.z = 4.0F;
   input.route = route;
   // Unseen for a second it may stand anywhere within its walk: straight over
-  // where it was last seen, the level motion is charged whole.
   bodies[0].centre_map.x = 0.0;
   bodies[0].unseen_s = 1.0;
+  // where it was last seen, the law is owed to the worst place ahead on the
+  // floor: more than what stops within the height kept over it (it walks the
+  // floor, r3584), no more than the stop before a body 1.5 m ahead.
   const MppiSpeedPolicyResult unseen = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(unseen.active_limiter, MppiSpeedLimiter::kMovingBody);
-  EXPECT_NEAR(unseen.moving_body_limit_mps,
-              stoppingLimitedSpeed(1.3 - 0.6, 0.0, followed,
-                                   config.sensor_braking_contract, 0.0),
-              1.0e-9);
+  EXPECT_GT(unseen.moving_body_limit_mps,
+            stoppingLimitedSpeed(1.3 - 0.6, 0.0, followed,
+                                 config.sensor_braking_contract, 0.0));
+  const double ahead_m = std::hypot(1.5, 1.3);
+  EXPECT_LE(unseen.moving_body_limit_mps,
+            stoppingLimitedSpeed(ahead_m - 0.6, 0.0, followed,
+                                 config.sensor_braking_contract, 0.0) *
+                    ahead_m / 1.5 +
+                1.0e-9);
+  // Within the law's clearance of its height nothing is left.
+  input.state.z = 3.2F;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps, 0.0);
 }
 
 } // namespace

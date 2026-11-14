@@ -109,7 +109,37 @@ double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
                                                  input.forward_acceleration_mps2)
                           : 0.0;
         if (gap_h <= walked_m && faced_norm > 1.0e-9) {
-          charged_share = std::max(share, std::hypot(faced.x, faced.y) / faced_norm);
+          // The law is owed to the worst place it may stand in by then,
+          // straight ahead on the floor at any distance its walk allows: the
+          // stop before it there, over the share of the faced direction that
+          // closes on it there. Over a head that is less than the whole of
+          // the level motion against the height alone: a body walks the
+          // floor, and the height kept over it is not its to close (the lidar
+          // set 1.4 to 1.9 m over the body's head was held at 0.0 to 0.4 m/s
+          // for eleven seconds, 1.76 m/s for the flight, r3584).
+          constexpr double kPlaceStepM{0.25};
+          const double flat = std::hypot(faced.x, faced.y) / faced_norm;
+          const double sink =
+              vertical * faced.z / (gap_v > 1.0e-9 ? gap_v : 1.0) / faced_norm;
+          allowed_mps = std::numeric_limits<double>::infinity();
+          charged_share = 1.0;
+          const auto places =
+              static_cast<int>(std::floor((gap_h + walked_m) / kPlaceStepM));
+          for (int place = 0; place <= places; ++place) {
+            const double ahead_m = place * kPlaceStepM;
+            const double apart_m = std::hypot(ahead_m, gap_v);
+            const double before_m = apart_m - config.moving_body_clearance_m;
+            if (!(before_m > 0.0)) {
+              allowed_mps = 0.0;
+              break;
+            }
+            const double closes = (flat * ahead_m + sink * gap_v) / apart_m;
+            allowed_mps = std::min(
+                allowed_mps, stoppingLimitedSpeed(before_m, 0.0, capability,
+                                                  config.sensor_braking_contract,
+                                                  input.forward_acceleration_mps2) /
+                                 std::max(closes, kLeastClosingShare));
+          }
         }
       }
     }

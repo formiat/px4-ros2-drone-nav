@@ -166,14 +166,22 @@ sightBodies(const std::span<const ThermalBody> regions,
       return std::abs(range - region.range_by_size_m) >
              config.size_range_error_share * region.range_by_size_m;
     };
+    // With none of them there (a part of the body in the frame) the nearest
+    // quarter is the body: what stands in a warm region's frame behind the
+    // body is farther, never nearer. By the median of them all the lidar
+    // set's body 6 to 10 m off was put on the corridor's wall 3 to 10 m behind
+    // it for twelve seconds, and the wall's marked returns were bodies of
+    // their own (r3584).
+    std::size_t rank = ranges.size() / 4U;
     if (region.range_by_size_m > 0.0 && !std::ranges::all_of(ranges, apart)) {
       std::erase_if(ranges, apart);
+      rank = ranges.size() / 2U;
     }
     if (!ranges.empty()) {
       std::nth_element(ranges.begin(),
-                       ranges.begin() + static_cast<std::ptrdiff_t>(ranges.size() / 2U),
+                       ranges.begin() + static_cast<std::ptrdiff_t>(rank),
                        ranges.end());
-      range_m = ranges[ranges.size() / 2U];
+      range_m = ranges[rank];
     }
     if (bodySized(region, range_m, config)) {
       bodies.push_back(ThermalBodySighting{.direction = region.direction,
