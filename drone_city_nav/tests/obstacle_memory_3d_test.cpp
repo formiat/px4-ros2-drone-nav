@@ -811,6 +811,48 @@ TEST(ObstacleMemory3D, AnUnknownVoxelBesideAFollowedBodyIsTheBodysOnItsHit) {
             0U);
 }
 
+TEST(ObstacleMemory3D, AColumnsFootJoinsTheLayerInTheScanThatFirstShowsIt) {
+  // K65: a column appears in free air over an old floor. Its lowest voxels
+  // stand beside the floor's and are ordinary by their own state; under a
+  // voxel the scan holds as moving they are the column's foot (r3521).
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  std::vector<Point3> column;
+  for (const double y : {1.625, 1.875}) {
+    for (const double z : {1.375, 1.625, 1.875, 2.125}) {
+      column.push_back({6.5, y, z});
+    }
+  }
+  // Twenty scans of the floor under it and of a wall behind it: the floor is
+  // old, the column's cells are observed free.
+  std::vector<LidarBeam3D> before{hitAt(origin, {6.5, 1.625, 1.125}),
+                                  hitAt(origin, {6.5, 1.875, 1.125})};
+  for (const Point3& point : column) {
+    before.push_back(hitAt(origin, {origin.x + 2.2 * (point.x - origin.x),
+                                    origin.y + 2.2 * (point.y - origin.y),
+                                    origin.z + 2.2 * (point.z - origin.z)}));
+  }
+  for (int scan = 0; scan < 20; ++scan) {
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = origin,
+         .beams = before,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000}));
+  }
+  std::vector<LidarBeam3D> appeared;
+  appeared.reserve(column.size());
+  for (const Point3& point : column) {
+    appeared.push_back(hitAt(origin, point));
+  }
+  const ObstacleMemory3DStats stats =
+      memory.integrateScan({.origin_map = origin,
+                            .beams = appeared,
+                            .acquisition_stamp_ns = kSecondNs + 2'000'000'000});
+  EXPECT_EQ(stats.moving_hits, column.size());
+}
+
 TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   // K66: a body's column walks along x at 1.2 m/s over a grid of 0.25 m; once
   // followed, the cells it will sweep in the next 1.5 s are occupied and

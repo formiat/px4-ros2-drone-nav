@@ -598,7 +598,20 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
         scores = std::addressof(evidence_[chunk_index]);
       }
       const bool in_layer = held != nullptr && (held->held.at(word_index) & bit) != 0U;
-      if (occupied && ((moving_word & bit) != 0U || in_layer)) {
+      // A column's foot in the scan that first shows it: a hit in a voxel
+      // observed free, under a hit this scan holds as moving. Its neighbours
+      // are the floor's, so it is ordinary by the voxel's own state, and a
+      // column the scans show once left it behind (r3521: lone cells half a
+      // metre over the floor along the walk, 5 to 7 s old).
+      const std::size_t over_index =
+          bit_index + static_cast<std::size_t>(OccupancyGrid3D::kChunkSize) *
+                          static_cast<std::size_t>(OccupancyGrid3D::kChunkSize);
+      const bool foot = occupied && !in_layer &&
+                        over_index < OccupancyGrid3D::kVoxelsPerChunk &&
+                        (chunk_evidence.moving.at(over_index / 64U) &
+                         (std::uint64_t{1U} << (over_index % 64U))) != 0U &&
+                        grid_.state(cell) == ObservedVoxelState::kFree;
+      if (occupied && ((moving_word & bit) != 0U || in_layer || foot)) {
         // Moving evidence: occupied at once, at the state's threshold and with
         // no confirmations built up, so that nothing of it outlives the layer.
         if (held == nullptr) {

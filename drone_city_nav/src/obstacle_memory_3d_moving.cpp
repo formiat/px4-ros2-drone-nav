@@ -362,10 +362,32 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     if (!body.warm && 2U * hugging_cells > tracker_.cells(index).size()) {
       continue;
     }
-    if (body.moving()) {
-      // A cluster seen to move is a body: its voxels, the ones it had the
-      // scan before and every one it has had since it was first seen are the
-      // layer's from now.
+    // The planner reads a warm body's cluster (K64), at once and at any range
+    // it clusters at: an oncoming body the vehicle closed on at 5 to 7 m/s
+    // was first read by its step after the vehicle had passed over it (r3465,
+    // r3466), the core having sighted it from 28 m and more. A cluster where a
+    // body read before may have walked to is that body while the core's last
+    // mark on it is no older than the layer's life (under the vehicle a body
+    // leaves the core's field; a patch of wall beside its walk, which took
+    // the class by its place, kept it 16 s, r3479). A cluster without the
+    // class is no body to the planner: read by its step, a wall's young skin
+    // was handed over 7 to 20 times an ordinary flight (r3441 to r3450), and
+    // with a metre walked from its first place 6 to 9 times still (r3472 to
+    // r3477). Its voxels are the layer's all the same.
+    std::int64_t warm_ms = body.warm ? now_ms : 0;
+    Point3 marked_at = body.centre_map;
+    if (!body.warm && continues[index] < read_before.size()) {
+      warm_ms = warm_before[continues[index]];
+      marked_at = marked_before[continues[index]];
+      marks(read_before[continues[index]], body.centre_map, warm_ms, marked_at);
+    }
+    const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
+    if (body.moving() || read) {
+      // A cluster seen to move, or read as a body, is a body: its voxels, the
+      // ones it had the scan before and every one it has had since it was
+      // first seen are the layer's from now (a body read by its class at the
+      // end of its walk a quarter metre from a wall left its wall-side cells
+      // an ordinary occupancy there, 3.6 s old, r3511).
       for (const std::span<const GridIndex3D> group :
            {tracker_.cells(index), tracker_.previousCells(index),
             tracker_.cellsSinceFirst(index)}) {
@@ -394,26 +416,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       }
       held_cells = tracker_.cells(index).size();
     }
-    // The planner reads a warm body's cluster (K64), at once and at any range
-    // it clusters at: an oncoming body the vehicle closed on at 5 to 7 m/s
-    // was first read by its step after the vehicle had passed over it (r3465,
-    // r3466), the core having sighted it from 28 m and more. A cluster where a
-    // body read before may have walked to is that body while the core's last
-    // mark on it is no older than the layer's life (under the vehicle a body
-    // leaves the core's field; a patch of wall beside its walk, which took
-    // the class by its place, kept it 16 s, r3479). A cluster without the
-    // class is no body to the planner: read by its step, a wall's young skin
-    // was handed over 7 to 20 times an ordinary flight (r3441 to r3450), and
-    // with a metre walked from its first place 6 to 9 times still (r3472 to
-    // r3477). Its voxels are the layer's all the same.
-    std::int64_t warm_ms = body.warm ? now_ms : 0;
-    Point3 marked_at = body.centre_map;
-    if (!body.warm && continues[index] < read_before.size()) {
-      warm_ms = warm_before[continues[index]];
-      marked_at = marked_before[continues[index]];
-      marks(read_before[continues[index]], body.centre_map, warm_ms, marked_at);
-    }
-    const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
     if (read) {
       followed_bodies_.push_back(body);
       followed_bodies_.back().warm = true;
