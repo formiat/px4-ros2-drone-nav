@@ -222,8 +222,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // stood 2.4 to 5.4 m from the true one (r3481).
   constexpr std::int64_t kFreshMs{500};
   std::vector<GridIndex3D> cells;
-  std::vector<GridIndex3D> held;
-  std::vector<GridIndex3D> shown;
   std::vector<GridIndex3D> warm_cells;
   for (const auto& [chunk_index, chunk] : moving_) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
@@ -234,11 +232,9 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         remaining &= remaining - 1U;
         const std::size_t bit_index = word_index * 64U + bit_offset;
         const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
-        held.push_back(cell);
         if (now_ms - chunk.last_ms.at(bit_index) > kFreshMs) {
           continue;
         }
-        shown.push_back(cell);
         if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
           cells.push_back(cell);
         }
@@ -264,8 +260,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
           // does not take (they stand beside the wall's): what a body read
           // before is read on by, as by the layer's voxels (r3496: unread at
           // the wall, 2.1 m from the vehicle, and passed at 2.7 m/s).
-          held.push_back(cell);
-          shown.push_back(cell);
           if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
             cells.push_back(cell);
           }
@@ -334,29 +328,50 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       marked_at = place;
     }
   };
+
   // Where the core's marks of this scan stand within a read body's reach is
   // the body, whatever the clusters make of it: walking at the stereo set it
   // trails the layer's voxels of the last half second and is no cluster of a
   // body's size, the nearest cluster in its reach was four voxels of the
   // floor's young returns, the body was held there and the true one walked on
   // unread under the vehicle, 19 to 26 marked voxels in every scan (r3563).
-  std::vector<std::optional<Point3>> sighted(read_before.size());
+  // The marks are the body's height too, to a body's tallest: first marked
+  // by its legs alone, a body was 0.75 m tall to the law for the rest of the
+  // approach, and the vehicle 0.5 m over its head was 1.4 m over it (r3580).
+  struct Marked {
+    Point3 place{};
+    double bottom_m{0.0};
+    double top_m{0.0};
+  };
+
+  const double half_cell_m = 0.5 * grid_.bounds().resolution_m;
+  std::vector<std::optional<Marked>> sighted(read_before.size());
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
     const double reach_m = reachM(read);
     Point3 sum{};
     std::size_t count = 0U;
+    double bottom_m = read.bottom_m;
+    double top_m = read.top_m;
     for (const GridIndex3D cell : warm_cells) {
       const Point3 centre = grid_.cellCenter(cell);
-      if (within(read, centre, reach_m)) {
-        sum.x += centre.x;
-        sum.y += centre.y;
-        ++count;
+      if (apartM(read.centre_map, centre) > reach_m ||
+          centre.z + half_cell_m > read.bottom_m + kTallestBodyM ||
+          centre.z - half_cell_m < read.top_m - kTallestBodyM) {
+        continue;
       }
+      sum.x += centre.x;
+      sum.y += centre.y;
+      ++count;
+      bottom_m = std::min(bottom_m, centre.z - half_cell_m);
+      top_m = std::max(top_m, centre.z + half_cell_m);
     }
     if (count > 0U) {
-      sighted[before] = Point3{sum.x / static_cast<double>(count),
-                               sum.y / static_cast<double>(count), read.centre_map.z};
+      sighted[before] =
+          Marked{.place = Point3{sum.x / static_cast<double>(count),
+                                 sum.y / static_cast<double>(count), read.centre_map.z},
+                 .bottom_m = bottom_m,
+                 .top_m = top_m};
     }
   }
   std::vector<std::size_t> continues(tracker_.bodies().size(), read_before.size());
@@ -494,42 +509,29 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
                             })) {
       continue;
     }
-    const double reach_m = reachM(read) - config_.moving_match_m;
     MovingBody3D unshown = read;
     std::int64_t warm_ms = warm_before[before];
     Point3 marked_at = marked_before[before];
-    Point3 sum{};
-    std::size_t count = 0U;
-    for (const GridIndex3D cell : shown) {
-      const Point3 centre = grid_.cellCenter(cell);
-      if (within(read, centre, reach_m)) {
-        sum.x += centre.x;
-        sum.y += centre.y;
-        ++count;
-      }
-    }
     if (sighted[before].has_value()) {
       // Marked by the core this scan: there it stands, its walk not measured.
-      unshown.centre_map.x = sighted[before]->x;
-      unshown.centre_map.y = sighted[before]->y;
+      unshown.centre_map.x = sighted[before]->place.x;
+      unshown.centre_map.y = sighted[before]->place.y;
+      unshown.bottom_m = sighted[before]->bottom_m;
+      unshown.top_m = sighted[before]->top_m;
       unshown.velocity_map_mps = Vec3{};
       unshown.unseen_s = 0.0;
       warm_ms = now_ms;
       marked_at = unshown.centre_map;
-    } else if (count > 0U) {
-      unshown.centre_map.x = sum.x / static_cast<double>(count);
-      unshown.centre_map.y = sum.y / static_cast<double>(count);
-      unshown.velocity_map_mps = Vec3{};
-      // Placed so it keeps its mark's age: a body's cluster marks itself by
-      // walking, a few voxels do not (on the stereo set a body placed by the
-      // floor's young returns walked from one to the next, a mark at every
-      // step, for as long as the flight went on, r3553).
-      unshown.unseen_s = 0.0;
-    } else if (std::ranges::none_of(held, [&](const GridIndex3D cell) {
-                 return within(read, grid_.cellCenter(cell), reach_m);
-               })) {
-      continue;
     } else {
+      // Unseen, wherever it has walked to: for the stand's time from its last
+      // mark, whatever the memory holds where it stood. Dropped with the last
+      // of its voxels, a body the vehicle came over (4.1 m up, 1.2 to 2 m
+      // aside: under the pair's field and between the ring's) was no body
+      // 1.7 s later, and the vehicle came down to 0.8 m over its head at
+      // 1.8 m/s (r3573). Placed where a scan showed voxels within its reach,
+      // it stood by the floor's young returns while the body walked on: 3 m
+      // from the true one when that passed the vehicle at 0.74 m (r3580; so
+      // r3553 and r3563).
       unshown.unseen_s += elapsed_s;
     }
     followed_bodies_.push_back(unshown);
@@ -592,7 +594,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     group->high_z = std::max(group->high_z, centre.z);
     ++group->count;
   }
-  const double half_cell_m = 0.5 * grid_.bounds().resolution_m;
   for (const Sighting& sighting : sightings) {
     if (sighting.count < config_.moving_least_voxels) {
       continue;

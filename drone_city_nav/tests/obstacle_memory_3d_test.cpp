@@ -895,10 +895,9 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
     beam.range_m = 12.0;
     beam.warm_body = false;
   }
-  // First a scan that shows no cluster of a body's height, its rays through
-  // the column's upper rows alone: the body is read on where the voxels the
-  // layer was shown a moment ago stand, unswept (r3475, r3476, r3503); a scan
-  // more than half a second on that shows nothing reads it unseen.
+  // First a scan that shows no cluster of a body's height and none of the
+  // core's marks, its rays through the column's upper rows alone: the body is
+  // read on unseen (r3475, r3476, r3503).
   std::vector<LidarBeam3D> upper;
   for (const LidarBeam3D& beam : gone) {
     if (origin.z + beam.direction_map.z * 5.0 > origin.z) {
@@ -910,23 +909,29 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
                                 .beams = upper,
                                 .acquisition_stamp_ns = kSecondNs + 2'050'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
-  EXPECT_DOUBLE_EQ(memory.movingBodies().front().unseen_s, 0.0);
-  EXPECT_FALSE(memory.movingBodies().front().moving());
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
   EXPECT_TRUE(memory.movingBodies().front().warm);
-  // Shown, it keeps its place though its walk is not measured; unseen, none.
-  EXPECT_GT(stats.swept_voxels, 0U);
+  // Unseen it keeps no place.
+  EXPECT_EQ(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = {},
                                 .acquisition_stamp_ns = kSecondNs + 2'650'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
   EXPECT_EQ(stats.swept_voxels, 0U);
+  // Its place seen empty, it is unseen still, wherever it has walked to
+  // (r3573), until the stand's time from its last mark is out.
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
-  EXPECT_EQ(stats.followed_bodies, 0U);
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
   EXPECT_TRUE(memory.grid().isKnownFree(ahead));
   EXPECT_EQ(stats.swept_voxels, 0U);
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = gone,
+                                .acquisition_stamp_ns = kSecondNs + 7'200'000'000});
+  EXPECT_EQ(stats.followed_bodies, 0U);
   // With no sweep configured the bodies are still followed and nothing is laid.
   ObstacleMemory3D plain{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
                                                          .minimum_range_m = 0.1,
@@ -973,6 +978,7 @@ TEST(ObstacleMemory3D, ABodyReadBeforeStandsWhereTheCoreMarksIt) {
   const MovingBody3D& body = memory.movingBodies().front();
   EXPECT_NEAR(body.centre_map.x, 9.375, 1.0e-9);
   EXPECT_NEAR(body.centre_map.y, 1.75, 1.0e-9);
+  EXPECT_NEAR(body.top_m, 3.25, 1.0e-9);
   EXPECT_DOUBLE_EQ(body.unseen_s, 0.0);
   EXPECT_FALSE(body.moving());
   // Its walk not measured, the place is kept a person's walk wide on every

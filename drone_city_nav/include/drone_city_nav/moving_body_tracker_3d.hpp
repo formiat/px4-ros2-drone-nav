@@ -14,6 +14,9 @@ namespace drone_city_nav {
 // part 1: 1.0 to 1.5 m/s): what a warm body is charged while its own walk is
 // not measured or its cluster not seen.
 inline constexpr double kWarmBodyWalkMps{1.5};
+// The tallest a body is: what stands taller is a wall's skin (r3061: skins 3
+// to 5.5 m tall read as bodies walking along the walls).
+inline constexpr double kTallestBodyM{2.5};
 
 // Roadmap item 21, specification K66: a body the obstacle memory follows, as
 // the planner reads it: where it stands, how fast its centre was measured
@@ -69,9 +72,8 @@ struct MovingBodyTrackerConfig3D {
   std::size_t least_voxels{4U};
   double widest_radius_m{1.0};
   double least_height_m{1.0};
-  // One taller than this is a wall's skin (r3061: skins 3 to 5.5 m tall read
-  // as bodies walking along the walls), not a body of a person's height.
-  double tallest_m{2.5};
+  // One taller than this is a wall's skin, not a body of a person's height.
+  double tallest_m{kTallestBodyM};
 };
 
 // Follows clusters of voxels as bodies between scans: the voxels are
