@@ -536,6 +536,82 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     followed_warm_ms_.push_back(warm_ms);
     followed_marked_at_.push_back(marked_at);
   }
+
+  // The core's marks that stand by no body read are a body of their own, at
+  // once, cluster or none: at the pair's range a body's returns scatter along
+  // the ray and with the layer's voxels about them make no cluster of a
+  // body's size (r3568: 17 marked voxels a scan from 5.3 m, the body unread
+  // down to 1.5 m and passed at 1.0 m at 1.4 m/s). A mark beside an old
+  // surface is the surface behind the body.
+  struct Sighting {
+    double sum_x{0.0};
+    double sum_y{0.0};
+    double low_x{0.0};
+    double high_x{0.0};
+    double low_y{0.0};
+    double high_y{0.0};
+    double low_z{0.0};
+    double high_z{0.0};
+    std::size_t count{0U};
+  };
+
+  std::vector<Sighting> sightings;
+  for (const GridIndex3D cell : warm_cells) {
+    const Point3 centre = grid_.cellCenter(cell);
+    if (besideSurfaceOrItsSkin(cell) ||
+        std::ranges::any_of(followed_bodies_, [&](const MovingBody3D& body) {
+          return apartM(body.centre_map, centre) <=
+                 body.radius_m + config_.moving_match_m;
+        })) {
+      continue;
+    }
+    const auto group = std::ranges::find_if(sightings, [&](const Sighting& sighting) {
+      const auto count = static_cast<double>(sighting.count);
+      return std::hypot(sighting.sum_x / count - centre.x,
+                        sighting.sum_y / count - centre.y) <= config_.moving_match_m;
+    });
+    if (group == sightings.end()) {
+      sightings.push_back(Sighting{.sum_x = centre.x,
+                                   .sum_y = centre.y,
+                                   .low_x = centre.x,
+                                   .high_x = centre.x,
+                                   .low_y = centre.y,
+                                   .high_y = centre.y,
+                                   .low_z = centre.z,
+                                   .high_z = centre.z,
+                                   .count = 1U});
+      continue;
+    }
+    group->sum_x += centre.x;
+    group->sum_y += centre.y;
+    group->low_x = std::min(group->low_x, centre.x);
+    group->high_x = std::max(group->high_x, centre.x);
+    group->low_y = std::min(group->low_y, centre.y);
+    group->high_y = std::max(group->high_y, centre.y);
+    group->low_z = std::min(group->low_z, centre.z);
+    group->high_z = std::max(group->high_z, centre.z);
+    ++group->count;
+  }
+  const double half_cell_m = 0.5 * grid_.bounds().resolution_m;
+  for (const Sighting& sighting : sightings) {
+    if (sighting.count < config_.moving_least_voxels) {
+      continue;
+    }
+    const auto count = static_cast<double>(sighting.count);
+    MovingBody3D body;
+    body.centre_map = Point3{sighting.sum_x / count, sighting.sum_y / count,
+                             0.5 * (sighting.low_z + sighting.high_z)};
+    body.radius_m = 0.5 * std::hypot(sighting.high_x - sighting.low_x,
+                                     sighting.high_y - sighting.low_y) +
+                    half_cell_m;
+    body.bottom_m = sighting.low_z - half_cell_m;
+    body.top_m = sighting.high_z + half_cell_m;
+    body.voxels = sighting.count;
+    body.warm = true;
+    followed_bodies_.push_back(body);
+    followed_warm_ms_.push_back(now_ms);
+    followed_marked_at_.push_back(body.centre_map);
+  }
   stats.followed_bodies = followed_bodies_.size();
   if (!(config_.moving_sweep_s > 0.0)) {
     return;

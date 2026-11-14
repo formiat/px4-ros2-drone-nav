@@ -981,6 +981,35 @@ TEST(ObstacleMemory3D, ABodyReadBeforeStandsWhereTheCoreMarksIt) {
   EXPECT_TRUE(memory.grid().isUnobservable({37, 15, 10}));
 }
 
+TEST(ObstacleMemory3D, TheCoresMarksThatMakeNoClusterAreABodyAtOnce) {
+  // K66 (r3568): four marked voxels in a row, a cell tall, are no cluster of a
+  // body's height; they are the body the core sighted all the same. Three of
+  // them are a return.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  std::vector<LidarBeam3D> row;
+  for (const double y : {1.375, 1.625, 1.875}) {
+    row.push_back(hitAt(origin, {6.125, y, 2.625}, true));
+  }
+  ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = origin, .beams = row, .acquisition_stamp_ns = kSecondNs});
+  EXPECT_EQ(stats.followed_bodies, 0U);
+  row.push_back(hitAt(origin, {6.125, 2.125, 2.625}, true));
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = row,
+                                .acquisition_stamp_ns = kSecondNs + 100'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  const MovingBody3D& body = memory.movingBodies().front();
+  EXPECT_NEAR(body.centre_map.x, 6.125, 1.0e-9);
+  EXPECT_NEAR(body.centre_map.y, 1.75, 1.0e-9);
+  EXPECT_NEAR(body.bottom_m, 2.5, 1.0e-9);
+  EXPECT_NEAR(body.top_m, 2.75, 1.0e-9);
+  EXPECT_TRUE(body.warm);
+  EXPECT_FALSE(body.moving());
+}
+
 TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   // K66: a warm column 2.1 m before the vehicle, read at once, its walk not
   // measured. The place kept for it reaches the vehicle; the vehicle's own
