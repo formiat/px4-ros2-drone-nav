@@ -478,8 +478,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       unshown.centre_map.x = sum.x / static_cast<double>(count);
       unshown.centre_map.y = sum.y / static_cast<double>(count);
       unshown.velocity_map_mps = Vec3{};
+      // Placed so it keeps its mark's age: a body's cluster marks itself by
+      // walking, a few voxels do not (on the stereo set a body placed by the
+      // floor's young returns walked from one to the next, a mark at every
+      // step, for as long as the flight went on, r3553).
       unshown.unseen_s = 0.0;
-      marks(read, unshown.centre_map, warm_ms, marked_at);
     } else if (std::ranges::none_of(held, [&](const GridIndex3D cell) {
                  return within(read, grid_.cellCenter(cell), reach_m);
                })) {
