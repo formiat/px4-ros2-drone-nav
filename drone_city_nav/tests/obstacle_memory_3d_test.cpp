@@ -897,7 +897,8 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   }
   // First a scan that shows no cluster of a body's height and none of the
   // core's marks, its rays through the column's upper rows alone: the body is
-  // read on unseen (r3475, r3476, r3503).
+  // read on unseen (r3475, r3476, r3503), and no scan having looked at its
+  // legs, where it stood is kept (r3582).
   std::vector<LidarBeam3D> upper;
   for (const LidarBeam3D& beam : gone) {
     if (origin.z + beam.direction_map.z * 5.0 > origin.z) {
@@ -911,16 +912,16 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
   EXPECT_TRUE(memory.movingBodies().front().warm);
-  // Unseen it keeps no place.
-  EXPECT_EQ(stats.swept_voxels, 0U);
+  EXPECT_GT(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = {},
                                 .acquisition_stamp_ns = kSecondNs + 2'650'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
-  EXPECT_EQ(stats.swept_voxels, 0U);
-  // Its place seen empty, it is unseen still, wherever it has walked to
-  // (r3573), until the stand's time from its last mark is out.
+  EXPECT_GT(stats.swept_voxels, 0U);
+  // The whole column looked at and empty, it keeps no place and is unseen
+  // still, wherever it has walked to (r3573), until the stand's time is out:
+  // of the scans that looked, from its last mark.
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
@@ -931,6 +932,10 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 7'200'000'000});
+  EXPECT_EQ(stats.followed_bodies, 1U);
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = gone,
+                                .acquisition_stamp_ns = kSecondNs + 7'800'000'000});
   EXPECT_EQ(stats.followed_bodies, 0U);
   // With no sweep configured the bodies are still followed and nothing is laid.
   ObstacleMemory3D plain{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,

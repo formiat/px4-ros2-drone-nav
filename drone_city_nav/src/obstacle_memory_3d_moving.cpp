@@ -280,6 +280,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // before a waiting vehicle walks out of the core's field at either end of
   // its walk for seconds (r3496).
   const auto stand_ms = static_cast<std::int64_t>(1000.0 * config_.moving_stand_s);
+  const std::int64_t followed_ms_before = followed_ms_;
   const double elapsed_s =
       followed_ms_ > 0 ? static_cast<double>(now_ms - followed_ms_) * 1.0e-3 : 0.0;
   followed_ms_ = now_ms;
@@ -499,6 +500,42 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // cluster of a body's height: it is read where the voxels a scan showed
   // within its reach stand (the layer's of the last half second and the
   // scan's young hits), and only with none of them is it unseen.
+  // A body no scan shows is taken off by a look at where it stood, not by a
+  // clock: while no scan has observed a cell at every level of the column it
+  // was last seen in, the vehicle within the envelopes' range of it, it may
+  // stand there still. Hovering 4 m up and 3.3 m before a pacing body, the
+  // stereo set sees neither its legs nor its class (the pair's and the
+  // core's fields pass over it); the stand's time ran out, the body was no
+  // body, and the vehicle flew down at it at 2.1 m/s, to sight it 2.7 m off
+  // (r3582, -0.19 m).
+  const auto blind = [&](const MovingBody3D& body) {
+    if (std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) >
+        kEnvelopesWithinM) {
+      return false;
+    }
+    MovingBody3D column = body;
+    column.velocity_map_mps = Vec3{};
+    column.radius_m = std::max(column.radius_m, grid_.bounds().resolution_m);
+    const std::vector<GridIndex3D> stood =
+        sweptCells3D(column, 1.0, 0.0, grid_.bounds());
+    if (stood.empty()) {
+      return false;
+    }
+    const auto [low, high] = std::ranges::minmax(stood, {}, &GridIndex3D::z);
+    std::vector<bool> looked(static_cast<std::size_t>(high.z - low.z + 1), false);
+    for (const GridIndex3D cell : stood) {
+      const auto chunk = scan_evidence.find(ObservedOccupancyGrid3D::chunkIndex(cell));
+      if (chunk == scan_evidence.end()) {
+        continue;
+      }
+      const std::size_t bit = ObservedOccupancyGrid3D::localBitIndex(cell);
+      if ((chunk->second.observed.at(bit / 64U) & (std::uint64_t{1U} << (bit % 64U))) !=
+          0U) {
+        looked[static_cast<std::size_t>(cell.z - low.z)] = true;
+      }
+    }
+    return !std::ranges::all_of(looked, [](const bool level) { return level; });
+  };
   const std::size_t seen = followed_bodies_.size();
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
@@ -532,7 +569,10 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       // it stood by the floor's young returns while the body walked on: 3 m
       // from the true one when that passed the vehicle at 0.74 m (r3580; so
       // r3553 and r3563).
-      unshown.unseen_s += elapsed_s;
+      unshown.unseen_s = std::min(unshown.unseen_s + elapsed_s, config_.moving_stand_s);
+      if (blind(read)) {
+        warm_ms += now_ms - (followed_ms_before > 0 ? followed_ms_before : now_ms);
+      }
     }
     followed_bodies_.push_back(unshown);
     followed_warm_ms_.push_back(warm_ms);
@@ -643,10 +683,12 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   };
   const double walk_m = kWarmBodyWalkMps * config_.moving_sweep_s;
   for (const MovingBody3D& body : followed_bodies_) {
-    if (body.unseen_s > 0.0) {
+    // Unseen, a body keeps its place while no scan has looked at it: there
+    // or a walk from there.
+    if (body.unseen_s > 0.0 && !blind(body)) {
       continue;
     }
-    if (body.moving()) {
+    if (body.unseen_s <= 0.0 && body.moving()) {
       sweep(body, false);
       continue;
     }
