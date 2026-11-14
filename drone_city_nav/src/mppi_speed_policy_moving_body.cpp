@@ -56,7 +56,15 @@ double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
             : 1.0;
     const double flown_closing =
         velocity.x * toward.x + velocity.y * toward.y + velocity.z * toward.z;
-    if (body.unseen_s <= 0.0 && share <= 0.0 && flown_closing <= 0.0) {
+    // A climb takes the vehicle out of a body's reach whichever way the body
+    // walks (it walks the floor), and a motion away from a body that is seen
+    // leaves it: neither owes the law anything. Held at nought before a body
+    // that walked up to it at the body's own height, a vehicle was walked
+    // into (r3545: a contact; r3544: passed 0.19 m under).
+    constexpr double kClimbShare{0.5};
+    const bool climbs =
+        faced_norm > 1.0e-9 && faced.z / faced_norm >= kClimbShare && under <= 0.0;
+    if (climbs || (body.unseen_s <= 0.0 && share <= 0.0 && flown_closing <= 0.0)) {
       continue;
     }
     // The body closes at its speed whichever way it walks: it could turn at

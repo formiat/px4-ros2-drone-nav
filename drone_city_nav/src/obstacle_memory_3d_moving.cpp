@@ -550,6 +550,7 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
             chunk_dirty = true;
             ++stats.state_transitions;
           }
+          left_.push_back(cell);
           ++stats.moving_expired;
         } else {
           // Stood for the stand's time under the sensor's eye: a wall from now,
@@ -568,6 +569,40 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
     stats.moving_voxels += held.count;
     chunk = held.count == 0U ? moving_.erase(chunk) : std::next(chunk);
   }
+  // A column's foot leaves with the column: the young occupancies under a
+  // voxel of the layer that a scan saw gone or that lived out its life are
+  // the same thing's lower end, ordinary only for standing beside the floor.
+  // Seen from over 12 m a body's rings fall 0.35 m apart, no hit stood over
+  // its feet in the scan that showed them, and the row a quarter metre over
+  // the floor stayed along its walk for as long as nothing looked there
+  // (r3502, r3532: 56 and 59 cell-snapshots up to 11.9 s old).
+  for (const GridIndex3D gone : left_) {
+    for (int below = 1; below <= 3; ++below) {
+      const GridIndex3D cell{gone.x, gone.y, gone.z - below};
+      if (!grid_.contains(cell)) {
+        break;
+      }
+      if (!grid_.isOccupied(cell)) {
+        continue;
+      }
+      if (grid_.isUnobservable(cell) || heldMoving(cell) ||
+          confirmationsAt(cell) > kYoungConfirmations) {
+        break;
+      }
+      const OccupancyChunkIndex3D chunk_index =
+          ObservedOccupancyGrid3D::chunkIndex(cell);
+      const auto scores = evidence_.find(chunk_index);
+      if (scores != evidence_.end()) {
+        const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
+        scores->second.scores.at(bit_index) = 0.0;
+        scores->second.confirmations.at(bit_index) = 0U;
+      }
+      static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+      dirty_chunks_[chunk_index] = true;
+      ++stats.state_transitions;
+    }
+  }
+  left_.clear();
 }
 
 } // namespace drone_city_nav

@@ -1331,6 +1331,18 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   const MppiSpeedPolicyResult under = evaluateMppiSpeedPolicy(config, input);
   EXPECT_LT(under.moving_body_limit_mps, approach.moving_body_limit_mps);
   EXPECT_GT(under.moving_body_limit_mps, 0.0);
+  // A route that climbs before it, at its own height, owes it nothing (r3545).
+  std::vector<RouteSample3D> climb;
+  climb.reserve(10);
+  for (int index = 0; index < 10; ++index) {
+    climb.push_back(RouteSample3D{.position = {0.0, 0.0, 2.0 + index * 0.5},
+                                  .tangent = {0.0, 0.0, 1.0}});
+  }
+  input.state.z = 2.0F;
+  input.route = climb;
+  EXPECT_TRUE(std::isinf(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps));
+  input.state.z = 4.0F;
+  input.route = route;
   // Unseen for a second it may stand anywhere within its walk: straight over
   // where it was last seen, the level motion is charged whole.
   bodies[0].centre_map.x = 0.0;

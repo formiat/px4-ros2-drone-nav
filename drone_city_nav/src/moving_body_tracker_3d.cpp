@@ -307,11 +307,11 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
                                       const double reach_m,
                                       const GridBounds3D& bounds) {
   std::vector<GridIndex3D> cells;
-  if (!body.moving() || !(sweep_s > 0.0) || !(bounds.resolution_m > 0.0)) {
+  if (!(sweep_s > 0.0) || !(bounds.resolution_m > 0.0)) {
     return cells;
   }
   const double radius_m = body.radius_m + std::max(0.0, reach_m);
-  const double top_m = body.top_m + std::max(0.0, reach_m);
+  const double top_m = body.top_m + 2.0 * std::max(0.0, reach_m);
   const Point3& from = body.centre_map;
   const Point3 to{from.x + body.velocity_map_mps.x * sweep_s,
                   from.y + body.velocity_map_mps.y * sweep_s, from.z};
@@ -343,10 +343,12 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
       for (int x = x_low; x <= x_high; ++x) {
         const double centre_x = bounds.origin_x + (x + 0.5) * bounds.resolution_m;
         // The nearest point of the segment the centre travels.
-        const double share =
-            std::clamp(((centre_x - from.x) * along_x + (centre_y - from.y) * along_y) /
-                           along_squared,
-                       0.0, 1.0);
+        const double share = along_squared > 0.0
+                                 ? std::clamp(((centre_x - from.x) * along_x +
+                                               (centre_y - from.y) * along_y) /
+                                                  along_squared,
+                                              0.0, 1.0)
+                                 : 0.0;
         const double apart = std::hypot(centre_x - (from.x + share * along_x),
                                         centre_y - (from.y + share * along_y));
         if (apart <= radius_m) {

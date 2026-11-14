@@ -515,6 +515,7 @@ void ObstacleMemory3D::reset() {
   evidence_.clear();
   moving_.clear();
   tracker_.clear();
+  left_.clear();
   followed_bodies_.clear();
   followed_warm_ms_.clear();
   followed_marked_at_.clear();
@@ -640,6 +641,7 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       }
       if (!occupied && in_layer) {
         // A free ray through a moving voxel: the body is gone from it.
+        left_.push_back(cell);
         held->held.at(word_index) &= ~bit;
         --held->count;
         scores->scores.at(bit_index) = 0.0;

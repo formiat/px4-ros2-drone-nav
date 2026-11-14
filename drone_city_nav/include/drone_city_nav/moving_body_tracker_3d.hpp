@@ -134,10 +134,14 @@ private:
   std::vector<MovingBody3D> bodies_;
 };
 
-// The cells of the grid a moving body sweeps in `sweep_s` at its measured
-// velocity: its cylinder, a person's reach wider and taller (`reach_m`: an
-// arm, a step aside, a raised hand), carried along the velocity, the cells
-// whose centres lie inside. A standing body sweeps nothing.
+// The cells of the grid a body keeps and sweeps in `sweep_s` at its measured
+// velocity: its cylinder, a person's reach wider (`reach_m`: an arm, a step
+// aside) and twice that taller, carried along the velocity, the cells whose
+// centres lie inside; a body whose walk is not measured keeps its place. The
+// height is what a vehicle passing over a head owes the body's law: passes
+// 0.6 to 0.8 m over the head were held to 0 to 0.3 m/s (r3511: 101 s) or
+// kept margins of -0.05 to +0.06 m (r3516, r3531, r3541), passes 1.1 m and
+// more over it +0.26 to +1.18 m.
 [[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,
                                                     double sweep_s, double reach_m,
                                                     const GridBounds3D& bounds);

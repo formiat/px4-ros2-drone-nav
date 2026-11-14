@@ -272,8 +272,11 @@ struct MppiSpeedPolicyResult {
 // r3447, r3478 to r3480 and r3484: 0.64 at the lower quartile, 1.74 at the
 // upper), not the 4 m/s^2 of a stop. Charged the stop's, the law let 2.2 to
 // 2.4 m/s within 2.2 to 3.1 m of a body, and the vehicle came over it at
-// 2.3 m/s with its reference at 0.3 (r3484).
-inline constexpr double kBodyLawDecelerationMps2{1.0};
+// 2.3 m/s with its reference at 0.3 (r3484); charged the median, a body that
+// turned and walked at the vehicle was met while the vehicle lost 0.2 m/s in
+// the first second of its reference's fall (r3534). The lower quartile is
+// what the law may count on.
+inline constexpr double kBodyLawDecelerationMps2{0.64};
 [[nodiscard]] double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
                                             const MppiSpeedPolicyConfig& config,
                                             double& nearest_m) noexcept;

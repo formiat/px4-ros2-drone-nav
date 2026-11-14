@@ -912,12 +912,14 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   EXPECT_DOUBLE_EQ(memory.movingBodies().front().unseen_s, 0.0);
   EXPECT_FALSE(memory.movingBodies().front().moving());
   EXPECT_TRUE(memory.movingBodies().front().warm);
-  EXPECT_EQ(stats.swept_voxels, 0U);
+  // Shown, it keeps its place though its walk is not measured; unseen, none.
+  EXPECT_GT(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = {},
                                 .acquisition_stamp_ns = kSecondNs + 2'650'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
+  EXPECT_EQ(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
