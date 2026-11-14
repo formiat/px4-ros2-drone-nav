@@ -303,10 +303,45 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // and over, a body stays out of the core's field for as long as it walks
   // (r3503: unread 6 s under the vehicle, which sank to 0.33 m over its
   // head); a patch of wall that took the class by its place goes nowhere.
+  // Its walking: a step from where it stood the scan before no longer than
+  // a walk makes, to a place half a metre from its mark. A body read before is
+  // one cluster's to continue, the nearest: with every cluster within reach
+  // taking the class and every one a metre from its parent's mark "walking",
+  // the class ran along the corridor's walls, 23 to 26 bodies read at once
+  // and the vehicle held 101 and 128 s (r3511, r3512: 1.60 and 1.34 m/s). A
+  // longer step is another thing taking the body's place: it keeps the mark's
+  // age and stands from there.
   constexpr double kWalkedM{0.5};
-  const auto walked = [](const Point3& from, const Point3& to) {
-    return std::hypot(to.x - from.x, to.y - from.y) >= kWalkedM;
+  const auto apartM = [](const Point3& from, const Point3& to) {
+    return std::hypot(to.x - from.x, to.y - from.y);
   };
+  const auto marks = [&](const MovingBody3D& before, const Point3& place,
+                         std::int64_t& warm_ms, Point3& marked_at) {
+    if (apartM(before.centre_map, place) >
+        1.5 * kWarmBodyWalkMps * (before.unseen_s + elapsed_s) +
+            2.0 * grid_.bounds().resolution_m) {
+      marked_at = place;
+    } else if (apartM(marked_at, place) >= kWalkedM) {
+      warm_ms = now_ms;
+      marked_at = place;
+    }
+  };
+  std::vector<std::size_t> continues(tracker_.bodies().size(), read_before.size());
+  for (std::size_t before = 0U; before < read_before.size(); ++before) {
+    std::size_t nearest = continues.size();
+    double nearest_m = reachM(read_before[before]);
+    for (std::size_t index = 0U; index < continues.size(); ++index) {
+      const double apart_m =
+          apartM(read_before[before].centre_map, tracker_.bodies()[index].centre_map);
+      if (continues[index] == read_before.size() && apart_m <= nearest_m) {
+        nearest_m = apart_m;
+        nearest = index;
+      }
+    }
+    if (nearest < continues.size()) {
+      continues[nearest] = before;
+    }
+  }
   followed_bodies_.clear();
   followed_warm_ms_.clear();
   followed_marked_at_.clear();
@@ -373,16 +408,10 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // r3477). Its voxels are the layer's all the same.
     std::int64_t warm_ms = body.warm ? now_ms : 0;
     Point3 marked_at = body.centre_map;
-    for (std::size_t before = 0U; !body.warm && before < read_before.size(); ++before) {
-      if (warm_before[before] > warm_ms &&
-          within(read_before[before], body.centre_map, reachM(read_before[before]))) {
-        warm_ms = warm_before[before];
-        marked_at = marked_before[before];
-      }
-    }
-    if (warm_ms > 0 && walked(marked_at, body.centre_map)) {
-      warm_ms = now_ms;
-      marked_at = body.centre_map;
+    if (!body.warm && continues[index] < read_before.size()) {
+      warm_ms = warm_before[continues[index]];
+      marked_at = marked_before[continues[index]];
+      marks(read_before[continues[index]], body.centre_map, warm_ms, marked_at);
     }
     const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
     if (read) {
@@ -444,10 +473,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       unshown.centre_map.y = sum.y / static_cast<double>(count);
       unshown.velocity_map_mps = Vec3{};
       unshown.unseen_s = 0.0;
-      if (walked(marked_at, unshown.centre_map)) {
-        warm_ms = now_ms;
-        marked_at = unshown.centre_map;
-      }
+      marks(read, unshown.centre_map, warm_ms, marked_at);
     } else if (std::ranges::none_of(held, [&](const GridIndex3D cell) {
                  return within(read, grid_.cellCenter(cell), reach_m);
                })) {
