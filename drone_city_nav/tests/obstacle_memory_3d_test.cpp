@@ -853,8 +853,9 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
     beam.warm_body = false;
   }
   // First a scan that shows no cluster of a body's height, its rays through
-  // the column's upper rows alone: the body is read on where the layer still
-  // holds its voxels, unseen and unswept (r3475, r3476).
+  // the column's upper rows alone: the body is read on where the voxels the
+  // layer was shown a moment ago stand, unswept (r3475, r3476, r3503); a scan
+  // more than half a second on that shows nothing reads it unseen.
   std::vector<LidarBeam3D> upper;
   for (const LidarBeam3D& beam : gone) {
     if (origin.z + beam.direction_map.z * 5.0 > origin.z) {
@@ -866,12 +867,18 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
                                 .beams = upper,
                                 .acquisition_stamp_ns = kSecondNs + 2'050'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
-  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
+  EXPECT_DOUBLE_EQ(memory.movingBodies().front().unseen_s, 0.0);
+  EXPECT_FALSE(memory.movingBodies().front().moving());
   EXPECT_TRUE(memory.movingBodies().front().warm);
   EXPECT_EQ(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
+                                .beams = {},
+                                .acquisition_stamp_ns = kSecondNs + 2'650'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
+  stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
-                                .acquisition_stamp_ns = kSecondNs + 2'100'000'000});
+                                .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
   EXPECT_EQ(stats.followed_bodies, 0U);
   EXPECT_TRUE(memory.grid().isKnownFree(ahead));
   EXPECT_EQ(stats.swept_voxels, 0U);

@@ -141,6 +141,17 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
     }
   }
   const bool free = !occupied && grid_.state(cell) == ObservedVoxelState::kFree;
+  // A column's foot: a young occupancy under a voxel the layer holds, over an
+  // old floor. On a body's first scan in a place its feet stand beside the
+  // floor's voxels and are ordinary; never taken, the row a quarter metre
+  // over the floor stayed along the whole walk of a body seen from over 12 m
+  // (r3502: 56 cell-snapshots up to 11.9 s old, every one at that height).
+  const GridIndex3D over{cell.x, cell.y, cell.z + 1};
+  if (occupied && grid_.contains(over) && heldMoving(over) &&
+      (oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 1}) ||
+       oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 2}))) {
+    return true;
+  }
   bool beside_ordinary{false};
   for (int dz = -1; dz <= 1; ++dz) {
     for (int dy = -1; dy <= 1; ++dy) {
@@ -211,6 +222,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   constexpr std::int64_t kFreshMs{500};
   std::vector<GridIndex3D> cells;
   std::vector<GridIndex3D> held;
+  std::vector<GridIndex3D> shown;
   std::vector<GridIndex3D> warm_cells;
   for (const auto& [chunk_index, chunk] : moving_) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
@@ -222,8 +234,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         const std::size_t bit_index = word_index * 64U + bit_offset;
         const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
         held.push_back(cell);
-        if (now_ms - chunk.last_ms.at(bit_index) <= kFreshMs &&
-            !besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
+        if (now_ms - chunk.last_ms.at(bit_index) > kFreshMs) {
+          continue;
+        }
+        shown.push_back(cell);
+        if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
           cells.push_back(cell);
         }
       }
@@ -249,6 +264,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
           // before is read on by, as by the layer's voxels (r3496: unread at
           // the wall, 2.1 m from the vehicle, and passed at 2.7 m/s).
           held.push_back(cell);
+          shown.push_back(cell);
           if (!besideSurfaceOrItsSkin(cell) && inAColumn(cell)) {
             cells.push_back(cell);
           }
@@ -261,6 +277,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // have walked from where it was last seen.
   const std::vector<MovingBody3D> read_before = std::move(followed_bodies_);
   const std::vector<std::int64_t> warm_before = std::move(followed_warm_ms_);
+  const std::vector<Point3> marked_before = std::move(followed_marked_at_);
   // A body the core has not marked for the stand's time is an occupancy like
   // any (K65). The layer's life was too short a hold: a body pacing 2 to 4 m
   // before a waiting vehicle walks out of the core's field at either end of
@@ -281,8 +298,18 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     return std::hypot(body.centre_map.x - place.x, body.centre_map.y - place.y) <=
            reach_m;
   };
+  // A body that walks is one the core need not mark again: half a metre from
+  // where it stood at its last mark is a mark of its own. Flown along with
+  // and over, a body stays out of the core's field for as long as it walks
+  // (r3503: unread 6 s under the vehicle, which sank to 0.33 m over its
+  // head); a patch of wall that took the class by its place goes nowhere.
+  constexpr double kWalkedM{0.5};
+  const auto walked = [](const Point3& from, const Point3& to) {
+    return std::hypot(to.x - from.x, to.y - from.y) >= kWalkedM;
+  };
   followed_bodies_.clear();
   followed_warm_ms_.clear();
+  followed_marked_at_.clear();
   enveloped_bodies_.clear();
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
@@ -345,16 +372,24 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // with a metre walked from its first place 6 to 9 times still (r3472 to
     // r3477). Its voxels are the layer's all the same.
     std::int64_t warm_ms = body.warm ? now_ms : 0;
+    Point3 marked_at = body.centre_map;
     for (std::size_t before = 0U; !body.warm && before < read_before.size(); ++before) {
-      if (within(read_before[before], body.centre_map, reachM(read_before[before]))) {
-        warm_ms = std::max(warm_ms, warm_before[before]);
+      if (warm_before[before] > warm_ms &&
+          within(read_before[before], body.centre_map, reachM(read_before[before]))) {
+        warm_ms = warm_before[before];
+        marked_at = marked_before[before];
       }
+    }
+    if (warm_ms > 0 && walked(marked_at, body.centre_map)) {
+      warm_ms = now_ms;
+      marked_at = body.centre_map;
     }
     const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
     if (read) {
       followed_bodies_.push_back(body);
       followed_bodies_.back().warm = true;
       followed_warm_ms_.push_back(warm_ms);
+      followed_marked_at_.push_back(marked_at);
     }
     // The layer grows in the envelope of a body the planner reads, and of a
     // cluster seen to move that it holds by half at least within 12 m: a
@@ -374,23 +409,55 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // moments that counted the cluster was
   // not there (r3475, r3476: the body 0.6 to 3 m from the vehicle, the law
   // released, the vehicle flown over it at 2.6 m/s).
+  // Seen from over its head a body is a few voxels a cell or two tall, no
+  // cluster of a body's height: it is read where the voxels a scan showed
+  // within its reach stand (the layer's of the last half second and the
+  // scan's young hits), and only with none of them is it unseen.
   const std::size_t seen = followed_bodies_.size();
+  const double resolution_m = grid_.bounds().resolution_m;
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
-    const double reach_m = reachM(read) - config_.moving_match_m;
     if (now_ms - warm_before[before] > stand_ms ||
         std::ranges::any_of(std::span{followed_bodies_}.first(seen),
                             [&](const MovingBody3D& body) {
                               return within(read, body.centre_map, reachM(read));
-                            }) ||
-        std::ranges::none_of(held, [&](const GridIndex3D cell) {
-          return within(read, grid_.cellCenter(cell), reach_m);
-        })) {
+                            })) {
       continue;
     }
-    followed_bodies_.push_back(read);
-    followed_bodies_.back().unseen_s += elapsed_s;
-    followed_warm_ms_.push_back(warm_before[before]);
+    const double reach_m = reachM(read) - config_.moving_match_m;
+    MovingBody3D unshown = read;
+    std::int64_t warm_ms = warm_before[before];
+    Point3 marked_at = marked_before[before];
+    Point3 sum{};
+    std::size_t count = 0U;
+    for (const GridIndex3D cell : shown) {
+      const Point3 centre = grid_.cellCenter(cell);
+      if (within(read, centre, reach_m) && centre.z >= read.bottom_m - resolution_m &&
+          centre.z <= read.top_m + resolution_m) {
+        sum.x += centre.x;
+        sum.y += centre.y;
+        ++count;
+      }
+    }
+    if (count > 0U) {
+      unshown.centre_map.x = sum.x / static_cast<double>(count);
+      unshown.centre_map.y = sum.y / static_cast<double>(count);
+      unshown.velocity_map_mps = Vec3{};
+      unshown.unseen_s = 0.0;
+      if (walked(marked_at, unshown.centre_map)) {
+        warm_ms = now_ms;
+        marked_at = unshown.centre_map;
+      }
+    } else if (std::ranges::none_of(held, [&](const GridIndex3D cell) {
+                 return within(read, grid_.cellCenter(cell), reach_m);
+               })) {
+      continue;
+    } else {
+      unshown.unseen_s += elapsed_s;
+    }
+    followed_bodies_.push_back(unshown);
+    followed_warm_ms_.push_back(warm_ms);
+    followed_marked_at_.push_back(marked_at);
   }
   stats.followed_bodies = followed_bodies_.size();
   if (!(config_.moving_sweep_s > 0.0)) {

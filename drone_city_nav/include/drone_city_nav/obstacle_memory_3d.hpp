@@ -267,6 +267,8 @@ private:
   std::vector<MovingBody3D> followed_bodies_;
   // When the core last marked each of them, on the confirmations' clock.
   std::vector<std::int64_t> followed_warm_ms_;
+  // Where each stood then: half a metre on, its walking is a mark of its own.
+  std::vector<Point3> followed_marked_at_;
   // The bodies in whose envelopes the layer grows (K65): those, and the
   // clusters seen to move that the planner does not read.
   std::vector<MovingBody3D> enveloped_bodies_;

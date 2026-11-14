@@ -517,6 +517,7 @@ void ObstacleMemory3D::reset() {
   tracker_.clear();
   followed_bodies_.clear();
   followed_warm_ms_.clear();
+  followed_marked_at_.clear();
   enveloped_bodies_.clear();
   followed_ms_ = 0;
   swept_.clear();
