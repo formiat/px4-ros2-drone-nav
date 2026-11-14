@@ -293,10 +293,15 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
                (body.unseen_s + elapsed_s) +
            config_.moving_match_m;
   };
-  const auto within = [](const MovingBody3D& body, const Point3& place,
-                         const double reach_m) {
+  // A body's place is its own height too: by the plan alone a patch of the
+  // ceiling 3 m over a body's head took its class and its place, the body
+  // went unread and the vehicle came 0.19 m over its head (r3547).
+  const auto within = [&](const MovingBody3D& body, const Point3& place,
+                          const double reach_m) {
     return std::hypot(body.centre_map.x - place.x, body.centre_map.y - place.y) <=
-           reach_m;
+               reach_m &&
+           place.z >= body.bottom_m - grid_.bounds().resolution_m &&
+           place.z <= body.top_m + grid_.bounds().resolution_m;
   };
   // A body that walks is one the core need not mark again: half a metre from
   // where it stood at its last mark is a mark of its own. Flown along with
@@ -333,7 +338,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     for (std::size_t index = 0U; index < continues.size(); ++index) {
       const double apart_m =
           apartM(read_before[before].centre_map, tracker_.bodies()[index].centre_map);
-      if (continues[index] == read_before.size() && apart_m <= nearest_m) {
+      if (continues[index] == read_before.size() && apart_m <= nearest_m &&
+          within(read_before[before], tracker_.bodies()[index].centre_map, apart_m)) {
         nearest_m = apart_m;
         nearest = index;
       }
@@ -445,7 +451,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // within its reach stand (the layer's of the last half second and the
   // scan's young hits), and only with none of them is it unseen.
   const std::size_t seen = followed_bodies_.size();
-  const double resolution_m = grid_.bounds().resolution_m;
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
     if (now_ms - warm_before[before] > stand_ms ||
@@ -463,8 +468,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     std::size_t count = 0U;
     for (const GridIndex3D cell : shown) {
       const Point3 centre = grid_.cellCenter(cell);
-      if (within(read, centre, reach_m) && centre.z >= read.bottom_m - resolution_m &&
-          centre.z <= read.top_m + resolution_m) {
+      if (within(read, centre, reach_m)) {
         sum.x += centre.x;
         sum.y += centre.y;
         ++count;
