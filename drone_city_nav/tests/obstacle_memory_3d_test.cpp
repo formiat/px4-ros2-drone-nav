@@ -659,6 +659,7 @@ TEST(ObstacleMemory3D, ABodyFirstSeenInUnknownSpaceJoinsTheLayerOnceItIsSeenToMo
   // without the core's class no body the planner reads (K66).
   EXPECT_GE(stats.moving_joined, 4U);
   EXPECT_EQ(stats.followed_bodies, 0U);
+  EXPECT_EQ(stats.swept_voxels, 0U);
   ASSERT_TRUE(memory.grid().isOccupied({7, 1, 2}));
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = coldBlockAt(origin, 7.1),
@@ -937,6 +938,102 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
               {.origin_map = origin, .beams = still, .acquisition_stamp_ns = kSecondNs})
           .swept_voxels,
       0U);
+}
+
+TEST(ObstacleMemory3D, ABodyReadBeforeStandsWhereTheCoreMarksIt) {
+  // K66 (r3563): a scan whose marked returns make no cluster of a body's
+  // size still shows where the body is, its walk not measured.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan <= 20; ++scan) {
+    std::vector<LidarBeam3D> column;
+    for (const double y : {1.625, 1.875}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        column.push_back(hitAt(origin, {6.5 + 0.12 * scan, y, z}, true));
+      }
+    }
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  ASSERT_TRUE(memory.movingBodies().front().moving());
+  // Its head alone, half a metre on.
+  const std::array head{hitAt(origin, {9.375, 1.625, 3.125}, true),
+                        hitAt(origin, {9.375, 1.875, 3.125}, true)};
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = head,
+                                .acquisition_stamp_ns = kSecondNs + 2'100'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  const MovingBody3D& body = memory.movingBodies().front();
+  EXPECT_NEAR(body.centre_map.x, 9.375, 1.0e-9);
+  EXPECT_NEAR(body.centre_map.y, 1.75, 1.0e-9);
+  EXPECT_DOUBLE_EQ(body.unseen_s, 0.0);
+  EXPECT_FALSE(body.moving());
+  // Its walk not measured, the place is kept a person's walk wide on every
+  // side: two metres beside it, where the walk along x swept nothing.
+  EXPECT_TRUE(memory.grid().isOccupied({37, 15, 10}));
+  EXPECT_TRUE(memory.grid().isUnobservable({37, 15, 10}));
+}
+
+TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
+  // K66: a warm column 2.1 m before the vehicle, read at once, its walk not
+  // measured. The place kept for it reaches the vehicle; the vehicle's own
+  // metre and what lies behind the vehicle as the body sees it stay as they
+  // were.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{4.125, 4.125, 2.625};
+  std::vector<LidarBeam3D> column;
+  for (const double y : {4.125, 4.375}) {
+    for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+      column.push_back(hitAt(origin, {6.125, y, z}, true));
+    }
+  }
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan < 3; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  ASSERT_FALSE(memory.movingBodies().front().moving());
+  // Beyond the body and beside the vehicle, off its metre: kept.
+  EXPECT_TRUE(memory.grid().isOccupied({32, 16, 10}));
+  EXPECT_TRUE(memory.grid().isOccupied({18, 22, 10}));
+  // The vehicle's metre, and behind it.
+  EXPECT_FALSE(memory.grid().isOccupied({19, 16, 10}));
+  EXPECT_FALSE(memory.grid().isOccupied({10, 16, 10}));
+  EXPECT_FALSE(memory.grid().isOccupied({14, 22, 10}));
+}
+
+TEST(ObstacleMemory3D, AClusterSeenToStepNearTheVehicleIsSweptAndHandsNoBody) {
+  // Roadmap item 21, motion without the class (r3561): a cold block steps
+  // along x two to three metres from the vehicle. Once seen to move its way is
+  // swept; the planner reads no body. The same block five metres off
+  // (ABodyFirstSeenInUnknownSpaceJoinsTheLayerOnceItIsSeenToMove) sweeps none.
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan <= 5; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = coldBlockAt(origin, 3.5 + 0.12 * scan),
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  EXPECT_GE(stats.moving_joined, 4U);
+  EXPECT_EQ(stats.followed_bodies, 0U);
+  EXPECT_GT(stats.swept_voxels, 0U);
 }
 
 TEST(ObstacleMemory3D, NoReturnMarksFreeSpaceThroughMaximumSensorRange) {

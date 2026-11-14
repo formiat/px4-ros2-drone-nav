@@ -153,7 +153,11 @@ obstacle_memory_3d_node:
     # going. 0 sweeps nothing. The bodies go to the planner with every scan.
     moving_sweep_s: 1.5
     # The sweep is a person's reach wider than the body's voxels and twice
-    # that taller; a body whose walk is not measured keeps its place so.
+    # that taller; a body whose walk is not measured keeps its place so and
+    # a person's walk in moving_sweep_s wider on every side, but for what
+    # lies behind the vehicle as the body sees it. A cluster seen to step
+    # that the core has not classed is swept the same along its velocity
+    # while that walk would bring it to the vehicle.
     moving_reach_m: 0.5
     moving_match_m: 1.0
     moving_least_voxels: 4

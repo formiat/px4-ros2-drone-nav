@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <vector>
 
 // The obstacle memory's moving layer (roadmap item 21, specification K65):
@@ -333,8 +334,36 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       marked_at = place;
     }
   };
+  // Where the core's marks of this scan stand within a read body's reach is
+  // the body, whatever the clusters make of it: walking at the stereo set it
+  // trails the layer's voxels of the last half second and is no cluster of a
+  // body's size, the nearest cluster in its reach was four voxels of the
+  // floor's young returns, the body was held there and the true one walked on
+  // unread under the vehicle, 19 to 26 marked voxels in every scan (r3563).
+  std::vector<std::optional<Point3>> sighted(read_before.size());
+  for (std::size_t before = 0U; before < read_before.size(); ++before) {
+    const MovingBody3D& read = read_before[before];
+    const double reach_m = reachM(read);
+    Point3 sum{};
+    std::size_t count = 0U;
+    for (const GridIndex3D cell : warm_cells) {
+      const Point3 centre = grid_.cellCenter(cell);
+      if (within(read, centre, reach_m)) {
+        sum.x += centre.x;
+        sum.y += centre.y;
+        ++count;
+      }
+    }
+    if (count > 0U) {
+      sighted[before] = Point3{sum.x / static_cast<double>(count),
+                               sum.y / static_cast<double>(count), read.centre_map.z};
+    }
+  }
   std::vector<std::size_t> continues(tracker_.bodies().size(), read_before.size());
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
+    if (sighted[before].has_value()) {
+      continue;
+    }
     std::size_t nearest = continues.size();
     double nearest_m = reachM(read_before[before]);
     for (std::size_t index = 0U; index < continues.size(); ++index) {
@@ -355,6 +384,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   followed_marked_at_.clear();
   enveloped_bodies_.clear();
   stepping_clusters_.clear();
+  constexpr double kEnvelopesWithinM{12.0};
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
     std::size_t held_cells = 0U;
@@ -438,7 +468,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // young wall patch with held voxels in it is a wall (r3031, r3033), and
     // beyond 12 m a body is a few scattered voxels, as a far wall's skin is
     // (r3037).
-    constexpr double kEnvelopesWithinM{12.0};
     if (read || (body.moving() && 2U * held_cells >= tracker_.cells(index).size() &&
                  std::hypot(body.centre_map.x - origin.x,
                             body.centre_map.y - origin.y) <= kEnvelopesWithinM)) {
@@ -479,7 +508,15 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         ++count;
       }
     }
-    if (count > 0U) {
+    if (sighted[before].has_value()) {
+      // Marked by the core this scan: there it stands, its walk not measured.
+      unshown.centre_map.x = sighted[before]->x;
+      unshown.centre_map.y = sighted[before]->y;
+      unshown.velocity_map_mps = Vec3{};
+      unshown.unseen_s = 0.0;
+      warm_ms = now_ms;
+      marked_at = unshown.centre_map;
+    } else if (count > 0U) {
       unshown.centre_map.x = sum.x / static_cast<double>(count);
       unshown.centre_map.y = sum.y / static_cast<double>(count);
       unshown.velocity_map_mps = Vec3{};
@@ -506,14 +543,17 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // The vehicle's own place is never swept: a body walking up to a hovering
   // vehicle leaves it a way out (the exit the law owes, K66).
   constexpr double kKeepsClearOfVehicleM{1.0};
-  for (const MovingBody3D& body : followed_bodies_) {
-    if (body.unseen_s > 0.0) {
-      continue;
-    }
+  const auto sweep = [&](const MovingBody3D& body, const bool every_way) {
     for (const GridIndex3D cell : sweptCells3D(
              body, config_.moving_sweep_s, config_.moving_reach_m, grid_.bounds())) {
+      const Point3 centre = grid_.cellCenter(cell);
+      // Laid every way, the place leaves what lies behind the vehicle as the
+      // body sees it: the way out.
       if (grid_.isOccupied(cell) ||
-          distance3D(grid_.cellCenter(cell), origin) <= kKeepsClearOfVehicleM) {
+          distance3D(centre, origin) <= kKeepsClearOfVehicleM ||
+          (every_way && (centre.x - origin.x) * (origin.x - body.centre_map.x) +
+                                (centre.y - origin.y) * (origin.y - body.centre_map.y) >
+                            0.0)) {
         continue;
       }
       const ObservedVoxelState before = grid_.state(cell);
@@ -522,6 +562,37 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       dirty_chunks_[ObservedOccupancyGrid3D::chunkIndex(cell)] = true;
       swept_.emplace_back(cell, before);
       ++stats.swept_voxels;
+    }
+  };
+  const double walk_m = kWarmBodyWalkMps * config_.moving_sweep_s;
+  for (const MovingBody3D& body : followed_bodies_) {
+    if (body.unseen_s > 0.0) {
+      continue;
+    }
+    if (body.moving()) {
+      sweep(body, false);
+      continue;
+    }
+    // A walk not measured may go any way (the law charges it a person's):
+    // the place is kept a person's walk in the sweep's time wider on every
+    // side. Kept as the voxels alone, a body read 5 m off with no step yet
+    // seen had every route laid 0.4 to 0.8 m over its head or before it, and
+    // walked up to the vehicle held in its way, 0.33 m (r3564).
+    MovingBody3D wide = body;
+    wide.radius_m += walk_m;
+    sweep(wide, true);
+  }
+  // Motion without the class (roadmap item 21: a body out of the core's
+  // field, seen by the pair or the ring alone): a cluster seen to step is
+  // swept along its measured velocity while a person's walk in the sweep's
+  // time would bring it to the vehicle's own place. The planner is handed no
+  // body for it: such clusters are a wall's young skin 8 to 74 times a
+  // flight (r3562 to r3566), a body once (r3561: unread from the side, passed
+  // 0.63 m before it at 1.5 m/s).
+  for (const MovingBody3D& body : stepping_clusters_) {
+    if (std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) <=
+        body.radius_m + config_.moving_reach_m + walk_m + kKeepsClearOfVehicleM) {
+      sweep(body, false);
     }
   }
 }
