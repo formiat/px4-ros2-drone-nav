@@ -60,11 +60,18 @@ double movingBodyLimitedSpeed(const MppiSpeedPolicyInput& input,
     // walks (it walks the floor), and a motion away from a body that is seen
     // leaves it: neither owes the law anything. Held at nought before a body
     // that walked up to it at the body's own height, a vehicle was walked
-    // into (r3545: a contact; r3544: passed 0.19 m under).
-    constexpr double kClimbShare{0.5};
+    // into (r3545: a contact; r3544: passed 0.19 m under). A route that leads
+    // away from a body owes it nothing either, whichever way the vehicle still
+    // drifts and whether the body is shown: flying it is the fastest end to
+    // the closing (r3560, a contact: held at nought on a route that had turned
+    // back, the vehicle slowed at 1.2 m/s^2 for two seconds and stood at the
+    // body's height when the body walked into it).
+    constexpr double kExitShare{0.5};
     const bool climbs =
-        faced_norm > 1.0e-9 && faced.z / faced_norm >= kClimbShare && under <= 0.0;
-    if (climbs || (body.unseen_s <= 0.0 && share <= 0.0 && flown_closing <= 0.0)) {
+        faced_norm > 1.0e-9 && faced.z / faced_norm >= kExitShare && under <= 0.0;
+    const bool leaves = faced_norm > 1.0e-9 && share <= -kExitShare;
+    if (climbs || leaves ||
+        (body.unseen_s <= 0.0 && share <= 0.0 && flown_closing <= 0.0)) {
       continue;
     }
     // The body closes at its speed whichever way it walks: it could turn at

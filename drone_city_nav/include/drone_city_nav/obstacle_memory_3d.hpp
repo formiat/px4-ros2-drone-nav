@@ -171,6 +171,9 @@ public:
   [[nodiscard]] std::size_t decayedVoxelTotal() const noexcept;
   // The bodies the moving layer follows (K66), as of the last scan.
   [[nodiscard]] const std::vector<MovingBody3D>& movingBodies() const noexcept;
+  // The clusters of the last scan seen to move that the planner does not
+  // read, for the log.
+  [[nodiscard]] const std::vector<MovingBody3D>& steppingClusters() const noexcept;
 
 private:
   struct ScanEvidenceChunk {
@@ -279,6 +282,7 @@ private:
   // The bodies in whose envelopes the layer grows (K65): those, and the
   // clusters seen to move that the planner does not read.
   std::vector<MovingBody3D> enveloped_bodies_;
+  std::vector<MovingBody3D> stepping_clusters_;
   std::int64_t followed_ms_{0};
   // The voxels the sweep holds occupied and the state each had before.
   std::vector<std::pair<GridIndex3D, ObservedVoxelState>> swept_;

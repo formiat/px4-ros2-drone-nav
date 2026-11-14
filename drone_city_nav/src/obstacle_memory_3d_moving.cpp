@@ -354,6 +354,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   followed_warm_ms_.clear();
   followed_marked_at_.clear();
   enveloped_bodies_.clear();
+  stepping_clusters_.clear();
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
     std::size_t held_cells = 0U;
@@ -429,6 +430,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       followed_bodies_.back().warm = true;
       followed_warm_ms_.push_back(warm_ms);
       followed_marked_at_.push_back(marked_at);
+    } else if (body.moving()) {
+      stepping_clusters_.push_back(body);
     }
     // The layer grows in the envelope of a body the planner reads, and of a
     // cluster seen to move that it holds by half at least within 12 m: a

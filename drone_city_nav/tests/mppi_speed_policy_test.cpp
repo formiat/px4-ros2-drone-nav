@@ -1341,6 +1341,19 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   input.state.z = 2.0F;
   input.route = climb;
   EXPECT_TRUE(std::isinf(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps));
+  // A route that leads away from it owes it nothing, the vehicle still flying
+  // at it and the body unseen or not (r3560).
+  std::vector<RouteSample3D> back;
+  back.reserve(10);
+  for (int index = 0; index < 10; ++index) {
+    back.push_back(RouteSample3D{.position = {-index * 0.5, 0.0, 2.0},
+                                 .tangent = {-1.0, 0.0, 0.0}});
+  }
+  input.route = back;
+  EXPECT_TRUE(std::isinf(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps));
+  bodies[0].unseen_s = 1.0;
+  EXPECT_TRUE(std::isinf(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps));
+  bodies[0].unseen_s = 0.0;
   input.state.z = 4.0F;
   input.route = route;
   // Unseen for a second it may stand anywhere within its walk: straight over

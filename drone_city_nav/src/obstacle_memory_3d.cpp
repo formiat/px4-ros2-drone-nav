@@ -520,6 +520,7 @@ void ObstacleMemory3D::reset() {
   followed_warm_ms_.clear();
   followed_marked_at_.clear();
   enveloped_bodies_.clear();
+  stepping_clusters_.clear();
   followed_ms_ = 0;
   swept_.clear();
   dirty_chunks_.clear();
@@ -762,6 +763,10 @@ void ObstacleMemory3D::decayUnconfirmed(const std::int64_t now_ms,
 
 const std::vector<MovingBody3D>& ObstacleMemory3D::movingBodies() const noexcept {
   return followed_bodies_;
+}
+
+const std::vector<MovingBody3D>& ObstacleMemory3D::steppingClusters() const noexcept {
+  return stepping_clusters_;
 }
 
 std::size_t ObstacleMemory3D::decayedVoxelTotal() const noexcept {
