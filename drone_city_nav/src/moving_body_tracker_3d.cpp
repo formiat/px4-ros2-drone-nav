@@ -311,7 +311,8 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
     return cells;
   }
   const double radius_m = body.radius_m + std::max(0.0, reach_m);
-  const double top_m = body.top_m + std::max(0.0, reach_m);
+  const double top_m =
+      body.top_m + (reach_m > 0.0 ? reach_m + bounds.resolution_m : 0.0);
   const Point3& from = body.centre_map;
   const Point3 to{from.x + body.velocity_map_mps.x * sweep_s,
                   from.y + body.velocity_map_mps.y * sweep_s, from.z};
