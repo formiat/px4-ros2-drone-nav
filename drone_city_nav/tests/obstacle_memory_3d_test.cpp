@@ -1019,6 +1019,13 @@ TEST(ObstacleMemory3D, TheCoresMarksThatMakeNoClusterAreABodyAtOnce) {
   EXPECT_NEAR(body.top_m, 2.75, 1.0e-9);
   EXPECT_TRUE(body.warm);
   EXPECT_FALSE(body.moving());
+  // A cold return a cell beside the row, in a voxel nothing had observed: in
+  // the envelope of a body read by its marks it is the body's (r3599).
+  const std::array cold{hitAt(origin, {6.375, 1.625, 2.625})};
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = cold,
+                                .acquisition_stamp_ns = kSecondNs + 200'000'000});
+  EXPECT_EQ(stats.moving_hits, 1U);
 }
 
 TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {

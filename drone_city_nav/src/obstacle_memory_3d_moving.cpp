@@ -536,6 +536,25 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     }
     return !std::ranges::all_of(looked, [](const bool level) { return level; });
   };
+  // A body read by the core's marks alone, cluster or none, takes what a
+  // cluster's body does: the young occupancies in its column and a cell
+  // round it are the layer's, and the layer grows in its envelope. Without
+  // it the column a body turned in a quarter metre from the corridor's wall
+  // stood on as an ordinary occupancy, its hits there being beside the wall's
+  // (r3599: both ends of the crossing body's walk, six levels of two cells
+  // each, for as long as the vehicle looked elsewhere).
+  const auto takesIn = [&](const MovingBody3D& body) {
+    MovingBody3D column = body;
+    column.velocity_map_mps = Vec3{};
+    column.radius_m += grid_.bounds().resolution_m;
+    for (const GridIndex3D cell : sweptCells3D(column, 1.0, 0.0, grid_.bounds())) {
+      if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) && !heldMoving(cell) &&
+          confirmationsAt(cell) <= kYoungConfirmations) {
+        holdMoving(cell, now_ms, stats);
+      }
+    }
+    enveloped_bodies_.push_back(body);
+  };
   const std::size_t seen = followed_bodies_.size();
   for (std::size_t before = 0U; before < read_before.size(); ++before) {
     const MovingBody3D& read = read_before[before];
@@ -559,6 +578,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       unshown.unseen_s = 0.0;
       warm_ms = now_ms;
       marked_at = unshown.centre_map;
+      takesIn(unshown);
     } else {
       // Unseen, wherever it has walked to: for the stand's time from its last
       // mark, whatever the memory holds where it stood. Dropped with the last
@@ -649,6 +669,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     body.top_m = sighting.high_z + half_cell_m;
     body.voxels = sighting.count;
     body.warm = true;
+    takesIn(body);
     followed_bodies_.push_back(body);
     followed_warm_ms_.push_back(now_ms);
     followed_marked_at_.push_back(body.centre_map);
@@ -777,9 +798,13 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
   // Seen from over 12 m a body's rings fall 0.35 m apart, no hit stood over
   // its feet in the scan that showed them, and the row a quarter metre over
   // the floor stayed along its walk for as long as nothing looked there
-  // (r3502, r3532: 56 and 59 cell-snapshots up to 11.9 s old).
+  // (r3502, r3532: 56 and 59 cell-snapshots up to 11.9 s old). Under it to a
+  // body's height: seen from 35 to 40 m the rings fall 0.6 m apart, the hit
+  // over the feet was a body's chest, more than three cells up, and the row
+  // stayed (r3590: 73 cell-snapshots up to 12.1 s old, all of them it).
+  const int column = static_cast<int>(kTallestBodyM / grid_.bounds().resolution_m);
   for (const GridIndex3D gone : left_) {
-    for (int below = 1; below <= 3; ++below) {
+    for (int below = 1; below <= column; ++below) {
       const GridIndex3D cell{gone.x, gone.y, gone.z - below};
       if (!grid_.contains(cell)) {
         break;
