@@ -164,7 +164,7 @@ class BodyEncountersTest(unittest.TestCase):
         volume = self.tool.swept_volume(body)
         self.assertAlmostEqual(0.0 - 0.35, volume[1], delta=1e-9)
         self.assertAlmostEqual(5.0 + 0.35, volume[4], delta=1e-9)
-        self.assertAlmostEqual(1.3, volume[2], delta=1e-9)
+        self.assertAlmostEqual(1.5, volume[2], delta=1e-9)
 
     def test_the_tool_is_recorded(self) -> None:
         readme = (REPOSITORY / "tools/README.md").read_text(encoding="utf-8")

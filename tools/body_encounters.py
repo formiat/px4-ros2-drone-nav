@@ -14,9 +14,14 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   (v * 0.3 s + v^2 / (2 * 4 m/s^2), the reaction of a planner tick and the profile's acceleration);
 - what the planner did while the body was within 10 m: trajectories found in collision and stops published;
 - the body's trace in the memory: in every snapshot, the occupied cells whose centres lie inside the volume the
-  walk sweeps (the walk's rectangle, the body's radius and a tenth of a metre of the range's noise wider; from 0.3 m
-  over the floor, above the floor's own two rows of cells, to the body's height) that lie farther than 0.6 m from
-  where the body stood at the snapshot's stamp: an occupancy where there is free air. A wall the walk comes within
+  walk sweeps (the walk's rectangle, the body's radius and a tenth of a metre of the range's noise wider; from 0.5 m
+  over the floor to the body's height) that lie farther than 0.6 m from where the body stood at the snapshot's
+  stamp: an occupancy where there is free air. The memory is laid in the estimate's frame and the walk is the
+  truth's: the cells are brought to the truth's frame by the estimate's error at the snapshot's stamp (the
+  planner's track against the truth), and the half metre over the floor holds the floor's rows and what that
+  error drifted by since the rows were laid. Read without it, the floor itself was the "trace" wherever the
+  estimate stood 0.4 to 0.56 m over the truth (r3590, r3614, r3624, r3630, r3640: every "stale" cell in the row at
+  1.38 m, the floor's own in the memory's frame). A wall the walk comes within
   a quarter of a metre of lies outside the volume; the floor's rows under it do too. The cells ahead of the body
   along its walk that the memory's sweep lays between scans (specification K66: the body's cylinder and a person's
   reach, carried along its velocity for 1.5 s, occupied by no measurement and lifted before every scan) are the
@@ -54,7 +59,7 @@ VEHICLE_RADIUS_M = 0.35
 REACTION_S, DECELERATION_MPS2 = 0.3, 4.0
 NEAR_M = 10.0
 APART_M = 0.6
-NOISE_M, OVER_FLOOR_M = 0.1, 0.3
+NOISE_M, OVER_FLOOR_M = 0.1, 0.5
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
 WALK_MPS, VEHICLES_OWN_M = 1.5, 1.0
@@ -247,6 +252,20 @@ def trace_age_s(body, stamps: list[float], centre: tuple[float, float], t_s: flo
     return t_s - stamps[0]
 
 
+def read_estimate(run: Path) -> list[tuple[float, float, float, float]]:
+    """The vehicle's place by its own estimate (the planner's track), on the simulation's clock: the frame the
+    memory's cells are laid in."""
+    track = run / "mppi" / "mppi_track.jsonl"
+    if not track.exists():
+        return []
+    rows = []
+    with track.open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            rows.append((row["stamp_ns"] * 1.0e-9, *row["p"]))
+    return rows
+
+
 def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int, float, int]:
     """The body's trace over the snapshots: the largest count of occupied cells where the body is not, the count in
     the last snapshot, the stale cells over the snapshots, the oldest trace cell's age, and the snapshots read."""
@@ -255,6 +274,8 @@ def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int
     places = read_places(run) if truth else []
     place_stamps = [row[0] for row in places]
     truth_stamps = [row[0] for row in truth] if truth else []
+    estimate = read_estimate(run) if truth else []
+    estimate_stamps = [row[0] for row in estimate]
     counts = []
     stale = 0
     oldest_s = 0.0
@@ -267,22 +288,31 @@ def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int
         if held is not None and not (all(held[axis] <= volume[axis] for axis in range(3))
                                      and all(held[axis + 3] >= volume[axis + 3] for axis in range(3))):
             continue
+        # The memory is laid in the estimate's frame, the walk is the truth's: the cells are read where the
+        # estimate's error at the snapshot's stamp puts the walk, and brought back to the truth's frame.
+        offset = np.zeros(3)
+        if estimate:
+            believed, true = at(estimate, estimate_stamps, t_s), at(truth, truth_stamps, t_s)
+            offset = np.array(believed[1:4]) - np.array(true[1:4])
+        shifted = tuple(volume[axis] + offset[axis % 3] + (-res_pad if axis < 3 else res_pad)
+                        for axis in range(6) for res_pad in (0.25,))
         try:
-            _, res, origin, _, occupied = load_memory(path, volume)
+            _, res, origin, _, occupied = load_memory(path, shifted)
         except ValueError:
             continue
         if not occupied.size:
             continue
         place = at(body, stamps, t_s)
         cells = np.argwhere(occupied)
-        centres = origin + (cells + 0.5) * res
+        laid = origin + (cells + 0.5) * res
+        centres = laid - offset
         inside = np.all((centres >= volume[:3]) & (centres <= volume[3:]), axis=1)
         apart = inside & (np.hypot(centres[:, 0] - place[1], centres[:, 1] - place[2]) > APART_M)
         apart &= ~in_the_sweep(centres, place, walk_at(body, stamps, t_s), res)
         scan = bisect.bisect_right(place_stamps, t_s) - 1
         if scan >= 0 and t_s - place_stamps[scan] <= STAMP_SLACK_S:
-            vehicle = at(truth, truth_stamps, t_s)
-            apart &= ~in_a_kept_place(centres, places[scan][1], (vehicle[1], vehicle[2]), res)
+            vehicle = at(estimate, estimate_stamps, t_s) if estimate else at(truth, truth_stamps, t_s)
+            apart &= ~in_a_kept_place(laid, places[scan][1], (vehicle[1], vehicle[2]), res)
         counts.append((t_s, int(apart.sum())))
         for centre in centres[apart]:
             age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)
