@@ -919,16 +919,16 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
   EXPECT_GT(stats.swept_voxels, 0U);
-  // The whole column looked at and empty, it keeps no place and is unseen
-  // still, wherever it has walked to (r3573), until the stand's time is out:
-  // of the scans that looked, from its last mark.
+  // The whole column looked at and empty, it is unseen still, wherever it
+  // has walked to (r3573), its place kept (r3645), until the stand's time is
+  // out: of the scans that looked, from its last mark.
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
-  EXPECT_TRUE(memory.grid().isKnownFree(ahead));
-  EXPECT_EQ(stats.swept_voxels, 0U);
+  EXPECT_TRUE(memory.grid().isOccupied(ahead));
+  EXPECT_GT(stats.swept_voxels, 0U);
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 7'200'000'000});
@@ -937,6 +937,8 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 7'800'000'000});
   EXPECT_EQ(stats.followed_bodies, 0U);
+  EXPECT_TRUE(memory.grid().isKnownFree(ahead));
+  EXPECT_EQ(stats.swept_voxels, 0U);
   // With no sweep configured the bodies are still followed and nothing is laid.
   ObstacleMemory3D plain{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
                                                          .minimum_range_m = 0.1,

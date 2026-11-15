@@ -704,11 +704,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   };
   const double walk_m = kWarmBodyWalkMps * config_.moving_sweep_s;
   for (const MovingBody3D& body : followed_bodies_) {
-    // Unseen, a body keeps its place while no scan has looked at it: there
-    // or a walk from there.
-    if (body.unseen_s > 0.0 && !blind(body)) {
-      continue;
-    }
+    // Unseen, a body keeps its place a walk wide for as long as it is read:
+    // there or a walk from there. Given up once a scan had looked at where
+    // it stood, the place was gone while the body, walked on and back, was
+    // under the vehicle, out of every sensor's field, and the route came
+    // down to 0.49 m over its head (r3645).
     if (body.unseen_s <= 0.0 && body.moving()) {
       sweep(body, false);
       continue;
