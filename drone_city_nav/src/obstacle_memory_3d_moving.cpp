@@ -802,31 +802,44 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
   // body's height: seen from 35 to 40 m the rings fall 0.6 m apart, the hit
   // over the feet was a body's chest, more than three cells up, and the row
   // stayed (r3590: 73 cell-snapshots up to 12.1 s old, all of them it).
+  // In the columns beside it only what stands on an old floor, the foot
+  // itself: a body is two cells across, and from 20 m the one hit on its
+  // feet and the hits on its trunk fall in neighbouring columns (r3614: one
+  // cell of the row left, 4.7 s old).
   const int column = static_cast<int>(kTallestBodyM / grid_.bounds().resolution_m);
   for (const GridIndex3D gone : left_) {
-    for (int below = 1; below <= column; ++below) {
-      const GridIndex3D cell{gone.x, gone.y, gone.z - below};
-      if (!grid_.contains(cell)) {
-        break;
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        for (int below = 1; below <= column; ++below) {
+          const GridIndex3D cell{gone.x + dx, gone.y + dy, gone.z - below};
+          if (!grid_.contains(cell)) {
+            break;
+          }
+          if (!grid_.isOccupied(cell)) {
+            continue;
+          }
+          if (grid_.isUnobservable(cell) || heldMoving(cell) ||
+              confirmationsAt(cell) > kYoungConfirmations) {
+            break;
+          }
+          if ((dx != 0 || dy != 0) &&
+              !oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 1}) &&
+              !oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 2})) {
+            continue;
+          }
+          const OccupancyChunkIndex3D chunk_index =
+              ObservedOccupancyGrid3D::chunkIndex(cell);
+          const auto scores = evidence_.find(chunk_index);
+          if (scores != evidence_.end()) {
+            const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
+            scores->second.scores.at(bit_index) = 0.0;
+            scores->second.confirmations.at(bit_index) = 0U;
+          }
+          static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+          dirty_chunks_[chunk_index] = true;
+          ++stats.state_transitions;
+        }
       }
-      if (!grid_.isOccupied(cell)) {
-        continue;
-      }
-      if (grid_.isUnobservable(cell) || heldMoving(cell) ||
-          confirmationsAt(cell) > kYoungConfirmations) {
-        break;
-      }
-      const OccupancyChunkIndex3D chunk_index =
-          ObservedOccupancyGrid3D::chunkIndex(cell);
-      const auto scores = evidence_.find(chunk_index);
-      if (scores != evidence_.end()) {
-        const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
-        scores->second.scores.at(bit_index) = 0.0;
-        scores->second.confirmations.at(bit_index) = 0U;
-      }
-      static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
-      dirty_chunks_[chunk_index] = true;
-      ++stats.state_transitions;
     }
   }
   left_.clear();
