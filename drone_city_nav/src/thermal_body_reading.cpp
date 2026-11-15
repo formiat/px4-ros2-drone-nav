@@ -166,14 +166,18 @@ sightBodies(const std::span<const ThermalBody> regions,
       return std::abs(range - region.range_by_size_m) >
              config.size_range_error_share * region.range_by_size_m;
     };
-    // With none of them there (a part of the body in the frame) the nearest
-    // quarter is the body: what stands in a warm region's frame behind the
-    // body is farther, never nearer. By the median of them all the lidar
-    // set's body 6 to 10 m off was put on the corridor's wall 3 to 10 m behind
-    // it for twelve seconds, and the wall's marked returns were bodies of
-    // their own (r3584).
+    // With its size known and none of them there, the body is where its size
+    // puts it and the hits are other things': the range sensor does not reach
+    // it. Ranged by them, a body the stereo set's core sighted 38 m down the
+    // corridor was put on the surfaces 5 to 10 m before the vehicle, their
+    // marked returns were bodies, and the vehicle stood before them for 200 s
+    // (r3649: the flight not ended in 900 s). With its size not known (a
+    // region cut by the frame's edge) the nearest quarter of the hits is the
+    // body: what stands in a warm region's frame behind the body is farther,
+    // never nearer (by the median of them all the lidar set's body was put on
+    // the wall 3 to 10 m behind it, r3584).
     std::size_t rank = ranges.size() / 4U;
-    if (region.range_by_size_m > 0.0 && !std::ranges::all_of(ranges, apart)) {
+    if (region.range_by_size_m > 0.0) {
       std::erase_if(ranges, apart);
       rank = ranges.size() / 2U;
     }

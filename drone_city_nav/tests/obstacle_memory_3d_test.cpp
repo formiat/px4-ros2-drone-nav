@@ -920,8 +920,9 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
   EXPECT_GT(stats.swept_voxels, 0U);
   // The whole column looked at and empty, it is unseen still, wherever it
-  // has walked to (r3573), its place kept (r3645), until the stand's time is
-  // out: of the scans that looked, from its last mark.
+  // has walked to (r3573), its place kept (r3645), until the stand's time
+  // from its last mark is out (the vehicle stands seven metres off, farther
+  // than a walk: its sensors could look, and the time ran all along, r3649).
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
@@ -932,10 +933,6 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 7'200'000'000});
-  EXPECT_EQ(stats.followed_bodies, 1U);
-  stats = memory.integrateScan({.origin_map = origin,
-                                .beams = gone,
-                                .acquisition_stamp_ns = kSecondNs + 7'800'000'000});
   EXPECT_EQ(stats.followed_bodies, 0U);
   EXPECT_TRUE(memory.grid().isKnownFree(ahead));
   EXPECT_EQ(stats.swept_voxels, 0U);

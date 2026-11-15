@@ -514,8 +514,13 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // body, and the vehicle flew down at it at 2.1 m/s, to sight it 2.7 m off
   // (r3582, -0.19 m).
   const auto blind = [&](const MovingBody3D& body) {
+    // Only while the vehicle stands within a walk of where it stood, where
+    // the sensors look over it: farther off they can look, and a thing the
+    // core's marks put 5 to 10 m off where no body was stood read for 200 s,
+    // the vehicle held before it (r3649).
     if (std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) >
-        kEnvelopesWithinM) {
+        body.radius_m + config_.moving_reach_m +
+            kWarmBodyWalkMps * config_.moving_sweep_s + 1.0) {
       return false;
     }
     MovingBody3D column = body;
