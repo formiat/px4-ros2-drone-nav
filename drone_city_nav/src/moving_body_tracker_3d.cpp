@@ -257,6 +257,7 @@ void MovingBodyTracker3D::update(const std::span<const GridIndex3D> cells,
     }
     track.last_ms = now_ms;
     body.age_s = static_cast<double>(now_ms - track.first_ms) * 1.0e-3;
+    body.moved = track.moved;
     body.velocity_map_mps =
         std::hypot(track.velocity_map_mps.x, track.velocity_map_mps.y) >=
                 config_.standing_speed_mps

@@ -42,6 +42,10 @@ struct MovingBody3D {
   // How long ago its cluster was last seen: nought while it is, and up to the
   // moving layer's life while the memory still holds voxels where it stood.
   double unseen_s{0.0};
+  // Its cluster was seen to move since it was first followed, whatever its
+  // speed reads now: at the end of a walk a body turns, and its measured
+  // speed passes through nought for a few scans.
+  bool moved{false};
 
   [[nodiscard]] bool moving() const noexcept {
     return velocity_map_mps.x != 0.0 || velocity_map_mps.y != 0.0;

@@ -437,7 +437,12 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       marks(read_before[continues[index]], body.centre_map, warm_ms, marked_at);
     }
     const bool read = warm_ms > 0 && now_ms - warm_ms <= stand_ms;
-    if (body.moving() || read) {
+    // Seen to move once, it is a body for as long as it is tracked: while its
+    // speed read nought at the turn of its walk a quarter metre from the
+    // corridor's wall, the hits on its wall-side column were ordinary ones
+    // beside the wall, and the column stood there for as long as the vehicle
+    // looked elsewhere, 12 and 107 s (r3646).
+    if (body.moved || read) {
       // A cluster seen to move, or read as a body, is a body: its voxels, the
       // ones it had the scan before and every one it has had since it was
       // first seen are the layer's from now (a body read by its class at the
@@ -484,7 +489,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // young wall patch with held voxels in it is a wall (r3031, r3033), and
     // beyond 12 m a body is a few scattered voxels, as a far wall's skin is
     // (r3037).
-    if (read || (body.moving() && 2U * held_cells >= tracker_.cells(index).size() &&
+    if (read || (body.moved && 2U * held_cells >= tracker_.cells(index).size() &&
                  std::hypot(body.centre_map.x - origin.x,
                             body.centre_map.y - origin.y) <= kEnvelopesWithinM)) {
       enveloped_bodies_.push_back(body);

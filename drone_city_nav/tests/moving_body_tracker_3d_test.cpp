@@ -63,6 +63,7 @@ TEST(MovingBodyTracker3D, AWalkingColumnReadsItsSpeedAndAStandingOneNone) {
   ASSERT_EQ(tracker.bodies().size(), 1U);
   const MovingBody3D walking = tracker.bodies().front();
   EXPECT_TRUE(walking.moving());
+  EXPECT_TRUE(walking.moved);
   EXPECT_NEAR(walking.velocity_map_mps.x, 1.2, 0.5);
   EXPECT_NEAR(walking.velocity_map_mps.y, 0.0, 1.0e-9);
   EXPECT_NEAR(walking.age_s, 2.0, 1.0e-9);
@@ -73,6 +74,8 @@ TEST(MovingBodyTracker3D, AWalkingColumnReadsItsSpeedAndAStandingOneNone) {
   }
   ASSERT_EQ(tracker.bodies().size(), 1U);
   EXPECT_FALSE(tracker.bodies().front().moving());
+  // Seen to move once, it is still the thing that moved (r3646).
+  EXPECT_TRUE(tracker.bodies().front().moved);
   EXPECT_NEAR(tracker.bodies().front().age_s, 4.0, 1.0e-9);
   EXPECT_EQ(tracker.cells(0).size(), 14U);
   EXPECT_EQ(tracker.previousCells(0).size(), 14U);
