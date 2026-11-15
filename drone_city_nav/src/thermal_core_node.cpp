@@ -25,8 +25,10 @@
 
 #include <Eigen/Geometry>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <iterator>
@@ -259,6 +261,43 @@ private:
     RCLCPP_WARN(get_logger(), "%s", event.data.c_str());
   }
 
+  // Twice a second, the frame's warm regions in the scan's frame (bearing and
+  // extent in degrees, pixels, the range their size gives) and the bodies the
+  // scan's hits ranged of them: what the memory's marked returns stand on (a
+  // second body read on the corridor's wall for a hundred scans, r3609, r3611,
+  // r3614, and the line of the body's event could not say where from).
+  void logSightings(const std::vector<ThermalBody>& regions,
+                    const std::vector<ThermalBodySighting>& bodies,
+                    const double stamp_s) {
+    if (regions.empty() ||
+        (stamp_s - sightings_logged_s_ < 0.5 && stamp_s >= sightings_logged_s_)) {
+      return;
+    }
+    sightings_logged_s_ = stamp_s;
+    const auto degrees = [](const double radians) { return radians * 180.0 / M_PI; };
+    const auto azimuth = [&](const Point3& p) { return degrees(std::atan2(p.y, p.x)); };
+    const auto elevation = [&](const Point3& p) {
+      return degrees(std::atan2(p.z, std::hypot(p.x, p.y)));
+    };
+    std::string text;
+    std::array<char, 96> item{};
+    for (const ThermalBody& region : regions) {
+      std::snprintf(item.data(), item.size(), " [%.1f %.1f w%.1f h%.1f px%zu size%.1f]",
+                    azimuth(region.direction), elevation(region.direction),
+                    degrees(region.width_rad), degrees(region.height_rad),
+                    region.warm_pixels, region.range_by_size_m);
+      text += item.data();
+    }
+    text += " ->";
+    for (const ThermalBodySighting& body : bodies) {
+      std::snprintf(item.data(), item.size(), " [%.1f %.1f r%.2f]",
+                    azimuth(body.direction), elevation(body.direction), body.range_m);
+      text += item.data();
+    }
+    RCLCPP_INFO(get_logger(), "BODY_SIGHTINGS regions=%zu bodies=%zu%s", regions.size(),
+                bodies.size(), text.c_str());
+  }
+
   // The scan with one more field, `warm_body`: 1 at a return that is a sighted
   // body's own surface (K64), 0 elsewhere. The memory holds those returns as
   // moving evidence (K65). The flags ride in the scan itself, as the heat
@@ -403,6 +442,7 @@ private:
         sightBodies(regions, returns,
                     stereo_depth_node_internal::kBodySilhouetteMarginRad, body_config_);
     announceBodies(bodies);
+    logSightings(regions, bodies, stamp_s);
     const Eigen::Quaterniond to_scan = orientation.conjugate();
     if (heat.has_value()) {
       std::optional<Eigen::Vector3d> fix;
@@ -573,6 +613,7 @@ private:
   std::optional<double> cold_since_s_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr waiting_scan_;
   double marks_logged_s_{0.0};
+  double sightings_logged_s_{0.0};
   bool heat_seen_{false};
   bool bodies_seen_{false};
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr thermal_sub_;
