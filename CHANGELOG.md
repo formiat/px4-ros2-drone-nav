@@ -46,7 +46,12 @@ release names the asset tags it was validated with.
   in the simulation (`scripts/moving_bodies.py`, the scenarios `sim-urban-walking-body`, `-oncoming`, `-side`), the
   thermal core's reading of bodies on both sets, the obstacle memory's moving layer (what moves is told by how it
   behaves; no decay by age), the bodies followed between scans with their sweep along the measured velocity and a
-  person's reach, and the planner's stopping law toward a closing body. Tools: `thermal_body_rig.py`,
+  person's reach, and the planner's stopping law toward a closing body. Since 2026-11-13: a body is read by the
+  core's marks with a cluster or without one and is unseen until a scan has looked at where it stood; the place kept
+  for it is a walk wide while its walk is not measured and 0.75 m over its head; a cluster seen to step without the
+  class is swept and hands the planner no body; the law is owed to the worst place a body may stand in, and a climb
+  and a route that leads away owe it nothing. Not accepted: the eighteen meetings of one series and the acceptance
+  flights were not flown to the end (`docs/technical_debt.md`). Tools: `thermal_body_rig.py`,
   `body_contact_rig.py`, `body_encounters.py`, `thermal_frame_bodies`.
 - The camera set's stack replay meets its contract with the autopilot's IMU at every sample, and a camera
   bag is kept in the replay gate beside the lidar's (roadmap item 36, specification K62): a recorded flight

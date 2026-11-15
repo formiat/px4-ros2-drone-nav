@@ -586,23 +586,48 @@ the door variant: five flights past a body that crosses the route, no
 contact, no occupancy of it older than the stated decay, and the mean
 speed of R3 kept.
 
-Stages 1a, 1 and 2 for warm bodies were done on 2026-11-06 and 2026-11-07
-(the goal of 2026-11-05, part 1; specification K64, K65, K66, F23). Stage 2
-was built in stage 2a's form at once, the sweep along the measured velocity
-with a person's reach: an isotropic sweep of a body at 1.2 m/s fills 4.2 m of
-the corridor the acceptance's body paces, and the vehicle would wait for it to
-the flight's end. A standing body is an occupancy like any, answered for by
-the clearance laws; the law and the sweep are for bodies seen to move. The
-acceptance of fcac4c47 (2026-11-07): five flights a set past the crossing
-body, no contact; the stopping margin against the closing speed positive on
-2 of 5 lidar and 4 of 5 camera flights (the rest short by 0.15 to 1.4 m,
-passes over the body's head at 0.7 to 1.8 m); the trace older than the
-layer's life nil on 4 of 5 lidar flights; the mean speed with the body 2.18
-(lidar) and 1.36 m/s (cameras), without it 2.20 and 1.37 on the same
-commit, 2.31 and 1.29 at part 0's acceptance. Open debts: the camera set
-follows the oncoming body hardly at all (0.19 to 1.0 m over its head in
-r3085 to r3087), the memory's integration costs a third more (K53), and the
-doors (stage 3) and the cold bodies' acceptance stay open.
+Stages 1a, 1 and 2 for warm bodies were built on 2026-11-06 to 2026-11-15
+(the goal of 2026-11-05, part 1; specification K64, K65, K66, F23) and are
+not accepted: the part's acceptance was closed by a record on 2026-11-15,
+the host under another task's load for more than six hours on end
+([technical_debt.md](technical_debt.md), "Planning, Execution And Control").
+What stands on 47c1b410: a body is read by the core's marks, with a cluster
+or without one, and stands where the marks are; a body no scan shows is
+unseen until a scan has looked at the whole column it stood in; the place
+kept for it is a person's reach wider and that and a cell taller, a
+person's walk in the sweep's time wider on every side while its walk is not
+measured (but for what lies behind the vehicle), carried along the velocity
+once it is; a cluster seen to step without the class is swept and hands the
+planner no body; the planner's law is owed to the worst place a body may
+stand in, and a climb and a route that leads away from the body owe it
+nothing. A standing body is an occupancy like any, answered for by the
+clearance laws.
+
+What is measured (the stopping margin against the closing speed, by the
+truth, `tools/body_encounters.py`; three flights a scenario): the lidar set
+nine meetings of nine positive on 43cdbb35 (the crossing body +0.82, +0.39,
++0.43 m; the oncoming one +0.42, +0.06, +0.44 m; the one from the side
++1.16, +5.36, +4.41 m; 1.83 to 2.24 m/s; r3587 to r3595), and after the
+kept place was raised four of four on 8713888e, 1.25 to 1.99 m over the
+head (+0.73, +1.13, +1.23, +1.38 m; r3611 to r3614); the camera set eight of
+nine on 700499d5 (+0.45, +0.02, +0.49; +0.33, +1.04, +0.30; +1.38, +2.36,
+-0.07 m; 1.23 to 1.42 m/s; r3572 to r3580) and four of five on the commits
+after it (+0.88, -0.19, +0.08; +0.88, +0.83 m). No contact since 1890e9d4
+(two before it, r3545 and r3560, the camera set held at the oncoming body's
+height by the law itself). Two ordinary lidar flights on 43cdbb35 read no
+body (2.16 and 2.22 m/s). Not flown: one series of the eighteen meetings on
+one commit, the acceptance (five flights a set past the crossing body and
+the ordinary five and five on the same commit), and anything at all on the
+last two repairs (8743b862, 47c1b410). The acceptance of fcac4c47
+(2026-11-07) stands as the earlier measurement: no contact in ten flights,
+the margin positive on 2 of 5 lidar and 4 of 5 camera flights, 2.18 and
+1.36 m/s with the body against 2.20 and 1.37 without it.
+
+Open: the acceptance above; no retreat without a route (a vehicle the law
+has stopped at a body's height stands there when no way over the body or
+away from it is certified); the camera set does not see a body within some
+3 m of it from over its height; the memory's integration costs a third more
+(K53); the doors (stage 3) and the cold bodies' acceptance.
 
 ## 22. Passive Navigation Without Illumination: Thermal-Inertial
 
