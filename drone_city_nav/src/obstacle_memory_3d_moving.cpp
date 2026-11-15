@@ -165,7 +165,14 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
         if (heldMoving(near) && (free || inside_envelope)) {
           return true;
         }
-        beside_ordinary = beside_ordinary || !heldMoving(near);
+        // The old floor under it is what it stands on, not what it stands
+        // beside: seen from 20 to 40 m a body's feet take one hit a scan with
+        // none over them, and where free air had been observed the hit was the
+        // floor's noise by this rule, an occupancy no ray came back to (r3590,
+        // r3614, r3624: the row or a cell of it a quarter metre over the
+        // floor, 4 to 12 s old).
+        const bool stood_on = dz == -1 && oldOrdinary(near);
+        beside_ordinary = beside_ordinary || (!heldMoving(near) && !stood_on);
       }
     }
   }
@@ -401,6 +408,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   enveloped_bodies_.clear();
   stepping_clusters_.clear();
   constexpr double kEnvelopesWithinM{12.0};
+  const int under_cells = static_cast<int>(kTallestBodyM / grid_.bounds().resolution_m);
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
     std::size_t held_cells = 0U;
@@ -450,6 +458,26 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
           if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
               !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
             holdMoving(cell, now_ms, stats);
+          }
+          // What is young under a body's voxel, to a body's height, is its
+          // lower end: a body first seen in unknown space through a doorway
+          // left the cell of its feet there, no voxel of its cluster next to
+          // it (r3623: one cell at the far end of the side walk, 9.8 s old).
+          for (int below = 1; below <= under_cells; ++below) {
+            const GridIndex3D under{cell.x, cell.y, cell.z - below};
+            if (!grid_.contains(under)) {
+              break;
+            }
+            if (!grid_.isOccupied(under)) {
+              continue;
+            }
+            if (grid_.isUnobservable(under) ||
+                confirmationsAt(under) > kYoungConfirmations) {
+              break;
+            }
+            if (!heldMoving(under)) {
+              holdMoving(under, now_ms, stats);
+            }
           }
           // A voxel beside the body's that is no surface's is the body's own:
           // a lone old one confirmed before the body was seen to move, or a

@@ -854,6 +854,40 @@ TEST(ObstacleMemory3D, AColumnsFootJoinsTheLayerInTheScanThatFirstShowsIt) {
   EXPECT_EQ(stats.moving_hits, column.size());
 }
 
+TEST(ObstacleMemory3D, AHitInFreeAirOverAnOldFloorStandsOnItAndIsMoving) {
+  // K65 (r3590, r3614, r3624): the feet of a body seen from afar take one hit
+  // a scan and none over them. Where free air had been observed over an old
+  // floor, that hit is a thing standing on the floor, the layer's; beside an
+  // old wall it is the wall's noise as before
+  // (AnOldWallBesideANoiseVoxelOrAWarmBodyStaysOrdinary).
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{1.5, 1.5, 2.5};
+  // Twenty scans of the floor under the place and of what lies beyond it: the
+  // floor is old, the cell over it observed free.
+  const Point3 foot{6.5, 1.625, 1.375};
+  const std::array before{
+      hitAt(origin, {6.5, 1.625, 1.125}), hitAt(origin, {6.5, 1.875, 1.125}),
+      hitAt(origin, {6.25, 1.625, 1.125}), hitAt(origin, {6.75, 1.625, 1.125}),
+      hitAt(origin,
+            {origin.x + 2.2 * (foot.x - origin.x), origin.y + 2.2 * (foot.y - origin.y),
+             origin.z + 2.2 * (foot.z - origin.z)})};
+  for (int scan = 0; scan < 20; ++scan) {
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = origin,
+         .beams = before,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000}));
+  }
+  ASSERT_TRUE(memory.grid().isKnownFree({26, 6, 5}));
+  const std::array one{hitAt(origin, foot)};
+  const ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = origin, .beams = one, .acquisition_stamp_ns = 4 * kSecondNs});
+  EXPECT_EQ(stats.moving_hits, 1U);
+  EXPECT_TRUE(memory.grid().isOccupied({26, 6, 5}));
+}
+
 TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   // K66: a body's column walks along x at 1.2 m/s over a grid of 0.25 m; once
   // followed, the cells it will sweep in the next 1.5 s are occupied and
