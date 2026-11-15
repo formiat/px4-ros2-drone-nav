@@ -882,10 +882,18 @@ TEST(ObstacleMemory3D, AHitInFreeAirOverAnOldFloorStandsOnItAndIsMoving) {
   }
   ASSERT_TRUE(memory.grid().isKnownFree({26, 6, 5}));
   const std::array one{hitAt(origin, foot)};
-  const ObstacleMemory3DStats stats = memory.integrateScan(
+  ObstacleMemory3DStats stats = memory.integrateScan(
       {.origin_map = origin, .beams = one, .acquisition_stamp_ns = 4 * kSecondNs});
   EXPECT_EQ(stats.moving_hits, 1U);
   EXPECT_TRUE(memory.grid().isOccupied({26, 6, 5}));
+  // The cell beside it over the same floor was never observed (it lies in the
+  // floor's shadow): a hit there stands on the old floor all the same (r3630).
+  ASSERT_EQ(memory.grid().state({26, 7, 5}), ObservedVoxelState::kUnknown);
+  const std::array shadowed{hitAt(origin, {6.5, 1.875, 1.375})};
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = shadowed,
+                                .acquisition_stamp_ns = 4 * kSecondNs + 100'000'000});
+  EXPECT_EQ(stats.moving_hits, 1U);
 }
 
 TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {

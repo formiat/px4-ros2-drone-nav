@@ -274,6 +274,9 @@ private:
   // The layer's voxels a scan saw gone or that lived out the layer's life:
   // the young occupancies under each leave with it (a column's foot).
   std::vector<GridIndex3D> left_;
+  // The young ordinary occupancies a scan saw gone: the foot under each
+  // leaves with it.
+  std::vector<GridIndex3D> glimpsed_left_;
   std::vector<MovingBody3D> followed_bodies_;
   // When the core last marked each of them, on the confirmations' clock.
   std::vector<std::int64_t> followed_warm_ms_;
