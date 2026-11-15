@@ -165,30 +165,11 @@ bool ObstacleMemory3D::movingEvidenceAt(const GridIndex3D cell) const noexcept {
         if (heldMoving(near) && (free || inside_envelope)) {
           return true;
         }
-        // An occupancy beside it makes the hit that surface's noise; the old
-        // floor under it is what it stands on, and a young occupancy in its
-        // own level that stands on an old floor itself is a thing of its
-        // kind, not a surface. Seen from 20 to 40 m a body's feet take one hit a
-        // scan with none over them; the first was ordinary beside the floor,
-        // the next beside the first, and the row a quarter metre over the
-        // floor stayed along the walk, an occupancy no ray came back to
-        // (r3590, r3614, r3624, r3630: 4 to 12 s old).
-        const bool of_its_kind =
-            dz == 0 && oldOrdinary(GridIndex3D{near.x, near.y, near.z - 1});
-        const bool counts = oldOrdinary(near) ? dz != -1 : !of_its_kind;
-        beside_ordinary = beside_ordinary || (!heldMoving(near) && counts);
+        beside_ordinary = beside_ordinary || !heldMoving(near);
       }
     }
   }
-  // Right over a floor seen for long a hit is a thing that came to stand on
-  // the floor, whether the voxel itself was observed free or not: the rays
-  // that hit the floor under it found nothing there every time (r3630: three
-  // cells of the row along the oncoming body's walk, 3.8 to 5.4 s old, the
-  // corridor's floor seen for two minutes; which of the two kept each
-  // ordinary, the voxel not observed free or a young neighbour of the row,
-  // was not told apart).
-  const bool stands_on_old_floor = oldOrdinary(GridIndex3D{cell.x, cell.y, cell.z - 1});
-  return (free || stands_on_old_floor) && !beside_ordinary;
+  return free && !beside_ordinary;
 }
 
 void ObstacleMemory3D::liftSweep() {
@@ -420,7 +401,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   enveloped_bodies_.clear();
   stepping_clusters_.clear();
   constexpr double kEnvelopesWithinM{12.0};
-  const int under_cells = static_cast<int>(kTallestBodyM / grid_.bounds().resolution_m);
   for (std::size_t index = 0U; index < tracker_.bodies().size(); ++index) {
     const MovingBody3D& body = tracker_.bodies()[index];
     std::size_t held_cells = 0U;
@@ -470,26 +450,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
           if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
               !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
             holdMoving(cell, now_ms, stats);
-          }
-          // What is young under a body's voxel, to a body's height, is its
-          // lower end: a body first seen in unknown space through a doorway
-          // left the cell of its feet there, no voxel of its cluster next to
-          // it (r3623: one cell at the far end of the side walk, 9.8 s old).
-          for (int below = 1; below <= under_cells; ++below) {
-            const GridIndex3D under{cell.x, cell.y, cell.z - below};
-            if (!grid_.contains(under)) {
-              break;
-            }
-            if (!grid_.isOccupied(under)) {
-              continue;
-            }
-            if (grid_.isUnobservable(under) ||
-                confirmationsAt(under) > kYoungConfirmations) {
-              break;
-            }
-            if (!heldMoving(under)) {
-              holdMoving(under, now_ms, stats);
-            }
           }
           // A voxel beside the body's that is no surface's is the body's own:
           // a lone old one confirmed before the body was seen to move, or a
@@ -838,58 +798,9 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
   // Seen from over 12 m a body's rings fall 0.35 m apart, no hit stood over
   // its feet in the scan that showed them, and the row a quarter metre over
   // the floor stayed along its walk for as long as nothing looked there
-  // (r3502, r3532: 56 and 59 cell-snapshots up to 11.9 s old). Under it to a
-  // body's height: seen from 35 to 40 m the rings fall 0.6 m apart, the hit
-  // over the feet was a body's chest, more than three cells up, and the row
-  // stayed (r3590: 73 cell-snapshots up to 12.1 s old, all of them it).
-  // In the columns beside it only what stands on an old floor, the foot
-  // itself: a body is two cells across, and from 20 m the one hit on its
-  // feet and the hits on its trunk fall in neighbouring columns (r3614: one
-  // cell of the row left, 4.7 s old).
-  const int column = static_cast<int>(kTallestBodyM / grid_.bounds().resolution_m);
+  // (r3502, r3532: 56 and 59 cell-snapshots up to 11.9 s old).
   for (const GridIndex3D gone : left_) {
-    for (int dy = -1; dy <= 1; ++dy) {
-      for (int dx = -1; dx <= 1; ++dx) {
-        for (int below = 1; below <= column; ++below) {
-          const GridIndex3D cell{gone.x + dx, gone.y + dy, gone.z - below};
-          if (!grid_.contains(cell)) {
-            break;
-          }
-          if (!grid_.isOccupied(cell)) {
-            continue;
-          }
-          if (grid_.isUnobservable(cell) || heldMoving(cell) ||
-              confirmationsAt(cell) > kYoungConfirmations) {
-            break;
-          }
-          if ((dx != 0 || dy != 0) &&
-              !oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 1}) &&
-              !oldSurfaceVoxel(GridIndex3D{cell.x, cell.y, cell.z - 2})) {
-            continue;
-          }
-          const OccupancyChunkIndex3D chunk_index =
-              ObservedOccupancyGrid3D::chunkIndex(cell);
-          const auto scores = evidence_.find(chunk_index);
-          if (scores != evidence_.end()) {
-            const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
-            scores->second.scores.at(bit_index) = 0.0;
-            scores->second.confirmations.at(bit_index) = 0U;
-          }
-          static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
-          dirty_chunks_[chunk_index] = true;
-          ++stats.state_transitions;
-        }
-      }
-    }
-  }
-  left_.clear();
-  // A young occupancy a scan saw gone was a thing glimpsed where nothing had
-  // been observed; the first young occupancy under it that stands on another
-  // is its foot, which the rays that cleared the rest did not cross (r3631: the four
-  // cells of the feet at the far end of the side walk, 9.6 s old, the body
-  // seen there through the doorway for a few scans).
-  for (const GridIndex3D gone : glimpsed_left_) {
-    for (int below = 1; below <= column; ++below) {
+    for (int below = 1; below <= 3; ++below) {
       const GridIndex3D cell{gone.x, gone.y, gone.z - below};
       if (!grid_.contains(cell)) {
         break;
@@ -897,26 +808,24 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
       if (!grid_.isOccupied(cell)) {
         continue;
       }
-      const GridIndex3D under{cell.x, cell.y, cell.z - 1};
-      if (!grid_.isUnobservable(cell) && !heldMoving(cell) &&
-          confirmationsAt(cell) <= kYoungConfirmations && grid_.contains(under) &&
-          grid_.isOccupied(under)) {
-        const OccupancyChunkIndex3D chunk_index =
-            ObservedOccupancyGrid3D::chunkIndex(cell);
-        const auto scores = evidence_.find(chunk_index);
-        if (scores != evidence_.end()) {
-          const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
-          scores->second.scores.at(bit_index) = 0.0;
-          scores->second.confirmations.at(bit_index) = 0U;
-        }
-        static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
-        dirty_chunks_[chunk_index] = true;
-        ++stats.state_transitions;
+      if (grid_.isUnobservable(cell) || heldMoving(cell) ||
+          confirmationsAt(cell) > kYoungConfirmations) {
+        break;
       }
-      break;
+      const OccupancyChunkIndex3D chunk_index =
+          ObservedOccupancyGrid3D::chunkIndex(cell);
+      const auto scores = evidence_.find(chunk_index);
+      if (scores != evidence_.end()) {
+        const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
+        scores->second.scores.at(bit_index) = 0.0;
+        scores->second.confirmations.at(bit_index) = 0U;
+      }
+      static_cast<void>(grid_.setState(cell, ObservedVoxelState::kUnknown));
+      dirty_chunks_[chunk_index] = true;
+      ++stats.state_transitions;
     }
   }
-  glimpsed_left_.clear();
+  left_.clear();
 }
 
 } // namespace drone_city_nav

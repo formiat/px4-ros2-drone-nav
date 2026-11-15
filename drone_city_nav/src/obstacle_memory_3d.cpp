@@ -516,7 +516,6 @@ void ObstacleMemory3D::reset() {
   moving_.clear();
   tracker_.clear();
   left_.clear();
-  glimpsed_left_.clear();
   followed_bodies_.clear();
   followed_warm_ms_.clear();
   followed_marked_at_.clear();
@@ -691,15 +690,8 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       } else if (after_score <= config_.free_score) {
         after = ObservedVoxelState::kFree;
       }
-      const bool glimpsed = before == ObservedVoxelState::kOccupied &&
-                            after == ObservedVoxelState::kFree &&
-                            scores->confirmations.at(bit_index) <= kYoungConfirmations;
       if (after == ObservedVoxelState::kFree) {
         scores->confirmations.at(bit_index) = 0U;
-      }
-      if (glimpsed) {
-        // Seen for a moment and seen gone: its foot goes with it (K65).
-        glimpsed_left_.push_back(cell);
       }
       if (before != after) {
         static_cast<void>(grid_.setState(cell, after));
