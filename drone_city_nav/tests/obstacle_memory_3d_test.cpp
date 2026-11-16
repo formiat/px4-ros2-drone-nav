@@ -1030,8 +1030,8 @@ TEST(ObstacleMemory3D, TheCoresMarksThatMakeNoClusterAreABodyAtOnce) {
 TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   // K66: a warm column 2.1 m before the vehicle, read at once, its walk not
   // measured. The place kept for it reaches the vehicle; the vehicle's own
-  // metre and what lies behind the vehicle as the body sees it stay as they
-  // were.
+  // metre and what lies behind a plane 1.5 m before the vehicle as the body
+  // sees it stay as they were (r3663).
   constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
   ObstacleMemory3D memory{
       kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
@@ -1052,11 +1052,13 @@ TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   }
   ASSERT_EQ(stats.followed_bodies, 1U);
   ASSERT_FALSE(memory.movingBodies().front().moving());
-  // Beyond the body and beside the vehicle, off its metre: kept.
+  // Beyond the body, and beside it past the plane: kept.
   EXPECT_TRUE(memory.grid().isOccupied({32, 16, 10}));
-  EXPECT_TRUE(memory.grid().isOccupied({18, 22, 10}));
-  // The vehicle's metre, and behind it.
+  EXPECT_TRUE(memory.grid().isOccupied({23, 20, 10}));
+  // The vehicle's metre, the way out before it and beside it, and behind it.
   EXPECT_FALSE(memory.grid().isOccupied({19, 16, 10}));
+  EXPECT_FALSE(memory.grid().isOccupied({21, 16, 10}));
+  EXPECT_FALSE(memory.grid().isOccupied({18, 22, 10}));
   EXPECT_FALSE(memory.grid().isOccupied({10, 16, 10}));
   EXPECT_FALSE(memory.grid().isOccupied({14, 22, 10}));
 }

@@ -691,17 +691,30 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // The vehicle's own place is never swept: a body walking up to a hovering
   // vehicle leaves it a way out (the exit the law owes, K66).
   constexpr double kKeepsClearOfVehicleM{1.0};
-  const auto sweep = [&](const MovingBody3D& body, const bool every_way) {
+  // The way out of a vehicle at the place's levels: what lies behind a plane
+  // this far before the vehicle as the body sees it. It is the leaning hull
+  // (0.65 m), half a voxel, the camera's 0.3 m before the vehicle's centre and
+  // the tracking tube's error (0.49 m). With the plane through the vehicle,
+  // and none for a measured walk's way, the place of a body walking at the
+  // vehicle stood 0.7 m from its centre: the flown way back "collided", every
+  // candidate back failed its first segment, and the vehicle held at rest
+  // until the body walked into it (r3663: contact; r3664: 0.33 m).
+  constexpr double kWayOutM{1.5};
+  const auto sweep = [&](const MovingBody3D& body) {
+    const double away_x = origin.x - body.centre_map.x;
+    const double away_y = origin.y - body.centre_map.y;
+    const double range_m = std::hypot(away_x, away_y);
+    const bool owed_way_out =
+        range_m > kWayOutM &&
+        origin.z <= body.top_m + config_.moving_reach_m + grid_.bounds().resolution_m;
     for (const GridIndex3D cell : sweptCells3D(
              body, config_.moving_sweep_s, config_.moving_reach_m, grid_.bounds())) {
       const Point3 centre = grid_.cellCenter(cell);
-      // Laid every way, the place leaves what lies behind the vehicle as the
-      // body sees it: the way out.
       if (grid_.isOccupied(cell) ||
           distance3D(centre, origin) <= kKeepsClearOfVehicleM ||
-          (every_way && (centre.x - origin.x) * (origin.x - body.centre_map.x) +
-                                (centre.y - origin.y) * (origin.y - body.centre_map.y) >
-                            0.0)) {
+          (owed_way_out &&
+           (centre.x - origin.x) * away_x + (centre.y - origin.y) * away_y >
+               -kWayOutM * range_m)) {
         continue;
       }
       const ObservedVoxelState before = grid_.state(cell);
@@ -720,7 +733,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // under the vehicle, out of every sensor's field, and the route came
     // down to 0.49 m over its head (r3645).
     if (body.unseen_s <= 0.0 && body.moving()) {
-      sweep(body, false);
+      sweep(body);
       continue;
     }
     // A walk not measured may go any way (the law charges it a person's):
@@ -730,7 +743,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // walked up to the vehicle held in its way, 0.33 m (r3564).
     MovingBody3D wide = body;
     wide.radius_m += walk_m;
-    sweep(wide, true);
+    sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's
   // field, seen by the pair or the ring alone): a cluster seen to step is
@@ -742,7 +755,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   for (const MovingBody3D& body : stepping_clusters_) {
     if (std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) <=
         body.radius_m + config_.moving_reach_m + walk_m + kKeepsClearOfVehicleM) {
-      sweep(body, false);
+      sweep(body);
     }
   }
 }
