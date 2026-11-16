@@ -751,8 +751,17 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // metres either way down the corridor for as long as the body was read,
     // 35 to 62 thousand voxels, the vehicle turned back from it five times
     // and the flight did not end (r3675; so r3671).
+    // Its reach is a person's walk in the time the vehicle needs to rise over
+    // the place: 1.2 m of climb at the 0.4 m/s it climbed before a body
+    // (r3672, r3673) and a replan. A walk in the sweep's 1.5 s wide, the way
+    // over an oncoming body climbed in the last 5 m before the place's edge;
+    // the place came onto the climb every second, the route was released
+    // each time, the search's answer was the way round the block, and in
+    // twelve approaches the vehicle did not pass (r3679). So wide, the edge
+    // stands at the vehicle's way out from 8.5 m and the climb is at once.
+    constexpr double kRiseOverS{4.0};
     MovingBody3D wide = body;
-    wide.radius_m += walk_m;
+    wide.radius_m += kWarmBodyWalkMps * kRiseOverS;
     sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's
