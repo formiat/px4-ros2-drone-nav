@@ -142,7 +142,7 @@ private:
 
 // The cells of the grid a body keeps and sweeps in `sweep_s` at its measured
 // velocity: its cylinder, a person's reach wider (`reach_m`: an arm, a step
-// aside) and that and a cell taller, carried along the velocity, the cells whose
+// aside) and that and two cells taller, carried along the velocity, the cells whose
 // centres lie inside; a body whose walk is not measured keeps its place. The
 // height, with the vehicle's own footprint over it, is what a vehicle passing
 // over a head owes the body's law: passes 0.6 to 0.8 m over the head were
@@ -152,7 +152,15 @@ private:
 // over a body read 5 m off was refused for its clearance (r3570). The reach
 // alone let the vehicle over the head at 0.68 to 0.87 m, a quarter metre
 // over the place: -0.05 to +0.34 m, against +0.33 m and more from 1.04 m up
-// (r3587 to r3609).
+// (r3587 to r3609). The reach and a cell let the camera set over an oncoming
+// body's head at 0.92 and 0.93 m, 0.17 m over the place, at 1.1 m/s: -0.17
+// and -0.13 m (r3668, r3669); the vehicle hemmed in by the place in r3570 has
+// had its way out since (r3663).
+[[nodiscard]] inline double sweptTopM(const MovingBody3D& body, const double reach_m,
+                                      const double resolution_m) noexcept {
+  return body.top_m + (reach_m > 0.0 ? reach_m + 2.0 * resolution_m : 0.0);
+}
+
 [[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,
                                                     double sweep_s, double reach_m,
                                                     const GridBounds3D& bounds);

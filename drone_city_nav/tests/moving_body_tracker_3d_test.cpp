@@ -181,12 +181,13 @@ TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {
   EXPECT_EQ(kept_high.x, 20);
   body.velocity_map_mps = {1.2, 0.0, 0.0};
   EXPECT_TRUE(sweptCells3D(body, 0.0, 0.0, kBounds).empty());
-  // A reach widens the sweep by itself and heightens it by itself and a cell.
+  // A reach widens the sweep by itself and heightens it by itself and two
+  // cells.
   const std::vector<GridIndex3D> reached = sweptCells3D(body, 1.5, 0.5, kBounds);
   EXPECT_GT(reached.size(), cells.size());
   const auto [z_low, z_high] = std::ranges::minmax(reached, {}, &GridIndex3D::z);
   EXPECT_EQ(z_low.z, 4);
-  EXPECT_EQ(z_high.z, 13);
+  EXPECT_EQ(z_high.z, 14);
 }
 
 } // namespace

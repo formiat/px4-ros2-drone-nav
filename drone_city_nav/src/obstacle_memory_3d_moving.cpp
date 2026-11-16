@@ -689,6 +689,23 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     followed_warm_ms_.push_back(now_ms);
     followed_marked_at_.push_back(body.centre_map);
   }
+  // A body keeps the bottom and the top it was read with, within a body's
+  // tallest: a scan shows as much of it as the sensors' fields take in. Read
+  // by each scan's cluster alone, an oncoming body's top stood 3.15 to 3.45 m
+  // scan by scan, the way over its head opened and shut with it four times
+  // in 2.5 s, and the vehicle, sent back and forth, met it 0.93 m over its
+  // head at 1.1 m/s (r3668).
+  for (MovingBody3D& body : followed_bodies_) {
+    for (const MovingBody3D& before : read_before) {
+      if (apartM(before.centre_map, body.centre_map) <= reachM(before) &&
+          before.top_m <= body.bottom_m + kTallestBodyM &&
+          before.bottom_m >= body.top_m - kTallestBodyM) {
+        body.bottom_m = std::min(body.bottom_m, before.bottom_m);
+        body.top_m =
+            std::min(std::max(body.top_m, before.top_m), body.bottom_m + kTallestBodyM);
+      }
+    }
+  }
   stats.followed_bodies = followed_bodies_.size();
   if (!(config_.moving_sweep_s > 0.0)) {
     return;
@@ -710,8 +727,8 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     const double away_y = origin.y - body.centre_map.y;
     const double range_m = std::hypot(away_x, away_y);
     const bool owed_way_out =
-        range_m > kWayOutM &&
-        origin.z <= body.top_m + config_.moving_reach_m + grid_.bounds().resolution_m;
+        range_m > kWayOutM && origin.z <= sweptTopM(body, config_.moving_reach_m,
+                                                    grid_.bounds().resolution_m);
     for (const GridIndex3D cell : sweptCells3D(
              body, config_.moving_sweep_s, config_.moving_reach_m, grid_.bounds())) {
       const Point3 centre = grid_.cellCenter(cell);
