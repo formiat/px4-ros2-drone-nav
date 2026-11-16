@@ -93,7 +93,10 @@ void ObstacleMemory3D::layPlaces(const Point3& origin, ObstacleMemory3DStats& st
     }
     if (body.unseen_s <= 0.0 && body.moving()) {
       sweep(body);
-      continue;
+      // Within the rise's distance its place reaches the vehicle too.
+      if (!near) {
+        continue;
+      }
     }
     // A walk not measured may go any way (the law charges it a person's):
     // the place is kept a person's walk in the sweep's time wider on every

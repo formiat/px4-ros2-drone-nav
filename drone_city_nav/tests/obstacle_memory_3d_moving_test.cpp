@@ -641,6 +641,38 @@ TEST(ObstacleMemory3D, AWarmBodyLaidByItsSizeIsReadAndIsNoOccupancy) {
   EXPECT_FALSE(memory.grid().isOccupied({32, 16, 10}));
 }
 
+TEST(ObstacleMemory3D, ABodyLaidByItsSizeIsAsTallAsItsMarksOfTheScan) {
+  // K66 (r3696): laid by its size 12 m off, read 3.25 m tall, then 4.0 m for
+  // a scan, then 3.25 m again: it is as tall as the scan's marks, not the
+  // tallest it has been.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  const auto read = [&](const double highest, const int scan) {
+    std::vector<LidarBeam3D> column;
+    for (const double y : {4.125, 4.375}) {
+      const int rows = static_cast<int>(std::lround((highest - 2.125) / 0.25));
+      for (int row = 0; row <= rows; ++row) {
+        column.push_back(hitAt(origin, {14.125, y, 2.125 + 0.25 * row}, true));
+        column.back().surface_only = true;
+      }
+    }
+    return memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  };
+  ASSERT_EQ(read(3.125, 0).followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().top_m, 3.25, 1.0e-9);
+  ASSERT_EQ(read(3.875, 1).followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().top_m, 4.0, 1.0e-9);
+  ASSERT_EQ(read(3.125, 2).followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().top_m, 3.25, 1.0e-9);
+  EXPECT_TRUE(memory.movingBodies().front().sized);
+}
+
 TEST(ObstacleMemory3D, ABodysPlaceReachesTheVehiclesWayOutWithinTheRisesDistance) {
   // K66 (r3685): a body laid by its size 8 m off. Its place is the stretch
   // between it and the vehicle too, to the vehicle's way out: the vehicle is

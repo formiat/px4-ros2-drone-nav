@@ -369,6 +369,9 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     std::size_t count = 0U;
     double bottom_m = read.bottom_m;
     double top_m = read.top_m;
+    double marks_bottom_m = std::numeric_limits<double>::infinity();
+    double marks_top_m = -std::numeric_limits<double>::infinity();
+    bool ranged = false;
     for (const GridIndex3D cell : warm_cells) {
       const Point3 centre = grid_.cellCenter(cell);
       if (apartM(read.centre_map, centre) > reach_m ||
@@ -379,10 +382,21 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       sum.x += centre.x;
       sum.y += centre.y;
       ++count;
-      bottom_m = std::min(bottom_m, centre.z - half_cell_m);
-      top_m = std::max(top_m, centre.z + half_cell_m);
+      marks_bottom_m = std::min(marks_bottom_m, centre.z - half_cell_m);
+      marks_top_m = std::max(marks_top_m, centre.z + half_cell_m);
+      ranged =
+          ranged || std::ranges::any_of(ranged_cells, [&cell](const GridIndex3D other) {
+            return other.x == cell.x && other.y == cell.y && other.z == cell.z;
+          });
     }
     if (count > 0U) {
+      // Marked by returns, a scan may show its legs alone and the body keeps
+      // the height it was read with. Laid by its size it is whole in its
+      // marks, and as tall as they are: kept with the tallest of its readings
+      // it stood 2.77 m at first and 3.73 m nine readings on for 3.07 m true,
+      // the place over it to 4.23 m and no way over it for 45 s (r3696).
+      bottom_m = ranged ? std::min(bottom_m, marks_bottom_m) : marks_bottom_m;
+      top_m = ranged ? std::max(top_m, marks_top_m) : marks_top_m;
       sighted[before] =
           Marked{.place = Point3{sum.x / static_cast<double>(count),
                                  sum.y / static_cast<double>(count), read.centre_map.z},

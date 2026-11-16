@@ -145,7 +145,7 @@ private:
 
 // The cells of the grid a body keeps and sweeps in `sweep_s` at its measured
 // velocity: its cylinder, a person's reach wider (`reach_m`: an arm, a step
-// aside) and that and two cells taller, carried along the velocity, the cells whose
+// aside) and that and a cell taller, carried along the velocity, the cells whose
 // centres lie inside; a body whose walk is not measured keeps its place. The
 // height, with the vehicle's own footprint over it, is what a vehicle passing
 // over a head owes the body's law: passes 0.6 to 0.8 m over the head were
@@ -166,12 +166,21 @@ private:
 // stood to 4.25 m, the way over it at 4.5 m had no trajectory, and the
 // vehicle, risen there, was held and turned back; its place is the reach
 // taller than its reading.
+// The planner's levels stand a metre apart; the one over a head under a
+// 5.5 m ceiling is at 4.5 m, and the estimate's height stands 0 to 0.5 m over
+// the truth. Two cells over a body read by returns, the place stood to 4.07 m
+// where the estimate stood 0.37 m high, the level had 0.43 m over it, and the
+// vehicle went over at 5.0 m under the ceiling at 1 m/s (r3702: 1.80 m/s for
+// the flight) or not at all (r3696). A cell over it keeps the level open for
+// every such height, and the vehicle is risen to the level before the body
+// comes (the place reaches it from 10 m): over a head at the level, 1.3 to
+// 1.8 m, not on the slope to it.
 [[nodiscard]] inline double sweptTopM(const MovingBody3D& body, const double reach_m,
                                       const double resolution_m) noexcept {
   if (!(reach_m > 0.0)) {
     return body.top_m;
   }
-  return body.top_m + reach_m + (body.sized ? 0.0 : 2.0 * resolution_m);
+  return body.top_m + reach_m + (body.sized ? 0.0 : resolution_m);
 }
 
 [[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,
