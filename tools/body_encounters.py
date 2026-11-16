@@ -30,7 +30,8 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   the snapshot's stamp, read off the flight's log (the FOLLOWED_BODIES line of the scan before the stamp): about a
   body it reads whose walk is not measured, a person's walk in the sweep's time on every side; along the measured
   velocity of one that walks and of a cluster seen to step within that walk of the vehicle (r3569: every stale cell
-  3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way
+  3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way,
+  a walk wider for every second unseen
   too (specification K66 since cbea5dff; r3656: 48 cells of it read stale). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
@@ -231,7 +232,7 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
         speed = math.hypot(vx, vy)
         if unseen_s > 0.0 or speed <= 0.0:
             if body:
-                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S
+                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * (SWEEP_S + unseen_s)
             continue
         if not body and math.hypot(x - vehicle[0], y - vehicle[1]) > (
                 radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):
@@ -283,21 +284,24 @@ def sensor_reach_m(run: Path) -> float:
 
 
 def looked_since_left(body, stamps, truth, truth_stamps, centre, t_s: float, reach_m: float) -> bool:
-    """Whether, before t, the vehicle stood within its sensors' reach of a cell while the body had been away from
-    the cell for longer than the layer lives: the memory could look at the place the body had left."""
+    """Whether, since the body last left a cell before t, the vehicle stood within its sensors' reach of the cell
+    while the body had been away from it for longer than the layer lives: the memory could look at the place the
+    body had left. A pacing body comes back to the cell; a look before its last visit says nothing of what that
+    visit left (r3665: a cell read stale 110 s after the vehicle had gone 25 m on, by a look before four visits)."""
     away_since = None
+    looked = False
     for row in body[:bisect.bisect_right(stamps, t_s)]:
         if math.hypot(row[1] - centre[0], row[2] - centre[1]) <= APART_M:
             away_since = None
+            looked = False
             continue
         if away_since is None:
             away_since = row[0]
-        if row[0] - away_since <= LAYER_LIFE_S + STAMP_SLACK_S:
+        if looked or row[0] - away_since <= LAYER_LIFE_S + STAMP_SLACK_S:
             continue
         vehicle = at(truth, truth_stamps, row[0])
-        if math.dist(vehicle[1:4], centre) <= reach_m:
-            return True
-    return False
+        looked = math.dist(vehicle[1:4], centre) <= reach_m
+    return looked
 
 
 def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int, float, int, int]:

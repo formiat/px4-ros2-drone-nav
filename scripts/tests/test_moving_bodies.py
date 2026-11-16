@@ -121,6 +121,9 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertEqual([True, False, True, True],
                          list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.4)],
                                                         (30.0, -16.0), 0.25)))
+        # A walk wider for every second unseen.
+        self.assertTrue(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 4.0)],
+                                                  (30.0, -16.0), 0.25).all())
         stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, False, 0.0)]
         self.assertFalse(self.tool.in_a_kept_place(centres, stepping, (30.0, -16.0), 0.25).any())
         self.assertEqual([False, False, True, False],
@@ -150,6 +153,14 @@ class BodyEncountersTest(unittest.TestCase):
         # the walk the body has not been away from the cell at y 5 for longer than the layer lives.
         truth_stamps = [row[0] for row in near]
         self.assertFalse(self.tool.looked_since_left(body, stamps, near, truth_stamps, (10.0, 5.0, 2.0), 3.0, 6.4))
+        # A look before the body's last visit is no look at what that visit left: near for the first walk, far
+        # once the body has come back and gone again.
+        body = [(t * 0.1, 10.0, 5.0 - abs((t * 0.1) % 10.0 - 5.0), 1.0) for t in range(0, 201)]
+        stamps = [row[0] for row in body]
+        left = [(t * 0.1, 12.0 if t < 100 else 30.0, 0.0, 2.0) for t in range(0, 201)]
+        truth_stamps = [row[0] for row in left]
+        self.assertTrue(self.tool.looked_since_left(body, stamps, left, truth_stamps, (10.0, 0.0, 2.0), 8.0, 6.4))
+        self.assertFalse(self.tool.looked_since_left(body, stamps, left, truth_stamps, (10.0, 0.0, 2.0), 18.0, 6.4))
 
     def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
         self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
