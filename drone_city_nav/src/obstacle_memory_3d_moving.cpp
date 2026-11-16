@@ -223,6 +223,9 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   constexpr std::int64_t kFreshMs{500};
   std::vector<GridIndex3D> cells;
   std::vector<GridIndex3D> warm_cells;
+  // The marks a range sensor's return stands on; the rest were laid by the
+  // body's size (K64).
+  std::vector<GridIndex3D> ranged_cells;
   for (const auto& [chunk_index, chunk] : moving_) {
     for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
          ++word_index) {
@@ -253,6 +256,10 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
         if ((chunk_evidence.warm.at(word_index) & (std::uint64_t{1U} << bit_offset)) !=
             0U) {
           warm_cells.push_back(cell);
+          if ((chunk_evidence.measured.at(word_index) &
+               (std::uint64_t{1U} << bit_offset)) != 0U) {
+            ranged_cells.push_back(cell);
+          }
         }
         if (grid_.isOccupied(cell) && !grid_.isUnobservable(cell) &&
             !heldMoving(cell) && confirmationsAt(cell) <= kYoungConfirmations) {
@@ -317,6 +324,14 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   constexpr double kWalkedM{0.5};
   const auto apartM = [](const Point3& from, const Point3& to) {
     return std::hypot(to.x - from.x, to.y - from.y);
+  };
+  // Whether a body the core's marks place stands on no return of a range
+  // sensor: laid by its size alone.
+  const auto sized = [&](const MovingBody3D& body) {
+    return std::ranges::none_of(ranged_cells, [&](const GridIndex3D cell) {
+      return apartM(body.centre_map, grid_.cellCenter(cell)) <=
+             body.radius_m + config_.moving_match_m;
+    });
   };
   const auto marks = [&](const MovingBody3D& before, const Point3& place,
                          std::int64_t& warm_ms, Point3& marked_at) {
@@ -599,6 +614,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       unshown.top_m = sighted[before]->top_m;
       unshown.velocity_map_mps = Vec3{};
       unshown.unseen_s = 0.0;
+      unshown.sized = sized(unshown);
       warm_ms = now_ms;
       marked_at = unshown.centre_map;
       takesIn(unshown);
@@ -692,6 +708,7 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     body.top_m = sighting.high_z + half_cell_m;
     body.voxels = sighting.count;
     body.warm = true;
+    body.sized = sized(body);
     takesIn(body);
     followed_bodies_.push_back(body);
     followed_warm_ms_.push_back(now_ms);
@@ -753,6 +770,15 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // it stood, the place was gone while the body, walked on and back, was
     // under the vehicle, out of every sensor's field, and the route came
     // down to 0.49 m over its head (r3645).
+    // A body laid by its size alone keeps no place: it is the law's, which
+    // slows the vehicle for it from afar. With the place of a body 10 to 19 m
+    // off in the planner's world, the ways laid went through what the vehicle
+    // had not seen (the side passages, the rooms over the corridor's walls),
+    // the vehicle turned back from the body again and again, and four
+    // flights of five did not end (r3676, r3679 to r3682; r3678 passed).
+    if (body.sized) {
+      continue;
+    }
     if (body.unseen_s <= 0.0 && body.moving()) {
       sweep(body);
       continue;

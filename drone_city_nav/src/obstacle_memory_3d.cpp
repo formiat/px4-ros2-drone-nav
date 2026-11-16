@@ -591,6 +591,12 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       const std::size_t bit_index = word_index * 64U + bit_offset;
       const std::uint64_t bit = std::uint64_t{1U} << bit_offset;
       const bool occupied = (occupied_word & bit) != 0U;
+      // A warm body laid by its size (K64) is a mark for the bodies' reading:
+      // no return measured it, and it is no occupancy of the grid's.
+      if (occupied && (measured_word & bit) == 0U &&
+          (chunk_evidence.warm.at(word_index) & bit) != 0U) {
+        continue;
+      }
       stats.occupied_voxel_updates += occupied ? 1U : 0U;
       stats.free_voxel_updates += occupied ? 0U : 1U;
       const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);

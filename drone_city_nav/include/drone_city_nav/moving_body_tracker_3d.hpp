@@ -46,6 +46,9 @@ struct MovingBody3D {
   // speed reads now: at the end of a walk a body turns, and its measured
   // speed passes through nought for a few scans.
   bool moved{false};
+  // Read by the core's sighting alone, where its size puts it (K64): no
+  // return of a range sensor stands on it.
+  bool sized{false};
 
   [[nodiscard]] bool moving() const noexcept {
     return velocity_map_mps.x != 0.0 || velocity_map_mps.y != 0.0;

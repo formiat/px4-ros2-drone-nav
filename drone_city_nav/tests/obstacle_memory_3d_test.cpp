@@ -1063,10 +1063,11 @@ TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   EXPECT_FALSE(memory.grid().isOccupied({14, 22, 10}));
 }
 
-TEST(ObstacleMemory3D, AWarmBodyLaidByItsSizeIsReadWithNothingSaidOfTheWayToIt) {
-  // K64 (r3673): the surface samples of a warm body the core's reading of its
-  // size puts 4 m off. They are the layer's and a body at once; a cell on the
-  // way to them stays as it was, no ray having travelled it.
+TEST(ObstacleMemory3D, AWarmBodyLaidByItsSizeIsReadAndIsNoOccupancy) {
+  // K64, K66 (r3673, r3679): the surface samples of a warm body the core's
+  // reading of its size puts 4 m off. A body is read at once, for the law; no
+  // voxel is occupied by it and it keeps no place. With a range sensor's
+  // returns on it, it is the layer's and keeps its place.
   constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
   ObstacleMemory3D memory{
       kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
@@ -1078,14 +1079,26 @@ TEST(ObstacleMemory3D, AWarmBodyLaidByItsSizeIsReadWithNothingSaidOfTheWayToIt) 
       column.back().surface_only = true;
     }
   }
-  const ObstacleMemory3DStats stats = memory.integrateScan(
+  ObstacleMemory3DStats stats = memory.integrateScan(
       {.origin_map = origin, .beams = column, .acquisition_stamp_ns = kSecondNs});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_TRUE(memory.movingBodies().front().warm);
+  EXPECT_TRUE(memory.movingBodies().front().sized);
+  EXPECT_NEAR(memory.movingBodies().front().top_m, 3.25, 1.0e-9);
+  EXPECT_EQ(stats.moving_voxels, 0U);
+  EXPECT_EQ(stats.swept_voxels, 0U);
+  EXPECT_FALSE(memory.grid().isOccupied({24, 16, 10}));
+  for (LidarBeam3D& beam : column) {
+    beam.surface_only = false;
+  }
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = column,
+                                .acquisition_stamp_ns = kSecondNs + 100'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_FALSE(memory.movingBodies().front().sized);
   EXPECT_GT(stats.moving_voxels, 0U);
+  EXPECT_GT(stats.swept_voxels, 0U);
   EXPECT_TRUE(memory.grid().isOccupied({24, 16, 10}));
-  // A metre before the vehicle, short of the place the body keeps.
-  EXPECT_EQ(memory.grid().state({12, 16, 10}), ObservedVoxelState::kUnknown);
 }
 
 TEST(ObstacleMemory3D, ABodysPlaceStandsStillWhileItsReadingStaysWithinIt) {

@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -90,13 +91,19 @@ void ObstacleMemory3DWorker::logNearestBodies(const Point3& origin) {
       break;
     }
     std::array<char, 160> item{};
+    std::string_view kind{"step"};
+    if (body->sized) {
+      kind = "size";
+    } else if (body->warm) {
+      kind = "warm";
+    }
     std::snprintf(item.data(), item.size(),
                   " [%.1f %.1f %.1f r%.2f h%.2f v%.2f,%.2f n%zu a%.1f d%.1f %s u%.1f]",
                   body->centre_map.x, body->centre_map.y, body->centre_map.z,
                   body->radius_m, body->top_m - body->bottom_m,
                   body->velocity_map_mps.x, body->velocity_map_mps.y, body->voxels,
-                  body->age_s, distance3D(body->centre_map, origin),
-                  body->warm ? "warm" : "step", body->unseen_s);
+                  body->age_s, distance3D(body->centre_map, origin), kind.data(),
+                  body->unseen_s);
     text += item.data();
   }
   RCLCPP_INFO(node_.get_logger(),
