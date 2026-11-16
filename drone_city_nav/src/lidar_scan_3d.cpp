@@ -117,6 +117,9 @@ decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
     const bool hit = valid && (hit_flags.empty() || hit_flags[index] >= 0.5F);
     // A warm body's surface (flag 3, K64): a hit, and moving evidence.
     const bool warm_body = hit && !hit_flags.empty() && hit_flags[index] >= 2.5F;
+    // One laid where its size puts it (flag 4): no ray measured the way to
+    // it, so it is a surface sample, occupied evidence at its point alone.
+    const bool by_size = warm_body && hit_flags[index] >= 3.5F;
     if (valid && !hit_flags.empty() && hit_flags[index] >= 1.5F && !warm_body) {
       // Looked at and not seen (flag 2): occupied evidence without free
       // space, and no observation of the frame's.
@@ -136,6 +139,7 @@ decodeHitOnlyReturns3D(const std::span<const Point3> returns_sensor_flu,
         .range_m = valid ? range_m : 0.0,
         .hit = hit,
         .valid = valid,
+        .interpolated = by_size,
         .warm_body = warm_body});
     result.hit_beams += hit ? 1U : 0U;
     result.miss_beams += valid && !hit ? 1U : 0U;

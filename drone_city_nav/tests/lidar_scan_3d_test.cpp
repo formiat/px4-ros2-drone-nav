@@ -109,10 +109,19 @@ TEST(LidarScan3D, AWarmBodysReturnIsAHitMarkedAsOne) {
   EXPECT_EQ(result.hit_beams, 2U);
   EXPECT_TRUE(result.beams[0].hit);
   EXPECT_TRUE(result.beams[0].warm_body);
+  EXPECT_FALSE(result.beams[0].interpolated);
   EXPECT_TRUE(result.beams[1].hit);
   EXPECT_FALSE(result.beams[1].warm_body);
   ASSERT_EQ(result.unobservable.size(), 1U);
   EXPECT_FALSE(result.unobservable.front().warm_body);
+  // Flag 4: a warm body laid where its size puts it, a surface sample.
+  const std::vector<float> by_size{4.0F, 1.0F, 2.0F};
+  const OrganizedLidarScan3DResult laid =
+      decodeHitOnlyReturns3D(points, by_size, 0.2, 8.0);
+  ASSERT_EQ(laid.beams.size(), 2U);
+  EXPECT_TRUE(laid.beams[0].hit);
+  EXPECT_TRUE(laid.beams[0].warm_body);
+  EXPECT_TRUE(laid.beams[0].interpolated);
 }
 
 TEST(LidarScan3D, JoinsAdjacentReturnsOfOneWallWithSurfaceSamples) {

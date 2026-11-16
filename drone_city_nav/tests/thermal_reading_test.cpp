@@ -224,6 +224,21 @@ TEST(ThermalBodyTest, ABodyIsRangedByTheHitsInItsSilhouetteAndItsReturnsAreItsOw
   EXPECT_EQ(sightBodies(regions, far, 0.02, ThermalBodyConfig{}).size(), 1U);
 }
 
+TEST(ThermalBodyTest, ABodyRangedByItsSizeAloneIsLaidOverItsSilhouette) {
+  // K64 (r3673): 0.6 m across and 1.8 m up at 10 m, sampled a quarter metre
+  // apart: three by eight points on the silhouette at its range.
+  const ThermalBodySighting body{.direction = {1.0, 0.0, 0.0},
+                                 .width_rad = 0.06,
+                                 .height_rad = 0.18,
+                                 .range_m = 10.0};
+  const std::vector<Point3> points = bodySilhouette(body, 0.25);
+  ASSERT_EQ(points.size(), 24U);
+  for (const Point3& point : points) {
+    EXPECT_TRUE(onBody(point, body, 0.0, 1.0e-6));
+  }
+  EXPECT_TRUE(bodySilhouette(ThermalBodySighting{}, 0.25).empty());
+}
+
 TEST(ThermalBodyTest, ASourceAWallThatFillsTheFrameAndAFewPixelsAreNoBody) {
   // The 500 K source of roadmap item 32: every pixel of it is over the
   // source's threshold, so none is warm.

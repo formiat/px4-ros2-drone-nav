@@ -149,6 +149,12 @@ sightBodies(std::span<const ThermalBody> regions,
 [[nodiscard]] bool onBody(const Point3& point, const ThermalBodySighting& body,
                           double margin_rad, double depth_m) noexcept;
 
+// A sighted body's silhouette at its range, sampled `step_m` apart across and
+// up: where a body its size alone ranges is laid, the range sensor having no
+// return of it.
+[[nodiscard]] std::vector<Point3> bodySilhouette(const ThermalBodySighting& body,
+                                                 double step_m);
+
 // The range to the source: the median range of the hits (the ring's or the
 // pair's, whichever has them) within the hot region's cone, widened by
 // `cone_margin_rad`, and never over `ceiling_range_m` (the source's fix over

@@ -50,6 +50,10 @@ struct StereoDepthReturn {
   // A hit on a body the thermal core sights as warm (roadmap item 21,
   // specification K64): a surface now, and moving evidence to the memory.
   bool warm_body{false};
+  // A warm body's surface where the core's reading of its size puts it, the
+  // pair having no return of it (K64): a surface at the point, with nothing
+  // said of the ray to it.
+  bool by_size{false};
 };
 
 // The returns of a disparity image in the left camera's forward-left-up frame.

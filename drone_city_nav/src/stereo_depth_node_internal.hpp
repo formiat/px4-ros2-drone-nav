@@ -384,6 +384,8 @@ readThermalBodiesImage(const sensor_msgs::msg::Image& image,
 inline constexpr double kBodySilhouetteMarginRad{0.02};
 // And within this of its range: a person's own depth and the range's error.
 inline constexpr double kBodyDepthM{0.75};
+// A body laid by its size is sampled a voxel of the memory apart.
+inline constexpr double kBodySilhouetteStepM{0.25};
 
 // The mission's words on warm bodies (K64), the heat source's line with a
 // class: how many the core and the returns sight, and the nearest.

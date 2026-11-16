@@ -205,6 +205,30 @@ bool onBody(const Point3& point, const ThermalBodySighting& body,
          inRegion(point, body.direction, body.width_rad, body.height_rad, margin_rad);
 }
 
+std::vector<Point3> bodySilhouette(const ThermalBodySighting& body,
+                                   const double step_m) {
+  std::vector<Point3> points;
+  if (!(body.range_m > 0.0) || !(step_m > 0.0)) {
+    return points;
+  }
+  const double azimuth = std::atan2(body.direction.y, body.direction.x);
+  const double elevation =
+      std::atan2(body.direction.z, std::hypot(body.direction.x, body.direction.y));
+  const double step_rad = step_m / body.range_m;
+  const auto across = static_cast<int>(std::floor(body.width_rad / step_rad));
+  const auto up = static_cast<int>(std::floor(body.height_rad / step_rad));
+  for (int row = 0; row <= up; ++row) {
+    const double tilt = elevation + (row - 0.5 * up) * step_rad;
+    for (int column = 0; column <= across; ++column) {
+      const double turn = azimuth + (column - 0.5 * across) * step_rad;
+      points.push_back(Point3{body.range_m * std::cos(tilt) * std::cos(turn),
+                              body.range_m * std::cos(tilt) * std::sin(turn),
+                              body.range_m * std::sin(tilt)});
+    }
+  }
+  return points;
+}
+
 bool bodySized(const ThermalBody& region, const double range_m,
                const ThermalBodyConfig& config) noexcept {
   if (!(range_m > 0.0) || !std::isfinite(range_m) || region.warm_pixels == 0U) {

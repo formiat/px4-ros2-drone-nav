@@ -792,7 +792,10 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   ScanEvidenceCursor cursor;
   if (beam.surface_only) {
     if (hit_cell.has_value()) {
-      recordScanEvidence(*hit_cell, true, false, scan_evidence, cursor);
+      // A warm body laid by its size (K64) is the layer's as a measured
+      // return on it is.
+      const bool warm = config_.moving_life_s > 0.0 && beam.warm_body;
+      recordScanEvidence(*hit_cell, true, false, scan_evidence, cursor, warm, warm);
     }
     return;
   }

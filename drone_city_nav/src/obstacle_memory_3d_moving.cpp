@@ -746,12 +746,13 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // side. Kept as the voxels alone, a body read 5 m off with no step yet
     // seen had every route laid 0.4 to 0.8 m over its head or before it, and
     // walked up to the vehicle held in its way, 0.33 m (r3564).
-    // Unseen it has walked on meanwhile: the place is a walk wider for every
-    // second since it was shown (the law charges the same). Kept one sweep's
-    // walk wide, the place of a body 4 s unseen behind the turned vehicle
-    // lay 3 to 5 m from where the body was (r3665).
+    // The place does not grow with the time unseen: a walk wider for every
+    // second of it, the place of a body gone into a side passage stood ten
+    // metres either way down the corridor for as long as the body was read,
+    // 35 to 62 thousand voxels, the vehicle turned back from it five times
+    // and the flight did not end (r3675; so r3671).
     MovingBody3D wide = body;
-    wide.radius_m += walk_m + kWarmBodyWalkMps * body.unseen_s;
+    wide.radius_m += walk_m;
     sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's

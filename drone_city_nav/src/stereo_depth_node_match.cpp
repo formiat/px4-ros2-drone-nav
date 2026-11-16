@@ -346,6 +346,7 @@ void StereoDepthNode::matchIfPaired() {
   }
   // The warm regions the pair's and the ring's hits range as bodies (K64):
   // their returns go to the memory as a body's, flag 3.
+  std::vector<StereoDepthReturn> sized;
   {
     std::vector<ThermalBody> regions;
     double frame_stamp_s{pair_stamp_s};
@@ -390,6 +391,26 @@ void StereoDepthNode::matchIfPaired() {
                           stereo_depth_node_internal::kBodySilhouetteMarginRad,
                           stereo_depth_node_internal::kBodyDepthM);
           });
+    }
+    // A body none of the returns stands on is laid where its size puts it,
+    // flag 4: the core sights a body farther than the pair returns it. An
+    // oncoming body was sighted from 25.6 m, 20 s before the vehicle met it,
+    // its range by size 0 to 17 percent short of the true one; the pair's
+    // first returns on it came at 4.7 m, 2.7 s before, the vehicle at
+    // 1.7 m/s and 0.36 m over its head (r3673).
+    for (const ThermalBodySighting& body : bodies) {
+      if (std::ranges::none_of(returns, [&body](const StereoDepthReturn& ray) {
+            return ray.warm_body &&
+                   onBody(ray.point, body,
+                          stereo_depth_node_internal::kBodySilhouetteMarginRad,
+                          stereo_depth_node_internal::kBodyDepthM);
+          })) {
+        for (const Point3& point :
+             bodySilhouette(body, stereo_depth_node_internal::kBodySilhouetteStepM)) {
+          sized.push_back(StereoDepthReturn{
+              .point = point, .hit = true, .warm_body = true, .by_size = true});
+        }
+      }
     }
     if (bodies.empty() == bodies_seen_) {
       bodies_seen_ = !bodies.empty();
@@ -504,12 +525,14 @@ void StereoDepthNode::matchIfPaired() {
     });
   }
   unobservable_total_ += unobservable.size();
+  // After the frame's counts, which are the pair's and the ring's.
+  returns.insert(returns.end(), sized.begin(), sized.end());
   sensor_msgs::msg::PointCloud2 cloud;
   cloud.header.stamp = left->header.stamp;
   cloud.header.frame_id = frame_id_;
   sensor_msgs::PointCloud2Modifier modifier{cloud};
   // intensity: 1 a surface, 0 a free ray, 2 looked at, not seen (item 17 stage 8),
-  // 3 a warm body's surface (item 21, K64).
+  // 3 a warm body's surface (item 21, K64), 4 one laid by its size.
   modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y",
                                 1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
                                 sensor_msgs::msg::PointField::FLOAT32, "intensity", 1,
@@ -526,6 +549,8 @@ void StereoDepthNode::matchIfPaired() {
     *z = static_cast<float>(ray.point.z);
     if (ray.unobservable) {
       *flag = 2.0F;
+    } else if (ray.by_size) {
+      *flag = 4.0F;
     } else if (ray.warm_body) {
       *flag = 3.0F;
     } else {
