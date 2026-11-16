@@ -381,7 +381,12 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       continue;
     }
     std::size_t nearest = continues.size();
-    double nearest_m = reachM(read_before[before]);
+    // A cluster carries no class: it is the body only where the body may have
+    // walked to since it was shown. With the tracker's match added, a cold
+    // cluster of ten voxels by the floor 1.9 m beyond a body 0.4 s unseen
+    // took its place and its height (1.6 m for 3.0), the body walked on
+    // unread, and the vehicle came back over it 0.69 m over its head (r3665).
+    double nearest_m = reachM(read_before[before]) - config_.moving_match_m;
     for (std::size_t index = 0U; index < continues.size(); ++index) {
       const double apart_m =
           apartM(read_before[before].centre_map, tracker_.bodies()[index].centre_map);
@@ -741,8 +746,12 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // side. Kept as the voxels alone, a body read 5 m off with no step yet
     // seen had every route laid 0.4 to 0.8 m over its head or before it, and
     // walked up to the vehicle held in its way, 0.33 m (r3564).
+    // Unseen it has walked on meanwhile: the place is a walk wider for every
+    // second since it was shown (the law charges the same). Kept one sweep's
+    // walk wide, the place of a body 4 s unseen behind the turned vehicle
+    // lay 3 to 5 m from where the body was (r3665).
     MovingBody3D wide = body;
-    wide.radius_m += walk_m;
+    wide.radius_m += walk_m + kWarmBodyWalkMps * body.unseen_s;
     sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's

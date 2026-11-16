@@ -913,12 +913,14 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
   EXPECT_TRUE(memory.movingBodies().front().warm);
   EXPECT_GT(stats.swept_voxels, 0U);
+  const std::size_t swept_when_lost = stats.swept_voxels;
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = {},
                                 .acquisition_stamp_ns = kSecondNs + 2'650'000'000});
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
-  EXPECT_GT(stats.swept_voxels, 0U);
+  // The place is a walk wider for the time unseen (r3665).
+  EXPECT_GT(stats.swept_voxels, swept_when_lost);
   // The whole column looked at and empty, it is unseen still, wherever it
   // has walked to (r3573), its place kept (r3645), until the stand's time
   // from its last mark is out (the vehicle stands seven metres off, farther
@@ -1061,6 +1063,36 @@ TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   EXPECT_FALSE(memory.grid().isOccupied({18, 22, 10}));
   EXPECT_FALSE(memory.grid().isOccupied({10, 16, 10}));
   EXPECT_FALSE(memory.grid().isOccupied({14, 22, 10}));
+}
+
+TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
+  // K66 (r3665): a warm column read at once; the next scan shows a cold
+  // column 1.25 m beyond it and nothing where it stood. A walk of a scan's
+  // time is 0.15 m: the body is read on unseen where it stood.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  const auto column = [&origin](const double x, const bool warm) {
+    std::vector<LidarBeam3D> beams;
+    for (const double y : {4.125, 4.375}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        beams.push_back(hitAt(origin, {x, y, z}, warm));
+      }
+    }
+    return beams;
+  };
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan < 4; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column(scan < 3 ? 6.125 : 7.375, scan < 3),
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().centre_map.x, 6.125, 0.3);
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
 }
 
 TEST(ObstacleMemory3D, AClusterSeenToStepNearTheVehicleIsSweptAndHandsNoBody) {
