@@ -301,6 +301,13 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
                                  centres[:, 1] - y - along * to_vehicle[1]) <= (
                                      wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M)
             continue
+        if body and 0.0 < apart_m <= RISE_WITHIN_M:
+            # A walking body within the rise's distance keeps the stretch to the vehicle as well.
+            along = np.clip(((centres[:, 0] - x) * to_vehicle[0] + (centres[:, 1] - y) * to_vehicle[1]) / apart_m,
+                            0.0, apart_m) / apart_m
+            kept |= np.hypot(centres[:, 0] - x - along * to_vehicle[0],
+                             centres[:, 1] - y - along * to_vehicle[1]) <= (
+                                 wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M)
         if not body and apart_m > (
                 radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):
             continue

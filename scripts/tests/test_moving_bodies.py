@@ -115,6 +115,9 @@ class BodyEncountersTest(unittest.TestCase):
                          list(self.tool.in_a_kept_place(centres, standing, (30.0, -16.0), 0.25)))
         walking = [(40.0, -16.0, 0.3, 1.2, 0.0, "warm", 0.0)]
         self.assertEqual([False, False, True, False],
+                         list(self.tool.in_a_kept_place(centres, walking, (25.0, -16.0), 0.25)))
+        # Within the rise's distance of the vehicle the stretch to it is the walking body's too.
+        self.assertEqual([True, False, True, True],
                          list(self.tool.in_a_kept_place(centres, walking, (30.0, -16.0), 0.25)))
         # Unseen it keeps its place every way; a cluster seen to step keeps its way only within a walk of the
         # vehicle.
