@@ -731,6 +731,14 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     }
   };
   const double walk_m = kWarmBodyWalkMps * config_.moving_sweep_s;
+  constexpr double kPlaceHoldsM{0.75};
+  const std::vector<MovingBody3D> places_before = std::move(held_places_);
+  held_places_.clear();
+  const auto stepped = [step_m = grid_.bounds().resolution_m](const double held,
+                                                              const double read) {
+    return std::abs(read - held) <= step_m ? held
+                                           : held + std::copysign(step_m, read - held);
+  };
   for (const MovingBody3D& body : followed_bodies_) {
     // Unseen, a body keeps its place a walk wide for as long as it is read:
     // there or a walk from there. Given up once a scan had looked at where
@@ -751,17 +759,32 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     // metres either way down the corridor for as long as the body was read,
     // 35 to 62 thousand voxels, the vehicle turned back from it five times
     // and the flight did not end (r3675; so r3671).
-    // Its reach is a person's walk in the time the vehicle needs to rise over
-    // the place: 1.2 m of climb at the 0.4 m/s it climbed before a body
-    // (r3672, r3673) and a replan. A walk in the sweep's 1.5 s wide, the way
-    // over an oncoming body climbed in the last 5 m before the place's edge;
-    // the place came onto the climb every second, the route was released
-    // each time, the search's answer was the way round the block, and in
-    // twelve approaches the vehicle did not pass (r3679). So wide, the edge
-    // stands at the vehicle's way out from 8.5 m and the climb is at once.
-    constexpr double kRiseOverS{4.0};
-    MovingBody3D wide = body;
-    wide.radius_m += kWarmBodyWalkMps * kRiseOverS;
+    // A walk in 4 s wide (e96a0b19: the edge at the vehicle's way out from
+    // 8.5 m, the climb at once) the place shut the side passages too; the
+    // planner laid its ways through what it had not seen, and the vehicle did
+    // not climb over once (r3680).
+    // The place stands still while the body's reading stays within it: its
+    // centre while the reading is within three quarters of a metre, its top,
+    // bottom and radius a cell a scan towards the reading. Laid anew on every
+    // scan's reading, it changed a thousand to sixteen hundred voxels of the
+    // planner's world a scan; the search was cancelled by the next scan before
+    // it converged, and its first feasible answer, a way round the block 81 s
+    // longer, was taken by the vehicle the body's law had stopped (r3679:
+    // twelve approaches, no pass, the flight not ended).
+    MovingBody3D place = body;
+    const auto before =
+        std::ranges::find_if(places_before, [&](const MovingBody3D& held) {
+          return apartM(held.centre_map, body.centre_map) <= kPlaceHoldsM;
+        });
+    if (before != places_before.end()) {
+      place.centre_map = before->centre_map;
+      place.radius_m = stepped(before->radius_m, body.radius_m);
+      place.bottom_m = stepped(before->bottom_m, body.bottom_m);
+      place.top_m = stepped(before->top_m, body.top_m);
+    }
+    held_places_.push_back(place);
+    MovingBody3D wide = place;
+    wide.radius_m += walk_m;
     sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's

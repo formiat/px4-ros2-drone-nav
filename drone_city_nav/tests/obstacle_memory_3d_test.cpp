@@ -1088,6 +1088,35 @@ TEST(ObstacleMemory3D, AWarmBodyLaidByItsSizeIsReadWithNothingSaidOfTheWayToIt) 
   EXPECT_EQ(memory.grid().state({12, 16, 10}), ObservedVoxelState::kUnknown);
 }
 
+TEST(ObstacleMemory3D, ABodysPlaceStandsStillWhileItsReadingStaysWithinIt) {
+  // K66 (r3679): a warm column a cell wide, read at once, its walk not
+  // measured: its place reaches 2.875 m from it. Read a quarter metre on, the
+  // place stands where it was laid; read a metre on, it is laid anew.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  const auto read_at = [&](const double x, const int scan) {
+    std::vector<LidarBeam3D> column;
+    for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+      column.push_back(hitAt(origin, {x, 4.125, z}, true));
+    }
+    return memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  };
+  ASSERT_EQ(read_at(6.125, 0).followed_bodies, 1U);
+  EXPECT_TRUE(memory.grid().isOccupied({35, 16, 10}));
+  EXPECT_FALSE(memory.grid().isOccupied({36, 16, 10}));
+  ASSERT_EQ(read_at(6.375, 1).followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().centre_map.x, 6.375, 0.13);
+  EXPECT_FALSE(memory.grid().isOccupied({36, 16, 10}));
+  ASSERT_EQ(read_at(7.125, 2).followed_bodies, 1U);
+  EXPECT_TRUE(memory.grid().isOccupied({36, 16, 10}));
+}
+
 TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
   // K66 (r3665): a warm column read at once; the next scan shows a cold
   // column 1.25 m beyond it and nothing where it stood. A walk of a scan's
