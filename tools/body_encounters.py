@@ -68,7 +68,7 @@ APART_M = 0.6
 NOISE_M, OVER_FLOOR_M = 0.1, 0.5
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
-WALK_MPS, VEHICLES_OWN_M, RISE_OVER_S = 1.5, 1.0, 4.0
+WALK_MPS, VEHICLES_OWN_M, PLACE_HOLDS_M = 1.5, 1.0, 0.75
 STEREO_REACH_M, LIDAR_REACH_M = 6.4, 14.0
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
 READ = re.compile(r"\[(\d+\.\d+)\] \[obstacle_memory_3d_node\]: FOLLOWED_BODIES followed=\d+ stepping=\d+ nearest=(.*)")
@@ -223,7 +223,7 @@ def read_places(run: Path) -> list[tuple[float, list[tuple[float, float, float, 
 
 def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: float):
     """The cells the memory holds occupied by no measurement about what it read (K66): the place of a body whose
-    walk is not measured, a person's walk in the time the vehicle rises over it (4 s) wide on every side; the way of one that walks, and
+    walk is not measured, a person's walk in the sweep's time wide on every side and standing within 0.75 m of it; the way of one that walks, and
     of a cluster seen to step within that walk of the vehicle, along its measured velocity."""
     kept = np.zeros(len(centres), dtype=bool)
     for x, y, radius, vx, vy, body, unseen_s in read:
@@ -231,7 +231,7 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
         speed = math.hypot(vx, vy)
         if unseen_s > 0.0 or speed <= 0.0:
             if body:
-                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * RISE_OVER_S
+                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M
             continue
         if not body and math.hypot(x - vehicle[0], y - vehicle[1]) > (
                 radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):
