@@ -349,6 +349,7 @@ add_drone_city_nav_layer(
   src/moving_body_tracker_3d.cpp
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_3d_moving.cpp
+  src/obstacle_memory_3d_places.cpp
   src/obstacle_memory_transport_policy_3d.cpp
   src/observed_esdf_3d.cpp
   src/observed_esdf_3d_fingerprint.cpp
@@ -2111,6 +2112,12 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_3d_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_3d_test)
+
+  ament_add_gtest(obstacle_memory_3d_moving_test
+                  tests/obstacle_memory_3d_moving_test.cpp)
+  target_compile_features(obstacle_memory_3d_moving_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_memory_3d_moving_test drone_city_nav_core)
+  enable_project_warnings(obstacle_memory_3d_moving_test)
 
   ament_add_gtest(obstacle_memory_transport_policy_3d_test
                   tests/obstacle_memory_transport_policy_3d_test.cpp)

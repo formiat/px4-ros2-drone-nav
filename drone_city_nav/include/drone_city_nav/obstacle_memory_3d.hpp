@@ -255,6 +255,8 @@ private:
   void liftSweep();
   void followMoving(const ScanEvidence& scan_evidence, const Point3& origin,
                     std::int64_t now_ms, ObstacleMemory3DStats& stats);
+  // The places and the ways the bodies followed after a scan keep (K66).
+  void layPlaces(const Point3& origin, ObstacleMemory3DStats& stats);
   void holdMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
