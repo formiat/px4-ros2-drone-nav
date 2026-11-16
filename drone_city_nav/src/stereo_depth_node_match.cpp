@@ -348,10 +348,35 @@ void StereoDepthNode::matchIfPaired() {
   // their returns go to the memory as a body's, flag 3.
   {
     std::vector<ThermalBody> regions;
+    double frame_stamp_s{pair_stamp_s};
     {
       const std::lock_guard<std::mutex> lock{thermal_mutex_};
       if (std::abs(pair_stamp_s - thermal_stamp_s_) <= kThermalFreshS) {
         regions = thermal_bodies_;
+        frame_stamp_s = thermal_stamp_s_;
+      }
+    }
+    if (!regions.empty()) {
+      // The frame's bearings in the pair's frame, by the vehicle's turn between
+      // the two stamps. Taken as they stood in the frame, at 60 deg/s of yaw
+      // a body 4 m behind the turning vehicle was marked on the wall the
+      // vehicle had turned to, the same range off: the wall was read as the
+      // body, the body went unread, and the vehicle flew past it at 1.7 m/s
+      // (r3657; the heat source's bearing has been turned so since r2247).
+      const std::lock_guard<std::mutex> lock{pose_mutex_};
+      const std::optional<stereo_depth_node_internal::TimedPose> at_frame =
+          stereo_depth_node_internal::poseAt(poses_, frame_stamp_s);
+      const std::optional<stereo_depth_node_internal::TimedPose> at_pair =
+          stereo_depth_node_internal::poseAt(poses_, pair_stamp_s);
+      if (at_frame.has_value() && at_pair.has_value()) {
+        const Eigen::Quaterniond turned =
+            at_pair->orientation.conjugate() * at_frame->orientation;
+        for (ThermalBody& region : regions) {
+          const Eigen::Vector3d bearing =
+              turned * Eigen::Vector3d{region.direction.x, region.direction.y,
+                                       region.direction.z};
+          region.direction = Point3{bearing.x(), bearing.y(), bearing.z()};
+        }
       }
     }
     const std::vector<ThermalBodySighting> bodies =
