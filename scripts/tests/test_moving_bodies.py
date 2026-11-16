@@ -136,6 +136,25 @@ class BodyEncountersTest(unittest.TestCase):
                           ("33.4", "-15.6", "0.50", "0.39", "-0.06", "step", "0.0")],
                          self.tool.READ_BODY.findall(found.group(2)))
 
+    def test_a_body_is_seen_in_the_pairs_field_the_cores_or_the_lidars_range(self) -> None:
+        vehicle = (0.0, 0.0, 2.0)
+        stereo = (self.tool.PAIR_FIELD, self.tool.CORE_FIELD)
+        lidar = (self.tool.LIDAR_FIELD,)
+        self.assertTrue(self.tool.in_a_field(vehicle, 0.0, (4.0, 0.0, 1.85), stereo))
+        self.assertTrue(self.tool.in_a_field(vehicle, 0.0, (15.0, 2.0, 1.85), stereo))     # the core's
+        self.assertTrue(self.tool.in_a_field(vehicle, 0.0, (3.0, 3.5, 1.85), stereo))      # 49 degrees off: the pair's
+        self.assertFalse(self.tool.in_a_field(vehicle, 0.0, (15.0, 12.0, 1.85), stereo))
+        self.assertFalse(self.tool.in_a_field(vehicle, 0.0, (-4.0, 0.0, 1.85), stereo))
+        self.assertTrue(self.tool.in_a_field(vehicle, 0.0, (-4.0, 0.0, 1.85), lidar))
+        self.assertFalse(self.tool.in_a_field(vehicle, 0.0, (15.0, 0.0, 1.85), lidar))
+        # Seen from 10 s to 1 s before the approach: a body that stands ahead all along, nine seconds.
+        truth = [(t * 0.1, 0.0, 0.0, 2.0) for t in range(0, 201)]
+        ahead = [(t * 0.1, 0.0) for t in range(0, 201)]
+        body = [(t * 0.1, 4.0, 0.0, 1.0) for t in range(0, 201)]
+        self.assertAlmostEqual(9.0, self.tool.seen_s(truth, ahead, body, 15.0, stereo), delta=0.11)
+        turned = [(t * 0.1, math.pi) for t in range(0, 201)]
+        self.assertEqual(0.0, self.tool.seen_s(truth, turned, body, 15.0, stereo))
+
     def test_within_the_rise_a_place_reaches_the_vehicle(self) -> None:
         import numpy as np  # noqa: PLC0415
         centres = np.array([[35.0, -16.0, 2.0],   # midway between a body at 40 and a vehicle at 32
@@ -160,22 +179,30 @@ class BodyEncountersTest(unittest.TestCase):
         stamps = [row[0] for row in body]
         near = [(t * 0.1, 12.0, 0.0, 2.0) for t in range(0, 101)]
         far = [(t * 0.1, 30.0, 0.0, 2.0) for t in range(0, 101)]
-        for truth, looked in ((near, True), (far, False)):
+        # The vehicle stands 2 m beyond the cell along x and faces it (pi), or faces away (nought).
+        pair = (self.tool.PAIR_FIELD,)
+        facing = [(row[0], math.pi) for row in near]
+        away = [(row[0], 0.0) for row in near]
+        for truth, headings, looked in ((near, facing, True), (near, away, False), (far, facing, False)):
             truth_stamps = [row[0] for row in truth]
-            self.assertEqual(looked, self.tool.looked_since_left(body, stamps, truth, truth_stamps,
-                                                                 (10.0, 0.0, 2.0), 8.0, 6.4))
+            self.assertEqual(looked, self.tool.looked_since_left(body, stamps, truth, truth_stamps, headings,
+                                                                 (10.0, 0.0, 2.0), 8.0, pair))
         # Within the layer's life of the body's being away there is nothing yet to look at: three seconds into
         # the walk the body has not been away from the cell at y 5 for longer than the layer lives.
         truth_stamps = [row[0] for row in near]
-        self.assertFalse(self.tool.looked_since_left(body, stamps, near, truth_stamps, (10.0, 5.0, 2.0), 3.0, 6.4))
+        self.assertFalse(self.tool.looked_since_left(body, stamps, near, truth_stamps, facing,
+                                                     (10.0, 5.0, 2.0), 3.0, pair))
         # A look before the body's last visit is no look at what that visit left: near for the first walk, far
         # once the body has come back and gone again.
         body = [(t * 0.1, 10.0, 5.0 - abs((t * 0.1) % 10.0 - 5.0), 1.0) for t in range(0, 201)]
         stamps = [row[0] for row in body]
         left = [(t * 0.1, 12.0 if t < 100 else 30.0, 0.0, 2.0) for t in range(0, 201)]
         truth_stamps = [row[0] for row in left]
-        self.assertTrue(self.tool.looked_since_left(body, stamps, left, truth_stamps, (10.0, 0.0, 2.0), 8.0, 6.4))
-        self.assertFalse(self.tool.looked_since_left(body, stamps, left, truth_stamps, (10.0, 0.0, 2.0), 18.0, 6.4))
+        facing = [(row[0], math.pi) for row in left]
+        self.assertTrue(self.tool.looked_since_left(body, stamps, left, truth_stamps, facing,
+                                                    (10.0, 0.0, 2.0), 8.0, pair))
+        self.assertFalse(self.tool.looked_since_left(body, stamps, left, truth_stamps, facing,
+                                                     (10.0, 0.0, 2.0), 18.0, pair))
 
     def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
         self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
