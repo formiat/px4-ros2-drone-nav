@@ -274,28 +274,9 @@ private:
       return;
     }
     sightings_logged_s_ = stamp_s;
-    const auto degrees = [](const double radians) { return radians * 180.0 / M_PI; };
-    const auto azimuth = [&](const Point3& p) { return degrees(std::atan2(p.y, p.x)); };
-    const auto elevation = [&](const Point3& p) {
-      return degrees(std::atan2(p.z, std::hypot(p.x, p.y)));
-    };
-    std::string text;
-    std::array<char, 96> item{};
-    for (const ThermalBody& region : regions) {
-      std::snprintf(item.data(), item.size(), " [%.1f %.1f w%.1f h%.1f px%zu size%.1f]",
-                    azimuth(region.direction), elevation(region.direction),
-                    degrees(region.width_rad), degrees(region.height_rad),
-                    region.warm_pixels, region.range_by_size_m);
-      text += item.data();
-    }
-    text += " ->";
-    for (const ThermalBodySighting& body : bodies) {
-      std::snprintf(item.data(), item.size(), " [%.1f %.1f r%.2f]",
-                    azimuth(body.direction), elevation(body.direction), body.range_m);
-      text += item.data();
-    }
     RCLCPP_INFO(get_logger(), "BODY_SIGHTINGS regions=%zu bodies=%zu%s", regions.size(),
-                bodies.size(), text.c_str());
+                bodies.size(),
+                stereo_depth_node_internal::bodySightingsText(regions, bodies).c_str());
   }
 
   // The scan with one more field, `warm_body`: 1 at a return that is a sighted

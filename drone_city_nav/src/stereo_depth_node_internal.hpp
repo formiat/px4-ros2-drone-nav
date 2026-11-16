@@ -387,6 +387,39 @@ inline constexpr double kBodyDepthM{0.75};
 // A body laid by its size is sampled a voxel of the memory apart.
 inline constexpr double kBodySilhouetteStepM{0.25};
 
+// The core's warm regions and the bodies ranged of them, for the log's
+// BODY_SIGHTINGS line: each region's bearing in degrees, its extent, its
+// pixels and the range its size gives; each body's bearing and range. What
+// the memory's marked returns stand on (a second body read on the corridor's
+// wall for a hundred scans, r3609; one laid at half its range, r3676).
+[[nodiscard]] inline std::string
+bodySightingsText(const std::vector<ThermalBody>& regions,
+                  const std::vector<ThermalBodySighting>& bodies) {
+  const auto degrees = [](const double radians) {
+    return radians * 180.0 / std::numbers::pi;
+  };
+  const auto azimuth = [&](const Point3& p) { return degrees(std::atan2(p.y, p.x)); };
+  const auto elevation = [&](const Point3& p) {
+    return degrees(std::atan2(p.z, std::hypot(p.x, p.y)));
+  };
+  std::string text;
+  std::array<char, 96> item{};
+  for (const ThermalBody& region : regions) {
+    std::snprintf(item.data(), item.size(), " [%.1f %.1f w%.1f h%.1f px%zu size%.1f]",
+                  azimuth(region.direction), elevation(region.direction),
+                  degrees(region.width_rad), degrees(region.height_rad),
+                  region.warm_pixels, region.range_by_size_m);
+    text += item.data();
+  }
+  text += " ->";
+  for (const ThermalBodySighting& body : bodies) {
+    std::snprintf(item.data(), item.size(), " [%.1f %.1f r%.2f]",
+                  azimuth(body.direction), elevation(body.direction), body.range_m);
+    text += item.data();
+  }
+  return text;
+}
+
 // The mission's words on warm bodies (K64), the heat source's line with a
 // class: how many the core and the returns sight, and the nearest.
 [[nodiscard]] inline std::string

@@ -412,6 +412,18 @@ void StereoDepthNode::matchIfPaired() {
         }
       }
     }
+    // Twice a second, what the core's frame showed and what was made of it.
+    if (!regions.empty() && (pair_stamp_s - sightings_logged_s_ >= 0.5 ||
+                             pair_stamp_s < sightings_logged_s_)) {
+      sightings_logged_s_ = pair_stamp_s;
+      RCLCPP_INFO(
+          get_logger(), "BODY_SIGHTINGS regions=%zu bodies=%zu%s marked=%td laid=%zu",
+          regions.size(), bodies.size(),
+          stereo_depth_node_internal::bodySightingsText(regions, bodies).c_str(),
+          std::ranges::count_if(
+              returns, [](const StereoDepthReturn& ray) { return ray.warm_body; }),
+          sized.size());
+    }
     if (bodies.empty() == bodies_seen_) {
       bodies_seen_ = !bodies.empty();
       std_msgs::msg::String event;

@@ -145,6 +145,7 @@ private:
   // The frame's warm regions (K64), sighted as bodies against the returns.
   std::vector<ThermalBody> thermal_bodies_;
   bool bodies_seen_{false};
+  double sightings_logged_s_{0.0};
   double thermal_stamp_s_{std::numeric_limits<double>::quiet_NaN()};
   // Nought, so that the first hot frame lays its marks (r2235: NaN laid none).
   double heat_emitted_s_{0.0};
