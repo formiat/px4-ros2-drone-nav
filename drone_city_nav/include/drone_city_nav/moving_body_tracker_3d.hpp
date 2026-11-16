@@ -159,9 +159,19 @@ private:
 // body's head at 0.92 and 0.93 m, 0.17 m over the place, at 1.1 m/s: -0.17
 // and -0.13 m (r3668, r3669); the vehicle hemmed in by the place in r3570 has
 // had its way out since (r3663).
+// A body laid by its size alone is read taller than it is, its silhouette
+// standing along the line of sight at a range some percent short and in
+// whole cells: 3.1 to 3.2 m for 2.8 to 2.9 m in three readings of five, to
+// 3.6 m in one of eight (r3689). With the two cells over that the place
+// stood to 4.25 m, the way over it at 4.5 m had no trajectory, and the
+// vehicle, risen there, was held and turned back; its place is the reach
+// taller than its reading.
 [[nodiscard]] inline double sweptTopM(const MovingBody3D& body, const double reach_m,
                                       const double resolution_m) noexcept {
-  return body.top_m + (reach_m > 0.0 ? reach_m + 2.0 * resolution_m : 0.0);
+  if (!(reach_m > 0.0)) {
+    return body.top_m;
+  }
+  return body.top_m + reach_m + (body.sized ? 0.0 : 2.0 * resolution_m);
 }
 
 [[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,

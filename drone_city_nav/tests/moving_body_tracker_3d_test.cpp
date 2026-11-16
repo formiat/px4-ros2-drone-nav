@@ -188,6 +188,10 @@ TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {
   const auto [z_low, z_high] = std::ranges::minmax(reached, {}, &GridIndex3D::z);
   EXPECT_EQ(z_low.z, 4);
   EXPECT_EQ(z_high.z, 14);
+  // Laid by its size alone, by itself: its reading is the taller already.
+  body.sized = true;
+  const std::vector<GridIndex3D> sized = sweptCells3D(body, 1.5, 0.5, kBounds);
+  EXPECT_EQ(std::ranges::max(sized, {}, &GridIndex3D::z).z, 12);
 }
 
 } // namespace
