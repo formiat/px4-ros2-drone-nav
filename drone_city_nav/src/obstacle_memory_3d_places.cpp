@@ -57,6 +57,15 @@ void ObstacleMemory3D::layPlaces(const Point3& origin, ObstacleMemory3DStats& st
   };
   const double walk_m = kWarmBodyWalkMps * config_.moving_sweep_s;
   constexpr double kPlaceHoldsM{0.75};
+  // The rise before a body: how far off a body's place first reaches the
+  // vehicle. Laid round the body alone, the place of an oncoming body came
+  // into the vehicle's way with the pair's first returns, 4.7 m and 3.3 s
+  // before the meeting; the first route was a climb where the vehicle stood,
+  // it rose 1.26 m through two more releases, 0.38 m/s, and met the body
+  // 0.80 m over its head (r3685). From the level of a body's chest it has
+  // 1.9 m to rise to be 1.2 m over a head: 5 s, and at the closing of a
+  // walker and a vehicle the body's law has slowed, 1.9 m/s, 10 m.
+  constexpr double kRiseWithinM{10.0};
   const std::vector<MovingBody3D> places_before = std::move(held_places_);
   held_places_.clear();
   const auto stepped = [step_m = grid_.bounds().resolution_m](const double held,
@@ -76,7 +85,10 @@ void ObstacleMemory3D::layPlaces(const Point3& origin, ObstacleMemory3DStats& st
     // had not seen (the side passages, the rooms over the corridor's walls),
     // the vehicle turned back from the body again and again, and four
     // flights of five did not end (r3676, r3679 to r3682; r3678 passed).
-    if (body.sized) {
+    // Within the rise's distance a body's place reaches the vehicle's way
+    // out (below), a body laid by its size as any.
+    const bool near = apartM(origin, body.centre_map) <= kRiseWithinM;
+    if (body.sized && !near) {
       continue;
     }
     if (body.unseen_s <= 0.0 && body.moving()) {
@@ -119,6 +131,14 @@ void ObstacleMemory3D::layPlaces(const Point3& origin, ObstacleMemory3DStats& st
     held_places_.push_back(place);
     MovingBody3D wide = place;
     wide.radius_m += walk_m;
+    if (near) {
+      // The stretch between the body and the vehicle is the body's too: it
+      // may be coming, and the vehicle is to be over the place when it does.
+      // The swept cells are a walk from the body's place to the vehicle's.
+      wide.velocity_map_mps =
+          Vec3{(origin.x - place.centre_map.x) / config_.moving_sweep_s,
+               (origin.y - place.centre_map.y) / config_.moving_sweep_s, 0.0};
+    }
     sweep(wide);
   }
   // Motion without the class (roadmap item 21: a body out of the core's

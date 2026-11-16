@@ -155,7 +155,8 @@ obstacle_memory_3d_node:
     # The sweep is a person's reach wider than the body's voxels and that and
     # two cells taller; a body whose walk is not measured keeps its place so and
     # a person's walk in moving_sweep_s wider on every side, standing still
-    # while the body's reading stays within 0.75 m of it. Neither lies
+    # while the body's reading stays within 0.75 m of it, and reaching the
+    # vehicle's way out while the body is within 10 m. Neither lies
     # behind a plane 1.5 m before a vehicle at its levels as the body sees
     # the vehicle: the way out. A cluster seen to step
     # that the core has not classed is swept the same along its velocity
