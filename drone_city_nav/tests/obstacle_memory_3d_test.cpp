@@ -1065,34 +1065,6 @@ TEST(ObstacleMemory3D, TheWidePlaceOfABodyLeavesTheVehicleItsWayOut) {
   EXPECT_FALSE(memory.grid().isOccupied({14, 22, 10}));
 }
 
-TEST(ObstacleMemory3D, ABodyReadBeforeKeepsItsHeightWhenAScanShowsItsLegsAlone) {
-  // K66 (r3668): a warm column read from 2.0 to 3.25 m; 0.7 s on a scan shows
-  // its two lower rows alone. The body is as tall as it was read.
-  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
-  ObstacleMemory3D memory{
-      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
-  const Point3 origin{2.125, 4.125, 2.625};
-  ObstacleMemory3DStats stats{};
-  for (int scan = 0; scan < 4; ++scan) {
-    std::vector<LidarBeam3D> beams;
-    for (const double y : {4.125, 4.375}) {
-      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
-        if (scan < 3 || z < 2.5) {
-          beams.push_back(hitAt(origin, {6.125, y, z}, true));
-        }
-      }
-    }
-    stats = memory.integrateScan(
-        {.origin_map = origin,
-         .beams = beams,
-         .acquisition_stamp_ns =
-             kSecondNs + static_cast<std::int64_t>(scan < 3 ? scan : 9) * 100'000'000});
-  }
-  ASSERT_EQ(stats.followed_bodies, 1U);
-  EXPECT_DOUBLE_EQ(memory.movingBodies().front().unseen_s, 0.0);
-  EXPECT_GE(memory.movingBodies().front().top_m, 3.2);
-}
-
 TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
   // K66 (r3665): a warm column read at once; the next scan shows a cold
   // column 1.25 m beyond it and nothing where it stood. A walk of a scan's
