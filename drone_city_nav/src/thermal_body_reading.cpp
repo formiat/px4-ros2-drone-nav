@@ -186,6 +186,28 @@ sightBodies(const std::span<const ThermalBody> regions,
                        ranges.begin() + static_cast<std::ptrdiff_t>(rank),
                        ranges.end());
       range_m = ranges[rank];
+    } else if (range_m > 0.0) {
+      // By its size alone it is no nearer than the free rays through its
+      // silhouette reach, the nearest quarter of them (what is beside the body
+      // in its frame is farther). Its size put a body 9.3 m off at 4.7 m and
+      // one 8.2 m off at 5.0 m: laid there, nearer and along the line of sight
+      // a metre taller, its place shut the corridor under the ceiling and the
+      // flight did not end (r3676; the size's range 0.76 to 1.07 of the true
+      // one in 103 sightings of r3677).
+      for (const StereoDepthReturn& ray : returns) {
+        if (!ray.hit && !ray.unobservable &&
+            inRegion(ray.point, region.direction, region.width_rad, region.height_rad,
+                     0.0)) {
+          ranges.push_back(std::sqrt(ray.point.x * ray.point.x +
+                                     ray.point.y * ray.point.y +
+                                     ray.point.z * ray.point.z));
+        }
+      }
+      if (!ranges.empty()) {
+        const auto quarter = static_cast<std::ptrdiff_t>(ranges.size() / 4U);
+        std::nth_element(ranges.begin(), ranges.begin() + quarter, ranges.end());
+        range_m = std::max(range_m, ranges[static_cast<std::size_t>(quarter)]);
+      }
     }
     if (bodySized(region, range_m, config)) {
       bodies.push_back(ThermalBodySighting{.direction = region.direction,

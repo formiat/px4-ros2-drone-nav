@@ -217,6 +217,19 @@ TEST(ThermalBodyTest, ABodyIsRangedByTheHitsInItsSilhouetteAndItsReturnsAreItsOw
   for (const StereoDepthReturn& ray : elsewhere) {
     EXPECT_FALSE(onBody(ray.point, by_its_size.front(), 0.02, 0.75));
   }
+  // Free rays through the silhouette that reach farther than its size puts
+  // it: the body is no nearer than they reach (r3676).
+  std::vector<StereoDepthReturn> through;
+  through.reserve(5U);
+  for (int i = -2; i <= 2; ++i) {
+    through.push_back(
+        {.point = Point3{5.6 * towards.x, 5.6 * towards.y + 0.05 * i, 5.6 * towards.z},
+         .hit = false});
+  }
+  const std::vector<ThermalBodySighting> no_nearer =
+      sightBodies(regions, through, 0.02, ThermalBodyConfig{});
+  ASSERT_EQ(no_nearer.size(), 1U);
+  EXPECT_NEAR(no_nearer.front().range_m, 5.6, 0.01);
   // A hit 25 m off is no more the body's: it stays a body 4.97 m off.
   std::vector<StereoDepthReturn> far;
   far.push_back({.point = Point3{25.0 * towards.x, 25.0 * towards.y, 25.0 * towards.z},
