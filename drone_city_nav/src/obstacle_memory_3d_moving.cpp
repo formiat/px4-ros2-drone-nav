@@ -390,7 +390,15 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
     for (std::size_t index = 0U; index < continues.size(); ++index) {
       const double apart_m =
           apartM(read_before[before].centre_map, tracker_.bodies()[index].centre_map);
+      // A cluster the core has not marked is the body only once it has been
+      // seen to move: a patch of wall first seen from a new place is a young
+      // cluster of a body's size too, and goes nowhere. With the body 1.2 and
+      // 3.2 s unseen under the vehicle, the corridor walls' young skin 2.7
+      // to 2.8 m from its last place took its place twice, 2 m tall to
+      // 3.85 m; the place over that shut the way over the true body, and the
+      // vehicle, 1.7 m over its head, turned back (r3681).
       if (continues[index] == read_before.size() && apart_m <= nearest_m &&
+          (tracker_.bodies()[index].warm || tracker_.bodies()[index].moved) &&
           within(read_before[before], tracker_.bodies()[index].centre_map, apart_m)) {
         nearest_m = apart_m;
         nearest = index;

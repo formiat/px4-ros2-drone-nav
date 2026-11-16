@@ -1145,6 +1145,18 @@ TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
   ASSERT_EQ(stats.followed_bodies, 1U);
   EXPECT_NEAR(memory.movingBodies().front().centre_map.x, 6.125, 0.3);
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.0);
+  // Unseen 1.5 s, the body may have walked 2 m; a cold column that far, new
+  // to the scan and not seen to move, is no body all the same (r3681).
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = {},
+                                .acquisition_stamp_ns = kSecondNs + 1'800'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = column(8.125, false),
+                                .acquisition_stamp_ns = kSecondNs + 1'900'000'000});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().centre_map.x, 6.125, 0.3);
+  EXPECT_GT(memory.movingBodies().front().unseen_s, 1.0);
 }
 
 TEST(ObstacleMemory3D, AClusterSeenToStepNearTheVehicleIsSweptAndHandsNoBody) {
