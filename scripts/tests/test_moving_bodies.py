@@ -107,7 +107,7 @@ class BodyEncountersTest(unittest.TestCase):
     def test_a_place_the_memory_keeps_is_no_trace(self) -> None:
         import numpy as np  # noqa: PLC0415
         centres = np.array([[40.0, -13.0, 2.0],   # 3 m beside a body read with no walk measured: its place
-                            [40.0, -12.0, 2.0],   # 4 m: beyond it
+                            [40.0, -8.0, 2.0],    # 8 m: beyond it
                             [42.0, -16.0, 2.0],   # 2 m ahead of one that walks along +x: its way
                             [38.0, -16.0, 2.0]])  # 2 m behind it: a trace
         standing = [(40.0, -16.0, 0.3, 0.0, 0.0, True, 0.0)]
