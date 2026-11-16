@@ -30,12 +30,18 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   the snapshot's stamp, read off the flight's log (the FOLLOWED_BODIES line of the scan before the stamp): about a
   body it reads whose walk is not measured, a person's walk in the sweep's time on every side; along the measured
   velocity of one that walks and of a cluster seen to step within that walk of the vehicle (r3569: every stale cell
-  3.3 to 3.5 m ahead of the body, the rim of the place kept every way). The largest count over the
+  3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way
+  too (specification K66 since cbea5dff; r3656: 48 cells of it read stale). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
   back, specification K65) and the oldest trace cell's age: the longest, over the snapshots, since the body last
   stood within 0.6 m of a cell still occupied in that snapshot. A body walking back and forth comes back to every
-  cell of its walk within its period, so the age never says more than the period does;
+  cell of its walk within its period, so the age never says more than the period does. A stale cell is one the
+  memory could have looked at since: at some time before the snapshot the vehicle stood within its sensors' reach
+  of the cell (the pair's 6.4 m, the lidar's guaranteed 14 m) while the body had been away from it for longer than
+  the layer lives. A trace cell the vehicle was never so placed for is counted apart, the last figure: by the
+  memory's own rule (I2) what was not looked at again is not taken back (r3656: three cells a body left at the
+  edge of the pair's reach, the vehicle flying away);
 - a contact with the body, from the crash detector's line.
 """
 from __future__ import annotations
@@ -63,6 +69,7 @@ NOISE_M, OVER_FLOOR_M = 0.1, 0.5
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
 WALK_MPS, VEHICLES_OWN_M = 1.5, 1.0
+STEREO_REACH_M, LIDAR_REACH_M = 6.4, 14.0
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
 READ = re.compile(r"\[(\d+\.\d+)\] \[obstacle_memory_3d_node\]: FOLLOWED_BODIES followed=\d+ stepping=\d+ nearest=(.*)")
 READ_BODY = re.compile(r"\[(-?[\d.]+) (-?[\d.]+) -?[\d.]+ r([\d.]+) h[\d.]+ v(-?[\d.]+),(-?[\d.]+) n\d+ a[\d.]+ d[\d.]+ "
@@ -220,11 +227,9 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
     of a cluster seen to step within that walk of the vehicle, along its measured velocity."""
     kept = np.zeros(len(centres), dtype=bool)
     for x, y, radius, vx, vy, body, unseen_s in read:
-        if unseen_s > 0.0:
-            continue
         wide = radius + REACH_M + resolution_m
         speed = math.hypot(vx, vy)
-        if speed <= 0.0:
+        if unseen_s > 0.0 or speed <= 0.0:
             if body:
                 kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S
             continue
@@ -266,7 +271,36 @@ def read_estimate(run: Path) -> list[tuple[float, float, float, float]]:
     return rows
 
 
-def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int, float, int]:
+def sensor_reach_m(run: Path) -> float:
+    """How far the flight's set is held to see: the stereo pair's reach (`sensor_reach_m` of the launch) or the
+    lidar's guaranteed detection range (`guaranteed_lidar_detection_range_m`)."""
+    log = run / "ros_drone_nav.log"
+    with log.open(errors="replace") as stream:
+        for line in stream:
+            if "[stereo_depth_node]" in line:
+                return STEREO_REACH_M
+    return LIDAR_REACH_M
+
+
+def looked_since_left(body, stamps, truth, truth_stamps, centre, t_s: float, reach_m: float) -> bool:
+    """Whether, before t, the vehicle stood within its sensors' reach of a cell while the body had been away from
+    the cell for longer than the layer lives: the memory could look at the place the body had left."""
+    away_since = None
+    for row in body[:bisect.bisect_right(stamps, t_s)]:
+        if math.hypot(row[1] - centre[0], row[2] - centre[1]) <= APART_M:
+            away_since = None
+            continue
+        if away_since is None:
+            away_since = row[0]
+        if row[0] - away_since <= LAYER_LIFE_S + STAMP_SLACK_S:
+            continue
+        vehicle = at(truth, truth_stamps, row[0])
+        if math.dist(vehicle[1:4], centre) <= reach_m:
+            return True
+    return False
+
+
+def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int, float, int, int]:
     """The body's trace over the snapshots: the largest count of occupied cells where the body is not, the count in
     the last snapshot, the stale cells over the snapshots, the oldest trace cell's age, and the snapshots read."""
     volume = swept_volume(body)
@@ -278,7 +312,9 @@ def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int
     estimate_stamps = [row[0] for row in estimate]
     counts = []
     stale = 0
+    unlooked = 0
     oldest_s = 0.0
+    reach_m = sensor_reach_m(run) if truth else float("inf")
     for path in sorted(run.glob("raw_snapshot_3d_revision_*.json")):
         document = json.loads(path.read_text())
         stamp = document["header"]["stamp"]
@@ -316,12 +352,17 @@ def trace(run: Path, body, near: list[float], truth=None) -> tuple[int, int, int
         counts.append((t_s, int(apart.sum())))
         for centre in centres[apart]:
             age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)
-            stale += age_s > LAYER_LIFE_S + STAMP_SLACK_S
+            if age_s <= LAYER_LIFE_S + STAMP_SLACK_S:
+                continue
+            if truth and not looked_since_left(body, stamps, truth, truth_stamps, tuple(centre), t_s, reach_m):
+                unlooked += 1
+                continue
+            stale += 1
             oldest_s = max(oldest_s, age_s)
     if not counts:
-        return -1, -1, -1, float("nan"), 0
+        return -1, -1, -1, float("nan"), 0, 0
     counts.sort()
-    return max(count for _, count in counts), counts[-1][1], stale, oldest_s, len(counts)
+    return max(count for _, count in counts), counts[-1][1], stale, oldest_s, len(counts), unlooked
 
 
 def main() -> int:
@@ -337,11 +378,11 @@ def main() -> int:
         for index, body in sorted(read_bodies(run).items()):
             met = meeting(truth, body)
             collisions, stops, contact = planner_events(run, met["near"])
-            most, last, stale, oldest_s, snapshots = trace(run, body, met["near"], truth)
+            most, last, stale, oldest_s, snapshots, unlooked = trace(run, body, met["near"], truth)
             print(f"| {run.name} | {index} | {met['t_s']:.1f} | {met['distance_m']:.2f} ({met['gap_m']:.2f}, "
                   f"{met['over_m']:+.2f}) | {met['speed_mps']:.2f} / {met['speed_before_mps']:.2f} | "
                   f"{met['closing_mps']:.2f} | {met['margin_m']:+.2f} | {collisions}, {stops} | "
-                  + (f"{most} / {last} ({stale}, {oldest_s:.1f}, {snapshots})" if snapshots
+                  + (f"{most} / {last} ({stale}, {oldest_s:.1f}, {snapshots}; {unlooked})" if snapshots
                      else "no snapshot holds the walk")
                   + f" | {'yes' if contact else 'no'} |")
     return 0
