@@ -30,8 +30,7 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   the snapshot's stamp, read off the flight's log (the FOLLOWED_BODIES line of the scan before the stamp): about a
   body it reads whose walk is not measured, a person's walk in the sweep's time on every side; along the measured
   velocity of one that walks and of a cluster seen to step within that walk of the vehicle (r3569: every stale cell
-  3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way,
-  a walk wider for every second unseen
+  3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way
   too (specification K66 since cbea5dff; r3656: 48 cells of it read stale). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and half a second of the stamps' slack: a trace the layer has not taken
@@ -232,7 +231,7 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
         speed = math.hypot(vx, vy)
         if unseen_s > 0.0 or speed <= 0.0:
             if body:
-                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * (SWEEP_S + unseen_s)
+                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S
             continue
         if not body and math.hypot(x - vehicle[0], y - vehicle[1]) > (
                 radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):

@@ -121,9 +121,6 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertEqual([True, False, True, True],
                          list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.4)],
                                                         (30.0, -16.0), 0.25)))
-        # A walk wider for every second unseen.
-        self.assertTrue(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 4.0)],
-                                                  (30.0, -16.0), 0.25).all())
         stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, False, 0.0)]
         self.assertFalse(self.tool.in_a_kept_place(centres, stepping, (30.0, -16.0), 0.25).any())
         self.assertEqual([False, False, True, False],
