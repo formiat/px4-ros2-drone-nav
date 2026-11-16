@@ -68,12 +68,12 @@ APART_M = 0.6
 NOISE_M, OVER_FLOOR_M = 0.1, 0.5
 LAYER_LIFE_S, STAMP_SLACK_S = 3.0, 0.5
 SWEEP_S, REACH_M, SWEEP_SPEED_SLACK = 1.5, 0.5, 1.2
-WALK_MPS, VEHICLES_OWN_M, PLACE_HOLDS_M = 1.5, 1.0, 0.75
+WALK_MPS, VEHICLES_OWN_M, PLACE_HOLDS_M, RISE_WITHIN_M = 1.5, 1.0, 0.75, 10.0
 STEREO_REACH_M, LIDAR_REACH_M = 6.4, 14.0
 STAMP = re.compile(r"\[(\d+\.\d+)\]")
 READ = re.compile(r"\[(\d+\.\d+)\] \[obstacle_memory_3d_node\]: FOLLOWED_BODIES followed=\d+ stepping=\d+ nearest=(.*)")
 READ_BODY = re.compile(r"\[(-?[\d.]+) (-?[\d.]+) -?[\d.]+ r([\d.]+) h[\d.]+ v(-?[\d.]+),(-?[\d.]+) n\d+ a[\d.]+ d[\d.]+ "
-                       r"(warm|step) u([\d.]+)\]")
+                       r"(warm|step|size) u([\d.]+)\]")
 
 
 def stop_way_m(speed_mps: float) -> float:
@@ -205,9 +205,10 @@ def in_the_sweep(centres, place, walk: tuple[float, float], resolution_m: float)
     return (along > 0.0) & (along <= SWEEP_SPEED_SLACK * SWEEP_S * speed + wide) & (across <= wide)
 
 
-def read_places(run: Path) -> list[tuple[float, list[tuple[float, float, float, float, float, bool, float]]]]:
+def read_places(run: Path) -> list[tuple[float, list[tuple[float, float, float, float, float, str, float]]]]:
     """What the memory read at every scan that read anything, on the simulation's clock: each body's or stepping
-    cluster's place, radius and velocity, whether the planner read it as a body, and how long it was unseen."""
+    cluster's place, radius and velocity, the word of its reading (a body read by returns, `warm`, or laid by its
+    size alone, `size`; a cluster seen to step, `step`), and how long it was unseen."""
     track = run / "mppi" / "mppi_track.jsonl"
     log = (run / "ros_drone_nav.log").read_text(errors="replace")
     anchors = clock_anchors(log, track) if track.exists() else []
@@ -216,24 +217,35 @@ def read_places(run: Path) -> list[tuple[float, list[tuple[float, float, float, 
     places = []
     for found in READ.finditer(log):
         places.append((sim_time(anchors, float(found.group(1))),
-                       [(float(x), float(y), float(radius), float(vx), float(vy), word == "warm", float(unseen))
+                       [(float(x), float(y), float(radius), float(vx), float(vy), word, float(unseen))
                         for x, y, radius, vx, vy, word, unseen in READ_BODY.findall(found.group(2))]))
     return sorted(places)
 
 
 def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: float):
     """The cells the memory holds occupied by no measurement about what it read (K66): the place of a body whose
-    walk is not measured, a person's walk in the sweep's time wide on every side and standing within 0.75 m of it; the way of one that walks, and
+    walk is not measured, a person's walk in the sweep's time wide on every side and standing within 0.75 m of it,
+    with the stretch to the vehicle while the body is within 10 m of it (a body laid by its size keeps that alone); the way of one that walks, and
     of a cluster seen to step within that walk of the vehicle, along its measured velocity."""
     kept = np.zeros(len(centres), dtype=bool)
-    for x, y, radius, vx, vy, body, unseen_s in read:
+    for x, y, radius, vx, vy, word, unseen_s in read:
         wide = radius + REACH_M + resolution_m
         speed = math.hypot(vx, vy)
+        body = word != "step"
+        to_vehicle = (vehicle[0] - x, vehicle[1] - y)
+        apart_m = math.hypot(*to_vehicle)
         if unseen_s > 0.0 or speed <= 0.0:
-            if body:
-                kept |= np.hypot(centres[:, 0] - x, centres[:, 1] - y) <= wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M
+            if body and (word != "size" or apart_m <= RISE_WITHIN_M):
+                # Within the rise's distance the place is the stretch to the vehicle too.
+                along = np.zeros(len(centres))
+                if 0.0 < apart_m <= RISE_WITHIN_M:
+                    along = np.clip(((centres[:, 0] - x) * to_vehicle[0] + (centres[:, 1] - y) * to_vehicle[1])
+                                    / apart_m, 0.0, apart_m) / apart_m
+                kept |= np.hypot(centres[:, 0] - x - along * to_vehicle[0],
+                                 centres[:, 1] - y - along * to_vehicle[1]) <= (
+                                     wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M)
             continue
-        if not body and math.hypot(x - vehicle[0], y - vehicle[1]) > (
+        if not body and apart_m > (
                 radius + REACH_M + WALK_MPS * SWEEP_S + VEHICLES_OWN_M + resolution_m):
             continue
         along = ((centres[:, 0] - x) * vx + (centres[:, 1] - y) * vy) / speed

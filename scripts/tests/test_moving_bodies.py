@@ -110,22 +110,22 @@ class BodyEncountersTest(unittest.TestCase):
                             [40.0, -11.0, 2.0],   # 5 m: beyond it
                             [42.0, -16.0, 2.0],   # 2 m ahead of one that walks along +x: its way
                             [38.0, -16.0, 2.0]])  # 2 m behind it: a trace
-        standing = [(40.0, -16.0, 0.3, 0.0, 0.0, True, 0.0)]
+        standing = [(40.0, -16.0, 0.3, 0.0, 0.0, "warm", 0.0)]
         self.assertEqual([True, False, True, True],
                          list(self.tool.in_a_kept_place(centres, standing, (30.0, -16.0), 0.25)))
-        walking = [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.0)]
+        walking = [(40.0, -16.0, 0.3, 1.2, 0.0, "warm", 0.0)]
         self.assertEqual([False, False, True, False],
                          list(self.tool.in_a_kept_place(centres, walking, (30.0, -16.0), 0.25)))
         # Unseen it keeps its place every way; a cluster seen to step keeps its way only within a walk of the
         # vehicle.
         self.assertEqual([True, False, True, True],
-                         list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, True, 0.4)],
+                         list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, "warm", 0.4)],
                                                         (30.0, -16.0), 0.25)))
-        stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, False, 0.0)]
+        stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, "step", 0.0)]
         self.assertFalse(self.tool.in_a_kept_place(centres, stepping, (30.0, -16.0), 0.25).any())
         self.assertEqual([False, False, True, False],
                          list(self.tool.in_a_kept_place(centres, stepping, (37.0, -16.0), 0.25)))
-        self.assertFalse(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 0.0, 0.0, False, 0.0)],
+        self.assertFalse(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 0.0, 0.0, "step", 0.0)],
                                                    (37.0, -16.0), 0.25).any())
         line = ("[obstacle_memory_3d_node-4] [INFO] [1794650000.5] [obstacle_memory_3d_node]: FOLLOWED_BODIES "
                 "followed=1 stepping=1 nearest= [35.8 -16.4 2.2 r0.52 h1.75 v0.00,0.00 n41 a0.0 d5.1 warm u0.0] "
@@ -135,6 +135,24 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertEqual([("35.8", "-16.4", "0.52", "0.00", "0.00", "warm", "0.0"),
                           ("33.4", "-15.6", "0.50", "0.39", "-0.06", "step", "0.0")],
                          self.tool.READ_BODY.findall(found.group(2)))
+
+    def test_within_the_rise_a_place_reaches_the_vehicle(self) -> None:
+        import numpy as np  # noqa: PLC0415
+        centres = np.array([[35.0, -16.0, 2.0],   # midway between a body at 40 and a vehicle at 32
+                            [35.0, -11.0, 2.0],   # 5 m beside the stretch
+                            [48.0, -16.0, 2.0]])  # 8 m beyond the body
+        for word in ("warm", "size"):
+            self.assertEqual([True, False, False],
+                             list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 0.0, 0.0, word, 0.0)],
+                                                            (32.0, -16.0), 0.25)))
+        # Farther than the rise's distance a body read by returns keeps its own place and one laid by its size none.
+        self.assertFalse(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 0.0, 0.0, "warm", 0.0)],
+                                                   (25.0, -16.0), 0.25).any())
+        near = np.array([[38.0, -16.0, 2.0]])
+        self.assertTrue(self.tool.in_a_kept_place(near, [(40.0, -16.0, 0.3, 0.0, 0.0, "warm", 0.0)],
+                                                  (25.0, -16.0), 0.25).all())
+        self.assertFalse(self.tool.in_a_kept_place(near, [(40.0, -16.0, 0.3, 0.0, 0.0, "size", 0.0)],
+                                                   (25.0, -16.0), 0.25).any())
 
     def test_a_stale_cell_is_one_the_vehicle_could_look_at_since_the_body_left(self) -> None:
         # The body walks from y 0 to 5 and back at 1 m/s; a cell at y 0 is left for 9 s of each ten.
