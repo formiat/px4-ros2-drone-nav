@@ -1670,7 +1670,7 @@ analogs ([related_work.md](related_work.md)) and the owner's discussions of
   (arming, the pilot's priority, the battery, the geofence, the lost link, the
   planner's heartbeat) independent of what it watches, speaking MAVLink to the
   autopilot itself, so that it outlives the planner and the middleware. The
-  language (Rust was proposed) is the owner's choice.
+  language (Rust was proposed; item 56) is the owner's choice.
 - **A manager of estimators** switching by health (VIO, LIO, GNSS), on item
   39's hybrid.
 - **A safety filter** after the MPPI horizon that corrects a command by the
@@ -1820,6 +1820,50 @@ A vehicle the body's law has stopped where no way over the body or round it
 is certified stands in the body's way. Whether the vehicle should move at
 all (who moves gives way) and, if so, a short retreat certified by its
 clearance alone, are to be decided with the owner.
+
+## 56. The Stack In Rust
+
+**Type:** architecture; a proposal for the owner's decision (the discussions
+of 2026-11-09 and 2026-11-17). Not started, and not to be started before a
+release or before the first hardware: it is months without a new capability
+and every acceptance flown again.
+
+What was measured on 2026-11-17 (b0c47576): 137 thousand lines of sources and
+58 thousand of tests in `drone_city_nav`; of its 615 source files 75 use
+`rclcpp`, 21 Eigen, 7 OpenCV and 6 are CUDA. The stack is its own logic far
+more than it is its libraries, so the libraries are not what a port costs:
+the volume is, and behaviour settled by some 3800 flights.
+
+What makes it a sound solution and not a patch:
+
+- **Node by node.** A ROS node is a process with messages at its border; a
+  node in Rust beside nodes in C++ is an ordinary architecture. Never half a
+  class in each language with calls across on every tick, and never a line by
+  line translation, which is C++ in Rust's syntax without its guarantees.
+- **Proven by the replay.** A ported node replays the recorded bags
+  (`tools/gates.sh --replay`, K62: the poses within 0.05 m at the 95th
+  percentile, met on both sets since 2026-11-05) before any flight; a
+  difference in the order of floating-point operations changes a flight, and
+  without the replay every step would cost a series. The replay proves the
+  estimators and the memory (`tools/replay_memory.sh`); the replayed planner
+  steers a recorded vehicle that does not answer it (K62), so a ported
+  planner is proven by the replay up to its first difference and then by
+  flights.
+- **Where the language pays.** The ownership and the versions of world
+  snapshots between threads, which much of the execution code is about, are
+  what Rust checks at compile time.
+- **The CUDA kernels stay** as they are, called through a C interface.
+
+What stays awkward: ROS 2's Rust bindings are the community's, and the PX4
+messages have to be generated for them; Gazebo's plugins are C++ only, so the
+simulation side stays in C++; a second set of quality rules and gate checks;
+the onboard image for arm64.
+
+The order, if it is taken: the new processes first (item 44's flight
+supervisor, item 48's fleet layer, a ground station), then the small nodes
+with no heavy mathematics (the thermal core, the survey mission, the mission
+monitor), and only then the memory, the estimators and the planner, each
+behind the replay.
 
 ## Completed
 
