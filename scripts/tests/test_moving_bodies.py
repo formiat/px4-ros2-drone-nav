@@ -213,6 +213,25 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertFalse(self.tool.looked_since_left(body, stamps, left, truth_stamps, facing,
                                                      (10.0, 0.0, 2.0), 18.0, pair))
 
+    def test_a_trace_is_what_a_sensor_could_have_laid_from_the_body(self) -> None:
+        # The body walks from y 0 to 5 and back at 1 m/s; the vehicle faces the walk from 4 m and from 8 m.
+        body = [(t * 0.1, 10.0, 5.0 - abs((t * 0.1) % 10.0 - 5.0), 1.0) for t in range(0, 101)]
+        stamps = [row[0] for row in body]
+        for apart_m, laid in ((4.0, True), (8.0, False)):
+            truth = [(t * 0.1, 10.0 + apart_m, 0.0, 2.0) for t in range(0, 101)]
+            truth_stamps = [row[0] for row in truth]
+            facing = [(row[0], math.pi) for row in truth]
+            self.assertEqual(laid, self.tool.laid_from_the_body(body, stamps, truth, truth_stamps, facing,
+                                                                (10.0, 0.0, 2.0), 8.0, self.tool.PAIR_LAYS))
+            # The lidar lays a return to the end of its range.
+            self.assertTrue(self.tool.laid_from_the_body(body, stamps, truth, truth_stamps, facing,
+                                                         (10.0, 0.0, 2.0), 8.0, self.tool.LIDAR_LAYS))
+        # A cell the body never stood on is no trace of it whatever the vehicle saw.
+        truth = [(t * 0.1, 14.0, 0.0, 2.0) for t in range(0, 101)]
+        self.assertFalse(self.tool.laid_from_the_body(body, stamps, truth, [row[0] for row in truth],
+                                                      [(row[0], math.pi) for row in truth], (12.0, 0.0, 2.0), 8.0,
+                                                      self.tool.PAIR_LAYS))
+
     def test_the_stop_way_is_the_reaction_and_the_braking(self) -> None:
         self.assertEqual(0.0, self.tool.stop_way_m(-1.0))
         self.assertAlmostEqual(4.0 * 0.3 + 16.0 / 8.0, self.tool.stop_way_m(4.0))

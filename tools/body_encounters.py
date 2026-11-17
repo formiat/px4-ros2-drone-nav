@@ -53,7 +53,11 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   range sensors (the pair's guaranteed field about the heading, the lidar's 14 m all round) while the body had been
   away from it for longer than the layer lives. A trace cell the vehicle was never so placed for is counted apart, the last figure: by the
   memory's own rule (I2) what was not looked at again is not taken back (r3656: three cells a body left at the
-  edge of the pair's reach, the vehicle flying away);
+  edge of the pair's reach, the vehicle flying away). Counted with them is a cell no range sensor could have laid
+  from the body, the body never on it while it stood within the sensor's evidence reach of the vehicle (the pair's
+  confident depth and a voxel, the ring's 2.8 m; the lidar's whole range): another thing's, not the body's (r3797:
+  a lone voxel of the pair's noise 4.8 m ahead of the vehicle, where the body had passed 9 s before and 7.4 to
+  8.1 m from the vehicle);
 - a contact with the body, from the crash detector's line.
 """
 from __future__ import annotations
@@ -87,6 +91,11 @@ STEREO_REACH_M, LIDAR_REACH_M = 6.4, 14.0
 # lidar's guaranteed range all round. A body is seen in the pair's or the core's; a voxel is looked at in the
 # pair's (the core measures no range).
 PAIR_FIELD = (5.2, math.radians(60.0), math.radians(52.4))
+# What can lay a return of the body in the memory: the pair to its confident depth and a voxel of its error (a
+# deeper pixel is no hit, stereo_depth_returns.cpp), the ring of time-of-flight sensors all round; the lidar to the
+# end of its range.
+PAIR_LAYS = ((5.2 + 0.25, math.radians(60.0), math.radians(52.4)), (2.8, math.pi, math.pi / 2.0))
+LIDAR_LAYS = ((35.0, math.pi, math.pi / 2.0),)
 CORE_FIELD = (19.0, math.radians(28.5), math.radians(22.2))
 LIDAR_FIELD = (LIDAR_REACH_M, math.pi, math.pi / 2.0)
 SEEN_OVER_S, LAST_S = 10.0, 1.0
@@ -388,6 +397,19 @@ def looked_since_left(body, stamps, truth, truth_stamps, headings, centre, t_s: 
     return looked
 
 
+def laid_from_the_body(body, stamps, truth, truth_stamps, headings, centre, t_s: float, lays) -> bool:
+    """Whether a range sensor could have laid the cell from the body before t: at some time the body stood on the
+    cell while the cell stood within the sensor's evidence reach of the vehicle. A cell of the walk's volume no
+    sensor could have laid so is another thing's (the pair's noise at the end of its depth, r3797), not a trace."""
+    for row in body[:bisect.bisect_right(stamps, t_s)]:
+        if math.hypot(row[1] - centre[0], row[2] - centre[1]) > APART_M:
+            continue
+        vehicle = at(truth, truth_stamps, row[0])
+        if in_a_field(vehicle[1:4], at(headings, truth_stamps, row[0])[1], centre, lays):
+            return True
+    return False
+
+
 def trace(run: Path, body, near: list[float], truth=None, headings=None) -> tuple[int, int, int, float, int, int]:
     """The body's trace over the snapshots: the largest count of occupied cells where the body is not, the count in
     the last snapshot, the stale cells over the snapshots, the oldest trace cell's age, and the snapshots read."""
@@ -404,6 +426,7 @@ def trace(run: Path, body, near: list[float], truth=None, headings=None) -> tupl
     oldest_s = 0.0
     stereo = bool(truth) and sensor_reach_m(run) == STEREO_REACH_M
     fields = (PAIR_FIELD,) if stereo else (LIDAR_FIELD,)
+    lays = PAIR_LAYS if stereo else LIDAR_LAYS
     slack_s = STEREO_SLACK_S if stereo else STAMP_SLACK_S
     for path in sorted(run.glob("raw_snapshot_3d_revision_*.json")):
         document = json.loads(path.read_text())
@@ -444,8 +467,10 @@ def trace(run: Path, body, near: list[float], truth=None, headings=None) -> tupl
             age_s = trace_age_s(body, stamps, (centre[0], centre[1]), t_s)
             if age_s <= LAYER_LIFE_S + slack_s:
                 continue
-            if truth and headings and not looked_since_left(body, stamps, truth, truth_stamps, headings,
-                                                            tuple(centre), t_s, fields, slack_s):
+            if truth and headings and not (
+                    laid_from_the_body(body, stamps, truth, truth_stamps, headings, tuple(centre), t_s, lays)
+                    and looked_since_left(body, stamps, truth, truth_stamps, headings, tuple(centre), t_s, fields,
+                                          slack_s)):
                 unlooked += 1
                 continue
             stale += 1
