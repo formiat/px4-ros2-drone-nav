@@ -1630,15 +1630,21 @@ figures stand beside ours, and R3's mean speed is kept. Size L.
 the forks ([forks.md](forks.md)); the findings are naipi11's and are to be
 verified here before anything is taken.
 
-1. **The stop refused by its own commit evidence** (their crash of
-   2026-11-13: seven stops refused at publication, the vehicle flown into a
-   wall at 1.8 m/s). Reproduce with their tests on this tree
-   (`execution_supervisor_3d_test`, `execution_supervisor_horizon_3d_test`),
-   read our own flights for stops superseded within a second
-   (`stop_supersession.py`), then decide between their two ways: latch the
-   stop until the vehicle is at rest, or publish none for a refusal the next
-   tick can retry. The first thing to do of the whole roadmap: it is a safety
-   law.
+1. **The stop that is refused, and the stop that is replaced.** Their crash
+   of 2026-11-13 (seven stops refused at publication, a wall met at 1.8 m/s)
+   was withdrawn by its authors the same day: the autopilot had exited
+   ([forks.md](forks.md)). What stands is measured here: over the 1099
+   flights kept on 2026-11-17, 7850 refused stop lines against 14 024 stops
+   published, 221 flights with five or more refused in a row, and 8133
+   revocations of a moving vehicle, at up to 15.1 m/s on the open sky
+   (`tools/flight_sweep.py`); a refused stop that is not answered by the
+   resident trajectory or a rest hold hands the moving vehicle to the
+   offboard's blind brake (`production_mppi_node_execution_holds.cpp`). To
+   do: reproduce in a test (theirs of `execution_supervisor_horizon_3d_test`
+   and one of our own), measure on every kept flight what followed each
+   refusal, name the cause of the refusals at the commit, choose the rule and
+   repair, accept by series. The first thing to do of the whole roadmap: it
+   is a safety law.
 2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
    which PX4 SITL stopped is void, not a crash of the stack.
 3. **The lattice edge left blocked**: an edge the probe budget did not reach

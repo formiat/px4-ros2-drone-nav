@@ -9,20 +9,24 @@ times for single repairs). One row a flight, from its own records (`log/tools/ru
 
 - the mission check's failing lines (the raw snapshot's line of a flight flown with `RAW_SNAPSHOT_BOUNDS_M` is the
   measurement's own and is named apart), the mean speed, where the goal was acknowledged by the truth;
-- the stops: published, refused, the longest row of refused ones, and the horizon commits refused (roadmap item
-  43: a stop refused seven times in a row flew a vehicle into a wall);
+- the stops: published, refused, the longest row of refused ones, the horizon commits refused, and the revocations
+  of a moving vehicle with the fastest of them (roadmap item 43: a refused stop hands a moving vehicle to the
+  offboard's blind brake). The node writes a refused stop and a revocation at most once a second, so a row of N
+  refused lines is N seconds or more without a stop, not N attempts;
 - the bodies the memory read: the scans with a body, with two bodies on one place and two apart; a body read in a
   flight that carried none is a false one;
 - with a walking body: the stopping margin, the stale trace cells, the contact.
 
 A problem (the row's last column, and the exit status 1): a failing line that is not the measurement's own, a
-contact, a margin not over nought, a stale cell, a false body, five stops refused in a row. The batch's start, total
-and count are logged for a long list.
+contact, a margin not over nought, a stale cell, a false body, five stops refused in a row. The flights are read on
+all the cores (--jobs); the batch's start, total, count and sums are logged.
 """
 from __future__ import annotations
 
 import argparse
 import math
+import multiprocessing
+import os
 import re
 import subprocess
 import sys
@@ -43,9 +47,11 @@ def verdict_lines(text: str) -> tuple[list[str], float | None, float | None]:
     return fails, float(speed.group(1)) if speed else None, float(goal.group(1)) if goal else None
 
 
-def stops(lines) -> tuple[int, int, int, int]:
-    """Stops published and refused, the longest row of refused ones, the horizon commits refused."""
-    published = refused = row = longest = commits = 0
+def stops(lines) -> tuple[int, int, int, int, int, float]:
+    """Stops published and refused, the longest row of refused ones, the horizon commits refused, the revocations of
+    a moving vehicle and the fastest of them."""
+    published = refused = row = longest = commits = revoked = 0
+    fastest = 0.0
     for line in lines:
         if "STOP_EXECUTION published=true" in line:
             published += 1
@@ -56,7 +62,11 @@ def stops(lines) -> tuple[int, int, int, int]:
             longest = max(longest, row)
         elif "EXECUTION_HORIZON_COMMIT committed=false" in line:
             commits += 1
-    return published, refused, longest, commits
+        elif "EXECUTION_REVOCATION moving=true" in line:
+            revoked += 1
+            speed = re.search(r"speed_mps=([\d.]+)", line)
+            fastest = max(fastest, float(speed.group(1)) if speed else 0.0)
+    return published, refused, longest, commits, revoked, fastest
 
 
 def bodies(lines) -> tuple[int, int, int]:
@@ -87,13 +97,13 @@ def encounter(run: Path) -> tuple[float | None, int | None, bool]:
     return margin, int(stale.group(1)) if stale else None, cells[10] != "no"
 
 
-def sweep(name: str) -> tuple[str, list[str]]:
+def sweep(name: str) -> tuple[str, list[str], tuple[int, int, int, int, float]]:
     run = Path(name) if "/" in name else Path("log/runs") / name
     check = Path("log/tools") / f"run_{run.name}.log"
     fails, speed, goal = verdict_lines(check.read_text(errors="replace") if check.is_file() else "")
     log = run / "ros_drone_nav.log"
     lines = log.read_text(errors="replace").splitlines() if log.is_file() else []
-    published, refused, longest, commits = stops(lines)
+    published, refused, longest, commits, revoked, fastest = stops(lines)
     read, same, apart = bodies(lines)
     carried = (run / "moving_bodies.csv").is_file()
     problems = [fail[:60] for fail in fails if SNAPSHOT_LINE not in fail]
@@ -115,30 +125,37 @@ def sweep(name: str) -> tuple[str, list[str]]:
     elif read:
         problems.append(f"a body read in {read} scans of a flight without one")
     row = (f"| {run.name} | {'-' if speed is None else f'{speed:.3f}'} | {'-' if goal is None else f'{goal:.2f}'} | "
-           f"{published} / {refused} / {longest} / {commits} | {read} / {same} / {apart} | "
+           f"{published} / {refused} / {longest} / {commits} | {revoked} / {fastest:.2f} | {read} / {same} / {apart} | "
            f"{'-' if margin is None else f'{margin:+.2f}'} / {'-' if stale is None else stale} | "
            f"{'; '.join(problems) if problems else 'none'} |")
-    return row, problems
+    return row, problems, (published, refused, longest, revoked, fastest)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--problems-only", action="store_true", help="print only the flights with a problem")
+    parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="flights read at once (all the cores)")
     args = parser.parse_args()
     print(f"SWEEP start {time.strftime('%F %T %z')} total {len(args.runs)}", file=sys.stderr)
     print("| run | mean m/s | goal by truth m | stops published / refused / in a row / commits refused | "
-          "scans with a body / two on one place / two apart | margin m / stale cells | problems |")
-    print("|---|---|---|---|---|---|---|")
+          "revocations moving / fastest m/s | scans with a body / two on one place / two apart | "
+          "margin m / stale cells | problems |")
+    print("|---|---|---|---|---|---|---|---|")
     bad = 0
-    for count, name in enumerate(args.runs, 1):
-        row, problems = sweep(name)
-        bad += bool(problems)
-        if problems or not args.problems_only:
-            print(row, flush=True)
-        if count % 10 == 0:
-            print(f"SWEEP done {count} of {len(args.runs)} at {time.strftime('%T')}", file=sys.stderr)
-    print(f"SWEEP end {time.strftime('%T')}: {bad} of {len(args.runs)} with a problem", file=sys.stderr)
+    sums = [0, 0, 0, 0, 0.0]
+    with multiprocessing.Pool(max(1, min(args.jobs, len(args.runs)))) as pool:
+        for count, (row, problems, figures) in enumerate(pool.imap(sweep, args.runs), 1):
+            bad += bool(problems)
+            sums = [sums[0] + figures[0], sums[1] + figures[1], max(sums[2], figures[2]), sums[3] + figures[3],
+                    max(sums[4], figures[4])]
+            if problems or not args.problems_only:
+                print(row, flush=True)
+            if count % 50 == 0:
+                print(f"SWEEP done {count} of {len(args.runs)} at {time.strftime('%T')}", file=sys.stderr)
+    print(f"SWEEP end {time.strftime('%T')}: {bad} of {len(args.runs)} with a problem; stops published {sums[0]}, "
+          f"refused {sums[1]}, the longest row {sums[2]}, revocations of a moving vehicle {sums[3]}, the fastest "
+          f"{sums[4]:.2f} m/s", file=sys.stderr)
     return 1 if bad else 0
 
 

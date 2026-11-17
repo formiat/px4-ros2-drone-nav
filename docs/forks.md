@@ -35,6 +35,22 @@ a register of debt, run numbers as evidence). What the copy holds since
   `stop_without_successor.py`. Their measurement over 88 flights: 1681 of 1691
   stops replaced within a second, 113 ms at the median. **To verify here first**
   (roadmap item 43).
+  Read again on 2026-11-17, their history whole: the crash's verdict was
+  withdrawn by its authors the same day (`16b16932`: the autopilot had exited
+  4 s before the contact, the status read was a stopped stream's last value;
+  the first review here missed that commit). What they kept is the measure and
+  a question: the refusal that precedes a stop named by its clause
+  (`b7b2a6d2`: in one flight all 16 were occupied evidence, the world's
+  answer), a stop costing about 0.1 m of a 0.4 m braking distance when a
+  reroute follows and carrying the vehicle when none does (`9fbd7ee7`,
+  `stop_without_successor.py`), and whether a stop should latch until the
+  vehicle is at rest. Here the same lines read over the 1099 flights kept on
+  2026-11-17 (`tools/flight_sweep.py`): 14 024 stops published, 7850 refused
+  lines (one a second at most, 3024 of them refused at the commit), 221
+  flights with five or more in a row and 45 in the longest (r3400, a flight
+  voided for the host's load), 8133 revocations of a moving vehicle, the
+  fastest at 15.1 m/s on the open sky: a refused stop here hands a moving
+  vehicle to the offboard's blind brake.
 - **PX4 SITL stopping in flight** read from the ulogs (every topic ends at one
   stamp while the truth goes on): `scripts/px4_liveness_runtime.sh` records the
   autopilot's exit; a flight so ended is the host's, not the stack's.
