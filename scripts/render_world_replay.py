@@ -136,6 +136,44 @@ def smoke_box_sdf(index: int, zone: tuple[tuple[float, ...], tuple[float, ...], 
             f"</visual></link></model></sdf>")
 
 
+def walking_bodies(run_directory: Path) -> dict[int, list[tuple[float, float, float, float]]]:
+    """The flight's walking bodies (roadmap item 21, scripts/moving_bodies.py): for each, the rows
+    (simulation seconds, x, y, the height of its base) of the run's own record, in the world's frame."""
+    bodies: dict[int, list[tuple[float, float, float, float]]] = {}
+    path = run_directory / "moving_bodies.csv"
+    if not path.is_file():
+        return bodies
+    with path.open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            bodies.setdefault(int(row["index"]), []).append(
+                (float(row["sim_s"]), float(row["x"]), float(row["y"]), float(row["z_base"])))
+    return bodies
+
+
+def body_at(rows: list[tuple[float, float, float, float]], t_s: float) -> tuple[float, float, float]:
+    """Where a walking body stood at t: between the rows either side of it."""
+    stamps = [row[0] for row in rows]
+    index = min(max(bisect.bisect_left(stamps, t_s), 1), len(rows) - 1) if len(rows) > 1 else 0
+    if index == 0:
+        return rows[0][1:4]
+    before, after = rows[index - 1], rows[index]
+    share = min(max((t_s - before[0]) / (after[0] - before[0]), 0.0), 1.0) if after[0] > before[0] else 0.0
+    return tuple(a + share * (b - a) for a, b in zip(before[1:4], after[1:4]))
+
+
+# A walking body in the replayed world: the flight's cylinder (0.5 m across, 1.7 m tall), a picture only
+# (no collision, no thermal tag: the recording's world is looked at, not sensed).
+BODY_DIAMETER_M, BODY_HEIGHT_M = 0.5, 1.7
+
+
+def body_sdf(index: int) -> str:
+    return (f'<?xml version="1.0"?><sdf version="1.9"><model name="walking_body_{index}"><static>true</static>'
+            f'<link name="link"><visual name="body"><geometry><cylinder><radius>{BODY_DIAMETER_M / 2.0}</radius>'
+            f'<length>{BODY_HEIGHT_M}</length></cylinder></geometry>'
+            '<material><ambient>0.9 0.45 0.2 1</ambient><diffuse>0.9 0.45 0.2 1</diffuse>'
+            '<emissive>0.35 0.15 0.05 1</emissive></material></visual></link></model></sdf>')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-directory", type=Path, required=True)
@@ -207,6 +245,31 @@ def main() -> int:
             print(f"RENDER_WORLD smoke zone {index} could not be created", flush=True)
     if zones:
         print(f"RENDER_WORLD {len(zones)} smoke zones drawn", flush=True)
+    bodies = walking_bodies(args.run_directory)
+
+    def set_body(index: int, t_s: float) -> bool:
+        x, y, z_base = body_at(bodies[index], t_s)
+        message = Pose()
+        message.name = f"walking_body_{index}"
+        message.position.x, message.position.y = x, y
+        message.position.z = z_base + BODY_HEIGHT_M / 2.0
+        message.orientation.w = 1.0
+        ok, reply = node.request(f"/world/{args.world}/set_pose", message, Pose, Boolean, 1000)
+        return bool(ok and reply.data)
+
+    for index in bodies:
+        figure = EntityFactory()
+        figure.sdf = body_sdf(index)
+        figure.name = f"walking_body_{index}"
+        figure.allow_renaming = False
+        x, y, z_base = body_at(bodies[index], args.begin_s)
+        figure.pose.position.x, figure.pose.position.y = x, y
+        figure.pose.position.z = z_base + BODY_HEIGHT_M / 2.0
+        ok, reply = node.request(f"/world/{args.world}/create", figure, EntityFactory, Boolean, 5000)
+        if not (ok and reply.data):
+            print(f"RENDER_WORLD walking body {index} could not be created", flush=True)
+    if bodies:
+        print(f"RENDER_WORLD {len(bodies)} walking bodies drawn", flush=True)
     set_pose(first)
     applied = share_at(shares, args.begin_s)
     set_light(applied)
@@ -221,6 +284,8 @@ def main() -> int:
             t_s = args.begin_s + (time.time() - started) * args.rate
             pose = pose_at(poses, times, t_s)
             set_pose(pose)
+            for index in bodies:
+                set_body(index, t_s)
             share = share_at(shares, t_s)
             if share != applied and set_light(share):
                 applied = share

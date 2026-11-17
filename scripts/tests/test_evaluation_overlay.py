@@ -258,5 +258,19 @@ class EvaluationNamespaceContractTest(unittest.TestCase):
         self.assertIn('bool_is_true "${enable_rviz}"', runtime)
 
 
+class SpeedLineTest(unittest.TestCase):
+    def test_the_speed_now_is_read_over_the_newest_half_second(self) -> None:
+        overlay = OVERLAY
+        samples = [(10.0 + 0.1 * k, (1.0 * k, 0.0, 5.0)) for k in range(20)]
+        self.assertAlmostEqual(10.0, overlay.window_speed(samples), places=6)
+        self.assertIsNone(overlay.window_speed(samples[:1]))
+
+    def test_the_line_names_the_speed_and_the_mean(self) -> None:
+        overlay = OVERLAY
+        self.assertEqual("", overlay.speed_text(None, 3.0))
+        self.assertEqual("SPEED  9.8 m/s", overlay.speed_text(9.84, None))
+        self.assertEqual("SPEED 13.5 m/s   MEAN 10.2 m/s", overlay.speed_text(13.5, 10.22))
+
+
 if __name__ == "__main__":
     unittest.main()

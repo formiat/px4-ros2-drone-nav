@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # render_flight.sh SCENARIO FIRST_RUN DIRECTORY [RATE]: one flight of a named scenario (point-to-point, light-lost,
-# light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, dark-hall in roadmap item 29's hall, dark-void across it at 12 m (item 31),
+# light-failure, low-battery, smoke-blocked, smoke, smoke-rooms, clear on Urban, walking-body, walking-body-oncoming,
+# walking-body-side for roadmap item 21's bodies, dark-hall in roadmap item 29's hall, dark-void across it at 12 m (item 31),
 # finals on the held-out finals world (item 33), open-sky on the open sky (item 39), survey for the survey mission on
 # Urban (item 34: no goal, the frontiers of the memory, home with the map; the stereo set flew its acceptance at a
 # factor of 0.8, which the caller's variable gives), survey-building for the same over the start building whole,
@@ -17,6 +18,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 scenario=$1; first=$2; directory=$3; rate=${4:-1.0}
 case $scenario in
   point-to-point | light-lost | light-failure | low-battery | smoke-blocked | smoke | smoke-rooms | clear) target="sim-urban-${scenario}-headless" ;;
+  # The walking bodies of roadmap item 21 (the replayed world draws the body from the run's record).
+  walking-body | walking-body-oncoming | walking-body-side) target="sim-urban-${scenario}-headless" ;;
   dark-hall) target="sim-dark-hall-headless" ;;
   dark-void) target="sim-dark-void-headless" ;;
   survey) target="sim-urban-survey-headless" ;;

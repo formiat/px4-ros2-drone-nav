@@ -37,7 +37,12 @@ not large).
   (TRUSTED, DISTRUSTED, BACK, from the estimator's events, K56) and, beside
   it, the variant the fault relay is playing (/evaluation/gnss_fault, the
   injector's knowledge, for the viewer): the fault begins, the verdict
-  follows.
+  follows;
+- the speed: the vehicle's true speed now (the world's pose/info over the
+  last half second of the simulation's clock) and the mean of the flight so
+  far, the true path over the time since the navigation was ready, held at
+  the mission's result (the owner, 2026-11-17: what a recording of a fast
+  flight is watched for).
 
 No obstacle of the truth is drawn here: the location's smoke zones are the
 world half's (the replayed world of a recording), and the obstacles RViz shows
@@ -208,6 +213,28 @@ def sdf_to_map(position: tuple[float, float, float],
     return tuple(p + o for p, o in zip(position, offset))
 
 
+def speed_text(speed_mps: float | None, mean_mps: float | None) -> str:
+    """The speed's line: the true speed now and the flight's mean so far."""
+    if speed_mps is None:
+        return ""
+    line = f"SPEED {speed_mps:4.1f} m/s"
+    if mean_mps is not None:
+        line += f"   MEAN {mean_mps:4.1f} m/s"
+    return line
+
+
+def window_speed(samples, window_s: float = 0.5) -> float | None:
+    """The speed over the newest window of (simulation seconds, position) samples."""
+    if len(samples) < 2:
+        return None
+    newest_s, newest = samples[-1]
+    for stamp_s, position in samples:
+        if newest_s - stamp_s <= window_s:
+            elapsed = newest_s - stamp_s
+            return math.dist(newest, position) / elapsed if elapsed > 0.0 else None
+    return None
+
+
 def charge_text(charge_s: float | None) -> str:
     """The battery's line, in the scenarios that give the light one."""
     if charge_s is None or not math.isfinite(charge_s):
@@ -267,7 +294,8 @@ def main() -> int:
     lock = threading.Lock()
     state = {"events": [], "estimate": None, "truth": None, "share": None, "charge": None,
              "seen": None, "velocity_mode": False, "ready": False, "dead_reckoning": False,
-             "landed_at": None, "gnss_fault": ""}
+             "landed_at": None, "gnss_fault": "", "path_m": 0.0, "flown_s": 0.0}
+    truth_samples: deque = deque(maxlen=400)
     estimate_trail: deque = deque(maxlen=TRAIL_POINTS)
     truth_trail: deque = deque(maxlen=TRAIL_POINTS)
     ticks = [0]
@@ -320,11 +348,20 @@ def main() -> int:
             state["seen"] = message.sensor_frame_share
 
     def on_poses(message: Pose_V) -> None:
+        stamp_s = message.header.stamp.sec + 1.0e-9 * message.header.stamp.nsec
         for pose in message.pose:
             if pose.name == args.model:
                 with lock:
-                    state["truth"] = sdf_to_map(
-                        (pose.position.x, pose.position.y, pose.position.z), offset)
+                    truth = sdf_to_map((pose.position.x, pose.position.y, pose.position.z), offset)
+                    state["truth"] = truth
+                    # The mean runs from the navigation's readiness to the mission's result.
+                    flying = state["ready"] and not any(
+                        event.startswith("MISSION_RESULT") for event in state["events"])
+                    if truth_samples and flying and stamp_s > truth_samples[-1][0]:
+                        state["path_m"] += math.dist(truth, truth_samples[-1][1])
+                        state["flown_s"] += stamp_s - truth_samples[-1][0]
+                    if not truth_samples or stamp_s > truth_samples[-1][0]:
+                        truth_samples.append((stamp_s, truth))
                 break
 
     node.create_subscription(String, "/drone_city_nav/mission_events", on_event, kept)
@@ -373,6 +410,8 @@ def main() -> int:
             light = light_text(share, state["seen"])
             charge = charge_text(state["charge"])
             gnss = gnss_text(state["events"], state["gnss_fault"])
+            speed = speed_text(window_speed(truth_samples),
+                               state["path_m"] / state["flown_s"] if state["flown_s"] > 1.0 else None)
         if estimate is not None:
             estimate_trail.append((estimate.x, estimate.y, estimate.z))
         if truth is not None:
@@ -401,7 +440,8 @@ def main() -> int:
                     (5, charge, 0.75 * TEXT_HEIGHT_M, -0.5, 0.71, GREY),
                     # With the fault's name the line is as long as the light's.
                     (6, gnss, 0.75 * TEXT_HEIGHT_M, -0.25 if "FAULT" in gnss else -0.5, 0.64,
-                     AMBER if "DISTRUSTED" in gnss or "FAULT" in gnss else GREEN)):
+                     AMBER if "DISTRUSTED" in gnss or "FAULT" in gnss else GREEN),
+                    (7, speed, 0.75 * TEXT_HEIGHT_M, -0.3, 0.57, GREY)):
                 words = marker(identifier, Marker.TEXT_VIEW_FACING, tone)
                 backdrop = marker(identifier + 10, Marker.CUBE, (0.0, 0.0, 0.0), 0.6)
                 if not line.strip():
