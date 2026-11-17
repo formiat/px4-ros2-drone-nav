@@ -244,6 +244,8 @@ private:
   [[nodiscard]] bool oldSurfaceVoxel(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool besideSurfaceOrItsSkin(GridIndex3D cell) const noexcept;
   [[nodiscard]] bool inAColumn(GridIndex3D cell) const noexcept;
+  // The voxel's column stands occupied for longer than the tallest body is.
+  [[nodiscard]] bool tallerThanABody(GridIndex3D cell) const noexcept;
   // The layer's voxels after a scan: the expired to unknown, the stood to
   // ordinary occupancy.
   void settleMoving(std::int64_t now_ms, ObstacleMemory3DStats& stats);

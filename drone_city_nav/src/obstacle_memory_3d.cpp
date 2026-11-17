@@ -620,7 +620,8 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
                         (chunk_evidence.moving.at(over_index / 64U) &
                          (std::uint64_t{1U} << (over_index % 64U))) != 0U &&
                         grid_.state(cell) == ObservedVoxelState::kFree;
-      if (occupied && ((moving_word & bit) != 0U || in_layer || foot)) {
+      if (occupied && ((moving_word & bit) != 0U || in_layer || foot) &&
+          (in_layer || !tallerThanABody(cell))) {
         // Moving evidence: occupied at once, at the state's threshold and with
         // no confirmations built up, so that nothing of it outlives the layer.
         if (held == nullptr) {

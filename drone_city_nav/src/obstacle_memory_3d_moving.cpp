@@ -83,6 +83,31 @@ bool ObstacleMemory3D::inAColumn(const GridIndex3D cell) const noexcept {
          (grid_.contains(below) && grid_.isOccupied(below));
 }
 
+bool ObstacleMemory3D::tallerThanABody(const GridIndex3D cell) const noexcept {
+  // A body has a top. What stands occupied, voxel on voxel, for longer than
+  // the tallest body and the floor's two cells under it is a surface, and
+  // never the layer's: the pair's returns on the wall behind a warm body
+  // that stood 0.15 m from it lay in the body's warm silhouette, were the
+  // layer's by the class, and three seconds after the vehicle had looked
+  // away the wall had a hole a metre wide from the floor to the body's top,
+  // the wall over it whole to the ceiling (r3793). The sweep's own voxels
+  // over a body are no measurement and do not count.
+  const auto stands = [this](const GridIndex3D voxel) {
+    return grid_.contains(voxel) && grid_.isOccupied(voxel) &&
+           !grid_.isUnobservable(voxel);
+  };
+  const int needed =
+      static_cast<int>(std::ceil(kTallestBodyM / grid_.bounds().resolution_m)) + 2;
+  int run = 1;
+  for (int dz = 1; run <= needed && stands({cell.x, cell.y, cell.z + dz}); ++dz) {
+    ++run;
+  }
+  for (int dz = 1; run <= needed && stands({cell.x, cell.y, cell.z - dz}); ++dz) {
+    ++run;
+  }
+  return run > needed;
+}
+
 bool ObstacleMemory3D::besideSurfaceOrItsSkin(const GridIndex3D cell) const noexcept {
   // A surface's skin is the young occupancy beside it, the range's noise on
   // its near side at close range (r3053: the body turning a quarter metre
@@ -185,6 +210,9 @@ void ObstacleMemory3D::liftSweep() {
 
 void ObstacleMemory3D::holdMoving(const GridIndex3D cell, const std::int64_t now_ms,
                                   ObstacleMemory3DStats& stats) {
+  if (tallerThanABody(cell)) {
+    return;
+  }
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(cell);
   const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(cell);
   MovingChunk& held = moving_[chunk_index];
@@ -764,14 +792,19 @@ void ObstacleMemory3D::settleMoving(const std::int64_t now_ms,
         const bool expired = since_last > life_ms;
         const bool stood =
             since_last == 0 && now_ms - held.since_ms.at(bit_index) >= stand_ms;
-        if (!expired && !stood) {
+        const GridIndex3D cell = cellFromChunkBit(chunk->first, bit_index);
+        // A column grown taller than a body since the voxel was taken is a
+        // surface: the voxel is an ordinary occupancy from now, as it stands.
+        const bool surface = tallerThanABody(cell);
+        if (!expired && !stood && !surface) {
           continue;
         }
         held.held.at(word_index) &= ~(std::uint64_t{1U} << bit_offset);
         --held.count;
-        const GridIndex3D cell = cellFromChunkBit(chunk->first, bit_index);
         const auto scores = evidence_.find(chunk->first);
-        if (expired) {
+        if (surface) {
+          ++stats.moving_promoted;
+        } else if (expired) {
           if (scores != evidence_.end()) {
             scores->second.scores.at(bit_index) = 0.0;
             scores->second.confirmations.at(bit_index) = 0U;

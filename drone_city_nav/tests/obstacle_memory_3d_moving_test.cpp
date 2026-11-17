@@ -673,6 +673,52 @@ TEST(ObstacleMemory3D, ABodyLaidByItsSizeIsAsTallAsItsMarksOfTheScan) {
   EXPECT_TRUE(memory.movingBodies().front().sized);
 }
 
+TEST(ObstacleMemory3D, AColumnThatStandsOverTheTallestBodyIsASurfaceNotTheLayers) {
+  // K65 (r3793): a wall 4.5 m tall whose returns up to a body's height came
+  // warm (the wall behind a body that stands by it, in its silhouette) and a
+  // warm column of a body's height beside it, seen for three scans and then
+  // not looked at for longer than the layer lives: the wall is there, an
+  // ordinary occupancy; the body's column is unknown again.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  std::vector<LidarBeam3D> seen;
+  for (int row = 0; row < 18; ++row) {
+    const double z = 0.125 + 0.25 * row;
+    seen.push_back(hitAt(origin, {8.125, 4.125, z}, row < 7));
+    if (row < 7) {
+      seen.push_back(hitAt(origin, {8.125, 6.125, z}, true));
+    }
+  }
+  ObstacleMemory3DStats stats{};
+  for (int scan = 0; scan < 3; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = seen,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  }
+  EXPECT_EQ(stats.moving_voxels, 7U);
+  const std::array elsewhere{LidarBeam3D{
+      .direction_map = {-1.0, 0.0, 0.0}, .range_m = 1.5, .hit = true, .valid = true}};
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = elsewhere,
+                                .acquisition_stamp_ns = 6 * kSecondNs});
+  EXPECT_EQ(stats.moving_expired, 7U);
+  // And past the stand's time, the place kept for the unseen body given up.
+  static_cast<void>(memory.integrateScan({.origin_map = origin,
+                                          .beams = elsewhere,
+                                          .acquisition_stamp_ns = 9 * kSecondNs}));
+  for (int row = 0; row < 18; ++row) {
+    EXPECT_TRUE(memory.grid().isOccupied({32, 16, row})) << "wall row " << row;
+  }
+  for (int row = 0; row < 7; ++row) {
+    EXPECT_EQ(memory.grid().state({32, 24, row}), ObservedVoxelState::kUnknown)
+        << "body row " << row;
+  }
+}
+
 TEST(ObstacleMemory3D, OneGroupOfTheCoresMarksIsOneBody) {
   // K66 (r3734): a body laid by its size, laid 2.5 m farther a scan on (a
   // second body, out of the first one's reach) and between the two a scan
