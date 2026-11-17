@@ -48,8 +48,9 @@ recorded_gazebo_gui "${repo_root}" "${run_directory}" > "${run_directory}/render
 pids+=($!)
 configure_gazebo_gui_follow_camera "${repo_root}" "${world}" "${model}" "-7 0 3.5" 60 \
   > "${run_directory}/render_follow.log" 2>&1 &
-LD_PRELOAD="${run_directory}/frame_pace_shim.so" FRAME_CAPTURE_HZ=15 \
+FRAME_CAPTURE_HZ=15 \
   FRAME_CAPTURE_FIFO="${run_directory}/capture_follow.bgra" \
+  recording_window "${run_directory}/frame_pace_shim.so" \
   rviz2 -d "${run_directory}/rviz_recording_follow.rviz" --ros-args -p use_sim_time:=true \
   > "${run_directory}/render_rviz_follow.log" 2>&1 &
 pids+=($!)

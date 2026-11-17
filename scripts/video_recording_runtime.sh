@@ -28,6 +28,24 @@ prepare_video_recording() {
   recording_rviz_environment="LD_PRELOAD=${run_directory}/frame_pace_shim.so;FRAME_CAPTURE_HZ=15;FRAME_CAPTURE_FIFO=${run_directory}/capture_follow.bgra"
 }
 
+# A recording window's command with the frame shim preloaded. On a virtual
+# display (tools/virtual_display.sh) the desktop's GLX is not there and the
+# windows would be drawn in software, the world's at some 8 frames a second;
+# with RECORDING_VIRTUALGL naming an unpacked VirtualGL the window's OpenGL is
+# drawn on the GPU through EGL and read back into its X window. The shim stays
+# first in the preload, before VirtualGL's, so that it sees every swap.
+recording_window() {
+  local shim="$1"
+  shift
+  if [[ -n "${RECORDING_VIRTUALGL:-}" ]]; then
+    LD_LIBRARY_PATH="${RECORDING_VIRTUALGL}/usr/lib:${LD_LIBRARY_PATH:-}" \
+      "${RECORDING_VIRTUALGL}/opt/VirtualGL/bin/vglrun" -d egl \
+      sh -c 'LD_PRELOAD="$0:${LD_PRELOAD:-}" exec "$@"' "${shim}" "$@"
+  else
+    LD_PRELOAD="${shim}" "$@"
+  fi
+}
+
 # The Gazebo window of a recorded flight, in the foreground of the caller.
 # It redraws the scene at the display's refresh rate on its own; a recording
 # takes 24 frames a second of it. Its top bar, 48 pixels, stays out of the
@@ -38,19 +56,20 @@ prepare_video_recording() {
 recorded_gazebo_gui() {
   local repo_root="$1"
   local run_directory="$2"
-  LD_PRELOAD="${run_directory}/frame_pace_shim.so" FRAME_PACE_HZ=24 \
+  FRAME_PACE_HZ=24 \
     __GL_SYNC_TO_VBLANK=0 vblank_mode=0 \
     FRAME_CAPTURE_TOP=48 \
     FRAME_CAPTURE_FIFO="${run_directory}/capture_world.bgra" \
-    gz sim -g --gui-config \
+    recording_window "${run_directory}/frame_pace_shim.so" gz sim -g --gui-config \
     "${repo_root}/drone_city_nav/config/gazebo_gui_recording.config"
 }
 
 # The second view of a recorded flight, beside the one the launch starts.
 recorded_top_view() {
   local run_directory="$1"
-  LD_PRELOAD="${run_directory}/frame_pace_shim.so" FRAME_CAPTURE_HZ=15 \
+  FRAME_CAPTURE_HZ=15 \
     FRAME_CAPTURE_FIFO="${run_directory}/capture_top.bgra" \
+    recording_window "${run_directory}/frame_pace_shim.so" \
     rviz2 -d "${run_directory}/rviz_recording_top_down.rviz" \
     --ros-args -p use_sim_time:=true
 }

@@ -87,6 +87,23 @@ python3 -m unittest discover scripts/tests
 build, C++ tests, scoped `clang-tidy`, and scoped `cppcheck` when the required
 inputs are available.
 
+## Windows Off The Desktop
+
+A GUI run opens the Gazebo and RViz windows on the display the shell names.
+`tools/virtual_display.sh COMMAND` runs any of the commands below with a
+virtual X display (Xvfb, the first free one from `:99`, 1920 x 1080) in place
+of the desktop: nothing appears on the screen, takes the focus or the
+pointer, and the windows are read by screenshots
+(`DISPLAY=:99 import -window root picture.png`). The desktop's GLX is not
+there, so the windows are drawn in software (some 8 redraws a second of the
+world window, five processor cores for a recording's three windows): enough
+to look, and a flight flown so is slowed and is not one to count. For the
+recordings `tools/virtual_display.sh --install` unpacks VirtualGL once
+(`log/tools/virtualgl`), and the recording windows then draw on the GPU
+through EGL: `tools/virtual_display.sh tools/render_flight.sh SCENARIO
+FIRST_RUN DIRECTORY` flies headless and renders the flight's pictures off the
+desktop at the usual rate ([`tools/README.md`](../tools/README.md)).
+
 ## Simulation Commands
 
 Point-to-point mission:

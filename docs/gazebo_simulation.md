@@ -257,7 +257,8 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 
 - Stale Gazebo or PX4 processes can keep ports/resources busy. Use
   `./scripts/stop_sim.sh`.
-- GUI display forwarding can fail on restrictive X11/Wayland setups.
+- GUI display forwarding can fail on restrictive X11/Wayland setups;
+  `tools/virtual_display.sh` runs the same windows on a virtual display.
 - RViz navigation debug uses the `gazebo_map` fixed frame plus the
   `gazebo_aligned_map_tf` transform from the launch file, derived from the
   world's `map_to_sdf`. A world whose map frame equals the SDF frame (Urban

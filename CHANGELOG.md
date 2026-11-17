@@ -6,6 +6,10 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The recordings off the desktop: `tools/virtual_display.sh` runs a command with its windows on a virtual X display
+  (Xvfb), and with VirtualGL unpacked (`--install`) the recording windows draw on the GPU there, so a flight's
+  pictures are rendered while somebody works at the machine. The recordings show the vehicle's speed (now and the
+  mean) and the walking bodies of roadmap item 21.
 - The clearance laws read a contact within 0.02 m (specification K18): the laws of the motion under execution and of
   the route compared the body's clearance to the millimetre and held the vehicle at references of 0.04 to 0.14 m/s,
   which the airframe does not fly, until the position's noise freed it; a body within 0.02 m of evidence is now in

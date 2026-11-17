@@ -63,6 +63,15 @@ XWayland running. If no window appears, the reason is usually the first lines
 of `log/gz_gui_drone_nav.log`; the server's own output is in
 `log/gz_drone_nav.log`. Stop everything with `./scripts/stop_sim.sh`.
 
+To keep the windows off the desktop while somebody works at the machine, run
+the command through `tools/virtual_display.sh`: every window opens on a
+virtual X display (Xvfb) and is looked at by screenshots
+(`DISPLAY=:99 import -window root picture.png`). The recordings are rendered
+there too (`tools/virtual_display.sh tools/render_flight.sh ...`), on the GPU
+once `tools/virtual_display.sh --install` has unpacked VirtualGL; without it
+the windows are drawn in software, which is enough to look at them and too
+slow to record.
+
 ## Roadmap
 
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
