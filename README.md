@@ -765,6 +765,8 @@ Key pages:
 - `docs/gazebo_simulation.md`
 - `docs/architecture.md`
 - `docs/roadmap.md`
+- `docs/related_work.md`
+- `docs/forks.md`
 - `docs/release_process.md`
 - `docs/navigation_pipeline.md`
 - `docs/world3d.md`

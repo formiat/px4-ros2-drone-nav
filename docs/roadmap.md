@@ -1624,6 +1624,186 @@ sets (the figure measured against stage 0's), no closure is accepted
 wrongly over the acceptance series and the recordings, the references'
 figures stand beside ours, and R3's mean speed is kept. Size L.
 
+## 43. The Work Of The Forks: A Stop That Is Refused, Edges Left Blocked, The Lidar's Self Filter
+
+**Type:** safety and planning, general. Proposed 2026-11-17 from the review of
+the forks ([forks.md](forks.md)); the findings are naipi11's and are to be
+verified here before anything is taken.
+
+1. **The stop refused by its own commit evidence** (their crash of
+   2026-11-13: seven stops refused at publication, the vehicle flown into a
+   wall at 1.8 m/s). Reproduce with their tests on this tree
+   (`execution_supervisor_3d_test`, `execution_supervisor_horizon_3d_test`),
+   read our own flights for stops superseded within a second
+   (`stop_supersession.py`), then decide between their two ways: latch the
+   stop until the vehicle is at rest, or publish none for a refusal the next
+   tick can retry. The first thing to do of the whole roadmap: it is a safety
+   law.
+2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
+   which PX4 SITL stopped is void, not a crash of the stack.
+3. **The lattice edge left blocked**: an edge the probe budget did not reach
+   is blocked until an obstacle is removed; their resumable refinement.
+4. **The lidar's self filter**: 0.9 m against propellers that end at 0.386 m.
+   Find why 0.9, lower it, fly the series.
+5. The log line of a refused stop with its evidence (their pull request #2),
+   `crash_window.py` and `airframe_braking.py` as tools.
+
+Each with its author named ([forks.md](forks.md)).
+
+## 44. Before A Real Vehicle: The Layers Of Safety Round The Stack
+
+**Type:** safety, general; additions to item 27 from the review of the
+analogs ([related_work.md](related_work.md)) and the owner's discussions of
+2026-11-09 to 2026-11-13.
+
+- **An external PX4 mode** (px4-ros2-interface-lib): the stack as a mode the
+  pilot switches on and off, known to PX4's failsafes.
+- **A staged failsafe**: hover, emergency landing, landing without an
+  estimator, motors off; a safety area.
+- **A flight supervisor of its own process**: the safety of item 27's block 1
+  (arming, the pilot's priority, the battery, the geofence, the lost link, the
+  planner's heartbeat) independent of what it watches, speaking MAVLink to the
+  autopilot itself, so that it outlives the planner and the middleware. The
+  language (Rust was proposed) is the owner's choice.
+- **A manager of estimators** switching by health (VIO, LIO, GNSS), on item
+  39's hybrid.
+- **A safety filter** after the MPPI horizon that corrects a command by the
+  distance field (a CBF), beside the supervisor that accepts or refuses.
+- **The sensors' synchronisation**: one trigger for both cameras, stamps of
+  frames, IMU and time-of-flight samples from one clock, the infrared strobe
+  on the exposure. First PX4's own camera trigger (to be read in its
+  documentation), then a microcontroller hub; an FPGA only for raw video.
+- **A law for a slow computer**: at a planner that ticks at 0.6 Hz instead of
+  50 the vehicle flew on (item 36); too slow means slower or a hover.
+
+## 45. One Flight Profile: The Open Sky Read From What The Sensors Measure
+
+**Type:** navigation, general. The owner's requirement of 2026-11-17: the
+vehicle is hybrid, not of two modes, and nobody switches a mode of the
+environment.
+
+Today the world's canonical file names its `flight_profile` (`cave` or
+`open_sky`) and the launch gives the open sky its own figures: the leg flown
+5 m over everything seen (K76), the lidar's promise of a 0.75 m obstacle to
+35 m (K75), the memory's box of 56 m, its four threads and 5 Hz. That is a
+mode chosen by the scenario. The item: the same figures decided in flight by
+what is measured (a roof observed or not, the range the returns come from, the
+size of what stands at range), and the caves and the open sky flown by one
+launch. Acceptance: the Urban series and the open sky's R8 on one profile.
+
+## 46. Continuous Integration
+
+**Type:** engineering, an independent recurring workstream.
+
+GitHub Actions: the build, the unit and script tests, the replay gate on the
+kept bags; the arm64 build on the free runners (item 27's block 2); then a
+short flight of a minute or two on a GPU runner (AirStack's way). The
+acceptance series stay on the workstation.
+
+## 47. Mission Modules On One Core
+
+**Type:** product, general (the owner's discussion of 2026-11-10; an answer
+to R6's open question of the market: one core, several missions).
+
+The core exists (localisation, the memory, the planner, safety, the return
+home); "fly to a point" and "survey" exist. To add: a patrol (a route on a
+schedule, repeated over its own map); the inspection of an object (a surface
+flown at a set distance, covered by pictures, on the distance field); a
+search of an area by heat; the following of a target the operator names (new
+and large: an open-sky speed, a ground station; re-acquiring a lost target is
+where a neural detector may be proposed, item 50). Three parts shared by all:
+a ground station and its command link, a dock (a landing on a marker,
+charging, a takeoff on command), a fleet (item 48).
+
+## 48. The Fleet Layer
+
+**Type:** swarm; the continuation of item 15 (the owner's discussion of
+2026-11-09).
+
+The task: a joint survey in SubT's manner. The fleet's coordination (the
+division of the area, membership and failures, behaviour that knows the
+link), its transport (Zenoh) and the channel's model (`tc netem`) are a
+project of their own; here stay the merging of maps, the closures between
+vehicles (after item 41), the frontiers, and a narrow adapter "vehicle to
+fleet" (state, health, a goal or an area, submaps, events). One interface and
+three kinds of vehicle behind it: the full stack in Gazebo (two), PX4 SIH
+with simplified perception (tens), a light vehicle on the truth grids of
+Urban, Cave and Finals with an ideal lidar (hundreds).
+
+## 49. A Guide In English And A Map Of The Architecture
+
+**Type:** documentation (the idea is hundong2's Korean course,
+[forks.md](forks.md)).
+
+A short path of four to six steps under `docs/guide/` (the basics; the
+installation and a first flight; the mission and the navigation pipeline;
+safety; testing and debugging; extending), written on today's code, and a map
+of the architecture whose every component links to its file.
+
+## 50. Recognition By An Open Neural Network, As A Hint
+
+**Type:** perception; a proposal for the owner's decision only (the rule of
+2026-11-17: a network may be proposed where it is radically better than a
+program, an open one that is not trained here; the agent never adds one
+itself).
+
+Where a program is nearly impossible: the class of an object (a person, a
+car, a door) in a picture. Uses: item 21's bodies that are not warm and its
+doors, item 47's target and search. The network's answer is a hint to the
+memory's layers and the mission, never the law of safety: the invariants
+stand on measurements. To propose: the task, the model and its licence, its
+cost on the onboard computer (R6), what it replaces.
+
+## 51. Recorded Data Instead Of More Simulated Realism
+
+**Type:** validation; the continuation of item 25.
+
+SubT-MRS (real smoke, darkness, a thermal camera) against the models of items
+17, 18 and 22; an aerial set with a camera looking down, GNSS and a lidar for
+item 39's stages 3 and 4; stereo matching on Middlebury and RGB-NIR pictures
+(naipi11's); calibration as a procedure (Kalibr on a target in Gazebo, the
+extrinsics and the time offset estimated online).
+
+## 52. The Code's Hygiene
+
+**Type:** engineering.
+
+`production_mppi_node` cut by meaning (one class in 37 files); an ablation of
+the K rules on the held-out worlds, one off at a time, and those that change
+no outcome removed; the fault relays of the simulator in Python measured for
+the jitter they add to the streams (item 36) before any is rewritten.
+
+## 53. The Open Sky Beyond 10 m/s
+
+**Type:** navigation; the continuation of item 39 stage 5 (R8's aim is 20).
+
+What bounds 10.2 m/s today: three goals in 1.5 km with a stop at each, the
+climb to the leg's level and the descent, the airframe's 15 m/s, the lidar's
+35 m. Ways: a backup trajectory that always stops inside known free space
+while the main one flies on (SUPER's idea), goals passed without a stop,
+longer legs, the airframe's envelope (item 30).
+
+## 54. A Survey's Map Proven By A Blind Flight
+
+**Type:** validation of item 11 (the owner's proposal of 2026-11-17).
+
+A vehicle with its perception off, GNSS on and a survey's map as its only
+world flies point to point inside the mapped volume: every contact is the
+map's error. Today the maps are checked against the truth grid
+(`tools/survey_map_check.py`) and flown as the memory's first content with
+the sensors on (K71), which hides a wrong map behind what the flight sees.
+Needs the planner's static mode to certify a route on a survey's map
+(`static_world_mismatch`, r3187, r3188) and a margin for the GNSS error.
+
+## 55. The Vehicle Yields
+
+**Type:** safety; from item 21's register row "no retreat without a route".
+
+A vehicle the body's law has stopped where no way over the body or round it
+is certified stands in the body's way. Whether the vehicle should move at
+all (who moves gives way) and, if so, a short retreat certified by its
+clearance alone, are to be decided with the owner.
+
 ## Completed
 
 Each entry keeps its original number. The release that shipped it is linked;
