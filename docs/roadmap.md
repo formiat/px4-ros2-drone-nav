@@ -1754,6 +1754,17 @@ memory's layers and the mission, never the law of safety: the invariants
 stand on measurements. To propose: the task, the model and its licence, its
 cost on the onboard computer (R6), what it replaces.
 
+Where it is worth proposing: an object detector as a hint, for the target to
+follow and the search of item 47, and for item 21's doors and cold bodies.
+The candidates carry a permissive licence, which the project's MIT needs
+(RT-DETR, YOLOX, NanoDet: Apache-2.0); the popular YOLOv8 and YOLO11 are
+AGPL-3.0 and cannot be taken. The licences are named from memory: each is
+read in its repository, with the licence of its weights and of the data they
+were trained on, before a proposal. Where it is not: the depth, the pose
+estimate, the control and the laws of safety. The loop closure of item 41
+takes the classical way first (what item 41 names); a learned place
+recognition only if that fails by measurement.
+
 ## 51. Recorded Data Instead Of More Simulated Realism
 
 **Type:** validation; the continuation of item 25.
@@ -5203,7 +5214,7 @@ row of this day lists them) are unverified. The record of 2026-10-31 follows as 
 flights inside the worlds' shells, on one commit (5b7b3380, the imperfections profile, the seeds the run numbers; the
 lidar sets at a real-time factor of 1.0, the cave cameras at 0.8, the finals cameras at 0.5, K25; every flight's budget
 900 s of simulation time), flown one at a time by `tools/fly_until_valid.sh` through
-`log/tools/wbsm/part2a/heldout_chain.sh`; the series `log/tools/wbsm/part2a/series_5b7b3380.txt`, the journal
+a chain of that goal's (`tools/world_series.sh` is that chain since 2026-11-17); the series `log/tools/wbsm/part2a/series_5b7b3380.txt`, the journal
 `log/tools/journal/goal_journal_wbsm_2026_11_05.md`. Not one contact in twenty. The truth clearance is read against the
 worlds' own 0.5 m grids (`tools/body_truth_clearance.py --grid --map-to-sdf`), which mark a voxel occupied at any touch
 of a surface, so the least clearance reads 0.00 m on every flight without a contact and the column carries the seconds

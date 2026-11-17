@@ -6,6 +6,9 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The survey is described as the project's first mission: `docs/missions.md` gives its order (a volume), its flight,
+  its result (the map), when it is done and what it does not do yet. `tools/world_series.sh` flies the series of the
+  worlds one at a time, and `tools/flight_sweep.py` reads every flight of a series for what is wrong with it.
 - The recordings off the desktop: `tools/virtual_display.sh` runs a command with its windows on a virtual X display
   (Xvfb), and with VirtualGL unpacked (`--install`) the recording windows draw on the GPU there, so a flight's
   pictures are rendered while somebody works at the machine. The recordings show the vehicle's speed (now and the

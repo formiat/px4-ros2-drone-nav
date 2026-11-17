@@ -13,6 +13,13 @@ and [`specification.md`](specification.md).
 
 ## Where Goals Live
 
+The goal file is named by its topic: `goal_<topic>.txt`
+(`goal_prerelease_checks.txt`), never a bare `goal.txt`; its parts in
+`goal_parts_<short>/`, its deviations file `<deviations>.<topic>.md`. The
+name is given once and stays: a finished goal is archived under the name it
+has, nothing is renamed back and forth, and a new goal never collides with
+an old one (the owner, 2026-11-17).
+
 One active goal a working folder, outside the repository (the owner names
 the folder; here `~/Downloads/gazebo/`). A finished goal is archived by the
 owner, never deleted and never by the agent: the agent does not rename,
@@ -122,6 +129,13 @@ file a part in a folder beside it.
    does not reduce to a success criterion is not a stage. A live check takes
    the time it needs and no more: never an hour of waiting where five
    minutes give the same answer (a shortened timeout, a prepared state).
+   A stage that ends in a series of flights orders the way to it
+   ([`autonomous_development.md`](autonomous_development.md), section 5, "a
+   series is spent last"): each criterion's direct measurement before the
+   series, the ladder, the sweep of every flight at the first problem with
+   one batch of repairs, a change proven on a recorded bag before a flight;
+   and it says whether the owner has granted a statistical criterion or
+   flights in parallel, which are otherwise not used.
 9. **Recording, right after every step**: the journal (the time with its
    offset, the hypothesis before each run, the result, the decisions with who
    took them and why, the failures, the output paths, the time left after

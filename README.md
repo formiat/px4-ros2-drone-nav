@@ -769,6 +769,7 @@ The main documentation set starts at `docs/overview.md`.
 
 Key pages:
 
+- `docs/missions.md`
 - `docs/scenarios.md`
 - `docs/installation.md`
 - `docs/build_and_run.md`

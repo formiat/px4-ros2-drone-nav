@@ -43,6 +43,11 @@ up, so it is written to be read cold. The method, section by section, is
 [`goal_writing.md`](goal_writing.md); the files of 2026-10-24, 2026-10-29
 and 2026-10-30 are the examples, kept by the owner outside the repository.
 
+- The goal file is named by its topic, `goal_<topic>.txt`, never a bare
+  `goal.txt`, and keeps that name for good: done or archived, it is not
+  renamed, and a new goal never meets an old one's name (the owner,
+  2026-11-17).
+
 - One root file with the common rules, the order of the parts, the recording
   and the stop section; one file a part with its own facts, decisions,
   stages and stop section. A part starts only when the previous one is done
@@ -169,6 +174,27 @@ a `.keep` file; the weekly pruning deletes the rest.
   and is lifted by one (I2); no latch on history (I3); no decay by time (K10).
   A disputed point takes the most conservative option that passes the
   acceptance, and a line in the report.
+- A series is spent last (the owner, 2026-11-17, after an acceptance of forty
+  flights flown three times for single repairs):
+  1. Every criterion of a stage gets its direct measurement in a flight
+     before the declared series; a criterion that stands on a unit test alone
+     is not ready for one (the wall by a standing body was a unit test, and
+     the flight found a hole of 1.5 m after two series).
+  2. A ladder: three to six flights of the scenario the change touches, then
+     three of the weakest scenario, then the whole series.
+  3. A series is flown to its first problem; then every flight flown so far
+     is swept (`tools/flight_sweep.py`), everything the sweep shows is
+     repaired in one batch, and the series starts again once.
+  4. A change to the memory, or to anything a recorded bag can replay, is
+     proven on the bag of the flight that showed the problem
+     (`tools/replay_memory.sh`, `tools/replay_stack.sh`) before any flight.
+  5. Only on the owner's word, goal by goal: a statistical criterion in place
+     of an absolute one (a margin "in every flight"), and two lidar flights at
+     once on separate core sets. Without it the criterion is absolute and the
+     flights go one at a time (A3).
+- The series of the worlds are flown by one tracked chain,
+  `tools/world_series.sh`; a chain is not written again under `log/` for
+  every goal.
 - The CPU rule (the owner, 2026-10-24): nothing heavier in the onboard loop
   without its measured cost; above the base plus five percent, roll back or
   register the cost with a decision.
@@ -285,3 +311,9 @@ its closure is written with numbers and options.
   onboard image through the self-containment check; the user's runs never
   wait for a quiet host; the target mean speed with its 20 percent and the
   debt entry for every series under it.
+- 2026-11-17: the acceptance of roadmap item 21 was flown three times, seven
+  hours each, for one repair a time: measure every criterion in a flight
+  before the series, climb a ladder to it, sweep all the flights at the first
+  problem and repair in one batch, prove a memory change on the bag first; the
+  goal file carries its topic in its name; a script worth using again goes
+  under git the day it is written, not when a document comes to cite it.
