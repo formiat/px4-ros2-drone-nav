@@ -12,7 +12,8 @@ heartbeat without copying the grid. The 3D profile publishes a revisioned
 `/drone_city_nav/raw_obstacle_snapshot_3d` base plus
 `/drone_city_nav/raw_obstacle_delta_3d` dirty chunks. RViz and provenance
 representations are debug-only and are never planner inputs. The memory's
-moving layer (specification K65) holds what moves by how it behaves, and the
+moving layer (specification K65) holds what moves by how it behaves (never a
+column that stands taller than a body: that is a surface), and the
 bodies the memory follows (K66: read by the thermal core's marks, one body
 a group of marks, laid by its apparent size where the range sensors return
 nothing of it, unseen until a scan has looked at where they stood) reach

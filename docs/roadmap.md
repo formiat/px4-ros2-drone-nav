@@ -587,7 +587,7 @@ contact, no occupancy of it older than the stated decay, and the mean
 speed of R3 kept.
 
 Stage 1a, 1, 2 for warm bodies done on 2026-11-17 (the goal of 2026-11-05,
-part 1; specification K64, K65, K66, F23; the flight code of 01107340).
+part 1; specification K64, K65, K66, F23; the flight code of 6c42a8b9).
 
 What stands: a body is read by the thermal core's marks, with a cluster or
 without one, and stands where the marks are, one body a group of marks;
@@ -606,40 +606,50 @@ the vehicle nor behind the plane 1.5 m before it (the way out). A cluster
 seen to step without the class is swept and hands the planner no body. The
 planner's law is owed to the worst place a body may stand in; a climb and a
 route that leads away from the body owe it nothing. A standing body is an
-occupancy like any, answered for by the clearance laws.
+occupancy like any, answered for by the clearance laws. A column that
+stands occupied for longer than the tallest body is a surface and never
+the layer's: the wall a warm body stands by stays a wall.
 
 The measurement (the stopping margin against the closing speed, by the
 truth, `tools/body_encounters.py`; three flights a scenario and a set on
-one commit, 8ddab0bf, r3753 to r3772): positive in all eighteen meetings.
-The camera set: the oncoming body +1.02, +0.43, +0.86 m, the one from the
-side +0.64, +0.69, +0.64 m, the crossing one +0.96, +0.64, +0.52 m, 1.13 to
-1.38 m/s. The lidar set: the crossing body +0.94, +0.81, +1.46 m, the
-oncoming one +0.67, +1.29, +1.46 m, the one from the side +2.09, +4.33,
-+2.12 m, 1.84 to 2.12 m/s. No contact, no trace of the body older than the
+one commit, 81a31584, r3797 to r3819): positive in all eighteen meetings.
+The camera set: the oncoming body +0.26, +0.98, +1.06 m, the one from the
+side +0.11, +1.62, +2.94 m, the crossing one +0.85, +0.92, +0.56 m, 1.19 to
+1.36 m/s. The lidar set: the crossing body +0.99, +1.05, +0.74 m, the
+oncoming one +0.05, +0.40, +0.89 m, the one from the side +1.72, +2.29,
++2.05 m, 1.92 to 2.30 m/s. No contact, no trace of the body older than the
 layer's life, every mission ended; two ordinary lidar flights read no body.
-One camera flight of the nine (r3758) acknowledged its goal 2.36 m from it
-by the truth, the register's row on the stereo estimate at the goal. The
-commit before (4aa7c41a, r3712 to r3752) flew the same eighteen meetings
-positive (+0.36 to +2.11 m) and the same acceptance.
+The two commits before flew the same eighteen meetings positive (4aa7c41a,
+r3712 to r3731: +0.36 to +2.11 m; 8ddab0bf, r3753 to r3772: +0.43 to
++4.33 m) and the same acceptance (r3732 to r3752, r3773 to r3792).
 
-The acceptance (r3773 to r3792, the same commit): five counted flights a
-set past the crossing body, no contact, the goal acknowledged 0.22 to
-1.52 m from it by the truth, no trace older than the layer's life, the
-margin +0.79 to +1.41 m on the camera set and +0.66 to +1.18 m on the
-lidar; the mean speed 1.316 m/s on the camera set against 1.411 without
-the body and 2.161 m/s on the lidar against 2.202 (R3's floors 0.93 and
-1.82; the lidar's ordinary series is 3.4 percent under its target of 2.28
-and stands in the register as an attempt to return to it). The ordinary
-five and five read no body. The render bag of the camera flight r3773 is
-kept in `log/tools/wbsm/part1/render_bag_r3773`.
+The wall by a standing body (`tools/wall_by_body.py`; a warm body standing
+0.15 m from the corridor's wall on the ordinary route): the lidar set's
+wall whole (r3794, r3796); the camera set's with a hole 1.5 m wide at the
+body's height after the pass on the flight code of 01107340 (r3793) and
+whole on 81a31584 (r3795).
+
+The acceptance (r3820 to r3839, the same commit): five counted flights a
+set past the crossing body, no contact, the goal acknowledged 0.14 to
+1.84 m from it by the truth, no trace older than the layer's life, the
+margin +0.73 to +1.08 m on the camera set and +0.32 to +1.59 m on the
+lidar; the mean speed 1.267 m/s on the camera set against 1.433 without
+the body and 2.019 m/s on the lidar against 2.321 (R3's floors 0.93 and
+1.82, its targets 1.16 and 2.28). The ordinary five and five read no body.
+The render bag of the camera flight r3820 is kept in
+`log/tools/wbsm/part1/render_bag_r3820`.
 
 Open ([technical_debt.md](technical_debt.md), "Planning, Execution And
 Control"): no retreat without a route (a vehicle the law has stopped at a
 body's height stands there when no way over the body or away from it is
 certified); a body that comes from outside every field of the camera set
 is answered by the level kept over places alone; the range of a body laid
-by its size steps by metres between scans; the memory's integration costs
-a third more (K53); the doors (stage 3) and the cold bodies' acceptance.
+by its size steps by metres between scans; the lidar set reads the floor
+behind a far body as a second one now and then; a warm body that stands is
+the layer's until it has stood five seconds under the sensor's eye, and on
+the camera set, which passes it sooner, it is unknown again once the
+vehicle has looked away; the memory's integration costs a third more
+(K53); the doors (stage 3) and the cold bodies' acceptance.
 
 ## 22. Passive Navigation Without Illumination: Thermal-Inertial
 
