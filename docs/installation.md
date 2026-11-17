@@ -28,6 +28,21 @@ For GUI simulation, the host must allow containerized GUI applications to reach
 the display server. The scripts handle the common X11 case; Wayland setups
 usually need XWayland compatibility.
 
+Optional, for windows off the desktop (`tools/virtual_display.sh`: a GUI run
+or the rendering of a recording on a virtual display while somebody works at
+the machine):
+
+```bash
+sudo apt install xvfb imagemagick curl
+./tools/virtual_display.sh --install
+```
+
+`xvfb` is the virtual X display, `imagemagick` gives `import` for its
+screenshots, and the second command checks that the host has what the tool
+needs and unpacks VirtualGL into `log/tools/virtualgl` (with it the recording
+windows draw on the GPU there; nothing is installed into the system). Nothing
+else in the repository needs these packages.
+
 ## Docker Access
 
 The user running the scripts must be able to run Docker. Usually this means the

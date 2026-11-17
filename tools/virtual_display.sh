@@ -5,8 +5,9 @@
 # free one from :99, 1920 x 1080; the container takes it as it takes any DISPLAY (scripts/container_run.sh), and the
 # Wayland session's variable is dropped so that nothing falls back to the desktop.
 #
-# virtual_display.sh --install: fetches VirtualGL 3.1.5 (its release's package, checked by its SHA-256) and unpacks it
-# into log/tools/virtualgl/root. The desktop's GLX is not on a virtual display, and without VirtualGL the windows are
+# virtual_display.sh --install: names the host packages that are missing (xvfb, imagemagick, curl: the host's to
+# install, docs/installation.md), then fetches VirtualGL 3.1.5 (its release's package, checked by its SHA-256) and
+# unpacks it into log/tools/virtualgl/root. The desktop's GLX is not on a virtual display, and without VirtualGL the windows are
 # drawn in software (Mesa's llvmpipe): the world window of a recording redraws some 8 times a second and the
 # recording is refused (r3840 rendered so: "the world window stood still 86% of the time"). With it unpacked the
 # recording windows draw on the GPU through EGL and are read back into their X windows (RECORDING_VIRTUALGL,
@@ -19,10 +20,19 @@ set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 virtualgl=log/tools/virtualgl
 if [ $# -eq 0 ]; then
-  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 if [ "$1" = "--install" ]; then
+  # The host's own packages are the host's to install: what is missing is named with its command.
+  missing=()
+  command -v Xvfb > /dev/null || missing+=(xvfb)
+  command -v import > /dev/null || missing+=(imagemagick)
+  command -v curl > /dev/null || missing+=(curl)
+  if [ ${#missing[@]} -gt 0 ]; then
+    echo "virtual_display.sh: install on the host first: sudo apt install ${missing[*]}" >&2
+    exit 1
+  fi
   package=virtualgl_3.1.5_amd64.deb
   sum=df3f7788ce41b182a47c0d298e5cd6d2d63579522cb41825970b7726e825485e
   mkdir -p "$virtualgl" && touch "$virtualgl/.keep"
@@ -32,7 +42,8 @@ if [ "$1" = "--install" ]; then
   rm -rf "$virtualgl/root" && dpkg -x "$virtualgl/$package" "$virtualgl/root" && echo "VirtualGL 3.1.5 in $virtualgl/root"
   exit $?
 fi
-command -v Xvfb > /dev/null || { echo "virtual_display.sh: Xvfb is not installed (apt install xvfb)" >&2; exit 1; }
+command -v Xvfb > /dev/null ||
+  { echo "virtual_display.sh: Xvfb is not installed: sudo apt install xvfb (docs/installation.md)" >&2; exit 1; }
 number=99
 while [ -e "/tmp/.X11-unix/X$number" ] || [ -e "/tmp/.X$number-lock" ]; do number=$((number + 1)); done
 Xvfb ":$number" -screen 0 1920x1080x24 -nolisten tcp > /dev/null 2>&1 &

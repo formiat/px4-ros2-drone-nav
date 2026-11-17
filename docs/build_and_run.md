@@ -92,7 +92,8 @@ inputs are available.
 A GUI run opens the Gazebo and RViz windows on the display the shell names.
 `tools/virtual_display.sh COMMAND` runs any of the commands below with a
 virtual X display (Xvfb, the first free one from `:99`, 1920 x 1080) in place
-of the desktop: nothing appears on the screen, takes the focus or the
+of the desktop (the host needs `xvfb`, [installation.md](installation.md)):
+nothing appears on the screen, takes the focus or the
 pointer, and the windows are read by screenshots
 (`DISPLAY=:99 import -window root picture.png`). The desktop's GLX is not
 there, so the windows are drawn in software (some 8 redraws a second of the

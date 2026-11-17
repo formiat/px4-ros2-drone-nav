@@ -68,7 +68,8 @@ the command through `tools/virtual_display.sh`: every window opens on a
 virtual X display (Xvfb) and is looked at by screenshots
 (`DISPLAY=:99 import -window root picture.png`). The recordings are rendered
 there too (`tools/virtual_display.sh tools/render_flight.sh ...`), on the GPU
-once `tools/virtual_display.sh --install` has unpacked VirtualGL; without it
+once `tools/virtual_display.sh --install` has unpacked VirtualGL (the host
+needs `xvfb`, see [`docs/installation.md`](docs/installation.md)); without it
 the windows are drawn in software, which is enough to look at them and too
 slow to record.
 
