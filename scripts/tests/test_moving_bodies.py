@@ -124,6 +124,12 @@ class BodyEncountersTest(unittest.TestCase):
         self.assertEqual([True, False, True, True],
                          list(self.tool.in_a_kept_place(centres, [(40.0, -16.0, 0.3, 1.2, 0.0, "warm", 0.4)],
                                                         (30.0, -16.0), 0.25)))
+        # Unseen and farther than the rise's distance, the place is carried along the walk last measured too.
+        carried = np.array([[45.5, -16.0, 2.0],   # 5.5 m ahead along the walk: the carried place
+                            [34.5, -16.0, 2.0]])  # 5.5 m behind: a trace
+        self.assertEqual([True, False],
+                         list(self.tool.in_a_kept_place(carried, [(40.0, -16.0, 0.3, 1.2, 0.0, "warm", 0.4)],
+                                                        (25.0, -16.0), 0.25)))
         stepping = [(40.0, -16.0, 0.3, 1.2, 0.0, "step", 0.0)]
         self.assertFalse(self.tool.in_a_kept_place(centres, stepping, (30.0, -16.0), 0.25).any())
         self.assertEqual([False, False, True, False],

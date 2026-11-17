@@ -38,7 +38,9 @@ RAW_SNAPSHOT_BOUNDS_M round the walk for them).
   body it reads whose walk is not measured, a person's walk in the sweep's time on every side; along the measured
   velocity of one that walks and of a cluster seen to step within that walk of the vehicle (r3569: every stale cell
   3.3 to 3.5 m ahead of the body, the rim of the place kept every way); an unseen body keeps its place every way
-  too (specification K66 since cbea5dff; r3656: 48 cells of it read stale). The largest count over the
+  too (specification K66 since cbea5dff; r3656: 48 cells of it read stale), carried, farther than the rise's distance
+  from the vehicle, along the walk it was last measured at as well (r3766: the tip of that place, 12 cells 4.25 m
+  from the reading, read stale). The largest count over the
   snapshots, the count in the last one, the stale cells over the snapshots (trace cells the body left longer ago
   than the memory's moving layer lives, 3 s, and the stamps' slack: a trace the layer has not taken back,
   specification K65; the slack is half a second for the lidar set and a second for the stereo set, whose last
@@ -300,6 +302,12 @@ def in_a_kept_place(centres, read, vehicle: tuple[float, float], resolution_m: f
                 kept |= np.hypot(centres[:, 0] - x - along * to_vehicle[0],
                                  centres[:, 1] - y - along * to_vehicle[1]) <= (
                                      wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M)
+                if speed > 0.0 and apart_m > RISE_WITHIN_M:
+                    # Unseen, it keeps the walk it was last measured at: the place is carried along it too.
+                    carried = ((centres[:, 0] - x) * vx + (centres[:, 1] - y) * vy) / speed
+                    across = ((centres[:, 0] - x) * vy - (centres[:, 1] - y) * vx) / speed
+                    kept |= np.hypot(carried - np.clip(carried, 0.0, speed * SWEEP_S), across) <= (
+                        wide + WALK_MPS * SWEEP_S + PLACE_HOLDS_M)
             continue
         if body and 0.0 < apart_m <= RISE_WITHIN_M:
             # A walking body within the rise's distance keeps the stretch to the vehicle as well.
