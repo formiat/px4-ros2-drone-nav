@@ -588,6 +588,8 @@ speed of R3 kept.
 
 Stage 1a, 1, 2 for warm bodies done on 2026-11-17 (the goal of 2026-11-05,
 part 1; specification K64, K65, K66, F23; the flight code of 6c42a8b9).
+The item stays open: stage 2a, stage 3 (the doors) and the cold bodies'
+acceptance are not done.
 
 What stands: a body is read by the thermal core's marks, with a cluster or
 without one, and stands where the marks are, one body a group of marks;
