@@ -50,8 +50,12 @@ release names the asset tags it was validated with.
   core's marks with a cluster or without one and is unseen until a scan has looked at where it stood; the place kept
   for it is a walk wide while its walk is not measured and 0.75 m over its head; a cluster seen to step without the
   class is swept and hands the planner no body; the law is owed to the worst place a body may stand in, and a climb
-  and a route that leads away owe it nothing. Not accepted: the eighteen meetings of one series and the acceptance
-  flights were not flown to the end (`docs/technical_debt.md`). Tools: `thermal_body_rig.py`,
+  and a route that leads away owe it nothing. Since 2026-11-16: a body the pair does not return is laid by its
+  apparent size from the core's sighting, the place of a body within 10 m reaches the vehicle's way out (the vehicle
+  has risen to the level over the body before it comes), and one group of the core's marks is one body. Accepted on
+  8ddab0bf: the stopping margin positive in all eighteen meetings of one series (three scenarios, both sets), five
+  flights a set past the crossing body without a contact (1.316 and 2.161 m/s against 1.411 and 2.202 without the
+  body). Tools: `thermal_body_rig.py`,
   `body_contact_rig.py`, `body_encounters.py`, `thermal_frame_bodies`.
 - The camera set's stack replay meets its contract with the autopilot's IMU at every sample, and a camera
   bag is kept in the replay gate beside the lidar's (roadmap item 36, specification K62): a recorded flight
