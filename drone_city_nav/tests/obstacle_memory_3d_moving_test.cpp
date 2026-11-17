@@ -673,6 +673,35 @@ TEST(ObstacleMemory3D, ABodyLaidByItsSizeIsAsTallAsItsMarksOfTheScan) {
   EXPECT_TRUE(memory.movingBodies().front().sized);
 }
 
+TEST(ObstacleMemory3D, OneGroupOfTheCoresMarksIsOneBody) {
+  // K66 (r3734): a body laid by its size, laid 2.5 m farther a scan on (a
+  // second body, out of the first one's reach) and between the two a scan
+  // after that, within the reach of both: one body stands on the marks.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  const auto read = [&](const double x, const int scan) {
+    std::vector<LidarBeam3D> column;
+    for (const double y : {4.125, 4.375}) {
+      for (int row = 0; row <= 4; ++row) {
+        column.push_back(hitAt(origin, {x, y, 2.125 + 0.25 * row}, true));
+        column.back().surface_only = true;
+      }
+    }
+    return memory.integrateScan(
+        {.origin_map = origin,
+         .beams = column,
+         .acquisition_stamp_ns =
+             kSecondNs + static_cast<std::int64_t>(scan) * 100'000'000});
+  };
+  ASSERT_EQ(read(14.125, 0).followed_bodies, 1U);
+  ASSERT_EQ(read(16.625, 1).followed_bodies, 2U);
+  ASSERT_EQ(read(15.375, 2).followed_bodies, 1U);
+  EXPECT_NEAR(memory.movingBodies().front().centre_map.x, 15.375, 1.0e-9);
+  EXPECT_EQ(read(15.375, 3).followed_bodies, 1U);
+}
+
 TEST(ObstacleMemory3D, ABodysPlaceReachesTheVehiclesWayOutWithinTheRisesDistance) {
   // K66 (r3685): a body laid by its size 8 m off. Its place is the stretch
   // between it and the vehicle too, to the vehicle's way out: the vehicle is

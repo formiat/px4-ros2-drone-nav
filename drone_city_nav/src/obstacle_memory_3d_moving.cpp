@@ -617,6 +617,19 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
                             })) {
       continue;
     }
+    // One body a group of the core's marks. A body laid by its size 2.4 m
+    // farther in one scan than in the scan before was a second body there
+    // (out of the first one's reach), the marks of the next scan stood within
+    // the reach of both, and both stood on them to the end of the meeting:
+    // one body read as two or three in nine camera flights of fourteen, 35
+    // to 169 scans of each (r3712 to r3737).
+    if (sighted[before].has_value() &&
+        std::ranges::any_of(followed_bodies_, [&](const MovingBody3D& body) {
+          return apartM(body.centre_map, sighted[before]->place) <=
+                 body.radius_m + config_.moving_match_m;
+        })) {
+      continue;
+    }
     MovingBody3D unshown = read;
     std::int64_t warm_ms = warm_before[before];
     Point3 marked_at = marked_before[before];
