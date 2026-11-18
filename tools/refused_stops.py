@@ -16,6 +16,9 @@ offboard's local hold, which brakes with no world behind it. For each such revoc
   over that window and half a second more, where the world has one; a crash in the window (`CRASH_EVENT`,
   `cause=physical_collision`);
 - whether the flight counts by its host (host_verdict.py, A7);
+- since specification K86 (fe88468d) the stop's line names its stage itself and whether it was the second attempt
+  (`refreshed`); a certified stop refused for what the tick captured aged (the input, the control evidence, the
+  objective) is a case the rule should have answered, and is counted as such (`rule case`);
 - the base: the share of the flight (a sample a second, airborne) in which the body is within 0.5 m of a surface
   anyway; in Urban's corridors the 0.55 m body model reads that close often without a contact.
 
@@ -46,6 +49,8 @@ from validate_static_cooperative_scenario import CHUNK_SIZE, Occupancy3D  # noqa
 
 STAMP = re.compile(r"\] \[(\d+\.\d+)\] \[")
 PAIR_S = 0.05
+# The refusals K86 answers with a second attempt from the newest input and objective.
+AGED = {"execution_input_not_fresh", "control_evidence_not_current", "objective_changed"}
 FOLLOW_S = 5.0
 # The world's truth voxelization and the offset that carries the map frame of the recorded poses into its frame
 # (drone_city_nav/worlds/<world>.world3d.json, map_to_sdf).
@@ -140,7 +145,7 @@ def read_run(run: str) -> dict:
             continue
         t = float(stamp.group(1))
         if "STOP_EXECUTION published=false" in line:
-            stops.append((t, field(line, "status") or "?"))
+            stops.append((t, field(line, "status") or "?", field(line, "stage"), field(line, "refreshed")))
         elif "EXECUTION_HORIZON_COMMIT committed=false" in line:
             commits.append((t, field(line, "stage") or "?"))
         elif "EXECUTION_HORIZON accepted=true" in line:
@@ -164,10 +169,10 @@ def read_run(run: str) -> dict:
     rows = []
     for t0, speed, reason in revocations:
         n = bisect.bisect_right(stop_stamps, t0) - 1
-        status, stage = "unknown", ""
+        status, stage, refreshed = "unknown", "", None
         if n >= 0 and t0 - stops[n][0] <= PAIR_S:
-            status = stops[n][1]
-            if status == "publication_commit_rejected":
+            status, stage, refreshed = stops[n][1], stops[n][2] or "", stops[n][3]
+            if status == "publication_commit_rejected" and not stage:
                 c = bisect.bisect_right(commit_stamps, stops[n][0]) - 1
                 if c >= 0 and stops[n][0] - commits[c][0] <= PAIR_S:
                     stage = commits[c][1]
@@ -187,7 +192,9 @@ def read_run(run: str) -> dict:
                         for _, x, y, z in window[::5])
         crash = any(t0 <= c <= window_end + 0.5 for c in crashes)
         rows.append({"t": t0, "speed": speed, "reason": reason, "stop": status, "stage": stage,
-                     "certified": status == "publication_commit_rejected", "followed": followed,
+                     "certified": status == "publication_commit_rejected", "refreshed": refreshed,
+                     "rule_case": status == "publication_commit_rejected" and stage in AGED,
+                     "followed": followed,
                      "wait": wait, "path": path, "least": least, "crash": crash})
     # The base the windows are read against: the share of the flight, a sample a second once it is 1 m over its
     # start, in which the body is as close to a surface without any revocation.
@@ -198,6 +205,11 @@ def read_run(run: str) -> dict:
         base = [sum(clearance(occupancy, x + offset[0], y + offset[1], z + offset[2] + CENTRE) <= 0.5
                     for _, x, y, z in airborne), len(airborne)]
     return {"run": run, "world": world, "set": sensor_set, "counted": counted, "rows": rows, "base": base,
+            "refused_total": max((int(m.group(1)) for line in open(directory / "ros_drone_nav.log", errors="replace")
+                                  if (m := re.search(r"refused_total=(\d+)", line))), default=None),
+            "revocations_total": max((int(m.group(1)) for line in open(directory / "ros_drone_nav.log", errors="replace")
+                                      if "EXECUTION_REVOCATION moving=true" in line
+                                      and (m := re.search(r"\btotal=(\d+)", line))), default=None),
             "stops_refused": collections.Counter(s[1] for s in stops), "start": truth_stamps[0] if truth else None}
 
 
@@ -224,11 +236,12 @@ def main() -> int:
     if args.table:
         with open(args.table, "w") as out:
             out.write("run\tworld\tset\tcounted\tt_from_start_s\tspeed_mps\treason\tstop\tstage\tcertified\t"
-                      "followed\twait_s\tpath_m\tleast_clearance_m\tcrash\n")
+                      "refreshed\trule_case\tfollowed\twait_s\tpath_m\tleast_clearance_m\tcrash\n")
             for f, row in every:
                 since = row["t"] - f["start"] if f["start"] is not None else math.nan
                 out.write(f"{f['run']}\t{f['world']}\t{f['set']}\t{f['counted']}\t{since:.2f}\t{row['speed']:.2f}\t"
-                          f"{row['reason']}\t{row['stop']}\t{row['stage']}\t{row['certified']}\t{row['followed']}\t"
+                          f"{row['reason']}\t{row['stop']}\t{row['stage']}\t{row['certified']}\t{row['refreshed']}\t"
+                          f"{row['rule_case']}\t{row['followed']}\t"
                           f"{row['wait']:.3f}\t{row['path']:.2f}\t{row['least']:.2f}\t{row['crash']}\n")
     label = {True: "counted", False: "void", None: "verdict unknown"}
     print(f"Flights read {len(flights)} of {len(results)} "
@@ -297,6 +310,15 @@ def main() -> int:
               f"; within 0.5 m of a surface by the truth or a crash in {len(close)} "
               f"(of them certified {sum(r['certified'] for r in close)}, crashes {sum(r['crash'] for r in close)}; "
               f"clearance read in {read}, {100.0 * len(close) / read if read else 0.0:.1f} % of them)")
+    totals = [f for f in flights if f["revocations_total"] is not None or f["refused_total"] is not None]
+    if totals:
+        print("\nThe running counts the lines carry since K86 (whole, through the throttle): flight, revocations of a "
+              "moving vehicle, stops finally refused at their commit; and the rule cases read from the lines:")
+        for f in totals:
+            print(f"  {f['run']} {f['world']} / {f['set']} / {label[f['counted']]}: revocations "
+                  f"{f['revocations_total'] or 0}, refused at commit {f['refused_total'] or 0}, rule cases "
+                  f"{sum(r['rule_case'] for r in f['rows'])}, refreshed refusals "
+                  f"{sum(r['refreshed'] == 'true' for r in f['rows'])}")
     print(f"REFUSED_STOPS end {time.strftime('%T')}", file=sys.stderr)
     return 0
 
