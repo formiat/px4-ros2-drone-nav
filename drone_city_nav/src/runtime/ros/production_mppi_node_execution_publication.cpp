@@ -449,6 +449,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
             ? std::addressof(resident_execution_authority->control())
             : nullptr;
     latest_commit_refusal_ = HorizonCommitRefusal{
+        .status = committed.status,
         .stage = {},
         .control_clause = committed.control_evidence_clause,
         .input_pose_age_ms = evidenceAgeMs(

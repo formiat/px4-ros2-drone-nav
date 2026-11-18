@@ -55,19 +55,25 @@ installRouteOwner(ExecutionSupervisor3D& supervisor, SnapshotFixture3D& fixture)
   return publication.committed() ? supervisor.plan() : nullptr;
 }
 
-// The vehicle observed a step later, moving along the route it was following.
+// The vehicle observed a step later (or at `stamp_ns`), moving along the route
+// it was following.
 [[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D>
-movingInput(const VersionedExecutionInput3D& previous, const float speed_mps) {
+movingInput(const VersionedExecutionInput3D& previous, const float speed_mps,
+            const std::int64_t stamp_ns = 0) {
   MotionState3D state = previous.state();
   state.vx = speed_mps;
+  // Unless a stamp is given, every stamp moves on a step from its own.
+  const auto at = [stamp_ns](const std::int64_t own) {
+    return stamp_ns > 0 ? stamp_ns : own + kEvidenceStepNs;
+  };
   constexpr ExecutionStateFieldProvenance3D kSample{
       ExecutionStateFieldProvenance3D::kSourceSample};
   return VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
       .capture_sequence = previous.captureSequence() + 1U,
       .pose_revision = previous.poseRevision() + 1U,
       .pose_source_timestamp_us = previous.poseSourceTimestampUs() + 1U,
-      .pose_receive_stamp_ns = previous.poseReceiveStampNs() + kEvidenceStepNs,
-      .effective_stamp_ns = previous.effectiveStampNs() + kEvidenceStepNs,
+      .pose_receive_stamp_ns = at(previous.poseReceiveStampNs()),
+      .effective_stamp_ns = at(previous.effectiveStampNs()),
       .state = state,
       .full_state_authoritative = true,
       .state_provenance =
@@ -85,10 +91,8 @@ movingInput(const VersionedExecutionInput3D& previous, const float speed_mps) {
       .previous_control_source =
           ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration,
       .previous_control_source_sequence = previous.previousControlSourceSequence() + 1U,
-      .previous_control_source_stamp_ns =
-          previous.previousControlSourceStampNs() + kEvidenceStepNs,
-      .previous_control_receive_stamp_ns =
-          previous.previousControlReceiveStampNs() + kEvidenceStepNs,
+      .previous_control_source_stamp_ns = at(previous.previousControlSourceStampNs()),
+      .previous_control_receive_stamp_ns = at(previous.previousControlReceiveStampNs()),
   });
 }
 
@@ -276,29 +280,32 @@ TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecu
 // (production_mppi_node_execution_holds.cpp), unless the stop was refused for
 // its braking path.
 TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStaleness) {
+  // `aged`: what the tick captured aged while it ran; the node prepares the
+  // stop once more from the newest input and objective (specification K86).
   struct Case {
     const char* name;
     ExecutionHorizonCommitStatus3D status;
     ExecutionHorizonRevocationRequest3D revocation;
+    bool aged;
   };
 
   const std::array<Case, 6> cases{{
       {"objective_changed", ExecutionHorizonCommitStatus3D::kObjectiveChanged,
-       ExecutionHorizonRevocationRequest3D::kNone},
+       ExecutionHorizonRevocationRequest3D::kNone, true},
       {"navigation_not_authoritative",
        ExecutionHorizonCommitStatus3D::kNavigationNotAuthoritative,
-       ExecutionHorizonRevocationRequest3D::kNone},
+       ExecutionHorizonRevocationRequest3D::kNone, false},
       {"offboard_session_not_current",
        ExecutionHorizonCommitStatus3D::kOffboardSessionNotCurrent,
-       ExecutionHorizonRevocationRequest3D::kNone},
+       ExecutionHorizonRevocationRequest3D::kNone, false},
       {"evidence_not_current", ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent,
-       ExecutionHorizonRevocationRequest3D::kUnavailableWorld},
+       ExecutionHorizonRevocationRequest3D::kUnavailableWorld, false},
       {"execution_input_not_fresh",
        ExecutionHorizonCommitStatus3D::kExecutionInputNotFresh,
-       ExecutionHorizonRevocationRequest3D::kNoExecutableHorizon},
+       ExecutionHorizonRevocationRequest3D::kNoExecutableHorizon, true},
       {"control_evidence_not_current",
        ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent,
-       ExecutionHorizonRevocationRequest3D::kNone},
+       ExecutionHorizonRevocationRequest3D::kNone, true},
   }};
   for (const Case& tested : cases) {
     SCOPED_TRACE(tested.name);
@@ -400,6 +407,47 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStal
     // stop was meant to replace.
     EXPECT_EQ(supervisor.plan(), active);
     EXPECT_EQ(supervisor.plan()->stopExecution(), nullptr);
+
+    // The same stop prepared again from an input observed at the publication,
+    // with the objective and the control evidence current: certified against
+    // the same world, it passes the same commit. A refusal for what the world
+    // or the autopilot is (the navigation, the session, a surface on the path)
+    // is not the tick's age, and a newer input does not lift it.
+    const std::shared_ptr<const VersionedExecutionInput3D> fresh =
+        movingInput(*input, 4.0F, request.publication_now_ns - kEvidenceStepNs);
+    ExecutionStopRequest3D again = stopRequest(fixture, active, fresh);
+    again.latest_sensor_evidence = request.current_sensor_evidence;
+    const ExecutionStopPreparation3D reprepared = supervisor.prepareStop(again);
+    ASSERT_TRUE(reprepared.prepared()) << executionStopStatus3DName(reprepared.status);
+    ExecutionHorizonCommitRequest3D retry =
+        makeExecutionHorizonTestRequest(ExecutionHorizonTestTransaction3D{
+            .kind = ExecutionHorizonCommitKind3D::kTransition,
+            .expected_authority = reprepared.expected_authority,
+            .expected_plan = reprepared.expectedPlan(),
+            .transition = *reprepared.transition,
+            .expected_pending = nullptr,
+            .owner =
+                SnapshotFixture3D::committedOwner(*reprepared.transition->next, 2U),
+            .input = fresh,
+        });
+    retry.publication_now_ns = request.publication_now_ns;
+    retry.candidate.owner.valid_until_ns = request.candidate.owner.valid_until_ns;
+    retry.current_sensor_evidence = request.current_sensor_evidence;
+    if (!tested.aged) {
+      retry.runtime = request.runtime;
+      retry.current_observed_raw_world = request.current_observed_raw_world;
+    }
+    const ExecutionHorizonCommitResult3D recommitted = supervisor.commitHorizon(retry);
+    if (tested.aged) {
+      EXPECT_EQ(recommitted.status, ExecutionHorizonCommitStatus3D::kCommitted)
+          << executionHorizonCommitStatus3DName(recommitted.status);
+      ASSERT_NE(supervisor.plan(), nullptr);
+      EXPECT_NE(supervisor.plan()->stopExecution(), nullptr);
+    } else {
+      EXPECT_EQ(recommitted.status, tested.status)
+          << executionHorizonCommitStatus3DName(recommitted.status);
+      EXPECT_EQ(supervisor.plan(), active);
+    }
   }
 }
 

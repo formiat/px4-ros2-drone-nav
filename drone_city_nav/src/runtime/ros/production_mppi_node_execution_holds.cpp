@@ -298,9 +298,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     // The stop is the resident route's end from where the vehicle stands: the
     // successor is searched from now on, while the vehicle is still braking,
     // not once it has come to rest. The route stays resident through the
-    // stop, so the search anchors at the vehicle and the successor takes over
-    // as soon as the stop is finished. The request is latched per route
-    // generation, as for a resident owner the selector invalidated.
+    // stop, so the search anchors at the vehicle, and a successor certified
+    // while the stop is still braking takes the vehicle from it then: most
+    // stops are replaced within a second, at a median of 0.1 to 0.6 s a flight
+    // (naipi11's stop_supersession.py on r3820 to r3836). The request is
+    // latched per route generation, as for a resident owner the selector
+    // invalidated.
     if (physical_route_invalidation && cycle.route.execution.route != nullptr) {
       handlePhysicalTrajectoryCollision(
           cycle.route.execution.route->identity.generation,

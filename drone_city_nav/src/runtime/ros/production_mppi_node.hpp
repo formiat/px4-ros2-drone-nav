@@ -406,6 +406,8 @@ private:
   // ages, whether the objective and the navigation were still current. A stop
   // the commit refuses hands a moving vehicle to the offboard's local hold.
   struct HorizonCommitRefusal {
+    ExecutionHorizonCommitStatus3D status{
+        ExecutionHorizonCommitStatus3D::kInvalidRequest};
     std::string_view stage;
     const char* control_clause{nullptr};
     double input_pose_age_ms{-1.0};
