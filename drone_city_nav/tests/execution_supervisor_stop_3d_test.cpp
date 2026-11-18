@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -261,6 +262,139 @@ TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecu
   EXPECT_EQ(supervisor.plan(), stopping);
 }
 
+// A stop is certified against the world when it is prepared, and its commit
+// checks again what the planning tick captured: the objective, the
+// navigation, the offboard session, the input's age, the newest evidence and
+// the witnessed control. Each of the stages the recorded flights refuse stops
+// at refuses this certified stop, and the vehicle keeps its resident route:
+// nothing is installed. Over the 1099 flights kept on 2026-11-17 a stop refused
+// at its commit followed navigation_not_authoritative 841 times,
+// execution_input_not_fresh 642, control_evidence_not_current 575,
+// objective_changed 564, evidence_not_current 137 and
+// offboard_session_not_current 4 (roadmap item 43); the node then hands the
+// moving vehicle to a revocation, the offboard's local hold
+// (production_mppi_node_execution_holds.cpp), unless the stop was refused for
+// its braking path.
+TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStaleness) {
+  struct Case {
+    const char* name;
+    ExecutionHorizonCommitStatus3D status;
+    ExecutionHorizonRevocationRequest3D revocation;
+  };
+
+  const std::array<Case, 6> cases{{
+      {"objective_changed", ExecutionHorizonCommitStatus3D::kObjectiveChanged,
+       ExecutionHorizonRevocationRequest3D::kNone},
+      {"navigation_not_authoritative",
+       ExecutionHorizonCommitStatus3D::kNavigationNotAuthoritative,
+       ExecutionHorizonRevocationRequest3D::kNone},
+      {"offboard_session_not_current",
+       ExecutionHorizonCommitStatus3D::kOffboardSessionNotCurrent,
+       ExecutionHorizonRevocationRequest3D::kNone},
+      {"evidence_not_current", ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent,
+       ExecutionHorizonRevocationRequest3D::kUnavailableWorld},
+      {"execution_input_not_fresh",
+       ExecutionHorizonCommitStatus3D::kExecutionInputNotFresh,
+       ExecutionHorizonRevocationRequest3D::kNoExecutableHorizon},
+      {"control_evidence_not_current",
+       ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent,
+       ExecutionHorizonRevocationRequest3D::kNone},
+  }};
+  for (const Case& tested : cases) {
+    SCOPED_TRACE(tested.name);
+    SnapshotFixture3D fixture;
+    ExecutionSupervisor3D supervisor;
+    const std::shared_ptr<const ExecutionPlan3D> active =
+        installRouteOwner(supervisor, fixture);
+    ASSERT_NE(active, nullptr);
+    ASSERT_NE(active->finiteExecution(), nullptr);
+    const std::shared_ptr<const VersionedExecutionInput3D> input =
+        movingInput(*active->finiteExecution()->execution_input, 4.0F);
+    const ExecutionStopPreparation3D prepared =
+        supervisor.prepareStop(stopRequest(fixture, active, input));
+    ASSERT_TRUE(prepared.prepared()) << executionStopStatus3DName(prepared.status);
+
+    ExecutionHorizonCommitRequest3D request =
+        makeExecutionHorizonTestRequest(ExecutionHorizonTestTransaction3D{
+            .kind = ExecutionHorizonCommitKind3D::kTransition,
+            .expected_authority = prepared.expected_authority,
+            .expected_plan = prepared.expectedPlan(),
+            .transition = *prepared.transition,
+            .expected_pending = nullptr,
+            .owner = SnapshotFixture3D::committedOwner(*prepared.transition->next, 2U),
+            .input = input,
+        });
+    ObservedOccupancyGrid3D blocked = fixture.raw_occupancy;
+    switch (tested.status) {
+      case ExecutionHorizonCommitStatus3D::kObjectiveChanged:
+        request.runtime.objective_current = false;
+        break;
+      case ExecutionHorizonCommitStatus3D::kNavigationNotAuthoritative:
+        request.runtime.navigation_authoritative = false;
+        break;
+      case ExecutionHorizonCommitStatus3D::kOffboardSessionNotCurrent:
+        request.runtime.offboard_session_currentness =
+            OffboardSessionPublicationCurrentnessStatus::kStale;
+        break;
+      case ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent:
+        // A newer scan holds a surface across the stop's braking path.
+        for (int x = 5; x <= 9; ++x) {
+          for (int y = 4; y <= 6; ++y) {
+            for (int z = 4; z <= 6; ++z) {
+              ASSERT_TRUE(blocked.setState({x, y, z}, ObservedVoxelState::kOccupied));
+            }
+          }
+        }
+        request.current_observed_raw_world =
+            fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &blocked);
+        break;
+      case ExecutionHorizonCommitStatus3D::kExecutionInputNotFresh:
+        request.publication_now_ns =
+            input->effectiveStampNs() +
+            static_cast<std::int64_t>(
+                (fixture.validation_policy->executionInputMaximumPoseAgeMs() + 50.0) *
+                1.0e6);
+        // The horizon's own window still holds the late publication and a scan
+        // newer than it is fresh: only the input's age refuses it.
+        request.candidate.owner.valid_until_ns =
+            request.publication_now_ns + 1'000'000'000LL;
+        ASSERT_NE(request.current_sensor_evidence, nullptr);
+        request.current_sensor_evidence =
+            VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
+                .producer_instance_id =
+                    request.current_sensor_evidence->producerInstanceId(),
+                .sequence = request.current_sensor_evidence->sequence() + 1U,
+                .pose_generation =
+                    request.current_sensor_evidence->poseGeneration() + 1U,
+                .acquisition_stamp_ns = request.publication_now_ns - 20'000LL,
+                .receive_stamp_ns = request.publication_now_ns - 10'000LL,
+                .source_beam_count = request.current_sensor_evidence->sourceBeamCount(),
+                .invalid_beam_count =
+                    request.current_sensor_evidence->invalidBeamCount(),
+                .hit_points_map_m = request.current_sensor_evidence->hitPointsMapM(),
+            });
+        ASSERT_NE(request.current_sensor_evidence, nullptr);
+        break;
+      case ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent:
+        request.navigation.measured_acceleration_authoritative = false;
+        break;
+      default:
+        FAIL() << "a stage the flights do not refuse stops at";
+    }
+
+    const ExecutionHorizonCommitResult3D committed = supervisor.commitHorizon(request);
+
+    EXPECT_EQ(committed.status, tested.status)
+        << executionHorizonCommitStatus3DName(committed.status);
+    EXPECT_EQ(committed.revocation_request, tested.revocation);
+    EXPECT_FALSE(committed.committed());
+    // The certified stop was not installed: the vehicle keeps the route the
+    // stop was meant to replace.
+    EXPECT_EQ(supervisor.plan(), active);
+    EXPECT_EQ(supervisor.plan()->stopExecution(), nullptr);
+  }
+}
+
 // The clearance envelope is what a route keeps from evidence; a stop is the
 // last motion the vehicle can be given. Evidence the envelope would sweep
 // through while the physical body passes clear does not leave the vehicle
@@ -283,7 +417,8 @@ TEST(ExecutionSupervisorStop3DTest,
   const std::optional<GridIndex3D> beside =
       beside_occupancy.worldToCell(Point3{5.5, 1.5, 5.5});
   ASSERT_TRUE(beside.has_value());
-  ASSERT_TRUE(beside_occupancy.setState(*beside, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(beside_occupancy.setState(beside.value_or(GridIndex3D{}),
+                                        ObservedVoxelState::kOccupied));
   SweptFootprintConfig footprint = fixture.execution_footprint;
   footprint.radius_m = 1.2;
   footprint.body_radius_m = 0.5;
@@ -379,7 +514,8 @@ TEST(ExecutionSupervisorStop3DTest, AStopDoesNotRestInsideTheEnvelopeMargin) {
   const std::optional<GridIndex3D> beside =
       beside_occupancy.worldToCell(Point3{rest.x, rest.y + 1.5, rest.z});
   ASSERT_TRUE(beside.has_value());
-  ASSERT_TRUE(beside_occupancy.setState(*beside, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(beside_occupancy.setState(beside.value_or(GridIndex3D{}),
+                                        ObservedVoxelState::kOccupied));
   ExecutionStopRequest3D request = stopRequest(fixture, active, input);
   request.observed_raw_world =
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &beside_occupancy);
