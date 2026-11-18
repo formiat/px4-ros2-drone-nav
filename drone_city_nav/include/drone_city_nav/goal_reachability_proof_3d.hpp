@@ -44,6 +44,9 @@ struct GoalReachabilityProof3D {
   bool goal_region_closed{false};
   std::size_t component_voxels{0U};
   std::size_t goal_region_voxels{0U};
+  // Set by proveGoalUnreachableBesideStart3D: the same memory proves the
+  // start unreachable too.
+  bool start_closed{false};
 
   [[nodiscard]] bool provenUnreachable() const noexcept {
     return vehicle_inside_grid &&
@@ -56,6 +59,19 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
                        const Point3& goal, const FlightEnvelopeConfig& envelope,
                        double capture_radius_m, double body_radius_m,
                        std::size_t voxel_budget);
+
+// The proof a return home stands on (roadmap item 19, specification F15): the
+// goal's, and when it proves the goal unreachable, the start's on the same
+// memory. A memory that closes the start as well closes round the vehicle, not
+// between it and its goal: the way home is no more open than the way on, and
+// what closes it is about the vehicle, a hovering vehicle's place of a body
+// laid round it (r3857: a body read by its size 3.8 m off instead of 7.4 m, its
+// place under the vehicle, 68 voxels left to the flood, the goal given up 67 m
+// from it while the start was as closed).
+[[nodiscard]] GoalReachabilityProof3D proveGoalUnreachableBesideStart3D(
+    const ObservedOccupancyGrid3D& grid, const Point3& vehicle, const Point3& goal,
+    const Point3& start, const FlightEnvelopeConfig& envelope, double capture_radius_m,
+    double body_radius_m, std::size_t voxel_budget);
 
 [[nodiscard]] const char*
 goalReachabilityProofVerdict(const GoalReachabilityProof3D& proof) noexcept;

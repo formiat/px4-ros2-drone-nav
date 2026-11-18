@@ -55,6 +55,29 @@ TEST(GoalReachabilityProof3D, AClosedBoxProvesTheGoalOutsideItUnreachable) {
   EXPECT_STREQ("proven_unreachable", goalReachabilityProofVerdict(proof));
 }
 
+// A closure round the vehicle closes the way home as well as the way on: the
+// return home does not stand on it (F15; r3857). A closure between the vehicle
+// and its goal leaves the start on the vehicle's side open.
+TEST(GoalReachabilityProof3D, AClosureRoundTheVehicleClosesItsStartToo) {
+  const GoalReachabilityProof3D enclosed = proveGoalUnreachableBesideStart3D(
+      closedBox(), kVehicle, kGoalOutside, Point3{2.5, 2.5, 2.5}, kEnvelope, kCapture,
+      kBody, 1'000'000U);
+  EXPECT_TRUE(enclosed.provenUnreachable());
+  EXPECT_TRUE(enclosed.start_closed);
+
+  const GoalReachabilityProof3D between = proveGoalUnreachableBesideStart3D(
+      closedBox(), kVehicle, kGoalOutside, Point3{12.5, 12.5, 12.5}, kEnvelope,
+      kCapture, kBody, 1'000'000U);
+  EXPECT_TRUE(between.provenUnreachable());
+  EXPECT_FALSE(between.start_closed);
+
+  const GoalReachabilityProof3D open = proveGoalUnreachableBesideStart3D(
+      ObservedOccupancyGrid3D{kBounds}, kVehicle, kGoalOutside, Point3{2.5, 2.5, 2.5},
+      kEnvelope, kCapture, kBody, 1'000'000U);
+  EXPECT_FALSE(open.provenUnreachable());
+  EXPECT_FALSE(open.start_closed);
+}
+
 TEST(GoalReachabilityProof3D, AnOpeningTheBodyFitsLeavesTheProofOpen) {
   ObservedOccupancyGrid3D grid = closedBox();
   for (int y = 15; y <= 17; ++y) {

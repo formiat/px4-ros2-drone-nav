@@ -52,7 +52,7 @@ constexpr std::array<std::array<int, 3>, 6> kNeighbours{
 
 // The space the planner flies in: the grid and the layers of the envelope.
 struct FlightSpace {
-  const ObservedOccupancyGrid3D& grid;
+  const ObservedOccupancyGrid3D* grid;
   int lowest_z;
   int highest_z;
   // The body's radius in voxels: the body fits in a voxel when no voxel
@@ -60,7 +60,7 @@ struct FlightSpace {
   double fit_radius_voxels;
 
   [[nodiscard]] bool contains(const GridIndex3D cell) const noexcept {
-    const GridBounds3D& bounds = grid.bounds();
+    const GridBounds3D& bounds = grid->bounds();
     return cell.x >= 0 && cell.y >= 0 && cell.z >= lowest_z &&
            cell.x < bounds.width_cells && cell.y < bounds.height_cells &&
            cell.z <= highest_z;
@@ -82,7 +82,7 @@ struct FlightSpace {
             continue;
           }
           const GridIndex3D near{cell.x + x, cell.y + y, cell.z + z};
-          if (grid.contains(near) && grid.isOccupied(near)) {
+          if (grid->contains(near) && grid->isOccupied(near)) {
             return false;
           }
         }
@@ -98,8 +98,8 @@ void floodFromGoal(const FlightSpace& space, const Point3& vehicle, const Point3
                    const double capture_radius_m, const std::size_t voxel_budget,
                    GoalReachabilityProof3D& proof) {
   constexpr double kVehicleReachM{1.0};
-  const GridBounds3D& bounds = space.grid.bounds();
-  const std::optional<GridIndex3D> centre = space.grid.worldToCell(goal);
+  const GridBounds3D& bounds = space.grid->bounds();
+  const std::optional<GridIndex3D> centre = space.grid->worldToCell(goal);
   if (!centre.has_value()) {
     return;
   }
@@ -112,7 +112,7 @@ void floodFromGoal(const FlightSpace& space, const Point3& vehicle, const Point3
       for (int x = centre->x - reach; x <= centre->x + reach; ++x) {
         const GridIndex3D cell{x, y, z};
         if (space.contains(cell) &&
-            squaredDistance(space.grid.cellCenter(cell), goal) <=
+            squaredDistance(space.grid->cellCenter(cell), goal) <=
                 capture_radius_m * capture_radius_m &&
             space.fitsBody(cell) && visited.markVisited(cell)) {
           frontier.push_back(cell);
@@ -124,7 +124,7 @@ void floodFromGoal(const FlightSpace& space, const Point3& vehicle, const Point3
   while (!frontier.empty()) {
     next.clear();
     for (const GridIndex3D cell : frontier) {
-      if (squaredDistance(space.grid.cellCenter(cell), vehicle) <=
+      if (squaredDistance(space.grid->cellCenter(cell), vehicle) <=
           kVehicleReachM * kVehicleReachM) {
         return;
       }
@@ -160,7 +160,7 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
     return static_cast<int>(std::floor((z_m - bounds.origin_z) / bounds.resolution_m));
   };
   const FlightSpace space{
-      .grid = grid,
+      .grid = &grid,
       .lowest_z = std::max(layer(envelope.minimum_target_z_m), 0),
       .highest_z = std::min(layer(envelope.maximum_target_z_m), bounds.depth_cells - 1),
       .fit_radius_voxels = body_radius_m / bounds.resolution_m,
@@ -211,6 +211,22 @@ proveGoalUnreachable3D(const ObservedOccupancyGrid3D& grid, const Point3& vehicl
   }
   if (!proof.provenUnreachable()) {
     floodFromGoal(space, vehicle, flown_goal, capture_radius_m, voxel_budget, proof);
+  }
+  return proof;
+}
+
+GoalReachabilityProof3D proveGoalUnreachableBesideStart3D(
+    const ObservedOccupancyGrid3D& grid, const Point3& vehicle, const Point3& goal,
+    const Point3& start, const FlightEnvelopeConfig& envelope,
+    const double capture_radius_m, const double body_radius_m,
+    const std::size_t voxel_budget) {
+  GoalReachabilityProof3D proof = proveGoalUnreachable3D(
+      grid, vehicle, goal, envelope, capture_radius_m, body_radius_m, voxel_budget);
+  if (proof.provenUnreachable()) {
+    proof.start_closed =
+        proveGoalUnreachable3D(grid, vehicle, start, envelope, capture_radius_m,
+                               body_radius_m, voxel_budget)
+            .provenUnreachable();
   }
   return proof;
 }

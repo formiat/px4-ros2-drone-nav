@@ -71,16 +71,19 @@ void MissionMonitorNode::judgeReturnHome() {
       RCLCPP_INFO(get_logger(),
                   "GOAL_REACHABILITY_PROOF verdict=%s component_voxels=%zu "
                   "goal_inside=%s budget_exhausted=%s goal_region_voxels=%zu "
-                  "held=%s returning=%s",
+                  "held=%s returning=%s start_closed=%s",
                   goalReachabilityProofVerdict(latest_proof_),
                   latest_proof_.component_voxels,
                   latest_proof_.goal_inside ? "true" : "false",
                   latest_proof_.budget_exhausted ? "true" : "false",
                   latest_proof_.goal_region_voxels, proof_held ? "true" : "false",
-                  goal_substituted_ ? "true" : "false");
+                  goal_substituted_ ? "true" : "false",
+                  latest_proof_.start_closed ? "true" : "false");
       // The survey's goals are the survey's business (roadmap item 34): one
       // proven unreachable is its next frontier's turn, not the way home.
-      if (!goal_substituted_ && proof_held && !survey_ &&
+      // A closure round the vehicle closes its way home as well: no return
+      // (F15), the goal is kept while the memory holds it so.
+      if (!goal_substituted_ && proof_held && !survey_ && !latest_proof_.start_closed &&
           substituteGoalWithStart("topological", now_ns)) {
         proven_since_ns_ = 0;
         return;
@@ -104,12 +107,22 @@ void MissionMonitorNode::judgeReturnHome() {
     const FlightEnvelopeConfig envelope = flight_envelope_;
     const double capture_radius_m = goal_capture_radius_m_;
     const std::size_t budget = proof_voxel_budget_;
+    // The start a return would fly to (substituteGoalWithStart): once the
+    // return is under way the goal is that start, and nothing else is proven.
+    const Point3 start = goal_substituted_
+                             ? goal
+                             : Point3{start_.x, start_.y,
+                                      std::isfinite(mission_ready_altitude_z_m_)
+                                          ? mission_ready_altitude_z_m_
+                                          : waypoints_.front().z};
     proof_goal_ = goal;
-    proof_future_ = std::async(std::launch::async, [grid, vehicle, goal, envelope,
-                                                    capture_radius_m, budget] {
-      return proveGoalUnreachable3D(*grid, vehicle, goal, envelope, capture_radius_m,
-                                    SweptFootprintConfig{}.body_radius_m, budget);
-    });
+    proof_future_ =
+        std::async(std::launch::async,
+                   [grid, vehicle, goal, start, envelope, capture_radius_m, budget] {
+                     return proveGoalUnreachableBesideStart3D(
+                         *grid, vehicle, goal, start, envelope, capture_radius_m,
+                         SweptFootprintConfig{}.body_radius_m, budget);
+                   });
   }
 }
 
