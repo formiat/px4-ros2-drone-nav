@@ -11,7 +11,9 @@
 # The lidar flies at a real-time factor of 1.0, a camera set at 0.8, the finals world's cameras at 0.5 (K25); the
 # window is 900 s of simulation, 2400 s on the open sky (SMOKE_DURATION_S overrides). A flight past a body holds the
 # memory's snapshots of its corridor (RAW_SNAPSHOT_BOUNDS_M) for tools/body_encounters.py. EXTRA holds more NAME=value
-# pairs for every flight (EXTRA="GNSS_FAULTS=lost@30:90"), ATTEMPTS the attempts a counted flight may take (4).
+# pairs for every flight (EXTRA="GNSS_FAULTS=lost@30:90"), ATTEMPTS the attempts a counted flight may take (4). A slot
+# none of whose attempts counted (the host voided them) is flown again after ROUND_PAUSE_S (600), ROUNDS times (12)
+# at most, then the series stops with a line saying so: a slot is never written done without a flight that counts.
 #
 # The series file is log/tools/journal/world_series_<commit>.txt: the start with the total, one line a flight (the
 # group, its number, the run, the verdict lines, how many are done), the end. This is the one chain for the
@@ -20,7 +22,7 @@
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if [ $# -lt 2 ]; then
-  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 n=${1#r}; shift
@@ -63,12 +65,26 @@ for spec in "$@"; do
   group=${spec%%:*}; count=${spec##*:}
   resolve "$group"
   for k in $(seq 1 "$count"); do
-    # shellcheck disable=SC2086
-    env "${pairs[@]}" ${EXTRA:-} tools/fly_until_valid.sh "${flag[@]}" "$n" "${ATTEMPTS:-4}"
+    # A flight of the series is one that counts: attempts the host voided are flown again after a pause, and a
+    # slot is never written done without one (r3886 to r3889: four attempts of one slot voided under a foreign
+    # emulator's bursts, two more and the slot had passed for flown).
+    round=0
+    while :; do
+      # shellcheck disable=SC2086
+      env "${pairs[@]}" ${EXTRA:-} tools/fly_until_valid.sh "${flag[@]}" "$n" "${ATTEMPTS:-4}"
+      run=$(grep -o '^r[0-9]\+' log/tools/fly_until_valid.txt | tail -1)
+      if [ -n "$run" ]; then n=$(( ${run#r} + 1 )); else n=$(( n + ${ATTEMPTS:-4} )); fi
+      grep -q '^r[0-9]\+ VALID' log/tools/fly_until_valid.txt && break
+      round=$((round + 1))
+      echo "$group $k not counted, round $round: $(grep -v '^END' log/tools/fly_until_valid.txt | tr '\n' ';') at $(date '+%T')" >> "$out"
+      if [ "$round" -ge "${ROUNDS:-12}" ]; then
+        echo "SERIES stopped $(date '+%F %T %z'): $group $k not counted in $round rounds, $done_count of $total done" >> "$out"
+        exit 1
+      fi
+      sleep "${ROUND_PAUSE_S:-600}"
+    done
     done_count=$((done_count + 1))
-    run=$(grep -o '^r[0-9]\+' log/tools/fly_until_valid.txt | tail -1)
     echo "$group $k $run: $(grep -v '^END' log/tools/fly_until_valid.txt | tr '\n' ';') done $done_count of $total at $(date '+%T')" >> "$out"
-    n=$(( ${run#r} + 1 ))
   done
 done
 echo "SERIES end $(date '+%F %T %z')" >> "$out"
