@@ -163,10 +163,32 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
                                      .execution_input = cycle.evidence.execution_input,
                                      .stationary_capture_rearm_intent = false,
                                  }) != ProductionMppiHorizonCommitStatus::kPublished) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "STOP_EXECUTION published=false status=publication_commit_"
-                         "rejected speed_mps=%.2f",
-                         prepared.initial_speed_mps);
+    // The stop was prepared and certified against the world: only the commit's
+    // checks refused it, and what they measured is printed with it (roadmap
+    // item 43), with the running count the throttle would otherwise hide.
+    ++stop_commit_refusals_;
+    const HorizonCommitRefusal& refusal = latest_commit_refusal_;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "STOP_EXECUTION published=false status=publication_commit_rejected "
+        "speed_mps=%.2f stage=%.*s control_clause=%s input_pose_age_ms=%.1f "
+        "input_control_age_ms=%.1f maximum_pose_age_ms=%.1f "
+        "maximum_control_age_ms=%.1f feedback_source_age_ms=%.1f "
+        "feedback_receive_age_ms=%.1f maximum_feedback_age_ms=%.1f "
+        "objective_current=%s navigation_valid=%s yaw_rate_authoritative=%s "
+        "frame_reset_unresolved=%s refused_total=%" PRIu64,
+        prepared.initial_speed_mps, static_cast<int>(refusal.stage.size()),
+        refusal.stage.data(),
+        refusal.control_clause != nullptr ? refusal.control_clause : "none",
+        refusal.input_pose_age_ms, refusal.input_control_age_ms,
+        refusal.maximum_pose_age_ms, refusal.maximum_control_age_ms,
+        refusal.feedback_source_age_ms, refusal.feedback_receive_age_ms,
+        config_.execution.maximum_control_feedback_age_ms,
+        refusal.objective_current ? "true" : "false",
+        refusal.navigation_valid ? "true" : "false",
+        refusal.navigation_yaw_rate_authoritative ? "true" : "false",
+        refusal.navigation_frame_reset_unresolved ? "true" : "false",
+        stop_commit_refusals_);
     return publication;
   }
 

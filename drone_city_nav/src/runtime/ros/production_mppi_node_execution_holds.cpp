@@ -357,17 +357,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   if (vehicle_moving) {
     // A revocation hands a moving vehicle to the offboard's blind brake; what
     // led to it is recorded, because no stop line says so when none was tried.
+    ++moving_revocations_;
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_REVOCATION moving=true reason=%s speed_mps=%.2f "
                          "physical_route_invalidation=%s path_claim_ended=%s "
-                         "resident_trajectory_clear=%s",
+                         "resident_trajectory_clear=%s total=%" PRIu64,
                          productionMppiExecutionReasonName(reason),
                          std::hypot(std::hypot(cycle.evidence.exact_initial_state.vx,
                                                cycle.evidence.exact_initial_state.vy),
                                     cycle.evidence.exact_initial_state.vz),
                          physical_route_invalidation ? "true" : "false",
                          path_claim_ended ? "true" : "false",
-                         resident_trajectory_clear ? "true" : "false");
+                         resident_trajectory_clear ? "true" : "false",
+                         moving_revocations_);
   }
   ProductionMppiExecutionPublication revocation = publishExecutionRevocation(
       reason, cycle.controller.now_ns, physical_route_invalidation);

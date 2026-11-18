@@ -115,6 +115,9 @@ struct ExecutionHorizonCommitResult3D {
   // run, for the tick phase diagnostics.
   double revalidation_ms{0.0};
   bool replaced_applied_control{false};
+  // The first clause that left the previous control's evidence not current,
+  // named for the log of a refused stop (roadmap item 43); null otherwise.
+  const char* control_evidence_clause{nullptr};
 
   [[nodiscard]] bool committed() const noexcept;
 };
@@ -134,6 +137,12 @@ struct ExecutionHorizonCommitResult3D {
 // witness above it does not require the control stamp inside the owner's
 // lease, and it never certifies a supersession.
 [[nodiscard]] bool appliedControlCurrentForExecutionInput3D(
+    const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
+    std::int64_t now_ns, double maximum_age_ms) noexcept;
+
+// The first clause that makes that evidence unusable, or null when it is
+// usable; the bool above is derived from it.
+[[nodiscard]] const char* appliedControlCurrentForExecutionInputFailure3D(
     const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
     std::int64_t now_ns, double maximum_age_ms) noexcept;
 

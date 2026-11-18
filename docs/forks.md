@@ -59,6 +59,10 @@ a register of debt, run numbers as evidence). What the copy holds since
 - `tools/airframe_braking.py`: the airframe's braking from the true pose.
 - The pull request #2: the log line of a refused stop carries the evidence it
   was derived from (70 lines, three files).
+- Taken on 2026-11-18: the clauses of the previous control's evidence
+  (`c2fed51a`), rewritten on this tree and named in the log of a stop refused
+  at its commit; their wider log line of `b8592414` covers the stop's
+  preparation, not its commit, and was not taken.
 
 From the earlier branch over v0.5.0 (ideas and tests; the code no longer
 applies): the lattice edge the probe budget did not reach is cached as blocked

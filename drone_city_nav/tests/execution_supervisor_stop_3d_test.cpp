@@ -388,6 +388,14 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStal
         << executionHorizonCommitStatus3DName(committed.status);
     EXPECT_EQ(committed.revocation_request, tested.revocation);
     EXPECT_FALSE(committed.committed());
+    // Only the control evidence's refusal names its clause, for the stop's log.
+    if (tested.status == ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent) {
+      ASSERT_NE(committed.control_evidence_clause, nullptr);
+      EXPECT_STREQ(committed.control_evidence_clause,
+                   "measured_acceleration_not_authoritative");
+    } else {
+      EXPECT_EQ(committed.control_evidence_clause, nullptr);
+    }
     // The certified stop was not installed: the vehicle keeps the route the
     // stop was meant to replace.
     EXPECT_EQ(supervisor.plan(), active);

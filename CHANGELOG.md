@@ -6,6 +6,11 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- A stop refused at its commit says why (roadmap item 43, point 1): its line carries the commit's stage, the clause
+  that left the previous control's evidence not current, the input's and the feedback's ages against their limits,
+  whether the objective and the navigation were still current, and a running count, as do the revocation of a moving
+  vehicle and the refused commit. The clause names and the idea of naming them are naipi11's (PX4-ROS2-NAV,
+  c2fed51a).
 - The survey is described as the project's first mission: `docs/missions.md` gives its order (a volume), its flight,
   its result (the map), when it is done and what it does not do yet. `tools/world_series.sh` flies the series of the
   worlds one at a time, and `tools/flight_sweep.py` reads every flight of a series for what is wrong with it.

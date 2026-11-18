@@ -399,6 +399,32 @@ private:
   double latest_horizon_revalidation_ms_{0.0};
   double latest_horizon_commit_ms_{0.0};
   double latest_horizon_wire_ms_{0.0};
+
+  // What the latest refused commit measured, for the line of a stop refused at
+  // its commit (roadmap item 43): the stage, the control evidence's clause,
+  // the input's ages and the cycle's limits, the resident control's feedback
+  // ages, whether the objective and the navigation were still current. A stop
+  // the commit refuses hands a moving vehicle to the offboard's local hold.
+  struct HorizonCommitRefusal {
+    std::string_view stage;
+    const char* control_clause{nullptr};
+    double input_pose_age_ms{-1.0};
+    double input_control_age_ms{-1.0};
+    double maximum_pose_age_ms{0.0};
+    double maximum_control_age_ms{0.0};
+    double feedback_source_age_ms{-1.0};
+    double feedback_receive_age_ms{-1.0};
+    bool objective_current{true};
+    bool navigation_valid{true};
+    bool navigation_yaw_rate_authoritative{true};
+    bool navigation_frame_reset_unresolved{false};
+  };
+
+  HorizonCommitRefusal latest_commit_refusal_{};
+  // Running counts the throttled lines carry, so that a series of refusals is
+  // read whole from the lines printed.
+  std::uint64_t stop_commit_refusals_{0U};
+  std::uint64_t moving_revocations_{0U};
   std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;
   std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;

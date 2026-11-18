@@ -337,9 +337,11 @@ progressPreservesRouteEvidence(const ExecutionPlan3D& expected,
 // controller is executing. Offboard feedback must belong to the resident owner
 // and that owner must still be witnessed; later samples of the same lease are
 // not a contradiction. Measured acceleration only requires that navigation has
-// not regressed past the sample that produced it.
-[[nodiscard]] bool
-previousControlCurrent(const VersionedExecutionInput3D& input,
+// not regressed past the sample that produced it. The answer is the first
+// clause that fails, null when the evidence is current: a refused commit names
+// it (roadmap item 43; the idea and the clause names are naipi11's, c2fed51a).
+[[nodiscard]] const char*
+previousControlFailure(const VersionedExecutionInput3D& input,
                        const ExecutionHorizonNavigationWitness3D& navigation,
                        const AppliedControlEvidence3D& resident_control,
                        const ExecutionOwnerIdentity3D& resident_owner,
@@ -348,28 +350,46 @@ previousControlCurrent(const VersionedExecutionInput3D& input,
                        const bool stationary_capture_rearm) noexcept {
   switch (input.previousControlSource()) {
     case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
-      return appliedControlCurrentForExecutionInput3D(
-                 resident_control, resident_owner, now_ns,
-                 maximum_control_feedback_age_ms) &&
-             resident_control.horizon_producer_instance_id ==
-                 input.previousControlSourceProducerInstanceId() &&
-             resident_control.horizon_sequence >=
-                 input.previousControlSourceSequence() &&
-             resident_control.source_stamp_ns >= input.previousControlSourceStampNs() &&
-             resident_control.receive_stamp_ns >= input.previousControlReceiveStampNs();
+      if (const char* const reason = appliedControlCurrentForExecutionInputFailure3D(
+              resident_control, resident_owner, now_ns,
+              maximum_control_feedback_age_ms)) {
+        return reason;
+      }
+      if (resident_control.horizon_producer_instance_id !=
+          input.previousControlSourceProducerInstanceId()) {
+        return "resident_control_producer_mismatch";
+      }
+      if (resident_control.horizon_sequence < input.previousControlSourceSequence()) {
+        return "resident_control_sequence_behind_input";
+      }
+      if (resident_control.source_stamp_ns < input.previousControlSourceStampNs()) {
+        return "resident_control_source_stamp_behind_input";
+      }
+      if (resident_control.receive_stamp_ns < input.previousControlReceiveStampNs()) {
+        return "resident_control_receive_stamp_behind_input";
+      }
+      return nullptr;
     case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
-      return navigation.measured_acceleration_authoritative &&
-             navigation.measured_control_receive_stamp_ns >=
-                 input.previousControlReceiveStampNs() &&
-             navigation.measured_control_source_sequence >=
-                 input.previousControlSourceSequence();
+      if (!navigation.measured_acceleration_authoritative) {
+        return "measured_acceleration_not_authoritative";
+      }
+      if (navigation.measured_control_receive_stamp_ns <
+          input.previousControlReceiveStampNs()) {
+        return "measured_control_receive_stamp_behind_input";
+      }
+      if (navigation.measured_control_source_sequence <
+          input.previousControlSourceSequence()) {
+        return "measured_control_sequence_behind_input";
+      }
+      return nullptr;
     case ExecutionPreviousControlEvidenceSource3D::kAssumedZero:
-      return stationary_capture_rearm;
+      return stationary_capture_rearm ? nullptr : "assumed_zero_without_rearm";
     case ExecutionPreviousControlEvidenceSource3D::kUnknown:
+      return "previous_control_source_unknown";
     case ExecutionPreviousControlEvidenceSource3D::kEngineFallback:
-      return false;
+      return "previous_control_source_engine_fallback";
   }
-  return false;
+  return "previous_control_source_unknown";
 }
 
 // The reasons a stationary rearm hold may carry: the goal it captured, or the
@@ -495,10 +515,9 @@ bool appliedControlAuthoritativeForExecution3D(const AppliedControlEvidence3D& c
          nullptr;
 }
 
-bool appliedControlCurrentForExecutionInput3D(const AppliedControlEvidence3D& control,
-                                              const ExecutionOwnerIdentity3D& owner,
-                                              const std::int64_t now_ns,
-                                              const double maximum_age_ms) noexcept {
+const char* appliedControlCurrentForExecutionInputFailure3D(
+    const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
+    const std::int64_t now_ns, const double maximum_age_ms) noexcept {
   if (!owner.valid || !control.valid || control.producer_instance_id == 0U ||
       control.horizon_producer_instance_id == 0U ||
       control.horizon_producer_instance_id != owner.producer_instance_id ||
@@ -506,7 +525,7 @@ bool appliedControlCurrentForExecutionInput3D(const AppliedControlEvidence3D& co
       control.horizon_sequence == 0U || control.source_stamp_ns <= 0 ||
       control.receive_stamp_ns <= 0 || now_ns < 0 || !std::isfinite(maximum_age_ms) ||
       !(maximum_age_ms > 0.0)) {
-    return false;
+    return "control_or_owner_identity_invalid";
   }
   // A planned owner needs authoritative planned feedback of its own horizon or
   // of its immediate predecessor. A stationary hold owner needs the offboard's
@@ -524,14 +543,27 @@ bool appliedControlCurrentForExecutionInput3D(const AppliedControlEvidence3D& co
       owner.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
       control.horizon_sequence == owner.sequence;
   if (!planned_pair && !hold_pair) {
-    return false;
+    return "control_owner_mode_or_sequence_pair_mismatch";
   }
   const double source_age_ms =
       static_cast<double>(now_ns - control.source_stamp_ns) * 1.0e-6;
   const double receive_age_ms =
       static_cast<double>(now_ns - control.receive_stamp_ns) * 1.0e-6;
-  return std::abs(source_age_ms) <= maximum_age_ms &&
-         std::abs(receive_age_ms) <= maximum_age_ms;
+  if (std::abs(source_age_ms) > maximum_age_ms) {
+    return "control_source_age_exceeded";
+  }
+  if (std::abs(receive_age_ms) > maximum_age_ms) {
+    return "control_receipt_age_exceeded";
+  }
+  return nullptr;
+}
+
+bool appliedControlCurrentForExecutionInput3D(const AppliedControlEvidence3D& control,
+                                              const ExecutionOwnerIdentity3D& owner,
+                                              const std::int64_t now_ns,
+                                              const double maximum_age_ms) noexcept {
+  return appliedControlCurrentForExecutionInputFailure3D(control, owner, now_ns,
+                                                         maximum_age_ms) == nullptr;
 }
 
 const char* executionHorizonCommitStatus3DName(
@@ -750,11 +782,12 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
   const bool capture_rearm = stationaryCaptureRearmCommit(
       candidate, *publication_plan, owner, request.navigation, resident_owner,
       resident_control);
-  if (!previousControlCurrent(*candidate.execution_input, request.navigation,
-                              resident_control, resident_owner,
-                              request.publication_now_ns,
-                              request.maximum_control_feedback_age_ms, capture_rearm)) {
+  if (const char* const clause = previousControlFailure(
+          *candidate.execution_input, request.navigation, resident_control,
+          resident_owner, request.publication_now_ns,
+          request.maximum_control_feedback_age_ms, capture_rearm)) {
     result.status = ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent;
+    result.control_evidence_clause = clause;
     return result;
   }
   if (!owner.validFor(*publication_plan)) {

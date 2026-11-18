@@ -256,11 +256,15 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     const msg::MppiTrajectoryHorizon& horizon,
     ExecutionHorizonLeaseCandidate3D candidate) {
   using production_mppi_execution_detail::timeToNanoseconds;
+  latest_commit_refusal_ = {};
   const auto report_commit_failure = [this](const std::string_view stage) {
-    horizon_commit_rejections_.fetch_add(1U, std::memory_order_relaxed);
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "EXECUTION_HORIZON_COMMIT committed=false stage=%.*s",
-                         static_cast<int>(stage.size()), stage.data());
+    const std::uint64_t total =
+        horizon_commit_rejections_.fetch_add(1U, std::memory_order_relaxed) + 1U;
+    latest_commit_refusal_.stage = stage;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_HORIZON_COMMIT committed=false stage=%.*s total=%" PRIu64,
+        static_cast<int>(stage.size()), stage.data(), total);
   };
 
   const std::shared_ptr<const VersionedExecutionInput3D>& publication_execution_input =
@@ -437,6 +441,38 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                            static_cast<int>(currentness.size()), currentness.data(),
                            committed.latest_evidence_revalidated ? "true" : "false");
     }
+    const std::shared_ptr<const VersionedExecutionValidationPolicy3D>& policy =
+        cycle.evidence.selected_policy != nullptr ? cycle.evidence.selected_policy
+                                                  : config_.execution.validation_policy;
+    const AppliedControlEvidence3D* const resident_control =
+        resident_execution_authority != nullptr
+            ? std::addressof(resident_execution_authority->control())
+            : nullptr;
+    latest_commit_refusal_ = HorizonCommitRefusal{
+        .stage = {},
+        .control_clause = committed.control_evidence_clause,
+        .input_pose_age_ms = evidenceAgeMs(
+            publication_now_ns, publication_execution_input->poseReceiveStampNs()),
+        .input_control_age_ms =
+            evidenceAgeMs(publication_now_ns,
+                          publication_execution_input->previousControlReceiveStampNs()),
+        .maximum_pose_age_ms =
+            policy != nullptr ? policy->executionInputMaximumPoseAgeMs() : 0.0,
+        .maximum_control_age_ms =
+            policy != nullptr ? policy->executionInputMaximumControlAgeMs() : 0.0,
+        .feedback_source_age_ms =
+            resident_control != nullptr
+                ? evidenceAgeMs(publication_now_ns, resident_control->source_stamp_ns)
+                : -1.0,
+        .feedback_receive_age_ms =
+            resident_control != nullptr
+                ? evidenceAgeMs(publication_now_ns, resident_control->receive_stamp_ns)
+                : -1.0,
+        .objective_current = navigationObjective() == cycle.evidence.objective,
+        .navigation_valid = navigation_.valid,
+        .navigation_yaw_rate_authoritative = navigation_.yaw_rate_authoritative,
+        .navigation_frame_reset_unresolved = navigation_frame_reset_unresolved_,
+    };
     report_commit_failure(executionHorizonCommitStatus3DName(committed.status));
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
