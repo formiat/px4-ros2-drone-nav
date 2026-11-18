@@ -384,6 +384,7 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStal
         break;
       case ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent:
         request.navigation.measured_acceleration_authoritative = false;
+        request.navigation.measured_linear_acceleration_authoritative = false;
         break;
       default:
         FAIL() << "a stage the flights do not refuse stops at";
@@ -449,6 +450,43 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedStopIsRefusedAtItsCommitByEachStal
       EXPECT_EQ(supervisor.plan(), active);
     }
   }
+}
+
+// A stop brakes from the linear acceleration and is certified with a body that
+// is the same at every heading: the newest sample's yaw acceleration losing its
+// authority does not refuse it (specification K86; r3848, three stops refused
+// so and the vehicle left to the local hold). A route's horizon still needs it
+// (execution_supervisor_horizon_3d_test).
+TEST(ExecutionSupervisorStop3DTest, AStopDoesNotWaitForTheYawAccelerationsAuthority) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const ExecutionStopPreparation3D prepared =
+      supervisor.prepareStop(stopRequest(fixture, active, input));
+  ASSERT_TRUE(prepared.prepared()) << executionStopStatus3DName(prepared.status);
+  ExecutionHorizonCommitRequest3D request =
+      makeExecutionHorizonTestRequest(ExecutionHorizonTestTransaction3D{
+          .kind = ExecutionHorizonCommitKind3D::kTransition,
+          .expected_authority = prepared.expected_authority,
+          .expected_plan = prepared.expectedPlan(),
+          .transition = *prepared.transition,
+          .expected_pending = nullptr,
+          .owner = SnapshotFixture3D::committedOwner(*prepared.transition->next, 2U),
+          .input = input,
+      });
+  request.navigation.measured_acceleration_authoritative = false;
+
+  const ExecutionHorizonCommitResult3D committed = supervisor.commitHorizon(request);
+
+  EXPECT_EQ(committed.status, ExecutionHorizonCommitStatus3D::kCommitted)
+      << executionHorizonCommitStatus3DName(committed.status);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  EXPECT_NE(supervisor.plan()->stopExecution(), nullptr);
 }
 
 // The clearance envelope is what a route keeps from evidence; a stop is the

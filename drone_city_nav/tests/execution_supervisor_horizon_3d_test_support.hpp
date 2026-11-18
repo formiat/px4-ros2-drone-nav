@@ -60,6 +60,7 @@ executionHorizonTestNavigationWitness(const VersionedExecutionInput3D& input) {
       .measured_control_source_stamp_ns = input.previousControlSourceStampNs(),
       .measured_control_receive_stamp_ns = input.previousControlReceiveStampNs(),
       .measured_acceleration_authoritative = true,
+      .measured_linear_acceleration_authoritative = true,
   };
 }
 

@@ -71,6 +71,11 @@ struct ExecutionHorizonNavigationWitness3D {
   std::int64_t measured_control_source_stamp_ns{0};
   std::int64_t measured_control_receive_stamp_ns{0};
   bool measured_acceleration_authoritative{false};
+  // The linear part alone: the acceleration a stop's braking starts from. The
+  // yaw acceleration's authority is lost on a sample the yaw rate's
+  // derivative re-seeds on, and the body a stop is certified with is a
+  // cylinder, the same at every heading (specification K86).
+  bool measured_linear_acceleration_authoritative{false};
 };
 
 // Owned candidate for one controller-visible lease. A progress-only snapshot

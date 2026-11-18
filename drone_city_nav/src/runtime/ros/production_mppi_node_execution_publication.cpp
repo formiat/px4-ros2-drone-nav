@@ -390,6 +390,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   .measured_control_receive_stamp_ns = navigation_.receive_stamp_ns,
                   .measured_acceleration_authoritative =
                       navigation_.measured_acceleration_valid,
+                  .measured_linear_acceleration_authoritative =
+                      navigation_.linear_acceleration_authoritative,
               },
           .current_observed_raw_world =
               !config_.world.use_static_map && committed_3d != nullptr

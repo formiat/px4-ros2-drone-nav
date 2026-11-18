@@ -347,7 +347,7 @@ previousControlFailure(const VersionedExecutionInput3D& input,
                        const ExecutionOwnerIdentity3D& resident_owner,
                        const std::int64_t now_ns,
                        const double maximum_control_feedback_age_ms,
-                       const bool stationary_capture_rearm) noexcept {
+                       const bool stationary_capture_rearm, const bool stop) noexcept {
   switch (input.previousControlSource()) {
     case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
       if (const char* const reason = appliedControlCurrentForExecutionInputFailure3D(
@@ -370,7 +370,11 @@ previousControlFailure(const VersionedExecutionInput3D& input,
       }
       return nullptr;
     case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
-      if (!navigation.measured_acceleration_authoritative) {
+      // A stop needs the linear acceleration it brakes from; its clearance
+      // does not turn with the heading (K86: r3848 three stops refused for the
+      // yaw acceleration's authority alone, the vehicle left to the local hold).
+      if (!navigation.measured_acceleration_authoritative &&
+          !(stop && navigation.measured_linear_acceleration_authoritative)) {
         return "measured_acceleration_not_authoritative";
       }
       if (navigation.measured_control_receive_stamp_ns <
@@ -785,7 +789,8 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
   if (const char* const clause = previousControlFailure(
           *candidate.execution_input, request.navigation, resident_control,
           resident_owner, request.publication_now_ns,
-          request.maximum_control_feedback_age_ms, capture_rearm)) {
+          request.maximum_control_feedback_age_ms, capture_rearm,
+          publication_plan->stopExecution() != nullptr)) {
     result.status = ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent;
     result.control_evidence_clause = clause;
     return result;
