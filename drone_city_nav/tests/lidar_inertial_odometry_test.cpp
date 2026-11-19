@@ -233,6 +233,83 @@ TEST(LidarInertialOdometryTest, TheScansTeachTheAccelerometersBias) {
   EXPECT_LT(estimate.velocity_ned_mps.norm(), 0.02);
 }
 
+// What the bias is learned for: a corridor closed at one end is observed
+// along its axis while the end is in the scan's range, and the vehicle that
+// hovers there learns the bias; flown on, the end leaves the range and the
+// axis rides the IMU for ten seconds. With the bias taken off the slip stays
+// under a metre; the propagation with it carries 0.08 m/s^2 for ten seconds,
+// four metres.
+TEST(LidarInertialOdometryTest, AnUnobservedAxisRidesTheBiasTheScansTaught) {
+  std::vector<Eigen::Vector3d> corridor;
+  for (int k = -16; k <= 0; ++k) {
+    const double z = 0.25 * k;
+    for (int i = -160; i <= 160; ++i) {
+      corridor.emplace_back(0.25 * i, 3.0, z);
+      corridor.emplace_back(0.25 * i, -3.0, z);
+    }
+    for (int j = -12; j <= 12; ++j) {
+      corridor.emplace_back(-40.0, 0.25 * j, z);
+    }
+  }
+  for (int i = -160; i <= 160; ++i) {
+    for (int j = -12; j <= 12; ++j) {
+      corridor.emplace_back(0.25 * i, 0.25 * j, 0.0);
+      corridor.emplace_back(0.25 * i, 0.25 * j, -4.0);
+    }
+  }
+  LidarInertialOdometryConfig config = testConfig();
+  config.maximum_degenerate_dead_reckoning_s = 15.0;
+  LidarInertialOdometry odometry{config};
+  const Eigen::Vector3d start{-30.0, 0.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  const Eigen::Vector3d bias{0.08, 0.0, 0.0};
+  odometry.initialize(0, start, 0.0);
+  for (int i = 1; i <= 100; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  // Forty seconds of hover with the end ten metres behind, two seconds of
+  // 1.5 m/s^2, then 3 m/s: the end leaves the 30 m of the scan at x = -10.
+  constexpr int kHoverScans{400};
+  constexpr double kSpeed{3.0};
+  const std::int64_t first_scan = kSecond;
+  LidarInertialEstimate estimate;
+  Eigen::Vector3d truth = start;
+  std::size_t degenerate_scans = 0U;
+  for (int k = 0; k <= kHoverScans + 177; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    const auto flown_s = [&first_scan](const std::int64_t at_ns) {
+      return 1.0e-9 * static_cast<double>(at_ns - first_scan) - 0.1 * kHoverScans;
+    };
+    if (k > 0) {
+      for (int i = 1; i <= 10; ++i) {
+        const std::int64_t imu_stamp = stamp - kSecond / 10 + i * kSecond / 100;
+        LidarInertialImuSample sample = restSample(imu_stamp, level);
+        sample.accelerometer_mps2 += bias;
+        const double seconds = flown_s(imu_stamp);
+        sample.accelerometer_mps2.x() +=
+            seconds > 0.0 && seconds <= 2.0 ? kSpeed / 2.0 : 0.0;
+        odometry.addImu(sample);
+      }
+    }
+    const double seconds = std::max(0.0, flown_s(stamp));
+    const double along =
+        seconds < 2.0 ? 0.25 * kSpeed * seconds * seconds : kSpeed * (seconds - 1.0);
+    truth = start + Eigen::Vector3d{along, 0.0, 0.0};
+    std::vector<Eigen::Vector3d> scan;
+    for (const Eigen::Vector3d& point : corridor) {
+      if ((point - truth).norm() <= 30.0) {
+        scan.emplace_back(point - truth);
+      }
+    }
+    estimate = odometry.addScan(stamp, scan);
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
+    degenerate_scans += estimate.degenerate_axes > 0U ? 1U : 0U;
+  }
+  EXPECT_GE(degenerate_scans, 100U);
+  EXPECT_NEAR(estimate.accelerometer_bias_mps2.x(), bias.x(), 0.02);
+  EXPECT_LT((estimate.position_ned_m - truth).norm(), 1.0);
+}
+
 // A scan that registers far from where the IMU carried the vehicle, beyond
 // the spread of both, is no measurement: a registration that slid into
 // another fit does not drag the estimate along.
