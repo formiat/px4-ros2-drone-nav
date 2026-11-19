@@ -49,9 +49,12 @@ constexpr std::int64_t kSecond{1'000'000'000LL};
 // The tests' IMU runs at 100 Hz, so half a second of rest is fifty samples
 // here; the vehicle's bridge brings 250 Hz, the default's hundred and
 // twenty-five.
+// The tests' accelerometer reads gravity and the motion's acceleration and
+// no drag of the rotors, so the drag is fused only where a test gives it.
 LidarInertialOdometryConfig testConfig() {
   LidarInertialOdometryConfig config;
   config.minimum_rest_samples = 50U;
+  config.rotor_drag_1ps = 0.0;
   return config;
 }
 
@@ -308,6 +311,77 @@ TEST(LidarInertialOdometryTest, AnUnobservedAxisRidesTheBiasTheScansTaught) {
   EXPECT_GE(degenerate_scans, 100U);
   EXPECT_NEAR(estimate.accelerometer_bias_mps2.x(), bias.x(), 0.02);
   EXPECT_LT((estimate.position_ned_m - truth).norm(), 1.0);
+}
+
+// A stand on an axis nothing observes: the vehicle hovers in a corridor
+// whose closed end is in its scans, then the end is out of them (as from
+// farther down a tunnel) and the accelerometer's offset has walked 0.015
+// m/s^2. On the IMU alone that offset is a velocity of 0.45 m/s and 6.7 m in
+// thirty seconds, and no estimate after ten (the corridor tests above). The
+// rotors' drag reads no motion in a body that stands, holds the velocity to
+// the offset's error over the drag (0.2 m/s) and the estimate stays healthy.
+TEST(LidarInertialOdometryTest, AStandOnAnUnobservedAxisRidesTheRotorsDrag) {
+  std::vector<Eigen::Vector3d> corridor;
+  std::vector<Eigen::Vector3d> end;
+  for (int k = -16; k <= 0; ++k) {
+    const double z = 0.25 * k;
+    for (int i = -160; i <= 160; ++i) {
+      corridor.emplace_back(0.25 * i, 3.0, z);
+      corridor.emplace_back(0.25 * i, -3.0, z);
+    }
+    for (int j = -12; j <= 12; ++j) {
+      end.emplace_back(-10.0, 0.25 * j, z);
+    }
+  }
+  for (int i = -160; i <= 160; ++i) {
+    for (int j = -12; j <= 12; ++j) {
+      corridor.emplace_back(0.25 * i, 0.25 * j, 0.0);
+      corridor.emplace_back(0.25 * i, 0.25 * j, -4.0);
+    }
+  }
+  LidarInertialOdometryConfig config = testConfig();
+  config.rotor_drag_1ps = LidarInertialOdometryConfig{}.rotor_drag_1ps;
+  LidarInertialOdometry odometry{config};
+  const Eigen::Vector3d position{0.0, 0.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, position, 0.0);
+  for (int i = 1; i <= 100; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  constexpr int kObservedScans{400};
+  constexpr int kStandScans{300};
+  const std::int64_t first_scan = kSecond;
+  LidarInertialEstimate estimate;
+  std::size_t degenerate_scans = 0U;
+  for (int k = 0; k <= kObservedScans + kStandScans; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    const bool observed = k <= kObservedScans;
+    if (k > 0) {
+      for (int i = 1; i <= 10; ++i) {
+        LidarInertialImuSample sample =
+            restSample(stamp - kSecond / 10 + i * kSecond / 100, level);
+        sample.accelerometer_mps2.x() += observed ? 0.05 : 0.065;
+        odometry.addImu(sample);
+      }
+    }
+    std::vector<Eigen::Vector3d> scan;
+    for (const Eigen::Vector3d& point : corridor) {
+      if ((point - position).norm() <= 30.0) {
+        scan.emplace_back(point - position);
+      }
+    }
+    if (observed) {
+      for (const Eigen::Vector3d& point : end) {
+        scan.emplace_back(point - position);
+      }
+    }
+    estimate = odometry.addScan(stamp, scan);
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
+    degenerate_scans += estimate.degenerate_axes > 0U ? 1U : 0U;
+  }
+  EXPECT_GE(degenerate_scans, 290U);
+  EXPECT_LT(estimate.velocity_ned_mps.norm(), 0.3);
+  EXPECT_LT((estimate.position_ned_m - position).norm(), 7.0);
 }
 
 // A scan that registers far from where the IMU carried the vehicle, beyond

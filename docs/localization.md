@@ -83,18 +83,27 @@ Per scan:
    the IMU's motion is the prior with white acceleration noise, the
    registration the measurement, its variance from the registration's
    information along each translational axis floored at 3.2 cm. An axis
-   with under 0.01 of information per matched point is degenerate (a bare
-   corridor leaves its own axis free) and carries no measurement, the IMU
-   carrying it for at most `maximum_degenerate_dead_reckoning_s` (10 s) of
-   scans in a row, after which the estimate is unhealthy until a scan
-   observes every axis (specification K70: 99.5 m off after 43 s of a
-   straight tunnel, r3176). The propagation takes off the accelerometer's
-   bias, which the estimator learns as it learns the gyroscope's: a share
-   (`accelerometer_bias_gain`, 0.005 a scan) of the velocity the scans take
-   back over a scan interval along the axes they observe, turned into the
-   body, so an unobserved axis rides the bias the others taught (r3916's
-   record: ten seconds on the IMU alone 0.62 m off at the median with it,
-   2.32 m without; `tools/lio/dead_reckoning.py`); an axis
+   with under 0.005 of information per matched point is degenerate and
+   carries no measurement (a bare straight tunnel reads 0.000 to 0.003
+   along its own axis; a sloped one, whose axis the barometer's prior
+   observes through its vertical part, 0.008 to 0.014). Such an axis rides
+   the IMU with two aids (specification K70). The propagation takes off the
+   accelerometer's bias, which the estimator learns as it learns the
+   gyroscope's: a share (`accelerometer_bias_gain`, 0.005 a scan) of the
+   velocity the scans take back over a scan interval along the axes they
+   observe, turned into the body. And the rotors' drag is the axis's
+   velocity: the accelerometer's mean reading across the rotor axis, less
+   an offset learned while every axis is observed, over `rotor_drag_1ps`
+   (0.104 1/s) is fused along the degenerate axis in a Kalman step a scan,
+   so the velocity the axis entered with and the accelerometer's error do
+   not stay in it (r3916's record: forty seconds leave the velocity 0.46
+   m/s off at the median on the IMU, 0.21 with the drag;
+   `tools/lio/dead_reckoning.py`, `tools/lio/drag_dead_reckoning.py`). The
+   IMU alone, no drag fused, carries a degenerate axis for at most
+   `maximum_degenerate_dead_reckoning_s` (10 s) of scans in a row, after
+   which the estimate is unhealthy until a scan observes every axis or
+   takes the drag (99.5 m off after 43 s of a straight tunnel, r3176); an
+   axis
    whose registered position lies more than five standard deviations of
    the prior and the measurement from the prior is gated for that scan;
 5. a keyframe is inserted every 0.5 m or 0.17 rad at the registered

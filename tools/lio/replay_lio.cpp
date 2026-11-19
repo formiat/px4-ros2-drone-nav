@@ -7,7 +7,8 @@
 // (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level), attitude=PATH (the
 // record's attitude.csv, the autopilot's own attitude as the level), baro=PATH and heightshare=S (the record's baro.csv as
 // the outside height, and the share of the height prior), abias=G (the accelerometer bias's gain; 0 holds it at
-// zero, the estimator before the bias of specification K70) and misalign=DEG (the
+// zero, the estimator before the bias of specification K70), drag=K (the rotors' drag, 0 fuses nothing), bound=S (how
+// long the IMU alone carries a degenerate axis) and misalign=DEG (the
 // IMU turned about the body's y axis, a mount error that seeds a tilted map);
 // hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
 // must register from a prior the IMU alone carried: the recovery's case.
@@ -57,6 +58,8 @@ int main(int argc, char** argv) {
     else if (k == "baro") { baro_path = kv.substr(eq + 1); continue; }
     else if (k == "heightshare") config.height_prior_share = v;
     else if (k == "abias") config.accelerometer_bias_gain = v;
+    else if (k == "drag") config.rotor_drag_1ps = v;
+    else if (k == "bound") config.maximum_degenerate_dead_reckoning_s = v;
     else { std::fprintf(stderr, "unknown %s\n", k.c_str()); return 2; }
   }
   std::vector<Imu> imu;

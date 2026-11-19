@@ -86,6 +86,10 @@ public:
         "accelerometer_bias_gain", config.accelerometer_bias_gain);
     config.maximum_accelerometer_bias_mps2 = declare_parameter<double>(
         "maximum_accelerometer_bias_mps2", config.maximum_accelerometer_bias_mps2);
+    config.rotor_drag_1ps =
+        declare_parameter<double>("rotor_drag_1ps", config.rotor_drag_1ps);
+    config.rotor_drag_velocity_deviation_mps = declare_parameter<double>(
+        "rotor_drag_velocity_deviation_mps", config.rotor_drag_velocity_deviation_mps);
     config.tilt_prior_share =
         declare_parameter<double>("tilt_prior_share", config.tilt_prior_share);
     config.minimum_rest_samples = static_cast<std::size_t>(declare_parameter<int>(

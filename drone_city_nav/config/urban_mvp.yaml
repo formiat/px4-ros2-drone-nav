@@ -958,15 +958,26 @@ lidar_inertial_odometry_node:
     # the IMU delivered 0, 4 and 8 ms early, against the true pose. At 0.06
     # the cross-track error at p95 reached 0.71 m, at 0.03 0.31, at 0.02
     # 0.25 and at 0.01 and 0.005 0.19 to 0.20, and with no degenerate axis at
-    # all 0.63.
-    minimum_information_per_point: 0.01
-    # How long the IMU may carry a degenerate axis, scan after scan, before
-    # the estimate is unhealthy: the accelerometer's bias is corrected by
-    # nothing along it. In a straight tunnel of the finals world the estimate
-    # ran 17 m off in 13 s and 99.5 m in 43 s with healthy=true (r3176); the
-    # point-to-point flights of that world carry runs of 4 to 9 s within
-    # 1.4 m, Urban and the cave none.
+    # all 0.63. 0.005 since 2026-11-19 (specification K70): a bare straight
+    # tunnel reads 0.000 to 0.003 along its axis, a sloped one, whose axis the
+    # barometer's prior observes, 0.008 to 0.014; at 0.01 a sloped tunnel
+    # fell under the floor at 0.009 and its axis went to the IMU (r3929).
+    minimum_information_per_point: 0.005
+    # How long the IMU alone may carry a degenerate axis, scan after scan,
+    # before the estimate is unhealthy: the velocity the axis entered with
+    # stays and the accelerometer's error is added to it. In a straight
+    # tunnel of the finals world the estimate ran 17 m off in 13 s and 99.5 m
+    # in 43 s with healthy=true (r3176). A scan whose degenerate axis took the
+    # rotors' drag as its velocity does not count.
     maximum_degenerate_dead_reckoning_s: 10.0
+    # The rotors' drag fused as the velocity along a degenerate axis
+    # (specification K70): the accelerometer's reading across the rotor axis
+    # over the body's velocity there, 1/s, fitted on r3916's record (the
+    # lidar airframe); it MUST be fitted again for another vehicle; 0
+    # switches the fusion off. The deviation is a scan's: 0.45 m/s of error
+    # that stays for a second.
+    rotor_drag_1ps: 0.104
+    rotor_drag_velocity_deviation_mps: 1.4
     # An observed axis whose registered position lies farther from the prior
     # than this many standard deviations of the prior and the measurement
     # together is no measurement for that scan either. On r399, at the

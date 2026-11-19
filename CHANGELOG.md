@@ -11,10 +11,14 @@ release names the asset tags it was validated with.
   whether the objective and the navigation were still current, and a running count, as do the revocation of a moving
   vehicle and the refused commit. The clause names and the idea of naming them are naipi11's (PX4-ROS2-NAV,
   c2fed51a).
-- The lidar-inertial estimator learns its accelerometer's bias (specification K70): the velocity the scans take back
-  along the axes they observe teaches it, and an axis they do not observe (a straight tunnel) rides the propagation
-  without it. On a finals flight's record ten seconds on the IMU alone end 0.62 m off at the median, 2.32 m before
-  (`tools/lio/dead_reckoning.py`); a flight had slipped 4.5 m in one pass of a tunnel and lost its estimate there.
+- The lidar-inertial estimator on an axis its scans do not observe (specification K70): it learns its accelerometer's
+  bias from the velocity the scans take back along the axes they observe, and it fuses the rotors' drag as the
+  unobserved axis's velocity, so a straight tunnel no longer leaves that axis to an integration nothing corrects. An
+  axis is unobserved under 0.005 of information per matched point (0.01 before: a sloped tunnel the barometer holds
+  fell under it). On a finals flight's record ten seconds on the IMU alone end 0.62 m off at the median, 2.32 m
+  before, and forty seconds leave the velocity 0.21 m/s off with the drag, 0.46 without
+  (`tools/lio/dead_reckoning.py`, `tools/lio/drag_dead_reckoning.py`). Two flights had lost their estimate in a
+  tunnel and met it in the autopilot's blind landing.
 - The survey is described as the project's first mission: `docs/missions.md` gives its order (a volume), its flight,
   its result (the map), when it is done and what it does not do yet. `tools/world_series.sh` flies the series of the
   worlds one at a time, and `tools/flight_sweep.py` reads every flight of a series for what is wrong with it.

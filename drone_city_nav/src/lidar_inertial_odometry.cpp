@@ -20,6 +20,11 @@ using Matrix6d = Eigen::Matrix<double, 6, 6>;
 
 // The measurement variance of an axis the registration could not observe.
 constexpr double kUnobservedVarianceM2{1.0e6};
+// The rotors' drag is read from an accelerometer reading across the rotor
+// axis that drag can give, the drag of the speed profile's 10 m/s and a
+// fifth: a body that rests on a surface reads the surface there (2.3 m/s^2
+// on a slope of 12 degrees, specification K13).
+constexpr double kMaximumRotorDragMps2{1.2};
 
 struct CellKey {
   std::int32_t x{0};
@@ -244,6 +249,9 @@ struct LidarInertialOdometry::Impl {
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
   Eigen::Vector3d gyro_bias{Eigen::Vector3d::Zero()};
   Eigen::Vector3d accelerometer_bias{Eigen::Vector3d::Zero()};
+  // What the accelerometer reads across the rotor axis beyond the rotors'
+  // drag, learned while every axis is observed.
+  Eigen::Vector2d rotor_drag_offset{Eigen::Vector2d::Zero()};
   // The outside level, when one is observed (observeAttitude).
   std::int64_t attitude_stamp_ns{0};
   // The outside height (observeHeight) and its datum: the mean of the
@@ -331,6 +339,25 @@ struct LidarInertialOdometry::Impl {
       integrate(*last, target_stamp_ns);
     }
     return state;
+  }
+
+  // The mean accelerometer reading of the samples after the last scan's
+  // state up to `until_ns`; false when there is none.
+  [[nodiscard]] bool meanAccelerometer(const std::int64_t until_ns,
+                                       Eigen::Vector3d& mean) const {
+    Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+    std::size_t count = 0U;
+    for (const LidarInertialImuSample& sample : imu) {
+      if (sample.stamp_ns > stamp_ns && sample.stamp_ns <= until_ns) {
+        sum += sample.accelerometer_mps2;
+        ++count;
+      }
+    }
+    if (count == 0U) {
+      return false;
+    }
+    mean = sum / static_cast<double>(count);
+    return true;
   }
 
   void dropImuUpTo(const std::int64_t target_stamp_ns) {
@@ -528,6 +555,8 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   // filter's blend of them with the IMU.
   Eigen::Vector3d keyframe_position = prior_position;
   Eigen::Vector3d corrected_velocity = propagated.velocity;
+  // Whether a degenerate axis of this scan took the rotors' drag.
+  bool drag_fused = false;
   if (impl.submap.empty()) {
     healthy = !thinned.empty();
     estimate.matched_fraction = healthy ? 1.0 : 0.0;
@@ -617,6 +646,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
           transition * impl.covariance * transition.transpose() + process;
       Eigen::Matrix3d measurement_covariance = Eigen::Matrix3d::Zero();
       Eigen::Matrix3d observed = Eigen::Matrix3d::Zero();
+      Eigen::Matrix3d degenerate = Eigen::Matrix3d::Zero();
       for (int axis = 0; axis < 3; ++axis) {
         const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
         const double information = solver.eigenvalues()(axis);
@@ -629,6 +659,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
         double variance = kUnobservedVarianceM2;
         if (information / matched_points < impl.config.minimum_information_per_point) {
           ++estimate.degenerate_axes;
+          degenerate.col(axis) = direction;
         } else {
           const double observed_variance =
               std::max(residual_variance / information,
@@ -657,11 +688,56 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       const Eigen::Vector3d innovation = registration.position - prior_position;
       corrected_position = prior_position + gain.topRows<3>() * innovation;
       corrected_velocity = prior_velocity + gain.bottomRows<3>() * innovation;
-      keyframe_position =
-          corrected_position + observed * (registration.position - corrected_position);
       Matrix6d update = Matrix6d::Identity();
       update.leftCols<3>() -= gain;
       impl.covariance = update * prior_covariance;
+      impl.covariance = 0.5 * (impl.covariance + impl.covariance.transpose());
+      // The rotors' drag: the accelerometer's mean reading across the rotor
+      // axis over the interval, less its offset, is the body's velocity
+      // there. With every axis observed the scans' velocity teaches the
+      // offset; a degenerate axis takes the drag's velocity along itself, a
+      // Kalman step a direction, which the IMU's integration has nothing
+      // else to hold it by.
+      Eigen::Vector3d reading = Eigen::Vector3d::Zero();
+      if (impl.config.rotor_drag_1ps > 0.0 && !impl.holding && interval_s > 0.0 &&
+          impl.meanAccelerometer(stamp_ns, reading)) {
+        const Eigen::Quaterniond& rotation = registration.rotation;
+        Eigen::Vector3d body_velocity = rotation.conjugate() * corrected_velocity;
+        const Eigen::Vector2d across = reading.head<2>() - impl.rotor_drag_offset;
+        if (estimate.degenerate_axes == 0U && estimate.gated_axes == 0U) {
+          impl.rotor_drag_offset +=
+              impl.config.accelerometer_bias_gain *
+              (across + impl.config.rotor_drag_1ps * body_velocity.head<2>());
+        } else if (estimate.degenerate_axes > 0U &&
+                   across.cwiseAbs().maxCoeff() < kMaximumRotorDragMps2) {
+          body_velocity.head<2>() = -across / impl.config.rotor_drag_1ps;
+          const Eigen::Vector3d drag_velocity = rotation * body_velocity;
+          // The coefficient is not the same at every speed (the camera
+          // estimator's ran 11 percent low at 1.8 m/s, specification K21):
+          // the deviation grows by itself for each metre a second read.
+          const double deviation = impl.config.rotor_drag_velocity_deviation_mps *
+                                   (1.0 + body_velocity.head<2>().norm());
+          const double variance = deviation * deviation;
+          for (int axis = 0; axis < 3; ++axis) {
+            const Eigen::Vector3d direction = degenerate.col(axis);
+            if (direction.isZero()) {
+              continue;
+            }
+            const Eigen::Matrix<double, 6, 1> cross =
+                impl.covariance.rightCols<3>() * direction;
+            const Eigen::Matrix<double, 6, 1> drag_gain =
+                cross / (direction.dot(cross.tail<3>()) + variance);
+            const double drag_innovation =
+                direction.dot(drag_velocity - corrected_velocity);
+            corrected_position += drag_gain.head<3>() * drag_innovation;
+            corrected_velocity += drag_gain.tail<3>() * drag_innovation;
+            impl.covariance -= drag_gain * cross.transpose();
+          }
+          drag_fused = true;
+        }
+      }
+      keyframe_position =
+          corrected_position + observed * (registration.position - corrected_position);
       impl.covariance = 0.5 * (impl.covariance + impl.covariance.transpose());
       const Eigen::Vector3d correction = corrected_position - prior_position;
       const double speed = prior_velocity.norm();
@@ -708,9 +784,10 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       }
     }
   }
-  // The IMU carries a degenerate axis only so long (the configuration's
-  // word on r3176); the run ends with a scan that observes every axis.
-  if (healthy && estimate.degenerate_axes > 0U) {
+  // The IMU alone carries a degenerate axis only so long (the
+  // configuration's word on r3176); the run ends with a scan that observes
+  // every axis, or whose degenerate axis took the rotors' drag.
+  if (healthy && estimate.degenerate_axes > 0U && !drag_fused) {
     if (impl.degenerate_since_ns == 0) {
       impl.degenerate_since_ns = stamp_ns;
     }

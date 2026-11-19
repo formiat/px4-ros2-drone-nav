@@ -80,15 +80,35 @@ struct LidarInertialOdometryConfig {
   // flights match 0.72 to 0.97 of about 3 400 and never read the count.
   std::size_t minimum_matched_points{200U};
   double maximum_residual_rms_m{0.5};
-  double minimum_information_per_point{0.01};
-  // How long the IMU may carry a degenerate axis, scan after scan, before
-  // the estimate is no longer healthy. Nothing corrects the accelerometer's
-  // bias along such an axis, and the velocity there runs away with it: in a
-  // straight tunnel the estimate was 17 m off after 13 s and 99.5 m off
+  // A bare straight tunnel reads 0.000 to 0.003 along its axis (r3914); a
+  // sloped one, whose axis the barometer's prior observes through its
+  // vertical part, 0.008 to 0.014, and held its axis while it was read
+  // (r3929 at 0.011 to 0.014; at 0.009, under the 0.01 this floor stood at,
+  // the axis went to the IMU and the estimate left the truth at 0.3 m/s).
+  double minimum_information_per_point{0.005};
+  // How long the IMU alone may carry a degenerate axis, scan after scan,
+  // before the estimate is no longer healthy: the velocity the axis entered
+  // with stays, and what the accelerometer reads too much is added to it. In
+  // a straight tunnel the estimate was 17 m off after 13 s and 99.5 m off
   // after 43 s, healthy throughout, and the vehicle flew on it into the
-  // tunnel's end (r3176). The point-to-point flights of the same world carry
-  // runs of 4 to 9 s, the estimate within 1.4 m.
+  // tunnel's end (r3176). A scan whose degenerate axis took the rotors'
+  // drag as its velocity (rotor_drag_1ps) is not the IMU alone and does not
+  // count.
   double maximum_degenerate_dead_reckoning_s{10.0};
+  // The rotors' drag: the accelerometer's reading across the rotor axis is
+  // the body's velocity there times this, plus an offset the estimator
+  // learns while the scans observe every axis (0.104 1/s and offsets of
+  // -0.02 to -0.11 m/s^2 that walk by the minute on r3916's record, the
+  // lidar airframe). Along a degenerate axis it is fused as that axis's
+  // velocity with this deviation a scan (0.45 m/s of error that stays for a
+  // second, and as much again for each metre a second read: the coefficient
+  // is not one for every speed): on the record a horizontal axis left to it
+  // for 40 s ends with 0.21 m/s of velocity error at the median and 0.58 at
+  // the 95th percentile, on the IMU with its bias 0.46 and 1.20. Zero fuses
+  // nothing. The coefficient is the airframe's and must be fitted for
+  // another.
+  double rotor_drag_1ps{0.104};
+  double rotor_drag_velocity_deviation_mps{1.4};
   // An observed axis whose registered position lies farther from the prior
   // than this many standard deviations of the prior and the measurement
   // together is no measurement for that scan either.
