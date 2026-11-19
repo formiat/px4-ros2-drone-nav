@@ -272,6 +272,30 @@ TEST(ExecutionEvidence3DTest, ExecutionInputOwnsExactStateControlAndProvenanceVa
             ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback);
 }
 
+// The offboard's clock a simulation step ahead of the planner's when its
+// feedback arrives leaves the feedback's source stamp after its receipt: no
+// input is captured from it (r3901, 4 ms), and the measured acceleration, one
+// stamp for both, is the evidence a stop's second attempt takes instead
+// (specification K86).
+TEST(ExecutionEvidence3DTest,
+     FeedbackStampedAfterItsReceiptMakesNoInputAndMeasuredAccelerationDoes) {
+  ExecutionInputCapture3D capture = validExecutionInputCapture();
+  capture.previous_control_source_stamp_ns =
+      capture.previous_control_receive_stamp_ns + 4'000'000;
+  EXPECT_EQ(VersionedExecutionInput3D::capture(capture), nullptr);
+
+  capture.previous_control_source =
+      ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration;
+  capture.previous_control_source_producer_instance_id = 0U;
+  capture.previous_control_source_stamp_ns = capture.pose_receive_stamp_ns;
+  capture.previous_control_receive_stamp_ns = capture.pose_receive_stamp_ns;
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      VersionedExecutionInput3D::capture(capture);
+  ASSERT_NE(input, nullptr);
+  EXPECT_EQ(input->previousControlSource(),
+            ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration);
+}
+
 TEST(ExecutionEvidence3DTest,
      ExecutionInputAllowsExplicitNonAuthoritativeStateButRejectsFalseAuthority) {
   ExecutionInputCapture3D capture = validExecutionInputCapture();
@@ -815,9 +839,9 @@ TEST(ExecutionEvidence3DTest, LatestSensorEvidenceTombstoneCapacityFailsClosed) 
       admitLatestSensorEvidence3D({}, nullptr, *current, 6'020'000'000, 20.0)
           .next_state;
   state.retired_producer_count = state.retired_producer_instance_ids.size();
-  for (std::size_t index = 0U; index < state.retired_producer_instance_ids.size();
-       ++index) {
-    state.retired_producer_instance_ids[index] = 100U + index;
+  std::uint64_t retired_id{100U};
+  for (std::uint64_t& retired : state.retired_producer_instance_ids) {
+    retired = retired_id++;
   }
 
   LatestSensorEvidenceCapture3D candidate_capture = validLatestSensorCapture();

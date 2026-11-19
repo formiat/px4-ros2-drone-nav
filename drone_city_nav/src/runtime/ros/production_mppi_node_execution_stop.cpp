@@ -62,11 +62,28 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& tic
       return false;
     }
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const ProductionMppiExecutionInputPreparation input =
+    ProductionMppiExecutionInputPreparation input =
         prepareExecutionInputForPlanningTick(
             navigation, authority, ++execution_input_capture_sequence_, now_ns,
             config_.execution.maximum_control_feedback_age_ms,
             /*pose_predicted=*/false, /*stationary_capture_rearm=*/false);
+    if (input.execution_input == nullptr &&
+        navigation.linear_acceleration_authoritative &&
+        execution_input_capture_sequence_ !=
+            std::numeric_limits<std::uint64_t>::max()) {
+      // The resident feedback makes no input when its stamps stand a clock
+      // step apart: the offboard's clock a simulation step ahead of this
+      // node's when the feedback arrived, its source stamp after its receipt
+      // (r3901: 4 ms, a stop at 11.4 m/s left unprepared and the vehicle to
+      // the local hold). The measured acceleration is the tick's other
+      // evidence of the previous control, and a stop needs its linear part
+      // only (K86): the feedback is set aside by an age of nought.
+      navigation.measured_acceleration_valid = true;
+      input = prepareExecutionInputForPlanningTick(
+          navigation, authority, ++execution_input_capture_sequence_, now_ns,
+          /*maximum_control_feedback_age_ms=*/0.0, /*pose_predicted=*/false,
+          /*stationary_capture_rearm=*/false);
+    }
     if (input.execution_input == nullptr) {
       return false;
     }
