@@ -1,11 +1,13 @@
 // replay_lio DIR HEADING_NED_RAD [key=value config overrides]: runs the lidar-inertial estimator over
 // extract_bag.py output (DIR/scans.bin, DIR/imu.csv), merging IMU and scans by stamp (IMU delivered up to
 // the scan stamp), and writes DIR/replay.csv (or out=PATH): stamp_ns,x,y,z,healthy,information,degenerate,
-// bias_x,bias_y,bias_z,vx,vy,vz,roll,pitch (rad, the estimate's tilt), plus PATH.ms with the registration time p50 p95 p99 max and the count
+// bias_x,bias_y,bias_z (the accelerometer's bias the estimator holds, body frame),vx,vy,vz,roll,pitch,yaw (rad, the
+// estimate's attitude), plus PATH.ms with the registration time p50 p95 p99 max and the count
 // over 100 ms. Keys: lag gate keyframes kftrans iterations corr recovery cell info floor acc range points voxel tiltshare
 // (the registration's tilt prior share), truth=PATH (the flight's gz_pose.csv as the outside level), attitude=PATH (the
 // record's attitude.csv, the autopilot's own attitude as the level), baro=PATH and heightshare=S (the record's baro.csv as
-// the outside height, and the share of the height prior) and misalign=DEG (the
+// the outside height, and the share of the height prior), abias=G (the accelerometer bias's gain; 0 holds it at
+// zero, the estimator before the bias of specification K70) and misalign=DEG (the
 // IMU turned about the body's y axis, a mount error that seeds a tilted map);
 // hole_from and hole_to (seconds from the first scan) drop the scans of that window, so that the scan after it
 // must register from a prior the IMU alone carried: the recovery's case.
@@ -54,6 +56,7 @@ int main(int argc, char** argv) {
     else if (k == "attitude") { attitude_path = kv.substr(eq + 1); continue; }
     else if (k == "baro") { baro_path = kv.substr(eq + 1); continue; }
     else if (k == "heightshare") config.height_prior_share = v;
+    else if (k == "abias") config.accelerometer_bias_gain = v;
     else { std::fprintf(stderr, "unknown %s\n", k.c_str()); return 2; }
   }
   std::vector<Imu> imu;
@@ -125,7 +128,7 @@ int main(int argc, char** argv) {
     const auto started = std::chrono::steady_clock::now();
     const LidarInertialEstimate e = odometry.addScan(stamp, points);
     durations.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
-    std::fprintf(out, "%lld,%.4f,%.4f,%.4f,%d,%.4f,%zu,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f,%.5f,%.5f\n", stamp, e.position_ned_m.x(), e.position_ned_m.y(), e.position_ned_m.z(), e.healthy ? 1 : 0, e.information_per_point, e.degenerate_axes, 0.0, 0.0, 0.0, e.velocity_ned_mps.x(), e.velocity_ned_mps.y(), e.velocity_ned_mps.z(), std::atan2(2.0 * (e.body_to_ned.w() * e.body_to_ned.x() + e.body_to_ned.y() * e.body_to_ned.z()), 1.0 - 2.0 * (e.body_to_ned.x() * e.body_to_ned.x() + e.body_to_ned.y() * e.body_to_ned.y())), std::asin(std::max(-1.0, std::min(1.0, 2.0 * (e.body_to_ned.w() * e.body_to_ned.y() - e.body_to_ned.z() * e.body_to_ned.x())))));
+    std::fprintf(out, "%lld,%.4f,%.4f,%.4f,%d,%.4f,%zu,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f\n", stamp, e.position_ned_m.x(), e.position_ned_m.y(), e.position_ned_m.z(), e.healthy ? 1 : 0, e.information_per_point, e.degenerate_axes, e.accelerometer_bias_mps2.x(), e.accelerometer_bias_mps2.y(), e.accelerometer_bias_mps2.z(), e.velocity_ned_mps.x(), e.velocity_ned_mps.y(), e.velocity_ned_mps.z(), std::atan2(2.0 * (e.body_to_ned.w() * e.body_to_ned.x() + e.body_to_ned.y() * e.body_to_ned.z()), 1.0 - 2.0 * (e.body_to_ned.x() * e.body_to_ned.x() + e.body_to_ned.y() * e.body_to_ned.y())), std::asin(std::max(-1.0, std::min(1.0, 2.0 * (e.body_to_ned.w() * e.body_to_ned.y() - e.body_to_ned.z() * e.body_to_ned.x())))), std::atan2(2.0 * (e.body_to_ned.w() * e.body_to_ned.z() + e.body_to_ned.x() * e.body_to_ned.y()), 1.0 - 2.0 * (e.body_to_ned.y() * e.body_to_ned.y() + e.body_to_ned.z() * e.body_to_ned.z())));
   }
   std::fclose(out); std::fclose(scans);
   std::sort(durations.begin(), durations.end());

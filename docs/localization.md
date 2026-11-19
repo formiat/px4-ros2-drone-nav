@@ -65,8 +65,8 @@ extrinsic is the mounting the obstacle memory projects with.
 Per scan:
 
 1. the IMU is integrated from the last registered scan to this scan's stamp
-   (gravity, the gyroscope bias as a state, the accelerometer at rest for
-   the initial level); the stretch after the last sample before the stamp
+   (gravity, the gyroscope's and the accelerometer's bias as states, the
+   accelerometer at rest for the initial level); the stretch after the last sample before the stamp
    is integrated with the sample that spans it;
 2. the scan is read to the sensor's whole 35 m (read to 30 m, the ends of a
    55 m street were not in the scan, the registration had no measurement
@@ -88,7 +88,13 @@ Per scan:
    carrying it for at most `maximum_degenerate_dead_reckoning_s` (10 s) of
    scans in a row, after which the estimate is unhealthy until a scan
    observes every axis (specification K70: 99.5 m off after 43 s of a
-   straight tunnel, r3176); an axis
+   straight tunnel, r3176). The propagation takes off the accelerometer's
+   bias, which the estimator learns as it learns the gyroscope's: a share
+   (`accelerometer_bias_gain`, 0.005 a scan) of the velocity the scans take
+   back over a scan interval along the axes they observe, turned into the
+   body, so an unobserved axis rides the bias the others taught (r3916's
+   record: ten seconds on the IMU alone 0.62 m off at the median with it,
+   2.32 m without; `tools/lio/dead_reckoning.py`); an axis
    whose registered position lies more than five standard deviations of
    the prior and the measurement from the prior is gated for that scan;
 5. a keyframe is inserted every 0.5 m or 0.17 rad at the registered
@@ -172,8 +178,9 @@ The cost is three diagonal and three gradient entries an iteration.
 
 Every scan yields the share of the scan that matched the submap, the
 registration residual, the information along the weakest translational
-axis per matched point, the count of degenerate and gated axes and the
-correction along the track; the node logs them once a second
+axis per matched point, the count of degenerate and gated axes, the
+correction along the track and the accelerometer's bias it holds; the node
+logs them once a second
 (`LIDAR_INERTIAL_ODOMETRY`) and publishes the estimate's pose to
 `/drone_city_nav/lidar_inertial_odometry/pose` with the frame `map` or
 `map_unhealthy`, its orientation the estimate's whole (the body forward-left-up;

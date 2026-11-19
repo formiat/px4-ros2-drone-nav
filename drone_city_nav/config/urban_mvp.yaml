@@ -994,6 +994,11 @@ lidar_inertial_odometry_node:
     # heading ran away within ten seconds of takeoff.
     gyro_bias_gain: 0.005
     maximum_gyro_bias_radps: 0.05
+    # The share of the velocity the scans take back over a scan interval,
+    # along the axes they observe, that is attributed to the accelerometer's
+    # bias (specification K70): an axis the scans do not observe rides it.
+    accelerometer_bias_gain: 0.005
+    maximum_accelerometer_bias_mps2: 0.2
 
 mppi_offboard_node:
   ros__parameters:

@@ -11,6 +11,10 @@ release names the asset tags it was validated with.
   whether the objective and the navigation were still current, and a running count, as do the revocation of a moving
   vehicle and the refused commit. The clause names and the idea of naming them are naipi11's (PX4-ROS2-NAV,
   c2fed51a).
+- The lidar-inertial estimator learns its accelerometer's bias (specification K70): the velocity the scans take back
+  along the axes they observe teaches it, and an axis they do not observe (a straight tunnel) rides the propagation
+  without it. On a finals flight's record ten seconds on the IMU alone end 0.62 m off at the median, 2.32 m before
+  (`tools/lio/dead_reckoning.py`); a flight had slipped 4.5 m in one pass of a tunnel and lost its estimate there.
 - The survey is described as the project's first mission: `docs/missions.md` gives its order (a volume), its flight,
   its result (the map), when it is done and what it does not do yet. `tools/world_series.sh` flies the series of the
   worlds one at a time, and `tools/flight_sweep.py` reads every flight of a series for what is wrong with it.

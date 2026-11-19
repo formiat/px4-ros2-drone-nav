@@ -243,6 +243,7 @@ struct LidarInertialOdometry::Impl {
   Eigen::Vector3d position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
   Eigen::Vector3d gyro_bias{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d accelerometer_bias{Eigen::Vector3d::Zero()};
   // The outside level, when one is observed (observeAttitude).
   std::int64_t attitude_stamp_ns{0};
   // The outside height (observeHeight) and its datum: the mean of the
@@ -306,7 +307,7 @@ struct LidarInertialOdometry::Impl {
         state.rotation = (state.rotation * expSmallAngle(rate * dt)).normalized();
         if (!holding) {
           const Eigen::Vector3d acceleration =
-              state.rotation * sample.accelerometer_mps2 +
+              state.rotation * (sample.accelerometer_mps2 - accelerometer_bias) +
               Eigen::Vector3d{0.0, 0.0, config.gravity_mps2};
           state.position += state.velocity * dt + 0.5 * acceleration * dt * dt;
           state.velocity += acceleration * dt;
@@ -687,6 +688,23 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
         if (bias_norm > impl.config.maximum_gyro_bias_radps) {
           impl.gyro_bias *= impl.config.maximum_gyro_bias_radps / bias_norm;
         }
+        // The velocity the scans took back along the axes they observed is
+        // the acceleration the IMU carried too much over the interval: a
+        // share of it goes to the accelerometer's bias, in the body. An axis
+        // the scans do not observe teaches nothing and rides the bias the
+        // others taught before it.
+        if (!impl.holding) {
+          impl.accelerometer_bias -=
+              impl.config.accelerometer_bias_gain *
+              (prior_rotation.conjugate() *
+               (observed * (corrected_velocity - prior_velocity))) /
+              interval_s;
+          const double accelerometer_bias_norm = impl.accelerometer_bias.norm();
+          if (accelerometer_bias_norm > impl.config.maximum_accelerometer_bias_mps2) {
+            impl.accelerometer_bias *=
+                impl.config.maximum_accelerometer_bias_mps2 / accelerometer_bias_norm;
+          }
+        }
       }
     }
   }
@@ -746,6 +764,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   estimate.position_ned_m = impl.position;
   estimate.body_to_ned = impl.rotation;
   estimate.velocity_ned_mps = impl.velocity;
+  estimate.accelerometer_bias_mps2 = impl.accelerometer_bias;
   estimate.submap_points = impl.submap.pointCount();
   estimate.keyframes = impl.submap.keyframeCount();
   return estimate;

@@ -194,6 +194,45 @@ TEST(LidarInertialOdometryTest, TracksAStraightFlightThroughARoom) {
             LidarInertialOdometryConfig{}.minimum_information_per_point);
 }
 
+// An accelerometer that reads a constant too much: the scans take the
+// velocity it adds back every interval, and a share of that goes to the
+// bias the propagation then takes off (r3914: 4.5 m of slip along a straight
+// tunnel in 9.3 s with nothing estimating it).
+TEST(LidarInertialOdometryTest, TheScansTeachTheAccelerometersBias) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometry odometry{testConfig()};
+  const Eigen::Vector3d position{-3.0, 1.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  const Eigen::Vector3d bias{0.08, -0.05, 0.0};
+  const auto biased = [&level, &bias](const std::int64_t stamp_ns) {
+    LidarInertialImuSample sample = restSample(stamp_ns, level);
+    sample.accelerometer_mps2 += bias;
+    return sample;
+  };
+  // The rest is read before the bias is there: a bias the rest already
+  // carries goes into the level the rest gives, and shows once the body turns.
+  odometry.initialize(0, position, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  LidarInertialEstimate estimate;
+  const std::int64_t first_scan = kSecond / 2;
+  for (int k = 0; k <= 400; ++k) {
+    const std::int64_t stamp = first_scan + k * kSecond / 10;
+    if (k > 0) {
+      for (int i = 1; i <= 10; ++i) {
+        odometry.addImu(biased(stamp - kSecond / 10 + i * kSecond / 100));
+      }
+    }
+    estimate = odometry.addScan(stamp, scanFrom(room, position, level));
+    ASSERT_TRUE(estimate.healthy) << "scan " << k;
+  }
+  // Forty seconds, two of the gain's time constants at ten scans a second.
+  EXPECT_NEAR(estimate.accelerometer_bias_mps2.x(), bias.x(), 0.02);
+  EXPECT_NEAR(estimate.accelerometer_bias_mps2.y(), bias.y(), 0.02);
+  EXPECT_LT(estimate.velocity_ned_mps.norm(), 0.02);
+}
+
 // A scan that registers far from where the IMU carried the vehicle, beyond
 // the spread of both, is no measurement: a registration that slid into
 // another fit does not drag the estimate along.

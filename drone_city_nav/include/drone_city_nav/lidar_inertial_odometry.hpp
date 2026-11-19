@@ -108,6 +108,15 @@ struct LidarInertialOdometryConfig {
   // will believe. r357 flew with 0.05 of the error per scan divided by the
   // interval, ten times this, and the heading ran away within ten seconds.
   double gyro_bias_gain{0.005};
+  // The share of the acceleration the IMU carried too much over a scan
+  // interval that is attributed to the accelerometer's bias, per scan: the
+  // velocity the scans took back along the axes they observed, over the
+  // interval, turned into the body, and the bias the estimator will believe.
+  // Without it an axis the scans do not observe rode a propagation 0.06 m/s^2
+  // off (the median of r3916's record): 3.6 m in ten seconds, and r3914's
+  // memory laid 4.5 m off after one straight tunnel.
+  double accelerometer_bias_gain{0.005};
+  double maximum_accelerometer_bias_mps2{0.2};
   // The share of the points' own information about each horizontal axis an
   // outside level (observeAttitude, the autopilot's attitude) weighs in every
   // registration (PointPlaneRegistrationConfig3D::tilt_prior_share); zero
@@ -152,6 +161,8 @@ struct LidarInertialEstimate {
   Eigen::Vector3d position_variance_m2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d orientation_variance_rad2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity_variance_m2ps2{Eigen::Vector3d::Zero()};
+  // The accelerometer's bias the estimator holds, in the body frame.
+  Eigen::Vector3d accelerometer_bias_mps2{Eigen::Vector3d::Zero()};
   bool healthy{false};
   // How far behind the scan the last IMU sample was when the scan was
   // registered; the prior is only as current as this.

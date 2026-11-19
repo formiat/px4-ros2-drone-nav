@@ -82,6 +82,10 @@ public:
         "innovation_gate_sigma", config.innovation_gate_sigma);
     config.gyro_bias_gain =
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
+    config.accelerometer_bias_gain = declare_parameter<double>(
+        "accelerometer_bias_gain", config.accelerometer_bias_gain);
+    config.maximum_accelerometer_bias_mps2 = declare_parameter<double>(
+        "maximum_accelerometer_bias_mps2", config.maximum_accelerometer_bias_mps2);
     config.tilt_prior_share =
         declare_parameter<double>("tilt_prior_share", config.tilt_prior_share);
     config.minimum_rest_samples = static_cast<std::size_t>(declare_parameter<int>(
@@ -408,7 +412,7 @@ private:
         get_logger(), *get_clock(), 1000,
         "LIDAR_INERTIAL_ODOMETRY healthy=%s published=%s matched=%.2f residual_m=%.3f "
         "information=%.3f degenerate_axes=%zu gated_axes=%zu correction_along_m=%.3f "
-        "speed_mps=%.2f "
+        "speed_mps=%.2f accelerometer_bias_mps2=(%.3f,%.3f,%.3f) "
         "iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
         "pose_age_max_ms=%.1f "
@@ -419,8 +423,10 @@ private:
         estimate.matched_fraction, estimate.residual_rms_m,
         estimate.information_per_point, estimate.degenerate_axes, estimate.gated_axes,
         estimate.correction_along_track_m, estimate.velocity_ned_mps.norm(),
-        estimate.iterations, estimate.scan_points, estimate.submap_points,
-        estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
+        estimate.accelerometer_bias_mps2.x(), estimate.accelerometer_bias_mps2.y(),
+        estimate.accelerometer_bias_mps2.z(), estimate.iterations, estimate.scan_points,
+        estimate.submap_points, estimate.keyframes, scan_ms,
+        1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
         1.0e-6 * static_cast<double>(imu_gap_max_ns_),
         1.0e-6 * static_cast<double>(pose_age_max_ns_), imu_samples_, scans_,
         healthy_scans_, published_scans_, dropped_scans_, unmapped_imu_samples_,
