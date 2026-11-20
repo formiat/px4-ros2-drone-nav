@@ -586,7 +586,7 @@ the door variant: five flights past a body that crosses the route, no
 contact, no occupancy of it older than the stated decay, and the mean
 speed of R3 kept.
 
-Stage 1a, 1, 2 for warm bodies done on 2026-11-17 (the goal of 2026-11-05,
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20: stage 1a, 1, 2 for warm bodies, done on 2026-11-17 (the goal of 2026-11-05,
 part 1; specification K64, K65, K66, F23; the flight code of 6c42a8b9).
 The item stays open: stage 2a, stage 3 (the doors) and the cold bodies'
 acceptance are not done.
@@ -1506,6 +1506,8 @@ trust's normalisation its allowance and inflates the whole window's
 translation before the fix is fused (584d4341, 4c8ca7eb, e6b6d563). Stages
 3 and 4 remain.
 
+Stages 0 to 3 and 5 shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20.
+
 **Stage 5 flown again on 2026-11-20** (the flight code of c812a502; the goal of
 2026-11-17, the acceptance before the release): the full set r3945 to r3949,
 10.242, 10.169, 10.352, 10.275 and 10.306 m/s, 10.269 m/s mean, no contact,
@@ -1687,7 +1689,7 @@ verified here before anything is taken.
    repair, accept by series. The first thing to do of the whole roadmap: it
    is a safety law.
 
-   **Point 1 done on 2026-11-20** (the goal of 2026-11-17; specification K86,
+   **Point 1 done on 2026-11-20**, shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) (the goal of 2026-11-17; specification K86,
    the flight code of c812a502). Reproduced: a stop prepared and certified for
    a vehicle at 4 m/s is refused at its commit by each stage the kept flights
    refuse stops at (`ACertifiedStopIsRefusedAtItsCommitByEachStaleness`).
@@ -4887,7 +4889,7 @@ the thermal core's reading is the decision's evidence in every flight.
 
 ### 38. Faster Than Real Time On A Stronger Host (Completed)
 
-Done on 2026-11-03 (the goal of 2026-11-02, part 1; 08f9e50a and the records):
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20; done on 2026-11-03 (the goal of 2026-11-02, part 1; 08f9e50a and the records):
 the factor above 1 allowed as a stress flight (K25 rewritten: the preparation
 writes any factor above 0, the mission check names a factor above 1 before
 anything else it reads, the host verdict and the watchdog read their floors
@@ -4965,7 +4967,7 @@ on the metres flown.
 
 ### 34. The Survey Mission: Explore And Come Back With The Map (Completed)
 
-Done on 2026-11-04 (the goal of 2026-11-02, part 2): `survey_mission_node` and the monitor's survey
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20; done on 2026-11-04 (the goal of 2026-11-02, part 2): `survey_mission_node` and the monitor's survey
 mode (`docs/navigation_pipeline.md`, section 9), the rules in K59 under F20, the scenarios
 `sim-urban-survey-*` and `sim-finals-survey-*`, the coverage read by the mission check
 (`scripts/survey_coverage.py`, R9), `tools/frontiers.py` for the recorded flights. The acceptance on
@@ -5067,7 +5069,7 @@ surveyed, and the survey's rules are in force as F20 says.
 
 ### 40. The Stereo Estimate Registered Against Its Own Map Along The Way (Completed)
 
-Done on 2026-11-04 by its record (the goal of 2026-11-02, part 3): the heading's drift is held by the
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20; done on 2026-11-04 by its record (the goal of 2026-11-02, part 3): the heading's drift is held by the
 magnetometer's prior (K60), not by the registration along the way (K57: no reading of the drift on a
 one-way route). The acceptance on d603c347, the stereo set under the imperfections profile: r2851 to r2855
 five of five within 2 m of B (0.46, 0.79, 0.73, 0.54 and 1.13 m), 1.337 m/s against R3's 1.16, no contact,
@@ -5230,7 +5232,7 @@ unmet by the heading's drift, which this item is about.
 
 ### 35. The Real Vehicle's Imperfections In The Loop (Completed)
 
-Done on 2026-11-04 (the goal of 2026-11-02, part 3): the profile (K52) whole with the magnetometer, family (f):
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20; done on 2026-11-04 (the goal of 2026-11-02, part 3): the profile (K52) whole with the magnetometer, family (f):
 the IIS2MDC's noise, no hard iron, the field's disturbance beside a vehicle's currents a scenario of its own
 (`MAGNETIC_DISTURBANCE=ntu`, `scripts/magnetometer_disturbance.py`); the stereo set flies under it five of five
 within 2 m (r2851 to r2855), the lidar set five of five (r2856 to r2860). What has no source on this machine
@@ -5323,6 +5325,8 @@ profile, through the register's row, which item 40 takes up (the depth
 registered against the vehicle's own map along the way).
 
 ### 33. Held-Out Worlds: Point-To-Point Flights On The Cave Circuit And The Finals World (Completed)
+
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20.
 
 **Flown inside on 2026-11-08** (the record under "Done on 2026-11-08" below; the reopening and the record of 2026-10-31 kept as written).
 
@@ -5575,6 +5579,8 @@ either repaired or in the register, and N2 is closed.
 
 ### 11. Valid 3D Static Maps For New Environments (Completed)
 
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20.
+
 **Type:** dependent implementation and validation stage.
 
 **Hard prerequisites:** items 8 and 34 for the primary autonomous-survey
@@ -5683,6 +5689,8 @@ a static-map request now refuses to start while the environment has no 3D
 static occupancy, which is what this item delivers.
 
 ### 42. The Flight's Record In A Viewer Without The Stack (Completed)
+
+Shipped in [v0.8.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.8.0) on 2026-11-20.
 
 **Type:** tooling, independent recurring workstream; recorded on 2026-11-05
 at the project owner's word. Size S.

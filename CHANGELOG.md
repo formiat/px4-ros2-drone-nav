@@ -6,6 +6,75 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+## v0.8.0 (2026-11-20)
+
+The vehicle outdoors and among people. On the open sky the full sensor set
+(the 3D lidar for the obstacles, the camera set for the estimate, the
+satellite fix fused whole while it is trusted) flies a 1.6 km route through
+three goals at 10.27 m/s mean (specification R8; the open sky's own speed
+profile, read from the airframe's measured envelope). Warm bodies that walk
+are read by the thermal core on both sensor sets, kept in a moving layer of
+the obstacle memory, followed between scans and owed a stopping law of their
+own (roadmap item 21, stages 1a to 2; K64 to K66). The survey is a mission:
+with no goal the vehicle flies to the frontiers of its own memory, comes home
+and lands, and the memory it brings back is persisted and checked as a static
+map that the next flight starts from (items 34 and 11). The stack was flown,
+with nothing adapted, in two worlds it had never seen, the cave circuit and
+the finals world (item 33).
+
+Beside it: a stop the commit refused only because its tick's input had aged is
+prepared once more and published, so a moving vehicle with a certified stop
+in hand is no longer left to the offboard's local hold (item 43 point 1, K86;
+the clause names of the refusal are naipi11's); the lidar-inertial estimator
+learns its accelerometer's bias and takes the rotors' drag as the velocity of
+an axis its scans do not observe (K70); the magnetometer's heading holds the
+stereo estimate's yaw (K60); the whole stack is recorded and replayed
+(`RECORD_STACK_BAG`), and a flight's record opens in a viewer without the
+stack (item 42); a simulation faster than real time as a stress flight (item
+38); the recordings are rendered on a virtual display, off the desktop. After
+a fix the flights are what the change acts on and the Urban five and five
+(specification A14, `tools/fix_series.sh`); the mean speeds measured before
+this release are the norm (the owner's decision of 2026-11-17).
+
+Validated on Urban Circuit Practice 01 (`environment-assets-urban-v1`) on the
+flight code of 2a2541c7, without GNSS, no static map, the clear location, the
+imperfections profile on, the repository's defaults: the 3D lidar five of
+five, complete and collision-free, 2.347, 2.421, 2.307, 2.212 and 2.262 m/s
+(mean 2.310, above the target 2.28) with the true position 0.20 to 0.45 m
+from the goal (r4037 to r4041); the stereo set five of five collision-free
+and complete (r4032 to r4036), 1.290, 1.426, 1.415, 1.351 and 1.489 m/s (mean
+1.394, above the target 1.16), the true position at the goal 1.54, 1.48,
+0.58, 2.02 and 0.84 m: one of five beyond the 2 m, by two centimetres (r4035;
+the stereo estimate's drift, the register's row), not a contact. No attempt
+was voided. The eighteen meetings with a walking body on the same code (r4010
+to r4031): no contact, no trace of the body older than the layer's life, the
+stopping margin positive in seventeen (+0.25 to +4.19 m) and -0.47 m in one,
+the camera set's meeting with a body from the side (r4017, passed 0.67 m
+off). The other locations were flown once before the release, on the flight
+code of c812a502 (fifty-seven flights with the Urban ones, r3931 to r3991,
+none with a contact; only the warm bodies' code changed after them): the open
+sky's five 10.169 to 10.352 m/s; the cave world on the lidar five of five at
+its goal; the finals world on the lidar two of five, on the stereo set one of
+five. The series is in `log/tools/release_v080/series.txt`. The package
+version is 0.8.0. No recording and no post go with this release.
+
+Known limits, each a row of `docs/technical_debt.md`: a body that comes from
+outside the camera set's fields at the vehicle's own level is not answered in
+time (r3944, r4017: stopping margins of -0.33 and -0.47 m, no contact); the
+cave world on the stereo set reaches its goal in one flight of five within
+the 900 s (wandering through unknown branches; the code of 2026-11-08, whose
+series acknowledged it in five, does the same flown again today); the finals world's two levels are reached in two flights of
+five on the lidar; without the satellite signal at the open sky's speed the
+first goal is acknowledged beyond its published uncertainty (5.46 m against
+5.44 m, and 27 m in one flight); the lidar set's place along an axis its
+scans do not observe drifts at 0.2 to 0.6 m/s, and it has no landing of its
+own when its estimate is withdrawn (two flights of the finals world met a
+tunnel so before K70's repair); the camera set alone flies the open sky at
+1.66 m/s, the pair's braking contract.
+
+The goals of 2026-11-02, 2026-11-05 and 2026-11-17, on main from v0.7.0 to
+this tag:
+
 - A stop refused at its commit says why (roadmap item 43, point 1): its line carries the commit's stage, the clause
   that left the previous control's evidence not current, the input's and the feedback's ages against their limits,
   whether the objective and the navigation were still current, and a running count, as do the revocation of a moving

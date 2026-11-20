@@ -93,15 +93,15 @@ the numbers the work relies on, each with who set it and why, are in
 
 Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
 [`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
-`environment-assets-*` tags. The current release is `v0.7.0`: the MPPI
-engine beyond CUDA, one rollout body for every backend with a CPU engine and
-a Vulkan engine held to the CUDA engine by parity (`MPPI_ENGINE`), the
-package built without Gazebo and without CUDA and the arm64 onboard image,
-the VOXL 2 checked against its documentation (readiness, not support: no
-board has run the stack); the real vehicle's imperfections in every
-acceptance flight, the simulator able to wait for the onboard loop, the dark
-void, the heat source on the lidar, the reference estimators on real
-recordings. The ordinary flight is the clear location, without GNSS and
+`environment-assets-*` tags. The current release is `v0.8.0`: the
+open sky at 10 m/s on the full sensor set (the 3D lidar for the obstacles,
+the camera set and the satellite fix for the estimate), warm bodies that walk
+read by a thermal core and owed a stopping law of their own, the survey as a
+mission whose map the next flight starts from, two held-out worlds flown with
+nothing adapted; a stop that is no longer refused for an aged input, the
+lidar-inertial estimate through an axis its scans do not observe, the whole
+stack recorded and replayed. The known limits are named in the release's
+entry. The ordinary flight is the clear location, without GNSS and
 with no static map, under the imperfections profile. Each flight's runtime manifest records the package
 version and `git describe`.
 
