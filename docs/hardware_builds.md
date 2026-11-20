@@ -45,7 +45,18 @@ in July 2026) and are an order of magnitude, not a quote.
 An Orin NX module needs a carrier board (interfaces, the camera connectors,
 the cooling): Seeed's A603 is listed at €165 to $309 [19]; a whole box with
 the module, the carrier and a case (Seeed reComputer J4012) at $899, a price
-likely from before July 2026 [20].
+likely from before July 2026 [20]. A carrier made for a drone is AVerMedia's
+D137 "Lynx" (found on 2026-11-20, [27]): the Orin NX or Orin Nano stacked on
+it, 90 x 56 x 30.7 mm with the module, 80 g in its specification table and
+50 g in its description, an XT30 input of 12 to 48 V (50 V in the
+description) that takes a flight battery's voltage without a converter of
+its own (a 4S pack's 12.0 to 16.8 V is inside it), two 4-lane MIPI CSI-2
+inputs on 22-pin connectors and GMSL cameras, two gigabit Ethernet ports, a
+CAN port and four UARTs for the autopilot's link, three USB 3.2 ports, an
+M.2 2230 slot for NVMe, -10 to 60 degrees; not priced on its page (a quote
+is asked for). Against the A603: the battery's voltage taken directly and
+the size and mass of a board meant to fly; the price unknown, and nothing of
+it measured here.
 
 **Measured on 2026-10-26 (roadmap item 28 step 1, specification K48):** the
 flight needs 2048 rollouts on the stereo set by the rule of K48 (the speed
@@ -395,3 +406,4 @@ Prices and specifications as found on 2026-10-13.
 24. [Starling 2](https://modalai.com/starling-2), [Starling 2 Max](https://modalai.com/starling-2-max) at ModalAI.
 25. [Jetson Orin Nano Super Developer Kit at NVIDIA](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano-super-developer-kit/) (67 INT8 TOPS, 1024 CUDA cores, 32 tensor cores, 6 Cortex-A78AE, 8 GB, 7 to 25 W); the GPU's 1020 MHz from [CNX Software's spec list](https://cnx-software.com/2024/12/18/249-nvidia-jetson-orin-nano-super-developer-kit-targets-generative-ai-applications-at-the-edge/); 1024 x 2 x 1.02 GHz = 2.1 TFLOPS dense FP32, derived as item 28 derives the Orin NX's.
 26. [FLIR Lepton 3.5 at GroupGets](https://groupgets.com/products/flir-lepton-3-5) ($164.00, 160 x 120, 57 degrees with shutter, radiometric; DigiKey part 500-0771-01 at $131 to $164 by region).
+27. [AVerMedia D137](https://professional.avermedia.com/product-detail/D137) (the specification table and the description, read on 2026-11-20; part number 61D137CB01AC, no price), [the D137 at Unmanned Systems Technology](https://www.unmannedsystemstechnology.com/company/avermedia-technologies/d137-carrier-board/).

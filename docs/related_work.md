@@ -22,6 +22,20 @@ simulation), aerial-autonomy-stack (Gazebo Harmonic faster than real time),
 px4-ros2-interface-lib (external PX4 modes over uXRCE-DDS). Components:
 FAST_LIO, ROG-Map, EGO-Planner, FUEL, GBPlanner, voxblox, MIGHTY.
 
+Tools beside the stacks (read on 2026-11-20, by their pages, not run here):
+LidarView (Kitware; Apache-2.0, on ParaView) receives, records and shows
+lidar data, reads `.mcap` recordings since 5.0 and subscribes to ROS 2
+topics and publishes them since 5.3. A flight's record is opened here by
+Lichtblick, which shows the whole flight and not the lidar alone (roadmap
+item 42); LidarView was not weighed for it. Kitware's lidar SLAM (LidarSlam,
+`gitlab.kitware.com/keu-computervision/slam`; a BSD licence by its authors'
+post of 2023-02-17, the README names none) has a ROS 2 wrapper (Humble,
+Iron; images for Humble and Jazzy), takes an IMU, GPS and cameras beside the
+lidar, and closes loops where it is built with TEASER++ and optimises a pose
+graph where it is built with g2o; its README says the loop closure detection
+is not yet supported in the ROS 2 wrapper. A candidate reference for the
+lidar set's half of roadmap item 41.
+
 ## What Sets This Project Apart
 
 1. A full stack on ROS 2 with PX4 over uXRCE-DDS: nearly every stack that flies

@@ -1595,7 +1595,10 @@ The stages:
 3. **The references.** ORB-SLAM3 and Kimera, which close loops, beside
    OpenVINS, which does not, over the real recordings of item 25 (EuRoC,
    NTU VIRAL): what a closure is worth on a real vehicle's data, and the
-   bar ours is read against.
+   bar ours is read against. For the lidar set a candidate reference is
+   Kitware's LidarSlam ([related_work.md](related_work.md), read on
+   2026-11-20): loop closure with TEASER++ and a pose graph with g2o, the
+   closure not yet in its ROS 2 wrapper by its README; not built here.
 4. **Flown.** The survey and B and back on both sets, the open sky's loop
    on the stereo set without the signal.
 
