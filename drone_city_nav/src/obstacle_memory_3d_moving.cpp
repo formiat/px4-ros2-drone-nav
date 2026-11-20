@@ -583,14 +583,41 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // core's fields pass over it); the stand's time ran out, the body was no
   // body, and the vehicle flew down at it at 2.1 m/s, to sight it 2.7 m off
   // (r3582, -0.19 m).
+  // The distance a body's place is owed a way out in (the rise's, K66).
+  constexpr double kHiddenWithinM{10.0};
   const auto blind = [&](const MovingBody3D& body) {
     // Only while the vehicle stands within a walk of where it stood, where
     // the sensors look over it: farther off they can look, and a thing the
     // core's marks put 5 to 10 m off where no body was stood read for 200 s,
-    // the vehicle held before it (r3649).
-    if (std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y) >
-        body.radius_m + config_.moving_reach_m +
-            kWarmBodyWalkMps * config_.moving_sweep_s + 1.0) {
+    // the vehicle held before it (r3649). Farther off they cannot look
+    // either where a surface the memory holds stands between, within the
+    // distance a body's place is owed a way out in: sighted across a room
+    // from 8 m, a body walked up its passage behind the wall, was no body 5 s
+    // later, and the vehicle came down into the passage and met it stepping
+    // back, read 2.9 s before at 3.2 m (r3944, -0.33 m).
+    const double apart_m =
+        std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y);
+    if (apart_m > body.radius_m + config_.moving_reach_m +
+                      kWarmBodyWalkMps * config_.moving_sweep_s + 1.0) {
+      if (apart_m > kHiddenWithinM) {
+        return false;
+      }
+      const Point3 aim{body.centre_map.x, body.centre_map.y,
+                       0.5 * (body.bottom_m + body.top_m)};
+      const double length_m = std::hypot(apart_m, aim.z - origin.z);
+      const double step_m = 0.5 * grid_.bounds().resolution_m;
+      const auto steps = static_cast<int>(
+          (length_m - body.radius_m - config_.moving_match_m) / step_m);
+      for (int step = 1; step <= steps; ++step) {
+        const double share = step * step_m / length_m;
+        const std::optional<GridIndex3D> cell =
+            grid_.worldToCell({origin.x + share * (aim.x - origin.x),
+                               origin.y + share * (aim.y - origin.y),
+                               origin.z + share * (aim.z - origin.z)});
+        if (cell.has_value() && grid_.isOccupied(*cell)) {
+          return true;
+        }
+      }
       return false;
     }
     MovingBody3D column = body;

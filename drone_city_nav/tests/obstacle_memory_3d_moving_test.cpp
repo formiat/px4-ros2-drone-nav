@@ -849,6 +849,56 @@ TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
   EXPECT_GT(memory.movingBodies().front().unseen_s, 1.0);
 }
 
+TEST(ObstacleMemory3D, ABodyBehindASurfaceIsReadOnUntilTheVehicleCanLook) {
+  // K66 (r3944): a warm body sighted by its size 7 m off, then nothing of it.
+  // With open air between, the core can look and the stand's 5 s take it off;
+  // from where a wall the memory holds stands between, no sensor can look at
+  // where it stood, and it stands there read for as long as that is so.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  const Point3 open{2.125, 4.125, 2.625};
+  const Point3 behind{2.125, 7.125, 2.625};
+  const auto sighted = [&open] {
+    std::vector<LidarBeam3D> beams;
+    for (const double y : {4.125, 4.375}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        beams.push_back(hitAt(open, {9.125, y, z}, true));
+        beams.back().surface_only = true;
+      }
+    }
+    return beams;
+  };
+  // The wall: x 5.125, y 5.125 to 8.375, beside the open line and across the
+  // line from `behind` to the body.
+  const auto wall = [](const Point3& origin) {
+    std::vector<LidarBeam3D> beams;
+    for (int j = 0; j <= 13; ++j) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        beams.push_back(hitAt(origin, {5.125, 5.125 + 0.25 * j, z}));
+      }
+    }
+    return beams;
+  };
+  const ObstacleMemory3DConfig config{.maximum_range_m = 20.0, .minimum_range_m = 0.1};
+  for (const bool hidden : {true, false}) {
+    ObstacleMemory3D memory{kFine, config};
+    ObstacleMemory3DStats stats =
+        memory.integrateScan({.origin_map = open,
+                              .beams = wall(open),
+                              .acquisition_stamp_ns = kSecondNs / 2});
+    stats = memory.integrateScan(
+        {.origin_map = open, .beams = sighted(), .acquisition_stamp_ns = kSecondNs});
+    ASSERT_EQ(stats.followed_bodies, 1U);
+    for (int scan = 1; scan <= 16; ++scan) {
+      stats = memory.integrateScan(
+          {.origin_map = hidden ? behind : open,
+           .beams = wall(hidden ? behind : open),
+           .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2)});
+      EXPECT_EQ(stats.followed_bodies, hidden || scan <= 10 ? 1U : 0U)
+          << (hidden ? "behind the wall" : "in the open") << ", scan " << scan;
+    }
+  }
+}
+
 TEST(ObstacleMemory3D, AClusterSeenToStepNearTheVehicleIsSweptAndHandsNoBody) {
   // Roadmap item 21, motion without the class (r3561): a cold block steps
   // along x two to three metres from the vehicle. Once seen to move its way is
