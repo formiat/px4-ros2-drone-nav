@@ -75,8 +75,12 @@ struct MppiSpeedPolicyConfig {
   // Nought reads the memory voxel by voxel.
   double guaranteed_obstacle_size_m{0.0};
   // Roadmap item 21 (specification K66): what the vehicle keeps between its
-  // centre and a moving body's envelope, the body's reach and its own radius.
-  double moving_body_clearance_m{0.6};
+  // centre and a moving body's envelope: what a vehicle that stands owes a
+  // body walking at it by the encounters' measure, its own radius (0.35 m),
+  // a reaction's walk and a stop's from 1.2 m/s (0.36 and 0.18 m). At 0.6 m,
+  // the body's reach and the radius, the vehicle flew on over a head at the
+  // planner's level: 0.81 m over one at 0.75 m/s, the margin -0.08 m (r4005).
+  double moving_body_clearance_m{0.9};
 };
 
 // The share of its beams a frame observes (roadmap item 17 stage 0) that

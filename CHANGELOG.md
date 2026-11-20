@@ -19,7 +19,9 @@ release names the asset tags it was validated with.
 - A warm body the memory has read stays read while a surface hides where it stood (specification K66): within
   10 m of the vehicle the stand's 5 s no longer take off a body that walked behind a wall, so the vehicle does not
   come down to a body's level into a passage the body went up (a side meeting of the acceptance had a stopping margin
-  of -0.33 m so).
+  of -0.33 m so). The planner's law keeps 0.9 m between the vehicle and a walking body's envelope (0.6 m before): what
+  the encounters' measure charges a vehicle that stands, so that a pass at the planner's level over a head is waited
+  out and not flown at (an oncoming meeting passed 0.81 m over a head at 0.75 m/s, the margin -0.08 m).
 - The measured speeds are the norm before the release (the owner's decision of 2026-11-17; specification R3, R8,
   K55): the mission check reads the cave world and the finals world on the lidar, the open sky on the camera set
   alone and the open sky with the satellite signal lost against the means their series flew; what separates the

@@ -600,7 +600,10 @@ alone. A body no scan shows is unseen until a scan has looked at the whole
 column it stood in, for the stand's 5 s at most; within 10 m of the vehicle
 those 5 s do not run while a surface the memory holds hides where it stood
 (since 2026-11-20: a body sighted across a room and gone up its passage was
-no body when the vehicle turned into the passage, r3944). The place kept for a body
+no body when the vehicle turned into the passage, r3944). The planner's law
+keeps 0.9 m between the vehicle and a body's envelope (0.6 m until
+2026-11-20: over a head at the planner's level the vehicle flew on, r4005).
+The place kept for a body
 is a person's reach wider and that and a cell taller (0.75 m over a head),
 a person's walk in the sweep's time wider on every side while its walk is
 not measured, standing still while the reading stays within it, and carried

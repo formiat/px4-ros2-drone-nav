@@ -1331,6 +1331,20 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   const MppiSpeedPolicyResult under = evaluateMppiSpeedPolicy(config, input);
   EXPECT_LT(under.moving_body_limit_mps, approach.moving_body_limit_mps);
   EXPECT_GT(under.moving_body_limit_mps, 0.0);
+  // The default clearance is what the encounters' measure charges a vehicle
+  // that stands against a body walking at it (0.89 m). 0.8 m over the head of
+  // a body that may be under it by then, the vehicle is left nought, where
+  // the body's reach and the radius alone left it a speed (r4005: over a head
+  // by 0.81 m at 0.75 m/s, the margin -0.08 m).
+  input.state.z = 3.5F;
+  bodies[0].centre_map.x = 1.0;
+  EXPECT_GT(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps, 0.0);
+  config.moving_body_clearance_m = MppiSpeedPolicyConfig{}.moving_body_clearance_m;
+  EXPECT_DOUBLE_EQ(config.moving_body_clearance_m, 0.9);
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps, 0.0);
+  config.moving_body_clearance_m = 0.6;
+  input.state.z = 4.0F;
+  bodies[0].centre_map.x = 2.0;
   // A route that climbs before it, at its own height, owes it nothing (r3545).
   std::vector<RouteSample3D> climb;
   climb.reserve(10);
