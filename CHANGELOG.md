@@ -11,6 +11,11 @@ release names the asset tags it was validated with.
   whether the objective and the navigation were still current, and a running count, as do the revocation of a moving
   vehicle and the refused commit. The clause names and the idea of naming them are naipi11's (PX4-ROS2-NAV,
   c2fed51a).
+- A stop the commit refused only because its tick's input, control evidence or objective had aged is prepared once
+  more and published (roadmap item 43 point 1, specification K86): a moving vehicle with a certified stop in hand is
+  no longer left to the offboard's local hold for it (2673 times in the counted flights kept on 2026-11-17, none in
+  the flights since). The goal is given up for the start only when the start is reachable on the same memory (F15).
+  `tools/refused_stops.py` reads what followed every refused stop of a flight.
 - The lidar-inertial estimator on an axis its scans do not observe (specification K70): it learns its accelerometer's
   bias from the velocity the scans take back along the axes they observe, and it fuses the rotors' drag as the
   unobserved axis's velocity, so a straight tunnel no longer leaves that axis to an integration nothing corrects. An

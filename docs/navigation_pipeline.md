@@ -483,6 +483,22 @@ horizons walked the hold a few centimetres at a time, and one recorded flight
 ratcheted twenty centimetres into a wall it had come to rest a hull's width
 from, while supposedly holding.
 
+A stop the commit refuses because what the planning tick captured aged while
+the tick ran (its input older than the limit, the previous control's evidence
+no longer current, the objective replaced) is prepared once more from the
+newest navigation sample, the current objective and time, certified against
+the newest world and committed through the same checks (specification K86).
+Without it the moving vehicle went to the offboard's local hold with a
+certified stop in hand: 2673 times in the counted flights kept on 2026-11-17,
+three stops at 5.7 to 11.5 m/s in one open-sky flight whose tick reached its
+stop 208 to 224 ms after its input. Where the resident control's feedback
+makes no input for the second attempt (its source stamp after its receipt, the
+two nodes' clocks a simulation step apart), the attempt takes the measured
+acceleration. A stop whose navigation, offboard session, path or rest refused
+it is not retried. Its measured-acceleration evidence needs the linear part
+only: it brakes from the linear acceleration with a body the same at every
+heading.
+
 A vehicle at rest after a fail-closed revocation is then rearmed the way it is
 at a captured goal. The local hold knows nothing about obstacles and produces
 no applied-control witness, so a successor route could not commit against it

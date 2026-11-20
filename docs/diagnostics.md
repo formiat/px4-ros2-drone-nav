@@ -321,6 +321,22 @@ under the preparation). `at_rest` and `resident_stop_current` are not failures
 and are not logged: the vehicle is already standing, or the stop that owns it is
 still executable.
 
+`STOP_EXECUTION published=false status=publication_commit_rejected` is a stop
+prepared and certified against the world that the commit refused (specification
+K86): the line carries the commit's `stage`, the `control_clause` of a refused
+control evidence, the input's `input_pose_age_ms` and `input_control_age_ms`
+against `maximum_pose_age_ms` and `maximum_control_age_ms`, the resident
+control's `feedback_source_age_ms` and `feedback_receive_age_ms` (-1 when there
+is none), `objective_current`, `navigation_valid`, `yaw_rate_authoritative`,
+`frame_reset_unresolved`, `refreshed` (whether the stop had been prepared once
+more from the newest input, which K86 does for an aged input, control evidence
+or objective) and `refused_total`, the running count of such refusals.
+`EXECUTION_REVOCATION moving=true ... total=<n>` and
+`EXECUTION_HORIZON_COMMIT committed=false stage=<s> total=<n>` carry running
+counts too: all three lines print at most once a second, so the counts are the
+way to read a flight whole (`tools/refused_stops.py`). A published stop's line
+says `refreshed=true` when it was the second attempt.
+
 `STOP_EXECUTION completed=true speed_mps=<s> position=(x,y,z)
 action=revoke_and_hold_locally` reports that the stop has brought the vehicle to
 rest: the execution is revoked, the offboard holds the position, and the next

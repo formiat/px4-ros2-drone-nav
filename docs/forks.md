@@ -51,6 +51,22 @@ a register of debt, run numbers as evidence). What the copy holds since
   voided for the host's load), 8133 revocations of a moving vehicle, the
   fastest at 15.1 m/s on the open sky: a refused stop here hands a moving
   vehicle to the offboard's blind brake.
+  Done here on 2026-11-18 and 2026-11-19 (roadmap item 43 point 1,
+  specification K86). Taken from them, with their name in the commit
+  (`d1ad24fe`: `Based-on: naipi11/PX4-ROS2-NAV c2fed51a`, `Original-author:
+  naipi11`) and in the CHANGELOG: the idea of naming the clause that leaves a
+  commit's control evidence not current, and the clause names; their code was
+  read (`b8592414`, `c2fed51a`, `b7b2a6d2`) and none of it copied. Not taken:
+  their tools (ours, `tools/refused_stops.py`, reads what followed each
+  refusal by the truth) and a stop latched until rest (a prohibition by
+  history, I3). Measured here over the 1099 flights (`tools/refused_stops.py`):
+  7599 revocations of a moving vehicle in the counted flights, 2673 of them
+  with a certified stop refused only at its commit, 132 of those within 0.5 m
+  of a surface against 5.7 to 16 percent of an Urban flight's airborne time
+  spent that near anyway; their reading "a stop is the world's answer" holds
+  for the stops refused in preparation and not for those 2673. The rule: such
+  a stop is prepared once more from the newest input and committed through
+  the same checks.
 - **PX4 SITL stopping in flight** read from the ulogs (every topic ends at one
   stamp while the truth goes on): `scripts/px4_liveness_runtime.sh` records the
   autopilot's exit; a flight so ended is the host's, not the stack's.
