@@ -135,7 +135,13 @@ file a part in a folder beside it.
    series, the ladder, the sweep of every flight at the first problem with
    one batch of repairs, a change proven on a recorded bag before a flight;
    and it says whether the owner has granted a statistical criterion or
-   flights in parallel, which are otherwise not used.
+   flights in parallel, which are otherwise not used. The flights a stage
+   orders after a change are those of specification A14 and no more: what
+   the change acts on and the Urban five and five. A goal does not ask
+   "every series on one commit", does not order the other locations after
+   every fix, and names a location the owner did not name only as a
+   proposal in the console reply; the whole set is a stage of its own only
+   where the owner asked for it, flown once.
 9. **Recording, right after every step**: the journal (the time with its
    offset, the hypothesis before each run, the result, the decisions with who
    took them and why, the failures, the output paths, the time left after

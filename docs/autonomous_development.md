@@ -144,8 +144,46 @@ a `.keep` file; the weekly pruning deletes the rest.
 ## 5. Flights: How A Measurement Is Made
 
 - The acceptance is five single flights on the stereo set and five on the
-  lidar, on one commit, each read before the next (A1); a code change after
-  a series means the series again for the groups it touches.
+  lidar, on the Urban location, on one commit of flight code, each read
+  before the next (A1).
+- What is flown after a fix (the owner, 2026-11-20; specification A14): what
+  the change acts on, then the Urban acceptance, and nothing else.
+  1. Before any flight: the unit test, the gate, and the replay of a record
+     or a bag where one can prove the change (rule 4 of "a series is spent
+     last", below).
+  2. The defect's own scenario: three flights of the scenario and the set it
+     was found in, each read before the next.
+  3. What the change touches, by this table, and no more:
+
+     | The change touches | Flown besides the acceptance | `tools/fix_series.sh` |
+     |---|---|---|
+     | the warm bodies: the moving layer, the following of bodies, the body's speed law, the thermal core's marks | the three meetings of roadmap item 21 on Urban, three flights a set, eighteen (2.7 h) | `bodies` |
+     | the lidar-inertial estimator's unobserved axis (K70) | the finals world on the lidar, five: the one world with tunnels longer than the lidar's range (1.3 h) | `tunnels` |
+     | the open sky's profile, its leg and its descents | R8's five on the full set (0.6 h) | `open-sky` |
+     | the satellite trust, the estimate without the signal | R8's five and one flight with the signal lost for 90 s | `signal` |
+     | a scenario of its own (the survey, a return home, a light failure) | that scenario, three flights | `TARGET=... tools/series2.sh` |
+     | anything else | nothing | |
+
+  4. The acceptance: Urban five and five (1.2 h), on the fix's commit.
+  5. The whole set (the meetings, R8 with the lost signal and the camera
+     set, the cave and the finals world on both sets, the acceptance:
+     fifty-seven flights, 13 to 14 hours; `tools/fix_series.sh FIRST release`)
+     is flown once, before a release and on the owner's word. The cave, the
+     finals world and the open sky are not flown after a change that does not
+     touch their code, and the agent does not widen this list by itself: a
+     flight it would add is proposed, not flown.
+  6. A group's flights stand for as long as no later commit changes code the
+     group executes. A later fix flies what this rule names for it; for every
+     other group its record gives the commit the group was flown on and the
+     difference since (`git diff --stat <that commit> HEAD` over the flight
+     code), not a new series. "Every series on one commit" is not a criterion.
+  7. Flight code is what a flight executes: `drone_city_nav/src`, `include`,
+     `config` and `launch`, `models/`, `worlds/`, the launching scripts and
+     the Makefile's flight targets. A commit of documents, of `tools/`, of
+     tests or of the mission check (`scripts/headless_runtime_evidence.py`,
+     `scripts/validate_*.py`, read after a flight) restarts nothing.
+  8. A criterion a group does not meet is repaired with its measured cause;
+     then that group and the acceptance are flown again, not the whole set.
 - Flights are flown one at a time through `tools/fly_until_valid.sh` (and
   `tools/series2.sh` under it): the flight's core set (A4), the real-time
   factor 1.0, the imperfections profile on (F21), the quiet-host gate and the
@@ -157,7 +195,12 @@ a `.keep` file; the weekly pruning deletes the rest.
   never waits for the host (the owner, 2026-10-30): the gate belongs to the
   series tools alone.
 - Nothing heavy runs beside a flight: no build, no replay, no analysis
-  (an analysis beside r2161 voided it). Between flights, everything.
+  (an analysis beside r2161 voided it). Between flights, everything. The
+  tracked tree is not touched while a chain flies, a document no more than
+  code: the mission check fails a flight flown from a checkout that is not
+  clean and committed (r4013 to r4015, three meetings failed on those two
+  lines by a document edited beside them). What cannot wait is kept in
+  `git stash` until the chain has ended.
 - A finding is traced to its cause with the tools that read the records:
   `tools/estimate_error.py` (the estimate against the truth, the frame's
   turn), `tools/node_budget.py` (the ticks and the ages), `resources.csv`
@@ -317,3 +360,9 @@ its closure is written with numbers and options.
   problem and repair in one batch, prove a memory change on the bag first; the
   goal file carries its topic in its name; a script worth using again goes
   under git the day it is written, not when a document comes to cite it.
+- 2026-11-20: a goal that asked every series to stand on one commit of
+  flight code flew its fifty-seven flights of four locations again after
+  every fix, five times in three days, most of them for fixes that touched
+  none of the worlds re-flown; and it had added a world the owner had not
+  named. After a fix: what the change acts on and the Urban five and five
+  (`tools/fix_series.sh`); the whole set once before a release.

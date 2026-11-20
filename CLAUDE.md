@@ -45,6 +45,11 @@ the goal file, the registers, the flight rules, the reports, and what is the
 owner's alone. The brief of an unattended session is written by
 [docs/goal_writing.md](docs/goal_writing.md).
 
+After a fix the flights are those of specification A14 and no more
+(`tools/fix_series.sh`): what the change acts on, then Urban five and five.
+The cave, the finals world and the open sky are not flown after every fix;
+the whole set is flown once before a release, on the owner's word.
+
 Logs are pruned after a week (`scripts/prune_sim_logs.sh`: `log/`,
 `log/runs/`, `log/tools/` and the PX4 logs), before every simulation run.
 Anything worth more than a week — a recording, a journal, a series table, a

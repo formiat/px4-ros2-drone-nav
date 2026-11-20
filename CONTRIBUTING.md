@@ -157,6 +157,18 @@ its own (a return home, a light failure) also flies that scenario:
 `TARGET=sim-urban-light-lost-headless ./tools/series2.sh r1110`. The series
 table is written to `log/tools/journal/series_<commit>_<profile>.txt`.
 
+What is flown after a fix is specification A14: what the change acts on,
+then the five and five, and nothing else. `./tools/fix_series.sh FIRST` flies
+the five and five; `./tools/fix_series.sh FIRST bodies` the eighteen meetings
+with a walking body before them (a change to the warm bodies' code),
+`tunnels` the finals world on the lidar (the lidar-inertial estimator's
+unobserved axis), `open-sky` and `signal` R8's flights; `-n` prints the chain
+and flies nothing. The cave, the finals world and the open sky are not flown
+after a change that does not touch their code; the whole set
+(`./tools/fix_series.sh FIRST release`, fifty-seven flights) is flown once
+before a release. A commit of documents, tools, tests or the mission check
+does not restart a series.
+
 **What a flight must show** (specification R1 to R4;
 [`docs/testing.md`](docs/testing.md) has every line of the check):
 
