@@ -643,6 +643,21 @@ that came back from outside the core's field while the vehicle had come down
 to its goal beside the body's corridor, the register's row on a body met from
 outside the fields), 1.17 to 1.41 m/s.
 
+Flown again on 2026-11-20 on the flight code of 2a2541c7, after two repairs
+the meetings asked for (a body a surface hides stays read within 10 m,
+14519f54; the law keeps 0.9 m to a body's envelope, 2a2541c7): r4010 to
+r4019 and r4021 to r4031, no contact, no trace older than the layer's life,
+positive in seventeen of the eighteen. The lidar set: the crossing body
++0.81, +0.99, +1.44 m, the oncoming one +0.63, +0.36, +0.76 m, the one from
+the side +4.19, +1.99, +0.41 m, 1.84 to 2.23 m/s. The camera set: the
+crossing body +0.55, +0.86, +0.64 m, the oncoming one +0.46, +0.84, +0.25 m
+(r4013 to r4015, whose checks carry the failing lines of a checkout edited
+beside them; flown again as r4029 to r4031: +0.78, +0.34, +0.84 m), the one
+from the side +1.00, -0.47 and +0.37 m (r4017: the pass 0.67 m off with a
+gap of 0.45 m; the body had left the core's field in the open and was taken
+off by the stand's 5 s; the register's row, not repaired before the release
+by the owner's decision), 1.09 to 1.38 m/s.
+
 The wall by a standing body (`tools/wall_by_body.py`; a warm body standing
 0.15 m from the corridor's wall on the ordinary route): the lidar set's
 wall whole (r3794, r3796); the camera set's with a hole 1.5 m wide at the
@@ -1697,7 +1712,16 @@ verified here before anything is taken.
    walking body seventeen with a positive margin (+0.31 to +3.47 m) and one,
    the camera set's side meeting r3944, at -0.33 m without a contact: a body
    met from outside the fields at the vehicle's goal, the register's row, not
-   the stop's law. Found on the way and repaired: the goal given up for the
+   the stop's law. After two repairs of the bodies' law that the meetings
+   asked for (K66: 14519f54, 2a2541c7) the meetings and the Urban five and
+   five were flown again on the flight code of 2a2541c7 (2026-11-20, r4010 to
+   r4041): no contact, no stop certified against the newest world refused for
+   an aged input; Urban 2.310 m/s on the lidar (every goal within 0.45 m) and
+   1.394 m/s on the stereo set (four goals within 1.54 m, one acknowledged
+   2.02 m off); the eighteen meetings positive in seventeen (+0.25 to
+   +4.19 m), the camera set's side meeting r4017 at -0.47 m without a contact
+   (a body that left the core's field in the open: the register's row, by the
+   owner's decision of 2026-11-20 not repaired before the release). Found on the way and repaired: the goal given up for the
    start by a closure round the vehicle (F15, r3857); the lidar-inertial
    estimate lost in a tunnel twice, with a contact each time (K70: the
    accelerometer's bias, the rotors' drag along an unobserved axis, the floor
