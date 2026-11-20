@@ -343,6 +343,35 @@ class RuntimeManifestTest(unittest.TestCase):
                 if passes:
                     self.assertIn("under the target 10 m/s (R8)", stdout.getvalue())
 
+    def test_a_measured_speed_is_the_target_where_a_series_stood_under_it(self) -> None:
+        # The owner's decision of 2026-11-17: the speeds measured before the
+        # release are the norm. The cave on the lidar answers to 1.69 m/s (the
+        # floor 1.35), the finals world on the lidar to 1.22 (0.98), the open
+        # sky on the camera set alone to 1.66 (1.33), the full set with the
+        # satellite signal lost to 7.54 (6.03); Urban and the other sets of
+        # those worlds keep R3's and R8's targets.
+        cases = (
+            (420.0, "lidar", "cave", "cave_circuit_practice_01", False, True),
+            (400.0, "lidar", "cave", "cave_circuit_practice_01", False, False),
+            (420.0, "lidar", "cave", "urban_circuit_practice_01", False, False),
+            (300.0, "lidar", "cave", "finals_prize_round_world_07", False, True),
+            (290.0, "lidar", "cave", "finals_prize_round_world_07", False, False),
+            (270.0, "stereo_tof", "cave", "cave_circuit_practice_01", False, False),
+            (405.0, "stereo_tof", "open_sky", "open_sky_baylands", False, True),
+            (395.0, "stereo_tof", "open_sky", "open_sky_baylands", False, False),
+            (2370.0, "lidar", "open_sky", "open_sky_baylands", False, False),
+            (2370.0, "lidar", "open_sky", "open_sky_baylands", True, True),
+            (1800.0, "lidar", "open_sky", "open_sky_baylands", True, False),
+        )
+        for path_m, profile, kind, world, faulted, passes in cases:
+            with self.subTest(path_m=path_m, profile=profile, world=world, faulted=faulted):
+                errors: list[str] = []
+                with redirect_stdout(io.StringIO()):
+                    validator.validate_mean_flight_speed(
+                        self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0),
+                        kind, world, faulted)
+                self.assertEqual(errors == [], passes, errors)
+
     def test_the_kind_of_space_is_read_from_the_scenarios_world(self) -> None:
         config = SCRIPTS.parent / "drone_city_nav/config"
         errors: list[str] = []
@@ -351,6 +380,9 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertEqual(validator.scenario_flight_profile(
             str(config / "urban_circuit_practice_01_point_to_point_scenario.json"), errors), "cave")
         self.assertEqual(validator.scenario_flight_profile("", errors), "cave")
+        self.assertEqual(validator.scenario_world_name(
+            str(config / "open_sky_baylands_point_to_point_scenario.json")), "open_sky_baylands")
+        self.assertEqual(validator.scenario_world_name(""), "")
         self.assertEqual(errors, [])
         validator.scenario_flight_profile(str(config / "no_such_scenario.json"), errors)
         self.assertEqual(len(errors), 1)

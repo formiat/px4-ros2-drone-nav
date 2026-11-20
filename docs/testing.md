@@ -106,7 +106,12 @@ project has two requirements, and the mission check fails on nothing else:
   (`validate_standoff_from_heat_sources`, specification K49, roadmap item 32);
 - the mean flight speed is within 20 percent of the target of the sensor set
   (R3: 2.28 m/s on the lidar, 1.16 m/s on the stereo set; a flight fails under
-  1.82 and 0.93 m/s), and a flight under the target is noted for the register;
+  1.82 and 0.93 m/s; R8: 10 m/s on the open sky), and a flight under the
+  target is noted for the register; a series that stood under the target it
+  was read against is read against its own measured mean (the owner's decision
+  of 2026-11-17: the cave world on the lidar 1.69 m/s, the finals world on the
+  lidar 1.22, the open sky on the camera set alone 1.66 and with the satellite
+  signal lost 7.54; `MEASURED_TARGET_MEAN_FLIGHT_SPEED_MPS`);
 - a goal in the void (roadmap item 31, the scenario `dark_void_mid`) is reached
   when the true position at its acknowledgement is within the estimator's
   published horizontal uncertainty (two sigma, from its status line) plus 2 m;

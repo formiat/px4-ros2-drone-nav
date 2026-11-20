@@ -16,6 +16,11 @@ release names the asset tags it was validated with.
   no longer left to the offboard's local hold for it (2673 times in the counted flights kept on 2026-11-17, none in
   the flights since). The goal is given up for the start only when the start is reachable on the same memory (F15).
   `tools/refused_stops.py` reads what followed every refused stop of a flight.
+- The measured speeds are the norm before the release (the owner's decision of 2026-11-17; specification R3, R8,
+  K55): the mission check reads the cave world and the finals world on the lidar, the open sky on the camera set
+  alone and the open sky with the satellite signal lost against the means their series flew; what separates the
+  speeds from where they could be is one row of the technical debt. `tools/cave_way.py` reads a cave flight's way
+  and `tools/lio/degenerate_lines.py` what a lidar flight's estimator said of its unobserved axis.
 - The lidar-inertial estimator on an axis its scans do not observe (specification K70): it learns its accelerometer's
   bias from the velocity the scans take back along the axes they observe, and it fuses the rotors' drag as the
   unobserved axis's velocity, so a straight tunnel no longer leaves that axis to an integration nothing corrects. An

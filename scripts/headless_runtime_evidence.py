@@ -113,6 +113,25 @@ MINIMUM_MEAN_FLIGHT_SPEED_STEREO_MPS = round(
 TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS = 10.0
 MINIMUM_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS = round(
     TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
+# The owner's decision of 2026-11-17 (specification R3, R8, K55): the speeds
+# measured before the release are the norm and are not repaired now. A target
+# that stood above the mean of a series it was read against is that series'
+# mean, measured on the flight code of c812a502 on 2026-11-19 and 2026-11-20:
+# the cave world on the lidar (r3936, r3937, r3954 to r3956: 1.568 to 1.809
+# m/s), the finals world on the lidar (the two flights of five that reached the
+# goal, r3931 and r3932: 1.152 and 1.279), the open sky on the camera set alone
+# (r3951 to r3953: 1.619 to 1.699, the pair's braking contract), and the open
+# sky's full set with the satellite signal lost for 90 s (r3950: 7.544; 7.53
+# and 7.522 on the two flight codes before it). The targets no series stood
+# under are kept: Urban's 2.377 on the lidar and 1.388 on the stereo set, the
+# open sky's 10.269 on the full set, the cave's and the finals world's stereo
+# flights (1.20 to 1.48). The world is the scenario's canonical world.
+MEASURED_TARGET_MEAN_FLIGHT_SPEED_MPS = {
+    ("cave_circuit_practice_01", "lidar"): 1.69,
+    ("finals_prize_round_world_07", "lidar"): 1.22,
+    ("open_sky_baylands", "stereo_tof"): 1.66,
+}
+TARGET_MEAN_FLIGHT_SPEED_LOST_SIGNAL_MPS = 7.54
 
 TICK_POSITION_PATTERN = (
     r"\[(\d+\.\d+)\] \[production_mppi_node\]: PRODUCTION_MPPI_TICK [^\n]*?"
@@ -377,7 +396,8 @@ def simulation_time_at(pairs: list[tuple[float, float]], wall_s: float) -> float
 def validate_mean_flight_speed(ros_log: str, errors: list[str],
                                navigation_sensor_profile: str = "lidar",
                                truth_path: Path | None = None,
-                               flight_profile: str = "cave") -> None:
+                               flight_profile: str = "cave", world: str = "",
+                               faulted_signal: bool = False) -> None:
     """The path the vehicle flew between mission readiness and the successful
     result over the simulation time that passed between them. The project
     owner's decision of 2026-09-25: the wall clock measured this until then,
@@ -394,6 +414,14 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
         minimum_speed_mps = MINIMUM_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
         target_speed_mps = TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
         requirement = "R8"
+    measured_speed_mps = MEASURED_TARGET_MEAN_FLIGHT_SPEED_MPS.get(
+        (world, navigation_sensor_profile))
+    if faulted_signal and flight_profile == "open_sky" and not stereo:
+        measured_speed_mps = TARGET_MEAN_FLIGHT_SPEED_LOST_SIGNAL_MPS
+    if measured_speed_mps is not None:
+        target_speed_mps = measured_speed_mps
+        minimum_speed_mps = round(
+            measured_speed_mps * (1.0 - ALLOWED_MEAN_FLIGHT_SPEED_SHORTFALL), 2)
     readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
     result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
     if readiness is None or result is None:

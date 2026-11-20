@@ -625,6 +625,18 @@ The two commits before flew the same eighteen meetings positive (4aa7c41a,
 r3712 to r3731: +0.36 to +2.11 m; 8ddab0bf, r3753 to r3772: +0.43 to
 +4.33 m) and the same acceptance (r3732 to r3752, r3773 to r3792).
 
+Flown again on 2026-11-19 and 2026-11-20 on the flight code of c812a502 (the
+acceptance before the release; r3939 to r3944, r3980 to r3991): no contact,
+no trace older than the layer's life, positive in seventeen of the eighteen.
+The lidar set: the crossing body +1.20, +0.50, +1.48 m, the oncoming one
++0.43, +0.31, +1.04 m, the one from the side +0.63, +3.47, +1.88 m, 1.84 to
+2.11 m/s. The camera set: the crossing body +1.36, +0.78, +0.81 m, the
+oncoming one +0.39, +0.31, +0.83 m, the one from the side +0.78, +0.66 and
+-0.33 m (r3944: the closest approach 0.69 m with a gap of 0.38 m; a body
+that came back from outside the core's field while the vehicle had come down
+to its goal beside the body's corridor, the register's row on a body met from
+outside the fields), 1.17 to 1.41 m/s.
+
 The wall by a standing body (`tools/wall_by_body.py`; a warm body standing
 0.15 m from the corridor's wall on the ordinary route): the lidar set's
 wall whole (r3794, r3796); the camera set's with a hole 1.5 m wide at the
@@ -1473,6 +1485,14 @@ trust's normalisation its allowance and inflates the whole window's
 translation before the fix is fused (584d4341, 4c8ca7eb, e6b6d563). Stages
 3 and 4 remain.
 
+**Stage 5 flown again on 2026-11-20** (the flight code of c812a502; the goal of
+2026-11-17, the acceptance before the release): the full set r3945 to r3949,
+10.242, 10.169, 10.352, 10.275 and 10.306 m/s, 10.269 m/s mean, no contact,
+every goal 0.65 to 1.41 m from the truth; the signal lost for 90 s r3950,
+7.544 m/s, the first goal 5.46 m from the truth against 5.44 m allowed (the
+register's row); the camera set alone r3951 to r3953, 1.699, 1.619 and 1.666
+m/s, every goal within 1.63 m, no contact.
+
 **Stage 5 done on 2026-11-13** (d5188337; the goal of 2026-11-05, part 4). R8 is
 measured: five counted flights of the 1.6 km route on d5188337, r3451 to r3455, 10.313, 10.168, 10.151, 10.442 and 10.043 m/s, 10.223 m/s mean (143.9 to 149.6 s), no contact, every goal within its rule (0.58 to 1.48 m from the truth at the acknowledgement).
 The stage was first flown whole on 337d262f on 2026-11-12 (r3399 and r3401 to r3404, 10.258 m/s mean); the cave's acceptance there left one lidar flight under a flight's floor (r3416, 1.762 m/s against 1.82: the clearance laws compared the body's clearance to the millimetre and held the vehicle at references it does not fly), and with that repaired (K18's contact clearance, bb539716) the whole stage was flown anew.
@@ -1645,6 +1665,39 @@ verified here before anything is taken.
    refusal, name the cause of the refusals at the commit, choose the rule and
    repair, accept by series. The first thing to do of the whole roadmap: it
    is a safety law.
+
+   **Point 1 done on 2026-11-20** (the goal of 2026-11-17; specification K86,
+   the flight code of c812a502). Reproduced: a stop prepared and certified for
+   a vehicle at 4 m/s is refused at its commit by each stage the kept flights
+   refuse stops at (`ACertifiedStopIsRefusedAtItsCommitByEachStaleness`).
+   Measured over the 1099 kept flights (`tools/refused_stops.py`): 7599
+   revocations of a moving vehicle in the counted flights, 2673 after a
+   certified stop, 132 of those within 0.5 m of a surface against a base of
+   5.7 to 16 percent of Urban's airborne seconds, 23 crashes, all on code
+   before d5188337. The cause by stage: the input aged in the tick (the open
+   sky's tick reaches its stop 208 to 224 ms after its input), the measured
+   acceleration's authority lost on the newest sample, the objective replaced
+   by a return's trail, the feedback's source stamp a simulation step after
+   its receipt; the navigation's loss and a world that changed under the stop
+   are by substance. The rule: such a stop is prepared once more from the
+   newest input and objective and committed through the same checks; a stop's
+   measured acceleration needs its linear part only. Accepted on c812a502
+   (r3931 to r3991, fifty-seven counted flights, 2026-11-19 and 2026-11-20):
+   no stop certified against the newest world was refused for an aged input
+   in any (six certified stops refused by substance: four for a world that had
+   changed, two at the satellite signal's loss); no contact; Urban five and
+   five (2.377 and 1.388 m/s, every goal within 0.87 m), the open sky's five
+   (10.269 m/s), the held-out worlds' twenty; of the eighteen meetings with a
+   walking body seventeen with a positive margin (+0.31 to +3.47 m) and one,
+   the camera set's side meeting r3944, at -0.33 m without a contact: a body
+   met from outside the fields at the vehicle's goal, the register's row, not
+   the stop's law. Found on the way and repaired: the goal given up for the
+   start by a closure round the vehicle (F15, r3857); the lidar-inertial
+   estimate lost in a tunnel twice, with a contact each time (K70: the
+   accelerometer's bias, the rotors' drag along an unobserved axis, the floor
+   of an observed axis; r3914, r3929). naipi11's crash that opened the point
+   was withdrawn by its authors; their clause names are taken with their name
+   (d1ad24fe). Points 2 to 5 stay open.
 2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
    which PX4 SITL stopped is void, not a crash of the stack.
 3. **The lattice edge left blocked**: an edge the probe budget did not reach
@@ -5259,6 +5312,17 @@ grid; the cave: (-14.25, 50.25, 2.23), 389.5 m), each start and goal in the stag
 grid; the finals survey's start and volume moved with its scenario. The flights are to be flown again inside the
 worlds; until they are the item is open, and K55's figures and the register's rows that rest on those flights (its
 row of this day lists them) are unverified. The record of 2026-10-31 follows as it was written.
+
+**Flown again on 2026-11-19 and 2026-11-20** (the flight code of c812a502; the goal of 2026-11-17, the acceptance
+before the release; specification K55 carries the figures): twenty flights without a contact. The cave world: the
+lidar five of five at B (0.22 to 1.36 m, 1.568 to 1.809 m/s), the stereo set one of five in the radius, one
+acknowledged 2.51 m off and three not within the budget (the base: five acknowledged, two in the radius). The cave's
+camera flights were measured against the base's own code, flown again the same day in a copy at 5b7b3380: two of
+its three flights went back to the start and found no goal, the third acknowledged 2.43 m off, so the difference is
+not the code's (the register's row). The finals world: the lidar two of five at B as before, the stereo set one of
+five at B and one acknowledged 4.35 m off (the base: none). Two finals lidar flights on the way lost their estimate
+in a tunnel and met it (r3914, r3929), which K70's repair answers; the five counted flights after it have no
+degenerate run over 4.2 s and no scan withdrawn.
 
 **Done on 2026-11-08** (the goal of 2026-11-05, part 2a; commits 2ab29dfc, 5b7b3380 and the closing commit). The twenty
 flights inside the worlds' shells, on one commit (5b7b3380, the imperfections profile, the seeds the run numbers; the

@@ -434,6 +434,17 @@ def scenario_flight_profile(scenario_path: str, errors: list[str]) -> str:
         return "cave"
 
 
+def scenario_world_name(scenario_path: str) -> str:
+    """The name of the scenario's canonical world (its file's name up to the
+    first dot), which the measured speed targets are kept by; empty without a
+    scenario or one that cannot be read (scenario_flight_profile reports it)."""
+    try:
+        return Path(json.loads(Path(scenario_path).read_text(encoding="utf-8"))[
+            "canonical_world"]).name.split(".")[0]
+    except (OSError, KeyError, ValueError):
+        return ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate production MPPI headless run logs."
@@ -583,6 +594,8 @@ def main() -> int:
             overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
             scenario_flight_profile(overrides.get("POINT_TO_POINT_SCENARIO_PATH", ""), errors),
+            scenario_world_name(overrides.get("POINT_TO_POINT_SCENARIO_PATH", "")),
+            bool(overrides.get("GNSS_FAULTS", "")),
         )
         validate_controller_dynamics(
             args.runtime_manifest.parent, ros_log, notes,
