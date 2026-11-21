@@ -9,6 +9,49 @@ named (`git cherry-pick -x` for a commit taken as it is; `Based-on:` and
 only after it has been read, gated and flown as any change is. A report of the
 code flown on a real vehicle is recorded here and may be cited.
 
+## 2026-11-20 (the second review; 33 forks listed)
+
+The window 2026-11-12 to 2026-11-20. `naipi11/PX4-ROS2-NAV` has no commit
+after 2026-11-16 (its head `9bde562b`); every other fork holds no commit of
+its own that is not here; one new fork, `kaveh-hooshmandi/px4-ros2-drone-nav`
+(2026-11-14), a copy; `Lotus56/the_interceptor_drone` is no longer listed as
+a fork and is unchanged since 2026-10-26. No sign of a real vehicle. What of
+naipi11's work, read for the first review, is not here and applies (the
+agent's reading, taken by the owner's word of 2026-11-21; their code read by
+its diffs, not built here; roadmap item 43 points 5 to 7):
+
+- **The cleanup tells checkouts apart by the image or the mount** (theirs:
+  `20121042`, by the mount alone). Here
+  `scripts/cleanup_sim_processes.sh`, `container_belongs_to_repository`,
+  still takes a container for this repository's when it runs the dev image
+  *or* mounts the repository: a second checkout on the host runs the same
+  image, and one checkout's `stop_sim.sh` between its flights stops the
+  other's flight, which then reads as the host's or the autopilot's failure.
+  A base was flown here in a copy beside the working tree on 2026-11-19 and
+  20 (`072941ab`), one flight at a time; nothing was stopped, by the order
+  alone. To take: the mount alone.
+- **One flight a checkout** (theirs: `54635cd6`, `cc30b16a`: a lock
+  directory with its owner's pid in `run_drone_nav_sim.sh`; a second flight
+  refused with the owner named, a dead owner's lock taken over). Here there
+  is no lock: a series started twice overwrites a run's record under one
+  number, and two flights of one checkout share the models' directory, the
+  world and PX4. To take.
+- **The clause of a refused latest-evidence revalidation** (theirs:
+  `b7b2a6d2`, with the path's points built once in `d7ed1713` and the unused
+  boolean removed in `9bde562b`). Here `revalidateFiniteExecution`
+  (`execution_supervisor_3d_horizon.cpp`) returns a boolean: inside
+  `evidence_not_current` an obstacle that stands on the path is not told
+  from a revalidation that could not be made (a view incomplete, no raw
+  world). The other half of what was taken on 2026-11-18 for the control's
+  evidence. To take, with the points built once from the start.
+- **The guard of PX4 SITL's MAVLink ports: not taken.** A foreign pymavlink
+  client took their port 14550 and spoiled four flights (their host carries
+  another simulator). This host flies one simulator and no other MAVLink
+  client; the foreign load that voided flights here (an Android emulator)
+  was processor time, not datagrams. To be weighed again when a second
+  MAVLink client or simulator stands on the host; the lock above answers
+  the case of two flights of one checkout.
+
 ## 2026-11-17 (the first review; 34 forks, 174 stars)
 
 | Fork or copy | Its own work | What is in it |

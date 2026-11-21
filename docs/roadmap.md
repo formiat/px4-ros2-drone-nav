@@ -1732,7 +1732,7 @@ verified here before anything is taken.
    accelerometer's bias, the rotors' drag along an unobserved axis, the floor
    of an observed axis; r3914, r3929). naipi11's crash that opened the point
    was withdrawn by its authors; their clause names are taken with their name
-   (d1ad24fe). Points 2 to 5 stay open.
+   (d1ad24fe). Points 2 to 7 stay open.
 2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
    which PX4 SITL stopped is void, not a crash of the stack.
 3. **The lattice edge left blocked**: an edge the probe budget did not reach
@@ -1740,7 +1740,20 @@ verified here before anything is taken.
 4. **The lidar's self filter**: 0.9 m against propellers that end at 0.386 m.
    Find why 0.9, lower it, fly the series.
 5. The log line of a refused stop with its evidence (their pull request #2),
-   `crash_window.py` and `airframe_braking.py` as tools.
+   `crash_window.py` and `airframe_braking.py` as tools; and (the review of
+   2026-11-20) the clause of a refused latest-evidence revalidation
+   (`b7b2a6d2`, `d7ed1713`, `9bde562b`): `evidence_not_current` tells an
+   obstacle on the path from a revalidation that could not be made.
+6. **The cleanup that stops another checkout's flight** (the review of
+   2026-11-20; `20121042`): a container is this repository's by its
+   workspace mount alone, not by the dev image, which every checkout on the
+   host runs.
+7. **One flight a checkout** (the review of 2026-11-20; `54635cd6`,
+   `cc30b16a`): a lock in `run_drone_nav_sim.sh`, a second flight refused
+   with its owner named.
+
+The guard of PX4 SITL's MAVLink ports is not taken (one simulator a host;
+[forks.md](forks.md), the review of 2026-11-20).
 
 Each with its author named ([forks.md](forks.md)).
 
