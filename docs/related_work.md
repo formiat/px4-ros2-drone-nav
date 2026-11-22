@@ -50,7 +50,8 @@ lidar set's half of roadmap item 41.
 
 - No real flights: every stack above has flown; this one is proven in
   simulation and on recorded data (EuRoC, NTU VIRAL).
-- No reviewed publication behind it.
+- No reviewed publication behind it (roadmap item 58), and no acceptance
+  another stack can be flown through (roadmap item 57).
 - No radar for smoke (cameras, time of flight, a thermal core).
 - No swarm (roadmap item 15).
 

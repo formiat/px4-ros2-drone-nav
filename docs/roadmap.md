@@ -19,6 +19,68 @@ Numbers are stable identifiers. A completed item keeps its number, is
 summarized in the Completed section at the end of this file, and is never
 renumbered or reused; a new item takes the next free number.
 
+## Version 1.0
+
+**Type:** the project's scope. Proposed in the owner's discussion of
+2026-11-22 and recorded at the owner's word, with the agent's amendments
+(named in the commit); the composition stays the owner's to change. A MAJOR
+version is the owner's word ([release_process.md](release_process.md), step
+1); this section says what that word would stand on, so that the roadmap has
+an end and "done" is a moment. Twenty-eight items are open with those
+proposed the same day, and the open ones grow (items 21 and 43 did).
+
+Version 1.0 is the stack that a team with a vehicle could take, fly in the
+simulator on its own host in an afternoon, trust, and build on. It is
+reached when all of the following hold on one commit:
+
+1. **Safety.** Item 43 is closed, all seven points. Of item 44, the layers
+   that need no hardware are built and flown in the simulator: the law for a
+   slow computer, the staged failsafe, the external PX4 mode, the flight
+   supervisor in its own process and the manager of estimators. The safety
+   filter is in only if a measurement over the kept flights shows what it
+   would have corrected: it stands between the horizon and every command,
+   and every acceptance is flown again for it. The sensors' synchronisation
+   stays a design, since it needs the sensors.
+2. **One vehicle, one profile.** Item 45 is done: the cave and the open sky
+   are flown by one launch. Item 39's register rows that touch an acceptance
+   are closed or named.
+3. **A bounded estimate.** Item 41 is done for the stereo set, where its
+   stage 0 said the item goes on. For the lidar set the need is measured in
+   the held-out worlds, and the closure is built only if that measurement
+   says a mission needs it.
+4. **Missions.** Beyond "fly to a point" and the survey, two of item 47's
+   modules exist. The patrol and the inspection of an object are proposed,
+   being the nearest to the core as it is. They are commanded through item
+   59's interface and its station in the simulator (stages 0 and 1); the
+   map, the picture and the link's model may follow in a 1.x release.
+5. **People can come in.** Item 46 runs (the build, the tests, the replay
+   gate and a short flight). Item 49's guide and map are written on the
+   release's code. Item 57's benchmark is published with this stack as its
+   baseline; another stack's table is that item's completion and does not
+   hold the release. Item 58's report stands complete in the repository; its
+   submission is the owner's.
+6. **The whole acceptance.** Every world on both sensor sets is flown on the
+   release's commit, with every R requirement of the specification met or its
+   gap named in the register, as v0.8.0 was cut.
+
+**Not in 1.0.** These stay items and may land in a 1.x release or later:
+items 15 and 48 (the fleet, a project of its own), 22, 26, 27's later
+blocks, 30, 36, 37, 50, 51, 52 (recurring), 53 (R8's aim of 20 m/s), 54, 55,
+56 and 60.
+
+**The order proposed:** item 43's remainder and item 21's look at a body;
+items 45, 44 and 46; item 41; item 49, written after the items that change
+what it describes; then item 47's two modules with item 59, items 57 and 58
+on the release's records, and the whole acceptance.
+
+**After 1.0:** maintenance (the forks' review, the register, 1.x releases),
+the benchmark's results as others send them, and the hardware when a vehicle
+exists (item 27).
+
+To be decided by the owner: whether item 21's doors and cold bodies are in
+(they matter for a product among people); which two missions; whether the
+lidar set's closure is in when its measurement asks for one.
+
 ## 15. Realistic Cooperative Communication
 
 **Type:** dependent realism stage.
@@ -1819,7 +1881,7 @@ flown at a set distance, covered by pictures, on the distance field); a
 search of an area by heat; the following of a target the operator names (new
 and large: an open-sky speed, a ground station; re-acquiring a lost target is
 where a neural detector may be proposed, item 50). Three parts shared by all:
-a ground station and its command link, a dock (a landing on a marker,
+a ground station and its command link (item 59), a dock (a landing on a marker,
 charging, a takeoff on command), a fleet (item 48).
 
 ## 48. The Fleet Layer
@@ -1881,6 +1943,13 @@ SubT-MRS (real smoke, darkness, a thermal camera) against the models of items
 item 39's stages 3 and 4; stereo matching on Middlebury and RGB-NIR pictures
 (naipi11's); calibration as a procedure (Kalibr on a target in Gazebo, the
 extrinsics and the time offset estimated online).
+
+Proposed on 2026-11-22 (the owner's discussion): recordings of our own, from
+a stereo camera with an IMU carried by hand through a building (a few
+hundred dollars by the discussion's figure, not read from a price list). The
+estimator and the memory then run on our own sensors before any vehicle
+exists, as they run on item 25's recordings, and it is the cheapest answer
+to "simulation only". The purchase is the owner's.
 
 ## 52. The Code's Hygiene
 
@@ -1961,10 +2030,228 @@ simulation side stays in C++; a second set of quality rules and gate checks;
 the onboard image for arm64.
 
 The order, if it is taken: the new processes first (item 44's flight
-supervisor, item 48's fleet layer, a ground station), then the small nodes
+supervisor, item 48's fleet layer, item 59's ground station), then the small nodes
 with no heavy mathematics (the thermal core, the survey mission, the mission
 monitor), and only then the memory, the estimators and the planner, each
 behind the replay.
+
+## 57. An Open Benchmark: The Worlds And The Acceptance For Any Stack
+
+**Type:** contribution, general; proposed in the owner's discussion of
+2026-11-22. In the review of the analogs ([related_work.md](related_work.md),
+by their READMEs) no open stack was found that publishes a statistical
+acceptance in Gazebo; this project has one, and it can serve stacks other
+than its own.
+
+**Hard prerequisites:** item 33 (the held-out worlds); item 46 for the
+runner's own tests. **Validation prerequisite:** one stack other than this
+one run through it.
+
+What exists elsewhere (by their abstracts, read on 2026-11-22): AvoidBench
+(TU Delft, 2023; Unity pictures over RotorS dynamics) and FlightBench
+(Tsinghua, 2024) score a planner that avoids obstacles; the worlds flown
+here are those of DARPA's SubT Virtual Competition, whose own scoring ended
+with it in 2021. What none of them is: a whole stack on its own estimate,
+with no GNSS, on ROS 2 with PX4 SITL in Gazebo Harmonic, judged in truth.
+They are read in full before stage 1, so that the tasks and the score are
+comparable where they can be.
+
+What exists here today and judges only this stack, wired through its own
+launch:
+
+- **The worlds:** Urban Circuit Practice 01, the cave circuit, the finals
+  world and the open sky, each with its truth grid.
+- **The conditions:** darkness with the carried light, smoke (A13), the real
+  vehicle's imperfections (K52) and the satellite signal lost.
+- **The checks, judged in truth:** no contact (R1), the goal within 2.0 m
+  (R2), the mean speed (R3, R8), no entry into dense smoke (R7) and the
+  survey's coverage (R9).
+- **The series and their tools:** `tools/world_series.sh` and
+  `tools/flight_sweep.py`.
+
+The stages:
+
+0. **What may be redistributed, and who could fly it.** The three SubT
+   worlds carry their licence inventories already (CC-BY-4.0 and CC0-1.0,
+   [environment_candidates.md](environment_candidates.md)); the open sky's
+   world is the autopilot's with Fuel's models and is read the same way. A
+   world that cannot be redistributed is fetched by the user from its source
+   by a script. The other benchmarks are read, and a first stack other than
+   this one is looked for.
+1. **The interface.** The harness owns Gazebo, PX4 SITL, the sensors, the
+   truth and the check. The stack under test receives the sensors' topics
+   (ROS 2, each type named) and a goal, commands PX4 over uXRCE-DDS or
+   MAVLink, and reports its result. A stack that speaks PX4 offboard should
+   need nothing but a launch file of its own.
+2. **The tasks.** Fixed starts and goals per world, the seeds and the
+   conditions, in levels: a known map; GNSS; no GNSS; darkness; smoke.
+3. **The score per task:** the rate of success (no contact and the goal
+   reached), the mean speed, the distance from the truth at the goal, and the
+   compute used (cores, the GPU), with the host named and the real-time
+   factor recorded (A7).
+4. **The baseline:** this stack's results on a release's commit.
+5. **Published:** `docs/benchmark.md`, the table of results, and the way to
+   send one (a pull request carrying the runs' records).
+
+### Measurement And Completion
+
+A stack other than this one is flown by the runner through at least one
+world, and its table stands beside the baseline. Until then the item is a
+reproducible acceptance of this stack, which is worth publishing by itself.
+
+The risk is that first stack. No candidate is known today: the stacks that
+fly without GNSS are nearly all ROS 1 ones, built for Gazebo Classic, and
+do not run on Jazzy and Gazebo Harmonic as they are; aerial-autonomy-stack
+is on Humble by its README and is a framework rather than a stack that
+plans through obstacles; Agipix documents Humble and Isaac Sim. The nearest
+is MRS's move to ROS 2 Jazzy, when it is made.
+
+To be decided by the owner: whether the benchmark lives in this repository
+or in one of its own.
+
+## 58. A Technical Report
+
+**Type:** documentation and credibility; proposed in the owner's discussion
+of 2026-11-22. Every close analog in [related_work.md](related_work.md)
+stands on reviewed publications; this project has none ("Where It Lags"),
+and what it has that the others, by their READMEs, do not (the MPPI on the
+GPU in a flying stack, the persistent D\* Lite on a 3D lattice, the
+acceptance by series judged in truth) is not written down anywhere a reader
+of the field looks.
+
+**Hard prerequisites:** a release whose records the tables are made from.
+
+What it says:
+
+- **The architecture,** on one page: the estimators, the memory, the
+  distance field, the persistent planner, the MPPI and the supervisor.
+- **The invariants** the navigation stands on: the few rules of the
+  specification that carry most of it.
+- **The acceptance as a method:** a series per commit, judged in truth, the
+  replay (K62), and the count of flights behind the behaviour.
+- **The results:** Urban on both sets, the held-out worlds, the open sky's
+  10 m/s, darkness, smoke and the survey's coverage, each table made from the
+  release's records.
+- **What is not shown,** named as plainly as the release notes name it: the
+  simulator only, the x500 model's aerodynamics (the rotor drag alone,
+  nothing near walls and the ceiling), the sensors' models.
+
+Where it goes: first arXiv (cs.RO), where a first-time submitter needs an
+endorsement in the category (arXiv's rule, read again when submitting).
+Then, as the owner chooses, the Journal of Open Source Software (a short
+paper about the software, reviewed openly on GitHub) or a workshop paper at
+ICRA or IROS (their dates read when one is chosen). Each venue's scope, and
+its rule on text and code made with an AI agent, is read before a line is
+written for it: this repository is written with one, and says so.
+
+The rules: every figure is produced from a record by a script under git (the
+rule of [tools/README.md](../tools/README.md)); the text is in English; the
+author is the owner; the agent prepares it and the owner submits it.
+
+### Measurement And Completion
+
+The report's source sits under `docs/report/` with the scripts that make its
+tables, every number reproducible by a command in the repository. The
+submission is the owner's.
+
+To be decided by the owner: arXiv alone or a venue after it, and which.
+
+## 59. The Ground Station
+
+**Type:** new capability, general; proposed in the owner's discussion of
+2026-11-22. Items 47 and 56 both name a ground station; this item gives it a
+number of its own. The language and the toolkit are the owner's choice: Rust
+with egui was proposed, and item 56's order puts the new processes first.
+
+**Hard prerequisites:** item 44's flight supervisor. The station commands
+the supervisor and never the planner directly. **Validation prerequisite:**
+the channel model of item 15 or item 48, for a link that loses packets.
+
+QGroundControl stays the pilot's station: the arming, the mode (the external
+PX4 mode of item 44 is switched there) and the autopilot's parameters. This
+station is the mission's.
+
+What the station shows:
+
+- the vehicle's state and health: the estimate and its uncertainty, the
+  battery, the autopilot's mode and the supervisor's state;
+- the map: the memory's occupied cells, decimated to what the link carries;
+- the route and the goal, and the survey's progress (item 34);
+- the camera's picture at a low rate;
+- the mission's events (K26).
+
+What it sends: a new goal, a stop (a hover), a landing, a return home and the
+survey's volume. It never sends an arming or a mode (K29: the pilot arms the
+vehicle and chooses its mode).
+
+The link: the commands and the state go to the supervisor (MAVLink was
+proposed, so that they pass where the telemetry radio passes; decided in
+stage 0); the map and the picture go over a channel that may drop packets
+(Zenoh was proposed for item 48). The loss of the station is handled by item
+44's lost-link law on the vehicle, not by the station.
+
+The stages:
+
+0. **The interface:** the supervisor's command and state messages.
+1. **A station in the simulator:** the telemetry and the commands.
+2. **The map and the survey's progress.**
+3. **The picture.**
+4. **The link model:** loss, delay and bandwidth, and what the vehicle does
+   at each.
+
+### Measurement And Completion
+
+In the simulator, a scripted operator works through the station's own
+interface: a goal changed in flight, a stop at speed, a return home, and the
+station killed mid-flight (the vehicle following item 44's law), under the
+channel model. The Urban series flies unchanged with the station attached.
+
+## 60. A Second Platform: The Same Core On The Ground (optional)
+
+**Type:** generality, and a cheap way to real hardware; proposed in the
+owner's discussion of 2026-11-22, for the owner's decision whether it is
+taken at all. Not before items 44, 46 and 49.
+
+The estimators, the memory, the distance field and the planner do not
+depend on the kind of vehicle, and the MPPI comes from ground vehicles. The
+item: a ground platform behind the same "vehicle to stack" interface that
+item 48 needs. In Gazebo first, a wheeled model on Urban's floors; then a
+small real platform with a stereo camera and an IMU, where an error breaks
+nothing and no flight permission is asked for.
+
+What changes, which is more than the dynamics (the agent's reading of
+2026-11-22, none of it measured):
+
+- the rollouts' dynamics per vehicle, and the base's interface in place of
+  the multicopter's offboard (PX4's rover support, or the platform's own
+  velocity command; to be read);
+- a route held to the ground, and what the drone has no need of: a floor
+  that carries the vehicle. Unknown space is traversable for a vehicle that
+  flies (the invariant); for wheels a floor not yet seen, a stair and a
+  hole are not, so a support layer over the memory is new work;
+- the estimator: a visual-inertial estimate on a vehicle that moves in a
+  plane at a steady speed observes its scale and its biases poorly (a known
+  result of the field, to be read in its papers before the stage), so the
+  wheels' odometry is one more input.
+
+A legged platform takes the same velocity command, but its vendor's gait is
+commonly a learned policy in the control loop, which the rule of item 50 is
+read against before one is chosen.
+
+What it is not: a second project. The drone stays the product. Other kinds
+of robot were weighed in the same discussion and left: arms are another
+field with its own planners; a humanoid's walking is a learned policy; a
+boat nearly always has GNSS, which is not this stack's ground; under water
+the cameras and the lidar this stack reads give way to sonar. The cheaper
+first step to real sensors is item 51's rig carried by hand.
+
+### Measurement And Completion
+
+Urban's floors are driven point to point under the same acceptance (R1, R2,
+the speed measured rather than set), and the drone's series is unchanged.
+
+To be decided by the owner: whether the item is taken, wheeled or legged,
+and when.
 
 ## Completed
 

@@ -9,6 +9,24 @@ named (`git cherry-pick -x` for a commit taken as it is; `Based-on:` and
 only after it has been read, gated and flown as any change is. A report of the
 code flown on a real vehicle is recorded here and may be cited.
 
+## 2026-11-22 (whose vehicle could fly it)
+
+A flight of this code on someone else's vehicle was weighed in the owner's
+discussion of that day; no fork shows a vehicle that could make one.
+
+- **naipi11:** none in sight. Their own words (`d59ba2ac`, 2026-11-14): "a
+  target vehicle's braking distance and its camera's confident range stay
+  unestablished until one is flown". Between our `4fc128d9` and their head
+  `9bde562b` the copy gains no recording from sensors of its own, no
+  calibration and no parameters of an airframe (read here by the names of
+  the changed files). Whether a vehicle exists is a question to ask, and
+  asking it is the owner's.
+- **Lotus56:** a printed airframe (print files and photos); its README names
+  no electronics and says "our plan, not yet working code"; unchanged since
+  2026-10-26. A weak candidate, and by its subject not one to join: the
+  interception of aircraft, which this project removed (the Completed items
+  1 to 5).
+
 ## 2026-11-20 (the second review; 33 forks listed)
 
 The window 2026-11-12 to 2026-11-20. `naipi11/PX4-ROS2-NAV` has no commit
