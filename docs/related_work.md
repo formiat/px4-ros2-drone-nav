@@ -36,6 +36,37 @@ graph where it is built with g2o; its README says the loop closure detection
 is not yet supported in the ROS 2 wrapper. A candidate reference for the
 lidar set's half of roadmap item 41.
 
+Read on 2026-11-22, by their READMEs, neither built here:
+
+- **visloc-rs** (`rsasaki0109/visloc-rs`; MIT or Apache-2.0; Rust, begun in
+  2026-05): structure from motion, a stereo-inertial SLAM that is a port of
+  Basalt with a keyframe mapper that closes loops, a pose graph,
+  localisation against a saved map, and Gaussian splatting from photos and
+  360-degree video. No C++, OpenCV or CUDA to build; the GPU through wgpu,
+  optional. Places are recognised without a network (VLAD with LSH over
+  SIFT or ORB descriptors); learned features are an option. Three ROS 2
+  nodes over RustDDS, by its README tested RustDDS to RustDDS and "not yet
+  against a ROS 2 install", and "not yet tried on a real robot"; no lidar.
+  Its own figures, not a leaderboard's: better than ORB-SLAM3 on 9 of 11
+  EuRoC sequences, 0.057 m and 0.072 m on MH_03 and MH_05 with the closure.
+  For this project: a candidate third reference for the stereo set's half
+  of roadmap item 41 and a reading for its stage 1; an example for item 56.
+  Its "street walked with a camera into a simulator" is a splat that
+  pictures are rendered from, with no collisions: the sensors here (a
+  lidar, a depth pair, time of flight) need geometry, and Gazebo does not
+  render splats, so it is not a source of worlds.
+- **GSeg3D** (`dfki-ric/ground_segmentation` and its wrapper
+  `ground_segmentation_ros2`; DFKI Robotics Innovation Center; BSD-3; C++
+  on PCL and nanoflann; Humble and Jazzy): a lidar scan split into ground
+  and the rest on a grid in two passes, coarse and then fine, with an
+  optional IMU for the gravity's direction; on the processor alone. Its
+  authors' figures on SemanticKITTI: a precision of 96 to 99 percent, a
+  recall of 85 to 91, about 48 ms a scan; dense vegetation is its named
+  weakness. Not for the vehicle that flies: the memory here is
+  three-dimensional and a floor is an obstacle like a wall, and 48 ms is
+  most of a planner's tick. A candidate for the support layer of a ground
+  platform (roadmap item 60).
+
 ## What Sets This Project Apart
 
 1. A full stack on ROS 2 with PX4 over uXRCE-DDS: nearly every stack that flies
@@ -62,7 +93,7 @@ ROS 2 and PX4, proven in simulation.
 
 This project is MIT. Code may be taken, with its copyright notice kept, from
 BSD and MIT projects (MRS, NTNU, Aerostack2, AirStack, CERLAB,
-px4-ros2-interface-lib, voxblox, FASTER, MIGHTY). From GPL projects (FAST_LIO,
+px4-ros2-interface-lib, voxblox, FASTER, MIGHTY, GSeg3D, visloc-rs). From GPL projects (FAST_LIO,
 ROG-Map, EGO-Planner, FUEL), non-commercial ones (KR, Fast-Drone-250,
 Agilicious) and those without a licence (SUPER, RACER) only ideas are taken,
 in an implementation of our own. GBPlanner's "civilian use only" is not a

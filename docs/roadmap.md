@@ -1661,6 +1661,13 @@ The stages:
    Kitware's LidarSlam ([related_work.md](related_work.md), read on
    2026-11-20): loop closure with TEASER++ and a pose graph with g2o, the
    closure not yet in its ROS 2 wrapper by its README; not built here.
+   For the stereo set a candidate third reference that closes loops is
+   visloc-rs ([related_work.md](related_work.md), read on 2026-11-22): a
+   port of Basalt in Rust with a keyframe mapper, built without C++ or
+   OpenCV; its own figures on EuRoC with the closure are 0.057 m (MH_03)
+   and 0.072 m (MH_05), to be measured here before they are cited. Its
+   recognition of a place without a network (VLAD with LSH over SIFT or
+   ORB descriptors) is read for stage 1; not built here.
 4. **Flown.** The survey and B and back on both sets, the open sky's loop
    on the stereo set without the signal.
 
@@ -2027,7 +2034,12 @@ What makes it a sound solution and not a patch:
 What stays awkward: ROS 2's Rust bindings are the community's, and the PX4
 messages have to be generated for them; Gazebo's plugins are C++ only, so the
 simulation side stays in C++; a second set of quality rules and gate checks;
-the onboard image for arm64.
+the onboard image for arm64. An estimator with a pose graph written in Rust
+and speaking ROS 2 without the C++ bindings exists (visloc-rs, over RustDDS;
+[related_work.md](related_work.md)), though by its README not yet tried
+against a ROS 2 installation or on a robot: it shows the port is possible,
+which was not this item's question; the volume and the acceptance flown
+again are.
 
 The order, if it is taken: the new processes first (item 44's flight
 supervisor, item 48's fleet layer, item 59's ground station), then the small nodes
@@ -2228,7 +2240,10 @@ What changes, which is more than the dynamics (the agent's reading of
 - a route held to the ground, and what the drone has no need of: a floor
   that carries the vehicle. Unknown space is traversable for a vehicle that
   flies (the invariant); for wheels a floor not yet seen, a stair and a
-  hole are not, so a support layer over the memory is new work;
+  hole are not, so a support layer over the memory is new work. For the
+  lidar set a candidate is GSeg3D (DFKI, BSD-3;
+  [related_work.md](related_work.md)), which splits a scan into ground and
+  the rest on the processor in about 48 ms by its authors' figure;
 - the estimator: a visual-inertial estimate on a vehicle that moves in a
   plane at a steady speed observes its scale and its biases poorly (a known
   result of the field, to be read in its papers before the stage), so the
