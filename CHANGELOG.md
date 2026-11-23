@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **One speed profile, the vehicle's** (roadmap item 45; specification V3; the owner's word of 2026-11-20): the caves
+  flew under a ceiling of their own (cruise 6.5 m/s, limit 10, acceleration 4, vertical acceleration 1.4, jerk 12)
+  and the open sky under the airframe's (15, 15, 5, 3, 18), chosen by the world and by the Makefile's targets. The
+  profile is now one, 15, 15, 5, 3 and 18, in `drone_city_nav/config/urban_mvp.yaml` alone: no target names a
+  number of it, and `CRUISE_SPEED_MPS`, `ABSOLUTE_SPEED_LIMIT_MPS` and `MAXIMUM_HORIZONTAL_ACCELERATION_MPS2`
+  override as before. The sensors' braking contract decides the speed that is flown, as it did under the old
+  ceiling for all but 4 to 7 percent of the lidar's ticks.
+
 - **The vehicle turns its look to a body it has not read** (roadmap item 21; specification K87): while the
   memory holds a body its last scan did not show, within the 10 m a place is kept in, the heading turns to where
   it stood, so that the next scans look there and either read the body or take it off. At rest the heading goes

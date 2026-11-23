@@ -371,23 +371,30 @@ production_mppi_node:
     static_occupancy_3d_path: ''
     static_free_space_topology_3d_path: ''
     static_esdf_3d_cache_path: ''
-    # Cruise sits above the speed the sensor-braking contract admits along its
-    # worst direction for the guaranteed lidar range below: the contract, not
-    # cruise, caps every rollout on open legs. The simulation targets pass the
-    # same value.
-    cruise_speed_mps: 6.5
-    absolute_speed_limit_mps: 10.0
+    # One ceiling for the caves and the open sky (specification V3; the
+    # owner's word of 2026-11-20): the airframe's 15 m/s. It sits above the
+    # speed the sensor-braking contract admits along its worst direction, so
+    # the contract, not the cruise, caps every rollout: under 6.5 and 10 the
+    # cruise bound 4 to 7 percent of the lidar's ticks in the caves and none
+    # of the cameras', and at 15 the vehicle flew no nearer its surfaces
+    # (r4042 to r4048, r4106 to r4109). The simulation targets pass no value
+    # of their own; CRUISE_SPEED_MPS and ABSOLUTE_SPEED_LIMIT_MPS override.
+    cruise_speed_mps: 15.0
+    absolute_speed_limit_mps: 15.0
     # The horizontal acceleration the speed profile is built from, the
     # guaranteed horizontal deceleration of the stopping laws, and PX4's
-    # MPC_ACC_HOR_MAX; the Makefile targets pass the same value. 5 m/s^2 was
-    # tried on the urban flights r224 and r225: the vehicle spends 60 percent
-    # of a flight accelerating or decelerating between its stops, and the
-    # stops are walls revealed in unknown space a few metres ahead, so the
-    # harder profile ran into them harder and stopped more often, seventeen
-    # and eighteen times a flight against thirteen at 4, and flew slower
-    # (2.47 and 2.29 m/s against 2.55). PX4's 45 degree tilt would admit
-    # 9.8; the airframe reaches 5 to 6 in transients.
-    maximum_horizontal_acceleration_mps2: 4.0
+    # MPC_ACC_HOR_MAX: the airframe's, one for the caves and the open sky
+    # (V3). The x500 brakes at 6.4 to 7.5 m/s^2 mean from 10 to 20 m/s
+    # (tools/airframe_envelope.sh). In the caves it was 4 until 2026-11-23:
+    # 5 had been tried on the urban flights r224 and r225 in 2026-09, when
+    # the harder profile ran into the walls revealed a few metres ahead
+    # harder and stopped more often (seventeen and eighteen times a flight
+    # against thirteen at 4) and flew slower (2.47 and 2.29 m/s against
+    # 2.55). On today's stack it does not: r4106 and r4107 flew 2.830 and
+    # 2.853 m/s at 5 against 2.26 to 2.55 at 4, with as many stops and no
+    # less clearance by the truth. MAXIMUM_HORIZONTAL_ACCELERATION_MPS2
+    # overrides.
+    maximum_horizontal_acceleration_mps2: 5.0
     # Lateral acceleration a turn may demand, for the curvature limiter and
     # the route time profile. It cannot exceed the horizontal acceleration
     # above: every published control is clamped to that magnitude as a
@@ -416,7 +423,12 @@ production_mppi_node:
     # assumed 3.0, the airframe gave 2.2, and the vehicle struck the roof at
     # 0.85 m/s. 1.4 is the fifth percentile of the plateau.
     guaranteed_vertical_stopping_deceleration_mps2: 1.4
-    maximum_control_jerk_mps3: 12.0
+    # The airframe's onset of braking, one for the caves and the open sky
+    # (V3): from 10 to 20 m/s it reaches 5 m/s^2 of braking in 0.16 to 0.22 s,
+    # 23 to 31 m/s^3 (the bench's samples, 2026-11-10); at the caves' former
+    # 12 the contract counted 0.83 s of a stop's onset, 11 m of the lidar's
+    # range at 13 m/s.
+    maximum_control_jerk_mps3: 18.0
     # The yaw rate and yaw acceleration the gaze may command, for a vehicle
     # whose obstacle sensor looks forward and has to turn to face its route.
     # Measured on the camera flight r590 (9fcdff9c, 432 m in 258 s at
@@ -561,19 +573,22 @@ production_mppi_node:
     tracking_error_tube_minimum_progress_speed_mps: 3.0
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
-    # The vertical acceleration the horizon dynamics and the braking contract
-    # plan with, in either sense. Symmetric, so it is the descent arrest the
-    # airframe delivers (1.4 m/s^2, see the guaranteed vertical stopping
-    # deceleration): a dive is then planned no steeper than it can be
-    # arrested. The former 4.0 let the optimiser plan dives it could not stop
-    # (r252); 2.0 followed the former guarantee. The braking contract admits
-    # 4.62 m/s along a pure climb or descent with both at 1.4 (5.14 with both
-    # at 2.0) and 5.65 in level flight; the rollouts read the contract's bound
-    # along their own direction (translational_speed_limit_by_vertical_share),
-    # so the vertical law prices vertical motion only. While one bound stood
-    # for every direction the level legs of r312 to r319 flew at a p90 of 4.3
-    # to 4.6 m/s against 4.8 to 5.0 before, a tenth of the mean speed.
-    maximum_vertical_acceleration_mps2: 1.4
+    # The vertical acceleration the horizon dynamics plan with, in either
+    # sense, one for the caves and the open sky (V3): 3 m/s^2. It is more
+    # than the flight airframe has (it hovers at 0.79 of its collective
+    # thrust: 2.6 m/s^2 upwards at level and 1.5 beside 5 in the plane), and
+    # planned at what it has the horizon braked its descents less, not
+    # earlier (at 2 a stop's rest came into the ground's clearance and r3294
+    # struck the ground, at 1.5 the descents ran 1.7 to 3 m under their feet,
+    # r3305, against 1.2 to 1.6 at 3). What a dive may be is not this number's
+    # to say: a descent's speed is bounded by where it has to stop (K78) and
+    # every horizon is stopped at the guaranteed vertical deceleration above
+    # (1.4). In the caves it was 1.4 until 2026-11-23, from the time before
+    # K78, when 4.0 let the optimiser plan dives it could not stop (r252).
+    # The rollouts read the contract's bound along their own direction
+    # (translational_speed_limit_by_vertical_share), so the vertical law
+    # prices vertical motion only.
+    maximum_vertical_acceleration_mps2: 3.0
     # Risk-tier bands, for route annotation and diagnostics only. No law
     # measures a margin from them: the clearance laws are the tracking-error
     # tube beside the motion and the stopping capability ahead of it.
@@ -1044,7 +1059,7 @@ mppi_offboard_node:
     # yaw gains: too short and the heading overshoots its gaze target, too
     # long and the turn starts early.
     yaw_rate_lead_s: 0.26
-    unavailable_path_braking_acceleration_mps2: 4.0
+    unavailable_path_braking_acceleration_mps2: 5.0
     unavailable_path_braking_response_s: 0.25
     takeoff_climb_m: 2.0
     minimum_target_z_m: 2.0

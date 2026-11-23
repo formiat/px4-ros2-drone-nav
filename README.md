@@ -436,12 +436,15 @@ sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
 
 ## Flight Speed Profile
 
-Navigation uses one map-independent horizontal flight profile. The defaults are
-6.5 m/s cruise speed (just under the speed the sensor-braking contract admits
-for the guaranteed lidar range), 10 m/s absolute speed limit, 4 m/s² maximum
-horizontal acceleration, which also bounds the lateral acceleration in turns. The planner,
-finite-path stopping model, and PX4 configuration receive the same values, and
-the simulation targets in the `Makefile` pass the same cruise.
+Navigation uses one flight profile for every map and every world, the
+vehicle's own: 15 m/s of cruise and of absolute speed limit and 5 m/s² of
+maximum horizontal acceleration, which also bounds the lateral acceleration
+in turns (`drone_city_nav/config/urban_mvp.yaml`; specification V3). The
+ceiling sits above what the sensor-braking contract admits, so the sensors
+decide the speed that is flown: about 6.8 m/s on the lidar under a roof,
+2.6 on the stereo set. The planner, the finite-path stopping model and the
+PX4 configuration receive the same values, and no simulation target of the
+`Makefile` names one.
 
 Override the profile for an individual run with environment variables:
 

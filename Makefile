@@ -54,9 +54,6 @@ sim-cooperative-traffic-urban-headless: build
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
 		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-4,20,9,16,32,18}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}" \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
@@ -75,9 +72,6 @@ sim-cooperative-traffic-urban-gui: build
 		MULTI_VEHICLE_SPECTATOR_RESELECTION_POLICY=next_living \
 		COOPERATIVE_MISSION_TIMEOUT_S="$${COOPERATIVE_MISSION_TIMEOUT_S:-480}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 # The ordinary flight after roadmap item 17 (specification A10): the location
@@ -99,9 +93,6 @@ sim-urban-point-to-point-headless: build
 		REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING=true \
 		OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M="$${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:--33,2.5,0,-7,42.5,18}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
@@ -123,9 +114,6 @@ sim-urban-point-to-point-in-volume-headless: build
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false ENABLE_OBSTACLE_MEMORY=true LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(SURVEY_VOLUME_M)}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
@@ -140,9 +128,6 @@ sim-urban-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 # Roadmap item 34: the survey mission, no goal (specification F20): the
@@ -167,9 +152,6 @@ sim-urban-survey-headless: build urban-truth-occupancy-check
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(SURVEY_VOLUME_M)}" \
 		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
 		./scripts/run_drone_nav_sim.sh
@@ -185,9 +167,6 @@ sim-urban-survey-gui: build
 		MISSION_TYPE=survey \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-urban-survey-lidar-headless sim-urban-survey-lidar-gui
@@ -222,9 +201,6 @@ sim-finals-survey-headless: build
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(FINALS_SURVEY_VOLUME_M)}" \
 		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
 		./scripts/run_drone_nav_sim.sh
@@ -240,9 +216,6 @@ sim-finals-survey-gui: build
 		MISSION_TYPE=survey \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-finals-survey-lidar-headless sim-finals-survey-lidar-gui
@@ -266,9 +239,6 @@ sim-cave-survey-headless: build
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		RAW_SNAPSHOT_BOUNDS_M="$${RAW_SNAPSHOT_BOUNDS_M:-$(CAVE_SURVEY_VOLUME_M)}" \
 		SURVEY_COVERAGE_MINIMUM="$${SURVEY_COVERAGE_MINIMUM:-0.0}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-1800}" \
 		./scripts/run_drone_nav_sim.sh
@@ -284,9 +254,6 @@ sim-cave-survey-gui: build
 		MISSION_TYPE=survey \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-cave-survey-lidar-headless sim-cave-survey-lidar-gui
@@ -310,9 +277,6 @@ sim-dark-hall-headless: build
 		POINT_TO_POINT_SCENARIO_PATH=$(DARK_HALL_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-600}" \
 		./scripts/run_drone_nav_sim.sh
@@ -341,9 +305,6 @@ sim-dark-hall-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=$(DARK_HALL_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 # Roadmap item 33: the held-out worlds, flown by the point-to-point mission with
@@ -367,9 +328,6 @@ sim-cave-point-to-point-headless: build
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(CAVE_TRUTH_OCCUPANCY_3D)}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
@@ -384,9 +342,6 @@ sim-cave-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=$(CAVE_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-finals-point-to-point-headless
@@ -400,9 +355,6 @@ sim-finals-point-to-point-headless: build
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(FINALS_TRUTH_OCCUPANCY_3D)}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-900}" \
 		./scripts/run_drone_nav_sim.sh
@@ -417,9 +369,6 @@ sim-finals-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=$(FINALS_SCENARIO_PATH) \
 		$(ORDINARY_FLIGHT) \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-6.5}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-10}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-4}" \
 		./scripts/run_drone_nav_sim.sh
 
 # Roadmap item 39 (stage 0): the open-sky world, the autopilot's baylands park
@@ -430,12 +379,9 @@ sim-finals-point-to-point-gui: build
 # texture and is the lidar's), the carried light's flicker off (A10 is the dark
 # location's: under the sun the lamp's outage read 3.6 s and K12 sent r2614
 # home), the mission window the kilometres' own. Nothing of the urban
-# location is set. The speed profile is the open sky's (specification V3,
-# K75): the horizontal acceleration and the braking the contract counts on
-# 5 m/s^2 (the x500 brakes at 6.4 to 7.5 m/s^2 mean from 10 to 20 m/s,
-# tools/airframe_envelope.sh), the cruise and the limit 15 m/s, which the
-# lidar's 35 m admits at that braking; the sensor set's braking contract
-# decides what of it is flown.
+# location is set, and no speed: the ceiling, the accelerations and the jerk
+# are the vehicle's, one for every world (specification V3; urban_mvp.yaml),
+# and the sensor set's braking contract decides what of them is flown.
 OPEN_SKY_SCENARIO_PATH := drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json
 OPEN_SKY_TRUTH_OCCUPANCY_3D := external/environment-candidates/work/open_sky_baylands_r050.occupancy3d
 
@@ -450,9 +396,6 @@ sim-open-sky-point-to-point-headless: build
 		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
 		TRUTH_OCCUPANCY_3D_PATH="$${TRUTH_OCCUPANCY_3D_PATH:-$(OPEN_SKY_TRUTH_OCCUPANCY_3D)}" \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-15}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-15}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-5}" \
 		HEADLESS=1 MISSION_CHECK=1 \
 		SMOKE_DURATION_S="$${SMOKE_DURATION_S:-2400}" \
 		./scripts/run_drone_nav_sim.sh
@@ -467,9 +410,6 @@ sim-open-sky-point-to-point-gui: build
 		POINT_TO_POINT_SCENARIO_PATH=$(OPEN_SKY_SCENARIO_PATH) \
 		LIGHT_FAULTS="$${LIGHT_FAULTS-none}" \
 		ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d \
-		CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-15}" \
-		ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-15}" \
-		MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-5}" \
 		./scripts/run_drone_nav_sim.sh
 
 # Named scenarios over the point-to-point mission: each sets what makes it

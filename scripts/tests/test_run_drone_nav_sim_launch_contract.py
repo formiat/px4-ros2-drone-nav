@@ -387,10 +387,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("maximum_horizontal_acceleration_mps2", self.launch_text)
         self.assertNotIn("static_cruise_speed_mps", self.launch_text)
         self.assertNotIn("static_absolute_speed_limit_mps", self.launch_text)
-        self.assertIn("cruise_speed_mps: 6.5", self.nav_config_text)
-        self.assertIn("absolute_speed_limit_mps: 10.0", self.nav_config_text)
+        self.assertIn("cruise_speed_mps: 15.0", self.nav_config_text)
+        self.assertIn("absolute_speed_limit_mps: 15.0", self.nav_config_text)
         self.assertIn(
-            "maximum_horizontal_acceleration_mps2: 4.0", self.nav_config_text
+            "maximum_horizontal_acceleration_mps2: 5.0", self.nav_config_text
         )
         self.assertIn('lidar_profile = LaunchConfiguration("lidar_profile")', self.launch_text)
         self.assertIn("gz.msgs.PointCloudPacked", self.launch_text)

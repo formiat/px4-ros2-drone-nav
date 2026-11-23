@@ -85,15 +85,18 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertAlmostEqual(
             runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"][
                 "obstacle_memory_3d_transport_rate_hz"], 5.0)
-        dynamics = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_DYNAMICS"]
-        self.assertAlmostEqual(dynamics["maximum_vertical_acceleration_mps2"], 3.0)
-        self.assertAlmostEqual(dynamics["maximum_control_jerk_mps3"], 18.0)
-        self.assertNotIn("guaranteed_vertical_stopping_deceleration_mps2", dynamics)
+        # The dynamics are the vehicle's, one for every world (specification V3): no profile names them.
+        self.assertNotIn("OPEN_SKY_DYNAMICS", (launch / "sensor_profile.py").read_text(encoding="utf-8"))
+        vehicle = (REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text(encoding="utf-8")
+        for line in ("cruise_speed_mps: 15.0", "absolute_speed_limit_mps: 15.0",
+                     "maximum_horizontal_acceleration_mps2: 5.0", "maximum_vertical_acceleration_mps2: 3.0",
+                     "maximum_control_jerk_mps3: 18.0", "guaranteed_vertical_stopping_deceleration_mps2: 1.4",
+                     "unavailable_path_braking_acceleration_mps2: 5.0"):
+            self.assertEqual(vehicle.count(f"    {line}\n"), 1, line)
         self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)
         self.assertIn("box_size[2] + 16.0 - 1.0", (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
-        self.assertIn('if flight_profile == "open_sky":\n            production_mppi_parameters.append(OPEN_SKY_DYNAMICS)',
-                      text)
+        self.assertNotIn("OPEN_SKY_DYNAMICS", text)
         self.assertIn('shadow=navigation_sensors == "lidar" and flight_profile != "open_sky"', text)
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
@@ -104,14 +107,13 @@ class OpenSkyScenarioTest(unittest.TestCase):
         memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<double>("guaranteed_obstacle_size_m", 0.0)', memory)
         self.assertIn("2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)", memory)
+        # No target names a speed or an acceleration: the configuration is the one place, the environment the
+        # override (scripts/run_drone_nav_sim.sh passes one only where it is set).
         makefile = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
-        for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
-            target = makefile[makefile.index(name):]
-            target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
-            self.assertIn('CRUISE_SPEED_MPS="$${CRUISE_SPEED_MPS:-15}"', target)
-            self.assertIn('ABSOLUTE_SPEED_LIMIT_MPS="$${ABSOLUTE_SPEED_LIMIT_MPS:-15}"', target)
-            self.assertIn('MAXIMUM_HORIZONTAL_ACCELERATION_MPS2="$${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-5}"',
-                          target)
+        for name in ("CRUISE_SPEED_MPS", "ABSOLUTE_SPEED_LIMIT_MPS", "MAXIMUM_HORIZONTAL_ACCELERATION_MPS2"):
+            self.assertNotIn(name, makefile)
+        runner = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn('cruise_speed_override="${CRUISE_SPEED_MPS:-}"', runner)
 
     def test_the_fixture_is_the_manifests_and_the_targets_set_nothing_of_urban(self) -> None:
         manifest = yaml.safe_load((REPOSITORY / "environments/environment_manifest.yaml").read_text(encoding="utf-8"))
