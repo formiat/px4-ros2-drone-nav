@@ -12,7 +12,8 @@ release names the asset tags it was validated with.
   profile is now one, 15, 15, 5, 3 and 18, in `drone_city_nav/config/urban_mvp.yaml` alone: no target names a
   number of it, and `CRUISE_SPEED_MPS`, `ABSOLUTE_SPEED_LIMIT_MPS` and `MAXIMUM_HORIZONTAL_ACCELERATION_MPS2`
   override as before. The sensors' braking contract decides the speed that is flown, as it did under the old
-  ceiling for all but 4 to 7 percent of the lidar's ticks.
+  ceiling for all but 4 to 7 percent of the lidar's ticks. The stereo set's planner keeps the accelerations and the
+  jerk it has flown (4, 1.4, 12) on every world: at the airframe's it stopped more often and flew a longer way.
 
 - **The vehicle turns its look to a body it has not read** (roadmap item 21; specification K87): while the
   memory holds a body its last scan did not show, within the 10 m a place is kept in, the heading turns to where

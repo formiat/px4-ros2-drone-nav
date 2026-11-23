@@ -79,6 +79,22 @@ STEREO_TOF_OBSERVABILITY = {
     "sensor_expected_beam_count": (1280 // 4) * (960 // 4),
 }
 
+# The dynamics the stereo set's planner plans with (specification V3): the
+# ones it has flown since 2026-09, not the airframe's 5 m/s^2, 3 m/s^2 and
+# 18 m/s^3 of the configuration. Its speed is its sensor's (2.6 m/s at the
+# pair's 5.2 m), and flown at the airframe's numbers (r4113 to r4115), or at
+# its vertical acceleration and jerk alone (r4122 to r4124), it reached that
+# speed harder and met what the pair had not seen sooner: 21 to 43 stops a
+# flight against 16 to 25, 528 to 634 m to the goal against 454 to 500, 30 s
+# longer, and its estimate ended 1.4 m off at the mean against 0.6 (r4095 to
+# r4099; r4114 acknowledged its goal 2.44 m away). The offboard's blind brake
+# follows (city_nav.launch.py).
+STEREO_TOF_DYNAMICS = {
+    "maximum_horizontal_acceleration_mps2": 4.0,
+    "maximum_vertical_acceleration_mps2": 1.4,
+    "maximum_control_jerk_mps3": 12.0,
+}
+
 # What a planner that navigates by the lidar does not read: the pair's own
 # readings of its frame (the light's headroom, the silent patch, the void, the
 # carried light's output). With the camera set mounted beside the lidar (the
