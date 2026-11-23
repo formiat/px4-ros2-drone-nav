@@ -414,6 +414,14 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
 
   latest_scan_clear_sight_half_angle_rad_ =
       declare_parameter<double>("latest_scan_clear_sight_half_angle_rad", 0.0);
+  // K66: where the sensor that reads bodies looks, about the vehicle's axis;
+  // nought of range and no frame takes a body off, only the scan's rays.
+  body_view_.half_across_rad =
+      std::max(0.0, declare_parameter<double>("body_view_half_across_rad", 0.0));
+  body_view_.half_updown_rad =
+      std::max(0.0, declare_parameter<double>("body_view_half_updown_rad", 0.0));
+  body_view_.range_m =
+      std::max(0.0, declare_parameter<double>("body_view_range_m", 0.0));
   latest_scan_pub_ = create_publisher<msg::LatestSensorObstacleScan>(
       declare_parameter<std::string>("latest_sensor_obstacle_scan_topic",
                                      "/drone_city_nav/latest_sensor_obstacle_scan"),

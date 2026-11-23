@@ -29,12 +29,27 @@ struct LidarBeam3D {
   bool warm_body{false};
 };
 
+// The frame of the sensor that reads bodies (the thermal core, K64) at a scan:
+// a body standing whole inside it, within its range and with nothing the
+// memory holds between, would have been read. Nought of range is no frame.
+struct BodyReadingView3D {
+  Point3 origin_map{};
+  // The sensor's axis and two unit axes square to it and to each other.
+  Vec3 forward_map{};
+  Vec3 across_map{};
+  Vec3 up_map{};
+  double half_across_rad{0.0};
+  double half_updown_rad{0.0};
+  double range_m{0.0};
+};
+
 struct LidarScan3DView {
   Point3 origin_map{};
   std::span<const LidarBeam3D> beams{};
   // ROS acquisition time of this physical observation. A non-positive value
   // preserves the single-observation behaviour used by timestamp-less inputs.
   std::int64_t acquisition_stamp_ns{0};
+  BodyReadingView3D body_view{};
 };
 
 struct ObstacleMemory3DConfig {
@@ -255,8 +270,13 @@ private:
   // the bodies' sweep, lifted before a scan's evidence applies and laid
   // again from the bodies followed after it.
   void liftSweep();
-  void followMoving(const ScanEvidence& scan_evidence, const Point3& origin,
+  void followMoving(const ScanEvidence& scan_evidence, const LidarScan3DView& scan,
                     std::int64_t now_ms, ObstacleMemory3DStats& stats);
+  // Whether this scan could have shown a body standing where `body` stood
+  // (K66): the one measure a body no scan shows is taken off by.
+  [[nodiscard]] bool scanLooksAt(const MovingBody3D& body,
+                                 const ScanEvidence& scan_evidence,
+                                 const BodyReadingView3D& view) const;
   // The places and the ways the bodies followed after a scan keep (K66).
   void layPlaces(const Point3& origin, ObstacleMemory3DStats& stats);
   void holdMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);

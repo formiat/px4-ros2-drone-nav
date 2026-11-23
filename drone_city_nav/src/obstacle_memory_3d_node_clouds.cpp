@@ -353,9 +353,18 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
 
   bool memory_scan_dropped{false};
   if (memory_worker_) {
+    BodyReadingView3D body_view = body_view_;
+    body_view.origin_map = ray_origin;
+    body_view.forward_map =
+        Vec3{body_frame.x_axis_map.x, body_frame.x_axis_map.y, body_frame.x_axis_map.z};
+    body_view.across_map =
+        Vec3{body_frame.y_axis_map.x, body_frame.y_axis_map.y, body_frame.y_axis_map.z};
+    body_view.up_map =
+        Vec3{body_frame.z_axis_map.x, body_frame.z_axis_map.y, body_frame.z_axis_map.z};
     memory_scan_dropped = memory_worker_->enqueue(PersistentLidarScan3D{
         .origin_map = ray_origin,
         .beams = std::move(memory_beams),
+        .body_view = body_view,
         .dynamic_filter_plan = std::move(filter_plan),
         .acquisition_stamp_ns = acquisition_stamp_ns,
         .enqueued_at = std::chrono::steady_clock::now(),

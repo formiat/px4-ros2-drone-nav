@@ -179,6 +179,9 @@ private:
   // The half angle of the cone of clear sight a frame reports along the
   // vehicle's travel since the frame before it; nought reports none.
   double latest_scan_clear_sight_half_angle_rad_{0.0};
+  // The frame of the sensor that reads bodies (the thermal core, K64): its
+  // half angles and the range a body is read at; its pose is each scan's.
+  BodyReadingView3D body_view_{};
   std::optional<Point3> previous_scan_origin_map_;
   std::uint64_t alignment_coalesced_clouds_{0U};
   bool persistent_memory_enabled_{true};

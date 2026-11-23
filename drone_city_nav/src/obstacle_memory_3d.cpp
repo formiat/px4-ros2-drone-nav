@@ -325,7 +325,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   }
   if (config_.moving_life_s > 0.0) {
     settleMoving(now_ms, stats);
-    followMoving(scan_evidence, scan.origin_map, now_ms, stats);
+    followMoving(scan_evidence, scan, now_ms, stats);
   }
   stats.layers_ms = since_ms(layers_started);
   // Every integrated scan is a revision, whether or not a voxel changed state:

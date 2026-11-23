@@ -24,6 +24,8 @@ namespace drone_city_nav {
 struct PersistentLidarScan3D {
   Point3 origin_map{};
   std::vector<LidarBeam3D> beams;
+  // The frame of the sensor that reads bodies, at this scan's pose.
+  BodyReadingView3D body_view{};
   DynamicAgentLidarFilterPlan dynamic_filter_plan;
   std::int64_t acquisition_stamp_ns{0};
   std::chrono::steady_clock::time_point enqueued_at{};

@@ -6,6 +6,16 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A body is taken off by a look at where it stood, in every case** (roadmap item 21; specification K66): the
+  stand's time of a body no scan shows ran by the clock unless one of two cases held (beside the vehicle, behind a
+  surface), and a body that walked aside of the thermal core's frame beyond the pair's reach was no body 5 s
+  later (r4017, the stopping margin -0.47 m; 34 such bodies over the 24 meetings kept from v0.8.0's code, by
+  `tools/unlooked_bodies.py`). The time now runs only over the scans that could have shown the body there: by
+  their rays through every level of its column, or by the column whole in the core's frame with nothing the
+  memory holds between (`ObstacleMemory3D::scanLooksAt`; the frame rides with every scan, its angles and range
+  the memory node's `body_view_*`). Proven on a record before the flights: a flight on the old code took six
+  such bodies off, its bag through the new memory none.
+
 - **One flight chain a checkout** (roadmap item 43 point 7; the finding and the rule are naipi11's, PX4-ROS2-NAV
   `54635cd6` and `cc30b16a`): nothing refused a second flight of one checkout, and every tool that flies cleans
   the checkout's simulation before and after its flight, so a second series stopped the first one's flight and

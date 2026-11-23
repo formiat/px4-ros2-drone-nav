@@ -348,6 +348,7 @@ add_drone_city_nav_layer(
   src/mapping_lifecycle.cpp
   src/moving_body_tracker_3d.cpp
   src/obstacle_memory_3d.cpp
+  src/obstacle_memory_3d_look.cpp
   src/obstacle_memory_3d_moving.cpp
   src/obstacle_memory_3d_places.cpp
   src/obstacle_memory_transport_policy_3d.cpp

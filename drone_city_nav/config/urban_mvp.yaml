@@ -165,6 +165,17 @@ obstacle_memory_3d_node:
     moving_reach_m: 0.5
     moving_match_m: 1.0
     moving_least_voxels: 4
+    # A body no scan shows is taken off by a look at where it stood: the
+    # stand's time runs only over the scans whose rays crossed its column at
+    # every level, or in which the column stood whole in the frame of the
+    # sensor that reads bodies with nothing the memory holds between. That
+    # frame is the thermal core's on both sensor sets (160 by 120 over 57
+    # degrees, K39: 28.5 degrees either side and 22.2 up and down), two
+    # degrees inside its edges, where a body is not cut, to the 19 m its marks
+    # are integrated within (K64). Nought of range: the rays alone.
+    body_view_half_across_rad: 0.4625
+    body_view_half_updown_rad: 0.3526
+    body_view_range_m: 19.0
     # A free ray ends at a surface the memory holds (the voxel it crosses there
     # takes the miss, the voxels behind it nothing). Off for the lidar, whose
     # ranges are true to centimetres; the vision memory turns it on

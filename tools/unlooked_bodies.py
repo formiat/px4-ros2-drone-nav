@@ -10,16 +10,19 @@ log's lines are stamped by the wall clock: they are brought to the simulation's 
 carry both (one a second, the stamps between them interpolated).
 
 A body is taken off when the next scan's line holds no read body within 1.5 m of where this scan kept one unseen
-(or no line follows for 0.6 s: a scan with no body writes none). Over the scans it stood unseen through, by the
+(or no line follows for 0.6 s: a scan with no body writes none), and none shown anew within a person's walk of it
+over the time it went unseen (1.5 m/s, the memory's own: it reads that one as the same body, found again). Over the scans it stood unseen through, by the
 truth, a sensor could look at its place when the whole column (its foot, its middle and its top) stood in the
 sensor's field, within the range the sensor reads a body at, with no occupied cell of the truth grid on the ray:
 the stereo set's pair (5.2 m, 60 degrees either side of the heading and 52.4 up and down) or its thermal core
 (19 m, 28.5 and 22.2 degrees); the lidar set's lidar (19 m all round). The time-of-flight modules (2.8 m) are not
 counted. The estimate's error is not removed: the place is the memory's, the pose the truth's.
 
-The verdict: `looked` when a sensor could look for a tenth of a second at least; `far` when none could and the
-place stood farther than 10 m from the vehicle whenever it was unseen (specification K66: a place is not kept
-beyond that); `UNLOOKED` when none could within 10 m: the body was taken off by the clock, not by a look. Beside
+The stand's time (5 s) runs over the scans in which a sensor could look and over those the vehicle stood farther
+than 10 m from the place in (specification K66: a place is not kept beyond that). The verdict: `looked` when a
+sensor could look for a tenth of a second at least; `far` when none could and the vehicle stood beyond the 10 m
+for a tenth of a second at least; `UNLOOKED` when neither: the body was taken off by the clock within 10 m with no
+look at its place. Beside
 it: how long it stood unseen, for how much of that each sensor could look and what kept it from the place the rest
 of the time (`range`; `aside`, off its field across; `under` or `over`, off it up or down; `wall`, an occupied cell
 of the truth on the ray), the place's distance and bearing
@@ -46,6 +49,7 @@ OCC = Occupancy3D.load(GRID)
 B = OCC.bounds
 RES = B.resolution_m
 KEPT_WITHIN_M = 10.0
+WALK_MPS = 1.5
 # (name, range m, half field across rad, half field up and down rad); None: all round.
 PAIR = ('pair', 5.2, math.radians(60.0), math.radians(52.4))
 CORE = ('core', 19.0, math.radians(28.5), math.radians(22.2))
@@ -152,7 +156,8 @@ def report(run):
         follows = index + 1 < len(scans) and scans[index + 1][0] - t <= 0.6
         after = scans[index + 1][1] if follows else []
         for x, y, z, height, unseen in held:
-            if unseen <= 0.0 or any(math.hypot(x - other[0], y - other[1]) <= 1.5 for other in after):
+            if unseen <= 0.0 or any(math.hypot(x - other[0], y - other[1]) <=
+                                    1.5 + (WALK_MPS * unseen if other[4] <= 0.0 else 0.0) for other in after):
                 continue
             # The scans it stood unseen through, back to the first of its stand at this place.
             first = index
@@ -163,7 +168,7 @@ def report(run):
             column = [np.array((x, y, level)) for level in (z - 0.5 * height + 0.1, z, z + 0.5 * height - 0.1)]
             looked = {sensor[0]: 0.0 for sensor in sensors}
             kept_by = {}
-            any_s = total = 0.0
+            any_s = total = beyond_s = 0.0
             apart = []
             for step in range(first, index + 1):
                 end = scans[step + 1][0] if step < index else taken_off
@@ -179,13 +184,14 @@ def report(run):
                 any_s += span if seen_by else 0.0
                 total += span
                 apart.append(math.hypot(x - pose[1], y - pose[2]))
+                beyond_s += span if not seen_by and apart[-1] > KEPT_WITHIN_M else 0.0
             later = pose_at(shown[0] + 0.5)
             vx, vy = (later[1] - shown[1]) / 0.5, (later[2] - shown[2]) / 0.5
             speed = math.hypot(vx, vy)
             walker = min((math.hypot(track[min(len(track) - 1, bisect.bisect_left(times, taken_off))][1] - x,
                                      track[min(len(track) - 1, bisect.bisect_left(times, taken_off))][2] - y)
                           for times, track in tracks), default=None)
-            verdict = 'looked' if any_s >= 0.1 else ('far' if min(apart) > KEPT_WITHIN_M else 'UNLOOKED')
+            verdict = 'looked' if any_s >= 0.1 else ('far' if beyond_s >= 0.1 else 'UNLOOKED')
             why = ' '.join(f'{name} {reason} {seconds:.1f}' for (name, reason), seconds in sorted(kept_by.items()))
             rows.append((verdict, taken_off, x, y, z, total, any_s, looked, why,
                          math.hypot(x - shown[1], y - shown[2]),

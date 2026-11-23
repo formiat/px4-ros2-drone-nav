@@ -17,6 +17,7 @@ namespace drone_city_nav {
 namespace {
 
 using memory_test::coldBlockAt;
+using memory_test::coreLookingAt;
 using memory_test::hitAlongX;
 using memory_test::hitAt;
 using memory_test::kBounds;
@@ -455,9 +456,9 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   EXPECT_GT(memory.movingBodies().front().unseen_s, 0.5);
   EXPECT_GT(stats.swept_voxels, 0U);
   // The whole column looked at and empty, it is unseen still, wherever it
-  // has walked to (r3573), its place kept (r3645), until the stand's time
-  // from its last mark is out (the vehicle stands seven metres off, farther
-  // than a walk: its sensors could look, and the time ran all along, r3649).
+  // has walked to (r3573), its place kept (r3645), until the stand's time is
+  // out, and that runs only over the scans that looked: the 0.65 s of the two
+  // scans that did not are not counted (5.2 s after its last mark it stands).
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 2'700'000'000});
@@ -468,6 +469,10 @@ TEST(ObstacleMemory3D, AWalkingBodySweepsTheCellsAheadOfItBetweenScans) {
   stats = memory.integrateScan({.origin_map = origin,
                                 .beams = gone,
                                 .acquisition_stamp_ns = kSecondNs + 7'200'000'000});
+  EXPECT_EQ(stats.followed_bodies, 1U);
+  stats = memory.integrateScan({.origin_map = origin,
+                                .beams = gone,
+                                .acquisition_stamp_ns = kSecondNs + 7'900'000'000});
   EXPECT_EQ(stats.followed_bodies, 0U);
   EXPECT_TRUE(memory.grid().isKnownFree(ahead));
   EXPECT_EQ(stats.swept_voxels, 0U);
@@ -706,10 +711,15 @@ TEST(ObstacleMemory3D, AColumnThatStandsOverTheTallestBodyIsASurfaceNotTheLayers
                                 .beams = elsewhere,
                                 .acquisition_stamp_ns = 6 * kSecondNs});
   EXPECT_EQ(stats.moving_expired, 7U);
-  // And past the stand's time, the place kept for the unseen body given up.
-  static_cast<void>(memory.integrateScan({.origin_map = origin,
-                                          .beams = elsewhere,
-                                          .acquisition_stamp_ns = 9 * kSecondNs}));
+  // And past the stand's time under the core's look at where it stood, the
+  // place kept for the unseen body given up.
+  for (const std::int64_t second : {9, 15}) {
+    static_cast<void>(memory.integrateScan(
+        {.origin_map = origin,
+         .beams = elsewhere,
+         .acquisition_stamp_ns = second * kSecondNs,
+         .body_view = coreLookingAt(origin, {8.125, 6.125, 0.875})}));
+  }
   for (int row = 0; row < 18; ++row) {
     EXPECT_TRUE(memory.grid().isOccupied({32, 16, row})) << "wall row " << row;
   }
@@ -850,10 +860,11 @@ TEST(ObstacleMemory3D, AColdClusterFartherThanAWalkDoesNotContinueAReadBody) {
 }
 
 TEST(ObstacleMemory3D, ABodyBehindASurfaceIsReadOnUntilTheVehicleCanLook) {
-  // K66 (r3944): a warm body sighted by its size 7 m off, then nothing of it.
-  // With open air between, the core can look and the stand's 5 s take it off;
-  // from where a wall the memory holds stands between, no sensor can look at
-  // where it stood, and it stands there read for as long as that is so.
+  // K66 (r3944): a warm body sighted by its size 7 m off, then nothing of it,
+  // the core's frame on where it stood. With open air between, the core
+  // looks and the stand's 5 s take it off; from where a wall the memory holds
+  // stands between, no sensor can look at where it stood, and it stands there
+  // read for as long as that is so.
   constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
   const Point3 open{2.125, 4.125, 2.625};
   const Point3 behind{2.125, 7.125, 2.625};
@@ -889,13 +900,87 @@ TEST(ObstacleMemory3D, ABodyBehindASurfaceIsReadOnUntilTheVehicleCanLook) {
         {.origin_map = open, .beams = sighted(), .acquisition_stamp_ns = kSecondNs});
     ASSERT_EQ(stats.followed_bodies, 1U);
     for (int scan = 1; scan <= 16; ++scan) {
+      const Point3& from = hidden ? behind : open;
       stats = memory.integrateScan(
-          {.origin_map = hidden ? behind : open,
-           .beams = wall(hidden ? behind : open),
-           .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2)});
+          {.origin_map = from,
+           .beams = wall(from),
+           .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2),
+           .body_view = coreLookingAt(from, {9.125, 4.25, 2.625})});
       EXPECT_EQ(stats.followed_bodies, hidden || scan <= 10 ? 1U : 0U)
           << (hidden ? "behind the wall" : "in the open") << ", scan " << scan;
     }
+  }
+}
+
+TEST(ObstacleMemory3D, ABodyAsideOfTheCoresFrameStandsUntilTheFrameTurnsToIt) {
+  // K66 (r4017): a warm body sighted by its size 5.6 m off, then nothing of
+  // it: it has walked aside, out of the core's 57 degrees, and the pair does
+  // not reach where it stood. No scan looks there: it stands read, 20 s and
+  // more. The frame turned to the place and showing no body there, the
+  // stand's 5 s run and take it off.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 origin{2.125, 4.125, 2.625};
+  const Point3 place{7.625, 4.25, 2.625};
+  std::vector<LidarBeam3D> sighted;
+  for (const double y : {4.125, 4.375}) {
+    for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+      sighted.push_back(hitAt(origin, {place.x, y, z}, true));
+      sighted.back().surface_only = true;
+    }
+  }
+  ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = origin, .beams = sighted, .acquisition_stamp_ns = kSecondNs});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  // The frame 45 degrees aside of the place: its edge at 26.5.
+  const Point3 aside{origin.x + 5.0, origin.y + 5.0, origin.z};
+  for (int scan = 1; scan <= 40; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = {},
+         .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2),
+         .body_view = coreLookingAt(origin, aside)});
+    ASSERT_EQ(stats.followed_bodies, 1U) << "aside, scan " << scan;
+  }
+  for (int scan = 41; scan <= 52; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = origin,
+         .beams = {},
+         .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2),
+         .body_view = coreLookingAt(origin, place)});
+    // The stand's time less the half second of the scan after the sighting,
+    // which still held the sighting's marks.
+    EXPECT_EQ(stats.followed_bodies, scan <= 49 ? 1U : 0U)
+        << "looked at, scan " << scan;
+  }
+}
+
+TEST(ObstacleMemory3D, ABodysPlaceFartherThanTenMetresIsNotKept) {
+  // K66 (r3649): a warm body sighted by its size 7 m off; the vehicle then
+  // stands 12 m from where it stood, no scan looking there. Beyond the 10 m
+  // a place is owed a way out in it is not kept: the stand's 5 s take it off.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  ObstacleMemory3D memory{
+      kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const Point3 near{7.125, 4.125, 2.625};
+  const Point3 far{2.125, 4.125, 2.625};
+  std::vector<LidarBeam3D> sighted;
+  for (const double y : {4.125, 4.375}) {
+    for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+      sighted.push_back(hitAt(near, {14.125, y, z}, true));
+      sighted.back().surface_only = true;
+    }
+  }
+  ObstacleMemory3DStats stats = memory.integrateScan(
+      {.origin_map = near, .beams = sighted, .acquisition_stamp_ns = kSecondNs});
+  ASSERT_EQ(stats.followed_bodies, 1U);
+  for (int scan = 1; scan <= 12; ++scan) {
+    stats = memory.integrateScan(
+        {.origin_map = far,
+         .beams = {},
+         .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2)});
+    EXPECT_EQ(stats.followed_bodies, scan <= 10 ? 1U : 0U) << "scan " << scan;
   }
 }
 

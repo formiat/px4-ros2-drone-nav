@@ -181,7 +181,8 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
   const ObstacleMemory3DStats stats = memory_.integrateScan(
       LidarScan3DView{.origin_map = scan.origin_map,
                       .beams = scan.beams,
-                      .acquisition_stamp_ns = scan.acquisition_stamp_ns});
+                      .acquisition_stamp_ns = scan.acquisition_stamp_ns,
+                      .body_view = scan.body_view});
   const ObstacleMemory3DChanges changes = memory_.takeChanges();
   publishMovingBodies(scan.acquisition_stamp_ns);
   logNearestBodies(scan.origin_map);

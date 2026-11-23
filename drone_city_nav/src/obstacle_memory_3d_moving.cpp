@@ -231,8 +231,10 @@ void ObstacleMemory3D::holdMoving(const GridIndex3D cell, const std::int64_t now
 }
 
 void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
-                                    const Point3& origin, const std::int64_t now_ms,
+                                    const LidarScan3DView& scan,
+                                    const std::int64_t now_ms,
                                     ObstacleMemory3DStats& stats) {
+  const Point3& origin = scan.origin_map;
   // The layer's voxels, and the young occupancies this scan hit: a body first
   // seen where nothing had been observed is told by its step.
   // A voxel beside an old surface is that surface's skin (the range's noise
@@ -576,73 +578,11 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // within its reach stand (the layer's of the last half second and the
   // scan's young hits), and only with none of them is it unseen.
   // A body no scan shows is taken off by a look at where it stood, not by a
-  // clock: while no scan has observed a cell at every level of the column it
-  // was last seen in, the vehicle within the envelopes' range of it, it may
-  // stand there still. Hovering 4 m up and 3.3 m before a pacing body, the
-  // stereo set sees neither its legs nor its class (the pair's and the
-  // core's fields pass over it); the stand's time ran out, the body was no
-  // body, and the vehicle flew down at it at 2.1 m/s, to sight it 2.7 m off
-  // (r3582, -0.19 m).
-  // The distance a body's place is owed a way out in (the rise's, K66).
-  constexpr double kHiddenWithinM{10.0};
-  const auto blind = [&](const MovingBody3D& body) {
-    // Only while the vehicle stands within a walk of where it stood, where
-    // the sensors look over it: farther off they can look, and a thing the
-    // core's marks put 5 to 10 m off where no body was stood read for 200 s,
-    // the vehicle held before it (r3649). Farther off they cannot look
-    // either where a surface the memory holds stands between, within the
-    // distance a body's place is owed a way out in: sighted across a room
-    // from 8 m, a body walked up its passage behind the wall, was no body 5 s
-    // later, and the vehicle came down into the passage and met it stepping
-    // back, read 2.9 s before at 3.2 m (r3944, -0.33 m).
-    const double apart_m =
-        std::hypot(body.centre_map.x - origin.x, body.centre_map.y - origin.y);
-    if (apart_m > body.radius_m + config_.moving_reach_m +
-                      kWarmBodyWalkMps * config_.moving_sweep_s + 1.0) {
-      if (apart_m > kHiddenWithinM) {
-        return false;
-      }
-      const Point3 aim{body.centre_map.x, body.centre_map.y,
-                       0.5 * (body.bottom_m + body.top_m)};
-      const double length_m = std::hypot(apart_m, aim.z - origin.z);
-      const double step_m = 0.5 * grid_.bounds().resolution_m;
-      const auto steps = static_cast<int>(
-          (length_m - body.radius_m - config_.moving_match_m) / step_m);
-      for (int step = 1; step <= steps; ++step) {
-        const double share = step * step_m / length_m;
-        const std::optional<GridIndex3D> cell =
-            grid_.worldToCell({origin.x + share * (aim.x - origin.x),
-                               origin.y + share * (aim.y - origin.y),
-                               origin.z + share * (aim.z - origin.z)});
-        if (cell.has_value() && grid_.isOccupied(*cell)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    MovingBody3D column = body;
-    column.velocity_map_mps = Vec3{};
-    column.radius_m = std::max(column.radius_m, grid_.bounds().resolution_m);
-    const std::vector<GridIndex3D> stood =
-        sweptCells3D(column, 1.0, 0.0, grid_.bounds());
-    if (stood.empty()) {
-      return false;
-    }
-    const auto [low, high] = std::ranges::minmax(stood, {}, &GridIndex3D::z);
-    std::vector<bool> looked(static_cast<std::size_t>(high.z - low.z + 1), false);
-    for (const GridIndex3D cell : stood) {
-      const auto chunk = scan_evidence.find(ObservedOccupancyGrid3D::chunkIndex(cell));
-      if (chunk == scan_evidence.end()) {
-        continue;
-      }
-      const std::size_t bit = ObservedOccupancyGrid3D::localBitIndex(cell);
-      if ((chunk->second.observed.at(bit / 64U) & (std::uint64_t{1U} << (bit % 64U))) !=
-          0U) {
-        looked[static_cast<std::size_t>(cell.z - low.z)] = true;
-      }
-    }
-    return !std::ranges::all_of(looked, [](const bool level) { return level; });
-  };
+  // clock (scanLooksAt), within the distance a body's place is owed a way out
+  // in (the rise's, K66). Farther off the place is not kept: a thing the
+  // core's marks put 5 to 10 m off where no body was stood read for 200 s, the
+  // vehicle held before it (r3649).
+  constexpr double kKeptWithinM{10.0};
   // A body read by the core's marks alone, cluster or none, takes what a
   // cluster's body does: the young occupancies in its column and a cell
   // round it are the layer's, and the layer grows in its envelope. Without
@@ -711,7 +651,9 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       // from the true one when that passed the vehicle at 0.74 m (r3580; so
       // r3553 and r3563).
       unshown.unseen_s = std::min(unshown.unseen_s + elapsed_s, config_.moving_stand_s);
-      if (blind(read)) {
+      if (std::hypot(read.centre_map.x - origin.x, read.centre_map.y - origin.y) <=
+              kKeptWithinM &&
+          !scanLooksAt(read, scan_evidence, scan.body_view)) {
         warm_ms += now_ms - (followed_ms_before > 0 ? followed_ms_before : now_ms);
       }
     }
