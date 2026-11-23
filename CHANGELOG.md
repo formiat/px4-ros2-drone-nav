@@ -18,7 +18,7 @@ release names the asset tags it was validated with.
 - **A body is taken off by a look at where it stood wherever the vehicle has a look to take** (roadmap item 21;
   specification K66): the stand's time of a body no scan shows ran by the clock unless one of two cases held
   (beside the vehicle, behind a surface), and a body that walked aside of the thermal core's frame beyond the
-  pair's reach was no body 5 s later (r4017, the stopping margin -0.47 m; 15 such bodies over the 24 meetings
+  pair's reach was no body 5 s later (r4017, the stopping margin -0.47 m; 39 such bodies over the 24 meetings
   kept from v0.8.0's code, by `tools/unlooked_bodies.py`). One measure now says whether a look is outstanding
   (`ObstacleMemory3D::lookOutstanding`): the two cases, and a third, the place aside of the core's frame where a
   turn of the heading would bring the body's upper half into it. The time stands still while one is; it runs

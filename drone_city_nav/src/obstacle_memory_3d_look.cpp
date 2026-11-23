@@ -35,9 +35,9 @@ namespace drone_city_nav {
 // field up and down. Read from 5.6 m, a body walked aside out of the core's
 // 57 degrees while the vehicle stood, the pair not reaching it, was no body
 // 5 s later, and came back unread as the vehicle crossed its line (r4017,
-// -0.47 m); over the 24 meetings kept from 2a2541c7 the clock alone took 15
+// -0.47 m); over the 24 meetings kept from 2a2541c7 the clock alone took 39
 // bodies off within 10 m while a turn would have shown their place, aside of
-// the core's frame for the whole of the 84 s they stood unseen
+// the core's frame for 187 of the 200 s they stood unseen
 // (tools/unlooked_bodies.py). The gaze makes that
 // turn (K87). The core reads a body by a warm region its frame cuts (K64),
 // so the upper half is asked for, not the foot (r4064: 12 s stood with the
