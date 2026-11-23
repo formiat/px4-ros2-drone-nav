@@ -177,6 +177,12 @@ Preview cleanup without terminating processes:
 ./scripts/stop_sim.sh --dry-run
 ```
 
+The cleanup stops this checkout's simulation alone (the containers that
+mount its root), and a checkout flies one chain at a time: a second run
+started while one flies is refused with exit status 3
+([troubleshooting.md](troubleshooting.md), "A Flight Is Refused With Exit
+Status 3").
+
 The GUI workflow logs Gazebo server output to `log/gz_drone_nav.log` and Gazebo
 GUI output to `log/gz_gui_drone_nav.log`.
 

@@ -48,12 +48,28 @@ its diffs, not built here; roadmap item 43 points 5 to 7):
   A base was flown here in a copy beside the working tree on 2026-11-19 and
   20 (`072941ab`), one flight at a time; nothing was stopped, by the order
   alone. To take: the mount alone.
+  **Taken on 2026-11-22** (144622d8, their name in the commit and the
+  changelog), with a half this review had not read: the process half of
+  the cleanup bounded to its own pid namespace (theirs: `bb3e6d20`; on the
+  host `ps` lists every container's processes, and the cleanup selected
+  them by their command lines). Both rewritten here: the root's mount
+  alone, where theirs takes any path under it; the filter where the live
+  process table is read, where theirs passes a test's argument through the
+  selection.
 - **One flight a checkout** (theirs: `54635cd6`, `cc30b16a`: a lock
   directory with its owner's pid in `run_drone_nav_sim.sh`; a second flight
   refused with the owner named, a dead owner's lock taken over). Here there
   is no lock: a series started twice overwrites a run's record under one
   number, and two flights of one checkout share the models' directory, the
   world and PX4. To take.
+  **Taken on 2026-11-22** (480c9b57, d7c7a30d; their name in the commit and
+  the changelog): the rule, not the code. A pid written by one flight means
+  nothing to the next here (a container and a pid namespace a flight), and
+  the first flight is stopped by the second launcher's cleanup on the host,
+  before the flight script; the lock is `flock` on a file the host and the
+  containers share, taken by the launcher before its cleanup
+  (`scripts/flight_lock_runtime.sh`). Their move of the lock to a file of
+  its own (`cc30b16a`) was not needed.
 - **The clause of a refused latest-evidence revalidation** (theirs:
   `b7b2a6d2`, with the path's points built once in `d7ed1713` and the unused
   boolean removed in `9bde562b`). Here `revalidateFiniteExecution`

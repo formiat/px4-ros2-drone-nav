@@ -113,6 +113,29 @@ Verify:
 RViz follow uses a separate `drone_follow` TF and is not evidence that Gazebo
 CameraTracking is configured.
 
+## A Flight Is Refused With Exit Status 3
+
+```text
+Refusing to fly: this checkout is flying already, started by
+  pid=... host=... started=... command=...
+```
+
+One flight chain a checkout at a time (`scripts/flight_lock_runtime.sh`): a
+sim wrapper, a series tool or a `make sim-*` found the checkout's lock held
+and stopped before it cleaned or started anything, so the flight in the air
+is untouched. The line names the holder: a wrapper holds the lock for its
+flight, a series (`tools/world_series.sh`) from its first flight to its
+last. Wait for it to end, or stop the process it names and then run
+`./scripts/stop_sim.sh`. Through `make` inside a container the status is
+make's own 2, with `Error 3` in its last line.
+
+The lock is `flock` on `log/.flight-lock/owner`: the kernel releases it when
+the holder and everything it started are gone, so nothing is left to remove
+after a crash. A lock that stays held with its holder dead is held by a
+process the holder started; `./scripts/stop_sim.sh` stops the simulation's.
+A second checkout of the repository has a lock of its own and flies beside
+this one; its cleanup stops only its own containers.
+
 ## Ctrl+C Or Cleanup Hangs
 
 Run:

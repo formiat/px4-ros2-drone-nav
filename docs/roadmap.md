@@ -1801,7 +1801,7 @@ verified here before anything is taken.
    accelerometer's bias, the rotors' drag along an unobserved axis, the floor
    of an observed axis; r3914, r3929). naipi11's crash that opened the point
    was withdrawn by its authors; their clause names are taken with their name
-   (d1ad24fe). Points 2 to 7 stay open.
+   (d1ad24fe). Points 2 to 5 stay open.
 2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
    which PX4 SITL stopped is void, not a crash of the stack.
 3. **The lattice edge left blocked**: an edge the probe budget did not reach
@@ -1817,9 +1817,45 @@ verified here before anything is taken.
    2026-11-20; `20121042`): a container is this repository's by its
    workspace mount alone, not by the dev image, which every checkout on the
    host runs.
+
+   **Point 6 done on 2026-11-22** (144622d8). Not yet in a release (after
+   v0.8.0). Read by its diff, the repair had a half the review had not
+   seen (`bb3e6d20`): on the host the cleanup's process half selected any
+   process by its command line, and the host's `ps` lists every
+   container's processes. Both are taken, rewritten: a container is this
+   checkout's by the mount of its root alone, and the live process table
+   keeps only the pid namespace the cleanup runs in, so a container is
+   stopped as a container. Proven with two decoy containers of the dev
+   image whose process matches the patterns, one mounting the root and one
+   not: the old cleanup run from another directory selected both
+   containers and four processes, the new one the mounted container and no
+   process.
 7. **One flight a checkout** (the review of 2026-11-20; `54635cd6`,
    `cc30b16a`): a lock in `run_drone_nav_sim.sh`, a second flight refused
    with its owner named.
+
+   **Point 7 done on 2026-11-22** (4302998f, 480c9b57, d7c7a30d). Not yet
+   in a release (after v0.8.0). The rule is theirs (a second flight
+   refused with status 3 and the owner named, a dead owner's lock taken
+   over), the lock is not: theirs is a directory with its owner's pid in
+   the flight script, read through `/proc`, and here every flight has a
+   container and a pid namespace of its own, and what stops the first
+   flight is the second launcher's cleanup on the host, before any flight
+   script runs. So the lock is `flock` on a file under `log/` that the
+   host and the containers share (`scripts/flight_lock_runtime.sh`): the
+   kernel releases it when its holders die. It is taken first by whatever
+   flies, before its cleanup: the sim wrappers, the series tools,
+   `container_run.sh` for a `make sim-*`, and the flight script in the
+   container for a flight started by `make` alone; a chain holds it from
+   its first flight to its last. Flown: during r4049 and r4051 three
+   second launches of the checkout (a sim wrapper, a make target through
+   the container, a second series) were refused, each with status 3 on
+   d7c7a30d, and both flights counted with no failed check. The Urban five
+   and five on d7c7a30d (r4051 to r4060, specification A14: the launch
+   scripts are flight code): no contact, no failed check, every goal
+   within 1.04 m by the truth; 1.436, 1.338, 1.359, 1.320, 1.362 m/s on
+   the stereo set (mean 1.363 against 1.394 on 2a2541c7) and 2.484, 2.385,
+   2.234, 2.460, 2.305 on the lidar (mean 2.374 against 2.310).
 
 The guard of PX4 SITL's MAVLink ports is not taken (one simulator a host;
 [forks.md](forks.md), the review of 2026-11-20).
