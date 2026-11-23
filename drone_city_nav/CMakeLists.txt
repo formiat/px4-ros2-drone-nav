@@ -956,6 +956,7 @@ set(DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES
       src/runtime/mppi_controller_3d.cpp
       src/runtime/navigation_diagnostics_sink.cpp
       src/runtime/planning_cycle_coordinator_3d.cpp
+      src/runtime/planning_cycle_passages_3d.cpp
       src/runtime/production_mppi_config.cpp
       src/runtime/production_mppi_cooperative_diagnostics.cpp
       src/runtime/production_mppi_execution_control.cpp
