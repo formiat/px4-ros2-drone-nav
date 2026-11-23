@@ -361,4 +361,19 @@ std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body, const double swe
   return cells;
 }
 
+std::optional<Point3> unseenBodyPlace(const std::span<const MovingBody3D> bodies,
+                                      const Point3& vehicle) noexcept {
+  std::optional<Point3> place;
+  double nearest_m = kBodyPlaceKeptWithinM;
+  for (const MovingBody3D& body : bodies) {
+    const double apart_m =
+        std::hypot(body.centre_map.x - vehicle.x, body.centre_map.y - vehicle.y);
+    if (body.unseen_s > 0.0 && apart_m <= nearest_m) {
+      nearest_m = apart_m;
+      place = body.centre_map;
+    }
+  }
+  return place;
+}
+
 } // namespace drone_city_nav

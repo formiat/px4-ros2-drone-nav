@@ -67,11 +67,20 @@ projectForwardRouteStation(std::span<const RouteSample3D> route, const State& st
 // `survey_yaw_rate_radps` to sweep the walls it passes (zero holds it), and is
 // held otherwise. The translation is untouched: the yaw channel does not act
 // on it. Returns the decision taken at the first step, for diagnostics.
+// The place of an unseen body to look at, with the gaze's two angles for it
+// (MppiConfig::gaze_body_frame_half_rad, gaze_body_turn_rad).
+struct GazeBodyLook {
+  GazePlace place{};
+  float frame_half_rad{0.0F};
+  float turn_rad{0.0F};
+};
+
 GazeDecision applyGazeYawControls(std::span<Control> controls, std::span<State> horizon,
                                   const DynamicsConfig& dynamics, float lookahead_s,
                                   float minimum_displacement_m,
                                   std::optional<float> rest_heading_rad,
-                                  float survey_yaw_rate_radps);
+                                  float survey_yaw_rate_radps,
+                                  const std::optional<GazeBodyLook>& body_look);
 
 // The heading of the route where the vehicle stands on it: what a vehicle at
 // rest has to face before the speed law lets it leave along a route it has
@@ -80,5 +89,10 @@ GazeDecision applyGazeYawControls(std::span<Control> controls, std::span<State> 
 [[nodiscard]] std::optional<float>
 gazeRestHeading(const std::optional<RouteReference>& route,
                 float minimum_horizontal_share);
+
+// The heading a vehicle at rest faces: the place of a body it has not looked
+// at (K87), and with none where its route leaves.
+[[nodiscard]] std::optional<float> gazeRestHeading(const MppiTickInput& input,
+                                                   float minimum_horizontal_share);
 
 } // namespace drone_city_nav::mppi

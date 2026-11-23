@@ -119,7 +119,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   const float hold_yaw =
       config_.control.mppi.gaze_follows_motion && cycle.controller.input != nullptr &&
               reason != ProductionMppiExecutionReason::kGoalCapture
-          ? mppi::gazeRestHeading(cycle.controller.input->route,
+          ? mppi::gazeRestHeading(*cycle.controller.input,
                                   config_.control.mppi.gaze_minimum_horizontal_share)
                 .value_or(cycle.evidence.exact_initial_state.yaw)
           : cycle.evidence.exact_initial_state.yaw;

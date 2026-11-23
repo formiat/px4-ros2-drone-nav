@@ -35,6 +35,14 @@ enum class GazeRule : std::uint8_t {
   kMotion,
   kRest,
   kSurvey,
+  kBody,
+};
+
+// Where a body the memory read and no longer shows stood (specification K87):
+// the heading turns to it, so that a scan looks at the place.
+struct GazePlace {
+  float x{0.0F};
+  float y{0.0F};
 };
 
 struct GazeDecision {
@@ -52,6 +60,8 @@ struct GazeDecision {
       return "rest";
     case GazeRule::kSurvey:
       return "survey";
+    case GazeRule::kBody:
+      return "body";
   }
   return "unknown";
 }
@@ -73,6 +83,7 @@ struct MppiTickInput {
   std::uint64_t nominal_reseed_generation{0U};
   float reference_speed_mps{-1.0F};
   std::optional<RouteReference> route;
+  std::optional<GazePlace> gaze_place;
   std::vector<DynamicAircraftTrajectory> dynamic_aircraft;
   std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy{};
   std::optional<CooperativeManeuverPreference> cooperative_maneuver;

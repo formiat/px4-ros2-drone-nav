@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The vehicle turns its look to a body it has not read** (roadmap item 21; specification K87): while the
+  memory holds a body its last scan did not show, within the 10 m a place is kept in, the heading turns to where
+  it stood, so that the next scans look there and either read the body or take it off. At rest and in a hold
+  the heading goes straight to the place; in flight it leaves the motion only as far as puts the place 15
+  degrees off the heading, and only while the motion stays 10 degrees inside the forward sensor's field, so the
+  speed law is not touched. The planner's track names the rule `body`. No new topic or field: the bodies'
+  message already says how long each has gone unseen.
+
 - **A body is taken off by a look at where it stood, in every case** (roadmap item 21; specification K66): the
   stand's time of a body no scan shows ran by the clock unless one of two cases held (beside the vehicle, behind a
   surface), and a body that walked aside of the thermal core's frame beyond the pair's reach was no body 5 s

@@ -216,7 +216,7 @@ struct ExecutionHorizonAssemblerConfig3D {
 // node adapter.
 class ExecutionHorizonAssembler3D final {
 public:
-  explicit ExecutionHorizonAssembler3D(ExecutionHorizonAssemblerConfig3D config);
+  explicit ExecutionHorizonAssembler3D(const ExecutionHorizonAssemblerConfig3D& config);
 
   [[nodiscard]] HorizonCandidate3D
   assemble(const ProductionMppiExecutionCycle& cycle,

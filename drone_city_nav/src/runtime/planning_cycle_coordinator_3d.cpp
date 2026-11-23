@@ -495,8 +495,15 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // scan they were read on.
   const std::shared_ptr<const MovingBodyEvidence3D> moving_body_evidence =
       moving_body_evidence_.load(std::memory_order_acquire);
+  std::optional<mppi::GazePlace> gaze_place;
   if (moving_body_evidence != nullptr) {
     const MovingBodyEvidence3D& bodies = *moving_body_evidence;
+    if (const std::optional<Point3> place = unseenBodyPlace(
+            bodies.bodies, {request.navigation.state.x, request.navigation.state.y,
+                            request.navigation.state.z})) {
+      gaze_place = mppi::GazePlace{.x = static_cast<float>(place->x),
+                                   .y = static_cast<float>(place->y)};
+    }
     speed_policy_input.followed_bodies = bodies.bodies;
     speed_policy_input.moving_body_age_s =
         request.now_ns > bodies.stamp_ns
@@ -805,6 +812,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                                         config_.route_cross_track_constraints_enabled),
                             }}
                           : std::nullopt,
+                  .gaze_place = gaze_place,
                   .dynamic_aircraft =
                       output.controller.cooperative.mppi.dynamic_aircraft,
                   .cooperative_maneuver = output.controller.cooperative.mppi.maneuver,

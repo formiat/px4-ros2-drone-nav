@@ -165,6 +165,12 @@ struct BenchmarkConfig {
   // The yaw rate at which a vehicle that climbs or descends with no heading
   // to face turns to survey the walls it passes; zero holds the heading.
   float gaze_survey_yaw_rate_radps{0.0F};
+  // The look at an unseen body's place (K87): how far off the heading the
+  // place may stand to be inside the frame of the sensor that reads bodies,
+  // and how far the heading may leave the motion for it while the vehicle
+  // moves, the motion staying inside the forward sensor's field.
+  float gaze_body_frame_half_rad{0.0F};
+  float gaze_body_turn_rad{0.0F};
 };
 
 [[nodiscard]] bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept;

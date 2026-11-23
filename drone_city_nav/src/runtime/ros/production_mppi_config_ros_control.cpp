@@ -147,6 +147,16 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("gaze_survey_yaw_rate_radps", 0.0));
   mppi.gaze_minimum_horizontal_share = static_cast<float>(std::sin(
       control.speed_policy.sensor_braking_contract.vertical_cone_half_angle_rad));
+  // K87: the look at an unseen body's place. In motion the heading leaves the
+  // motion for it by no more than keeps the motion ten degrees inside the
+  // forward sensor's field (a lidar that sees all round leaves it free).
+  constexpr double kMotionInsideFieldRad{0.175};
+  mppi.gaze_body_frame_half_rad = static_cast<float>(
+      std::max(0.0, declare<double>("gaze_body_frame_half_rad", 0.0)));
+  mppi.gaze_body_turn_rad = static_cast<float>(std::clamp(
+      control.speed_policy.sensor_braking_contract.forward_horizontal_half_angle_rad -
+          kMotionInsideFieldRad,
+      0.0, std::numbers::pi));
   // Braking completes at the goal capture's stationary tolerance: a wider
   // margin leaves the vehicle drifting to rest outside the tolerance with no
   // reference speed left to close the gap.

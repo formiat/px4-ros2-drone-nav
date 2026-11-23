@@ -28,7 +28,8 @@ TEST(MppiGazeTest, TheGazeTurnsTheHeadingToTheMotionWithoutOvershoot) {
   }
   const std::vector<State> translation = horizon;
 
-  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F);
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F,
+                       std::nullopt);
 
   const float north = 0.5F * std::numbers::pi_v<float>;
   float peak_yaw{0.0F};
@@ -55,7 +56,8 @@ TEST(MppiGazeTest, TheGazeHoldsTheHeadingOfAVehicleThatHardlyMoves) {
     horizon.push_back(integrateReference(horizon.back(), control, dynamics));
   }
 
-  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F);
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F,
+                       std::nullopt);
 
   EXPECT_NEAR(horizon.back().yaw, 1.0F, 1.0e-5F);
 }
@@ -75,9 +77,11 @@ TEST(MppiGazeTest, TheGazeOfAVehicleAtRestTurnsToWhereItsRouteLeaves) {
   const std::optional<float> south =
       gazeRestHeading(RouteReference{.points = route}, 0.38F);
   ASSERT_TRUE(south.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   EXPECT_NEAR(*south, -1.5707964F, 1.0e-5F);
 
-  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, south, 0.0F);
+  applyGazeYawControls(controls, horizon, dynamics, 1.5F, 0.55F, south, 0.0F,
+                       std::nullopt);
 
   EXPECT_NEAR(horizon.back().yaw, -1.5707964F, 0.05F);
   EXPECT_NEAR(horizon.back().x, 0.0F, 1.0e-6F);
@@ -108,8 +112,8 @@ TEST(MppiGazeTest, TheGazeSurveysTheWallsOfAShaftTheVehicleClimbs) {
     horizon.push_back(integrateReference(horizon.back(), control, dynamics));
   }
 
-  const GazeDecision surveying = applyGazeYawControls(controls, horizon, dynamics, 1.5F,
-                                                      0.55F, std::nullopt, 1.5F);
+  const GazeDecision surveying = applyGazeYawControls(
+      controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 1.5F, std::nullopt);
 
   EXPECT_EQ(surveying.rule, GazeRule::kSurvey);
   for (std::size_t index = 0U; index < controls.size(); ++index) {
@@ -125,6 +129,72 @@ TEST(MppiGazeTest, TheGazeSurveysTheWallsOfAShaftTheVehicleClimbs) {
     swept_rad += std::abs(horizon[index + 1U].yaw_rate) * dynamics.dt_s;
   }
   EXPECT_GT(swept_rad, 2.5F);
+}
+
+// Specification K87: the look at the place of a body the memory read and no
+// longer shows. The frame's half angle 15 degrees, the turn the motion allows
+// 50 (the pair's 60 less 10).
+constexpr float kFrameHalfRad{0.26F};
+constexpr float kTurnRad{0.87F};
+
+[[nodiscard]] GazeDecision lookFrom(const State& initial, const GazePlace place,
+                                    std::vector<State>& horizon) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.maximum_yaw_rate_radps = 0.8F;
+  dynamics.maximum_yaw_acceleration_radps2 = 2.0F;
+  std::vector<Control> controls(120U);
+  horizon.assign(1U, initial);
+  for (const Control& control : controls) {
+    horizon.push_back(integrateReference(horizon.back(), control, dynamics));
+  }
+  return applyGazeYawControls(
+      controls, horizon, dynamics, 1.5F, 0.55F, std::nullopt, 0.0F,
+      GazeBodyLook{
+          .place = place, .frame_half_rad = kFrameHalfRad, .turn_rad = kTurnRad});
+}
+
+TEST(MppiGazeTest, AVehicleAtRestTurnsToThePlaceOfAnUnseenBody) {
+  // r4017: the vehicle stands, the body read 5.6 m off has walked aside of the
+  // core's frame. The heading turns to where it stood, whatever the route.
+  std::vector<State> horizon;
+  const GazeDecision decision =
+      lookFrom(State{}, GazePlace{.x = 0.0F, .y = 5.6F}, horizon);
+  EXPECT_EQ(decision.rule, GazeRule::kBody);
+  EXPECT_NEAR(decision.target_yaw_rad, 0.5F * std::numbers::pi_v<float>, 1.0e-5F);
+  EXPECT_NEAR(horizon.back().yaw, 0.5F * std::numbers::pi_v<float>, 0.05F);
+}
+
+TEST(MppiGazeTest,
+     InMotionTheHeadingLeavesTheMotionOnlyAsFarAsBringsThePlaceIntoTheFrame) {
+  // Flying east at 1 m/s, the place 40 degrees to the left far ahead: the
+  // heading leaves the motion by the 25 degrees that put the place at the
+  // frame's 15, and the motion stays inside the forward sensor's field.
+  std::vector<State> horizon;
+  const float aside = 40.0F * std::numbers::pi_v<float> / 180.0F;
+  const GazePlace place{.x = 600.0F * std::cos(aside), .y = 600.0F * std::sin(aside)};
+  const GazeDecision decision = lookFrom(State{.vx = 1.0F}, place, horizon);
+  EXPECT_EQ(decision.rule, GazeRule::kBody);
+  EXPECT_NEAR(decision.target_yaw_rad, aside - kFrameHalfRad, 0.01F);
+  // Three seconds in (the horizon's last second and a half has no motion
+  // ahead of it to read).
+  EXPECT_NEAR(horizon[60U].yaw, aside - kFrameHalfRad, 0.05F);
+}
+
+TEST(MppiGazeTest,
+     InMotionAPlaceInsideTheFrameOrBehindTheMotionLeavesTheHeadingToTheMotion) {
+  // A place 10 degrees off the motion is in the frame already; one 150 degrees
+  // off cannot be looked at without the motion leaving the forward sensor's
+  // field: both leave the heading to the motion.
+  for (const float degrees : {10.0F, 150.0F}) {
+    std::vector<State> horizon;
+    const float aside = degrees * std::numbers::pi_v<float> / 180.0F;
+    const GazePlace place{.x = 600.0F * std::cos(aside), .y = 600.0F * std::sin(aside)};
+    const GazeDecision decision =
+        lookFrom(State{.vx = 1.0F, .yaw = 0.3F}, place, horizon);
+    EXPECT_EQ(decision.rule, GazeRule::kMotion) << degrees;
+    EXPECT_NEAR(horizon[60U].yaw, 0.0F, 0.05F) << degrees;
+  }
 }
 
 } // namespace

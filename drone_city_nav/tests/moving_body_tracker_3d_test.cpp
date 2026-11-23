@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -191,6 +192,23 @@ TEST(MovingBodyTracker3D, TheSweptCellsLieAheadAlongTheVelocity) {
   body.sized = true;
   const std::vector<GridIndex3D> sized = sweptCells3D(body, 1.5, 0.5, kBounds);
   EXPECT_EQ(std::ranges::max(sized, {}, &GridIndex3D::z).z, 12);
+}
+
+TEST(MovingBodyTracker3D, TheGazeTurnsToTheNearestUnseenBodyWithinThePlacesReach) {
+  // Specification K87: a body the last scan showed is not looked for, nor is
+  // a place farther than the 10 m it is kept within; of the rest the nearest.
+  const Point3 vehicle{0.0, 0.0, 2.0};
+  const std::vector<MovingBody3D> bodies{
+      MovingBody3D{.centre_map = {3.0, 0.0, 1.0}, .warm = true},
+      MovingBody3D{.centre_map = {0.0, 8.0, 1.0}, .warm = true, .unseen_s = 2.0},
+      MovingBody3D{.centre_map = {6.0, 0.0, 1.0}, .warm = true, .unseen_s = 5.0},
+      MovingBody3D{.centre_map = {0.0, -12.0, 1.0}, .warm = true, .unseen_s = 1.0},
+  };
+  const std::optional<Point3> place = unseenBodyPlace(bodies, vehicle);
+  ASSERT_TRUE(place.has_value());
+  EXPECT_DOUBLE_EQ(place->x, 6.0); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_FALSE(unseenBodyPlace(std::span{bodies}.first(1U), vehicle).has_value());
+  EXPECT_FALSE(unseenBodyPlace(std::span{bodies}.last(1U), vehicle).has_value());
 }
 
 } // namespace

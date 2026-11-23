@@ -434,6 +434,13 @@ production_mppi_node:
     # depth returns per scan from 28.6 to 27.4 thousand, no cliff. PX4's own
     # yaw rate limit (MC_YAWRATE_MAX, 200 deg/s) is above both.
     maximum_yaw_rate_radps: 2.0
+    # The look at a body the memory read and no longer shows (specification
+    # K87): the heading turns until the place stands within this angle of it,
+    # well inside the thermal core's frame (26.5 degrees either side as the
+    # memory reads it, K66), so that the memory's next scans look at the
+    # place and either read the body or take it off. 15 degrees leaves the
+    # body's width at 5 m, the yaw's tracking and the estimate's error.
+    gaze_body_frame_half_rad: 0.26
     maximum_yaw_acceleration_radps2: 3.0
     speed_reaction_latency_s: 0.10
     # How late the vehicle follows a reference that falls, charged as latency

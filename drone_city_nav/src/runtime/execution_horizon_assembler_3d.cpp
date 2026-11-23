@@ -89,8 +89,8 @@ horizonCandidateStatus3DName(const HorizonCandidateStatus3D status) noexcept {
 }
 
 ExecutionHorizonAssembler3D::ExecutionHorizonAssembler3D(
-    ExecutionHorizonAssemblerConfig3D config)
-    : config_{std::move(config)} {
+    const ExecutionHorizonAssemblerConfig3D& config)
+    : config_{config} {
 }
 
 HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
@@ -155,7 +155,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         std::hypot(ahead_x, ahead_y) >= kStationaryExecutionHoldPositionToleranceM
             ? std::optional<float>{std::atan2(ahead_y, ahead_x)}
             : mppi::gazeRestHeading(
-                  input.route,
+                  input,
                   static_cast<float>(std::sin(
                       config_.sensor_braking_contract.vertical_cone_half_angle_rad)));
   }

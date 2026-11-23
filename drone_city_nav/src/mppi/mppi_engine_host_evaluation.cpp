@@ -89,9 +89,10 @@ std::size_t buildRepairCandidateSequences(const RepairCandidateInput& input,
 }
 
 void fillResultFromEvaluation(MppiTickResult& result,
-                              EvaluatedControlSequence&& selected_evaluation,
+                              EvaluatedControlSequence&& evaluation,
                               const ResultReconstructionInput& in) {
   const auto reconstruction_started = std::chrono::steady_clock::now();
+  EvaluatedControlSequence selected_evaluation{std::move(evaluation)};
   result.horizon = std::move(selected_evaluation.trace.horizon);
   if (result.horizon.size() != in.controls.size() + 1U) {
     throw std::runtime_error{"MPPI control evaluation returned incomplete horizon"};
@@ -101,7 +102,13 @@ void fillResultFromEvaluation(MppiTickResult& result,
         in.controls, result.horizon, in.config.dynamics, kGazeLookaheadS,
         kGazeMinimumDisplacementM,
         gazeRestHeading(in.input.route, in.config.gaze_minimum_horizontal_share),
-        in.config.gaze_survey_yaw_rate_radps);
+        in.config.gaze_survey_yaw_rate_radps,
+        in.input.gaze_place.has_value()
+            ? std::optional<GazeBodyLook>{GazeBodyLook{
+                  .place = *in.input.gaze_place,
+                  .frame_half_rad = in.config.gaze_body_frame_half_rad,
+                  .turn_rad = in.config.gaze_body_turn_rad}}
+            : std::nullopt);
     result.controls.assign(in.controls.begin(), in.controls.end());
   }
   State state = result.horizon.front();

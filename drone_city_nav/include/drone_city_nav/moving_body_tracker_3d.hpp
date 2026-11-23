@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -17,6 +18,9 @@ inline constexpr double kWarmBodyWalkMps{1.5};
 // The tallest a body is: what stands taller is a wall's skin (r3061: skins 3
 // to 5.5 m tall read as bodies walking along the walls).
 inline constexpr double kTallestBodyM{2.5};
+// The distance from the vehicle a body's place is kept within and owed a way
+// out in (the rise's, K66); farther off it is not kept.
+inline constexpr double kBodyPlaceKeptWithinM{10.0};
 
 // Roadmap item 21, specification K66: a body the obstacle memory follows, as
 // the planner reads it: where it stands, how fast its centre was measured
@@ -186,5 +190,11 @@ private:
 [[nodiscard]] std::vector<GridIndex3D> sweptCells3D(const MovingBody3D& body,
                                                     double sweep_s, double reach_m,
                                                     const GridBounds3D& bounds);
+
+// The place the gaze turns to (K87): of the bodies the memory reads and its
+// last scan did not show, within the distance a place is kept in, the nearest
+// to the vehicle. None while every body is shown.
+[[nodiscard]] std::optional<Point3>
+unseenBodyPlace(std::span<const MovingBody3D> bodies, const Point3& vehicle) noexcept;
 
 } // namespace drone_city_nav

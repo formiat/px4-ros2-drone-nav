@@ -708,13 +708,11 @@ RiskTier maximumRequiredRiskTier(const std::span<const RouteSample3D> route,
 // autopilot's yaw response, a few tenths of a second, stays well inside that.
 constexpr float kGazeRateGainPerSecond{1.5F};
 
-GazeDecision applyGazeYawControls(const std::span<Control> controls,
-                                  const std::span<State> horizon,
-                                  const DynamicsConfig& dynamics,
-                                  const float lookahead_s,
-                                  const float minimum_displacement_m,
-                                  const std::optional<float> rest_heading_rad,
-                                  const float survey_yaw_rate_radps) {
+GazeDecision applyGazeYawControls(
+    const std::span<Control> controls, const std::span<State> horizon,
+    const DynamicsConfig& dynamics, const float lookahead_s,
+    const float minimum_displacement_m, const std::optional<float> rest_heading_rad,
+    const float survey_yaw_rate_radps, const std::optional<GazeBodyLook>& body_look) {
   GazeDecision decision{};
   if (horizon.size() != controls.size() + 1U || !(dynamics.dt_s > 0.0F)) {
     return decision;
@@ -736,6 +734,29 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
     const float ahead_x = ahead.x - state.x;
     const float ahead_y = ahead.y - state.y;
     const bool moving = std::hypot(ahead_x, ahead_y) >= minimum_displacement_m;
+    // The look at an unseen body's place (K87). At rest the heading turns to
+    // the place. In motion it leaves the motion's heading by no more than
+    // brings the place inside the frame of the sensor that reads bodies, and
+    // only while that keeps the motion inside the forward sensor's field: a
+    // place behind the motion is not looked at in flight (of 27 bodies taken
+    // off unlooked while the vehicle moved, 8 stood more than 88 degrees off
+    // its course, at 0.2 to 1.5 m/s: the meetings kept from 2a2541c7).
+    std::optional<float> body_yaw;
+    if (body_look.has_value()) {
+      const float place_yaw =
+          std::atan2(body_look->place.y - state.y, body_look->place.x - state.x);
+      if (!moving) {
+        body_yaw = place_yaw;
+      } else {
+        const float motion_yaw = std::atan2(ahead_y, ahead_x);
+        const float aside =
+            std::remainder(place_yaw - motion_yaw, 2.0F * std::numbers::pi_v<float>);
+        const float turn = std::abs(aside) - body_look->frame_half_rad;
+        if (turn > 0.0F && turn <= body_look->turn_rad) {
+          body_yaw = motion_yaw + std::copysign(turn, aside);
+        }
+      }
+    }
     // A climb or a descent with no heading to face, inside the cone of the
     // sensors that look up and down: the pair sees one wall of the shaft and
     // the planner keeps hoping for exits in the walls it has not seen (r607:
@@ -743,10 +764,13 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
     // climb, then 20 s of probing exits at the top, 39 routes; r600 the
     // same). The survey turns the pair around the walls as they pass.
     const bool surveying = !moving && !rest_heading_rad.has_value() &&
-                           survey_yaw_rate_radps > 0.0F &&
+                           !body_yaw.has_value() && survey_yaw_rate_radps > 0.0F &&
                            std::abs(ahead.z - state.z) >= minimum_displacement_m;
     if (index == 0U) {
-      if (moving) {
+      if (body_yaw.has_value()) {
+        decision.rule = GazeRule::kBody;
+        decision.target_yaw_rad = *body_yaw;
+      } else if (moving) {
         decision.rule = GazeRule::kMotion;
         decision.target_yaw_rad = std::atan2(ahead_y, ahead_x);
       } else if (rest_heading_rad.has_value()) {
@@ -771,12 +795,16 @@ GazeDecision applyGazeYawControls(const std::span<Control> controls,
       horizon[index + 1U].yaw_rate = integrated.yaw_rate;
       continue;
     }
-    const float error_rad = moving || rest_heading_rad.has_value()
-                                ? std::remainder((moving ? std::atan2(ahead_y, ahead_x)
-                                                         : *rest_heading_rad) -
-                                                     state.yaw,
-                                                 2.0F * std::numbers::pi_v<float>)
-                                : 0.0F;
+    std::optional<float> target_yaw = body_yaw;
+    if (!target_yaw.has_value() && moving) {
+      target_yaw = std::atan2(ahead_y, ahead_x);
+    } else if (!target_yaw.has_value()) {
+      target_yaw = rest_heading_rad;
+    }
+    const float error_rad =
+        target_yaw.has_value()
+            ? std::remainder(*target_yaw - state.yaw, 2.0F * std::numbers::pi_v<float>)
+            : 0.0F;
     // A turn rate proportional to the remaining angle, inside the yaw rate
     // limit. The rate that closes the angle at the full yaw deceleration is
     // the fastest plan, and it left no room for the autopilot's own yaw
@@ -815,6 +843,15 @@ std::optional<float> gazeRestHeading(const std::optional<RouteReference>& route,
     return std::nullopt;
   }
   return std::atan2(at.tangent_y, at.tangent_x);
+}
+
+std::optional<float> gazeRestHeading(const MppiTickInput& input,
+                                     const float minimum_horizontal_share) {
+  if (input.gaze_place.has_value()) {
+    return std::atan2(input.gaze_place->y - input.initial_state.y,
+                      input.gaze_place->x - input.initial_state.x);
+  }
+  return gazeRestHeading(input.route, minimum_horizontal_share);
 }
 
 } // namespace drone_city_nav::mppi
