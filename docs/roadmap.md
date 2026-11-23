@@ -653,6 +653,43 @@ part 1; specification K64, K65, K66, F23; the flight code of 6c42a8b9).
 The item stays open: stage 2a, stage 3 (the doors) and the cold bodies'
 acceptance are not done.
 
+**The look at an unread body's place, done on 2026-11-23** (the goal of
+2026-11-20, part 1; specification K66 and K87; the flight code of 35436008).
+Not yet in a release (after v0.8.0). v0.8.0 shipped with a body taken off
+by a clock where no sensor had looked: read from 5.4 m, a body walked aside
+out of the thermal core's 57 degrees beyond the pair's reach, was no body 5 s
+later, and came back unread (r4017, the stopping margin -0.47 m).
+
+- **Measured first** (`tools/unlooked_bodies.py`, by the truth): over the 24
+  meetings kept from 2a2541c7 the clock took 33 bodies off within 10 m while
+  a turn of the heading would have shown their place, every one on the
+  camera set, the place aside of the core's frame for 159 of the 169 s they
+  stood unseen.
+- **The rule** (K66): the stand's time stands still while a look the vehicle
+  can still have is outstanding, by one measure
+  (`ObstacleMemory3D::lookOutstanding`): its rays' beside the place, the look
+  round a surface, and the turn of the heading where that would bring the
+  body's upper half into the core's frame, which rides with every scan.
+  Proven by a record before the flights: r4061 on the old code took 6 such
+  bodies off, its bag through the new memory none.
+- **The look** (K87): the heading turns to the nearest such place, in flight
+  only as far as keeps the motion inside the pair's field, at rest and in a
+  stationary hold straight to it; the speed law is not touched.
+- **The ladder** (r4062 to r4076) changed the rule twice. A place held "until
+  looked at" whatever the geometry kept a vehicle 12 s before a place whose
+  foot lay 3 degrees under the frame (r4064: the frame asks for the upper
+  half) and 17 s against a ceiling over a place no turn could show, where the
+  hover's drift carried a rotor into the ceiling (r4066, a contact: such a
+  place is given to the time, as before; and a hold, which had never turned
+  its heading, turns to the place).
+- **Accepted** on 35436008 (specification A14): the eighteen meetings r4077
+  to r4094 without a contact, the stopping margin positive in every one
+  (+0.08 to +2.84 m; 17 of 18 on 2a2541c7), no body taken off with a look
+  outstanding, no stale trace cell, no stand over 2 s before such a place;
+  the Urban five and five r4095 to r4105 without a contact or a failed
+  check, 1.350 m/s on the stereo set and 2.334 on the lidar (1.394 and 2.310
+  on 2a2541c7).
+
 What stands: a body is read by the thermal core's marks, with a cluster or
 without one, and stands where the marks are, one body a group of marks;
 where the pair returns nothing of a body the core sights (beyond the

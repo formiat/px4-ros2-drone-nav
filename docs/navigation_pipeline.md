@@ -16,10 +16,13 @@ moving layer (specification K65) holds what moves by how it behaves (never a
 column that stands taller than a body: that is a surface), and the
 bodies the memory follows (K66: read by the thermal core's marks, one body
 a group of marks, laid by its apparent size where the range sensors return
-nothing of it, unseen until a scan has looked at where they stood) reach
-the planner as `MovingBodyEvidence3D` with every scan, the place kept for
-each (reaching the vehicle's way out while the body is within 10 m) and
-its sweep occupied in the snapshots between scans.
+nothing of it, kept where they stood while a look the vehicle can still
+have at the place is outstanding) reach the planner as
+`MovingBodyEvidence3D` with every scan, the place kept for each (reaching
+the vehicle's way out while the body is within 10 m) and its sweep occupied
+in the snapshots between scans. The planner turns the heading to the place
+of a body the last scan did not show (K87: the gaze's rule `body`; a
+stationary hold turns too), so that the look is had.
 
 In no-static mode the reconstructed raw state is the planning world. The 3D
 pipeline publishes the current physical scan first, integrates persistent memory

@@ -13,7 +13,10 @@ release names the asset tags it was validated with.
   heading, and only while the motion stays 10 degrees inside the forward sensor's field, so the speed law is not
   touched. A stationary hold turns too: it names the place's bearing and the offboard closes the heading to it
   by the yaw rate (a hold that names no place keeps its heading, as before). The planner's track names the rule
-  `body`. No new topic or field: the bodies' message already says how long each has gone unseen.
+  `body`. No new topic or field: the bodies' message already says how long each has gone unseen. Accepted on
+  35436008: eighteen meetings with a walking body (r4077 to r4094) without a contact, the stopping margin
+  positive in every one (+0.08 to +2.84 m; one of eighteen was -0.47 m in v0.8.0), and the Urban five and five
+  at 1.350 m/s on the stereo set and 2.334 on the lidar.
 
 - **A body is taken off by a look at where it stood wherever the vehicle has a look to take** (roadmap item 21;
   specification K66): the stand's time of a body no scan shows ran by the clock unless one of two cases held
