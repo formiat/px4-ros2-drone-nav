@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The cleanup stops this checkout's flight alone** (roadmap item 43 point 6; the finding and the way are
+  naipi11's, PX4-ROS2-NAV `20121042` and `bb3e6d20`): `scripts/cleanup_sim_processes.sh`, which every series
+  runs between its flights, took any container of the dev image for its own and, on the host, any process
+  whose command line matched a simulator's, so one checkout's cleanup stopped another checkout's flight. A
+  container is now this checkout's by the mount of its root alone, and the process half reads only the pid
+  namespace it runs in: a container is stopped as a container. Proven with two decoy containers (two
+  containers and four processes selected before, one container and no process after).
+
 ## v0.8.0 (2026-11-20)
 
 The vehicle outdoors and among people. On the open sky the full sensor set

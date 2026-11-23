@@ -249,6 +249,22 @@ def select_conflicting_processes(
     return sorted(candidates, key=lambda process: process.pid)
 
 
+def in_own_pid_namespace(pid: int) -> bool:
+    """Whether a process lives in the pid namespace this cleanup runs in.
+
+    The host's `ps` lists every container's processes, and a flight's
+    `gz sim`, `MicroXRCEAgent` and `/workspace/.../px4` match the patterns
+    above whichever checkout started them. A process of another namespace
+    belongs to a container, and a container is stopped as a container, by
+    its mount (cleanup_sim_processes.sh), never process by process. A
+    namespace that cannot be read is another one: the process is left alone.
+    """
+    try:
+        return os.readlink(f"/proc/{pid}/ns/pid") == os.readlink("/proc/self/ns/pid")
+    except OSError:
+        return False
+
+
 def read_process_table() -> list[ProcessInfo]:
     result = subprocess.run(
         ["ps", "-eo", "pid=,ppid=,pgid=,cmd="],
@@ -258,7 +274,11 @@ def read_process_table() -> list[ProcessInfo]:
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "ps command failed")
-    return parse_ps_output(result.stdout)
+    return [
+        process
+        for process in parse_ps_output(result.stdout)
+        if in_own_pid_namespace(process.pid)
+    ]
 
 
 def _is_alive(pid: int) -> bool:

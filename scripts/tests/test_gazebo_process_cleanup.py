@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -175,6 +176,14 @@ class GazeboProcessCleanupTest(unittest.TestCase):
 
         self.assertEqual(len(processes), 1)
         self.assertEqual(processes[0].pid, 200)
+
+    def test_the_live_table_holds_this_pid_namespace_alone(self) -> None:
+        # Roadmap item 43 point 6: on the host `ps` lists every container's processes, and another checkout's
+        # flight matched the patterns as surely as this one's. A pid beyond the kernel's largest has no namespace
+        # to read and is left alone.
+        self.assertTrue(cleanup.in_own_pid_namespace(os.getpid()))
+        self.assertFalse(cleanup.in_own_pid_namespace(2**22 + 1))
+        self.assertIn(os.getpid(), [process.pid for process in cleanup.read_process_table()])
 
 
 if __name__ == "__main__":

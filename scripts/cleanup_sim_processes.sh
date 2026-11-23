@@ -25,7 +25,6 @@ clean_stale_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
 container_stop_timeout_s="${DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S:-2}"
-dev_image_name="${DRONE_GAZEBO_DEV_IMAGE:-drone-gazebo-dev:latest}"
 docker_command_timeout_s="${DRONE_GAZEBO_DOCKER_COMMAND_TIMEOUT_S:-4}"
 
 for arg in "$@"; do
@@ -64,19 +63,25 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
-# A container of this repository: it runs the dev image or mounts the
-# repository as its workspace. Only such containers are ever stopped, whatever
-# their command says.
+# A container of this checkout: it mounts this repository's root, which is what
+# container_run.sh gives every container it starts. Only such containers are
+# ever stopped, whatever their command says. The image does not tell checkouts
+# apart: a second checkout on the host runs the same dev image, and its flight
+# would be stopped by this one's cleanup between flights (naipi11's finding,
+# docs/forks.md).
 container_belongs_to_repository() {
   local container_id="$1"
-  local identity_text
-  identity_text="$(
+  local mount_source
+  while IFS= read -r mount_source; do
+    if [[ "${mount_source}" == "${repo_root}" ]]; then
+      return 0
+    fi
+  done < <(
     timeout "${docker_command_timeout_s}s" docker inspect \
-      --format '{{.Config.Image}} {{range .Mounts}}{{.Source}} {{end}}' \
+      --format '{{range .Mounts}}{{println .Source}}{{end}}' \
       "${container_id}" 2>/dev/null || true
-  )"
-  [[ "${identity_text}" == *"${dev_image_name}"* ||
-    "${identity_text}" == *"${repo_root} "* ]]
+  )
+  return 1
 }
 
 container_has_simulation_processes() {
