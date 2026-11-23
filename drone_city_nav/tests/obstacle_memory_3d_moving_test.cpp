@@ -956,6 +956,44 @@ TEST(ObstacleMemory3D, ABodyAsideOfTheCoresFrameStandsUntilTheFrameTurnsToIt) {
   }
 }
 
+TEST(ObstacleMemory3D, TheCoresFrameLooksAtABodyByItsUpperHalf) {
+  // K66 (r4064): a warm body sighted by its size 6 m off from 1.9 m over its
+  // middle, then nothing of it. The core's frame on where it stood holds its
+  // middle and its top (18 and 13 degrees under the axis) and not its foot
+  // (22, the frame's edge at 20): a body there would have been read by what
+  // the frame holds, and the stand's 5 s take it off. From 3.5 m over, the
+  // middle is out of the frame too (30 degrees under): no scan looks, and it
+  // stands.
+  constexpr GridBounds3D kFine{0.0, 0.0, 0.0, 0.25, 80, 80, 40};
+  const Point3 place{8.125, 4.25, 2.625};
+  for (const double over_m : {1.9, 3.5}) {
+    ObstacleMemory3D memory{
+        kFine, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+    const Point3 origin{2.125, 4.125, place.z + over_m};
+    std::vector<LidarBeam3D> sighted;
+    for (const double y : {4.125, 4.375}) {
+      for (const double z : {2.125, 2.375, 2.625, 2.875, 3.125}) {
+        sighted.push_back(hitAt(origin, {place.x, y, z}, true));
+        sighted.back().surface_only = true;
+      }
+    }
+    ObstacleMemory3DStats stats = memory.integrateScan(
+        {.origin_map = origin, .beams = sighted, .acquisition_stamp_ns = kSecondNs});
+    ASSERT_EQ(stats.followed_bodies, 1U);
+    // The frame level, its axis over the place.
+    const Point3 level{place.x, place.y, origin.z};
+    for (int scan = 1; scan <= 16; ++scan) {
+      stats = memory.integrateScan(
+          {.origin_map = origin,
+           .beams = {},
+           .acquisition_stamp_ns = kSecondNs + scan * (kSecondNs / 2),
+           .body_view = coreLookingAt(origin, level)});
+      EXPECT_EQ(stats.followed_bodies, over_m > 3.0 || scan <= 10 ? 1U : 0U)
+          << over_m << " m over, scan " << scan;
+    }
+  }
+}
+
 TEST(ObstacleMemory3D, ABodysPlaceFartherThanTenMetresIsNotKept) {
   // K66 (r3649): a warm body sighted by its size 7 m off; the vehicle then
   // stands 12 m from where it stood, no scan looking there. Beyond the 10 m

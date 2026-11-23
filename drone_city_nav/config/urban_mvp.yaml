@@ -167,7 +167,7 @@ obstacle_memory_3d_node:
     moving_least_voxels: 4
     # A body no scan shows is taken off by a look at where it stood: the
     # stand's time runs only over the scans whose rays crossed its column at
-    # every level, or in which the column stood whole in the frame of the
+    # every level, or in which its upper half stood in the frame of the
     # sensor that reads bodies with nothing the memory holds between. That
     # frame is the thermal core's on both sensor sets (160 by 120 over 57
     # degrees, K39: 28.5 degrees either side and 22.2 up and down), two

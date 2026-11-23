@@ -738,8 +738,8 @@ GazeDecision applyGazeYawControls(
     // the place. In motion it leaves the motion's heading by no more than
     // brings the place inside the frame of the sensor that reads bodies, and
     // only while that keeps the motion inside the forward sensor's field: a
-    // place behind the motion is not looked at in flight (of 27 bodies taken
-    // off unlooked while the vehicle moved, 8 stood more than 88 degrees off
+    // place behind the motion is not looked at in flight (of 23 bodies taken
+    // off unlooked while the vehicle moved, 7 stood more than 88 degrees off
     // its course, at 0.2 to 1.5 m/s: the meetings kept from 2a2541c7).
     std::optional<float> body_yaw;
     if (body_look.has_value()) {

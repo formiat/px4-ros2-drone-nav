@@ -11,12 +11,14 @@ carry both (one a second, the stamps between them interpolated).
 
 A body is taken off when the next scan's line holds no read body within 1.5 m of where this scan kept one unseen
 (or no line follows for 0.6 s: a scan with no body writes none), and none shown anew within a person's walk of it
-over the time it went unseen (1.5 m/s, the memory's own: it reads that one as the same body, found again). Over the scans it stood unseen through, by the
-truth, a sensor could look at its place when the whole column (its foot, its middle and its top) stood in the
+over the time it went unseen (1.5 m/s, the memory's own: it reads that one as the same body, found again). Over
+the scans it stood unseen through, by the truth, a sensor could look at its place when the place stood in the
 sensor's field, within the range the sensor reads a body at, with no occupied cell of the truth grid on the ray:
-the stereo set's pair (5.2 m, 60 degrees either side of the heading and 52.4 up and down) or its thermal core
-(19 m, 28.5 and 22.2 degrees); the lidar set's lidar (19 m all round). The time-of-flight modules (2.8 m) are not
-counted. The estimate's error is not removed: the place is the memory's, the pose the truth's.
+the whole column (its foot, its middle and its top) for the sensors that range, the stereo set's pair (5.2 m, 60
+degrees either side of the heading and 52.4 up and down) and the lidar set's lidar (19 m all round); the column's
+middle and top for the thermal core (19 m, 28.5 and 22.2 degrees), which reads a body by a region its frame cuts
+(K64, K66). The time-of-flight modules (2.8 m) are not counted. The estimate's error is not removed: the place is
+the memory's, the pose the truth's, and the vehicle is taken level (its yaw alone).
 
 The stand's time (5 s) runs over the scans in which a sensor could look and over those the vehicle stood farther
 than 10 m from the place in (specification K66: a place is not kept beyond that). The verdict: `looked` when a
@@ -28,8 +30,12 @@ of the time (`range`; `aside`, off its field across; `under` or `over`, off it u
 of the truth on the ray), the place's distance and bearing
 off the heading and the vehicle's speed and its course off the heading at the last scan that showed the body, the
 nearest and the farthest the vehicle stood from the place while it was unseen, and where the nearest true body
-stood from the place when it was taken off. `--grid=PATH` names another world's truth grid (the urban 0.25 m grid
-of log/tools/truth25 otherwise). The batch prints its start, its total and its count."""
+stood from the place when it was taken off. After a flight's rows: the longest the vehicle stood (under 0.2 m/s
+by the truth) while the memory kept, within 10 m of it, an unseen body's place that no sensor could look at; over
+10 s it is marked `STOOD` (specification K87: the look is what ends a stand before such a place); beside it the
+longest stand by any unseen place within 10 m, looked at or not. `--grid=PATH`
+names another world's truth grid (the urban 0.25 m grid of log/tools/truth25 otherwise). The batch prints its
+start, its total and its count."""
 import bisect, csv, math, re, sys, time
 from pathlib import Path
 import numpy as np
@@ -50,10 +56,12 @@ B = OCC.bounds
 RES = B.resolution_m
 KEPT_WITHIN_M = 10.0
 WALK_MPS = 1.5
-# (name, range m, half field across rad, half field up and down rad); None: all round.
-PAIR = ('pair', 5.2, math.radians(60.0), math.radians(52.4))
-CORE = ('core', 19.0, math.radians(28.5), math.radians(22.2))
-LIDAR = ('lidar', 19.0, None, None)
+STOOD_OVER_S = 10.0
+# (name, range m, half field across rad, half field up and down rad, the first level of the column it has to
+# hold: 0 its foot, 1 its middle); None: all round.
+PAIR = ('pair', 5.2, math.radians(60.0), math.radians(52.4), 0)
+CORE = ('core', 19.0, math.radians(28.5), math.radians(22.2), 1)
+LIDAR = ('lidar', 19.0, None, None, 0)
 WALL = re.compile(r'\[(\d+\.\d+)\] \[obstacle_memory_3d_node\]: (\w+)')
 BODY = re.compile(r'\[(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) r([\d.]+) h([\d.]+) v(-?[\d.]+),(-?[\d.]+) n(\d+) a([\d.]+) '
                   r'd([\d.]+) (\w+) u([\d.]+)\]')
@@ -80,11 +88,11 @@ def clear_ray(eye, point):
 
 
 def hidden(sensor, pose, column):
-    """What keeps the sensor, on the vehicle at this true pose, from the whole column: None when it could look,
-    else the first of `range`, `aside` (off the field across), `under` or `over` (off it up or down), `wall`."""
-    _, reach, across, updown = sensor
+    """What keeps the sensor, on the vehicle at this true pose, from the column: None when it could look, else
+    the first of `range`, `aside` (off the field across), `under` or `over` (off it up or down), `wall`."""
+    _, reach, across, updown, first_level = sensor
     eye = np.array(pose[1:4])
-    for point in column:
+    for point in column[first_level:]:
         delta = point - eye
         if float(np.linalg.norm(delta)) > reach:
             return 'range'
@@ -198,7 +206,31 @@ def report(run):
                          wrap(math.atan2(y - shown[2], x - shown[1]) - shown[4]), speed,
                          wrap(math.atan2(vy, vx) - shown[4]) if speed > 0.2 else None,
                          min(apart), max(apart), walker))
+    # The longest the vehicle stood by an unseen body's place within 10 m that no sensor could look at.
+    stood = (0.0, 0.0, 0.0)
+    stood_by_any = 0.0
+    begun = begun_by_any = previous = None
+    for t, held in scans:
+        pose = pose_at(t)
+        later = pose_at(t + 0.5)
+        near = [(x, y, z, height) for x, y, z, height, unseen in held
+                if unseen > 0.0 and math.hypot(x - pose[1], y - pose[2]) <= KEPT_WITHIN_M]
+        still = bool(near) and math.hypot(later[1] - pose[1], later[2] - pose[2]) / 0.5 < 0.2
+        blind = still and any(
+            all(hidden(sensor, pose, [np.array((x, y, level)) for level in
+                                      (z - 0.5 * height + 0.1, z, z + 0.5 * height - 0.1)]) is not None
+                for sensor in sensors)
+            for x, y, z, height in near)
+        joined = previous is not None and t - previous <= 0.6
+        begun_by_any = (begun_by_any if joined and begun_by_any is not None else t) if still else None
+        begun = (begun if joined and begun is not None else t) if blind else None
+        if still:
+            stood_by_any = max(stood_by_any, t - begun_by_any)
+        if blind and t - begun > stood[0]:
+            stood = (t - begun, begun, t)
+        previous = t
     counts = {verdict: sum(1 for row in rows if row[0] == verdict) for verdict in ('looked', 'far', 'UNLOOKED')}
+    counts['STOOD'] = 1 if stood[0] > STOOD_OVER_S else 0
     print(f'{run.name}: {"stereo set" if cameras else "lidar set"}, {len(scans)} scans with a body,'
           f' {len(rows)} bodies taken off: looked {counts["looked"]}, far {counts["far"]},'
           f' UNLOOKED {counts["UNLOOKED"]}')
@@ -210,15 +242,19 @@ def report(run):
               f' last shown {flat:4.1f} m at {math.degrees(bearing):+4.0f} deg, {speed:.1f} m/s'
               + (f' course {math.degrees(course):+4.0f} deg' if course is not None else ' at rest')
               + (f'; true body {walker:.1f} m from the place' if walker is not None else ''))
+    print(f'  {"STOOD" if counts["STOOD"] else "stood":8s} {stood[0]:5.1f} s at most by an unseen body\'s place no sensor'
+          f' could look at' + (f' ({stood[1]:.1f} to {stood[2]:.1f} s)' if stood[0] > 0.0 else '')
+          + f'; {stood_by_any:.1f} s by any unseen place')
     return counts
 
 
 started = time.time()
 print(f'unlooked_bodies: {len(RUNS)} flights, started {time.strftime("%F %T %z")}')
-totals = {'looked': 0, 'far': 0, 'UNLOOKED': 0}
+totals = {'looked': 0, 'far': 0, 'UNLOOKED': 0, 'STOOD': 0}
 for done, run in enumerate(RUNS, 1):
     for verdict, count in report(run).items():
         totals[verdict] += count
     print(f'  done {done} of {len(RUNS)} in {time.time() - started:.0f} s')
 print(f'bodies taken off: looked {totals["looked"]}, far {totals["far"]}, UNLOOKED {totals["UNLOOKED"]}'
-      ' (within 10 m, no sensor able to look at the place while it was unseen)')
+      ' (within 10 m, no sensor able to look at the place while it was unseen);'
+      f' flights that STOOD over {STOOD_OVER_S:.0f} s by such a place: {totals["STOOD"]}')

@@ -19,17 +19,23 @@ namespace drone_city_nav {
 // it); the stand's time ran out, the body was no body, and the vehicle flew
 // down at it at 2.1 m/s, to sight it 2.7 m off (r3582, -0.19 m).
 //
-// By the frame of the sensor that reads bodies (the thermal core): the column
-// whole inside the frame, within the range a body is read at, with no
-// occupancy the memory holds on the way to it. Sighted across a room from 8 m,
+// By the frame of the sensor that reads bodies (the thermal core): the upper
+// half of the column, its middle and its top, inside the frame, within the
+// range a body is read at, with no occupancy the memory holds on the way to
+// it. The core reads a body by a warm region cut by its frame's edge too
+// (K64), so a body standing there would have been read by its upper half; the
+// foot is not asked for: looking straight at a place 6 m off from 2.7 m over
+// its floor, the heading turned to it by the gaze, the vehicle stood 12 s
+// with the body gone, the column's foot 23 degrees under the core's axis, its
+// middle 16 and its top 8 (r4064). Sighted across a room from 8 m,
 // a body walked up its passage behind the wall, was no body 5 s later, and
 // the vehicle came down into the passage and met it stepping back (r3944,
 // -0.33 m); read from 5.6 m, a body walked aside out of the core's 57 degrees
 // while the vehicle stood, the pair not reaching it, was no body 5 s later,
 // and came back unread as the vehicle crossed its line (r4017, -0.47 m).
-// Over the 24 meetings kept from 2a2541c7 the clock alone took 34 bodies off
-// within the 10 m a place is kept in, the place aside of the core's frame in
-// every one (tools/unlooked_bodies.py).
+// Over the 24 meetings kept from 2a2541c7 the clock alone took 29 bodies off
+// within the 10 m a place is kept in, the place aside of the core's frame for
+// 170 of the 176 s they stood unseen (tools/unlooked_bodies.py).
 bool ObstacleMemory3D::scanLooksAt(const MovingBody3D& body,
                                    const ScanEvidence& scan_evidence,
                                    const BodyReadingView3D& view) const {
@@ -60,10 +66,10 @@ bool ObstacleMemory3D::scanLooksAt(const MovingBody3D& body,
     return false;
   }
   const double step_m = 0.5 * grid_.bounds().resolution_m;
-  // The column's foot, middle and top, at the centres of its cells.
+  // The column's middle and top, at the centres of its cells.
   const double foot_m = grid_.cellCenter(low).z;
   const double top_m = grid_.cellCenter(high).z;
-  for (const double level_m : {foot_m, 0.5 * (foot_m + top_m), top_m}) {
+  for (const double level_m : {0.5 * (foot_m + top_m), top_m}) {
     const Vec3 to{body.centre_map.x - view.origin_map.x,
                   body.centre_map.y - view.origin_map.y, level_m - view.origin_map.z};
     const double length_m = std::hypot(to.x, to.y, to.z);
