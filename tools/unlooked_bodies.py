@@ -29,9 +29,10 @@ clock may have run generously, with what the two can differ by: `looked`, a sens
 farther than 9.5 m from the place (the 10 m a place is kept in, less the estimate's error); `near`, the vehicle
 within 5 m of it (the rays' look, which the fields do not tell); `blind`, no turn of the heading would have shown
 the place, its upper half more than 18.2 degrees under or over the level (the frame's 20.2 less two for the tilt)
-or beyond the range. A body unseen for 4 s and more whose clock may have run for less than 4 s of them is
-`UNLOOKED`: taken off within 10 m though a turn of the heading would have shown its place nearly all the while.
-Any other body's verdict is the kind most of its clock's time was. Beside
+or beyond the range. A body unseen for 4 s and more whose clock may have run for less than 3 s of them (the
+stand's 5 s less two for a wall the truth's ray grazes and the memory's did not) is `UNLOOKED`: taken off within
+10 m though a turn of the heading would have shown its place most of the while. Any other body's verdict is the
+kind most of its clock's time was. Beside
 it: how long it stood unseen, for how much of that each sensor could look and what kept it from the place the rest
 of the time (`range`; `aside`, off its field across; `under` or `over`, off it up or down; `wall`, an occupied cell
 of the truth on the ray), the place's distance and bearing
@@ -66,7 +67,8 @@ KEPT_WITHIN_M = 10.0
 FAR_BEYOND_M = 9.5
 NEAR_WITHIN_M = 5.0
 TILT_RAD = math.radians(2.0)
-CLOCK_S = 4.0
+UNSEEN_S = 4.0
+CLOCK_S = 3.0
 WALK_MPS = 1.5
 STOOD_OVER_S = 10.0
 # The sensors' height over the true pose, which is the model's origin at its feet: base_link 0.24 m over it, the
@@ -240,7 +242,8 @@ def report(run):
                                      track[min(len(track) - 1, bisect.bisect_left(times, taken_off))][2] - y)
                           for times, track in tracks), default=None)
             ran = {'looked': any_s, 'far': beyond_s, 'near': near_s, 'blind': blind_s}
-            verdict = 'UNLOOKED' if total >= CLOCK_S > sum(ran.values()) else max(ran, key=ran.get)
+            verdict = ('UNLOOKED' if total >= UNSEEN_S and sum(ran.values()) < CLOCK_S
+                       else max(ran, key=ran.get))
             why = ' '.join(f'{name} {reason} {seconds:.1f}' for (name, reason), seconds in sorted(kept_by.items()))
             rows.append((verdict, taken_off, x, y, z, total, any_s, looked, why,
                          math.hypot(x - shown[1], y - shown[2]),
