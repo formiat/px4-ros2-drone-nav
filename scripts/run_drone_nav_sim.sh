@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# shellcheck source=flight_lock_runtime.sh
+source "${repo_root}/scripts/flight_lock_runtime.sh"
 # shellcheck source=simulation_runtime_helpers.sh
 source "${repo_root}/scripts/simulation_runtime_helpers.sh"
 # shellcheck source=runtime_evidence_runtime.sh

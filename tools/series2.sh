@@ -4,6 +4,8 @@
 # no gz sim of ours. Results go to log/tools/journal/series_<commit>_<profile>.txt (appended, never truncated).
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 ./scripts/prune_sim_logs.sh
 profile=cameras; envs=()
 if [ "${1:-}" = "--lidar" ]; then profile=lidar; envs=(CAMERA_PROFILE=none NAVIGATION_SENSOR_PROFILE=lidar); shift; fi

@@ -57,6 +57,8 @@ for spec in "$@"; do
     { echo "world_series.sh: '$spec' is not WORLD-SET:COUNT (see the head of the script)" >&2; exit 2; }
   total=$((total + ${spec##*:}))
 done
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 mkdir -p log/tools/journal; touch log/tools/journal/.keep
 out=log/tools/journal/world_series_$(git rev-parse --short HEAD).txt
 done_count=0

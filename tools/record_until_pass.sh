@@ -8,6 +8,8 @@
 # log/tools/record_until_pass.txt (PASS, STALLED, WATCHDOG, VOID or FAILED), then END.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 scenario=$1; first=$2; attempts=$3; directory=$4
 flag=log/tools/record_until_pass.txt; rm -f "$flag"
 for number in $(seq "$first" $((first + attempts - 1))); do

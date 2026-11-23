@@ -8,6 +8,8 @@
 # progress. The root goal of 2026-10-24, part 0.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 group=$1; first=$2; count=$3; tag=${4:-$group}
 out="log/tools/flight_cores/series_${tag}.txt"
 mkdir -p log/tools/flight_cores; touch log/tools/flight_cores/.keep

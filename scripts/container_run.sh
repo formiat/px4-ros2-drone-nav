@@ -198,6 +198,9 @@ optional_env_vars=(
   STATIC_OCCUPANCY_3D_PATH
   STARTUP_SLEEP_S
   UXRCE_AGENT_LOG_FILE
+  # Set by scripts/flight_lock_runtime.sh on the host: the flight inside is
+  # its holder's own and takes no lock of its own.
+  DRONE_GAZEBO_FLIGHT_LOCK_HELD
 )
 
 for env_name in "${optional_env_vars[@]}"; do

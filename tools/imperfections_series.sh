@@ -5,6 +5,8 @@
 # start, the total and the count done; the flights' lines as series2.sh writes them.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 mkdir -p log/tools/journal; touch log/tools/journal/.keep
 out="log/tools/journal/imperfections_series_$(git rev-parse --short HEAD).txt"
 next() { echo $(( $(ls log/runs | sed "s/^r//" | sort -n | tail -1) + 1 )); }

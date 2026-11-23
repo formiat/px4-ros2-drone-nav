@@ -9,6 +9,8 @@
 # on a flight that counts.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 lidar=(); watch=()
 if [ "${1:-}" = "--lidar" ]; then lidar=(--lidar); watch=(--lidar); shift; fi
 first=$1; attempts=$2

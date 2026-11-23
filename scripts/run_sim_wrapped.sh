@@ -12,6 +12,10 @@ if [[ "$#" -eq 0 ]]; then
   exit 2
 fi
 
+# Before the cleanup: a second run of this checkout is refused here, with exit
+# status 3, and never stops the flight that is in the air.
+# shellcheck source=flight_lock_runtime.sh
+source "${repo_root}/scripts/flight_lock_runtime.sh"
 "${repo_root}/scripts/prune_sim_logs.sh"
 "${repo_root}/scripts/cleanup_sim_processes.sh"
 # No wait for a quiet host here (the owner, 2026-10-30): a run the user starts

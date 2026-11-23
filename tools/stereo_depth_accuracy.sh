@@ -7,6 +7,8 @@
 # log/tools/stereo/RUN_accuracy.txt. Not an acceptance flight: the recorder loads the host.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# One flight chain a checkout: refused with exit status 3 while another flies (scripts/flight_lock_runtime.sh).
+. scripts/flight_lock_runtime.sh
 run=$1; keep=${2:-8}
 ./scripts/stop_sim.sh > /dev/null 2>&1
 (setsid env DRONE_GAZEBO_RUN_ID="$run" SMOKE_DURATION_S=600 ./scripts/dev_shell.sh make sim-urban-point-to-point-headless \

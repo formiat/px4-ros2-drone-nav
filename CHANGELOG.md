@@ -6,6 +6,17 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **One flight chain a checkout** (roadmap item 43 point 7; the finding and the rule are naipi11's, PX4-ROS2-NAV
+  `54635cd6` and `cc30b16a`): nothing refused a second flight of one checkout, and every tool that flies cleans
+  the checkout's simulation before and after its flight, so a second series stopped the first one's flight and
+  wrote a run's record under its number. Whatever flies now takes a lock first
+  (`scripts/flight_lock_runtime.sh`): the sim wrappers and the series tools on the host, and the flight script
+  in the container for a flight started by `make` alone; whoever comes while it is held is refused with exit
+  status 3, the holder named, before it cleans or starts anything. The lock is `flock` on a file under `log/`
+  that the host and the containers share, so the kernel releases it when its holders die and no pid is compared
+  between containers (theirs is a directory with its owner's pid, read through `/proc`; here every flight has a
+  container and a pid namespace of its own).
+
 - **The cleanup stops this checkout's flight alone** (roadmap item 43 point 6; the finding and the way are
   naipi11's, PX4-ROS2-NAV `20121042` and `bb3e6d20`): `scripts/cleanup_sim_processes.sh`, which every series
   runs between its flights, took any container of the dev image for its own and, on the host, any process
