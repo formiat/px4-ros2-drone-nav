@@ -30,8 +30,9 @@ struct LidarBeam3D {
 };
 
 // The frame of the sensor that reads bodies (the thermal core, K64) at a scan:
-// a body standing whole inside it, within its range and with nothing the
-// memory holds between, would have been read. Nought of range is no frame.
+// a body standing with its upper half inside it, within its range and with
+// nothing the memory holds between, would have been read. Nought of range is
+// no frame.
 struct BodyReadingView3D {
   Point3 origin_map{};
   // The sensor's axis and two unit axes square to it and to each other.
@@ -272,11 +273,11 @@ private:
   void liftSweep();
   void followMoving(const ScanEvidence& scan_evidence, const LidarScan3DView& scan,
                     std::int64_t now_ms, ObstacleMemory3DStats& stats);
-  // Whether this scan could have shown a body standing where `body` stood
-  // (K66): the one measure a body no scan shows is taken off by.
-  [[nodiscard]] bool scanLooksAt(const MovingBody3D& body,
-                                 const ScanEvidence& scan_evidence,
-                                 const BodyReadingView3D& view) const;
+  // Whether a look at where `body` stood, unshown by this scan, is still to
+  // be had (K66): the one measure its stand's time stands still by.
+  [[nodiscard]] bool lookOutstanding(const MovingBody3D& body,
+                                     const ScanEvidence& scan_evidence,
+                                     const LidarScan3DView& scan) const;
   // The places and the ways the bodies followed after a scan keep (K66).
   void layPlaces(const Point3& origin, ObstacleMemory3DStats& stats);
   void holdMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);

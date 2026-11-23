@@ -577,11 +577,6 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
   // cluster of a body's height: it is read where the voxels a scan showed
   // within its reach stand (the layer's of the last half second and the
   // scan's young hits), and only with none of them is it unseen.
-  // A body no scan shows is taken off by a look at where it stood, not by a
-  // clock (scanLooksAt), within the distance a body's place is owed a way out
-  // in (kBodyPlaceKeptWithinM). Farther off the place is not kept: a thing
-  // the core's marks put 5 to 10 m off where no body was stood read for
-  // 200 s, the vehicle held before it (r3649).
   // A body read by the core's marks alone, cluster or none, takes what a
   // cluster's body does: the young occupancies in its column and a cell
   // round it are the layer's, and the layer grows in its envelope. Without
@@ -650,9 +645,9 @@ void ObstacleMemory3D::followMoving(const ScanEvidence& scan_evidence,
       // from the true one when that passed the vehicle at 0.74 m (r3580; so
       // r3553 and r3563).
       unshown.unseen_s = std::min(unshown.unseen_s + elapsed_s, config_.moving_stand_s);
-      if (std::hypot(read.centre_map.x - origin.x, read.centre_map.y - origin.y) <=
-              kBodyPlaceKeptWithinM &&
-          !scanLooksAt(read, scan_evidence, scan.body_view)) {
+      // A body no scan shows is taken off by a look at where it stood, not
+      // by a clock: the stand's time stands still while one is outstanding.
+      if (lookOutstanding(read, scan_evidence, scan)) {
         warm_ms += now_ms - (followed_ms_before > 0 ? followed_ms_before : now_ms);
       }
     }

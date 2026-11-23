@@ -20,20 +20,22 @@ middle and top for the thermal core (19 m, 28.5 and 22.2 degrees), which reads a
 (K64, K66). The time-of-flight modules (2.8 m) are not counted. The estimate's error is not removed: the place is
 the memory's, the pose the truth's, and the vehicle is taken level (its yaw alone).
 
-The stand's time (5 s) runs over the scans in which a sensor could look and over those the vehicle stood farther
-than 10 m from the place in (specification K66: a place is not kept beyond that). The verdict: `looked` when a
-sensor could look for a tenth of a second at least; `far` when none could and the vehicle stood beyond the 10 m
-for a tenth of a second at least; `UNLOOKED` when neither: the body was taken off by the clock within 10 m with no
-look at its place. Beside
+By specification K66 the stand's time (5 s) stands still while a look the vehicle can still have is outstanding
+(a turn of its heading would bring the place into the core's frame; a surface stands between), and runs otherwise:
+over the scans in which a sensor could look, over those the vehicle stood farther than 10 m from the place in (a
+place is not kept beyond that), and over those in which no turn of the heading would have shown the place (it lay
+under or over the core's field from where the vehicle was, or beyond every sensor's range). The verdict is the
+first of these that held for a tenth of a second at least: `looked`, `far`, `blind`; and `UNLOOKED` when none
+did: the body was taken off within 10 m while a look at its place was outstanding the whole time. Beside
 it: how long it stood unseen, for how much of that each sensor could look and what kept it from the place the rest
 of the time (`range`; `aside`, off its field across; `under` or `over`, off it up or down; `wall`, an occupied cell
 of the truth on the ray), the place's distance and bearing
 off the heading and the vehicle's speed and its course off the heading at the last scan that showed the body, the
 nearest and the farthest the vehicle stood from the place while it was unseen, and where the nearest true body
 stood from the place when it was taken off. After a flight's rows: the longest the vehicle stood (under 0.2 m/s
-by the truth) while the memory kept, within 10 m of it, an unseen body's place that no sensor could look at; over
-10 s it is marked `STOOD` (specification K87: the look is what ends a stand before such a place); beside it the
-longest stand by any unseen place within 10 m, looked at or not. `--grid=PATH`
+by the truth) while the memory kept, within 10 m of it, an unseen body's place that no sensor looked at and a turn
+of the heading would have shown; over 10 s it is marked `STOOD` (specification K87: the look is what ends a stand
+before such a place); beside it the longest stand by any unseen place within 10 m, looked at or not. `--grid=PATH`
 names another world's truth grid (the urban 0.25 m grid of log/tools/truth25 otherwise). The batch prints its
 start, its total and its count."""
 import bisect, csv, math, re, sys, time
@@ -109,6 +111,22 @@ def hidden(sensor, pose, column):
     return None
 
 
+def turn_shows(sensor, pose, column):
+    """Whether a turn of the heading alone would let the sensor look: the range, the height over or under its
+    axis and the ray are what a turn cannot change."""
+    _, reach, across, updown, first_level = sensor
+    eye = np.array(pose[1:4])
+    for point in column[first_level:]:
+        delta = point - eye
+        if float(np.linalg.norm(delta)) > reach:
+            return False
+        if across is not None and abs(math.atan2(delta[2], math.hypot(delta[0], delta[1]))) > updown:
+            return False
+        if not clear_ray(eye, point):
+            return False
+    return True
+
+
 def wrap(angle):
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
@@ -176,7 +194,7 @@ def report(run):
             column = [np.array((x, y, level)) for level in (z - 0.5 * height + 0.1, z, z + 0.5 * height - 0.1)]
             looked = {sensor[0]: 0.0 for sensor in sensors}
             kept_by = {}
-            any_s = total = beyond_s = 0.0
+            any_s = total = beyond_s = blind_s = 0.0
             apart = []
             for step in range(first, index + 1):
                 end = scans[step + 1][0] if step < index else taken_off
@@ -193,13 +211,20 @@ def report(run):
                 total += span
                 apart.append(math.hypot(x - pose[1], y - pose[2]))
                 beyond_s += span if not seen_by and apart[-1] > KEPT_WITHIN_M else 0.0
+                blind_s += span if not seen_by and apart[-1] <= KEPT_WITHIN_M and not any(
+                    turn_shows(sensor, pose, column) for sensor in sensors) and not any(
+                    reason == 'wall' for reason in reasons.values()) else 0.0
             later = pose_at(shown[0] + 0.5)
             vx, vy = (later[1] - shown[1]) / 0.5, (later[2] - shown[2]) / 0.5
             speed = math.hypot(vx, vy)
             walker = min((math.hypot(track[min(len(track) - 1, bisect.bisect_left(times, taken_off))][1] - x,
                                      track[min(len(track) - 1, bisect.bisect_left(times, taken_off))][2] - y)
                           for times, track in tracks), default=None)
-            verdict = 'looked' if any_s >= 0.1 else ('far' if beyond_s >= 0.1 else 'UNLOOKED')
+            verdict = 'UNLOOKED'
+            for name, seconds in (('looked', any_s), ('far', beyond_s), ('blind', blind_s)):
+                if seconds >= 0.1:
+                    verdict = name
+                    break
             why = ' '.join(f'{name} {reason} {seconds:.1f}' for (name, reason), seconds in sorted(kept_by.items()))
             rows.append((verdict, taken_off, x, y, z, total, any_s, looked, why,
                          math.hypot(x - shown[1], y - shown[2]),
@@ -216,11 +241,11 @@ def report(run):
         near = [(x, y, z, height) for x, y, z, height, unseen in held
                 if unseen > 0.0 and math.hypot(x - pose[1], y - pose[2]) <= KEPT_WITHIN_M]
         still = bool(near) and math.hypot(later[1] - pose[1], later[2] - pose[2]) / 0.5 < 0.2
-        blind = still and any(
-            all(hidden(sensor, pose, [np.array((x, y, level)) for level in
-                                      (z - 0.5 * height + 0.1, z, z + 0.5 * height - 0.1)]) is not None
-                for sensor in sensors)
-            for x, y, z, height in near)
+        blind = False
+        for x, y, z, height in near if still else []:
+            column = [np.array((x, y, level)) for level in (z - 0.5 * height + 0.1, z, z + 0.5 * height - 0.1)]
+            blind = blind or (all(hidden(sensor, pose, column) is not None for sensor in sensors) and
+                              any(turn_shows(sensor, pose, column) for sensor in sensors))
         joined = previous is not None and t - previous <= 0.6
         begun_by_any = (begun_by_any if joined and begun_by_any is not None else t) if still else None
         begun = (begun if joined and begun is not None else t) if blind else None
@@ -229,11 +254,12 @@ def report(run):
         if blind and t - begun > stood[0]:
             stood = (t - begun, begun, t)
         previous = t
-    counts = {verdict: sum(1 for row in rows if row[0] == verdict) for verdict in ('looked', 'far', 'UNLOOKED')}
+    counts = {verdict: sum(1 for row in rows if row[0] == verdict)
+              for verdict in ('looked', 'far', 'blind', 'UNLOOKED')}
     counts['STOOD'] = 1 if stood[0] > STOOD_OVER_S else 0
     print(f'{run.name}: {"stereo set" if cameras else "lidar set"}, {len(scans)} scans with a body,'
           f' {len(rows)} bodies taken off: looked {counts["looked"]}, far {counts["far"]},'
-          f' UNLOOKED {counts["UNLOOKED"]}')
+          f' blind {counts["blind"]}, UNLOOKED {counts["UNLOOKED"]}')
     for verdict, t, x, y, z, total, any_s, looked, why, flat, bearing, speed, course, near, far, walker in rows:
         by = ' '.join(f'{name} {seconds:.1f}' for name, seconds in looked.items())
         print(f'  {verdict:8s} {t:7.1f} s  place {x:6.1f} {y:6.1f} {z:4.1f}  unseen {total:4.1f} s,'
@@ -242,19 +268,19 @@ def report(run):
               f' last shown {flat:4.1f} m at {math.degrees(bearing):+4.0f} deg, {speed:.1f} m/s'
               + (f' course {math.degrees(course):+4.0f} deg' if course is not None else ' at rest')
               + (f'; true body {walker:.1f} m from the place' if walker is not None else ''))
-    print(f'  {"STOOD" if counts["STOOD"] else "stood":8s} {stood[0]:5.1f} s at most by an unseen body\'s place no sensor'
-          f' could look at' + (f' ({stood[1]:.1f} to {stood[2]:.1f} s)' if stood[0] > 0.0 else '')
+    print(f'  {"STOOD" if counts["STOOD"] else "stood":8s} {stood[0]:5.1f} s at most by an unseen body\'s place a turn'
+          f' would have shown' + (f' ({stood[1]:.1f} to {stood[2]:.1f} s)' if stood[0] > 0.0 else '')
           + f'; {stood_by_any:.1f} s by any unseen place')
     return counts
 
 
 started = time.time()
 print(f'unlooked_bodies: {len(RUNS)} flights, started {time.strftime("%F %T %z")}')
-totals = {'looked': 0, 'far': 0, 'UNLOOKED': 0, 'STOOD': 0}
+totals = {'looked': 0, 'far': 0, 'blind': 0, 'UNLOOKED': 0, 'STOOD': 0}
 for done, run in enumerate(RUNS, 1):
     for verdict, count in report(run).items():
         totals[verdict] += count
     print(f'  done {done} of {len(RUNS)} in {time.time() - started:.0f} s')
-print(f'bodies taken off: looked {totals["looked"]}, far {totals["far"]}, UNLOOKED {totals["UNLOOKED"]}'
-      ' (within 10 m, no sensor able to look at the place while it was unseen);'
+print(f'bodies taken off: looked {totals["looked"]}, far {totals["far"]}, blind {totals["blind"]},'
+      f' UNLOOKED {totals["UNLOOKED"]} (within 10 m, a look at the place outstanding the whole time it was unseen);'
       f' flights that STOOD over {STOOD_OVER_S:.0f} s by such a place: {totals["STOOD"]}')

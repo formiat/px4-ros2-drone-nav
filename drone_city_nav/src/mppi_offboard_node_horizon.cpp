@@ -280,12 +280,25 @@ bool MppiOffboardNode::publishStationaryPositionHoldSetpoint() {
   const geometry_msgs::msg::Point& target = horizon_.value().stationary_hold_position;
   const Point2 local_target =
       px4_map_transform_.mapPositionToLocal(Point2{target.x, target.y});
-  setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-      nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
-      px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
+  // The hold keeps the heading the vehicle has, unless it names another: the
+  // place of a body the vehicle has not looked at (K87), turned to at the
+  // gaze's rate.
+  const double map_yaw_rate =
+      horizon_->points.empty()
+          ? 0.0
+          : stationaryHoldYawRateRadps(horizon_->points.front().yaw_rad, heading_rad_);
+  if (map_yaw_rate != 0.0) {
+    setpoint_pub_->publish(buildTurningPositionTrajectorySetpoint(
+        nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawRateToPx4(map_yaw_rate)));
+  } else {
+    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
+        nowMicros(), local_target, target.z - px4_map_transform_.map_origin.z,
+        px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
+  }
   // This exact non-authoritative witness is valid only because the matching
   // certified stationary setpoint was emitted immediately above.
-  publishAppliedControlFeedback(Point2{}, 0.0, 0.0, 0.0, false,
+  publishAppliedControlFeedback(Point2{}, 0.0, map_yaw_rate, 0.0, false,
                                 msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD);
   return true;
 }

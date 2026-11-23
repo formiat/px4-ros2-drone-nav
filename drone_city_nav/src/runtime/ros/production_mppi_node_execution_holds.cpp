@@ -111,17 +111,23 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   }
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, *hold_valid_until_ns, ProductionMppiExecutionMode::kPositionHold, reason);
-  // A vehicle whose sensor looks forward turns, while it is held, to where its
-  // route leaves: the speed law admits nothing along a route the vehicle does
-  // not face through space memory has not observed, and a hold that kept the
-  // heading would keep that space unobserved. A captured goal has nowhere to
-  // leave to.
+  // A hold keeps the heading the vehicle has, but for one thing it turns to:
+  // the place of a body the memory read and no longer shows (K87). The
+  // offboard closes the heading to the one the hold names
+  // (stationaryHoldYawRateRadps), so a vehicle held before such a place looks
+  // at it and the place is either read or taken off; held 9 s with no
+  // executable route, its heading 75 degrees off the place, a vehicle never
+  // looked (r4066). The route's own heading is not named here: a stationary
+  // hold never turned to it (the offboard held the measured heading), and
+  // the planned gaze closes it once a horizon is planned. A captured goal
+  // has nowhere to leave to.
+  const mppi::MppiTickInput* const hold_input = cycle.controller.input;
   const float hold_yaw =
-      config_.control.mppi.gaze_follows_motion && cycle.controller.input != nullptr &&
+      config_.control.mppi.gaze_follows_motion && hold_input != nullptr &&
+              hold_input->gaze_place.has_value() &&
               reason != ProductionMppiExecutionReason::kGoalCapture
-          ? mppi::gazeRestHeading(*cycle.controller.input,
-                                  config_.control.mppi.gaze_minimum_horizontal_share)
-                .value_or(cycle.evidence.exact_initial_state.yaw)
+          ? std::atan2(hold_input->gaze_place->y - cycle.evidence.exact_initial_state.y,
+                       hold_input->gaze_place->x - cycle.evidence.exact_initial_state.x)
           : cycle.evidence.exact_initial_state.yaw;
   horizon.stationary_position_hold = true;
   horizon.stationary_hold_position.x = owned_hold_position.x;

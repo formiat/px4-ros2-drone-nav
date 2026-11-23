@@ -8,21 +8,22 @@ release names the asset tags it was validated with.
 
 - **The vehicle turns its look to a body it has not read** (roadmap item 21; specification K87): while the
   memory holds a body its last scan did not show, within the 10 m a place is kept in, the heading turns to where
-  it stood, so that the next scans look there and either read the body or take it off. At rest and in a hold
-  the heading goes straight to the place; in flight it leaves the motion only as far as puts the place 15
-  degrees off the heading, and only while the motion stays 10 degrees inside the forward sensor's field, so the
-  speed law is not touched. The planner's track names the rule `body`. No new topic or field: the bodies'
-  message already says how long each has gone unseen.
+  it stood, so that the next scans look there and either read the body or take it off. At rest the heading goes
+  straight to the place; in flight it leaves the motion only as far as puts the place 15 degrees off the
+  heading, and only while the motion stays 10 degrees inside the forward sensor's field, so the speed law is not
+  touched. A stationary hold turns too: it names the place's bearing and the offboard closes the heading to it
+  by the yaw rate (a hold that names no place keeps its heading, as before). The planner's track names the rule
+  `body`. No new topic or field: the bodies' message already says how long each has gone unseen.
 
-- **A body is taken off by a look at where it stood, in every case** (roadmap item 21; specification K66): the
-  stand's time of a body no scan shows ran by the clock unless one of two cases held (beside the vehicle, behind a
-  surface), and a body that walked aside of the thermal core's frame beyond the pair's reach was no body 5 s
-  later (r4017, the stopping margin -0.47 m; 29 such bodies over the 24 meetings kept from v0.8.0's code, by
-  `tools/unlooked_bodies.py`). The time now runs only over the scans that could have shown the body there: by
-  their rays through every level of its column, or by its upper half in the core's frame with nothing the
-  memory holds between (`ObstacleMemory3D::scanLooksAt`; the frame rides with every scan, its angles and range
-  the memory node's `body_view_*`). Proven on a record before the flights: a flight on the old code took six
-  such bodies off, its bag through the new memory none.
+- **A body is taken off by a look at where it stood wherever the vehicle has a look to take** (roadmap item 21;
+  specification K66): the stand's time of a body no scan shows ran by the clock unless one of two cases held
+  (beside the vehicle, behind a surface), and a body that walked aside of the thermal core's frame beyond the
+  pair's reach was no body 5 s later (r4017, the stopping margin -0.47 m; 15 such bodies over the 24 meetings
+  kept from v0.8.0's code, by `tools/unlooked_bodies.py`). One measure now says whether a look is outstanding
+  (`ObstacleMemory3D::lookOutstanding`): the two cases, and a third, the place aside of the core's frame where a
+  turn of the heading would bring the body's upper half into it. The time stands still while one is; it runs
+  where the scan looked and where no turn would show the place. The frame rides with every scan, its angles and
+  range the memory node's `body_view_*`.
 
 - **One flight chain a checkout** (roadmap item 43 point 7; the finding and the rule are naipi11's, PX4-ROS2-NAV
   `54635cd6` and `cc30b16a`): nothing refused a second flight of one checkout, and every tool that flies cleans

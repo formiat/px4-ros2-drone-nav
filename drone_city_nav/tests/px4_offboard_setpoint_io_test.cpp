@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
+#include <numbers>
 
 namespace drone_city_nav {
 
@@ -167,6 +169,28 @@ TEST(Px4OffboardSetpointIo, BuildsPx4ForceDisarmCommand) {
 
   EXPECT_FLOAT_EQ(msg.param1, 0.0F);
   EXPECT_FLOAT_EQ(msg.param2, 21196.0F);
+}
+
+TEST(Px4OffboardSetpointIo, AHeldVehicleTurnsToTheHeadingItsHoldNamesAtTheGazesRate) {
+  // Specification K87: a hold that names the heading the vehicle has (within
+  // 0.1 rad) commands no turn; one that names another turns to it the short
+  // way, 1.5 a second of the remaining angle, inside 0.8 rad/s.
+  EXPECT_DOUBLE_EQ(stationaryHoldYawRateRadps(1.0, 1.0), 0.0);
+  EXPECT_DOUBLE_EQ(stationaryHoldYawRateRadps(1.0, 0.92), 0.0);
+  EXPECT_NEAR(stationaryHoldYawRateRadps(1.0, 0.7), 0.45, 1.0e-9);
+  EXPECT_DOUBLE_EQ(stationaryHoldYawRateRadps(1.0, -1.0), 0.8);
+  EXPECT_NEAR(stationaryHoldYawRateRadps(-3.0, 3.0),
+              1.5 * (2.0 * std::numbers::pi - 6.0), 1.0e-9);
+  EXPECT_DOUBLE_EQ(
+      stationaryHoldYawRateRadps(std::numeric_limits<double>::quiet_NaN(), 0.0), 0.0);
+
+  const auto msg =
+      buildTurningPositionTrajectorySetpoint(77U, Point2{1.0, 2.0}, 3.0, -0.4);
+  EXPECT_FLOAT_EQ(msg.position[0], 1.0F);
+  EXPECT_FLOAT_EQ(msg.position[1], 2.0F);
+  EXPECT_FLOAT_EQ(msg.position[2], -3.0F);
+  EXPECT_TRUE(std::isnan(msg.yaw));
+  EXPECT_FLOAT_EQ(msg.yawspeed, -0.4F);
 }
 
 } // namespace drone_city_nav

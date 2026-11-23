@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace drone_city_nav {
 
@@ -44,6 +45,29 @@ buildOffboardControlMode(const std::uint64_t timestamp_us,
   msg.body_rate = false;
   msg.thrust_and_torque = false;
   msg.direct_actuator = false;
+  return msg;
+}
+
+double stationaryHoldYawRateRadps(const double hold_yaw_rad,
+                                  const double heading_rad) noexcept {
+  constexpr double kGainPerSecond{1.5};
+  constexpr double kMaximumRateRadps{0.8};
+  constexpr double kHeldWithinRad{0.1};
+  const double error_rad =
+      std::remainder(hold_yaw_rad - heading_rad, 2.0 * std::numbers::pi);
+  if (!std::isfinite(error_rad) || std::abs(error_rad) <= kHeldWithinRad) {
+    return 0.0;
+  }
+  return std::clamp(kGainPerSecond * error_rad, -kMaximumRateRadps, kMaximumRateRadps);
+}
+
+px4_msgs::msg::TrajectorySetpoint buildTurningPositionTrajectorySetpoint(
+    const std::uint64_t timestamp_us, const Point2 local_target,
+    const double target_altitude_m, const double yaw_rate_radps) {
+  px4_msgs::msg::TrajectorySetpoint msg =
+      buildPositionTrajectorySetpoint(timestamp_us, local_target, target_altitude_m,
+                                      std::numeric_limits<double>::quiet_NaN());
+  msg.yawspeed = static_cast<float>(yaw_rate_radps);
   return msg;
 }
 
