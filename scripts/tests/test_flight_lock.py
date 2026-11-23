@@ -114,7 +114,12 @@ class FlightLockTest(unittest.TestCase):
         # started by a holder on the host is told so through the container's environment.
         runner = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text()
         self.assertLess(runner.index("flight_lock_runtime.sh\""), runner.index("initialize_runtime_evidence_paths"))
-        self.assertIn("  DRONE_GAZEBO_FLIGHT_LOCK_HELD\n", (REPOSITORY / "scripts/container_run.sh").read_text())
+        container = (REPOSITORY / "scripts/container_run.sh").read_text()
+        self.assertIn("  DRONE_GAZEBO_FLIGHT_LOCK_HELD\n", container)
+        # A make target asked through the container on the host is refused before the container builds and
+        # prepares the world under the flight that is in the air (the check of 2026-11-22 under r4049).
+        self.assertLess(container.index('if [[ "${1:-}" == "make" && "${2:-}" == sim-* ]]; then'),
+                        container.index("docker run"))
 
 
 if __name__ == "__main__":

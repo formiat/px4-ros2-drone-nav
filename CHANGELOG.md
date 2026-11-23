@@ -11,7 +11,8 @@ release names the asset tags it was validated with.
   the checkout's simulation before and after its flight, so a second series stopped the first one's flight and
   wrote a run's record under its number. Whatever flies now takes a lock first
   (`scripts/flight_lock_runtime.sh`): the sim wrappers and the series tools on the host, and the flight script
-  in the container for a flight started by `make` alone; whoever comes while it is held is refused with exit
+  in the container for a flight started by `make` alone (on the host `scripts/container_run.sh` takes it for a
+  `make sim-*` before the container exists); whoever comes while it is held is refused with exit
   status 3, the holder named, before it cleans or starts anything. The lock is `flock` on a file under `log/`
   that the host and the containers share, so the kernel releases it when its holders die and no pid is compared
   between containers (theirs is a directory with its owner's pid, read through `/proc`; here every flight has a

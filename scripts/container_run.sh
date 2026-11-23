@@ -9,6 +9,14 @@ container_runtime="/tmp/drone-gazebo-runtime-${user_uid}"
 container_xauthority="/tmp/drone-gazebo-xauthority-${user_uid}"
 image_name="${DRONE_GAZEBO_DEV_IMAGE:-drone-gazebo-dev:latest}"
 
+# A flight asked for by its make target takes the checkout's lock here, before
+# the container exists: inside it the target builds and prepares the world
+# before the flight script could refuse (seen under r4049).
+if [[ "${1:-}" == "make" && "${2:-}" == sim-* ]]; then
+  # shellcheck source=flight_lock_runtime.sh
+  source "${repo_root}/scripts/flight_lock_runtime.sh"
+fi
+
 group_args=()
 if getent group render >/dev/null; then
   group_args+=(--group-add "$(getent group render | cut -d: -f3)")
