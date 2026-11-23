@@ -358,6 +358,63 @@ true body velocity on recorded flights
 ([`localization.md`](localization.md), K21). A frame under 20 features is
 no aid (K13, a constant of the estimator's configuration structure).
 
+## The Numbers The World's Name Chooses
+
+The inventory of roadmap item 45, taken on 2026-11-23 at `0ba4fbbc`: every
+number of the flight that depends on the world's `flight_profile` (`cave`,
+the default, or `open_sky`; `drone_city_nav/worlds/*.world3d.json`, read by
+`launch/point_to_point_scenario.py:190` and applied by
+`launch/city_nav.launch.py:314` to `:643` from the dictionaries of
+`launch/sensor_profile.py:116` to `:171`) or on the Makefile's open-sky
+targets. The vehicle is one and nobody switches a mode of the environment
+(the owner, 2026-11-17), so each number becomes one of three things: (a)
+one number for every world; (b) a number chosen in flight by what the
+stack measures; (c) a property of the airframe or of the host, one for
+every world. The item's stages replace the rows one by one; this table is
+their plan and their evidence.
+
+| Number | Under a roof | On the open sky | Who reads it | Class | Evidence, and for (b) the measured quantity |
+|---|---|---|---|---|---|
+| `cruise_speed_mps`, `absolute_speed_limit_mps` | 6.5 and 10 (`config/urban_mvp.yaml:378`, `:379`, every Makefile target) | 15 and 15 (the open-sky targets) | planner, PX4 | (a) 15 and 15 | The owner's word of 2026-11-20. Under 15 the caves flew with no contact (r4042 to r4048, r4106 to r4109): the cruise had bound 4 to 7 percent of the lidar's ticks and none of the cameras', the sensor's braking contract binds in its place. |
+| `maximum_horizontal_acceleration_mps2` | 4 (`:390`, every target) | 5 (the open-sky targets) | planner, offboard, PX4 | (c) 5 | The airframe brakes at 6.4 to 7.5 m/s² (`tools/airframe_envelope.sh`). 5 flew worse than 4 on Urban in 2026-09 (r224, r225) and does not today: r4106 and r4107 2.830 and 2.853 m/s against 2.26 to 2.55 at 4, the true clearance and the stops within the base's spread; the cave 1.978 (r4108), the stereo set 1.316 (r4109). |
+| `maximum_vertical_acceleration_mps2` | 1.4 (`:576`) | 3.0 (`OPEN_SKY_DYNAMICS`) | planner | (c) 3.0 | The caves' 1.4 kept a dive within its arrest before the route's end bounded a descent by where it stops (K78); the stopping contract keeps its own 1.4 on every world. To be flown by the item's ladder. |
+| `maximum_control_jerk_mps3` | 12 (`:419`) | 18 (`OPEN_SKY_DYNAMICS`) | planner | (c) 18 | The airframe's onset of braking, 23 to 31 m/s³ (specification V3). To be flown by the ladder. |
+| `takeoff_hover_s` | 2.0 (`:1055`) | 0.5 (`OPEN_SKY_TAKEOFF`) | offboard | (a) | The number is the mission's, not the space's; which of the two, by flights of both sensor sets. |
+| `guaranteed_lidar_detection_range_m` with `guaranteed_obstacle_size_m` | 14 m and the 0.25 m voxel (`:483`; no size named) | 35 m and 0.75 m (`OPEN_SKY_LIDAR_OBSERVABILITY`) | planner (the braking contract, the cone of clear sight), memory (how far a return is placed: 19.2 m against 35) | (b) | A promise of safety (K75): obstacles of 0.75 m are promised to the lidar's whole range because what is thinner is passed over (K76), which a roof forbids. The quantity: **the sky is open over the vehicle**, no beam of the newest scan within a cone about the vertical returned. The memory node holds every beam of a scan, returned or not; the planner would read the answer with the scan (`LatestSensorObstacleScan`). Measured by the truth below. |
+| `latest_sensor_obstacle_maximum_age_ms` | 600 (`:359`) | 300 on the lidar | planner | the sensor set's: 300 on the lidar, 600 on the pair | The scan's age at a tick (`sensor_evidence_age_s`): the lidar 0.124 s at p50 and 0.192 at most on Urban (r4037), 0.128 and 0.208 in the cave (r3955), 0.112 and 0.180 on the open sky (r3946), no tick over 0.3 s anywhere; the pair 0.230 and 0.414, 3.07 percent of its ticks over 0.3 s (r4033). |
+| `no_static_3d_esdf_horizontal_recenter_margin_m` | 12 (`:343`) | 17 on the lidar | planner | (a) 17, or (b) with the range above | The window recentred 17 m ahead is the stricter; what it costs the caves' tick, by a flight. |
+| `persistent_planner_overflight_margin_m` | 0 (the code's default) | 5 on the lidar | planner | (a) 5 | The leg over everything seen is taken only where the body's sweep clears it on the memory (`persistent_dstar_lite_planner_3d_overflight.cpp`): under a roof the lidar sees, it does not. Of the routes the planner published, all 35 were that leg on the open sky (r3946) and none under a roof, where the margin was nought; that a roof refuses it with the margin on, by flights. |
+| `grid_depth_m` | 40 (`:28`) | 56 (`OPEN_SKY_MEMORY`) | memory | (a) 56 | The memory's box; the world's ceiling (39 and 55 m) is the world's data and stays in its file. |
+| `integration_threads` | 1 (the code's default) | 4 | memory | (c) 4 | The host's. The threads' evidence is joined by OR before a voxel changes, so the memory is the one a single thread makes (K75). |
+| `obstacle_memory_3d_transport_rate_hz` | 10 (`:196`; r346 to r351) | 5 | memory | (a) 10 | The profile's comment and K75 call the caves' rate 2 Hz; 2 is the code's default and the configuration has carried 10 since `4df57c69`: the open sky's 5 halves it (the logs of r4037 and r3946 state 10.00 and 5.00 Hz). By an open-sky flight. |
+| `latest_scan_clear_sight_half_angle_rad` | 0, no cone (the code's default) | 0.105 | memory, then planner | (a) 0.105 | The cone is the sensor's own contract read on the newest frame (K85) and reaches no farther than the promise above. By flights. |
+| the stereo pair's shadow memory beside a navigating lidar | on | off (`city_nav.launch.py:643`) | launch | (c) | Nothing consumes it; it took a core the planner wanted (r3282). |
+
+The mission check reads the same field to choose the norm of the mean
+speed (`scripts/validate_drone_nav_headless.py:421`,
+`scripts/headless_runtime_evidence.py:399`): R8 on the open sky, R3
+elsewhere. A check may know its scenario; it is not flight code.
+
+**Is the sky open over the vehicle: does it tell the worlds apart?**
+Measured by the truth on the kept flights (`tools/sky_above.py`: rays of a
+cone about the vertical, from the sensor's place to the lidar's 35 m,
+through the world's truth voxelization, every 0.1 s from the climb off the
+pad):
+
+| Flight | Samples | Open, cone of 10° | 20° | 30° | 45° | 60° |
+|---|---|---|---|---|---|---|
+| Urban, lidar (r4037) | 1779 | 0 | 0 | 0 | 0 | 0 |
+| Urban, cameras (r4033) | 3165 | 0 | 0 | 0 | 0 | 0 |
+| Cave, lidar (r3955) | 4363 | 0 | 0 | 0 | 0 | 0 |
+| Cave, lidar (r4045) | 5153 | 0 | 0 | 0 | 0 | 0 |
+| Open sky, full set (r3946) | 1673 | 100 % | 97.91 % | 97.19 % | 96.47 % | 88.88 % |
+
+Under a roof no sample of 14 460 reads open, at any cone: the rule would
+never give a cave the open sky's numbers. On the open sky a cone of 10
+degrees is open throughout, and wider cones meet the park's crowns for 3.5
+to 12.3 s at a stretch (one change of the answer at 20 and 30 degrees, five
+at 45 and 60), where the rule gives the caves' numbers, the careful side.
+
 ## Environment Overrides
 
 Simulation scripts translate environment variables such as
