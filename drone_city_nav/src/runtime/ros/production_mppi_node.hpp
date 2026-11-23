@@ -379,6 +379,10 @@ private:
   // When a route held to a crawl by clearance in level flight was last
   // released for the planner's leg over the seen (the planning tick).
   std::int64_t last_constrained_leg_release_stamp_ns_{0};
+  // Whether the planner's newest candidate is its leg over everything the
+  // memory holds (K76): under a roof it holds none, and a route the
+  // clearance law holds to a crawl there is the place's, not released.
+  std::atomic<bool> planner_holds_leg_over_seen_{false};
   // The route the stall is being measured on; a new route restarts the clock.
   std::uint64_t last_moving_route_generation_{0U};
   std::int64_t last_planning_tick_entry_ns_{0};

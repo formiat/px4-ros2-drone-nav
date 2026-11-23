@@ -216,7 +216,7 @@ void ProductionMppiNode::finalizePlanningTick(
   const bool clearance_bound =
       speed_policy.active_limiter == MppiSpeedLimiter::kClearance ||
       speed_policy.active_limiter == MppiSpeedLimiter::kRouteClearance;
-  if (config_.planning.persistent_planner.overflight_margin_m > 0.0 &&
+  if (planner_holds_leg_over_seen_.load(std::memory_order_relaxed) &&
       committed_route != nullptr && !goal_capture.latched && clearance_bound &&
       speed_policy.reference_speed_mps <
           0.5 * config_.control.speed_policy.cruise_speed_mps &&

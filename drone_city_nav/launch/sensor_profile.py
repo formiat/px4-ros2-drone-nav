@@ -101,11 +101,28 @@ STEREO_TOF_DYNAMICS = {
 # open sky's full set: the lidar for the obstacles, the pair for the estimate)
 # the depth node publishes them, and they bounded the lidar's range by the
 # pair's lamp (r3253). An empty topic is not subscribed.
+# And what the lidar set carries on every world (roadmap item 45). The latest
+# scan answers within 0.3 s: its age at a tick is 0.11 to 0.13 s at p50 and
+# 0.21 s at most, under a roof and on the open sky alike (r4037, r3955, r4045,
+# r3946); the pair's 0.6 s capped the open sky's rollouts at 9.9 m/s under a
+# law that admitted 11.3 (r3259). The distance field's window (20 m either
+# way) is recentred while 17 m of it still lie ahead: at 12 m of margin a
+# tight place on the route entered the field 12 m ahead of a vehicle that
+# needs 18 m to stop from 12 m/s. The leg over everything the memory holds,
+# five metres over the highest obstacle seen (K76), is the route wherever the
+# body's sweep clears it on the memory: under a roof the lidar sees it does
+# not, and the searches plan as before; on the open sky it is the route the
+# sensors admit the cruise on, with no search between the legs (a search from
+# nothing for a goal 500 m away held the vehicle 25 to 38 s at every goal,
+# r3259).
 LIDAR_OBSERVABILITY = {
     "light_headroom_topic": "",
     "silent_range_topic": "",
     "void_range_topic": "",
     "carried_light_output_topic": "",
+    "latest_sensor_obstacle_maximum_age_ms": 300.0,
+    "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
+    "persistent_planner_overflight_margin_m": 5.0,
 }
 
 # The open sky's flight profile for a navigating lidar (roadmap item 39 stage
@@ -114,27 +131,14 @@ LIDAR_OBSERVABILITY = {
 # obstacles at range are crowns and buildings, and what the profile promises
 # to see there is three voxels across (0.75 m), which the beams straddle to
 # 43 m: the lidar's whole 35 m. What is thinner is seen from the voxel's 14 m
-# and under the leg's margin (K76). The latest scan answers within 0.3 s (its
-# age in flight is 0.13 s, 0.23 s at most, r3259 and r3261; the caves' bound
-# of 0.6 s capped the rollouts at 9.9 m/s under a law that admitted 11.3).
-# The distance field's window (20 m either way) is
-# recentred while 17 m of it still lie ahead: at 12 m of margin a tight place
-# on the route entered the field 12 m ahead of a vehicle that needs 18 m to
-# stop from 12 m/s. What the lidar saw beyond the window the memory answers
-# for (K74), and the memory keeps the scan as far as a heading of one standard
-# deviation places a hit within two of the promised obstacles of its surface
-# (57 m at 1.5 degrees, so the lidar's whole 35 m; two voxels kept 19 m of it
-# and the seen ended there, r3256).
-# The leg is flown over everything the memory holds, five metres over the
-# highest obstacle seen (K76): the route the sensors admit the cruise on, with
-# no search between the legs (a search from nothing for a goal 500 m away held
-# the vehicle 25 to 38 s at every goal, r3259).
+# and under the leg's margin (K76). What the lidar saw beyond the distance
+# field's window the memory answers for (K74), and the memory keeps the scan
+# as far as a heading of one standard deviation places a hit within two of the
+# promised obstacles of its surface (57 m at 1.5 degrees, so the lidar's whole
+# 35 m; two voxels kept 19 m of it and the seen ended there, r3256).
 OPEN_SKY_LIDAR_OBSERVABILITY = {
     "guaranteed_lidar_detection_range_m": 35.0,
     "guaranteed_obstacle_size_m": 0.75,
-    "latest_sensor_obstacle_maximum_age_ms": 300.0,
-    "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
-    "persistent_planner_overflight_margin_m": 5.0,
 }
 
 # The open sky has no roof: the memory's box stands 16 m over the caves' 40 m

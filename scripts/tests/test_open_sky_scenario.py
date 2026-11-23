@@ -75,9 +75,17 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.75)
         self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"],
                              profile["guaranteed_obstacle_size_m"] / math.tan(math.radians(1.0)))
-        self.assertAlmostEqual(profile["latest_sensor_obstacle_maximum_age_ms"], 300.0)
-        self.assertAlmostEqual(profile["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
-        self.assertAlmostEqual(profile["persistent_planner_overflight_margin_m"], 5.0)
+        self.assertEqual(set(profile), {"guaranteed_lidar_detection_range_m", "guaranteed_obstacle_size_m"})
+        # What the lidar set carries on every world (roadmap item 45): the scan's age, the window's margin and
+        # the leg over the seen, which is released for only while the planner holds one.
+        lidar = runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_OBSERVABILITY"]
+        self.assertAlmostEqual(lidar["latest_sensor_obstacle_maximum_age_ms"], 300.0)
+        self.assertAlmostEqual(lidar["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
+        self.assertAlmostEqual(lidar["persistent_planner_overflight_margin_m"], 5.0)
+        finalize = (REPOSITORY / "drone_city_nav/src/runtime/ros/production_mppi_node_planning_tick_finalize.cpp"
+                    ).read_text(encoding="utf-8")
+        self.assertIn("if (planner_holds_leg_over_seen_.load(std::memory_order_relaxed) &&", finalize)
+        self.assertNotIn("overflight_margin_m > 0.0", finalize)
         # The open sky has no roof: the memory's box and the world's ceiling stand 16 m over the caves' box.
         box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
         self.assertAlmostEqual(box, 56.0)

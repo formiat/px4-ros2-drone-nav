@@ -340,6 +340,7 @@ production_mppi_node:
     world_worker_count: 2
     no_static_3d_esdf_horizontal_half_extent_m: 20.0
     no_static_3d_esdf_vertical_half_extent_m: 15.0
+    # The pair's; the lidar set recentres at 17 m (launch/sensor_profile.py).
     no_static_3d_esdf_horizontal_recenter_margin_m: 12.0
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
@@ -355,7 +356,8 @@ production_mppi_node:
     # worst case the pipeline admits is the 0.35 s alignment wait plus one
     # 0.1 s scan period plus transport and executor jitter. 0.6 s covers it
     # with twice the measured maximum; the former 1.0 s cost 0.3 m/s of the
-    # contract's limit (2.2 against 2.44 m/s, everything else equal).
+    # contract's limit (2.2 against 2.44 m/s, everything else equal). The
+    # pair's; the lidar set is charged 0.3 s (launch/sensor_profile.py).
     latest_sensor_obstacle_maximum_age_ms: 600.0
     navigation_health_topic: /drone_city_nav/mppi/navigation_health
     # Readiness remains observable, but advisory time/attempt budgets must not

@@ -95,6 +95,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
                 planner_update.certified_route_end_station_m);
   }
   if (planner_update.planner_invoked) {
+    planner_holds_leg_over_seen_.store(
+        update.candidate.available &&
+            update.candidate.source == SpatialRouteCandidateSource3D::kOverflight,
+        std::memory_order_relaxed);
     const PlannerTelemetry3D& planner_telemetry = planner_update.planner_telemetry;
     RCLCPP_INFO(
         get_logger(),

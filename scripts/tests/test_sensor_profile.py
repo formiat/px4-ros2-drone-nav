@@ -105,10 +105,11 @@ class SensorProfileTest(unittest.TestCase):
         # The open sky's full set mounts the cameras beside a navigating lidar: the pair's lamp and silence are
         # not the lidar's (r3253: the contract's 14 m read down to 10.9 m). An empty topic is not subscribed.
         observability = SUPPORT["LIDAR_OBSERVABILITY"]
-        self.assertEqual(set(observability),
+        topics = {name for name in observability if name.endswith("_topic")}
+        self.assertEqual(topics,
                          {"light_headroom_topic", "silent_range_topic", "void_range_topic",
                           "carried_light_output_topic"})
-        self.assertTrue(all(value == "" for value in observability.values()))
+        self.assertTrue(all(observability[name] == "" for name in topics))
         launch = (REPO_ROOT / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('if navigation_sensors == "lidar":\n            production_mppi_parameters.append(LIDAR_OBSERVABILITY)',
                       launch)
