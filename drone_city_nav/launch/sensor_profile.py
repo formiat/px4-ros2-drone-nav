@@ -108,13 +108,7 @@ STEREO_TOF_DYNAMICS = {
 # law that admitted 11.3 (r3259). The distance field's window (20 m either
 # way) is recentred while 17 m of it still lie ahead: at 12 m of margin a
 # tight place on the route entered the field 12 m ahead of a vehicle that
-# needs 18 m to stop from 12 m/s. The leg over everything the memory holds,
-# five metres over the highest obstacle seen (K76), is the route wherever the
-# body's sweep clears it on the memory: under a roof the lidar sees it does
-# not, and the searches plan as before; on the open sky it is the route the
-# sensors admit the cruise on, with no search between the legs (a search from
-# nothing for a goal 500 m away held the vehicle 25 to 38 s at every goal,
-# r3259).
+# needs 18 m to stop from 12 m/s.
 LIDAR_OBSERVABILITY = {
     "light_headroom_topic": "",
     "silent_range_topic": "",
@@ -122,7 +116,6 @@ LIDAR_OBSERVABILITY = {
     "carried_light_output_topic": "",
     "latest_sensor_obstacle_maximum_age_ms": 300.0,
     "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
-    "persistent_planner_overflight_margin_m": 5.0,
 }
 
 # The open sky's flight profile for a navigating lidar (roadmap item 39 stage
@@ -136,9 +129,18 @@ LIDAR_OBSERVABILITY = {
 # as far as a heading of one standard deviation places a hit within two of the
 # promised obstacles of its surface (57 m at 1.5 degrees, so the lidar's whole
 # 35 m; two voxels kept 19 m of it and the seen ended there, r3256).
+# The leg is flown over everything the memory holds, five metres over the
+# highest obstacle seen (K76): the route the sensors admit the cruise on, with
+# no search between the legs (a search from nothing for a goal 500 m away held
+# the vehicle 25 to 38 s at every goal, r3259). The margin stays the open
+# sky's until the leg asks for a sky the scan saw open: under a roof the body's
+# sweep clears the leg on the memory wherever the memory has not seen the roof
+# yet (the replay of r2918 with the margin set: 95 of the planner's 622 updates
+# were the leg).
 OPEN_SKY_LIDAR_OBSERVABILITY = {
     "guaranteed_lidar_detection_range_m": 35.0,
     "guaranteed_obstacle_size_m": 0.75,
+    "persistent_planner_overflight_margin_m": 5.0,
 }
 
 # The open sky has no roof: the memory's box stands 16 m over the caves' 40 m

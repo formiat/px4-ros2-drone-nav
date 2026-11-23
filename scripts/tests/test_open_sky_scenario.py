@@ -75,13 +75,15 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.75)
         self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"],
                              profile["guaranteed_obstacle_size_m"] / math.tan(math.radians(1.0)))
-        self.assertEqual(set(profile), {"guaranteed_lidar_detection_range_m", "guaranteed_obstacle_size_m"})
-        # What the lidar set carries on every world (roadmap item 45): the scan's age, the window's margin and
-        # the leg over the seen, which is released for only while the planner holds one.
+        self.assertEqual(set(profile), {"guaranteed_lidar_detection_range_m", "guaranteed_obstacle_size_m",
+                                        "persistent_planner_overflight_margin_m"})
+        self.assertAlmostEqual(profile["persistent_planner_overflight_margin_m"], 5.0)
+        # What the lidar set carries on every world (roadmap item 45): the scan's age and the window's margin.
+        # A route is released for the leg over the seen only while the planner holds one.
         lidar = runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_OBSERVABILITY"]
         self.assertAlmostEqual(lidar["latest_sensor_obstacle_maximum_age_ms"], 300.0)
         self.assertAlmostEqual(lidar["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
-        self.assertAlmostEqual(lidar["persistent_planner_overflight_margin_m"], 5.0)
+        self.assertNotIn("persistent_planner_overflight_margin_m", lidar)
         finalize = (REPOSITORY / "drone_city_nav/src/runtime/ros/production_mppi_node_planning_tick_finalize.cpp"
                     ).read_text(encoding="utf-8")
         self.assertIn("if (planner_holds_leg_over_seen_.load(std::memory_order_relaxed) &&", finalize)
