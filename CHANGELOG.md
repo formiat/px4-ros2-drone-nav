@@ -6,6 +6,26 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A law for a slow computer: a planned horizon carries a renewal promise** (roadmap item 44, specification
+  K89). The braking contract charged 0.10 s of reaction and nothing kept the planner to it: a horizon the
+  planner did not renew was flown to the end of its lease of 4 s, into whatever was seen after it (r4150, a
+  rotor's touch in the cave; r4176; r4182). The promise is how long after a planned horizon the planner
+  publishes the next, measured over its own last intervals (1.5 times the longest of 25, 0.2 s at least).
+  The speed laws charge what it takes over its floor as reaction latency, and admit no speed past 1.0 s; the
+  offboard brakes a planned horizon it has held longer than its promise without another
+  (`HORIZON_RENEWAL overdue=true`) and flies on with the next. Nothing remembers a slow tick.
+  `MppiTrajectoryHorizon` carries `renewal_promise_ns`; the planner's track carries `renewal_promise_s`.
+  Four load flights without contact (three at twice real time, 1.918 to 2.017 m/s, one at 1.5); an ordinary
+  flight is charged on 2 to 4 percent of its ticks on Urban and 26 percent under the open sky. New tool:
+  `tools/renewal_promise.py`.
+- **The offboard holds where the vehicle stands when a horizon lapsed unflown** (r4181). A horizon received
+  on the pad and outlived by the takeoff was held at its last point, a metre under the vehicle: a step of
+  position and of heading the autopilot flew down onto the pad. The end of a horizon is held only if the
+  horizon was flown.
+- **The autopilot's status is admitted against its receipt on the node clock** (specification K24). At twice
+  real time the autopilot's clock ran ahead of the monotonic receipts by the whole of the admission's lead,
+  the status went in and out of probation and the planner refused its ticks for seconds (r4181, r4182); a
+  load flight at 2.0 now measures the load.
 - **One flight profile: the open sky read from what the sensors measure** (roadmap item 45, specification V3,
   K75, K76, K85, K88; the owner's requirement of 2026-11-17 that nobody switches a mode of the environment).
   The world's file named a `flight_profile` and the launch gave the open sky its own figures. No world states

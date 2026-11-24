@@ -1924,6 +1924,36 @@ analogs ([related_work.md](related_work.md)) and the owner's discussions of
   documentation), then a microcontroller hub; an FPGA only for raw video.
 - **A law for a slow computer**: at a planner that ticks at 0.6 Hz instead of
   50 the vehicle flew on (item 36); too slow means slower or a hover.
+  **Done on 2026-11-24** (the flight code of `94598d99`; specification K89,
+  K24). A planned horizon carries a renewal promise measured over the
+  planner's own last intervals (1.5 times the longest of 25, 0.2 s at
+  least); the speed laws charge what it takes over its floor as reaction
+  latency and admit no speed past 1.0 s; the offboard brakes a horizon
+  held past its promise. What the load flights first showed was not a
+  slow computer: at twice real time the autopilot's status was refused by
+  the ratio of the clocks (r4181 touched the pad, r4182 a wall), and a
+  horizon that lapsed unflown was held at its end, a metre under the
+  vehicle. With both repaired the stack flies at 2.0 (r4183, 1.930 m/s),
+  and the law's ladder is four load flights without contact:
+
+  | Flight | Factor | The next horizon came after, p50 / p95 / p99 | Promise p50 / p95 | Ticks charged | At rest | Held past the promise / braked | Mean | Under 0.10 m of the truth |
+  |---|---|---|---|---|---|---|---|---|
+  | r4183, before the law | 2.0 | 56 / 89 / 138 ms | none | none | none | 18 intervals over 0.2 s, no brake | 1.930 m/s | 1.6 s |
+  | r4184 | 2.0 | 55 / 93 / 147 ms | 200 / 264 ms | 7.8 % | 0 | 3 / 3 | 2.003 m/s | 4.0 s |
+  | r4185 | 2.0 | 54 / 85 / 117 ms | 200 / 234 ms | 6.9 % | 0.62 % | 3 / 3 | 1.918 m/s | 0.0 s |
+  | r4186 | 2.0 | 53 / 77 / 105 ms | 200 / 200 ms | 3.4 % | 0.94 % | 4 / 4 | 2.017 m/s | 5.6 s |
+  | r4187 | 1.5 | 42 / 64 / 104 ms | 200 / 204 ms | 5.5 % | 0 | 2 / 2 | 2.283 m/s | 0.0 s |
+
+  An ordinary flight is charged little: the lidar on Urban on 4.1 percent
+  of its ticks in motion (r4188, 2.408 m/s, three horizons braked), the
+  stereo set on 1.6 percent (r4189, 1.399 m/s, two), the open sky on 26.3
+  percent (r4190, 10.364 m/s, two horizons braked at 12 to 14 m/s). The
+  regression bag played at twice its rate shows the same law on a record
+  (`tools/replay_stack.sh log/tools/replay/regression/r2918 2.0`): the
+  promise over its floor on 8.7 percent of the ticks in motion against 0.9
+  at the bag's own rate, at rest on 2.9 percent, the offboard's brake 22
+  times against 10. The floor of 0.2 s against the laws' 0.10 s is the
+  register's row.
 
 ## 46. Continuous Integration
 

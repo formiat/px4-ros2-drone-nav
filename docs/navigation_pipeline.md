@@ -631,6 +631,15 @@ Offboard consumes the fresh horizon, interpolates by timestamp, and emits PX4
 trajectory setpoints. The finite path reaches zero velocity by its deadline;
 offboard then holds its terminal point instead of extrapolating motion.
 
+A planned horizon carries the planner's renewal promise (specification K89):
+how long, by the planner's own last intervals, the next horizon takes to
+come. What the promise takes over its floor of 0.2 s the speed policy charges
+as reaction latency in every stopping law of section 4, so a planner that
+renews slowly flies as slowly as its braking contract then holds, and past
+1.0 s the sensor-braking bound is nought and the vehicle rests until its
+ticks return. Offboard brakes a planned horizon held past its promise
+([`drone_control.md`](drone_control.md), "The Renewal Promise").
+
 ## 9. The Survey Mission Layer
 
 Roadmap item 34, specification F20: a layer above the planner that chooses

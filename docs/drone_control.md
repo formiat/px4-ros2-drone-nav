@@ -50,6 +50,25 @@ If no fresh horizon exists:
 
 The old horizon is not extended beyond its validity deadline.
 
+A planned horizon that reached its deadline is held at its last point only
+if it was flown: a setpoint of it went to the autopilot while it was fresh.
+A horizon received on the pad and outlived by the takeoff ends where the
+vehicle never went, and is held where the vehicle stands (r4181).
+
+## The Renewal Promise
+
+A fresh planned horizon is flown only while the planner renews it
+(specification K89). Every planned horizon carries `renewal_promise_ns`: how
+long after it the planner publishes the next, one and a half times the
+longest of its last 25 intervals between planned horizons and 0.2 s at
+least. The speeds of the horizon were planned for that long a reaction. A
+planned horizon the offboard has held longer than its promise without
+another is braked by the same local hold (`HORIZON_RENEWAL overdue=true`),
+and the next horizon that comes is flown as any other: a planner that
+refused its candidate, or took half a second over a tick, no longer leaves
+the vehicle flying the old horizon into what was seen after it (r4150,
+r4176, r4182). `tools/renewal_promise.py` reads a flight for it.
+
 ## Constrained Route Execution
 
 Static `RouteSample3D` references carry altitude and speed constraints along

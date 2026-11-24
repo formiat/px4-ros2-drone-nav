@@ -529,9 +529,15 @@ floors from the factor, and the flight counts for regression and
 exploration, never for the acceptance's figures. On the development host
 the lidar set holds 1.5 (r2796 to r2800: five of five, 2.220 m/s on the
 simulation clock against 2.323 at 1.0, the flights 90 to 124 s of wall clock
-against 137 to 182) and breaks at 2.0 (r2769, the planner starved; the
-register's row); the stereo set holds no factor above 1, sitting at A7's
-floor at 1.0 already.
+against 137 to 182) and, since 2026-11-24, 2.0 (r4184 to r4186: three of
+three without contact, 1.918 to 2.017 m/s on the simulation clock, the
+planner renewing its horizon every 54 ms at the median against 27 ms at
+1.0). Before that it broke at 2.0 (r2769, r4181, r4182): the autopilot's
+clock ran twice as fast as the monotonic receipts its status was admitted
+against (specification K24), and the planner fell silent for seconds. The
+stereo set holds no factor above 1, sitting at A7's floor at 1.0 already.
+A load flight is read for the law of a slow computer by
+`tools/renewal_promise.py` (specification K89).
 
 ### The survey
 
