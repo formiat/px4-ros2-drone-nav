@@ -34,11 +34,34 @@ public:
   // One pose of the position source, at `stamp_ns`. A source that falls silent
   // after declaring dead reckoning is still dead reckoning.
   void observe(const std::int64_t stamp_ns, const bool dead_reckoning) noexcept {
+    heard_ns_ = stamp_ns;
+    silent_ = false;
     if (!dead_reckoning) {
       since_ns_.reset();
     } else if (!since_ns_.has_value()) {
       since_ns_ = stamp_ns;
     }
+  }
+
+  // The consumer's tick. A source heard once and silent for half a second is
+  // dead reckoning as one that declared it (specification K90): the lidar's
+  // estimator publishes no pose it does not vouch for, and a hung one none at
+  // all, so that the planner flew on for 4.3 s at 4 m/s on the autopilot's
+  // inertial estimate until the autopilot landed blind at that speed (r4196).
+  void observeSilence(const std::int64_t now_ns) noexcept {
+    constexpr std::int64_t kSilentNs{500'000'000};
+    if (heard_ns_.has_value() && now_ns - *heard_ns_ > kSilentNs) {
+      silent_ = true;
+      if (!since_ns_.has_value()) {
+        since_ns_ = now_ns;
+      }
+    }
+  }
+
+  // The source says nothing: no plan is flown on what the autopilot carries
+  // by itself.
+  [[nodiscard]] bool silent() const noexcept {
+    return silent_;
   }
 
   // The source is dead reckoning now, however long it has been.
@@ -70,6 +93,8 @@ public:
 
 private:
   std::optional<std::int64_t> since_ns_;
+  std::optional<std::int64_t> heard_ns_;
+  bool silent_{false};
   std::optional<std::int64_t> share_stamp_ns_;
   bool share_blind_{false};
 };

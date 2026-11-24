@@ -55,6 +55,26 @@ if it was flown: a setpoint of it went to the autopilot while it was fresh.
 A horizon received on the pad and outlived by the takeoff ends where the
 vehicle never went, and is held where the vehicle stands (r4181).
 
+## The Failsafe Ladder
+
+What the offboard does when something is not right is one ladder
+(specification K90), each rung entered and left by what is measured:
+
+| Rung | Entered when | What the vehicle does | Left when |
+|---|---|---|---|
+| 1. Hover | a planned horizon is held past its renewal promise, a horizon is revoked or has lapsed, the planner's heartbeat is older than 1.0 s, the position source says nothing or dead reckons in the dark | brakes at the stack's deceleration and holds where it stopped; level, in the velocity mode, where no position can be trusted | the next horizon is accepted, the heartbeat heard, the source seen |
+| 2. Landing where it stands | the planner's heartbeat has been lost for 5.0 s (also the mission's end and the operator's `land`) | holds the position where the landing began and descends at 0.5 m/s; level on the ground until the autopilot disarms | the planner is heard again before the ground (a lost planner's landing only) |
+| 3. Landing without an estimate | the position source has dead reckoned for 3.0 s: declared, or heard once and silent for 0.5 s | descends level at 0.5 m/s in the velocity mode, no position asked; the ring's reflex where a ring is carried | the source is sound again before the vehicle is down |
+| 4. Motors off | the vehicle is on the ground (the autopilot's disarm on its land detector), or the pilot kills | nothing more is sent | never |
+
+The stack commands no mode and no arming for any of it; the pilot's choice of
+mode and the autopilot's own failsafe take the vehicle from any rung
+(specification K29). A flight enters the rungs on purpose with
+`PILOT_EVENTS`: `fault:stop:production_mppi_node@T` hangs the planner,
+`fault:stop:lidar_inertial_odometry_node@T` or
+`fault:stop:visual_inertial_odometry_node@T` the estimator,
+`fault:resume:NODE@T` lets it go on, `kill@T` is the pilot's.
+
 ## The Renewal Promise
 
 A fresh planned horizon is flown only while the planner renews it

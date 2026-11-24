@@ -54,10 +54,13 @@ void MppiOffboardNode::onAutopilotStatus(const AutopilotStatus& status) {
   } else if (armed && in_control_seen_ && !released_ && !flight_over_) {
     released_ = true;
     unavailable_path_hold_pin_.reset();
-    announce(std::string{"AUTOPILOT_CONTROL state=released reason="} +
-             (status.failsafe            ? "failsafe"
-              : status.autopilot_landing ? "autopilot_landing"
-                                         : "pilot"));
+    const char* reason = "pilot";
+    if (status.failsafe) {
+      reason = "failsafe";
+    } else if (status.autopilot_landing) {
+      reason = "autopilot_landing";
+    }
+    announce(std::string{"AUTOPILOT_CONTROL state=released reason="} + reason);
   }
 }
 
@@ -153,7 +156,7 @@ void MppiOffboardNode::publishNavigationState() {
       (now() - *takeoff_complete_stamp_).seconds() >= takeoff_hover_s_;
   // A contact is a landing only while the vehicle is being landed (A9): the
   // blind descent (K19), the mission's landing (K30), or the autopilot's own.
-  state.landing = blind_landing_ || mission_landing_ ||
+  state.landing = blind_landing_ || mission_landing_ || emergency_landing_ ||
                   (vehicle_status_seen_ && vehicle_status_.autopilot_landing);
   navigation_state_pub_->publish(state);
   publishNavigationReadiness(state.navigation_ready);

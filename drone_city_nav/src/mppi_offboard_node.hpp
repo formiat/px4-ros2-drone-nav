@@ -148,7 +148,8 @@ private:
   bool planner_healthy_{false};
   double planner_health_timeout_s_{1.0};
   double planner_health_land_after_s_{5.0};
-  bool planner_health_land_sent_{false};
+  // The ladder's second rung flown for a planner lost (specification K90).
+  bool emergency_landing_{false};
   std::optional<rclcpp::Time> planner_health_received_at_;
   std::optional<rclcpp::Time> planner_health_loss_started_at_;
   Px4MapFrameTransform px4_map_transform_{};

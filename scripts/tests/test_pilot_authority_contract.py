@@ -49,6 +49,46 @@ class PilotAuthorityContractTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 PILOT.parse_events(wrong)
 
+    def test_the_failsafe_ladder_commands_no_mode_and_lands_by_itself(self) -> None:
+        # Specification K90 and K29: a planner lost for five seconds is answered
+        # by the mission's own landing, given up if the planner is heard again
+        # before the ground; a position source that says nothing is dead
+        # reckoning. The only command the offboard sends the autopilot is the
+        # disarm of a vehicle already destroyed.
+        source = REPOSITORY / "drone_city_nav" / "src"
+        offboard = "".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(source.glob("mppi_offboard_node*.cpp"))
+        )
+        self.assertNotIn("VEHICLE_CMD_NAV_LAND", offboard)
+        self.assertNotIn("VEHICLE_CMD_DO_SET_MODE", offboard)
+        self.assertEqual(offboard.count("publishCommand("), 2)
+        self.assertIn(
+            "    if (!emergency_landing_ && loss_s >= planner_health_land_after_s_) {\n",
+            offboard,
+        )
+        self.assertIn(
+            "    if (emergency_landing_) {\n"
+            "      publishMissionLandingSetpoint();\n"
+            "    } else {\n"
+            "      publishUnavailablePathHoldSetpoint();\n"
+            "    }\n",
+            offboard,
+        )
+        self.assertIn(
+            "    emergency_landing_ = false;\n"
+            "    mission_landing_descent_flowing_ = false;\n",
+            offboard,
+        )
+        self.assertIn(
+            "  state.landing = blind_landing_ || mission_landing_ || emergency_landing_ ||\n",
+            offboard,
+        )
+        self.assertIn(
+            "  dead_reckoning_landing_.observeSilence(now().nanoseconds());\n", offboard
+        )
+        self.assertIn("dead_reckoning_landing_.silent())));\n", offboard)
+
     def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
         # Specification K90: the failsafe ladder's rungs are entered by a hung
         # planner or estimator, which the schedule stops and lets go on.

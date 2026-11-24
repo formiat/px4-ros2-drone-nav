@@ -405,23 +405,49 @@ void MppiOffboardNode::controlTick() {
     // the landing below (roadmap item 27, block 1).
     offboard_mode_pub_->publish(
         buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
-    publishUnavailablePathHoldSetpoint();
     const double loss_s = (now() - *planner_health_loss_started_at_).seconds();
-    if (!planner_health_land_sent_ && loss_s >= planner_health_land_after_s_) {
-      publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND, 0.0F);
-      planner_health_land_sent_ = true;
+    if (!emergency_landing_ && loss_s >= planner_health_land_after_s_) {
+      // The ladder's second rung (specification K90): the landing where the
+      // vehicle stands, the mission's own (K30), not the autopilot's mode:
+      // the stack commands no mode (K29), the autopilot's landing left the
+      // vehicle on the ground armed (r4194), and this one is given up if the
+      // planner is heard again before the ground.
+      emergency_landing_ = true;
+      mission_landing_local_ = Point2{local_x_, local_y_};
+      mission_landing_yaw_rad_ = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
       RCLCPP_ERROR(get_logger(), "PLANNER_HEALTH lost=true action=land");
+      publishMissionEvent("EMERGENCY_LANDING started=true reason=planner_lost");
+    }
+    if (emergency_landing_) {
+      publishMissionLandingSetpoint();
+    } else {
+      publishUnavailablePathHoldSetpoint();
     }
     publishUnavailableControlFeedback();
     return;
   }
   planner_health_loss_started_at_.reset();
+  if (emergency_landing_) {
+    if (mission_landing_grounded_) {
+      // On the ground the landing is finished to the autopilot's disarm.
+      offboard_mode_pub_->publish(
+          buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+      publishMissionLandingSetpoint();
+      publishUnavailableControlFeedback();
+      return;
+    }
+    emergency_landing_ = false;
+    mission_landing_descent_flowing_ = false;
+    RCLCPP_WARN(get_logger(), "PLANNER_HEALTH lost=false action=resume");
+    publishMissionEvent("EMERGENCY_LANDING started=false reason=planner_heard");
+  }
   const bool navigating =
       takeoff_ready && (!require_mission_start_signal_ || mission_started_);
   const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
   const bool planned_path_fresh = navigating && plannedFinitePathFresh();
   const bool planned_path_completed = navigating && plannedFinitePathCompleted();
   const bool planned_path_overdue = planned_path_fresh && plannedFinitePathOverdue();
+  dead_reckoning_landing_.observeSilence(now().nanoseconds());
   blind_landing_ = takeoff_hovered &&
                    (!require_mission_start_signal_ || mission_started_) &&
                    dead_reckoning_landing_.due(now().nanoseconds());
@@ -440,7 +466,8 @@ void MppiOffboardNode::controlTick() {
   const bool dead_reckoning_hold =
       !blind_landing_ && !position_lost_in_flight && dead_reckoning_landing_.active() &&
       (stationary_position_hold ||
-       (navigating && dead_reckoning_landing_.blind(now().nanoseconds())));
+       (navigating && (dead_reckoning_landing_.blind(now().nanoseconds()) ||
+                       dead_reckoning_landing_.silent())));
   OffboardSetpointMode mode{OffboardSetpointMode::kPositionHold};
   if (blind_landing_ || position_lost_in_flight || dead_reckoning_hold) {
     mode = OffboardSetpointMode::kVelocityCruise;

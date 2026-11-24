@@ -48,6 +48,31 @@ TEST(DeadReckoningLanding, ASilentSourceIsStillDeadReckoning) {
   EXPECT_TRUE(landing.due(500 * kSecondNs));
 }
 
+TEST(DeadReckoningLanding, ASourceHeardOnceAndSilentIsDeadReckoning) {
+  // Specification K90, r4196: the lidar's estimator hung, nothing declared
+  // dead reckoning, and the planner flew on until the autopilot landed blind.
+  DeadReckoningLanding landing;
+  // A source never heard is no source: nothing is owed to its silence.
+  landing.observeSilence(10 * kSecondNs);
+  EXPECT_FALSE(landing.active());
+  EXPECT_FALSE(landing.silent());
+  landing.observe(10 * kSecondNs, false);
+  landing.observeSilence(10 * kSecondNs + kSecondNs / 2);
+  EXPECT_FALSE(landing.silent());
+  // Past half a second no plan is flown, and three seconds on the descent.
+  landing.observeSilence(10 * kSecondNs + 600'000'000);
+  EXPECT_TRUE(landing.silent());
+  EXPECT_TRUE(landing.active());
+  EXPECT_FALSE(landing.due(13 * kSecondNs));
+  EXPECT_TRUE(landing.due(13 * kSecondNs + 600'000'000));
+  // The source speaks again, sound: the flight is taken back, nothing kept.
+  landing.observe(14 * kSecondNs, false);
+  landing.observeSilence(14 * kSecondNs + kSecondNs / 10);
+  EXPECT_FALSE(landing.silent());
+  EXPECT_FALSE(landing.active());
+  EXPECT_FALSE(landing.due(20 * kSecondNs));
+}
+
 TEST(DeadReckoningLanding, DeadReckoningInTheDarkFliesNoPlan) {
   DeadReckoningLanding landing;
   // Blind frames before dead reckoning: the plan is flown.
