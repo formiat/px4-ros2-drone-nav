@@ -339,6 +339,7 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
                                       latest_scan_clear_sight_half_angle_rad_)};
     }
   }
+  latest.sky_open = skyOpenAbove(memory_beams, sky_cone_half_angle_rad_);
   latest.valid = true;
   latest_scan_pub_->publish(makeLatestSensorObstacleScanMessage(
       latest, source_header, frame_id_, acquisition_stamp_ns,
@@ -365,6 +366,7 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
         .origin_map = ray_origin,
         .beams = std::move(memory_beams),
         .body_view = body_view,
+        .maximum_range_m = latest.sky_open ? 0.0 : roofed_integration_range_m_,
         .dynamic_filter_plan = std::move(filter_plan),
         .acquisition_stamp_ns = acquisition_stamp_ns,
         .enqueued_at = std::chrono::steady_clock::now(),
@@ -395,12 +397,12 @@ ObstacleMemory3DNode::processPendingCloud(const PendingPointCloud3D& pending) {
       "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
       " source=%zu hits=%zu surface_samples=%zu invalid=%zu "
       "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
-      " memory_scan_dropped=%s debug=%s clear_sight_m=%.1f",
+      " memory_scan_dropped=%s debug=%s clear_sight_m=%.1f sky_open=%s",
       acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
       hit_points_body.size(), surface_samples.size(), latest.invalid_beam_count,
       acquisition_age_ms, processing_ms, alignment_coalesced_clouds_,
       memory_scan_dropped ? "true" : "false", publish_current_cloud ? "true" : "false",
-      latest.clear_sight.range_m);
+      latest.clear_sight.range_m, latest.sky_open ? "true" : "false");
   return PendingPointCloudDisposition::kConsumed;
 }
 

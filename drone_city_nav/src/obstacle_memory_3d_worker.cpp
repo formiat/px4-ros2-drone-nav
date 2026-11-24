@@ -182,7 +182,8 @@ void ObstacleMemory3DWorker::process(PersistentLidarScan3D scan) {
       LidarScan3DView{.origin_map = scan.origin_map,
                       .beams = scan.beams,
                       .acquisition_stamp_ns = scan.acquisition_stamp_ns,
-                      .body_view = scan.body_view});
+                      .body_view = scan.body_view,
+                      .maximum_range_m = scan.maximum_range_m});
   const ObstacleMemory3DChanges changes = memory_.takeChanges();
   publishMovingBodies(scan.acquisition_stamp_ns);
   logNearestBodies(scan.origin_map);

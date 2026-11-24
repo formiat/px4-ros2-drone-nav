@@ -28,6 +28,8 @@ struct LatestSensorObstacleScanBuildResult {
   std::size_t source_beam_count{0U};
   std::size_t invalid_beam_count{0U};
   LatestSensorClearSight3D clear_sight{};
+  // Nothing stood over the sensor within its range (skyOpenAbove).
+  bool sky_open{false};
   bool valid{false};
 };
 
@@ -39,6 +41,15 @@ struct LatestSensorObstacleScanBuildResult {
 [[nodiscard]] double clearSightRangeM(std::span<const LidarBeam3D> beams,
                                       const Vec3& axis_map,
                                       double half_angle_rad) noexcept;
+
+// Whether a frame saw the sky open over the sensor (specification K88): of
+// its measured beams within `half_angle_rad` of the map's vertical none
+// returned, and at least half of them answered. A beam that did not answer
+// saw nothing; a frame whose cone holds no beam, or whose returns are hits
+// alone (the stereo pair's), never reads the sky open. No history: the
+// answer is the frame's own.
+[[nodiscard]] bool skyOpenAbove(std::span<const LidarBeam3D> beams,
+                                double half_angle_rad) noexcept;
 
 [[nodiscard]] LatestSensorObstacleScanBuildResult
 buildLatestSensorObstacleScan(const LatestSensorObstacleScanBuildInput& input);

@@ -228,5 +228,47 @@ TEST(LatestSensorObstacleScanTest,
   EXPECT_DOUBLE_EQ(clearSightRangeM(beams, axis, 0.0), 0.0);
 }
 
+TEST(LatestSensorObstacleScanTest, TheSkyIsOpenWhereNoBeamAboutTheVerticalReturned) {
+  // Specification K88. Three beams within 20 degrees of the vertical that ran
+  // to their range, and a wall beside the vehicle far outside the cone.
+  std::vector<LidarBeam3D> beams{
+      LidarBeam3D{.direction_map = Vec3{0.0, 0.0, 1.0}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{.direction_map = Vec3{0.2, 0.0, 1.0}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{
+          .direction_map = Vec3{0.0, -0.3, 1.0}, .range_m = 35.0, .valid = true},
+      LidarBeam3D{.direction_map = Vec3{1.0, 0.0, 0.0},
+                  .range_m = 4.0,
+                  .hit = true,
+                  .valid = true},
+  };
+  EXPECT_TRUE(skyOpenAbove(beams, 0.35));
+
+  // A roof, however far: one return in the cone and the sky is not open.
+  beams.at(1).hit = true;
+  beams.at(1).range_m = 30.0;
+  EXPECT_FALSE(skyOpenAbove(beams, 0.35));
+  // Outside a narrower cone the same return takes nothing from it.
+  EXPECT_TRUE(skyOpenAbove(beams, 0.15));
+
+  // A beam that did not answer saw nothing: one of three leaves the sky
+  // open, two of three do not.
+  beams.at(1).valid = false;
+  EXPECT_TRUE(skyOpenAbove(beams, 0.35));
+  beams.at(2).valid = false;
+  EXPECT_FALSE(skyOpenAbove(beams, 0.35));
+
+  // A surface laid between beams is no measurement, an empty cone is no sky,
+  // and no cone reads none.
+  beams.at(1) = LidarBeam3D{.direction_map = Vec3{0.2, 0.0, 1.0},
+                            .range_m = 10.0,
+                            .hit = true,
+                            .valid = true,
+                            .surface_only = true};
+  beams.at(2).valid = true;
+  EXPECT_TRUE(skyOpenAbove(beams, 0.35));
+  EXPECT_FALSE(skyOpenAbove(std::span<const LidarBeam3D>{beams}.last(1U), 0.35));
+  EXPECT_FALSE(skyOpenAbove(beams, 0.0));
+}
+
 } // namespace
 } // namespace drone_city_nav

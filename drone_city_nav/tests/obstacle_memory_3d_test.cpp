@@ -684,4 +684,50 @@ TEST(ObstacleMemory3D, AScanThatChangesNothingIsStillARevision) {
   EXPECT_EQ(memory.revision(), settled + 1U);
 }
 
+TEST(ObstacleMemory3D, AScanTakenUnderARoofIsPlacedNoFartherThanItsOwnRange) {
+  // Specification K88: the configuration's range is the open sky's, and a
+  // scan taken under a roof names the voxel's. Flying out from under the roof
+  // and back under it: the far return is placed only by the scan that saw the
+  // sky open, and a roofed scan after it neither places nor clears that far.
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 30.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                                     .range_m = 20.0,
+                                     .hit = true,
+                                     .valid = true},
+                         LidarBeam3D{.direction_map = {0.0, 1.0, 0.0},
+                                     .range_m = 6.0,
+                                     .hit = true,
+                                     .valid = true}};
+  const auto scan = [&](const std::int64_t stamp_ns, const double maximum_range_m) {
+    return memory.integrateScan(LidarScan3DView{.origin_map = Point3{0.5, 0.5, 0.5},
+                                                .beams = beams,
+                                                .acquisition_stamp_ns = stamp_ns,
+                                                .maximum_range_m = maximum_range_m});
+  };
+  scan(100'000'000LL, 10.0);
+  EXPECT_TRUE(memory.grid().isOccupied({0, 6, 0}));
+  EXPECT_EQ(memory.grid().state({20, 0, 0}), ObservedVoxelState::kUnknown);
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 0, 0}));
+  EXPECT_EQ(memory.grid().state({12, 0, 0}), ObservedVoxelState::kUnknown);
+
+  scan(200'000'000LL, 0.0);
+  EXPECT_TRUE(memory.grid().isOccupied({20, 0, 0}));
+  EXPECT_TRUE(memory.grid().isKnownFree({12, 0, 0}));
+
+  for (std::int64_t index = 3; index <= 12; ++index) {
+    scan(index * 100'000'000LL, 10.0);
+  }
+  EXPECT_TRUE(memory.grid().isOccupied({20, 0, 0}));
+  // A range past the configuration's asks for no more than the configuration's.
+  ObstacleMemory3D near{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 10.0, .minimum_range_m = 0.1}};
+  static_cast<void>(
+      near.integrateScan(LidarScan3DView{.origin_map = Point3{0.5, 0.5, 0.5},
+                                         .beams = beams,
+                                         .acquisition_stamp_ns = 100'000'000LL,
+                                         .maximum_range_m = 30.0}));
+  EXPECT_EQ(near.grid().state({20, 0, 0}), ObservedVoxelState::kUnknown);
+}
+
 } // namespace drone_city_nav

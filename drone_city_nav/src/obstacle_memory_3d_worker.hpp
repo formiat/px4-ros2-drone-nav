@@ -26,6 +26,9 @@ struct PersistentLidarScan3D {
   std::vector<LidarBeam3D> beams;
   // The frame of the sensor that reads bodies, at this scan's pose.
   BodyReadingView3D body_view{};
+  // How far this scan's returns are placed (LidarScan3DView); nought: the
+  // configuration's range.
+  double maximum_range_m{0.0};
   DynamicAgentLidarFilterPlan dynamic_filter_plan;
   std::int64_t acquisition_stamp_ns{0};
   std::chrono::steady_clock::time_point enqueued_at{};

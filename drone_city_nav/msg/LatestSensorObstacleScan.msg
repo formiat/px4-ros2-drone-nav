@@ -20,3 +20,6 @@ uint32 invalid_beam_count
 geometry_msgs/Vector3 clear_sight_axis_map
 float32 clear_sight_half_angle_rad
 float32 clear_sight_range_m
+# Nothing stood over the sensor within its range: of the frame's beams within
+# the producer's cone about the map's vertical none returned (specification K88).
+bool sky_open

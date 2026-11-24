@@ -127,7 +127,16 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertNotIn("shadow", text.replace("gnss_shadow", "").replace("visual_inertial_shadow", ""))
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
-        self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
+        # The lidar's memory reads the sky on every scan and places a scan's returns by it (specification K88):
+        # the cone and the open sky's obstacle are the lidar set's on every world, and no world names them.
+        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_MEMORY"],
+                         {"sky_cone_half_angle_rad": 0.175, "guaranteed_obstacle_size_m": 0.75})
+        self.assertIn('production_mppi_parameters.append(LIDAR_OBSERVABILITY)\n'
+                      '            obstacle_memory_parameters.append(LIDAR_MEMORY)', text)
+        self.assertNotIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
+        clouds = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node_clouds.cpp").read_text(encoding="utf-8")
+        self.assertIn("latest.sky_open = skyOpenAbove(memory_beams, sky_cone_half_angle_rad_);", clouds)
+        self.assertIn(".maximum_range_m = latest.sky_open ? 0.0 : roofed_integration_range_m_,", clouds)
         self.assertIn('if flight_profile == "open_sky":\n            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)', text)
         self.assertNotIn("OPEN_SKY_TAKEOFF", text)
         self.assertEqual(vehicle.count("    takeoff_hover_s: 0.5\n"), 1)

@@ -165,10 +165,12 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
   // the surface it came from; beyond that the same wall seen at different
   // headings became several rotated copies of itself, and single hits
   // landed in the corridors between them. The unit is the scale of what the
-  // profile promises to see: a voxel in the caves, whose passages are a few
-  // voxels wide, and guaranteed_obstacle_size_m where the profile names one
-  // (half a metre on the open sky, specification K75), where a trunk a metre
-  // aside of itself at 35 m closes nothing and is placed again as it nears.
+  // sensor promises to see where the scan was taken: a voxel under a roof,
+  // whose passages are a few voxels wide, and guaranteed_obstacle_size_m
+  // under a sky the scan saw open (specification K75, K88), where a trunk a
+  // metre aside of itself at 35 m closes nothing and is placed again as it
+  // nears. The configuration's range is the open sky's; a scan taken under a
+  // roof is placed to the voxel's.
   const double heading_uncertainty_rad =
       declare_parameter<double>("lidar_pose_heading_uncertainty_rad", 0.0);
   const double placement_unit_m =
@@ -180,11 +182,20 @@ ObstacleMemory3DNode::ObstacleMemory3DNode()
           : scan_config_.maximum_range_m;
   memory_config.maximum_range_m =
       std::min(scan_config_.maximum_range_m, heading_bounded_range_m);
+  roofed_integration_range_m_ =
+      heading_uncertainty_rad > 0.0
+          ? std::min(memory_config.maximum_range_m,
+                     2.0 * bounds_.resolution_m / std::tan(heading_uncertainty_rad))
+          : memory_config.maximum_range_m;
+  sky_cone_half_angle_rad_ =
+      std::max(0.0, declare_parameter<double>("sky_cone_half_angle_rad", 0.0));
   RCLCPP_INFO(get_logger(),
-              "3D obstacle memory integration range: %.2f m (sensor %.2f m, "
-              "heading uncertainty %.4f rad)",
-              memory_config.maximum_range_m, scan_config_.maximum_range_m,
-              heading_uncertainty_rad);
+              "3D obstacle memory integration range: %.2f m under an open sky, "
+              "%.2f m under a roof (sensor %.2f m, heading uncertainty %.4f rad, "
+              "sky cone %.3f rad)",
+              memory_config.maximum_range_m, roofed_integration_range_m_,
+              scan_config_.maximum_range_m, heading_uncertainty_rad,
+              sky_cone_half_angle_rad_);
   memory_config.minimum_range_m = scan_config_.minimum_range_m;
   memory_config.scan_stride = static_cast<int>(std::clamp<std::int64_t>(
       declare_parameter<std::int64_t>("scan_stride", 1), 1, 100000));

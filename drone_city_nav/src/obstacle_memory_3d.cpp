@@ -238,6 +238,10 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   }
   liftSweep();
   const std::size_t stride = static_cast<std::size_t>(config_.scan_stride);
+  const double maximum_range_m =
+      scan.maximum_range_m > 0.0
+          ? std::min(scan.maximum_range_m, config_.maximum_range_m)
+          : config_.maximum_range_m;
   const auto trace_beams = [&](const std::size_t first, const std::size_t last,
                                ScanEvidence& evidence, ObstacleMemory3DStats& share) {
     for (std::size_t index = first; index < last; index += stride) {
@@ -253,7 +257,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
       share.hit_beams += beam.hit ? 1U : 0U;
       share.miss_beams += beam.hit ? 0U : 1U;
       share.surface_beams += beam.surface_only ? 1U : 0U;
-      integrateRay(scan.origin_map, beam, evidence, share);
+      integrateRay(scan.origin_map, beam, maximum_range_m, evidence, share);
     }
   };
   const auto since_ms = [](const std::chrono::steady_clock::time_point started) {
@@ -782,16 +786,17 @@ std::size_t ObstacleMemory3D::decayedVoxelTotal() const noexcept {
 }
 
 void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& beam,
+                                    const double maximum_range_m,
                                     ScanEvidence& scan_evidence,
                                     ObstacleMemory3DStats& stats) const {
   const double norm = vectorNorm(beam.direction_map);
   const Vec3 direction{beam.direction_map.x / norm, beam.direction_map.y / norm,
                        beam.direction_map.z / norm};
-  const double used_range = std::min(beam.range_m, config_.maximum_range_m);
+  const double used_range = std::min(beam.range_m, maximum_range_m);
   const Point3 endpoint{origin.x + used_range * direction.x,
                         origin.y + used_range * direction.y,
                         origin.z + used_range * direction.z};
-  const bool hit_within_range = beam.hit && beam.range_m <= config_.maximum_range_m;
+  const bool hit_within_range = beam.hit && beam.range_m <= maximum_range_m;
   const std::optional<GridIndex3D> hit_cell =
       hit_within_range ? grid_.worldToCell(endpoint) : std::nullopt;
   if (hit_within_range && !hit_cell.has_value()) {

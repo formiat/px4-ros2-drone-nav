@@ -51,6 +51,10 @@ struct LidarScan3DView {
   // preserves the single-observation behaviour used by timestamp-less inputs.
   std::int64_t acquisition_stamp_ns{0};
   BodyReadingView3D body_view{};
+  // How far this scan's returns are placed, where that is nearer than the
+  // configuration's range (a scan taken under a roof, K88); nought: the
+  // configuration's.
+  double maximum_range_m{0.0};
 };
 
 struct ObstacleMemory3DConfig {
@@ -282,7 +286,8 @@ private:
   void layPlaces(const Point3& origin, ObstacleMemory3DStats& stats);
   void holdMoving(GridIndex3D cell, std::int64_t now_ms, ObstacleMemory3DStats& stats);
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
-                    ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
+                    double maximum_range_m, ScanEvidence& scan_evidence,
+                    ObstacleMemory3DStats& stats) const;
   [[nodiscard]] static GridIndex3D cellFromChunkBit(OccupancyChunkIndex3D chunk,
                                                     std::size_t bit_index) noexcept;
 

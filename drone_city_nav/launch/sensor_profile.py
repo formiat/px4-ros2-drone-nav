@@ -153,6 +153,23 @@ OPEN_SKY_LIDAR_OBSERVABILITY = {
     "persistent_planner_overflight_margin_m": 5.0,
 }
 
+# What the lidar's memory carries on every world (specification K88): the cone
+# about the vertical its scans read the sky in, 10 degrees, and the obstacle
+# the lidar promises to see under a sky a scan saw open (K75: 0.75 m, three
+# voxels, which two beams a degree apart straddle to 43 m). A scan that saw
+# the sky open is placed as far as a heading of one standard deviation lands
+# a hit within two such obstacles of its surface, the lidar's whole 35 m; a
+# scan taken under a roof to the voxel's 19 m. By the truth no sample of
+# 14 460 under a roof reads open at any cone from 10 to 60 degrees, and the
+# open sky reads open throughout at 10: at 15 to 30 the park's crowns stand
+# in the cone over the takeoff (tools/sky_above.py; r4037, r4033, r3955,
+# r4045, r3946). The pair's memory, whose returns are hits alone, reads no
+# sky.
+LIDAR_MEMORY = {
+    "sky_cone_half_angle_rad": 0.175,
+    "guaranteed_obstacle_size_m": 0.75,
+}
+
 # The cone of clear sight the open sky's lidar reports along the travel (K85):
 # 6 degrees hold a body and the promised obstacle (1.3 m) about a straight
 # route from 12.4 m out, where the memory's own seen still stands.

@@ -34,6 +34,7 @@ from localization_profile import (
 )
 from budget_relay import apply_budget_relay, apply_step_ack
 from sensor_profile import (
+    LIDAR_MEMORY,
     LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
     OPEN_SKY_LIDAR_OBSERVABILITY,
@@ -430,16 +431,9 @@ def generate_launch_description():
         cameras_mounted = cameras == "stereo_tof"
         if navigation_sensors == "lidar":
             production_mppi_parameters.append(LIDAR_OBSERVABILITY)
+            obstacle_memory_parameters.append(LIDAR_MEMORY)
             if flight_profile == "open_sky":
                 production_mppi_parameters.append(OPEN_SKY_LIDAR_OBSERVABILITY)
-                # The memory places its hits at the same scale (K75).
-                obstacle_memory_parameters.append(
-                    {
-                        "guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[
-                            "guaranteed_obstacle_size_m"
-                        ]
-                    }
-                )
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             production_mppi_parameters.append(STEREO_TOF_PROFILE)

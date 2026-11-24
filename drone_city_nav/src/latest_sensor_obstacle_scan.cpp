@@ -118,4 +118,30 @@ double clearSightRangeM(const std::span<const LidarBeam3D> beams, const Vec3& ax
   return std::isfinite(range_m) ? range_m : 0.0;
 }
 
+bool skyOpenAbove(const std::span<const LidarBeam3D> beams,
+                  const double half_angle_rad) noexcept {
+  if (!(half_angle_rad > 0.0)) {
+    return false;
+  }
+  const double cosine = std::cos(half_angle_rad);
+  std::size_t in_cone{0U};
+  std::size_t answered{0U};
+  for (const LidarBeam3D& beam : beams) {
+    const double norm =
+        std::hypot(beam.direction_map.x, beam.direction_map.y, beam.direction_map.z);
+    if (beam.surface_only || !(norm > 1.0e-9) || beam.direction_map.z < cosine * norm) {
+      continue;
+    }
+    ++in_cone;
+    if (!beam.valid) {
+      continue;
+    }
+    if (beam.hit) {
+      return false;
+    }
+    ++answered;
+  }
+  return answered > 0U && 2U * answered >= in_cone;
+}
+
 } // namespace drone_city_nav

@@ -51,6 +51,7 @@ msg::LatestSensorObstacleScan makeLatestSensorObstacleScanMessage(
   message.clear_sight_half_angle_rad =
       static_cast<float>(scan.clear_sight.half_angle_rad);
   message.clear_sight_range_m = static_cast<float>(scan.clear_sight.range_m);
+  message.sky_open = scan.sky_open;
   return message;
 }
 

@@ -179,6 +179,12 @@ private:
   // The half angle of the cone of clear sight a frame reports along the
   // vehicle's travel since the frame before it; nought reports none.
   double latest_scan_clear_sight_half_angle_rad_{0.0};
+  // The half angle of the cone about the vertical a frame's sky is read in
+  // (specification K88); nought reads no sky. And how far a scan taken under
+  // a roof is placed: the voxel's range, the configuration's being the
+  // promised obstacle's.
+  double sky_cone_half_angle_rad_{0.0};
+  double roofed_integration_range_m_{0.0};
   // The frame of the sensor that reads bodies (the thermal core, K64): its
   // half angles and the range a body is read at; its pose is each scan's.
   BodyReadingView3D body_view_{};
