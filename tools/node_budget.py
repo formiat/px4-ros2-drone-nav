@@ -5,7 +5,7 @@ its assembly and publication; `controller_ms` the MPPI update alone) and the age
 `observation_age_ms`, `esdf_content_age_ms`), and from `log/runs/RUN/ros_drone_nav.log` the obstacle memory's
 integration of one scan (`integration_ms` of the LIDAR3D_MEMORY lines), the estimator's work (`frame_ms` of the
 camera estimator's status, `scan_ms` of the lidar-inertial one) and the stereo match (`match_ms` of STEREO_DEPTH): the
-median and the 95th percentile of each, then the same over all the runs of a sensor set. These are the figures the
+median, the 95th and the 99th percentile of each, then the same over all the runs of a sensor set. These are the figures the
 budget relay delays the nodes' outputs by (the median) and the register keeps (K53); they are measured on the host
 of record, never set by hand.
 """
@@ -54,7 +54,8 @@ def samples_of(run: str) -> dict[str, np.ndarray]:
 
 
 def summary(values: np.ndarray) -> str:
-    return f"p50 {np.percentile(values, 50):7.1f}  p95 {np.percentile(values, 95):7.1f}  n {len(values):6d}"
+    return (f"p50 {np.percentile(values, 50):7.1f}  p95 {np.percentile(values, 95):7.1f}  "
+            f"p99 {np.percentile(values, 99):7.1f}  n {len(values):6d}")
 
 
 def main() -> int:
