@@ -37,7 +37,6 @@ from sensor_profile import (
     LIDAR_MEMORY,
     LIDAR_OBSERVABILITY,
     LIDAR_PARAMETERS,
-    OPEN_SKY_LIDAR_OBSERVABILITY,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -272,13 +271,11 @@ def generate_launch_description():
             )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         survey_volume = None
-        flight_profile = "cave"
         world_ceiling_m = None
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
             survey_volume = scenario["survey_volume_m"]
             world_ceiling_m = scenario["maximum_target_z_m"]
-            flight_profile = scenario["flight_profile"]
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
             # PX4 reports NED local positions; the canonical world decides how
             # north and east map onto the map axes, so every node that turns a
@@ -429,8 +426,6 @@ def generate_launch_description():
         if navigation_sensors == "lidar":
             production_mppi_parameters.append(LIDAR_OBSERVABILITY)
             obstacle_memory_parameters.append(LIDAR_MEMORY)
-            if flight_profile == "open_sky":
-                production_mppi_parameters.append(OPEN_SKY_LIDAR_OBSERVABILITY)
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
             production_mppi_parameters.append(STEREO_TOF_PROFILE)

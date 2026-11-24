@@ -70,14 +70,23 @@ class OpenSkyScenarioTest(unittest.TestCase):
             "flight_profile"], "open_sky")
         self.assertEqual(load(REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json")[
             "flight_profile"], "cave")
-        profile = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_LIDAR_OBSERVABILITY"]
-        self.assertEqual(profile, {"persistent_planner_overflight_margin_m": 5.0})
+        # No dictionary of the launch is the open sky's any more (roadmap item 45): what the world's
+        # flight_profile chose is one number for every world, the sensor set's, or chosen in flight by what the
+        # stack measures.
+        self.assertNotIn("OPEN_SKY_", (launch / "sensor_profile.py").read_text(encoding="utf-8"))
+        self.assertNotIn("OPEN_SKY_", (launch / "city_nav.launch.py").read_text(encoding="utf-8"))
+        self.assertNotIn("flight_profile", (launch / "city_nav.launch.py").read_text(encoding="utf-8"))
         # What the lidar set carries on every world (roadmap item 45): the scan's age and the window's margin.
         # A route is released for the leg over the seen only while the planner holds one.
         lidar = runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_OBSERVABILITY"]
         self.assertAlmostEqual(lidar["latest_sensor_obstacle_maximum_age_ms"], 300.0)
         self.assertAlmostEqual(lidar["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
-        self.assertNotIn("persistent_planner_overflight_margin_m", lidar)
+        # The leg over the seen (K76) is first taken only where the memory has seen the way up from the
+        # route's start free, so its margin is the lidar set's on every world.
+        self.assertAlmostEqual(lidar["persistent_planner_overflight_margin_m"], 5.0)
+        overflight = (REPOSITORY / "drone_city_nav/src/persistent_dstar_lite_planner_3d_overflight.cpp").read_text(
+            encoding="utf-8")
+        self.assertIn("if (first_taking && !skySeenOver(*world_.observed_occupancy, start, level_m,", overflight)
         # The lidar's promise under a sky its scan saw open (specification K75, K88) is the lidar set's on every
         # world: the planner takes it tick by tick from the frame, and under a roof the configuration's 14 m and
         # the voxel stand.
@@ -127,8 +136,6 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertNotIn("OPEN_SKY_DYNAMICS", text)
         # Nothing consumed the pair's shadow memory beside a navigating lidar: it is gone on every world.
         self.assertNotIn("shadow", text.replace("gnss_shadow", "").replace("visual_inertial_shadow", ""))
-        self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
-                      'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         # The lidar's memory reads the sky on every scan and places a scan's returns by it (specification K88):
         # the cone and the open sky's obstacle are the lidar set's on every world, and no world names them.
         self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_MEMORY"],

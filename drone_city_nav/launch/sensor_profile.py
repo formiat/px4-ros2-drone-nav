@@ -123,7 +123,16 @@ STEREO_TOF_PROFILE = {
 # 35 m (K75: crowns and buildings, three voxels, which two beams a degree
 # apart straddle to 43 m; what is thinner is seen from the voxel's 14 m and
 # passed over by the leg's margin, K76); under a roof the contract's own
-# 14 m and the voxel stand, as the configuration states them.
+# 14 m and the voxel stand, as the configuration states them. The leg over
+# everything the memory holds, five metres over the highest obstacle seen
+# (K76), is the route the sensors admit the cruise on, with no search between
+# the legs (a search from nothing for a goal 500 m away held the vehicle 25
+# to 38 s at every goal, r3259). It is first taken only where the memory
+# has looked up from the route's start and seen the way to the leg's level
+# free, so its margin is the lidar set's on every world: under a roof the
+# body's sweep cleared the leg wherever the memory had not seen the roof yet
+# (the replay of r2918 with the margin set and no such rule: 95 of the
+# planner's 622 updates were the leg).
 LIDAR_OBSERVABILITY = {
     "light_headroom_topic": "",
     "silent_range_topic": "",
@@ -133,17 +142,6 @@ LIDAR_OBSERVABILITY = {
     "no_static_3d_esdf_horizontal_recenter_margin_m": 17.0,
     "open_sky_lidar_detection_range_m": 35.0,
     "guaranteed_obstacle_size_m": 0.75,
-}
-
-# The leg the open sky is flown by goes over everything the memory holds, five
-# metres over the highest obstacle seen (K76): the route the sensors admit the
-# cruise on, with no search between the legs (a search from nothing for a goal
-# 500 m away held the vehicle 25 to 38 s at every goal, r3259). The margin
-# stays the open sky's until the leg asks for a place with no roof seen over
-# it: under a roof the body's sweep clears the leg on the memory wherever the
-# memory has not seen the roof yet (the replay of r2918 with the margin set:
-# 95 of the planner's 622 updates were the leg).
-OPEN_SKY_LIDAR_OBSERVABILITY = {
     "persistent_planner_overflight_margin_m": 5.0,
 }
 

@@ -11,6 +11,22 @@ namespace {
   return highest;
 }
 
+// An open sky the sensor has looked through: every voxel the memory does not
+// hold occupied is observed free. A leg is first taken only where the way up
+// from its start is seen so.
+void seeTheRest(ObservedOccupancyGrid3D& occupancy) {
+  const GridBounds3D& bounds = occupancy.bounds();
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        if (!occupancy.isOccupied({x, y, z})) {
+          ASSERT_TRUE(occupancy.setState({x, y, z}, ObservedVoxelState::kFree));
+        }
+      }
+    }
+  }
+}
+
 // The open sky's leg (specification K76): over everything the memory holds,
 // found without a search, and taken again when something taller is seen.
 TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemoryHolds) {
@@ -27,6 +43,7 @@ TEST(PersistentDStarLitePlanner3DTest, TheOpenSkysLegGoesOverEverythingTheMemory
       ASSERT_TRUE(occupancy->setState({20, y, z}, ObservedVoxelState::kOccupied));
     }
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   PersistentDStarLitePlanner3D planner{config};
@@ -87,6 +104,7 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsTakenAgainFromWhereTheVehicleIs
   for (int z = 1; z < 16; ++z) {
     ASSERT_TRUE(occupancy->setState({10, 1, z}, ObservedVoxelState::kOccupied));
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   const Point3 start{40.5, 5.5, 12.0};
@@ -137,6 +155,7 @@ TEST(PersistentDStarLitePlanner3DTest, AVehicleOnTheLegJoinsItWhereItIs) {
       ASSERT_TRUE(occupancy->setState({20, y, z}, ObservedVoxelState::kOccupied));
     }
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   PersistentDStarLitePlanner3D planner{config};
@@ -178,6 +197,7 @@ TEST(PersistentDStarLitePlanner3DTest, AHeldLegTheMemoryHasOutgrownIsTakenAgain)
       ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
     }
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   PersistentDStarLitePlanner3D planner{config};
@@ -232,6 +252,7 @@ TEST(PersistentDStarLitePlanner3DTest, ADescentIsAsLongAsTheVehiclesSpeed) {
   for (int z = 1; z < 16; ++z) {
     ASSERT_TRUE(occupancy->setState({10, 1, z}, ObservedVoxelState::kOccupied));
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   config.time_model.maximum_horizontal_speed_mps = 13.5;
@@ -274,6 +295,7 @@ TEST(PersistentDStarLitePlanner3DTest, TheLegStaysUnderTheEnvelopesCeiling) {
   for (int z = 0; z < 18; ++z) {
     ASSERT_TRUE(occupancy->setState({30, 8, z}, ObservedVoxelState::kOccupied));
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   PersistentDStarLitePlanner3D planner{config};
@@ -298,6 +320,7 @@ TEST(PersistentDStarLitePlanner3DTest, AMastAsideOfTheLegDoesNotRaiseIt) {
   for (int z = 0; z < 4; ++z) {
     ASSERT_TRUE(occupancy->setState({30, 6, z}, ObservedVoxelState::kOccupied));
   }
+  seeTheRest(*occupancy);
   PersistentPlannerConfig3D config = testConfig();
   config.overflight_margin_m = 3.0;
   PersistentDStarLitePlanner3D planner{config};
@@ -348,6 +371,7 @@ TEST(PersistentDStarLitePlanner3DTest, AClimbIsAsSteepAsTheEvidenceBesideItAsks)
     for (int z = 1; z < 8; ++z) {
       EXPECT_TRUE(occupancy->setState({post_x, 6, z}, ObservedVoxelState::kOccupied));
     }
+    seeTheRest(*occupancy);
     PersistentPlannerConfig3D config = testConfig();
     config.overflight_margin_m = 3.0;
     config.clearance_ranking_weight = 1.5;
@@ -362,6 +386,68 @@ TEST(PersistentDStarLitePlanner3DTest, AClimbIsAsSteepAsTheEvidenceBesideItAsks)
   EXPECT_NEAR(climbTopX(30), 19.5, 1.0e-9);
   // Beside the two-to-one slant, at its height: the climb is steeper.
   EXPECT_LT(climbTopX(12), 12.0);
+}
+
+// A leg is first taken only where the memory has looked up from the route's
+// start and seen the way to the leg's level free (specification K76): what
+// the memory has not seen is free to fly into, and under a roof that left the
+// leg a way up wherever the roof was not seen yet.
+TEST(PersistentDStarLitePlanner3DTest,
+     TheLegIsFirstTakenOnlyUnderASkyTheMemoryHasSeen) {
+  const auto floor_with_roof = [](const int roof_from_x) {
+    auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+        GridBounds3D{0.0, 0.0, 0.0, 1.0, 60, 12, 24});
+    for (int x = 0; x < 60; ++x) {
+      for (int y = 0; y < 12; ++y) {
+        EXPECT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+      }
+    }
+    // A patch of roof six voxels long, eight metres up.
+    for (int x = roof_from_x; x < roof_from_x + 6; ++x) {
+      for (int y = 3; y < 9; ++y) {
+        EXPECT_TRUE(occupancy->setState({x, y, 8}, ObservedVoxelState::kOccupied));
+      }
+    }
+    return occupancy;
+  };
+  const auto notTheLeg = [](const PlannerUpdate3D& update) {
+    return !update.publishable() ||
+           candidate(update).source != SpatialRouteCandidateSource3D::kOverflight;
+  };
+  PersistentPlannerConfig3D config = testConfig();
+  config.overflight_margin_m = 3.0;
+  const Point3 start{2.5, 5.5, 2.5};
+  const Point3 goal{56.5, 5.5, 2.5};
+
+  // A roof the memory holds over the start: the slanted climb would pass under
+  // its edge and through the unseen beyond it, and the leg is not taken.
+  {
+    const auto occupancy = floor_with_roof(0);
+    seeTheRest(*occupancy);
+    PersistentDStarLitePlanner3D planner{config};
+    EXPECT_TRUE(notTheLeg(planner.plan(request(start, goal, world(occupancy, 1U)))));
+  }
+  // Nothing held over the start and nothing seen there either: a place the
+  // sensor has not looked up from (a route's start ahead of the vehicle, in a
+  // room it has not entered). Not seen is not a sky.
+  {
+    PersistentDStarLitePlanner3D planner{config};
+    EXPECT_TRUE(
+        notTheLeg(planner.plan(request(start, goal, world(floor_with_roof(12), 1U)))));
+  }
+  // The way up seen free, the same patch ahead of the vehicle: the leg goes
+  // over it.
+  {
+    const auto occupancy = floor_with_roof(12);
+    seeTheRest(*occupancy);
+    PersistentDStarLitePlanner3D planner{config};
+    const PlannerUpdate3D update =
+        planner.plan(request(start, goal, world(occupancy, 1U)));
+    ASSERT_TRUE(update.publishable());
+    EXPECT_EQ(candidate(update).source, SpatialRouteCandidateSource3D::kOverflight);
+    expectRawValid(candidate(update).points, *occupancy,
+                   planner.config().physical_footprint);
+  }
 }
 
 } // namespace

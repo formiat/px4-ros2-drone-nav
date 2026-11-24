@@ -82,6 +82,53 @@ constexpr double kApproachDropM{1.5};
   return std::hypot(x - start.x - along * dx, y - start.y - along * dy);
 }
 
+// Whether the memory has looked up from `point` and seen nothing as far as
+// `level_m` (specification K76): every layer of voxels over the point holds
+// one observed free within the body's radius of the vertical through it, and
+// none occupied. What the memory has not seen is free to fly into (I1), and
+// under a roof that left the leg a way up wherever the roof was not seen yet:
+// over a route's start ahead of the vehicle, in a room it had not looked into
+// (the replay of r2918). Under a sky the sensor looks into, the beams about
+// the vertical observe the way up to their range on every scan.
+[[nodiscard]] bool skySeenOver(const ObservedOccupancyGrid3D& occupancy,
+                               const Point3& point, const double level_m,
+                               const double body_radius_m) noexcept {
+  const GridBounds3D& bounds = occupancy.bounds();
+  const int reach = static_cast<int>(std::ceil(body_radius_m / bounds.resolution_m));
+  const int centre_x =
+      static_cast<int>(std::floor((point.x - bounds.origin_x) / bounds.resolution_m));
+  const int centre_y =
+      static_cast<int>(std::floor((point.y - bounds.origin_y) / bounds.resolution_m));
+  const int first =
+      static_cast<int>(std::floor((point.z - bounds.origin_z) / bounds.resolution_m)) +
+      1;
+  const int last = std::min(
+      bounds.depth_cells - 1,
+      static_cast<int>(std::floor((level_m - bounds.origin_z) / bounds.resolution_m)));
+  for (int cell_z = first; cell_z <= last; ++cell_z) {
+    bool seen_free{false};
+    for (int dy = -reach; dy <= reach; ++dy) {
+      for (int dx = -reach; dx <= reach; ++dx) {
+        const GridIndex3D cell{centre_x + dx, centre_y + dy, cell_z};
+        if (std::hypot(static_cast<double>(dx), static_cast<double>(dy)) *
+                    bounds.resolution_m >
+                body_radius_m + 0.5 * bounds.resolution_m ||
+            !occupancy.contains(cell)) {
+          continue;
+        }
+        if (occupancy.isOccupied(cell)) {
+          return false;
+        }
+        seen_free = seen_free || occupancy.isKnownFree(cell);
+      }
+    }
+    if (!seen_free) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // The top of the highest occupied voxel the memory holds within `corridor_m`
 // of the leg's ground track.
 [[nodiscard]] std::optional<double>
@@ -150,7 +197,8 @@ highestObservedObstacleZM(const ObservedOccupancyGrid3D& occupancy, const Point3
 // again from where the vehicle then is. Nothing is searched: with the leg held the
 // lattice searches idle.
 std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightPath(
-    const Point3& start, const Point3& goal, const Vec3& velocity) const {
+    const Point3& start, const Point3& goal, const Vec3& velocity,
+    const bool first_taking) const {
   if (!(config_.overflight_margin_m > 0.0) || world_.observed_occupancy == nullptr) {
     return std::nullopt;
   }
@@ -166,6 +214,12 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::overflightP
       ceiling_m,
       std::max({start.z, goal.z,
                 top_m.has_value() ? *top_m + config_.overflight_margin_m : start.z}));
+  // A leg is first taken only from under a sky the memory has looked into; a
+  // leg already held is taken again from wherever the vehicle is.
+  if (first_taking && !skySeenOver(*world_.observed_occupancy, start, level_m,
+                                   config_.physical_footprint.body_radius_m)) {
+    return std::nullopt;
+  }
   const double direction_x = (goal.x - start.x) / horizontal_m;
   const double direction_y = (goal.y - start.y) / horizontal_m;
   // The last metres into the goal are flown a metre down from the descent's
@@ -303,7 +357,7 @@ bool PersistentDStarLitePlanner3DImpl::holdOverflight(
   if (const SpatialRouteCandidate3D* const held = coordinator_.incumbent();
       held != nullptr && held->source == SpatialRouteCandidateSource3D::kOverflight) {
     if (std::optional<std::vector<Point3>> path =
-            overflightPath(request.start, exact_goal_, request.velocity)) {
+            overflightPath(request.start, exact_goal_, request.velocity, false)) {
       if (std::optional<SpatialRouteCandidate3D> again = makeCandidate(
               std::move(*path), SpatialRouteCandidateSource3D::kOverflight,
               request.velocity)) {
@@ -313,7 +367,7 @@ bool PersistentDStarLitePlanner3DImpl::holdOverflight(
   }
   if (coordinator_.incumbent() == nullptr) {
     if (std::optional<std::vector<Point3>> path =
-            overflightPath(request.start, exact_goal_, request.velocity)) {
+            overflightPath(request.start, exact_goal_, request.velocity, true)) {
       if (std::optional<SpatialRouteCandidate3D> candidate = makeCandidate(
               std::move(*path), SpatialRouteCandidateSource3D::kOverflight,
               request.velocity)) {
