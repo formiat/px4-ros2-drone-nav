@@ -32,7 +32,8 @@ WINDOW = 25
 ENFORCEMENT_SLACK_S = 0.06
 MOVING_MPS = 0.5
 DECELERATION_MPS2 = 5.0
-ACCEPTED = re.compile(r"\[(\d+\.\d+)\] \[mppi_offboard_node\]: EXECUTION_HORIZON accepted=true .* mode=(\w+)")
+ACCEPTED = re.compile(r"\[(\d+\.\d+)\] \[mppi_offboard_node\]: EXECUTION_HORIZON accepted=true .* "
+                      r"sequence=(\d+) mode=(\w+)")
 BRAKED = re.compile(r"\[(\d+\.\d+)\] \[mppi_offboard_node\]: "
                     r"(?:HORIZON_RENEWAL overdue=true .* speed=([0-9.]+)|FINITE_EXECUTION_PATH unavailable=true)")
 
@@ -41,12 +42,13 @@ def read(run):
     directory = ROOT / "log" / "runs" / run
     pose = np.array([[float(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[8])]
                      for row in csv.reader(open(directory / "gz_pose.csv", encoding="utf-8"))])
-    accepted, modes, braked, overdue_speeds = [], [], [], []
+    accepted, sequences, modes, braked, overdue_speeds = [], [], [], [], []
     for line in open(directory / "ros_drone_nav.log", encoding="utf-8", errors="replace"):
         match = ACCEPTED.search(line)
         if match:
             accepted.append(float(match.group(1)))
-            modes.append(match.group(2))
+            sequences.append(int(match.group(2)))
+            modes.append(match.group(3))
             continue
         match = BRAKED.search(line)
         if match:
@@ -59,7 +61,8 @@ def read(run):
         1.0e-3, pose[step:, 0] - pose[:-step, 0])
     track = [json.loads(line) for line in open(directory / "mppi" / "mppi_track.jsonl", encoding="utf-8")]
     return {
-        "accepted": to_sim(accepted), "planned": np.array(modes) == "planned", "braked": to_sim(braked),
+        "accepted": to_sim(accepted), "sequence": np.array(sequences), "planned": np.array(modes) == "planned",
+        "braked": to_sim(braked),
         "overdue_speeds": overdue_speeds, "speed_time": pose[step:, 0], "speed": speed, "track": track,
     }
 
@@ -80,7 +83,9 @@ def report(run, floor):
     moving_tick = actual > MOVING_MPS
     interval = np.diff(accepted)
     older_speed = np.interp(accepted[:-1], record["speed_time"], record["speed"])
-    flown = planned[:-1] & (older_speed > MOVING_MPS)
+    # A horizon is flown until the next the planner publishes: where the sequence skips one, a revocation
+    # came between (the offboard's line of it is throttled) and the vehicle was in its local hold from then.
+    flown = planned[:-1] & (older_speed > MOVING_MPS) & (np.diff(record["sequence"]) == 1)
     measured = floor is None and "renewal_promise_s" in track[len(track) // 2]
     if measured:
         tick_promise = np.array([row["renewal_promise_s"] for row in track])
