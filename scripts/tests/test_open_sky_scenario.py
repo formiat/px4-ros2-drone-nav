@@ -144,6 +144,10 @@ class OpenSkyScenarioTest(unittest.TestCase):
         coordinator = (REPOSITORY / "drone_city_nav/src/runtime/planning_cycle_coordinator_3d.cpp").read_text(
             encoding="utf-8")
         self.assertIn("speed_policy_input.sky_open = promise.sky_open;", coordinator)
+        # The rollouts' speed table is built at the widest promise; the reference is held to the tick's own.
+        control = (REPOSITORY / "drone_city_nav/src/runtime/ros/production_mppi_config_ros_control.cpp").read_text(
+            encoding="utf-8")
+        self.assertIn("const double limit_mps = sensorBrakingMaximumSpeedMps(\n        widest_contract,", control)
         self.assertNotIn("config_.speed_policy.guaranteed_obstacle_size_m,", coordinator)
         self.assertNotIn("OPEN_SKY_TAKEOFF", text)
         self.assertEqual(vehicle.count("    takeoff_hover_s: 0.5\n"), 1)

@@ -187,6 +187,17 @@ void ProductionMppiConfigLoader::declareControl() {
   // their mean speed.
   TranslationalSpeedLimitByVerticalShare3D& speed_limit_table =
       mppi.dynamics.translational_speed_limit_by_vertical_share;
+  // The table is built at the sensor's widest promise: under a sky a scan saw
+  // open the lidar's contract reaches the open sky's range (K75, K88). The
+  // speed policy holds the reference to each tick's own promise, and the
+  // rollouts shed the excess above the reference as they shed the excess
+  // above this table (r4145 flew the open sky at 6.3 m/s under the voxel's
+  // table).
+  SensorBrakingContract3D widest_contract =
+      control.speed_policy.sensor_braking_contract;
+  widest_contract.guaranteed_detection_range_m =
+      std::max(widest_contract.guaranteed_detection_range_m,
+               control.speed_policy.open_sky_detection_range_m);
   float level_speed_limit_mps{0.0F};
   std::size_t sample = 0U;
   for (float& table_limit_mps : speed_limit_table.limit_mps) {
@@ -194,8 +205,7 @@ void ProductionMppiConfigLoader::declareControl() {
         static_cast<double>(sample) /
         static_cast<double>(TranslationalSpeedLimitByVerticalShare3D::kSamples - 1U);
     const double limit_mps = sensorBrakingMaximumSpeedMps(
-        control.speed_policy.sensor_braking_contract,
-        control.speed_policy.stopping_capability,
+        widest_contract, control.speed_policy.stopping_capability,
         control.speed_policy.absolute_speed_limit_mps,
         Vec3{std::sqrt(std::max(0.0, 1.0 - vertical_share * vertical_share)), 0.0,
              vertical_share});
