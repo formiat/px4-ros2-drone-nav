@@ -79,8 +79,13 @@ mode and the autopilot's own failsafe take the vehicle from any rung
 
 With the launch's `px4_external_mode` (`PX4_EXTERNAL_MODE=true`) the offboard
 node registers the mode "Drone City Nav" with PX4 through px4-ros2-interface-lib
-(specification K91), and the evaluation pilot selects it in place of offboard
-(`sim_pilot.py --external-mode`). The pilot switches it off with any other mode
+(specification K91), and the evaluation pilot flies it as a pilot flies a mode
+of PX4's (`sim_pilot.py --external-mode`): armed in Takeoff, the stack's mode
+selected once the autopilot has taken off and holds. An external mode cannot
+take off by itself: outside offboard the position controller's takeoff is asked
+for by the flight tasks, which run in no external mode (the first flight
+through the mode, r4197, stood armed on the pad until the autopilot disarmed
+it). The pilot switches it off with any other mode
 (`PILOT_EVENTS` `hold@T`, `posctl@T`), and the stack holds its stream as it does
 when released from offboard. The setpoints are the same; the control they are
 flown by is stated once per change with the flags PX4 derives for offboard. The

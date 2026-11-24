@@ -131,6 +131,16 @@ class PilotAuthorityContractTest(unittest.TestCase):
         self.assertEqual(23, PILOT.external_nav_state((1 << 14) | (1 << 23)))
         self.assertEqual(25, PILOT.external_nav_state((1 << 25) | (1 << 31)))
         self.assertEqual(11, PILOT.FIRST_EXTERNAL_SUB_MODE)
+        # An external mode cannot take off: the pilot arms in Takeoff and
+        # selects the stack's mode once the autopilot holds.
+        pilot = PILOT_PATH.read_text(encoding="utf-8")
+        self.assertEqual((4, 2), PILOT.MODES["takeoff"])
+        self.assertEqual((17, 4), (PILOT.TAKEOFF_NAV_STATE, PILOT.LOITER_NAV_STATE))
+        self.assertIn(
+            "                elif status.nav_state == LOITER_NAV_STATE:\n"
+            '                    vehicle.set_mode("external")\n',
+            pilot,
+        )
 
     def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
         # Specification K90: the failsafe ladder's rungs are entered by a hung

@@ -3,8 +3,11 @@
 specification K29). The production nodes never arm the vehicle or switch its mode:
 the pilot does, with the commands a radio or a ground station sends PX4. At the
 start it puts each vehicle in offboard and arms it once the offboard streams its
-setpoints; afterwards it never arms again. With --external-mode it selects the
-stack's own mode instead of offboard, once PX4 lists it (specification K91). A flight may carry a schedule of the
+setpoints; afterwards it never arms again. With --external-mode it flies the
+stack's own mode (specification K91) as a pilot flies a mode of PX4's: it arms
+in Takeoff, and once the autopilot has taken off and holds, it selects the
+stack's mode; an external mode cannot take off by itself (PX4's takeoff is the
+flight tasks', which run in no external mode). A flight may carry a schedule of the
 pilot's and the operator's actions (PILOT_EVENTS), on the autopilot's clock (the
 simulation's, in lockstep):
 
@@ -34,8 +37,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # PX4's custom modes (main mode, sub mode) for VEHICLE_CMD_DO_SET_MODE.
-MODES = {"offboard": (6, 0), "hold": (4, 3), "land": (4, 6), "posctl": (3, 0)}
+MODES = {"offboard": (6, 0), "hold": (4, 3), "land": (4, 6), "posctl": (3, 0), "takeoff": (4, 2)}
 OFFBOARD_NAV_STATE = 14
+TAKEOFF_NAV_STATE = 17
+LOITER_NAV_STATE = 4
 # PX4's external modes: nav states 23 to 30, selected as AUTO (4) with the
 # sub modes 11 to 18 (commander px4_custom_mode.h, v1.17.0).
 FIRST_EXTERNAL_NAV_STATE = 23
@@ -235,8 +240,19 @@ def main() -> int:
             start = vehicle.start_nav_state()
             if start is None:
                 continue  # the stack's mode is not listed yet
+            armed = status.arming_state == VehicleStatus.ARMING_STATE_ARMED
+            if args.external_mode:
+                # Takeoff, armed in it; the stack's mode once the autopilot
+                # has taken off and holds.
+                if not armed and status.nav_state != TAKEOFF_NAV_STATE:
+                    vehicle.set_mode("takeoff")
+                elif not armed:
+                    vehicle.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+                elif status.nav_state == LOITER_NAV_STATE:
+                    vehicle.set_mode("external")
+                continue
             if status.nav_state != start:
-                vehicle.set_mode("external" if args.external_mode else "offboard")
+                vehicle.set_mode("offboard")
             elif status.arming_state != VehicleStatus.ARMING_STATE_ARMED:
                 vehicle.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
 
