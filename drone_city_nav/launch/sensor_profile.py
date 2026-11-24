@@ -160,14 +160,6 @@ OPEN_SKY_MEMORY = {
     "latest_scan_clear_sight_half_angle_rad": 0.105,
 }
 
-# The open sky's takeoff hovers half a second before its leg: the caves' two
-# seconds stand in the flight's time, which runs from the mission's readiness
-# on the ground, 8.0 s to the leg's first climb (r3334 to r3337), and the leg
-# begins with a climb of 25 m in the place the vehicle took off from.
-OPEN_SKY_TAKEOFF = {
-    "takeoff_hover_s": 0.5,
-}
-
 # What makes an obstacle memory a vision memory: the returns of the depth node,
 # each a ray of its own, from the left camera on the nose mount (body
 # forward-right-down). Two hits make a voxel occupied, not one: a matcher's

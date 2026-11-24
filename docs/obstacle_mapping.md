@@ -64,10 +64,10 @@ with `NAVIGATION_SENSOR_PROFILE=stereo_tof` the launch's one
 `obstacle_memory_3d_node` integrates the returns below on the production
 topics, with the overrides of `launch/sensor_profile.py` (hit-only returns, no
 surface interpolation, the left camera's mount as the extrinsic, two hits to a
-voxel). With `NAVIGATION_SENSOR_PROFILE=lidar` and the camera set mounted, a
-second instance integrates them in shadow on `/drone_city_nav/vision_shadow/*`
-beside the lidar's, and nothing consumes it; not on the open sky, where the core
-it takes is the lidar's memory's and the planner's.
+voxel). With `NAVIGATION_SENSOR_PROFILE=lidar` and the camera set mounted, the
+pair's returns feed no memory: the second instance that integrated them in
+shadow beside the lidar's until 2026-11-23 had no consumer and took a core
+the lidar's memory and the planner wanted (r3282).
 
 A vision memory's free rays end at a surface the memory holds (specification
 K72, `free_rays_end_at_surfaces`): the voxel a ray crosses there, a measured
@@ -125,13 +125,14 @@ same depth as one full search (0.97, 0.84 and 0.66 of the pixels within one
 voxel of the simulator's depth at 4 to 6, 6 to 8 and 8 to 10 m) for 108 ms on
 two threads against 187.
 
-A second instance of `obstacle_memory_3d_node`
-(`vision_obstacle_memory_3d_node`) integrates these returns on topics of its
-own under `/drone_city_nav/vision_shadow/`, with the lidar node's parameters
-and two hits to call a voxel occupied: a matcher's outliers beside depth
-edges do not repeat from frame to frame the way a surface does. Nothing
-consumes that memory; the lidar's stays the navigation world. Measured against
-the lidar memory over whole flights: with one hit 93.7 percent of the
+Until 2026-11-23 a second instance of `obstacle_memory_3d_node`
+(`vision_obstacle_memory_3d_node`) integrated these returns beside a
+navigating lidar, on topics of its own under `/drone_city_nav/vision_shadow/`,
+with the lidar node's parameters and two hits to call a voxel occupied: a
+matcher's outliers beside depth edges do not repeat from frame to frame the
+way a surface does. Nothing consumed that memory, and it is gone (roadmap
+item 45); the measurement it was built for stands. Against the lidar memory
+over whole flights: with one hit 93.7 percent of the
 vision-occupied voxels had a lidar-occupied voxel within one voxel and 4.6
 percent none within two (r481); with two hits 98.4 and 0.7 percent, and 98.8
 percent of the lidar's occupied voxels inside the volume the pair observed

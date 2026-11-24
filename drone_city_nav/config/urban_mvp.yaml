@@ -1077,7 +1077,11 @@ mppi_offboard_node:
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
-    takeoff_hover_s: 2.0
+    # The hover between the takeoff's climb and the first leg, one for every
+    # world: it stands in the flight's time, which runs from the mission's
+    # readiness on the ground (8.0 s to the open sky's first climb at the
+    # caves' former 2 s, r3334 to r3337).
+    takeoff_hover_s: 0.5
     px4_failsafe_flags_topic: /fmu/out/failsafe_flags
     mission_event_topic: /drone_city_nav/mission_events
     operator_command_topic: /drone_city_nav/operator_command

@@ -38,7 +38,6 @@ from sensor_profile import (
     LIDAR_PARAMETERS,
     OPEN_SKY_LIDAR_OBSERVABILITY,
     OPEN_SKY_MEMORY,
-    OPEN_SKY_TAKEOFF,
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
@@ -52,10 +51,8 @@ from sensor_profile import (
 
 def stereo_vision_nodes(
     params_path,
-    obstacle_memory_overrides,
     gazebo_world_name,
     gazebo_model_name,
-    shadow,
     visual_inertial_overrides,
     image_topic_suffix,
     tof_topic_suffix,
@@ -65,7 +62,7 @@ def stereo_vision_nodes(
     gazebo=True,
 ):
     """The vision path of roadmap item 14: the pair and the time-of-flight scans bridged, depth
-    recovered; in shadow a second memory integrates the returns beside the lidar's; with
+    recovered; with
     visual-inertial overrides the process that owns the images also hosts the estimator (item 16),
     vio_arguments its ROS arguments. Without Gazebo (a replay of a flight's stack bag) the depth
     node reads the pair's frames over ROS and nothing is bridged."""
@@ -76,10 +73,6 @@ def stereo_vision_nodes(
         tof_topic_suffix=tof_topic_suffix,
         magnetometer_topic_suffix=magnetometer_topic_suffix,
     )
-    with open(params_path, encoding="utf-8") as params_stream:
-        memory_parameters = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
-            "ros__parameters"
-        ]
     nodes = [
         Node(
             package="ros_gz_bridge",
@@ -106,38 +99,6 @@ def stereo_vision_nodes(
             ],
         ),
     ]
-    if shadow:
-        nodes.append(
-            Node(
-                package="drone_city_nav",
-                executable="obstacle_memory_3d_node",
-                name="vision_obstacle_memory_3d_node",
-                output="screen",
-                parameters=[
-                    memory_parameters,
-                    obstacle_memory_overrides,
-                    VISION_MEMORY_OVERRIDES,
-                    {
-                        "lidar_3d_topic": depth_topics["returns_topic"],
-                        "raw_obstacle_snapshot_3d_topic": (
-                            "/drone_city_nav/vision_shadow/raw_obstacle_snapshot_3d"
-                        ),
-                        "raw_obstacle_delta_3d_topic": (
-                            "/drone_city_nav/vision_shadow/raw_obstacle_delta_3d"
-                        ),
-                        "obstacle_memory_status_topic": (
-                            "/drone_city_nav/vision_shadow/obstacle_memory_status"
-                        ),
-                        "latest_sensor_obstacle_scan_topic": (
-                            "/drone_city_nav/vision_shadow/latest_obstacle_scan"
-                        ),
-                        "current_lidar_3d_pointcloud_topic": (
-                            "/drone_city_nav/vision_shadow/current_returns_3d"
-                        ),
-                    },
-                ],
-            )
-        )
     return nodes
 
 
@@ -406,7 +367,7 @@ def generate_launch_description():
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
         # An earlier flight's map as the memory's first content (roadmap item
-        # 11): the navigation memory's alone, not the vision shadow's.
+        # 11).
         memory_prior_path = memory_prior_occupancy_3d_path.perform(context).strip()
         if memory_prior_path:
             obstacle_memory_parameters.append(
@@ -558,8 +519,6 @@ def generate_launch_description():
                     offboard_overrides[
                         "unavailable_path_braking_acceleration_mps2"
                     ] = override
-        if flight_profile == "open_sky":
-            offboard_overrides.update(OPEN_SKY_TAKEOFF)
         vio_arguments = apply_budget_relay(  # roadmap item 36 (K53): the loop's wiring
             budget_relay.perform(context), navigation_sensors, production_mppi_parameters,
             offboard_overrides, visual_inertial_overrides, lidar_inertial_overrides,
@@ -657,14 +616,8 @@ def generate_launch_description():
             nodes.extend(
                 stereo_vision_nodes(
                     params_file.perform(context),
-                    obstacle_memory_overrides,
                     gazebo_world_name,
                     gazebo_model_name,
-                    # Nothing consumes the shadow memory; on the open sky it
-                    # took a core the lidar's memory and the planner wanted
-                    # (its scans 0.11 s each beside the lidar's 0.32, on a host
-                    # whose eight cores the stack filled, r3282).
-                    shadow=navigation_sensors == "lidar" and flight_profile != "open_sky",
                     visual_inertial_overrides=visual_inertial_overrides,
                     image_topic_suffix=image_suffix,
                     tof_topic_suffix=sensor_suffix,

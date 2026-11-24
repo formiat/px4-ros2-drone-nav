@@ -123,13 +123,14 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertIn("box_size[2] + 16.0 - 1.0", (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
         text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
         self.assertNotIn("OPEN_SKY_DYNAMICS", text)
-        self.assertIn('shadow=navigation_sensors == "lidar" and flight_profile != "open_sky"', text)
+        # Nothing consumed the pair's shadow memory beside a navigating lidar: it is gone on every world.
+        self.assertNotIn("shadow", text.replace("gnss_shadow", "").replace("visual_inertial_shadow", ""))
         self.assertIn('if flight_profile == "open_sky":\n                production_mppi_parameters.append('
                       'OPEN_SKY_LIDAR_OBSERVABILITY)', text)
         self.assertIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
         self.assertIn('if flight_profile == "open_sky":\n            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)', text)
-        self.assertIn('if flight_profile == "open_sky":\n            offboard_overrides.update(OPEN_SKY_TAKEOFF)', text)
-        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_TAKEOFF"], {"takeoff_hover_s": 0.5})
+        self.assertNotIn("OPEN_SKY_TAKEOFF", text)
+        self.assertEqual(vehicle.count("    takeoff_hover_s: 0.5\n"), 1)
         memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<double>("guaranteed_obstacle_size_m", 0.0)', memory)
         self.assertIn("2.0 * placement_unit_m / std::tan(heading_uncertainty_rad)", memory)
