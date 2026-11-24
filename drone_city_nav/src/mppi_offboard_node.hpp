@@ -8,6 +8,7 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_plan_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/horizon_renewal_promise.hpp"
 #include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -77,6 +78,7 @@ private:
   [[nodiscard]] double currentSpeedMps() const noexcept;
   [[nodiscard]] bool plannedFinitePathFresh() const;
   [[nodiscard]] bool plannedFinitePathCompleted() const;
+  [[nodiscard]] bool plannedFinitePathOverdue() const;
   void publishDeadReckoningLandingSetpoint(bool descending);
   void publishTakeoffSetpoint();
   [[nodiscard]] bool publishPrestartPlannedHorizonReceipt();
@@ -157,6 +159,9 @@ private:
   // Whether the resident horizon was flown: a setpoint of it went to the
   // autopilot while it was fresh. Its end is where the vehicle is only then.
   bool horizon_flown_{false};
+  // When the resident horizon came, on the node clock: its renewal promise
+  // runs from here (specification K89).
+  std::int64_t horizon_received_ns_{0};
   LocalHoldPin unavailable_path_hold_pin_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/cooperative_passage_execution.hpp"
+#include "drone_city_nav/horizon_renewal_promise.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/moving_body_tracker_3d.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -172,6 +173,9 @@ public:
   // speed policy: set from the subscription's thread, read by the cycle.
   void
   setMovingBodyEvidence(std::shared_ptr<const MovingBodyEvidence3D> evidence) noexcept;
+  // The promise the next planned horizon will carry (K89), as the node
+  // measured it at its last publication, for the speed policy.
+  void setRenewalPromiseNs(std::int64_t promise_ns) noexcept;
 
 private:
   // Clearance of the horizon execution currently owns, against the world as it
@@ -197,6 +201,7 @@ private:
   // way back the speed policy leaves open (specification K15, I3).
   std::deque<Point3> flown_path_;
   std::atomic<std::shared_ptr<const MovingBodyEvidence3D>> moving_body_evidence_;
+  std::atomic<std::int64_t> renewal_promise_ns_{kHorizonRenewalPromiseFloorNs};
   // Where the vehicle stood when its forward sensor went blind along the
   // motion or its route's free remainder was spent: the hold's target while
   // that lasts.

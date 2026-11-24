@@ -14,6 +14,10 @@ uint64 sequence
 builtin_interfaces/Time valid_from
 builtin_interfaces/Time valid_until
 int64 control_interval_ns
+# How long after this planned horizon the planner publishes the next, by its
+# own measured periods (specification K89). The speeds were planned for it:
+# the offboard brakes a planned horizon it has held longer without another.
+int64 renewal_promise_ns
 uint64 pose_revision
 uint64 obstacle_revision
 uint8 risk_tier

@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 
+#include "drone_city_nav/horizon_renewal_promise.hpp"
 #include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/stopping_distance.hpp"
 
@@ -287,6 +288,11 @@ namespace {
 // nothing forward and stays valid for the vertical cone.
 constexpr double kBlindRangeAboveMarginM{1.0e-3};
 
+constexpr double kRenewalPromiseFloorS{
+    static_cast<double>(kHorizonRenewalPromiseFloorNs) * 1.0e-9};
+constexpr double kRenewalPromiseLimitS{
+    static_cast<double>(kHorizonRenewalPromiseLimitNs) * 1.0e-9};
+
 MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& configured,
                                              const MppiSpeedPolicyInput& input,
                                              double& frame_range_m,
@@ -365,6 +371,12 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
       *input.sensor_evidence_age_s >= 0.0) {
     contract.maximum_evidence_age_s = *input.sensor_evidence_age_s;
   }
+  // A planner that renews its horizon late reacts late (K89): what the
+  // promise takes over its floor is latency in every stopping law.
+  if (std::isfinite(input.renewal_promise_s)) {
+    config.stopping_capability.reaction_latency_s +=
+        std::max(0.0, input.renewal_promise_s - kRenewalPromiseFloorS);
+  }
   return config;
 }
 
@@ -390,6 +402,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.sensor_measured_range_m =
       config.sensor_braking_contract.guaranteed_detection_range_m;
   result.sensor_evidence_age_s = config.sensor_braking_contract.maximum_evidence_age_s;
+  result.renewal_promise_s = input.renewal_promise_s;
   result.enabled = true;
   result.cruise_limit_mps = config.cruise_speed_mps;
   result.absolute_limit_mps = config.absolute_speed_limit_mps;
@@ -444,6 +457,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                                config.absolute_speed_limit_mps, faced,
                                                result.unfaced_observed_range_m));
     }
+  }
+  // Past the promise's limit the planner cannot answer for what the sensor
+  // sees in time at any speed (K89): the vehicle rests until its ticks return.
+  if (!(input.renewal_promise_s <= kRenewalPromiseLimitS)) {
+    result.sensor_braking_limit_mps = 0.0;
   }
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =

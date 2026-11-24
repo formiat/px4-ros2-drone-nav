@@ -194,6 +194,11 @@ struct MppiSpeedPolicyInput {
   // The frame, no older than the contract's evidence, saw nothing over the
   // vehicle within the sensor's range (K88).
   bool sky_open{false};
+  // The promise the horizon planned on this tick will carry (K89): how long
+  // the planner takes, by its own measured periods, to publish the next one.
+  // What it takes over its floor is reaction latency to every law; past its
+  // limit no speed is kept. Nought where no planner measures one.
+  double renewal_promise_s{0.0};
   // The light the forward camera's latest frame has left, one while its gain
   // makes it up (roadmap item 17 stage 7); absent for a sensor that brings
   // its own.
@@ -229,6 +234,8 @@ struct MppiSpeedPolicyResult {
   // frame stands behind and the evidence age charged.
   double sensor_measured_range_m{0.0};
   double sensor_evidence_age_s{0.0};
+  // The renewal promise this cycle was planned under (K89).
+  double renewal_promise_s{0.0};
   // The range the frame alone stands behind, before the memory answers back
   // along the flown path: what the carried light is judged by (K12).
   double sensor_frame_range_m{0.0};

@@ -537,6 +537,7 @@ void ProductionMppiNode::processDiagnostics(
           << finiteOrNegative(speed_policy.sensor_frame_range_m)
           << ",\"sensor_evidence_age_s\":"
           << finiteOrNegative(speed_policy.sensor_evidence_age_s)
+          << ",\"renewal_promise_s\":" << speed_policy.renewal_promise_s
           << ",\"yaw\":" << input.initial_state.yaw << ",\"yaw_rate\":"
           << input.initial_state.yaw_rate
           // The yaw the executed horizon hands the autopilot next, beside

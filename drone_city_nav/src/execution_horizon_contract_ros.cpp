@@ -244,6 +244,7 @@ executionHorizonContentFingerprint(const msg::MppiTrajectoryHorizon& horizon) no
   hashValue(hash, static_cast<std::uint64_t>(horizon.valid_until.sec));
   hashValue(hash, horizon.valid_until.nanosec);
   hashValue(hash, static_cast<std::uint64_t>(horizon.control_interval_ns));
+  hashValue(hash, static_cast<std::uint64_t>(horizon.renewal_promise_ns));
   hashValue(hash, horizon.pose_revision);
   hashValue(hash, horizon.obstacle_revision);
   hashValue(hash, horizon.risk_tier);

@@ -14,6 +14,7 @@
 #include <string_view>
 #include <utility>
 
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
 #include "raw_world_ingress_ros_3d.hpp"
 
@@ -238,6 +239,9 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
   horizon.valid_until =
       production_mppi_execution_detail::timeFromNanoseconds(valid_until_ns);
   horizon.control_interval_ns = cycle.controller.finite_path_control_interval_ns;
+  horizon.renewal_promise_ns = mode == ProductionMppiExecutionMode::kPlanned
+                                   ? horizon_renewal_promise_.promiseNs()
+                                   : 0;
   horizon.pose_revision = cycle.controller.inputRef().pose_revision;
   horizon.obstacle_revision = cycle.controller.latest_obstacle_revision;
   horizon.risk_tier =
@@ -493,6 +497,26 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                                 std::chrono::steady_clock::now() - wire_started)
                                 .count();
   horizon_publications_.fetch_add(1U, std::memory_order_relaxed);
+  // The renewal the offboard holds the planner to (specification K89): how
+  // long this planned horizon came after the planned horizon before it, while
+  // that one was still in its lease and so being flown. A hold or a
+  // revocation between the two takes a sequence number and so is no renewal;
+  // a horizon that had lapsed was a pause, not a late answer.
+  if (publication_horizon.execution_mode ==
+      msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED) {
+    if (last_planned_publication_sequence_ + 1U == publication_horizon.sequence &&
+        publication_now_ns < last_planned_valid_until_ns_) {
+      horizon_renewal_promise_.recordInterval(publication_now_ns -
+                                              last_planned_publication_ns_);
+      if (planning_cycle_coordinator_ != nullptr) {
+        planning_cycle_coordinator_->setRenewalPromiseNs(
+            horizon_renewal_promise_.promiseNs());
+      }
+    }
+    last_planned_publication_sequence_ = publication_horizon.sequence;
+    last_planned_publication_ns_ = publication_now_ns;
+    last_planned_valid_until_ns_ = timeToNanoseconds(publication_horizon.valid_until);
+  }
   RCLCPP_INFO(
       get_logger(),
       "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64

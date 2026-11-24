@@ -252,6 +252,11 @@ void PlanningCycleCoordinator3D::setMovingBodyEvidence(
   moving_body_evidence_.store(std::move(evidence), std::memory_order_release);
 }
 
+void PlanningCycleCoordinator3D::setRenewalPromiseNs(
+    const std::int64_t promise_ns) noexcept {
+  renewal_promise_ns_.store(promise_ns, std::memory_order_release);
+}
+
 PlanningCycleOutcome3D
 PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   PlanningCycleOutcome3D output;
@@ -517,6 +522,8 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
             : 0.0;
   }
   speed_policy_input.sky_open = promise.sky_open;
+  speed_policy_input.renewal_promise_s =
+      static_cast<double>(renewal_promise_ns_.load(std::memory_order_acquire)) * 1.0e-9;
   // The bodies the memory follows moving (K66), charged with the age of the
   // scan they were read on.
   const std::shared_ptr<const MovingBodyEvidence3D> moving_body_evidence =

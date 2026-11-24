@@ -1425,5 +1425,46 @@ TEST(MppiSpeedPolicyTest, TheOpenSkysPromiseStandsOnlyOnATickWhoseFrameSawTheSky
                    14.0);
 }
 
+TEST(MppiSpeedPolicyTest, ALateRenewalPromiseIsLatencyAndPastItsLimitRest) {
+  // Specification K89: the promise the planner measured for its next horizon
+  // is reaction latency over its floor of 0.2 s, and no speed past 1.0 s.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 15.0;
+  config.absolute_speed_limit_mps = 15.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 14.0;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.3;
+  config.sensor_braking_contract.physical_margin_m = 3.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 2.0F;
+  const double unmeasured =
+      evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps;
+
+  // The ticks at their rate: the floor, and nothing is charged.
+  input.renewal_promise_s = 0.2;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps,
+                   unmeasured);
+  // The ticks twice as slow as the floor carries: the contract's speed for
+  // a reaction 0.2 s later, to the digit.
+  MppiSpeedPolicyConfig charged = config;
+  charged.stopping_capability.reaction_latency_s += 0.2;
+  const double charged_limit =
+      evaluateMppiSpeedPolicy(charged, input).sensor_braking_limit_mps;
+  input.renewal_promise_s = 0.4;
+  const MppiSpeedPolicyResult late = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(late.sensor_braking_limit_mps, charged_limit);
+  EXPECT_LT(late.sensor_braking_limit_mps, unmeasured - 0.3);
+  EXPECT_DOUBLE_EQ(late.renewal_promise_s, 0.4);
+  // Past the limit the vehicle rests.
+  input.renewal_promise_s = 1.2;
+  const MppiSpeedPolicyResult rest = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(rest.sensor_braking_limit_mps, 0.0);
+  EXPECT_DOUBLE_EQ(rest.reference_speed_mps, 0.0);
+  // The ticks return, and the speed with them: nothing remembers the slow.
+  input.renewal_promise_s = 0.2;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps,
+                   unmeasured);
+}
+
 } // namespace
 } // namespace drone_city_nav

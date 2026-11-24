@@ -564,6 +564,7 @@ set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
     include/drone_city_nav/visual_inertial_void.hpp)
 
 set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
+    include/drone_city_nav/horizon_renewal_promise.hpp
     include/drone_city_nav/control_contracts_3d.hpp
     include/drone_city_nav/control_route_projection_3d.hpp
     include/drone_city_nav/finite_motion_horizon_3d.hpp

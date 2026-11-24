@@ -137,7 +137,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn(
             "    // and of heading that the autopilot flew down onto the pad (r4181).\n"
             "    publishUnavailablePathHoldSetpoint();\n"
-            "  } else {\n",
+            "  } else if (planned_path_overdue) {\n",
             offboard,
         )
         self.assertEqual(offboard.count("publishCompletedFinitePathHoldSetpoint();"), 1)
@@ -150,6 +150,62 @@ class PlannerReadinessContractTest(unittest.TestCase):
             horizon,
         )
         self.assertIn("  horizon_ = horizon;\n  horizon_flown_ = false;\n", horizon)
+
+    def test_a_planned_horizon_past_its_renewal_promise_is_braked(self) -> None:
+        # Specification K89; r4150, r4176, r4182 flew a horizon nobody renewed.
+        offboard = (SOURCE / "mppi_offboard_node.cpp").read_text(encoding="utf-8")
+        horizon = (SOURCE / "mppi_offboard_node_horizon.cpp").read_text(
+            encoding="utf-8"
+        )
+        publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
+        self.assertIn("int64 renewal_promise_ns\n", HORIZON_MESSAGE.read_text("utf-8"))
+        # The promise runs from the horizon's receipt and is the horizon's own.
+        self.assertIn(
+            "  horizon_flown_ = false;\n  horizon_received_ns_ = now().nanoseconds();\n",
+            horizon,
+        )
+        self.assertIn(
+            "  return now().nanoseconds() - horizon_received_ns_ > promise_ns;\n",
+            horizon,
+        )
+        # Overdue, the horizon is neither tracked nor its setpoint sent.
+        self.assertIn(
+            "  if (!blind_landing_ && !dead_reckoning_hold && planned_path_fresh &&\n"
+            "      !planned_path_overdue) {\n"
+            "    mode = OffboardSetpointMode::kTrajectoryPositionTracking;\n",
+            offboard,
+        )
+        self.assertIn(
+            "        currentSpeedMps());\n"
+            "    publishUnavailablePathHoldSetpoint();\n"
+            "  } else {\n"
+            "    exact_horizon_feedback_published = publishHorizonSetpoint();\n",
+            offboard,
+        )
+        # The planner measures it between one planned horizon and the next,
+        # and the same number goes to the speed laws and onto the wire.
+        self.assertIn(
+            "    if (last_planned_publication_sequence_ + 1U == publication_horizon.sequence &&\n"
+            "        publication_now_ns < last_planned_valid_until_ns_) {\n"
+            "      horizon_renewal_promise_.recordInterval(publication_now_ns -\n"
+            "                                              last_planned_publication_ns_);\n",
+            publication,
+        )
+        self.assertIn(
+            "        planning_cycle_coordinator_->setRenewalPromiseNs(\n"
+            "            horizon_renewal_promise_.promiseNs());\n",
+            publication,
+        )
+        self.assertIn(
+            "  horizon.renewal_promise_ns = mode == ProductionMppiExecutionMode::kPlanned\n"
+            "                                   ? horizon_renewal_promise_.promiseNs()\n"
+            "                                   : 0;\n",
+            publication,
+        )
+        self.assertIn(
+            "static_cast<double>(renewal_promise_ns_.load(std::memory_order_acquire)) * 1.0e-9;",
+            PLANNING_COORDINATOR.read_text(encoding="utf-8"),
+        )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
         planning_cycle = PLANNING_COORDINATOR.read_text(encoding="utf-8")

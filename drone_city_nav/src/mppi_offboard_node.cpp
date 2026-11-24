@@ -421,6 +421,7 @@ void MppiOffboardNode::controlTick() {
   const bool stationary_position_hold = navigating && stationaryPositionHoldActive();
   const bool planned_path_fresh = navigating && plannedFinitePathFresh();
   const bool planned_path_completed = navigating && plannedFinitePathCompleted();
+  const bool planned_path_overdue = planned_path_fresh && plannedFinitePathOverdue();
   blind_landing_ = takeoff_hovered &&
                    (!require_mission_start_signal_ || mission_started_) &&
                    dead_reckoning_landing_.due(now().nanoseconds());
@@ -447,7 +448,8 @@ void MppiOffboardNode::controlTick() {
   if (!blind_landing_ && !dead_reckoning_hold) {
     blind_descent_reflex_.reset();
   }
-  if (!blind_landing_ && !dead_reckoning_hold && planned_path_fresh) {
+  if (!blind_landing_ && !dead_reckoning_hold && planned_path_fresh &&
+      !planned_path_overdue) {
     mode = OffboardSetpointMode::kTrajectoryPositionTracking;
   }
   offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
@@ -479,6 +481,19 @@ void MppiOffboardNode::controlTick() {
     // received on the pad and outlived by the takeoff ended a metre under the
     // vehicle and beside it, and the hold at its end was a step of position
     // and of heading that the autopilot flew down onto the pad (r4181).
+    publishUnavailablePathHoldSetpoint();
+  } else if (planned_path_overdue) {
+    // The horizon was not renewed within its promise (specification K89): a
+    // planner that refused its candidate, or took half a second over a tick,
+    // left the resident horizon flying on into what was seen after it
+    // (r4150, r4176, r4182). The vehicle brakes and holds where it stops
+    // until the next horizon takes it over.
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 200,
+        "HORIZON_RENEWAL overdue=true sequence=%" PRIu64 " age_ms=%.0f speed=%.2f",
+        horizon_admission_.current_sequence,
+        static_cast<double>(now().nanoseconds() - horizon_received_ns_) * 1.0e-6,
+        currentSpeedMps());
     publishUnavailablePathHoldSetpoint();
   } else {
     exact_horizon_feedback_published = publishHorizonSetpoint();

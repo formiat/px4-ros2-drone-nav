@@ -117,6 +117,7 @@ void MppiOffboardNode::onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
                                  horizon_->execution_reason != horizon.execution_reason;
   horizon_ = horizon;
   horizon_flown_ = false;
+  horizon_received_ns_ = now().nanoseconds();
   unavailable_path_hold_pin_.release();
   RCLCPP_INFO(get_logger(),
               "EXECUTION_HORIZON accepted=true producer=%" PRIu64 " sequence=%" PRIu64
@@ -160,6 +161,19 @@ bool MppiOffboardNode::plannedFinitePathCompleted() const {
          horizon_->execution_mode ==
              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
          now().nanoseconds() >= executionHorizonTimeNanoseconds(horizon_->valid_until);
+}
+
+// A planned horizon flown past its renewal promise (specification K89): the
+// planner said when the next would come, the speeds were planned for that
+// long a reaction, and what was seen since has no answer in this one.
+bool MppiOffboardNode::plannedFinitePathOverdue() const {
+  if (!horizon_.has_value() || !plannedFinitePathFresh()) {
+    return false;
+  }
+  const std::int64_t promise_ns = horizon_->renewal_promise_ns > 0
+                                      ? horizon_->renewal_promise_ns
+                                      : kHorizonRenewalPromiseFloorNs;
+  return now().nanoseconds() - horizon_received_ns_ > promise_ns;
 }
 
 // Level, holding no position: a position held on a dead-reckoned estimate

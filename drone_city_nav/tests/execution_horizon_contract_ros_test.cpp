@@ -1,4 +1,5 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
+#include "drone_city_nav/horizon_renewal_promise.hpp"
 
 #include <gtest/gtest.h>
 
@@ -497,6 +498,33 @@ TEST(ExecutionHorizonContractRosTest,
       admitExecutionHorizonFeedback(conflict.next_state, higher_assessment.candidate);
   EXPECT_TRUE(recovery.accept);
   EXPECT_TRUE(recovery.witness_updated);
+}
+
+TEST(ExecutionHorizonContractRosTest, TheRenewalPromiseIsMeasuredAndPartOfTheWire) {
+  // Specification K89: one and a half of the longest of the last 25 intervals,
+  // 0.2 s at least; it returns once the slow ones have left the window.
+  constexpr std::int64_t kTickNs{20'000'000};
+  HorizonRenewalPromise promise;
+  EXPECT_EQ(promise.promiseNs(), kHorizonRenewalPromiseFloorNs);
+  for (int tick = 0; tick < 40; ++tick) {
+    promise.recordInterval(kTickNs);
+  }
+  EXPECT_EQ(promise.promiseNs(), kHorizonRenewalPromiseFloorNs);
+  promise.recordInterval(400'000'000);
+  EXPECT_EQ(promise.promiseNs(), 600'000'000);
+  promise.recordInterval(800'000'000);
+  EXPECT_GT(promise.promiseNs(), kHorizonRenewalPromiseLimitNs);
+  for (std::size_t tick = 0U; tick + 1U < kHorizonRenewalIntervalCount; ++tick) {
+    promise.recordInterval(kTickNs);
+    EXPECT_GT(promise.promiseNs(), kHorizonRenewalPromiseFloorNs);
+  }
+  promise.recordInterval(kTickNs);
+  EXPECT_EQ(promise.promiseNs(), kHorizonRenewalPromiseFloorNs);
+
+  msg::MppiTrajectoryHorizon horizon = validPlannedHorizon();
+  const std::uint64_t fingerprint = executionHorizonContentFingerprint(horizon);
+  horizon.renewal_promise_ns = 300'000'000;
+  EXPECT_NE(executionHorizonContentFingerprint(horizon), fingerprint);
 }
 
 } // namespace

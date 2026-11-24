@@ -11,6 +11,7 @@
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/horizon_renewal_promise.hpp"
 #include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
@@ -387,6 +388,11 @@ private:
   std::uint64_t last_moving_route_generation_{0U};
   std::int64_t last_planning_tick_entry_ns_{0};
   std::int64_t last_planning_tick_period_ns_{0};
+  // Measured between one planned horizon's publication and the next's (K89).
+  HorizonRenewalPromise horizon_renewal_promise_;
+  std::uint64_t last_planned_publication_sequence_{0U};
+  std::int64_t last_planned_publication_ns_{0};
+  std::int64_t last_planned_valid_until_ns_{0};
   // Owner identity of the goal hold observed by the previous capture update,
   // so feedback for the lease a renewal just superseded still counts.
   std::uint64_t last_capture_hold_id_{0U};
