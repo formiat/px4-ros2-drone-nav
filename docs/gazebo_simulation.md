@@ -359,7 +359,8 @@ host (specification K24).
 | Scan age the lidar-inertial estimator lets go (K23), the camera estimator's frame ages | the estimators | node (already) |
 | The carried light's schedule, the camera stream's faults | `scripts/carried_light.py`, `scripts/camera_stream_faults.py` | Gazebo's clock and the frames' own stamps (already) |
 | Planner budget (150 ms), horizon assembly (12 ms), every `*_ms` duration of the tick, the memory, the estimators | planner, assembler, nodes | monotonic: they measure the host |
-| Receipt moment of the autopilot's messages, for the admission of its stamps | `production_mppi_node_inputs.cpp`, `production_mppi_node_navigation_input.cpp` | monotonic on purpose: the autopilot's clock must not run ahead of the receipts, which holds at any factor up to 1 |
+| Receipt moment of the autopilot's local state, for the admission of its stamps | `production_mppi_node_navigation_input.cpp` | monotonic on purpose: the autopilot's clock must not run ahead of the receipts by more than a quarter of a second, which a sample every 20 ms holds at any factor flown |
+| Receipt moment of the autopilot's status, for the admission of its stamps | `production_mppi_node_inputs.cpp` | node (was monotonic): at a factor of 2.0 a status every half second ran a quarter of a second ahead of its monotonic receipts, the whole of the admission's lead, and the planner refused its ticks for seconds (r4181, r4182) |
 | Diagnostics file flush, queue latency of the memory worker, producer identity | sinks and workers | monotonic or system: diagnostics |
 | Mission monitor's 100 ms before shutdown | `mission_monitor_node.cpp` | wall: process teardown |
 | Resource sampler (1 s), pose and setpoint captures | `scripts/capture_*.py` | wall: they measure the host; the pose capture records both clocks |

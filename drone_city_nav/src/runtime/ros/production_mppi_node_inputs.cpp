@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <bit>
-#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <limits>
@@ -95,13 +94,12 @@ timeNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
 } // namespace
 
 void ProductionMppiNode::onAutopilotStatus(const AutopilotStatus& message) {
-  // PX4 source timestamps are ordered against a local monotonic receipt clock.
-  // ROS /clock can pause or jump with the simulator and therefore cannot be
-  // the authority for epoch/reacquisition admission.
-  const std::int64_t monotonic_receive_stamp_ns =
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now().time_since_epoch())
-          .count();
+  // The status' stamps are ordered against their receipt on the node clock
+  // (specification K24), the clock the autopilot's own runs beside: on the
+  // monotonic one a simulation at twice the host's time carried the status'
+  // half second of stamps over a quarter of receipts and the admission's
+  // quarter of lead, the status went in and out of probation, and the planner
+  // refused every tick after its fourth (r4181).
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   const bool armed = message.armed;
   const auto lock = evidence_boundary_.input();
@@ -115,7 +113,7 @@ void ProductionMppiNode::onAutopilotStatus(const AutopilotStatus& message) {
       Px4TimestampEpochObservation{
           .primary_timestamp_us = message.timestamp_us,
           .corroborating_timestamp_us = 0U,
-          .receive_timestamp_ns = monotonic_receive_stamp_ns,
+          .receive_timestamp_ns = receive_stamp_ns,
       });
   const bool timestamp_probation_opened =
       vehicle_status_timestamp_admission_.pending_confirmation_count == 0U &&
