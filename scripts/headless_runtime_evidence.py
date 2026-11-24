@@ -132,6 +132,10 @@ MEASURED_TARGET_MEAN_FLIGHT_SPEED_MPS = {
     ("open_sky_baylands", "stereo_tof"): 1.66,
 }
 TARGET_MEAN_FLIGHT_SPEED_LOST_SIGNAL_MPS = 7.54
+# The worlds whose flights answer to R8, by the name of the scenario's
+# canonical world. The check may know its scenario; no flight code reads a
+# kind of space (roadmap item 45).
+OPEN_SKY_WORLDS = frozenset({"open_sky_baylands"})
 
 TICK_POSITION_PATTERN = (
     r"\[(\d+\.\d+)\] \[production_mppi_node\]: PRODUCTION_MPPI_TICK [^\n]*?"
@@ -396,7 +400,7 @@ def simulation_time_at(pairs: list[tuple[float, float]], wall_s: float) -> float
 def validate_mean_flight_speed(ros_log: str, errors: list[str],
                                navigation_sensor_profile: str = "lidar",
                                truth_path: Path | None = None,
-                               flight_profile: str = "cave", world: str = "",
+                               world: str = "",
                                faulted_signal: bool = False) -> None:
     """The path the vehicle flew between mission readiness and the successful
     result over the simulation time that passed between them. The project
@@ -410,13 +414,14 @@ def validate_mean_flight_speed(ros_log: str, errors: list[str],
     target_speed_mps = (TARGET_MEAN_FLIGHT_SPEED_STEREO_MPS if stereo
                         else TARGET_MEAN_FLIGHT_SPEED_MPS)
     requirement = "R3"
-    if flight_profile == "open_sky":
+    open_sky = world in OPEN_SKY_WORLDS
+    if open_sky:
         minimum_speed_mps = MINIMUM_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
         target_speed_mps = TARGET_MEAN_FLIGHT_SPEED_OPEN_SKY_MPS
         requirement = "R8"
     measured_speed_mps = MEASURED_TARGET_MEAN_FLIGHT_SPEED_MPS.get(
         (world, navigation_sensor_profile))
-    if faulted_signal and flight_profile == "open_sky" and not stereo:
+    if faulted_signal and open_sky and not stereo:
         measured_speed_mps = TARGET_MEAN_FLIGHT_SPEED_LOST_SIGNAL_MPS
     if measured_speed_mps is not None:
         target_speed_mps = measured_speed_mps

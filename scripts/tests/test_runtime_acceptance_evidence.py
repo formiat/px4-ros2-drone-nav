@@ -328,17 +328,17 @@ class RuntimeManifestTest(unittest.TestCase):
 
     def test_the_open_skys_mean_speed_answers_to_r8(self) -> None:
         # R8 (the owner, 2026-10-29): 10 m/s at least on the open sky, the flight's
-        # floor 20 percent under it (8 m/s), on either sensor set; under 10 m/s a
-        # flight counts and is noted against R8.
-        for path_m, profile, passes in ((2700.0, "lidar", True), (2370.0, "lidar", False),
-                                        (2700.0, "stereo_tof", True)):
+        # floor 20 percent under it (8 m/s); under 10 m/s a flight counts and is
+        # noted against R8. The open sky is known by its world's name: the check
+        # may know its scenario, and no world states a kind of space any more.
+        for path_m, profile, passes in ((2700.0, "lidar", True), (2370.0, "lidar", False)):
             with self.subTest(path_m=path_m, profile=profile):
                 errors: list[str] = []
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
                     validator.validate_mean_flight_speed(
                         self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0),
-                        "open_sky")
+                        "open_sky_baylands")
                 self.assertEqual(errors == [], passes, errors)
                 if passes:
                     self.assertIn("under the target 10 m/s (R8)", stdout.getvalue())
@@ -351,40 +351,38 @@ class RuntimeManifestTest(unittest.TestCase):
         # satellite signal lost to 7.54 (6.03); Urban and the other sets of
         # those worlds keep R3's and R8's targets.
         cases = (
-            (420.0, "lidar", "cave", "cave_circuit_practice_01", False, True),
-            (400.0, "lidar", "cave", "cave_circuit_practice_01", False, False),
-            (420.0, "lidar", "cave", "urban_circuit_practice_01", False, False),
-            (300.0, "lidar", "cave", "finals_prize_round_world_07", False, True),
-            (290.0, "lidar", "cave", "finals_prize_round_world_07", False, False),
-            (270.0, "stereo_tof", "cave", "cave_circuit_practice_01", False, False),
-            (405.0, "stereo_tof", "open_sky", "open_sky_baylands", False, True),
-            (395.0, "stereo_tof", "open_sky", "open_sky_baylands", False, False),
-            (2370.0, "lidar", "open_sky", "open_sky_baylands", False, False),
-            (2370.0, "lidar", "open_sky", "open_sky_baylands", True, True),
-            (1800.0, "lidar", "open_sky", "open_sky_baylands", True, False),
+            (420.0, "lidar", "cave_circuit_practice_01", False, True),
+            (400.0, "lidar", "cave_circuit_practice_01", False, False),
+            (420.0, "lidar", "urban_circuit_practice_01", False, False),
+            (300.0, "lidar", "finals_prize_round_world_07", False, True),
+            (290.0, "lidar", "finals_prize_round_world_07", False, False),
+            (270.0, "stereo_tof", "cave_circuit_practice_01", False, False),
+            (405.0, "stereo_tof", "open_sky_baylands", False, True),
+            (395.0, "stereo_tof", "open_sky_baylands", False, False),
+            (2370.0, "lidar", "open_sky_baylands", False, False),
+            (2370.0, "lidar", "open_sky_baylands", True, True),
+            (1800.0, "lidar", "open_sky_baylands", True, False),
         )
-        for path_m, profile, kind, world, faulted, passes in cases:
+        for path_m, profile, world, faulted, passes in cases:
             with self.subTest(path_m=path_m, profile=profile, world=world, faulted=faulted):
                 errors: list[str] = []
                 with redirect_stdout(io.StringIO()):
                     validator.validate_mean_flight_speed(
                         self._flight_log(path_m, 300.0), errors, profile, self._truth(1.0),
-                        kind, world, faulted)
+                        world, faulted)
                 self.assertEqual(errors == [], passes, errors)
 
-    def test_the_kind_of_space_is_read_from_the_scenarios_world(self) -> None:
+    def test_the_world_is_named_by_the_scenario(self) -> None:
         config = SCRIPTS.parent / "drone_city_nav/config"
         errors: list[str] = []
-        self.assertEqual(validator.scenario_flight_profile(
-            str(config / "open_sky_baylands_point_to_point_scenario.json"), errors), "open_sky")
-        self.assertEqual(validator.scenario_flight_profile(
-            str(config / "urban_circuit_practice_01_point_to_point_scenario.json"), errors), "cave")
-        self.assertEqual(validator.scenario_flight_profile("", errors), "cave")
         self.assertEqual(validator.scenario_world_name(
-            str(config / "open_sky_baylands_point_to_point_scenario.json")), "open_sky_baylands")
-        self.assertEqual(validator.scenario_world_name(""), "")
+            str(config / "open_sky_baylands_point_to_point_scenario.json"), errors), "open_sky_baylands")
+        self.assertEqual(validator.scenario_world_name(
+            str(config / "urban_circuit_practice_01_point_to_point_scenario.json"), errors),
+            "urban_circuit_practice_01")
+        self.assertEqual(validator.scenario_world_name("", errors), "")
         self.assertEqual(errors, [])
-        validator.scenario_flight_profile(str(config / "no_such_scenario.json"), errors)
+        self.assertEqual(validator.scenario_world_name(str(config / "no_such_scenario.json"), errors), "")
         self.assertEqual(len(errors), 1)
 
     def test_mean_flight_speed_under_the_target_is_noted_for_the_register(self) -> None:

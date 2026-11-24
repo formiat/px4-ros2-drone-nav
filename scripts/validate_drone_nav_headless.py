@@ -418,30 +418,18 @@ def validate_point_to_point_waypoints(ros_log: str, errors: list[str]) -> None:
         )
 
 
-def scenario_flight_profile(scenario_path: str, errors: list[str]) -> str:
-    """The kind of space the scenario's canonical world states (specification K75):
-    `cave` without a scenario or where the world states none."""
-    if not scenario_path:
-        return "cave"
-    try:
-        scenario = Path(scenario_path)
-        world = Path(json.loads(scenario.read_text(encoding="utf-8"))["canonical_world"])
-        if not world.is_absolute():
-            world = scenario.parent / world
-        return str(json.loads(world.read_text(encoding="utf-8")).get("flight_profile", "cave"))
-    except (OSError, KeyError, ValueError) as error:
-        errors.append(f"FAIL: the scenario's world states its flight profile ({error})")
-        return "cave"
-
-
-def scenario_world_name(scenario_path: str) -> str:
+def scenario_world_name(scenario_path: str, errors: list[str]) -> str:
     """The name of the scenario's canonical world (its file's name up to the
-    first dot), which the measured speed targets are kept by; empty without a
-    scenario or one that cannot be read (scenario_flight_profile reports it)."""
+    first dot), which the speed's norm is kept by (R8 on the open sky's world,
+    the measured targets); empty without a scenario, and a scenario that
+    cannot be read is reported."""
+    if not scenario_path:
+        return ""
     try:
         return Path(json.loads(Path(scenario_path).read_text(encoding="utf-8"))[
             "canonical_world"]).name.split(".")[0]
-    except (OSError, KeyError, ValueError):
+    except (OSError, KeyError, ValueError) as error:
+        errors.append(f"FAIL: the scenario names its canonical world ({error})")
         return ""
 
 
@@ -593,8 +581,7 @@ def main() -> int:
             or args.mission_type == "survey" else errors,
             overrides.get("NAVIGATION_SENSOR_PROFILE", "lidar"),
             args.runtime_manifest.parent / "gz_pose.csv",
-            scenario_flight_profile(overrides.get("POINT_TO_POINT_SCENARIO_PATH", ""), errors),
-            scenario_world_name(overrides.get("POINT_TO_POINT_SCENARIO_PATH", "")),
+            scenario_world_name(overrides.get("POINT_TO_POINT_SCENARIO_PATH", ""), errors),
             bool(overrides.get("GNSS_FAULTS", "")),
         )
         validate_controller_dynamics(

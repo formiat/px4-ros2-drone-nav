@@ -55,21 +55,34 @@ class OpenSkyScenarioTest(unittest.TestCase):
         for straight, (a, b) in zip(selection["straight_distances_m"], zip(points, points[1:])):
             self.assertAlmostEqual(math.dist(a, b), straight, delta=0.1)
 
-    def test_the_world_states_the_open_skys_profile_and_the_launch_applies_it(self) -> None:
-        # Roadmap item 39 stage 5 (specification K75): the world says what kind of space it is; a navigating
-        # lidar on it guarantees the open sky's obstacles (0.75 m and more) to its 35 m and keeps 17 m of the distance
-        # field ahead; the targets' speed ceiling is the profile's.
+    def test_no_world_states_a_kind_of_space_and_the_launch_applies_no_profile(self) -> None:
+        # Roadmap item 45 (the owner, 2026-11-17: the vehicle is one, and nobody switches a mode of the
+        # environment). The world stated the kind of space it was (flight_profile) and the launch applied a
+        # profile by it (roadmap item 39 stage 5, specification K75): every number it chose is now one for every
+        # world, the sensor set's, or chosen in flight by what the stack measures (K76, K88).
         world = json.loads(WORLD_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(world["flight_profile"], "open_sky")
-        self.assertIn('"flight_profile": "open_sky"',
-                      (REPOSITORY / "tools/open_sky_scenario.py").read_text(encoding="utf-8"))
+        self.assertNotIn("flight_profile", world)
         launch = REPOSITORY / "drone_city_nav/launch"
         scenario_module = runpy.run_path(str(launch / "point_to_point_scenario.py"))
         load = scenario_module["load_point_to_point_scenario"]
-        self.assertEqual(load(REPOSITORY / "drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json")[
-            "flight_profile"], "open_sky")
-        self.assertEqual(load(REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json")[
-            "flight_profile"], "cave")
+        self.assertNotIn("flight_profile", load(
+            REPOSITORY / "drone_city_nav/config/open_sky_baylands_point_to_point_scenario.json"))
+        # Nothing the flight runs reads the field, and no target of the Makefile names a number of the flight by
+        # a world: the open sky's targets set the world, the scenario and the window.
+        for root, patterns in (("drone_city_nav", ("*.py", "*.json", "*.yaml", "*.cpp", "*.hpp")),
+                               ("tools", ("*.py", "*.sh")), ("scripts", ("*.py", "*.sh"))):
+            for pattern in patterns:
+                for path in (REPOSITORY / root).rglob(pattern):
+                    if "tests" in path.parts:
+                        continue
+                    self.assertNotIn("flight_profile", path.read_text(encoding="utf-8", errors="replace"), path)
+        makefile_text = (REPOSITORY / "Makefile").read_text(encoding="utf-8")
+        self.assertNotIn("flight_profile", makefile_text)
+        for name in ("sim-open-sky-point-to-point-headless: build", "sim-open-sky-point-to-point-gui: build"):
+            target = makefile_text[makefile_text.index(name):]
+            target = target[:target.index("./scripts/run_drone_nav_sim.sh")]
+            for number in ("_MPS", "_MPS2", "_MPS3", "RANGE_M", "MARGIN_M", "_HZ"):
+                self.assertNotIn(number, target, name)
         # No dictionary of the launch is the open sky's any more (roadmap item 45): what the world's
         # flight_profile chose is one number for every world, the sensor set's, or chosen in flight by what the
         # stack measures.

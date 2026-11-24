@@ -370,8 +370,10 @@ targets. The vehicle is one and nobody switches a mode of the environment
 (the owner, 2026-11-17), so each number becomes one of three things: (a)
 one number for every world; (b) a number chosen in flight by what the
 stack measures; (c) a property of the airframe or of the host, one for
-every world. The item's stages replace the rows one by one; this table is
-their plan and their evidence.
+every world. The item's stages replaced the rows one by one; this table is
+their plan and their evidence. Since 2026-11-24 no world states a kind of
+space: the field is gone from the worlds, the launch and the tools, and the
+mission check knows the open sky's world by its name.
 
 | Number | Under a roof | On the open sky | Who reads it | Class | Evidence, and for (b) the measured quantity |
 |---|---|---|---|---|---|
