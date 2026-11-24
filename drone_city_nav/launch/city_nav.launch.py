@@ -312,9 +312,11 @@ def generate_launch_description():
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         survey_volume = None
         flight_profile = "cave"
+        world_ceiling_m = None
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
             survey_volume = scenario["survey_volume_m"]
+            world_ceiling_m = scenario["maximum_target_z_m"]
             flight_profile = scenario["flight_profile"]
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
             # PX4 reports NED local positions; the canonical world decides how
@@ -409,6 +411,23 @@ def generate_launch_description():
         if memory_prior_path:
             obstacle_memory_parameters.append(
                 {"prior_occupancy_3d_path": memory_prior_path}
+            )
+        if world_ceiling_m is not None:
+            # The memory's box stands a metre over the world's ceiling where the
+            # configuration's does not reach it: the open sky has no roof, and its
+            # ceiling (55 m) stands over the park's tallest crown and the leg's
+            # margin (K76).
+            with open(params_file.perform(context), encoding="utf-8") as params_stream:
+                memory_box = yaml.safe_load(params_stream)["obstacle_memory_3d_node"][
+                    "ros__parameters"
+                ]
+            obstacle_memory_parameters.append(
+                {
+                    "grid_depth_m": max(
+                        float(memory_box["grid_depth_m"]),
+                        world_ceiling_m + 1.0 - float(memory_box["grid_origin_z"]),
+                    )
+                }
             )
         if flight_profile == "open_sky":
             obstacle_memory_parameters.append(OPEN_SKY_MEMORY)

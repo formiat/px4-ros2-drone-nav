@@ -153,21 +153,10 @@ OPEN_SKY_LIDAR_OBSERVABILITY = {
     "persistent_planner_overflight_margin_m": 5.0,
 }
 
-# The open sky has no roof: the memory's box stands 16 m over the caves' 40 m
-# (the canonical world's ceiling with it, tools/open_sky_scenario.py), over
-# the park's tallest crown and the leg's margin. A scan traced to 35 m took
-# one thread 0.48 s and the memory integrated one scan in four; the seen it
-# published was a second old and stood 23 m ahead at 10 m/s (r3262, r3263):
-# four threads trace it (K75). It publishes at the distance field's 5 Hz: at
-# the caves' 2 Hz a revision waited up to half a second for its publication,
-# and the seen was 0.76 s old at p50 and 26.6 m ahead at 12 m/s (r3274).
+# The cone of clear sight the open sky's lidar reports along the travel (K85):
+# 6 degrees hold a body and the promised obstacle (1.3 m) about a straight
+# route from 12.4 m out, where the memory's own seen still stands.
 OPEN_SKY_MEMORY = {
-    "grid_depth_m": 56.0,
-    "integration_threads": 4,
-    "obstacle_memory_3d_transport_rate_hz": 5.0,
-    # The cone of clear sight a frame reports along the travel (K85): 6 degrees
-    # hold a body and the promised obstacle (1.3 m) about a straight route from
-    # 12.4 m out, where the memory's own seen still stands.
     "latest_scan_clear_sight_half_angle_rad": 0.105,
 }
 

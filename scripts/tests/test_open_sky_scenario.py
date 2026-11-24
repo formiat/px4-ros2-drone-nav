@@ -88,13 +88,18 @@ class OpenSkyScenarioTest(unittest.TestCase):
                     ).read_text(encoding="utf-8")
         self.assertIn("if (planner_holds_leg_over_seen_.load(std::memory_order_relaxed) &&", finalize)
         self.assertNotIn("overflight_margin_m > 0.0", finalize)
-        # The open sky has no roof: the memory's box and the world's ceiling stand 16 m over the caves' box.
-        box = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["grid_depth_m"]
-        self.assertAlmostEqual(box, 56.0)
-        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]["integration_threads"], 4)
-        self.assertAlmostEqual(
-            runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"][
-                "obstacle_memory_3d_transport_rate_hz"], 5.0)
+        # The open sky has no roof: its ceiling stands 16 m over the memory's configured box, and the launch
+        # stands the box a metre over a world's ceiling. The tracing threads and the publication's rate are
+        # the configuration's, one for every world.
+        self.assertEqual(set(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]),
+                         {"latest_scan_clear_sight_half_angle_rad"})
+        memory_yaml = (REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text(encoding="utf-8")
+        for line in ("grid_depth_m: 40.0", "grid_origin_z: 0.0", "integration_threads: 4",
+                     "obstacle_memory_3d_transport_rate_hz: 10.0"):
+            self.assertEqual(memory_yaml.count(f"    {line}\n"), 1, line)
+        box = 56.0
+        self.assertIn('world_ceiling_m + 1.0 - float(memory_box["grid_origin_z"])',
+                      (launch / "city_nav.launch.py").read_text(encoding="utf-8"))
         # The dynamics are the vehicle's, one for every world (specification V3): no profile names them.
         self.assertNotIn("OPEN_SKY_DYNAMICS", (launch / "sensor_profile.py").read_text(encoding="utf-8"))
         vehicle = (REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text(encoding="utf-8")
