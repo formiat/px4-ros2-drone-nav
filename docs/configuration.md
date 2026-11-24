@@ -373,7 +373,10 @@ stack measures; (c) a property of the airframe or of the host, one for
 every world. The item's stages replaced the rows one by one; this table is
 their plan and their evidence. Since 2026-11-24 no world states a kind of
 space: the field is gone from the worlds, the launch and the tools, and the
-mission check knows the open sky's world by its name.
+mission check knows the open sky's world by its name. Accepted on
+`b2337634`: the open sky's R8 10.328 m/s at the mean of five (r4166 to
+r4170), Urban 1.384 on the stereo set (r4171 to r4175) and 2.411 on the
+lidar (r4176 to r4180), no contact and no failed check.
 
 | Number | Under a roof | On the open sky | Who reads it | Class | Evidence, and for (b) the measured quantity |
 |---|---|---|---|---|---|

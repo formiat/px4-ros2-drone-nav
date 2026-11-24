@@ -263,9 +263,11 @@ Initial search heading uses a cascade:
 ### The Open Sky's Leg
 
 Where the planner is given a margin to fly over what it has seen
-(`persistent_planner_overflight_margin_m`, 5 m on the open sky and nought in
-the caves; specification K76) it offers, before any search, the leg over
-everything the memory holds: the level is the top of the highest obstacle
+(`persistent_planner_overflight_margin_m`, 5 m wherever the lidar navigates;
+specification K76) and the memory has looked up from the route's start and
+seen the way to the leg's level free (under a roof it is occupied or
+unseen, and the searches plan as in any cave), it offers, before any
+search, the leg over everything the memory holds: the level is the top of the highest obstacle
 within the clearance reach of the leg's ground track plus the margin; the
 climb is the one of two to one, one to one and straight up that the body's
 sweep clears and the clearance-ranked time model flies soonest; the descent
@@ -338,9 +340,13 @@ not trigger this hold.
 
 ### The Open Sky's Speed Laws
 
-The open sky flies the same laws on its own profile (specification V3, K75):
-cruise and limit 15 m/s, 5 m/s^2 in the plane, read from the airframe's
-measured envelope. Three readings are the open sky's own. The unobserved
+The open sky flies the same laws, and since roadmap item 45 the same
+profile (specification V3: cruise and limit 15 m/s, 5 m/s^2 in the plane,
+read from the airframe's measured envelope). What tells it from a cave is
+measured: the lidar's scan reads whether the sky is open over the vehicle
+(K88), and on a tick whose frame saw it open the braking contract's range
+is the lidar's whole 35 m for obstacles of 0.75 m (K75), 14 m and the
+voxel under a roof. Three readings matter under the open sky. The unobserved
 frontier's law counts as observed what the latest scan's cone of clear sight
 along the motion reaches (K85), on the route's measure and the executed
 horizon's alike: the memory integrates a scan later than the vehicle at

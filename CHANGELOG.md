@@ -6,14 +6,23 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
-- **One speed profile, the vehicle's** (roadmap item 45; specification V3; the owner's word of 2026-11-20): the caves
-  flew under a ceiling of their own (cruise 6.5 m/s, limit 10, acceleration 4, vertical acceleration 1.4, jerk 12)
-  and the open sky under the airframe's (15, 15, 5, 3, 18), chosen by the world and by the Makefile's targets. The
-  profile is now one, 15, 15, 5, 3 and 18, in `drone_city_nav/config/urban_mvp.yaml` alone: no target names a
-  number of it, and `CRUISE_SPEED_MPS`, `ABSOLUTE_SPEED_LIMIT_MPS` and `MAXIMUM_HORIZONTAL_ACCELERATION_MPS2`
-  override as before. The sensors' braking contract decides the speed that is flown, as it did under the old
-  ceiling for all but 4 to 7 percent of the lidar's ticks. The stereo set's planner keeps the profile it has flown
-  (6.5, 10, 4, 1.4, 12) on every world: under the airframe's ceiling it flew a longer way to the same goal.
+- **One flight profile: the open sky read from what the sensors measure** (roadmap item 45, specification V3,
+  K75, K76, K85, K88; the owner's requirement of 2026-11-17 that nobody switches a mode of the environment).
+  The world's file named a `flight_profile` and the launch gave the open sky its own figures. No world states
+  a kind of space now and the caves and the open sky are flown by one launch. One for every world: the
+  ceiling of 15 m/s, the acceleration 5 m/s², the vertical 3 and the jerk 18, in the configuration alone (no
+  Makefile target names a number of the flight; `CRUISE_SPEED_MPS`, `ABSOLUTE_SPEED_LIMIT_MPS` and
+  `MAXIMUM_HORIZONTAL_ACCELERATION_MPS2` override as before), the takeoff's hover, the memory's rate of
+  publication, its box by the world's own ceiling. The sensor set's: the lidar's scan age, window margin,
+  cone of clear sight and the margin of the leg over the seen; the stereo set's planner keeps the profile it
+  has flown (6.5, 10, 4, 1.4, 12), under the airframe's ceiling it flew a longer way to the same goal. Chosen
+  in flight: every scan of the lidar reads whether the sky is open over the vehicle, and by it the memory
+  places and traces the scan's returns and the planner takes the lidar's promise of detection tick by tick
+  (35 m for obstacles of 0.75 m under an open sky, 14 m and the voxel under a roof); the leg over everything
+  seen is first taken only where the memory has seen the way up free. `LatestSensorObstacleScan` carries
+  `sky_open`. The pair's shadow memory beside a navigating lidar, which nothing consumed, is removed.
+  Accepted by the open sky's R8 (10.328 m/s at the mean of five) and the Urban five and five (1.384 and 2.411
+  m/s), no contact. New tools: `tools/sky_above.py`, `tools/true_path.py`.
 
 - **The vehicle turns its look to a body it has not read** (roadmap item 21; specification K87): while the
   memory holds a body its last scan did not show, within the 10 m a place is kept in, the heading turns to where

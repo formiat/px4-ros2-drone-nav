@@ -1925,21 +1925,6 @@ analogs ([related_work.md](related_work.md)) and the owner's discussions of
 - **A law for a slow computer**: at a planner that ticks at 0.6 Hz instead of
   50 the vehicle flew on (item 36); too slow means slower or a hover.
 
-## 45. One Flight Profile: The Open Sky Read From What The Sensors Measure
-
-**Type:** navigation, general. The owner's requirement of 2026-11-17: the
-vehicle is hybrid, not of two modes, and nobody switches a mode of the
-environment.
-
-Today the world's canonical file names its `flight_profile` (`cave` or
-`open_sky`) and the launch gives the open sky its own figures: the leg flown
-5 m over everything seen (K76), the lidar's promise of a 0.75 m obstacle to
-35 m (K75), the memory's box of 56 m, its four threads and 5 Hz. That is a
-mode chosen by the scenario. The item: the same figures decided in flight by
-what is measured (a roof observed or not, the range the returns come from, the
-size of what stands at range), and the caves and the open sky flown by one
-launch. Acceptance: the Urban series and the open sky's R8 on one profile.
-
 ## 46. Continuous Integration
 
 **Type:** engineering, an independent recurring workstream.
@@ -6144,3 +6129,61 @@ opens it as it is (r1408's `render_bag_0.db3`; its topics are standard types). T
 This item is complete when a kept bag of each sensor set opens in the
 chosen viewer by one documented command on a machine without the
 workspace, with the panels above, and `tools/README.md` names it.
+
+### 45. One Flight Profile: The Open Sky Read From What The Sensors Measure (Completed)
+
+Not yet in a release (after v0.8.0). Done on 2026-11-24 (the flight code of
+`b2337634`).
+
+**Type:** navigation, general. The owner's requirement of 2026-11-17: the
+vehicle is hybrid, not of two modes, and nobody switches a mode of the
+environment.
+
+The world's canonical file named its `flight_profile` (`cave` or `open_sky`)
+and the launch gave the open sky its own figures, the Makefile's open-sky
+targets a ceiling of their own: a mode chosen by the scenario. No world
+states a kind of space now, the launch applies no profile, and the caves and
+the open sky are flown by one launch. Each figure became one of three things
+(the table and its evidence: [`configuration.md`](configuration.md), "The
+Numbers The World's Name Chooses"):
+
+- **One for every world.** The ceiling of 15 m/s, the acceleration of
+  5 m/s², the vertical acceleration of 3 and the jerk of 18 (specification
+  V3), in the configuration alone; the takeoff's hover of 0.5 s; the memory's
+  publication at the scan's 10 Hz (the open sky's 5 Hz had halved the rate it
+  meant to raise); the memory's box a metre over the world's own ceiling.
+- **The sensor set's.** On the lidar the scan's age of 0.3 s, the distance
+  field's window recentred 17 m ahead, the cone of clear sight and the margin
+  of the leg over the seen. The stereo set's planner keeps the profile it has
+  flown (6.5 and 10 m/s, 4, 1.4, 12): under the one ceiling its true way to
+  Urban's goal was under 510 m in none of thirteen flights against eleven of
+  thirteen, its estimate ended 1.56 m off against 0.86, and three flights
+  acknowledged the goal over 2 m away against one; which of the planner's
+  uses of the ceiling lengthens the way is not found (the register).
+- **Chosen in flight by what is measured.** Every scan of the lidar reads
+  whether the sky is open over the vehicle (K88: no beam within 10 degrees
+  of the vertical returned). By it the memory places the scan's returns (the
+  promised obstacle of 0.75 m to the lidar's 35 m, or the voxel to 19 m) and
+  traces them (four threads, or one); the planner's braking contract and the
+  obstacle the memory's seen is read by follow each tick's frame (K75). The
+  leg over everything seen (K76) is first taken only where the memory has
+  seen the way up from the route's start free. By the truth no sample of
+  14 460 under a roof reads the sky open, and the open sky reads open
+  throughout (`tools/sky_above.py`); in flight, 166 of 166 logged scans of
+  the open sky and none of 498 under a roof.
+
+Accepted on `b2337634` by the Urban series and the open sky's R8 on the one
+profile: R8 r4166 to r4170, 10.328 m/s mean (10.286 to 10.361; 10.269 before);
+Urban on the stereo set r4171 to r4175, 1.384 m/s mean (1.394 and 1.350
+before); Urban on the lidar r4176 to r4180, 2.411 m/s mean (2.310 and 2.334
+before); fifteen flights, no contact, no failed check.
+
+What it found and left (the register): a planning tick of 0.2 to 0.7 s
+while a wall first seen stands a few metres ahead flies the resident horizon
+on (r4150, a rotor's touch at rest in the cave on a direct flight of the
+item; r4176, a rest inside a wall's clearance in the acceptance; such ticks
+stand in the base's flights too) — roadmap item 44's law for a slow tick;
+the lidar set under a roof flies the airframe's dynamics at the base's
+speed, where the acceleration 5 with the caves' former vertical acceleration
+and jerk flew 0.5 m/s faster in two flights.
+
