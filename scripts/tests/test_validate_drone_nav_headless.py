@@ -44,6 +44,81 @@ class ValidatorCliTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("FAIL: production MPPI is ready", stderr.getvalue())
 
+    def test_a_flight_whose_autopilot_exited_is_void_and_neither_failed_nor_crashed(
+        self,
+    ) -> None:
+        # Specification A15, roadmap item 43 point 2 (naipi11's finding: three
+        # of their flights lost PX4 in the air and read as crashes of the stack).
+        import json
+        import subprocess
+        import tempfile
+
+        scripts = VALIDATOR_PATH.parent
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text(
+                json.dumps({"schema": "drone_city_nav_runtime_manifest_v1"}), "utf-8"
+            )
+            px4_log = Path(directory) / "px4.log"
+            # The flight script's own step, with an autopilot that has left:
+            # the launch has returned and the process is gone.
+            gone = subprocess.Popen(["true"])
+            gone.wait()
+            subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    f"source {scripts}/simulation_runtime_helpers.sh; "
+                    f"repo_root={scripts.parent}; px4_log_file={px4_log}; "
+                    f"runtime_manifest_path={manifest}; px4_autopilot_pid={gone.pid}; "
+                    "record_autopilot_exit 2>/dev/null; "
+                    "px4_autopilot_pid=$$; record_autopilot_exit",
+                ],
+                check=True,
+            )
+            self.assertIn("PX4_EXITED_IN_FLIGHT", px4_log.read_text("utf-8"))
+            self.assertEqual(1, px4_log.read_text("utf-8").count("PX4_EXITED"))
+            record = json.loads(manifest.read_text("utf-8"))["autopilot_exit"]
+            self.assertEqual("in_flight", record["phase"])
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            argv = [
+                str(VALIDATOR_PATH),
+                "--ros-log",
+                "ros.log",
+                "--px4-log",
+                "px4.log",
+                "--runtime-manifest",
+                str(manifest),
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                result = VALIDATOR.main()
+            self.assertEqual(result, 1)
+            self.assertTrue(stdout.getvalue().startswith("VOID: autopilot exited"))
+            self.assertNotIn("FAIL", stdout.getvalue() + stderr.getvalue())
+            self.assertNotIn("crash", stdout.getvalue() + stderr.getvalue())
+
+            # The host's verdict voids it whatever the load was, and names it.
+            run = Path(directory) / "log" / "runs" / "r1"
+            run.mkdir(parents=True)
+            (run / "manifest.json").write_text(manifest.read_text("utf-8"), "utf-8")
+            verdict = subprocess.run(
+                [sys.executable, str(scripts.parent / "tools" / "host_verdict.py"), "r1"],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(1, verdict.returncode)
+            self.assertEqual(
+                "HOST VOID r1: the autopilot exited in flight\n", verdict.stdout
+            )
+
     def test_a_measurement_outside_its_reference_is_a_note_and_never_a_failure(
         self,
     ) -> None:

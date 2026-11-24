@@ -1841,6 +1841,17 @@ verified here before anything is taken.
    (d1ad24fe). Points 2 to 5 stay open.
 2. **The autopilot's exit recorded** (`px4_liveness_runtime.sh`): a flight in
    which PX4 SITL stopped is void, not a crash of the stack.
+
+   **Point 2 done on 2026-11-24.** Not yet in a release (after v0.8.0).
+   Specification A15: when the launch has returned the flight script reads
+   whether the autopilot's own process is still alive (theirs: the `px4`
+   binary under the job that carries it, a zombie counting as gone); a
+   flight it had left gets `autopilot_exit` in its manifest, the mission
+   check prints `VOID: autopilot exited in flight` and nothing else, and
+   the host's verdict and `tools/fly_until_valid.sh` void the flight and fly
+   it again. Their record of the exit status, which needs the autopilot
+   launched through a FIFO, is not taken. The script test builds the case
+   without a flight (`test_validate_drone_nav_headless.py`).
 3. **The lattice edge left blocked**: an edge the probe budget did not reach
    is blocked until an obstacle is removed; their resumable refinement.
 4. **The lidar's self filter**: 0.9 m against propellers that end at 0.386 m.

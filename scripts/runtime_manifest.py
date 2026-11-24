@@ -90,6 +90,21 @@ def update_raw_snapshot_record(
     atomic_write_json(manifest_path, document)
 
 
+def record_autopilot_exit(manifest_path: Path) -> None:
+    """The autopilot's process ended before the flight did (specification A15)."""
+    document = read_manifest(manifest_path)
+    document["autopilot_exit"] = {
+        "phase": "in_flight",
+        "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    atomic_write_json(manifest_path, document)
+
+
+def autopilot_exited_in_flight(document: dict[str, Any]) -> bool:
+    record = document.get("autopilot_exit")
+    return isinstance(record, dict) and record.get("phase") == "in_flight"
+
+
 def package_version(repository: Path) -> str:
     """The version of drone_city_nav from its package.xml, or "unknown"."""
     package = repository / "drone_city_nav" / "package.xml"
@@ -190,6 +205,11 @@ def parse_overrides(values: Sequence[str]) -> dict[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--record-autopilot-exit", type=Path, metavar="MANIFEST")
+    recording, _ = parser.parse_known_args()
+    if recording.record_autopilot_exit is not None:
+        record_autopilot_exit(recording.record_autopilot_exit)
+        return 0
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--repository", type=Path, default=REPOSITORY)
     parser.add_argument("--run-id", required=True)

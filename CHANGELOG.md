@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A flight whose autopilot exited is void** (roadmap item 43 point 2, specification A15; the finding and the
+  rule are naipi11's, `scripts/px4_liveness_runtime.sh` of their fork). When the launch has returned the flight
+  script reads whether the autopilot's own process is still alive; a flight it had left gets `autopilot_exit`
+  in its manifest and `PX4_EXITED_IN_FLIGHT` in the autopilot's log, the mission check prints
+  `VOID: autopilot exited in flight` in place of its checks, and `tools/host_verdict.py` and
+  `tools/fly_until_valid.sh` void the flight and fly it again.
 - **A law for a slow computer: a planned horizon carries a renewal promise** (roadmap item 44, specification
   K89). The braking contract charged 0.10 s of reaction and nothing kept the planner to it: a horizon the
   planner did not renew was flown to the end of its lease of 4 s, into whatever was seen after it (r4150, a

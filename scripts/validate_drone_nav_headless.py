@@ -21,6 +21,7 @@ from headless_topology_validation import (
 from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E402
 from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from world_enclosure import validate_scenario_inside  # noqa: E402
+from runtime_manifest import autopilot_exited_in_flight, read_manifest  # noqa: E402
 from headless_runtime_evidence import (
     planner_flight_space_m,
     validate_goal_reached_in_truth,
@@ -477,6 +478,19 @@ def main() -> int:
         parser.error(
             "--require-persistent-3d-acceptance requires --runtime-manifest"
         )
+
+    # A flight whose autopilot left before it ended is void (specification
+    # A15): nothing the vehicle did after that is the stack's.
+    try:
+        autopilot_exited = args.runtime_manifest is not None and autopilot_exited_in_flight(
+            read_manifest(args.runtime_manifest)
+        )
+    except (OSError, ValueError):
+        # No manifest to read, or not one of ours: the checks below say so.
+        autopilot_exited = False
+    if autopilot_exited:
+        print("VOID: autopilot exited in flight; the flight does not count and is flown again")
+        return 1
 
     ros_log = read_text(args.ros_log)
     px4_logs = [read_text(path) for path in args.px4_log]

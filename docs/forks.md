@@ -147,6 +147,12 @@ a register of debt, run numbers as evidence). What the copy holds since
 - **PX4 SITL stopping in flight** read from the ulogs (every topic ends at one
   stamp while the truth goes on): `scripts/px4_liveness_runtime.sh` records the
   autopilot's exit; a flight so ended is the host's, not the stack's.
+  Taken on 2026-11-24 (specification A15, roadmap item 43 point 2): the
+  autopilot's own process found under its job and judged alive by its state
+  in `/proc` (`b2962c21`), read when the launch has returned; such a flight
+  is void in the manifest, the mission check and the host's verdict. The
+  exit status of `c2af6500`, which launches the autopilot through a FIFO to
+  have it, is not taken.
 - A guard of PX4 SITL's MAVLink ports against foreign command frames, the
   process cleanup bounded to its own pid namespace, one flight per checkout.
 - `tools/airframe_braking.py`: the airframe's braking from the true pose.

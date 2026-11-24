@@ -724,6 +724,7 @@ if ! kill -0 "${px4_pid}" 2>/dev/null; then
   tail -n 80 "${px4_log_file}" >&2
   exit 1
 fi
+px4_autopilot_pid="$(find_px4_autopilot_pid "${px4_pid}")"
 if bool_is_true "${multi_vehicle_mission}"; then
   for instance in "${!multi_vehicle_ids[@]}"; do
     if ! kill -0 "${multi_vehicle_px4_pids[instance]}" 2>/dev/null; then

@@ -36,6 +36,9 @@ for number in $(seq "$first" $((first + attempts - 1))); do
   wait "$flight" 2> /dev/null
   if [ -n "$stopped" ]; then
     echo "$run WATCHDOG $stopped" >> "$flag"
+  elif void=$(grep -m1 '^VOID: ' "log/tools/run_$run.log" 2> /dev/null); then
+    # The mission check's own verdict: the autopilot exited in flight (specification A15).
+    echo "$run VOID ${void#VOID: }" >> "$flag"
   elif ! grep -q '^\(OK\|FAIL\): ' "log/tools/run_$run.log" 2> /dev/null; then
     # No line of the mission check: the flight was cut before its end (r3214: the host shut down under it, and the
     # host's verdict, which reads the load alone, called it valid).

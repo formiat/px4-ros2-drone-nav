@@ -181,6 +181,44 @@ collect_descendant_pids() {
   done
 }
 
+# The autopilot's own process under the job that carries it: the job is a
+# shell with the parameter stream beside the autopilot, and outlives it.
+# (The rule and the two functions below are naipi11's px4_liveness_runtime.sh,
+# docs/forks.md.)
+find_px4_autopilot_pid() {
+  local candidate
+
+  for candidate in "$1" $(collect_descendant_pids "$1"); do
+    if tr '\0' ' ' < "/proc/${candidate}/cmdline" 2>/dev/null |
+      grep -q 'px4_sitl_default/bin/px4'; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+}
+
+# `kill -0` answers for a child that has exited and not been reaped; the
+# zombie state tells the two apart.
+process_alive() {
+  local state
+
+  state="$(awk '{print $3}' "/proc/$1/stat" 2>/dev/null)" || return 1
+  [[ -n "${state}" && "${state}" != "Z" ]]
+}
+
+# A flight whose autopilot left before it ended is void, not a crash of the
+# stack (specification A15): the vehicle fell under frozen actuator outputs.
+# Called when the launch has returned and before anything is stopped.
+record_autopilot_exit() {
+  [[ -n "${px4_autopilot_pid:-}" ]] || return 0
+  if process_alive "${px4_autopilot_pid}"; then
+    return 0
+  fi
+  echo "PX4_EXITED_IN_FLIGHT autopilot_pid=${px4_autopilot_pid}" | tee -a "${px4_log_file}" >&2
+  python3 "${repo_root}/scripts/runtime_manifest.py" \
+    --record-autopilot-exit "${runtime_manifest_path}"
+}
+
 terminate_pids_bounded() {
   local pid
   local pids=("$@")

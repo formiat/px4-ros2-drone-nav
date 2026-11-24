@@ -10,6 +10,8 @@ percentile and in every second of it past the estimator's start (r3361: 430 and 
 lost, a crash, under a 95th percentile of 137 ms). The speed is
 measured on the simulation clock and survives a slow host; what does not is the flight itself: a simulator slower than
 the onboard loop flies the vehicle with a faster computer than it has, and a host that stalls the loop crashes it.
+A flight whose autopilot exited before it ended (the manifest's `autopilot_exit`, specification A15) is void whatever
+the host did.
 Prints "HOST valid ..." or "HOST VOID ..." per run and exits 1 when any run is void."""
 
 from __future__ import annotations
@@ -52,7 +54,13 @@ def verdict(profile: str, real_time_factor_p50: float | None, largest_gap_s: flo
 
 
 def inspect(run: str) -> list[str]:
-    overrides = json.load(open(f"log/runs/{run}/manifest.json")).get("effective_overrides", {})
+    manifest = json.load(open(f"log/runs/{run}/manifest.json"))
+    # The autopilot's process ended before the flight did (specification A15, scripts/runtime_manifest.py): whatever
+    # the host's load was, the vehicle fell under frozen actuator outputs and the flight is flown again.
+    exit_record = manifest.get("autopilot_exit")
+    if isinstance(exit_record, dict) and exit_record.get("phase") == "in_flight":
+        return ["the autopilot exited in flight"]
+    overrides = manifest.get("effective_overrides", {})
     profile = "lidar" if overrides.get("NAVIGATION_SENSOR_PROFILE") == "lidar" else "stereo_tof"
     rows = list(csv.DictReader(open(f"log/runs/{run}/resources.csv")))
     stamps = sorted({float(row["stamp_s"]) for row in rows})
