@@ -140,6 +140,10 @@ class OpenSkyScenarioTest(unittest.TestCase):
         clouds = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node_clouds.cpp").read_text(encoding="utf-8")
         self.assertIn("latest.sky_open = skyOpenAbove(memory_beams, sky_cone_half_angle_rad_);", clouds)
         self.assertIn(".maximum_range_m = latest.sky_open ? 0.0 : roofed_integration_range_m_,", clouds)
+        # The tracing threads are for the scans traced to the sensor's range; one taken under a roof has one.
+        memory_source = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d.cpp").read_text(encoding="utf-8")
+        self.assertIn("scan.maximum_range_m > 0.0\n          ? 1U\n"
+                      "          : static_cast<std::size_t>(config_.integration_threads);", memory_source)
         self.assertNotIn("OPEN_SKY_MEMORY", text)
         coordinator = (REPOSITORY / "drone_city_nav/src/runtime/planning_cycle_coordinator_3d.cpp").read_text(
             encoding="utf-8")

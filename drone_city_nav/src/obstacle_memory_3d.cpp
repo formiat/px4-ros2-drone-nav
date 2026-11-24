@@ -267,7 +267,15 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
   };
   const auto trace_started = std::chrono::steady_clock::now();
   ScanEvidence scan_evidence;
-  const std::size_t threads = static_cast<std::size_t>(config_.integration_threads);
+  // The threads are for the rays traced to the sensor's whole range (K75). A
+  // scan that names a range of its own was taken under a roof (K88): its rays
+  // are short, and it is traced on one thread, as before the threads were the
+  // configuration's (four of them under a roof cost the stack 0.7 of a core
+  // at p95, r4143 and r4147 against r4116 and r4117).
+  const std::size_t threads =
+      scan.maximum_range_m > 0.0
+          ? 1U
+          : static_cast<std::size_t>(config_.integration_threads);
   const std::size_t traced = (scan.beams.size() + stride - 1U) / stride;
   if (threads <= 1U || traced < 2U * threads) {
     trace_beams(0U, scan.beams.size(), scan_evidence, stats);

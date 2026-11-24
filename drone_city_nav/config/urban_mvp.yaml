@@ -203,7 +203,9 @@ obstacle_memory_3d_node:
     # evidence of its own, joined by OR before any voxel changes, so that the
     # memory is the one a single thread makes (K75). The host's, one number
     # for every world: a scan traced to the lidar's 35 m took one thread
-    # 0.48 s and the memory integrated one scan in four (r3262, r3263).
+    # 0.48 s and the memory integrated one scan in four (r3262, r3263). A scan
+    # taken under a roof (K88) is placed to the voxel's range and traced on one
+    # thread whatever this number.
     integration_threads: 4
     obstacle_memory_3d_snapshot_minimum_period_s: 10.0
     obstacle_memory_3d_snapshot_maximum_period_s: 30.0
