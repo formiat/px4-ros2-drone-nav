@@ -14,6 +14,10 @@ simulation's, in lockstep):
   rc_loss@T   the pilot's radio falls silent (with --rc it is heard from the start)
   cmd:stop@T, cmd:land@T, cmd:home@T, cmd:goal:X,Y,Z@T  the operator's commands
               on the mission's command channel
+  fault:stop:NODE@T, fault:resume:NODE@T  an injected failure of an onboard
+              process, for the failsafe ladder (specification K90): the flight's
+              own process whose executable is NODE is stopped where it stands
+              (SIGSTOP) and let go on (SIGCONT), as a hung computer does it
 
 Every action and every change of each vehicle's mode and arming lands in the
 output CSV with its stamp; the vehicle is told nothing else.
@@ -22,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import signal
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +37,27 @@ MODES = {"offboard": (6, 0), "hold": (4, 3), "land": (4, 6), "posctl": (3, 0)}
 OFFBOARD_NAV_STATE = 14
 FORCE_DISARM_MAGIC = 21196.0
 OPERATOR_COMMANDS = ("stop", "land", "home")
+FAULT_SIGNALS = {"stop": signal.SIGSTOP, "resume": signal.SIGCONT}
+
+
+def signal_processes(executable: str, signal_number: int) -> list[int]:
+    """Signals every process of this flight whose executable is named so; its pids."""
+    pids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) == os.getpid():
+            continue
+        try:
+            with open(f"/proc/{entry}/cmdline", "rb") as stream:
+                program = stream.read().split(b"\0")[0].decode(errors="replace")
+        except OSError:
+            continue
+        if os.path.basename(program) == executable:
+            try:
+                os.kill(int(entry), signal_number)
+                pids.append(int(entry))
+            except OSError:
+                continue
+    return pids
 
 
 @dataclass(frozen=True)
@@ -55,6 +82,10 @@ def parse_events(text: str) -> list[Event]:
                 [float(value) for value in values]
             elif command not in OPERATOR_COMMANDS:
                 raise ValueError(f"unknown operator command '{command}'")
+        elif action.startswith("fault:"):
+            parts = action.split(":")
+            if len(parts) != 3 or parts[1] not in FAULT_SIGNALS or not parts[2]:
+                raise ValueError(f"a fault needs fault:stop:NODE or fault:resume:NODE: '{item}'")
         elif action not in ("hold", "posctl", "land", "kill", "rc_loss"):
             raise ValueError(f"unknown pilot action '{action}'")
         events.append(Event(at_s, action))
@@ -197,6 +228,11 @@ def main() -> int:
                 text = operator_text(event.action)
                 operator.publish(String(data=text))
                 record("operator", "command", text)
+                continue
+            if event.action.startswith("fault:"):
+                _, what, executable = event.action.split(":")
+                pids = signal_processes(executable, FAULT_SIGNALS[what])
+                record("fault", what, f"{executable} pids={' '.join(map(str, pids)) or 'none'}")
                 continue
             for vehicle in vehicles:
                 if event.action == "kill":

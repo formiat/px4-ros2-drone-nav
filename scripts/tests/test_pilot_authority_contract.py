@@ -49,6 +49,56 @@ class PilotAuthorityContractTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 PILOT.parse_events(wrong)
 
+    def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
+        # Specification K90: the failsafe ladder's rungs are entered by a hung
+        # planner or estimator, which the schedule stops and lets go on.
+        import os
+        import shutil
+        import signal
+        import subprocess
+        import sys
+        import tempfile
+        import time
+
+        events = PILOT.parse_events("fault:resume:probe@9;fault:stop:probe@5")
+        self.assertEqual([event.action for event in events],
+                         ["fault:stop:probe", "fault:resume:probe"])
+        for wrong in ("fault:kill:probe@5", "fault:stop@5", "fault:stop:@5"):
+            with self.assertRaises(ValueError):
+                PILOT.parse_events(wrong)
+
+        def state(pid: int) -> str:
+            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+
+        with tempfile.TemporaryDirectory() as directory:
+            probe = Path(directory) / "k90_fault_probe"
+            other = Path(directory) / "k90_fault_other"
+            # A copy of the interpreter under each name: a multi-call
+            # `sleep` reads its own name and refuses one it does not know.
+            interpreter = os.path.realpath(sys.executable)
+            shutil.copy(interpreter, probe)
+            shutil.copy(interpreter, other)
+            wait = ["-c", "import time; time.sleep(30)"]
+            named = subprocess.Popen([str(probe), *wait])
+            beside = subprocess.Popen([str(other), *wait])
+            try:
+                time.sleep(0.5)
+                self.assertEqual(PILOT.signal_processes("k90_fault_probe", signal.SIGSTOP),
+                                 [named.pid])
+                time.sleep(0.1)
+                self.assertEqual(state(named.pid), "T")
+                self.assertNotEqual(state(beside.pid), "T")
+                self.assertEqual(PILOT.signal_processes("k90_fault_probe", signal.SIGCONT),
+                                 [named.pid])
+                time.sleep(0.1)
+                self.assertNotEqual(state(named.pid), "T")
+                self.assertEqual(PILOT.signal_processes("k90_no_such_process", signal.SIGSTOP), [])
+            finally:
+                named.kill()
+                beside.kill()
+                named.wait()
+                beside.wait()
+
 
 if __name__ == "__main__":
     unittest.main()
