@@ -154,6 +154,9 @@ private:
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   AutopilotStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
+  // Whether the resident horizon was flown: a setpoint of it went to the
+  // autopilot while it was fresh. Its end is where the vehicle is only then.
+  bool horizon_flown_{false};
   LocalHoldPin unavailable_path_hold_pin_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;

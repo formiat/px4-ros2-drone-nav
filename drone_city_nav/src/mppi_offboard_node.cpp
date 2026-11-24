@@ -472,8 +472,14 @@ void MppiOffboardNode::controlTick() {
     }
   } else if (stationary_position_hold) {
     exact_horizon_feedback_published = publishStationaryPositionHoldSetpoint();
-  } else if (planned_path_completed) {
+  } else if (planned_path_completed && horizon_flown_) {
     publishCompletedFinitePathHoldSetpoint();
+  } else if (planned_path_completed) {
+    // A horizon that lapsed unflown ends where the vehicle never went: one
+    // received on the pad and outlived by the takeoff ended a metre under the
+    // vehicle and beside it, and the hold at its end was a step of position
+    // and of heading that the autopilot flew down onto the pad (r4181).
+    publishUnavailablePathHoldSetpoint();
   } else {
     exact_horizon_feedback_published = publishHorizonSetpoint();
     if (!exact_horizon_feedback_published) {

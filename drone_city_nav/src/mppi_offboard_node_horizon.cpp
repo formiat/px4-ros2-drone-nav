@@ -116,6 +116,7 @@ void MppiOffboardNode::onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
                                  horizon_->execution_mode != horizon.execution_mode ||
                                  horizon_->execution_reason != horizon.execution_reason;
   horizon_ = horizon;
+  horizon_flown_ = false;
   unavailable_path_hold_pin_.release();
   RCLCPP_INFO(get_logger(),
               "EXECUTION_HORIZON accepted=true producer=%" PRIu64 " sequence=%" PRIu64
@@ -371,6 +372,7 @@ bool MppiOffboardNode::publishHorizonSetpoint() {
       nowMicros(), local_position, altitude, velocity, vertical_velocity, acceleration,
       vertical_acceleration, std::numeric_limits<double>::quiet_NaN(),
       px4_map_transform_.mapYawRateToPx4(map_yaw_rate)));
+  horizon_flown_ = true;
   publishAppliedControlFeedback(map_acceleration, vertical_acceleration, map_yaw_rate,
                                 map_yaw_acceleration, true,
                                 msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);

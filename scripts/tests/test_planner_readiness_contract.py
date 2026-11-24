@@ -121,6 +121,36 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("Lattice3DRoutePurpose", extension)
         self.assertIn("route_progress_tracker_ != nullptr", planning_cycle)
 
+    def test_a_lapsed_horizon_never_flown_is_held_where_the_vehicle_stands(self) -> None:
+        # r4181: a horizon received on the pad lapsed during the takeoff, and
+        # the hold at its end was a step of a metre down onto the pad.
+        offboard = (SOURCE / "mppi_offboard_node.cpp").read_text(encoding="utf-8")
+        horizon = (SOURCE / "mppi_offboard_node_horizon.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "  } else if (planned_path_completed && horizon_flown_) {\n"
+            "    publishCompletedFinitePathHoldSetpoint();\n"
+            "  } else if (planned_path_completed) {\n",
+            offboard,
+        )
+        self.assertIn(
+            "    // and of heading that the autopilot flew down onto the pad (r4181).\n"
+            "    publishUnavailablePathHoldSetpoint();\n"
+            "  } else {\n",
+            offboard,
+        )
+        self.assertEqual(offboard.count("publishCompletedFinitePathHoldSetpoint();"), 1)
+        # Flown is said by the setpoint of the horizon itself and by nothing
+        # else; a newer horizon starts unflown.
+        self.assertEqual(horizon.count("horizon_flown_ = true;"), 1)
+        self.assertIn(
+            "      px4_map_transform_.mapYawRateToPx4(map_yaw_rate)));\n"
+            "  horizon_flown_ = true;\n",
+            horizon,
+        )
+        self.assertIn("  horizon_ = horizon;\n  horizon_flown_ = false;\n", horizon)
+
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
         planning_cycle = PLANNING_COORDINATOR.read_text(encoding="utf-8")
         planning_cycle_test = PLANNING_COORDINATOR_TEST.read_text(encoding="utf-8")
