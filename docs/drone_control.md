@@ -81,9 +81,12 @@ With the launch's `px4_external_mode` (`PX4_EXTERNAL_MODE=true`) the offboard
 node registers the mode "Drone City Nav" with PX4 through px4-ros2-interface-lib
 (specification K91), and the evaluation pilot flies it as a pilot flies a mode
 of PX4's (`sim_pilot.py --external-mode`): armed in Takeoff, the stack's mode
-selected once the autopilot's land detector reads the vehicle off the ground,
-where the stack's own takeoff climbs on (PX4's Takeoff holds at its height
-and never leaves by itself, r4198). An external mode cannot
+selected once the autopilot's takeoff has ended: off the ground by its land
+detector and the climb stopped (PX4's Takeoff holds at its height and never
+leaves by itself, r4198). Selected during the climb, the mode kept the takeoff's
+wish to take off, which no flight task clears in an external mode, and on the
+ground at the mission's end the autopilot spooled up again and again instead
+of disarming (r4199). An external mode cannot
 take off by itself: outside offboard the position controller's takeoff is asked
 for by the flight tasks, which run in no external mode (the first flight
 through the mode, r4197, stood armed on the pad until the autopilot disarmed

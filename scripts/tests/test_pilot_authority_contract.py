@@ -137,13 +137,15 @@ class PilotAuthorityContractTest(unittest.TestCase):
         self.assertEqual((4, 2), PILOT.MODES["takeoff"])
         self.assertEqual(17, PILOT.TAKEOFF_NAV_STATE)
         self.assertIn(
-            "                elif vehicle.airborne:\n"
+            "                elif vehicle.airborne and not vehicle.climbing:\n"
             '                    vehicle.set_mode("external")\n',
             pilot,
         )
         self.assertIn(
             "self.airborne = not detected.landed and not detected.maybe_landed", pilot
         )
+        self.assertIn("self.climbing = not abs(position.vz) < CLIMB_STOPPED_MPS", pilot)
+        self.assertEqual(0.1, PILOT.CLIMB_STOPPED_MPS)
 
     def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
         # Specification K90: the failsafe ladder's rungs are entered by a hung
