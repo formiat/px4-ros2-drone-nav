@@ -119,17 +119,42 @@ selectTarget(const std::span<const RouteSample3D> route,
   return target;
 }
 
-// The latest frame's cone of clear sight while the frame is no older than the
-// evidence the braking contract admits (specification K85).
-[[nodiscard]] const LatestSensorClearSight3D*
-freshClearSight(const PlanningCycleRequest3D& request,
-                const SensorBrakingContract3D& contract) noexcept {
+// What the sensor promises to see on this tick (specification K75, K88):
+// under a sky its frame saw open, the obstacles of the open sky's size to the
+// open sky's range; under a roof the voxel to the contract's own range. And
+// the frame's cone of clear sight (K85) as far as that promise reaches. The
+// frame is read while it is no older than the evidence the braking contract
+// admits; an older one promises the voxel and reports no cone.
+struct SensorPromise3D {
+  bool sky_open{false};
+  double obstacle_size_m{0.0};
+  std::optional<LatestSensorClearSight3D> clear_sight;
+
+  [[nodiscard]] const LatestSensorClearSight3D* clearSight() const noexcept {
+    return clear_sight.has_value() ? &*clear_sight : nullptr;
+  }
+};
+
+[[nodiscard]] SensorPromise3D
+sensorPromise(const PlanningCycleRequest3D& request,
+              const MppiSpeedPolicyConfig& policy) noexcept {
+  SensorPromise3D promise;
   const auto& frame = request.latest_sensor_evidence;
-  return frame != nullptr && frame->valid() &&
-                 static_cast<double>(request.now_ns - frame->acquisitionStampNs()) <=
-                     1.0e9 * contract.maximum_evidence_age_s
-             ? &frame->clearSight()
-             : nullptr;
+  const SensorBrakingContract3D& contract = policy.sensor_braking_contract;
+  if (frame == nullptr || !frame->valid() ||
+      static_cast<double>(request.now_ns - frame->acquisitionStampNs()) >
+          1.0e9 * contract.maximum_evidence_age_s) {
+    return promise;
+  }
+  promise.sky_open = frame->skyOpen() && policy.open_sky_detection_range_m >
+                                             contract.guaranteed_detection_range_m;
+  promise.obstacle_size_m = promise.sky_open ? policy.guaranteed_obstacle_size_m : 0.0;
+  promise.clear_sight = frame->clearSight();
+  promise.clear_sight->range_m =
+      std::min(promise.clear_sight->range_m,
+               promise.sky_open ? policy.open_sky_detection_range_m
+                                : contract.guaranteed_detection_range_m);
+  return promise;
 }
 
 } // namespace
@@ -209,6 +234,7 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
                horizon->states.size() - 2U);
   // The field's window ends before the memory does: beyond it the memory says
   // what was observed (specification K74).
+  const SensorPromise3D promise = sensorPromise(request, config_.speed_policy);
   const ExecutedHorizonClearance3D clearance = measureExecutedHorizonClearance3D(
       *horizon, first_remaining_state_index, request.world->grid,
       *request.world->distances_m, config_.physical_footprint,
@@ -216,8 +242,7 @@ PlanningCycleCoordinator3D::measureResidentExecutionClearance(
       request.latest_raw_world != nullptr && request.latest_raw_world->valid()
           ? &request.latest_raw_world->occupancy()
           : nullptr,
-      config_.speed_policy.guaranteed_obstacle_size_m,
-      freshClearSight(request, config_.speed_policy.sensor_braking_contract));
+      promise.obstacle_size_m, promise.clearSight());
   return clearance.available ? std::optional<ExecutedHorizonClearance3D>{clearance}
                              : std::nullopt;
 }
@@ -379,6 +404,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // latest scan is checked along the route, the distance the vehicle needs to
   // react at its absolute speed limit, so an opening the lidar has not looked
   // into is approached at the speed the vehicle can stop from before it.
+  const SensorPromise3D promise = sensorPromise(request, config_.speed_policy);
   const std::optional<double> route_observed_range_m =
       output.route.usable && output.route.projection.valid && !route.empty() &&
               request.world->distances_m != nullptr
@@ -390,8 +416,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 request.latest_raw_world != nullptr && request.latest_raw_world->valid()
                     ? &request.latest_raw_world->occupancy()
                     : nullptr,
-                config_.speed_policy.guaranteed_obstacle_size_m,
-                freshClearSight(request, config_.speed_policy.sensor_braking_contract))
+                promise.obstacle_size_m, promise.clearSight())
           : std::nullopt;
   // The clearance of the route ahead, read by the same tube and stopping laws
   // as the executed horizon and over the same lookahead as the scan check.
@@ -491,6 +516,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
             ? static_cast<double>(request.now_ns - frame.acquisitionStampNs()) * 1.0e-9
             : 0.0;
   }
+  speed_policy_input.sky_open = promise.sky_open;
   // The bodies the memory follows moving (K66), charged with the age of the
   // scan they were read on.
   const std::shared_ptr<const MovingBodyEvidence3D> moving_body_evidence =

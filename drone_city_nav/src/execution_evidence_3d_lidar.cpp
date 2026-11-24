@@ -62,6 +62,7 @@ latestSensorSourceFingerprint(const LatestSensorEvidenceCapture3D& capture) noex
   hashValue(hash, canonicalDoubleBits(capture.clear_sight.axis_map.z));
   hashValue(hash, canonicalDoubleBits(capture.clear_sight.half_angle_rad));
   hashValue(hash, canonicalDoubleBits(capture.clear_sight.range_m));
+  hashValue(hash, static_cast<std::uint64_t>(capture.sky_open ? 1U : 0U));
   hashValue(hash, static_cast<std::uint64_t>(capture.hit_points_map_m.size()));
   for (const Point3& point : capture.hit_points_map_m) {
     hashValue(hash, canonicalDoubleBits(point.x));
@@ -141,6 +142,10 @@ std::size_t VersionedLatestSensorEvidence3D::invalidBeamCount() const noexcept {
 const LatestSensorClearSight3D&
 VersionedLatestSensorEvidence3D::clearSight() const noexcept {
   return capture_.clear_sight;
+}
+
+bool VersionedLatestSensorEvidence3D::skyOpen() const noexcept {
+  return capture_.sky_open;
 }
 
 const std::vector<Point3>&

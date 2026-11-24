@@ -224,8 +224,9 @@ void ProductionMppiNode::finalizePlanningTick(
       vehicle_speed_mps >= speed_policy.reference_speed_mps &&
       std::abs(static_cast<double>(navigation.state.vz)) < kLevelVerticalSpeedMps &&
       committed_route->remainingM() >
-          config_.control.speed_policy.sensor_braking_contract
-              .guaranteed_detection_range_m &&
+          std::max(config_.control.speed_policy.sensor_braking_contract
+                       .guaranteed_detection_range_m,
+                   config_.control.speed_policy.open_sky_detection_range_m) &&
       static_cast<double>(now_ns - last_constrained_leg_release_stamp_ns_) / 1.0e9 >=
           kStalledRouteReleaseGraceS) {
     last_constrained_leg_release_stamp_ns_ = now_ns;

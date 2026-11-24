@@ -139,6 +139,8 @@ void ProductionMppiConfigLoader::declareControl() {
   };
   control.speed_policy.guaranteed_obstacle_size_m =
       std::max(0.0, declare<double>("guaranteed_obstacle_size_m", 0.0));
+  control.speed_policy.open_sky_detection_range_m =
+      std::max(0.0, declare<double>("open_sky_lidar_detection_range_m", 0.0));
   control.speed_policy.sensor_expected_beam_count =
       static_cast<std::size_t>(std::max<std::int64_t>(
           0, declare<std::int64_t>("sensor_expected_beam_count", 0)));

@@ -72,8 +72,14 @@ struct MppiSpeedPolicyConfig {
   // observed beyond the distance field's window. Beams a degree apart leave
   // voxels of 0.25 m untouched past 14 m, and no obstacle of this size hides
   // among them while every block of it holds a voxel a beam went through.
-  // Nought reads the memory voxel by voxel.
+  // Nought reads the memory voxel by voxel. The promise is the open sky's:
+  // it stands on the ticks whose frame saw the sky open (K88), with the
+  // range below; under a roof the voxel and the contract's own range stand.
   double guaranteed_obstacle_size_m{0.0};
+  // How far the sensor promises to detect an obstacle of that size under a
+  // sky its newest frame saw open; what is thinner is passed over there
+  // (K76). Nought: no such promise, the contract's range on every tick.
+  double open_sky_detection_range_m{0.0};
   // Roadmap item 21 (specification K66): what the vehicle keeps between its
   // centre and a moving body's envelope: what a vehicle that stands owes a
   // body walking at it by the encounters' measure, its own radius (0.35 m),
@@ -185,6 +191,9 @@ struct MppiSpeedPolicyInput {
   // frame is. Absent, the configured contract stands.
   std::optional<double> sensor_observed_fraction{};
   std::optional<double> sensor_evidence_age_s{};
+  // The frame, no older than the contract's evidence, saw nothing over the
+  // vehicle within the sensor's range (K88).
+  bool sky_open{false};
   // The light the forward camera's latest frame has left, one while its gain
   // makes it up (roadmap item 17 stage 7); absent for a sensor that brings
   // its own.

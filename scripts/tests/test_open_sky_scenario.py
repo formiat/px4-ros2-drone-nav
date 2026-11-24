@@ -71,19 +71,21 @@ class OpenSkyScenarioTest(unittest.TestCase):
         self.assertEqual(load(REPOSITORY / "drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json")[
             "flight_profile"], "cave")
         profile = runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_LIDAR_OBSERVABILITY"]
-        self.assertAlmostEqual(profile["guaranteed_lidar_detection_range_m"], 35.0)
-        self.assertAlmostEqual(profile["guaranteed_obstacle_size_m"], 0.75)
-        self.assertLessEqual(profile["guaranteed_lidar_detection_range_m"],
-                             profile["guaranteed_obstacle_size_m"] / math.tan(math.radians(1.0)))
-        self.assertEqual(set(profile), {"guaranteed_lidar_detection_range_m", "guaranteed_obstacle_size_m",
-                                        "persistent_planner_overflight_margin_m"})
-        self.assertAlmostEqual(profile["persistent_planner_overflight_margin_m"], 5.0)
+        self.assertEqual(profile, {"persistent_planner_overflight_margin_m": 5.0})
         # What the lidar set carries on every world (roadmap item 45): the scan's age and the window's margin.
         # A route is released for the leg over the seen only while the planner holds one.
         lidar = runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_OBSERVABILITY"]
         self.assertAlmostEqual(lidar["latest_sensor_obstacle_maximum_age_ms"], 300.0)
         self.assertAlmostEqual(lidar["no_static_3d_esdf_horizontal_recenter_margin_m"], 17.0)
         self.assertNotIn("persistent_planner_overflight_margin_m", lidar)
+        # The lidar's promise under a sky its scan saw open (specification K75, K88) is the lidar set's on every
+        # world: the planner takes it tick by tick from the frame, and under a roof the configuration's 14 m and
+        # the voxel stand.
+        self.assertAlmostEqual(lidar["open_sky_lidar_detection_range_m"], 35.0)
+        self.assertAlmostEqual(lidar["guaranteed_obstacle_size_m"], 0.75)
+        self.assertLessEqual(lidar["open_sky_lidar_detection_range_m"],
+                             lidar["guaranteed_obstacle_size_m"] / math.tan(math.radians(1.0)))
+        self.assertNotIn("guaranteed_lidar_detection_range_m", lidar)
         finalize = (REPOSITORY / "drone_city_nav/src/runtime/ros/production_mppi_node_planning_tick_finalize.cpp"
                     ).read_text(encoding="utf-8")
         self.assertIn("if (planner_holds_leg_over_seen_.load(std::memory_order_relaxed) &&", finalize)
@@ -91,8 +93,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
         # The open sky has no roof: its ceiling stands 16 m over the memory's configured box, and the launch
         # stands the box a metre over a world's ceiling. The tracing threads and the publication's rate are
         # the configuration's, one for every world.
-        self.assertEqual(set(runpy.run_path(str(launch / "sensor_profile.py"))["OPEN_SKY_MEMORY"]),
-                         {"latest_scan_clear_sight_half_angle_rad"})
+        self.assertNotIn("OPEN_SKY_MEMORY", (launch / "sensor_profile.py").read_text(encoding="utf-8"))
         memory_yaml = (REPOSITORY / "drone_city_nav/config/urban_mvp.yaml").read_text(encoding="utf-8")
         for line in ("grid_depth_m: 40.0", "grid_origin_z: 0.0", "integration_threads: 4",
                      "obstacle_memory_3d_transport_rate_hz: 10.0"):
@@ -108,6 +109,7 @@ class OpenSkyScenarioTest(unittest.TestCase):
                      "maximum_control_jerk_mps3: 18.0", "guaranteed_vertical_stopping_deceleration_mps2: 1.4",
                      "unavailable_path_braking_acceleration_mps2: 5.0"):
             self.assertEqual(vehicle.count(f"    {line}\n"), 1, line)
+        self.assertEqual(vehicle.count("    guaranteed_lidar_detection_range_m: 14.0\n"), 1)
         # The stereo set plans with the profile it has flown, on every world; the environment's overrides win.
         self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["STEREO_TOF_PROFILE"],
                          {"cruise_speed_mps": 6.5, "absolute_speed_limit_mps": 10.0,
@@ -130,14 +132,19 @@ class OpenSkyScenarioTest(unittest.TestCase):
         # The lidar's memory reads the sky on every scan and places a scan's returns by it (specification K88):
         # the cone and the open sky's obstacle are the lidar set's on every world, and no world names them.
         self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["LIDAR_MEMORY"],
-                         {"sky_cone_half_angle_rad": 0.175, "guaranteed_obstacle_size_m": 0.75})
+                         {"sky_cone_half_angle_rad": 0.175, "guaranteed_obstacle_size_m": 0.75,
+                          "latest_scan_clear_sight_half_angle_rad": 0.105})
         self.assertIn('production_mppi_parameters.append(LIDAR_OBSERVABILITY)\n'
                       '            obstacle_memory_parameters.append(LIDAR_MEMORY)', text)
         self.assertNotIn('"guaranteed_obstacle_size_m": OPEN_SKY_LIDAR_OBSERVABILITY[', text)
         clouds = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node_clouds.cpp").read_text(encoding="utf-8")
         self.assertIn("latest.sky_open = skyOpenAbove(memory_beams, sky_cone_half_angle_rad_);", clouds)
         self.assertIn(".maximum_range_m = latest.sky_open ? 0.0 : roofed_integration_range_m_,", clouds)
-        self.assertIn('if flight_profile == "open_sky":\n            obstacle_memory_parameters.append(OPEN_SKY_MEMORY)', text)
+        self.assertNotIn("OPEN_SKY_MEMORY", text)
+        coordinator = (REPOSITORY / "drone_city_nav/src/runtime/planning_cycle_coordinator_3d.cpp").read_text(
+            encoding="utf-8")
+        self.assertIn("speed_policy_input.sky_open = promise.sky_open;", coordinator)
+        self.assertNotIn("config_.speed_policy.guaranteed_obstacle_size_m,", coordinator)
         self.assertNotIn("OPEN_SKY_TAKEOFF", text)
         self.assertEqual(vehicle.count("    takeoff_hover_s: 0.5\n"), 1)
         memory = (REPOSITORY / "drone_city_nav/src/obstacle_memory_3d_node.cpp").read_text(encoding="utf-8")

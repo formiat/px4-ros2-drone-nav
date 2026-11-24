@@ -199,6 +199,9 @@ struct LatestSensorEvidenceCapture3D {
   std::size_t invalid_beam_count{0U};
   std::vector<Point3> hit_points_map_m;
   LatestSensorClearSight3D clear_sight{};
+  // The frame saw nothing over the sensor within its range (specification
+  // K88).
+  bool sky_open{false};
 };
 
 enum class LatestSensorEvidenceUpdateStatus3D : std::uint8_t {
@@ -256,6 +259,7 @@ public:
   [[nodiscard]] std::size_t sourceBeamCount() const noexcept;
   [[nodiscard]] std::size_t invalidBeamCount() const noexcept;
   [[nodiscard]] const LatestSensorClearSight3D& clearSight() const noexcept;
+  [[nodiscard]] bool skyOpen() const noexcept;
   [[nodiscard]] const std::vector<Point3>& hitPointsMapM() const noexcept;
   // The hit points bucketed into cells for the swept-body validators: the same
   // returns as hitPointsMapM, reordered by cell, built once at capture.

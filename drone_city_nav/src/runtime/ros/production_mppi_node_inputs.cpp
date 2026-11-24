@@ -73,6 +73,7 @@ latestSensorRawWireFingerprint(const msg::LatestSensorObstacleScan& message) noe
       hash, std::bit_cast<std::uint32_t>(message.clear_sight_half_angle_rad));
   hashLatestSensorWireValue(hash,
                             std::bit_cast<std::uint32_t>(message.clear_sight_range_m));
+  hashLatestSensorWireValue(hash, message.sky_open ? 1U : 0U);
   return hash == 0U ? 1U : hash;
 }
 
@@ -400,6 +401,7 @@ void ProductionMppiNode::onLatestSensorObstacleScan(
       .invalid_beam_count = message.invalid_beam_count,
       .hit_points_map_m = {},
       .clear_sight = {},
+      .sky_open = message.sky_open,
   };
   // A cone the wire carries malformed is no cone; the frame's returns stand.
   if (const LatestSensorClearSight3D sight{

@@ -1392,5 +1392,38 @@ TEST(MppiSpeedPolicyTest, AMovingBodyAheadOwesTheStoppingLawAndOneBehindNothing)
   EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).moving_body_limit_mps, 0.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheOpenSkysPromiseStandsOnlyOnATickWhoseFrameSawTheSkyOpen) {
+  // Specification K75 and K88: under a roof the contract's range is the
+  // voxel's 14 m; under a sky the frame saw open, the lidar's 35 m for the
+  // obstacles of the open sky. A sensor with no such promise keeps its range.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 15.0;
+  config.absolute_speed_limit_mps = 15.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 14.0;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.3;
+  config.sensor_braking_contract.physical_margin_m = 3.0;
+  config.open_sky_detection_range_m = 35.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.state.vx = 2.0F;
+
+  const MppiSpeedPolicyResult roofed = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(roofed.sensor_measured_range_m, 14.0);
+
+  input.sky_open = true;
+  const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(open.sensor_measured_range_m, 35.0);
+  EXPECT_GT(open.sensor_braking_limit_mps, roofed.sensor_braking_limit_mps + 3.0);
+
+  input.sky_open = false;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_braking_limit_mps,
+                   roofed.sensor_braking_limit_mps);
+
+  config.open_sky_detection_range_m = 0.0;
+  input.sky_open = true;
+  EXPECT_DOUBLE_EQ(evaluateMppiSpeedPolicy(config, input).sensor_measured_range_m,
+                   14.0);
+}
+
 } // namespace
 } // namespace drone_city_nav

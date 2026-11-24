@@ -293,6 +293,13 @@ MppiSpeedPolicyConfig measuredSensorContract(const MppiSpeedPolicyConfig& config
                                              double& frame_share) {
   MppiSpeedPolicyConfig config = configured;
   SensorBrakingContract3D& contract = config.sensor_braking_contract;
+  // Under a sky the frame saw open the promise is the open sky's (K75, K88):
+  // the obstacles of the promised size to the sensor's whole range. Under a
+  // roof, or with no fresh frame to say, the voxel's range stands.
+  if (input.sky_open &&
+      configured.open_sky_detection_range_m > contract.guaranteed_detection_range_m) {
+    contract.guaranteed_detection_range_m = configured.open_sky_detection_range_m;
+  }
   frame_range_m = contract.guaranteed_detection_range_m;
   frame_share = 1.0;
   if (input.sensor_observed_fraction.has_value() &&
