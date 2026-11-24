@@ -36,7 +36,7 @@ docker run --rm --platform "${platform}" "${gpus[@]}" "${cpuset[@]}" --user "$(i
     source /opt/ros/jazzy/setup.bash; source /opt/px4_msgs_ws/install/setup.bash
     set -u
     echo \"== build start \$(date -u +%H:%M:%S) on \$(uname -m) nproc \$(nproc)\"
-    colcon --log-base log/tools/board/colcon-${arch} build --packages-select drone_city_nav \
+    colcon --log-base log/tools/board/colcon-${arch} build --packages-select px4_ros2_cpp drone_city_nav \
       --build-base build-onboard-${arch} --install-base install-onboard-${arch} \
       --cmake-args -DDRONE_CITY_NAV_ENABLE_SIMULATION=OFF -DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=${cuda_mppi} \
       --event-handlers console_direct- 2>&1 | tail -3

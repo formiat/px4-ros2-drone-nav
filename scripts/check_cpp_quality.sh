@@ -223,7 +223,7 @@ if [[ "${run_build}" == "true" ]]; then
   else
     run_or_fail "colcon build drone_city_nav" \
       colcon --log-base "${colcon_log_base}" build \
-        --packages-select drone_city_nav --symlink-install \
+        --packages-select px4_ros2_cpp drone_city_nav --symlink-install \
         --build-base "${colcon_build_base}" \
         --install-base "${colcon_install_base}" \
         --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

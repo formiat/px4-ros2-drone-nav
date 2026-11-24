@@ -513,7 +513,7 @@ fi
 
 cd "${repo_root}"
 colcon --log-base "${colcon_log_base}" build \
-  --packages-select drone_city_nav --symlink-install \
+  --packages-select px4_ros2_cpp drone_city_nav --symlink-install \
   --build-base "${colcon_build_base}" \
   --install-base "${colcon_install_base}" \
   --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -815,6 +815,8 @@ else
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
+# Specification K91: the stack as PX4's own mode, which the pilot selects.
+ros_launch_args+=(px4_external_mode:="$(normalize_bool "${PX4_EXTERNAL_MODE:-false}")")
 ros_launch_args+=(route_stall_recovery_enabled:="${enable_route_stall_recovery}")
 if [[ -n "${tracking_error_tube_response_time_override}" ]]; then
   ros_launch_args+=(

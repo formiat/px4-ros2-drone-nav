@@ -6,11 +6,11 @@ COLCON_LOG_BASE ?= log
 
 .PHONY: build
 build:
-	colcon --log-base $(COLCON_LOG_BASE) build --packages-select drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	colcon --log-base $(COLCON_LOG_BASE) build --packages-select px4_ros2_cpp drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 .PHONY: mppi-benchmark-build
 mppi-benchmark-build:
-	colcon --log-base $(COLCON_LOG_BASE) build --packages-select drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=ON
+	colcon --log-base $(COLCON_LOG_BASE) build --packages-select px4_ros2_cpp drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=ON
 
 .PHONY: mppi-benchmark
 mppi-benchmark: mppi-benchmark-build

@@ -90,6 +90,9 @@ struct AutopilotStatus {
   bool armed{false};
   // The autopilot flies the stack's setpoints (PX4: offboard mode).
   bool external_control{false};
+  // The external mode the autopilot flies, by its mode id (PX4: the nav state
+  // of an external mode, 23 to 30), nought in none (specification K91).
+  std::uint8_t external_mode_id{0U};
   // The autopilot lands the vehicle by a mode of its own (PX4: Land, Descend).
   bool autopilot_landing{false};
   // The autopilot acts on a failsafe of its own.

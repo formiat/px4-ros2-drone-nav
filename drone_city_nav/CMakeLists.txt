@@ -72,6 +72,7 @@ if(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI AND NOT Vulkan_GLSLC_EXECUTABLE)
   set(DRONE_CITY_NAV_ENABLE_VULKAN_MPPI OFF)
 endif()
 find_package(px4_msgs REQUIRED)
+find_package(px4_ros2_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 if(DRONE_CITY_NAV_ENABLE_SIMULATION)
@@ -1086,6 +1087,7 @@ ament_target_dependencies(
   mppi_offboard_node
   geometry_msgs
   px4_msgs
+  px4_ros2_cpp
   rclcpp
   sensor_msgs
   std_msgs
@@ -1536,6 +1538,7 @@ if(BUILD_TESTING)
     geometry_msgs
     nav_msgs
     px4_msgs
+    px4_ros2_cpp
     rclcpp
     rclcpp_components
     sensor_msgs

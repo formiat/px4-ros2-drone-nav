@@ -89,6 +89,49 @@ class PilotAuthorityContractTest(unittest.TestCase):
         )
         self.assertIn("dead_reckoning_landing_.silent())));\n", offboard)
 
+    def test_the_stacks_own_mode_is_registered_on_the_launchs_word_and_selected_by_the_pilot(
+        self,
+    ) -> None:
+        # Specification K91: the stack registers a mode of PX4's own where the
+        # launch asks (offboard otherwise), still commands no mode (the test
+        # above), and the evaluation pilot selects it as it selects offboard.
+        launch_arguments = (REPOSITORY / "drone_city_nav" / "launch" / "launch_arguments.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"px4_external_mode",\n            default_value="false",', launch_arguments)
+        launch = (REPOSITORY / "drone_city_nav" / "launch" / "city_nav.launch.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"px4_external_mode": LaunchConfiguration("px4_external_mode")', launch)
+        flight = (REPOSITORY / "scripts" / "run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'ros_launch_args+=(px4_external_mode:="$(normalize_bool "${PX4_EXTERNAL_MODE:-false}")")',
+            flight,
+        )
+        evidence = (REPOSITORY / "scripts" / "runtime_evidence_runtime.sh").read_text(encoding="utf-8")
+        self.assertIn('bool_is_true "${PX4_EXTERNAL_MODE:-false}" && echo --external-mode', evidence)
+        container = (REPOSITORY / "scripts" / "container_run.sh").read_text(encoding="utf-8")
+        self.assertIn("  PX4_EXTERNAL_MODE\n", container)
+        offboard = (REPOSITORY / "drone_city_nav" / "src" / "mppi_offboard_node.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('declare_parameter<bool>("px4_external_mode", false)', offboard)
+        mode = (REPOSITORY / "drone_city_nav" / "src" / "mppi_offboard_node_external_mode.hpp").read_text(
+            encoding="utf-8"
+        )
+        # The flags PX4 derives for offboard: position for the hold and the
+        # trajectory, velocity for the cruise, the climb rate in both.
+        self.assertIn(
+            "configuration.position_enabled = mode_ != OffboardSetpointMode::kVelocityCruise;", mode
+        )
+        self.assertIn("configuration.climb_rate_enabled = true;", mode)
+        self.assertIn("return 0.0F;", mode)
+        # The pilot finds the stack's mode among the external modes PX4 lists.
+        self.assertIsNone(PILOT.external_nav_state(1 << 14))
+        self.assertEqual(23, PILOT.external_nav_state((1 << 14) | (1 << 23)))
+        self.assertEqual(25, PILOT.external_nav_state((1 << 25) | (1 << 31)))
+        self.assertEqual(11, PILOT.FIRST_EXTERNAL_SUB_MODE)
+
     def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
         # Specification K90: the failsafe ladder's rungs are entered by a hung
         # planner or estimator, which the schedule stops and lets go on.

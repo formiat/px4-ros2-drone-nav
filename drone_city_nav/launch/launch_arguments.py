@@ -231,6 +231,14 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             ),
         ),
         DeclareLaunchArgument(
+            "px4_external_mode",
+            default_value="false",
+            description=(
+                "Register the stack as a mode of PX4's own (specification K91), "
+                "which the pilot switches on and off; offboard otherwise."
+            ),
+        ),
+        DeclareLaunchArgument(
             "liveness_enabled",
             default_value="",
             description="Enable progress-based nominal reseeding.",

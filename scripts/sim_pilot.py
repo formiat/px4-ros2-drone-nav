@@ -3,7 +3,8 @@
 specification K29). The production nodes never arm the vehicle or switch its mode:
 the pilot does, with the commands a radio or a ground station sends PX4. At the
 start it puts each vehicle in offboard and arms it once the offboard streams its
-setpoints; afterwards it never arms again. A flight may carry a schedule of the
+setpoints; afterwards it never arms again. With --external-mode it selects the
+stack's own mode instead of offboard, once PX4 lists it (specification K91). A flight may carry a schedule of the
 pilot's and the operator's actions (PILOT_EVENTS), on the autopilot's clock (the
 simulation's, in lockstep):
 
@@ -35,6 +36,19 @@ from pathlib import Path
 # PX4's custom modes (main mode, sub mode) for VEHICLE_CMD_DO_SET_MODE.
 MODES = {"offboard": (6, 0), "hold": (4, 3), "land": (4, 6), "posctl": (3, 0)}
 OFFBOARD_NAV_STATE = 14
+# PX4's external modes: nav states 23 to 30, selected as AUTO (4) with the
+# sub modes 11 to 18 (commander px4_custom_mode.h, v1.17.0).
+FIRST_EXTERNAL_NAV_STATE = 23
+LAST_EXTERNAL_NAV_STATE = 30
+FIRST_EXTERNAL_SUB_MODE = 11
+
+
+def external_nav_state(can_set_nav_states_mask: int) -> int | None:
+    """The first external mode PX4 lets be selected: the stack's, the one registered."""
+    for nav_state in range(FIRST_EXTERNAL_NAV_STATE, LAST_EXTERNAL_NAV_STATE + 1):
+        if can_set_nav_states_mask & (1 << nav_state):
+            return nav_state
+    return None
 FORCE_DISARM_MAGIC = 21196.0
 OPERATOR_COMMANDS = ("stop", "land", "home")
 FAULT_SIGNALS = {"stop": signal.SIGSTOP, "resume": signal.SIGCONT}
@@ -108,6 +122,8 @@ def main() -> int:
     parser.add_argument("--rc", action="store_true",
                         help="a radio heard from the start (needed for rc_loss)")
     parser.add_argument("--operator-topic", default="/drone_city_nav/operator_command")
+    parser.add_argument("--external-mode", action="store_true",
+                        help="select the stack's own PX4 mode instead of offboard (K91)")
     parser.add_argument("--output", type=Path, required=True)
     # Roadmap item 36: under the step controller the pilot acts inside the step
     # protocol (its ticks on the controller's steps, then its acknowledgement),
@@ -160,9 +176,15 @@ def main() -> int:
             if previous is None or previous.arming_state != status.arming_state:
                 record(self.name, "armed" if armed else "disarmed",
                        f"reason={status.latest_arming_reason if armed else status.latest_disarming_reason}")
-            if armed and status.nav_state == OFFBOARD_NAV_STATE and not self.started:
+            if armed and status.nav_state == self.start_nav_state() and not self.started:
                 self.started = True
-                record(self.name, "started", "armed in offboard")
+                record(self.name, "started",
+                       "armed in the stack's mode" if args.external_mode else "armed in offboard")
+
+        def start_nav_state(self) -> int | None:
+            if not args.external_mode:
+                return OFFBOARD_NAV_STATE
+            return external_nav_state(self.status.can_set_nav_states_mask) if self.status else None
 
         def command(self, command: int, param1: float = 0.0, param2: float = 0.0,
                     param3: float = 0.0) -> None:
@@ -178,6 +200,12 @@ def main() -> int:
             self.commands.publish(message)
 
         def set_mode(self, mode: str) -> None:
+            if mode == "external":
+                nav_state = self.start_nav_state()
+                main_mode, sub_mode = 4, FIRST_EXTERNAL_SUB_MODE + nav_state - FIRST_EXTERNAL_NAV_STATE
+                self.command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, float(main_mode),
+                             float(sub_mode))
+                return
             main_mode, sub_mode = MODES[mode]
             self.command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, float(main_mode),
                          float(sub_mode))
@@ -204,8 +232,11 @@ def main() -> int:
             status = vehicle.status
             if status is None or vehicle.started:
                 continue
-            if status.nav_state != OFFBOARD_NAV_STATE:
-                vehicle.set_mode("offboard")
+            start = vehicle.start_nav_state()
+            if start is None:
+                continue  # the stack's mode is not listed yet
+            if status.nav_state != start:
+                vehicle.set_mode("external" if args.external_mode else "offboard")
             elif status.arming_state != VehicleStatus.ARMING_STATE_ARMED:
                 vehicle.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
 

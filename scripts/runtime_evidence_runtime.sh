@@ -68,6 +68,7 @@ prepare_runtime_evidence() {
     IMPERFECTIONS IMPERFECTION_SEED IMU_FAULTS IMU_FAULT_SEED BUDGET_RELAY STEP_CONTROLLER \
     GNSS_FAULTS GNSS_FAULT_SEED MAP_REGISTRATION MAGNETIC_DISTURBANCE RECORD_STACK_BAG \
     MEMORY_PRIOR_OCCUPANCY_3D_PATH \
+    PX4_EXTERNAL_MODE \
     MOVING_BODIES MOVING_BODY_SEED \
     HEAT_SOURCES SMOKE_ZONES SMOKE_SEED MPPI_ROLLOUTS MPPI_ENGINE SMOKE_FACE FLIGHT_CPUSET; do
     if [[ -n "${!override_name:-}" ]]; then
@@ -130,6 +131,7 @@ start_runtime_evidence_capture() {
   fi
   python3 "${repo_root}/scripts/sim_pilot.py" --namespaces "${pilot_namespaces}" \
     --events "${PILOT_EVENTS:-}" $(bool_is_true "${PILOT_RC:-false}" && echo --rc) \
+    $(bool_is_true "${PX4_EXTERNAL_MODE:-false}" && echo --external-mode) \
     $([[ "${STEP_CONTROLLER:-off}" == on ]] && echo --step-protocol) \
     --output "${runtime_artifact_dir}/pilot.csv" \
     > "${runtime_artifact_dir}/pilot.log" 2>&1 &

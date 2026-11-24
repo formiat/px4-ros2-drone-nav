@@ -94,7 +94,10 @@ else
   "${repo_root}/scripts/container_run.sh" make -C "${px4_container_dir}" px4_sitl
 fi
 
-step "Workspace build (colcon, drone_city_nav)"
+step "px4-ros2-interface-lib (the stack as a mode of PX4's own, specification K91)"
+"${repo_root}/scripts/setup_px4_ros2_interface_lib.sh"
+
+step "Workspace build (colcon, px4_ros2_cpp and drone_city_nav)"
 "${repo_root}/scripts/container_run.sh" make build
 test -f "${workspace_setup}"
 

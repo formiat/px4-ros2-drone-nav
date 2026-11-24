@@ -114,6 +114,21 @@ MppiOffboardNode::MppiOffboardNode()
       rclcpp::QoS{1}.reliable().transient_local());
   publishNavigationReadiness(false);
   require_planner_health_ = declare_parameter<bool>("require_planner_health", true);
+  // Specification K91: the stack as PX4's own mode, the pilot's to switch on
+  // and off. Registered once, before the node spins; a mode PX4 refuses
+  // leaves the stack unflyable in it, and says so.
+  if (declare_parameter<bool>("px4_external_mode", false)) {
+    external_mode_ = std::make_unique<StackExternalMode>(*this);
+    if (external_mode_->doRegister()) {
+      RCLCPP_INFO(
+          get_logger(), "PX4_EXTERNAL_MODE registered=true mode_id=%u name='%s'",
+          static_cast<unsigned>(external_mode_->id()), StackExternalMode::kName);
+    } else {
+      RCLCPP_ERROR(get_logger(), "PX4_EXTERNAL_MODE registered=false name='%s'",
+                   StackExternalMode::kName);
+      external_mode_.reset();
+    }
+  }
   planner_health_timeout_s_ =
       declare_parameter<double>("planner_health_timeout_s", 1.0);
   planner_health_land_after_s_ =
@@ -373,15 +388,13 @@ void MppiOffboardNode::controlTick() {
     return;
   }
   if (released_) {
-    offboard_mode_pub_->publish(
-        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    publishControlMode(OffboardSetpointMode::kPositionHold);
     publishUnavailablePathHoldSetpoint();
     publishUnavailableControlFeedback();
     return;
   }
   if (mission_landing_) {
-    offboard_mode_pub_->publish(
-        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    publishControlMode(OffboardSetpointMode::kPositionHold);
     publishMissionLandingSetpoint();
     publishUnavailableControlFeedback();
     return;
@@ -403,8 +416,7 @@ void MppiOffboardNode::controlTick() {
     // The offboard stream goes on through the hold: without its mode the
     // autopilot leaves offboard within its own loss timeout and acts before
     // the landing below (roadmap item 27, block 1).
-    offboard_mode_pub_->publish(
-        buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+    publishControlMode(OffboardSetpointMode::kPositionHold);
     const double loss_s = (now() - *planner_health_loss_started_at_).seconds();
     if (!emergency_landing_ && loss_s >= planner_health_land_after_s_) {
       // The ladder's second rung (specification K90): the landing where the
@@ -430,8 +442,7 @@ void MppiOffboardNode::controlTick() {
   if (emergency_landing_) {
     if (mission_landing_grounded_) {
       // On the ground the landing is finished to the autopilot's disarm.
-      offboard_mode_pub_->publish(
-          buildOffboardControlMode(nowMicros(), OffboardSetpointMode::kPositionHold));
+      publishControlMode(OffboardSetpointMode::kPositionHold);
       publishMissionLandingSetpoint();
       publishUnavailableControlFeedback();
       return;
@@ -479,7 +490,7 @@ void MppiOffboardNode::controlTick() {
       !planned_path_overdue) {
     mode = OffboardSetpointMode::kTrajectoryPositionTracking;
   }
-  offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
+  publishControlMode(mode);
   bool exact_horizon_feedback_published{false};
   if (blind_landing_ || dead_reckoning_hold) {
     publishDeadReckoningLandingSetpoint(blind_landing_);

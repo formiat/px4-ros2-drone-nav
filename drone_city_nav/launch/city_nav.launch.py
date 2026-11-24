@@ -481,7 +481,10 @@ def generate_launch_description():
         ):
             if override is not None:
                 production_mppi_parameters.append({parameter_name: override})
-        offboard_overrides = {}
+        offboard_overrides = {
+            "px4_external_mode": LaunchConfiguration("px4_external_mode").perform(context)
+            == "true"
+        }
         if navigation_sensors == "stereo_tof":
             # The offboard's hold brakes with the deceleration the stereo set's
             # planner plans against.

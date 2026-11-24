@@ -44,7 +44,12 @@ void MppiOffboardNode::onAutopilotStatus(const AutopilotStatus& status) {
              " mission_landing=" + (mission_landing_ ? "true" : "false"));
     return;
   }
-  if (armed && status.external_control) {
+  // The stack flies in offboard, or in its own mode where it registered one.
+  const bool stack_in_control =
+      status.external_control ||
+      (external_mode_ != nullptr && status.external_mode_id != 0U &&
+       status.external_mode_id == external_mode_->id());
+  if (armed && stack_in_control) {
     if (released_) {
       released_ = false;
       unavailable_path_hold_pin_.reset();
@@ -263,6 +268,13 @@ double MppiOffboardNode::takeoffAltitudeM() const noexcept {
   return std::max(px4_map_transform_.map_origin.z + takeoff_climb_m_,
                   flight_envelope_config_.minimum_target_z_m +
                       kTakeoffCaptureToleranceM);
+}
+
+void MppiOffboardNode::publishControlMode(const OffboardSetpointMode mode) {
+  offboard_mode_pub_->publish(buildOffboardControlMode(nowMicros(), mode));
+  if (external_mode_ != nullptr) {
+    external_mode_->select(mode);
+  }
 }
 
 void MppiOffboardNode::publishCommand(const std::uint32_t command, const float param1,

@@ -75,6 +75,18 @@ mode and the autopilot's own failsafe take the vehicle from any rung
 `fault:stop:visual_inertial_odometry_node@T` the estimator,
 `fault:resume:NODE@T` lets it go on, `kill@T` is the pilot's.
 
+## The Stack As A Mode Of PX4's Own
+
+With the launch's `px4_external_mode` (`PX4_EXTERNAL_MODE=true`) the offboard
+node registers the mode "Drone City Nav" with PX4 through px4-ros2-interface-lib
+(specification K91), and the evaluation pilot selects it in place of offboard
+(`sim_pilot.py --external-mode`). The pilot switches it off with any other mode
+(`PILOT_EVENTS` `hold@T`, `posctl@T`), and the stack holds its stream as it does
+when released from offboard. The setpoints are the same; the control they are
+flown by is stated once per change with the flags PX4 derives for offboard. The
+default stays offboard until the Urban acceptance has been flown through the
+mode.
+
 ## The Renewal Promise
 
 A fresh planned horizon is flown only while the planner renews it

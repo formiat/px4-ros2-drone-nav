@@ -223,6 +223,11 @@ AutopilotStatus px4VehicleStatusToAutopilotStatus(
       .timestamp_us = message.timestamp,
       .armed = armed,
       .external_control = message.nav_state == Status::NAVIGATION_STATE_OFFBOARD,
+      .external_mode_id =
+          message.nav_state >= Status::NAVIGATION_STATE_EXTERNAL1 &&
+                  message.nav_state <= Status::NAVIGATION_STATE_EXTERNAL8
+              ? message.nav_state
+              : std::uint8_t{0U},
       .autopilot_landing = message.nav_state == Status::NAVIGATION_STATE_AUTO_LAND ||
                            message.nav_state == Status::NAVIGATION_STATE_DESCEND,
       .failsafe = message.failsafe,

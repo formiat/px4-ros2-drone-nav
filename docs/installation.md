@@ -100,7 +100,8 @@ It checks the host tools and the NVIDIA runtime, builds the dev image if it is
 missing, clones PX4 Autopilot v1.17.0 into `external/PX4-Autopilot` (the setup
 script then gives the client's IMU topic a rate limit of 1000 Hz in its
 `dds_topics.yaml`, so the stack reads every sample; specification K53) and builds
-`px4_sitl` there inside the container, builds the workspace, fetches the
+`px4_sitl` there inside the container, clones px4-ros2-interface-lib into
+`external/px4-ros2-interface-lib` (below), builds the workspace, fetches the
 versioned `urban_circuit_practice_01` assets, then launches the GUI flight
 (`--headless` for the headless mission check, `--no-run` to stop after the
 preparation). Each step is skipped when its result is already in place.
@@ -111,9 +112,21 @@ The same steps by hand:
 ./scripts/build_dev_image.sh
 ./scripts/setup_px4_autopilot.sh
 ./scripts/dev_shell.sh make -C external/PX4-Autopilot px4_sitl
+./scripts/setup_px4_ros2_interface_lib.sh
 ./scripts/build.sh
 ./scripts/test.sh
 ```
+
+The library that registers the stack as a mode of PX4's own (specification
+K91, the launch's `px4_external_mode`, `PX4_EXTERNAL_MODE=true` for a flight):
+[px4-ros2-interface-lib](https://github.com/Auterion/px4-ros2-interface-lib)
+by Auterion, BSD-3-Clause, at `b6d52ad120f68fbe82c9039f85e52c2a8d868083`, the
+head of its `release/1.17` branch, which pins `px4_msgs` to `release/1.17`, the
+messages of PX4 v1.17.0 (the library's own
+`scripts/check-message-compatibility.py` reads them compatible).
+`scripts/setup_px4_ros2_interface_lib.sh` clones it at that commit, and every
+build of the workspace builds its package `px4_ros2_cpp` in the container
+beside `drone_city_nav`.
 
 For a simulator sanity check:
 

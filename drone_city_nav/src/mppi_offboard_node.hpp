@@ -48,6 +48,7 @@
 #include <string_view>
 #include <tf2_ros/transform_broadcaster.h>
 
+#include "mppi_offboard_node_external_mode.hpp"
 #include "mppi_offboard_node_names.hpp"
 
 namespace drone_city_nav {
@@ -95,6 +96,9 @@ private:
   [[nodiscard]] double mapAltitudeM() const noexcept;
   [[nodiscard]] double takeoffAltitudeM() const noexcept;
   void publishCommand(std::uint32_t command, float param1, float param2 = 0.0F);
+  // The control the setpoints are flown by: offboard's control mode, and the
+  // external mode's where it is registered (K91).
+  void publishControlMode(OffboardSetpointMode mode);
   [[nodiscard]] std::uint64_t nowMicros() const;
 
   static constexpr double kTakeoffCaptureToleranceM{0.5};
@@ -157,6 +161,8 @@ private:
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   AutopilotStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
+  // The stack as PX4's own mode, where the launch asks for it (K91).
+  std::unique_ptr<StackExternalMode> external_mode_;
   // Whether the resident horizon was flown: a setpoint of it went to the
   // autopilot while it was fresh. Its end is where the vehicle is only then.
   bool horizon_flown_{false};
