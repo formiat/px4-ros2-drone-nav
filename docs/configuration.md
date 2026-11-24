@@ -375,7 +375,7 @@ their plan and their evidence.
 
 | Number | Under a roof | On the open sky | Who reads it | Class | Evidence, and for (b) the measured quantity |
 |---|---|---|---|---|---|
-| `cruise_speed_mps`, `absolute_speed_limit_mps` | 6.5 and 10 (`config/urban_mvp.yaml:378`, `:379`, every Makefile target) | 15 and 15 (the open-sky targets) | planner, PX4 | (a) 15 and 15, in the configuration alone since stage 2 | The owner's word of 2026-11-20. Under 15 the caves flew with no contact (r4042 to r4048, r4106 to r4109): the cruise had bound 4 to 7 percent of the lidar's ticks and none of the cameras', the sensor's braking contract binds in its place. |
+| `cruise_speed_mps`, `absolute_speed_limit_mps` | 6.5 and 10 (`config/urban_mvp.yaml:378`, `:379`, every Makefile target) | 15 and 15 (the open-sky targets) | planner, PX4 | (a) 15 and 15, in the configuration alone since stage 2; the stereo set's planner keeps 6.5 and 10 (below the table) | The owner's word of 2026-11-20. Under 15 the caves flew with no contact (r4042 to r4048, r4106 to r4109): the cruise had bound 4 to 7 percent of the lidar's ticks and none of the cameras', the sensor's braking contract binds in its place. |
 | `maximum_horizontal_acceleration_mps2` | 4 (`:390`, every target) | 5 (the open-sky targets) | planner, offboard, PX4 | (c) 5, since stage 2; the stereo set's planner keeps 4 (the sensor set's, see below the table) | The airframe brakes at 6.4 to 7.5 m/s² (`tools/airframe_envelope.sh`). 5 flew worse than 4 on Urban in 2026-09 (r224, r225) and does not today: r4106 and r4107 2.830 and 2.853 m/s against 2.26 to 2.55 at 4, the true clearance and the stops within the base's spread; the cave 1.978 (r4108), the stereo set 1.316 (r4109). |
 | `maximum_vertical_acceleration_mps2` | 1.4 (`:576`) | 3.0 (`OPEN_SKY_DYNAMICS`) | planner | (c) 3.0, since stage 2; the stereo set keeps 1.4 | The caves' 1.4 kept a dive within its arrest before the route's end bounded a descent by where it stops (K78); the stopping contract keeps its own 1.4 on every world. To be flown by the item's ladder. |
 | `maximum_control_jerk_mps3` | 12 (`:419`) | 18 (`OPEN_SKY_DYNAMICS`) | planner, PX4 | (c) 18, since stage 2; the stereo set keeps 12 | The airframe's onset of braking, 23 to 31 m/s³ (specification V3). To be flown by the ladder. |
@@ -390,13 +390,18 @@ their plan and their evidence.
 | `latest_scan_clear_sight_half_angle_rad` | 0, no cone (the code's default) | 0.105 | memory, then planner | (a) 0.105 | The cone is the sensor's own contract read on the newest frame (K85) and reaches no farther than the promise above. By flights. |
 | the stereo pair's shadow memory beside a navigating lidar | on | off (`city_nav.launch.py:643`) | launch | (c) | Nothing consumes it; it took a core the planner wanted (r3282). |
 
-The stereo set's planner keeps the dynamics it has flown (4 m/s², 1.4 m/s²
-and 12 m/s³, `STEREO_TOF_DYNAMICS`) on every world: a sensor set's numbers,
-not a space's. Its speed is its sensor's, 2.6 m/s at the pair's 5.2 m, and at
-the airframe's numbers it reached that speed harder: 21 to 43 stops a flight
-against 16 to 25, 528 to 634 m to the goal against 454 to 500, its estimate
-1.4 m off at the end against 0.6 (r4113 to r4115, r4122 to r4124 against
-r4095 to r4099). The lidar set flies the airframe's numbers under a roof at
+The stereo set's planner keeps the profile it has flown (cruise 6.5 m/s,
+limit 10, 4 m/s², 1.4 m/s² and 12 m/s³, `STEREO_TOF_PROFILE`) on every world:
+a sensor set's numbers, not a space's. Its speed is its sensor's, 2.6 m/s at
+the pair's 5.2 m, and the ceiling is to it a scale the planner builds routes
+at. Under 15 m/s its true way to Urban's goal was under 510 m in none of
+thirteen flights (511 to 639 m) against eleven of thirteen under 6.5 and 10
+(442 to 510 m), a mission took 380 s at the median against 339, the estimate
+ended 1.56 m off at the mean against 0.86, and three flights acknowledged the
+goal over 2 m away against one (specification V3's change log names the
+runs). Setting the accelerations back alone did not shorten the way, nor did
+PX4's parameters; which of the planner's uses of the ceiling lengthens it is
+not found. The lidar set flies the airframe's numbers under a roof at
 the base's speed (2.342 m/s against 2.334); with the caves' former vertical
 acceleration and jerk beside the acceleration 5 two flights were 0.5 m/s
 faster (r4106, r4107), which the open sky does not admit.

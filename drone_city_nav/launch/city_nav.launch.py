@@ -42,7 +42,7 @@ from sensor_profile import (
     DEFAULT_LOCALIZATION_PROFILES,
     SMOKE_TOPIC_SUFFIX,
     lidar_barometer_bridge,
-    STEREO_TOF_DYNAMICS,
+    STEREO_TOF_PROFILE,
     STEREO_TOF_OBSERVABILITY,
     VISION_MEMORY_OVERRIDES,
     stereo_tof_topics,
@@ -462,7 +462,7 @@ def generate_launch_description():
                 )
         if navigation_sensors == "stereo_tof":
             production_mppi_parameters.append(STEREO_TOF_OBSERVABILITY)
-            production_mppi_parameters.append(STEREO_TOF_DYNAMICS)
+            production_mppi_parameters.append(STEREO_TOF_PROFILE)
             # The launch's one obstacle memory is the vision memory.
             obstacle_memory_parameters.append(
                 {**VISION_MEMORY_OVERRIDES, "lidar_3d_topic": "/stereo_depth/points"}
@@ -520,7 +520,7 @@ def generate_launch_description():
             # The offboard's hold brakes with the deceleration the stereo set's
             # planner plans against.
             offboard_overrides["unavailable_path_braking_acceleration_mps2"] = (
-                STEREO_TOF_DYNAMICS["maximum_horizontal_acceleration_mps2"]
+                STEREO_TOF_PROFILE["maximum_horizontal_acceleration_mps2"]
             )
         for argument_name, launch_config in (
             ("tracking_error_tube_response_time_s", tracking_error_tube_response_time_s),

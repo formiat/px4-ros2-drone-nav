@@ -79,17 +79,27 @@ STEREO_TOF_OBSERVABILITY = {
     "sensor_expected_beam_count": (1280 // 4) * (960 // 4),
 }
 
-# The dynamics the stereo set's planner plans with (specification V3): the
-# ones it has flown since 2026-09, not the airframe's 5 m/s^2, 3 m/s^2 and
-# 18 m/s^3 of the configuration. Its speed is its sensor's (2.6 m/s at the
-# pair's 5.2 m), and flown at the airframe's numbers (r4113 to r4115), or at
-# its vertical acceleration and jerk alone (r4122 to r4124), it reached that
-# speed harder and met what the pair had not seen sooner: 21 to 43 stops a
-# flight against 16 to 25, 528 to 634 m to the goal against 454 to 500, 30 s
-# longer, and its estimate ended 1.4 m off at the mean against 0.6 (r4095 to
-# r4099; r4114 acknowledged its goal 2.44 m away). The offboard's blind brake
-# follows (city_nav.launch.py).
-STEREO_TOF_DYNAMICS = {
+# The profile the stereo set's planner plans with on every world
+# (specification V3): the one it has flown since 2026-09, not the airframe's
+# 15 m/s, 5 m/s^2, 3 m/s^2 and 18 m/s^3 of the configuration. Its speed is its
+# sensor's, 2.6 m/s at the pair's 5.2 m, and the ceiling is no speed it flies
+# but a scale the planner builds its routes at. Flown under the ceiling of
+# 15 m/s, whatever the accelerations, its way to Urban's goal was under 510 m
+# in none of thirteen flights (511 to 639 m, and 1067 in one that wandered)
+# against eleven of thirteen under 6.5 and 10 (442 to 510 m), a mission took
+# 380 s at the median against 339, and its estimate ended 1.6 m off at the
+# mean against 0.9; three of the thirteen acknowledged the goal over 2 m away
+# (R2) against one of thirteen (r4109, r4113 to r4115, r4122 to r4124, r4127
+# to r4132 against r4032 to r4036, r4095 to r4099, r4133 to r4135). Which of
+# the planner's uses of the ceiling lengthens the way is not found; two
+# flights under it on the code of 2026-11-20 flew the short way (r4047,
+# r4048). The accelerations and the jerk are kept with it: at the airframe's
+# the contract admits the pair 2.7 to 2.9 m/s at the same 5.2 m (2.6), and no
+# flight told what that costs apart from the set's own spread. The offboard's
+# blind brake follows (city_nav.launch.py); the environment's overrides win.
+STEREO_TOF_PROFILE = {
+    "cruise_speed_mps": 6.5,
+    "absolute_speed_limit_mps": 10.0,
     "maximum_horizontal_acceleration_mps2": 4.0,
     "maximum_vertical_acceleration_mps2": 1.4,
     "maximum_control_jerk_mps3": 12.0,

@@ -103,12 +103,15 @@ class OpenSkyScenarioTest(unittest.TestCase):
                      "maximum_control_jerk_mps3: 18.0", "guaranteed_vertical_stopping_deceleration_mps2: 1.4",
                      "unavailable_path_braking_acceleration_mps2: 5.0"):
             self.assertEqual(vehicle.count(f"    {line}\n"), 1, line)
-        # The stereo set plans with the dynamics it has flown, on every world; the environment's override wins.
-        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["STEREO_TOF_DYNAMICS"],
-                         {"maximum_horizontal_acceleration_mps2": 4.0, "maximum_vertical_acceleration_mps2": 1.4,
+        # The stereo set plans with the profile it has flown, on every world; the environment's overrides win.
+        self.assertEqual(runpy.run_path(str(launch / "sensor_profile.py"))["STEREO_TOF_PROFILE"],
+                         {"cruise_speed_mps": 6.5, "absolute_speed_limit_mps": 10.0,
+                          "maximum_horizontal_acceleration_mps2": 4.0, "maximum_vertical_acceleration_mps2": 1.4,
                           "maximum_control_jerk_mps3": 12.0})
         launch_text = (launch / "city_nav.launch.py").read_text(encoding="utf-8")
-        self.assertIn("production_mppi_parameters.append(STEREO_TOF_DYNAMICS)", launch_text)
+        self.assertIn("production_mppi_parameters.append(STEREO_TOF_PROFILE)", launch_text)
+        self.assertLess(launch_text.index("production_mppi_parameters.append(STEREO_TOF_PROFILE)"),
+                        launch_text.index('("cruise_speed_mps", cruise_speed_mps),'))
         self.assertLess(launch_text.index('offboard_overrides["unavailable_path_braking_acceleration_mps2"] = ('),
                         launch_text.index('("maximum_horizontal_acceleration_mps2", maximum_horizontal_acceleration_mps2),'))
         self.assertAlmostEqual(world["navigation"]["maximum_target_z_m"], box - 1.0)

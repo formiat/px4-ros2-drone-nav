@@ -438,8 +438,8 @@ sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
 
 Navigation uses one flight profile for every map and every world, the
 vehicle's own: 15 m/s of cruise and of absolute speed limit and 5 m/s² of
-maximum horizontal acceleration (4 on the stereo set, whose speed is its
-sensor's), which also bounds the lateral acceleration in turns
+maximum horizontal acceleration (6.5, 10 and 4 on the stereo set, whose
+speed is its sensor's), which also bounds the lateral acceleration in turns
 (`drone_city_nav/config/urban_mvp.yaml`; specification V3). The
 ceiling sits above what the sensor-braking contract admits, so the sensors
 decide the speed that is flown: about 6.8 m/s on the lidar under a roof,
