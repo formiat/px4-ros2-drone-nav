@@ -420,6 +420,8 @@ private:
         ExecutionHorizonCommitStatus3D::kInvalidRequest};
     std::string_view stage;
     const char* control_clause{nullptr};
+    const char* revalidation_clause{nullptr};
+    const char* revalidation_view{nullptr};
     double input_pose_age_ms{-1.0};
     double input_control_age_ms{-1.0};
     double maximum_pose_age_ms{0.0};

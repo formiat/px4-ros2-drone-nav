@@ -6,6 +6,18 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A refused commit says why its latest-evidence revalidation refused** (roadmap item 43 point 5; the clauses,
+  the function and the test are naipi11's, `b7b2a6d2` in the form of `d7ed1713`). `evidence_not_current` could not
+  tell a published path that met new evidence, a stop the world asked for, from a sweep that could not be made,
+  a tick the next one may publish. The revalidation now answers with its clause
+  (`path_meets_persistent_raw_evidence`, `path_meets_latest_sensor_evidence`, `path_refused_mechanically`,
+  `view_incomplete`, `raw_world_unavailable`, `path_points_empty`, `braking_fallback_absent`,
+  `hold_position_meets_raw_evidence`) and the view it was read on (`command`, `braking_fallback`, `stop`,
+  `hold`); the commit's line prints both for every such refusal, the refused stop's line carries them, and
+  `tools/refused_stops.py` counts them. A stop refused in its preparation prints the identities of everything it
+  was prepared from (their `b8592414`). New tool `tools/airframe_braking.py` (theirs, `d59ba2ac`);
+  `tools/crash_context.py` prints what was commanded against what was flown before a contact (the idea of their
+  `crash_window.py`, read from this repository's own records).
 - **A flight whose autopilot exited is void** (roadmap item 43 point 2, specification A15; the finding and the
   rule are naipi11's, `scripts/px4_liveness_runtime.sh` of their fork). When the launch has returned the flight
   script reads whether the autopilot's own process is still alive; a flight it had left gets `autopilot_exit`

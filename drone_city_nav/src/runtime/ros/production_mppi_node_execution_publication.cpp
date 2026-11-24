@@ -441,11 +441,21 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     if (committed.status == ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent) {
       const std::string_view currentness = executionPublicationCurrentnessStatus3DName(
           committed.publication_currentness);
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                           "EXECUTION_HORIZON_COMMIT evidence_currentness=%.*s "
-                           "latest_evidence_revalidated=%s",
-                           static_cast<int>(currentness.size()), currentness.data(),
-                           committed.latest_evidence_revalidated ? "true" : "false");
+      // The clause and the view say whether the stop that follows is the
+      // world's answer (a path that meets evidence) or the tick's (a sweep
+      // that could not be made); tools/refused_stops.py counts them.
+      RCLCPP_WARN(get_logger(),
+                  "EXECUTION_HORIZON_COMMIT evidence_currentness=%.*s "
+                  "latest_evidence_revalidated=%s revalidation_clause=%s "
+                  "refused_view=%s",
+                  static_cast<int>(currentness.size()), currentness.data(),
+                  committed.latest_evidence_revalidated ? "true" : "false",
+                  committed.evidence_revalidation_failure != nullptr
+                      ? committed.evidence_revalidation_failure
+                      : "none",
+                  committed.evidence_revalidation_view != nullptr
+                      ? committed.evidence_revalidation_view
+                      : "none");
     }
     const std::shared_ptr<const VersionedExecutionValidationPolicy3D>& policy =
         cycle.evidence.selected_policy != nullptr ? cycle.evidence.selected_policy
@@ -458,6 +468,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         .status = committed.status,
         .stage = {},
         .control_clause = committed.control_evidence_clause,
+        .revalidation_clause = committed.evidence_revalidation_failure,
+        .revalidation_view = committed.evidence_revalidation_view,
         .input_pose_age_ms = evidenceAgeMs(
             publication_now_ns, publication_execution_input->poseReceiveStampNs()),
         .input_control_age_ms =

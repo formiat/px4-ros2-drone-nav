@@ -1861,6 +1861,17 @@ verified here before anything is taken.
    2026-11-20) the clause of a refused latest-evidence revalidation
    (`b7b2a6d2`, `d7ed1713`, `9bde562b`): `evidence_not_current` tells an
    obstacle on the path from a revalidation that could not be made.
+
+   **Point 5 done on 2026-11-24.** Not yet in a release (after v0.8.0). The
+   revalidation answers with its clause and the view it was read on
+   (specification K86); the commit's line prints both for every refusal at
+   `evidence_not_current`, the refused stop's line carries them, and
+   `tools/refused_stops.py` counts them. A stop refused in its preparation
+   prints the identities of everything it was prepared from (their
+   `b8592414`). `tools/airframe_braking.py` is theirs; the table of
+   `crash_window.py` is printed by `tools/crash_context.py` from this
+   repository's own records. The headers of the execution stay free of the
+   controller, and the onboard variant builds.
 6. **The cleanup that stops another checkout's flight** (the review of
    2026-11-20; `20121042`): a container is this repository's by its
    workspace mount alone, not by the dev image, which every checkout on the

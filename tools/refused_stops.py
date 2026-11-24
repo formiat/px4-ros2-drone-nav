@@ -16,6 +16,9 @@ offboard's local hold, which brakes with no world behind it. For each such revoc
   over that window and half a second more, where the world has one; a crash in the window (`CRASH_EVENT`,
   `cause=physical_collision`);
 - whether the flight counts by its host (host_verdict.py, A7);
+- every commit refused at `evidence_not_current` with the clause of its latest-evidence revalidation and the view
+  it was read on (`revalidation_clause`, `refused_view`; roadmap item 43 point 5, the clauses naipi11's): a path that
+  meets the persistent raw world or the newest scan is the world's answer, a sweep that could not be made the tick's;
 - since specification K86 (fe88468d) the stop's line names its stage itself and whether it was the second attempt
   (`refreshed`); a certified stop refused for what the tick captured aged (the input, the control evidence, the
   objective) is a case the rule should have answered, and is counted as such (`rule case`);
@@ -135,6 +138,7 @@ def read_run(run: str) -> dict:
     except (OSError, ValueError, KeyError, StopIteration):
         counted = None
     stops, commits, accepted, revocations, crashes = [], [], [], [], []
+    revalidations: collections.Counter = collections.Counter()
     try:
         log = open(directory / "ros_drone_nav.log", errors="replace")
     except OSError:
@@ -148,6 +152,9 @@ def read_run(run: str) -> dict:
             stops.append((t, field(line, "status") or "?", field(line, "stage"), field(line, "refreshed")))
         elif "EXECUTION_HORIZON_COMMIT committed=false" in line:
             commits.append((t, field(line, "stage") or "?"))
+        elif "EXECUTION_HORIZON_COMMIT evidence_currentness=" in line:
+            # One line a commit refused at evidence_not_current (unthrottled since roadmap item 43 point 5).
+            revalidations[(field(line, "revalidation_clause") or "unnamed", field(line, "refused_view") or "-")] += 1
         elif "EXECUTION_HORIZON accepted=true" in line:
             accepted.append((t, field(line, "mode") or "?"))
         elif "EXECUTION_REVOCATION moving=true" in line:
@@ -210,7 +217,8 @@ def read_run(run: str) -> dict:
             "revocations_total": max((int(m.group(1)) for line in open(directory / "ros_drone_nav.log", errors="replace")
                                       if "EXECUTION_REVOCATION moving=true" in line
                                       and (m := re.search(r"\btotal=(\d+)", line))), default=None),
-            "stops_refused": collections.Counter(s[1] for s in stops), "start": truth_stamps[0] if truth else None}
+            "stops_refused": collections.Counter(s[1] for s in stops), "start": truth_stamps[0] if truth else None,
+            "revalidations": revalidations}
 
 
 def band(speed: float) -> str:
@@ -271,6 +279,15 @@ def main() -> int:
     for stage in sorted({s for s, _ in stages}):
         print(f"  {stage}: {stages[(stage, 'counted')]} / {stages[(stage, 'void')]}"
               + (f" (verdict unknown {stages[(stage, 'verdict unknown')]})" if stages[(stage, 'verdict unknown')] else ""))
+    print("\nCommits refused at evidence_not_current, by the revalidation's clause and the view it was read on "
+          "(roadmap item 43 point 5; a path that meets evidence is the world's answer, the rest the tick's):")
+    clauses: collections.Counter = collections.Counter()
+    for f in flights:
+        clauses.update(f["revalidations"])
+    for (clause, view), count in clauses.most_common():
+        print(f"  {clause} / {view}: {count}")
+    if not clauses:
+        print("  none")
     print("\nWhat followed a revocation (the next horizon the offboard accepted), counted flights:")
     followed = collections.Counter(row["followed"] for f, row in every if f["counted"] is True)
     waits = sorted(row["wait"] for f, row in every if f["counted"] is True and row["wait"] == row["wait"])

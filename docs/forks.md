@@ -78,6 +78,15 @@ its diffs, not built here; roadmap item 43 points 5 to 7):
   from a revalidation that could not be made (a view incomplete, no raw
   world). The other half of what was taken on 2026-11-18 for the control's
   evidence. To take, with the points built once from the start.
+  Taken on 2026-11-24 (roadmap item 43 point 5), rewritten on this tree: one
+  function answers with the clause, the path's points built once in it, no
+  boolean beside it; the clauses and the two kinds of an occupied path, the
+  function `evidenceRevalidationFailure3D` and the test
+  `TheEvidenceRevalidationNamesTheViewItRefused` are theirs. Differently
+  from theirs the view is named apart from the clause (`command`,
+  `braking_fallback`, `stop`, `hold`), a hold whose position meets evidence
+  says `hold_position_meets_raw_evidence`, and the commit's line is printed
+  for every such refusal, not once a second.
 - **The guard of PX4 SITL's MAVLink ports: not taken.** A foreign pymavlink
   client took their port 14550 and spoiled four flights (their host carries
   another simulator). This host flies one simulator and no other MAVLink
@@ -156,12 +165,22 @@ a register of debt, run numbers as evidence). What the copy holds since
 - A guard of PX4 SITL's MAVLink ports against foreign command frames, the
   process cleanup bounded to its own pid namespace, one flight per checkout.
 - `tools/airframe_braking.py`: the airframe's braking from the true pose.
+  Taken on 2026-11-24 with their name in the file (`d59ba2ac`), runs named
+  as here and the plausible entry speed the open sky's.
 - The pull request #2: the log line of a refused stop carries the evidence it
   was derived from (70 lines, three files).
 - Taken on 2026-11-18: the clauses of the previous control's evidence
   (`c2fed51a`), rewritten on this tree and named in the log of a stop refused
   at its commit; their wider log line of `b8592414` covers the stop's
   preparation, not its commit, and was not taken.
+  Taken on 2026-11-24 (roadmap item 43 point 5): a stop refused in its
+  preparation prints the identities of everything it was prepared from, in
+  their fields and their order. `crash_window.py` is not taken as a file (it
+  reads the stack's bag, which a flight here records only on request): its
+  table of what was commanded against what was flown, with the autopilot's
+  mode, is printed by `tools/crash_context.py` from the records every
+  headless flight keeps. `stop_supersession.py` is covered by
+  `tools/refused_stops.py`.
 
 From the earlier branch over v0.5.0 (ideas and tests; the code no longer
 applies): the lattice edge the probe budget did not reach is cached as blocked

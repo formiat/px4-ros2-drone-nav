@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
@@ -395,6 +396,83 @@ TEST(ExecutionSupervisorHorizon3DTest, NamesTheFirstFailingAppliedControlPredica
   owner.valid = false;
   EXPECT_STREQ(appliedControlAuthorityFailure3D(control, owner, now_ns, 200.0),
                "owner_invalid");
+}
+
+// Roadmap item 43 point 5 (the test and the clauses are naipi11's): the
+// revalidation names why it refused. A sweep that could not be made is the
+// tick's, and says which precondition stopped it.
+TEST(ExecutionSupervisorHorizon3DTest, TheEvidenceRevalidationNamesTheViewItRefused) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      supervisor.authority();
+  ASSERT_NE(authority, nullptr);
+  const ExecutionRouteTransitionResult3D transition =
+      activeTransition(*authority->plan(), fixture);
+  ASSERT_TRUE(transition.applied());
+  const ExecutionHorizonCommitRequest3D request =
+      transitionRequest(authority, transition);
+  ASSERT_NE(request.current_sensor_evidence, nullptr);
+  ASSERT_NE(request.current_observed_raw_world, nullptr);
+
+  // On the evidence the plan was certified against the sweep passes.
+  EXPECT_EQ(evidenceRevalidationFailure3D(*transition.next,
+                                          request.current_observed_raw_world,
+                                          request.current_sensor_evidence),
+            nullptr);
+  EXPECT_STREQ(evidenceRevalidationFailure3D(
+                   *transition.next, request.current_observed_raw_world, nullptr),
+               "view_incomplete");
+  EXPECT_STREQ(evidenceRevalidationFailure3D(*transition.next, nullptr,
+                                             request.current_sensor_evidence),
+               "raw_world_unavailable");
+}
+
+// A return of the newest scan on the published path is the world's answer, and
+// the refused commit says so with the view it was read on.
+TEST(ExecutionSupervisorHorizon3DTest,
+     ACommitRefusedForEvidenceOnThePathNamesTheEvidenceAndTheView) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      supervisor.authority();
+  ASSERT_NE(authority, nullptr);
+  const ExecutionRouteTransitionResult3D transition =
+      activeTransition(*authority->plan(), fixture);
+  ASSERT_TRUE(transition.applied());
+  ExecutionHorizonCommitRequest3D request = transitionRequest(authority, transition);
+  ASSERT_NE(request.current_sensor_evidence, nullptr);
+  const FiniteExecutionState3D* const execution = transition.next->finiteExecution();
+  ASSERT_NE(execution, nullptr);
+  ASSERT_NE(execution->horizon, nullptr);
+  ASSERT_FALSE(execution->horizon->states.empty());
+  const auto& last = execution->horizon->states.back();
+  const VersionedLatestSensorEvidence3D& previous = *request.current_sensor_evidence;
+  std::vector<Point3> hits = previous.hitPointsMapM();
+  hits.push_back(Point3{last.x, last.y, last.z});
+  constexpr std::int64_t kEvidenceAdvanceNs{200'000'000LL};
+  request.current_sensor_evidence =
+      VersionedLatestSensorEvidence3D::capture(LatestSensorEvidenceCapture3D{
+          .producer_instance_id = previous.producerInstanceId(),
+          .sequence = previous.sequence() + 1U,
+          .pose_generation = previous.poseGeneration() + 1U,
+          .acquisition_stamp_ns = previous.acquisitionStampNs() + kEvidenceAdvanceNs,
+          .receive_stamp_ns = previous.receiveStampNs() + kEvidenceAdvanceNs,
+          .source_beam_count = previous.sourceBeamCount() + 1U,
+          .invalid_beam_count = previous.invalidBeamCount(),
+          .hit_points_map_m = std::move(hits),
+      });
+  ASSERT_NE(request.current_sensor_evidence, nullptr);
+  request.publication_now_ns = request.current_sensor_evidence->receiveStampNs();
+
+  const ExecutionHorizonCommitResult3D committed =
+      supervisor.commitHorizon(std::move(request));
+
+  EXPECT_EQ(committed.status, ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent);
+  EXPECT_FALSE(committed.latest_evidence_revalidated);
+  EXPECT_STREQ(committed.evidence_revalidation_failure,
+               "path_meets_latest_sensor_evidence");
+  EXPECT_STREQ(committed.evidence_revalidation_view, "command");
 }
 
 } // namespace

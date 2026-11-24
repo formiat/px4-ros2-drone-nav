@@ -116,6 +116,14 @@ struct ExecutionHorizonCommitResult3D {
   ExecutionRoutePublicationStatus3D lease_status{
       ExecutionRoutePublicationStatus3D::kInvalidCandidate};
   bool latest_evidence_revalidated{false};
+  // Why the latest-evidence revalidation refused, and the view it was about
+  // ("command", "braking_fallback", "stop", "hold"); null where it did not run
+  // or did not refuse (roadmap item 43 point 5, the clauses naipi11's). The
+  // stage alone could not tell a published path that met new evidence, a stop
+  // the world asked for, from a sweep that could not be made, a tick the next
+  // one may publish. Plain text: these headers do not depend on the controller.
+  const char* evidence_revalidation_failure{nullptr};
+  const char* evidence_revalidation_view{nullptr};
   // Wall time of the latest-evidence revalidation sweep, zero when it did not
   // run, for the tick phase diagnostics.
   double revalidation_ms{0.0};
@@ -158,6 +166,15 @@ struct ExecutionHorizonCommitResult3D {
 appliedControlAuthorityFailure3D(const AppliedControlEvidence3D& control,
                                  const ExecutionOwnerIdentity3D& owner,
                                  std::int64_t now_ns, double maximum_age_ms) noexcept;
+
+// Why the latest-evidence revalidation would refuse what this plan executes on
+// the given evidence, or nullptr where it would not: the clause the commit
+// reports as `evidence_revalidation_failure` (naipi11's function and name).
+[[nodiscard]] const char* evidenceRevalidationFailure3D(
+    const ExecutionPlan3D& plan,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
+    const std::shared_ptr<const VersionedLatestSensorEvidence3D>&
+        latest_sensor) noexcept;
 
 [[nodiscard]] const char*
 executionHorizonCommitStatus3DName(ExecutionHorizonCommitStatus3D status) noexcept;
