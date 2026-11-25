@@ -5,7 +5,8 @@
 # launch arguments with the bridges and the simulated image source off, the stack's inputs played on the bag's clock
 # at RATE (unless given, the set's real-time factor of record: 1.0 for the lidar set, 0.8 for the cameras), its
 # outputs recorded to log/tools/replay/RUN/stack/replay_bag and compared with the flight's by tools/replay_compare.py
-# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line; the exit status says which). Host;
+# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line; the exit status says which). A DIR
+# that resolves outside the repository (bags kept on another disk behind a link) is mounted for the replay. Host;
 # --inner runs in the container.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -14,8 +15,12 @@ if [[ "${1:-}" != "--inner" ]]; then
   if [[ -d "$1/stack_bag" ]]; then dir=${1%/}; run=$(basename "$dir"); else run=$1; dir="log/runs/$run"; fi
   [[ -d "$dir/stack_bag" ]] || { echo "no stack bag in $dir"; exit 1; }
   mkdir -p "log/tools/replay/$run/stack"; touch log/tools/replay/.keep
+  # A bag kept outside the repository (a directory under log/ that is a link to another disk): the container
+  # mounts the repository alone, so the bag's own directory is mounted beside it.
+  inner="/workspace/$dir"; real=$(realpath "$dir")
+  if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="$real"; inner=/datasets; fi
   exec ./scripts/container_run.sh bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/install/setup.bash;
-    exec bash /workspace/tools/replay_stack.sh --inner $run /workspace/$dir '$rate'"
+    exec bash /workspace/tools/replay_stack.sh --inner $run $inner '$rate'"
 fi
 run=$2; dir=$3; rate=$4
 bag="$dir/stack_bag"

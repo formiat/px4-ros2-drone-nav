@@ -127,6 +127,8 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn('if [[ -z "$rate" ]]; then if [[ "$navigation" == lidar ]]; then rate=1.0; else rate=0.8; fi; fi',
                       replay)
         self.assertTrue(replay.rstrip().endswith("grep -q '^REPLAY PASS$' \"$out/compare.txt\""), "the exit status is the verdict")
+        # A bag behind a link to another disk is mounted for the replay: the container holds the repository alone.
+        self.assertIn('if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="$real"; inner=/datasets; fi', replay)
         gates = (REPOSITORY / "tools/gates.sh").read_text(encoding="utf-8")
         # The gate compiles what differs from HEAD itself: a warning of an earlier build is not in its log otherwise.
         self.assertIn('while IFS= read -r source; do [[ -f "$source" ]] && touch "$source"; done\n(setsid bash -c '
