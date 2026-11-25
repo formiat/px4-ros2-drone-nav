@@ -93,6 +93,8 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
                               description="One line a frame of what the stereo estimator consumed (item 27 block 6)."),
         DeclareLaunchArgument("map_registration", default_value="",
                               description="The estimator's map registration: act or measure (item 40)."),
+        DeclareLaunchArgument("loop_closure", default_value="",
+                              description="The stereo estimator's loop closures: act, measure or off (item 41)."),
         DeclareLaunchArgument(
             "localization_profile",
             default_value="",

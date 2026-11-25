@@ -23,12 +23,13 @@ def validate_localization_profile(localization: str) -> str:
 
 
 def visual_inertial_overrides(localization: str, gnss_topic: str,
-                              map_registration: str = "") -> dict | None:
+                              map_registration: str = "", loop_closure: str = "") -> dict | None:
     """The visual-inertial estimator's parameters for the profile, None where
     the estimator does not run: beside GNSS and compared (the shadow), alone
     in the autopilot's place (visual_inertial), or alone with the satellite
     fixes read from gnss_topic (hybrid). map_registration "measure" has the
-    estimator read its map registration without applying it (roadmap item 40)."""
+    estimator read its map registration without applying it (roadmap item 40);
+    loop_closure "act", "measure" or "off" sets its loop closures (item 41)."""
     if localization not in ("visual_inertial_shadow", "visual_inertial", "hybrid"):
         return None
     overrides: dict = {"publish_to_autopilot": localization in ("visual_inertial", "hybrid")}
@@ -38,4 +39,6 @@ def visual_inertial_overrides(localization: str, gnss_topic: str,
         overrides["gnss_topic"] = gnss_topic.strip()
     if map_registration.strip():
         overrides["map_registration"] = map_registration.strip()
+    if loop_closure.strip():
+        overrides["loop_closure"] = loop_closure.strip()
     return overrides

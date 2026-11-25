@@ -264,6 +264,18 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   // The map registration's measuring mode (roadmap item 40): read, not applied.
   map_registration_act_ =
       declare_parameter<std::string>("map_registration", "act") != "measure";
+  // Loop closure (roadmap item 41): measured, acted on, or off.
+  const std::string loop_closure =
+      declare_parameter<std::string>("loop_closure", "measure");
+  if (loop_closure != "off") {
+    loop_closure_ = std::make_unique<StereoLoopClosure>(
+        StereoLoopClosureConfig{.focal_px = rectified.focal_px,
+                                .principal_x_px = rectified.principal_x_px,
+                                .principal_y_px = rectified.principal_y_px,
+                                .baseline_m = rectified.baseline_m,
+                                .left_camera = config.left_camera});
+    loop_closure_act_ = loop_closure == "act";
+  }
   left_sub_ = create_subscription<sensor_msgs::msg::Image>(
       declare_parameter<std::string>("left_image_topic", "/stereo/left/image"),
       image_qos,

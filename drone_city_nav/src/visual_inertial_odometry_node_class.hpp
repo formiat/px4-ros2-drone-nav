@@ -26,11 +26,13 @@
 #include <Eigen/Eigenvalues>
 #include <Eigen/Geometry>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -44,6 +46,7 @@
 
 #include "stereo_calibration_ros.hpp"
 #include "stereo_feature_tracker.hpp"
+#include "stereo_loop_closure.hpp"
 #include "stereo_map_registration.hpp"
 #include "visual_inertial_gnss_input.hpp"
 #include "visual_inertial_odometry_node_internal.hpp"
@@ -386,6 +389,7 @@ private:
   }
 
   void startAfresh(const char* reason) {
+    loopFilterRestarted();
     odometry_ = std::make_unique<VisualInertialOdometry>(odometry_config_);
     rest_start_stamp_ns_ = 0;
     first_frame_stamp_ns_ = 0;
@@ -424,11 +428,10 @@ private:
     if (previous_frame_stamp_ns_ > 0) {
       turn = cameraTurn(previous_frame_stamp_ns_, pair.stamp_ns, gyro_bias_);
     }
-    const std::vector<StereoFeatureObservation> observations = [&] {
-      const std::array<cv::Mat, 2> rectified_pair =
-          rectifier_->rectify(grey(*pair.left), grey(*pair.right));
-      return tracker_->track(rectified_pair[0], rectified_pair[1], turn);
-    }();
+    const std::array<cv::Mat, 2> rectified_pair =
+        rectifier_->rectify(grey(*pair.left), grey(*pair.right));
+    const std::vector<StereoFeatureObservation> observations =
+        tracker_->track(rectified_pair[0], rectified_pair[1], turn);
     VisualInertialEstimate estimate = odometry_->addFrame(pair.stamp_ns, observations);
     previous_frame_stamp_ns_ = pair.stamp_ns;
     aided_ = aided_ || estimate.healthy;
@@ -446,6 +449,10 @@ private:
     if (!estimate.healthy) {
       ++frames_without_estimate_;
     }
+    // The last keyframe's closure moves the frame's target before this frame
+    // follows it; this frame, when a keyframe, is read for the next one.
+    takeLoopReading();
+    startLoopReading(pair.stamp_ns, rectified_pair, estimate.healthy);
     // The pose in the map's frame, as the autopilot receives it.
     applyMapFrame(estimate, pair.stamp_ns);
     if (frame_log_) {
@@ -521,6 +528,14 @@ private:
   // (visual_inertial_odometry_node_map.cpp).
   void onDepth(const sensor_msgs::msg::PointCloud2& cloud);
   void takeDepthUpTo(std::int64_t stamp_ns);
+
+  // Loop closure (roadmap item 41, visual_inertial_odometry_node_map.cpp): a
+  // keyframe is read beside the frame thread and its reading taken at the
+  // frame after it, the same frame in a flight and in its replay.
+  void startLoopReading(std::int64_t stamp_ns,
+                        const std::array<cv::Mat, 2>& rectified_pair, bool healthy);
+  void takeLoopReading();
+  void loopFilterRestarted();
 
   // Specification K28: a filter lost in a hole of its IMU stream (r720,
   // r723: a host frozen for seconds) stayed lost for the flight and the
@@ -598,6 +613,7 @@ private:
     // one.
     const MapFrameOffset applied = map_registration_.applied();
     const Eigen::Matrix3d rotation = applied.rotation();
+    loopFilterRestarted();
     odometry_->reinitialize(
         restart_ns, rotation.transpose() * (position_ned - applied.translation),
         rotation.transpose() * velocity_ned,
@@ -655,6 +671,12 @@ private:
   // (roadmap items 19 and 40); `map_registration` "measure" reads without moving.
   StereoMapRegistration map_registration_;
   bool map_registration_act_{true};
+  // The keyframes and their graph (roadmap item 41); `loop_closure` "measure"
+  // reads the closures without moving the frame, "off" keeps no keyframe. The
+  // reading in flight is declared after its owner: it is waited for first.
+  std::unique_ptr<StereoLoopClosure> loop_closure_;
+  bool loop_closure_act_{false};
+  std::future<StereoLoopClosureReport> loop_reading_;
   Eigen::Vector3d left_camera_body_{Eigen::Vector3d::Zero()};
   std::unique_ptr<StereoFeatureTracker> tracker_;
   std::unique_ptr<AutopilotStateSource> autopilot_;

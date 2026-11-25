@@ -128,7 +128,12 @@ class ReplayContractTest(unittest.TestCase):
                       replay)
         self.assertTrue(replay.rstrip().endswith("grep -q '^REPLAY PASS$' \"$out/compare.txt\""), "the exit status is the verdict")
         # A bag behind a link to another disk is mounted for the replay: the container holds the repository alone.
-        self.assertIn('if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="$real"; inner=/datasets; fi', replay)
+        self.assertIn('if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="${real%/*}"; inner="/datasets/${real##*/}"; fi',
+                      replay)
+        # A kept bag's variants (the loop closures acted on, measured, off) lie beside it and link its bag.
+        variant = (REPOSITORY / "tools/replay_variant.sh").read_text(encoding="utf-8")
+        self.assertIn('source=${1%/}; run=$(basename "$source"); dir=${source}_${variant}', variant)
+        self.assertIn('closure_act | closure_measure | closure_off) echo "loop_closure:=${variant#closure_}"', variant)
         gates = (REPOSITORY / "tools/gates.sh").read_text(encoding="utf-8")
         # The gate compiles what differs from HEAD itself: a warning of an earlier build is not in its log otherwise.
         self.assertIn('while IFS= read -r source; do [[ -f "$source" ]] && touch "$source"; done\n(setsid bash -c '

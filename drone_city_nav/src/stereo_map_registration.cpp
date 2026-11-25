@@ -36,6 +36,12 @@ MapFrameOffset StereoMapRegistration::applied() const {
   return applied_;
 }
 
+void StereoMapRegistration::retarget(const MapFrameOffset& target) {
+  const std::scoped_lock lock{mutex_};
+  target_ = target;
+  recent_count_ = 0U;
+}
+
 StereoMapRegistrationReport StereoMapRegistration::registerFrame(
     const std::int64_t stamp_ns, const std::vector<Eigen::Vector3d>& points_body,
     const VisualInertialClonePose& pose, const bool act) {

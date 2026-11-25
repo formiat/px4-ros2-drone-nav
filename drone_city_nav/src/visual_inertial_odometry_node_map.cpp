@@ -1,7 +1,8 @@
 // The camera estimator's depth against its own long-lived map (roadmap items 19
 // and 40): each depth frame registered against the map's old part, then laid
 // into it (moved whole from visual_inertial_odometry_node.cpp on 2026-11-04,
-// the source size contract).
+// the source size contract); and the loop closures that move the same frame
+// offset (roadmap item 41).
 #include "visual_inertial_odometry_node_class.hpp"
 
 namespace drone_city_nav::visual_inertial_odometry_node_internal {
@@ -41,6 +42,22 @@ void VisualInertialOdometryNode::takeDepthUpTo(const std::int64_t stamp_ns) {
     pending_depth_.pop_front();
     const std::optional<VisualInertialClonePose> pose =
         odometry_->clonePose(frame.stamp_ns);
+    // The frame record's line of a depth frame (estimator_frame_log): what
+    // arrived, whether the filter still held its pose, and the frame offset
+    // after it. r4234's replay parted from its flight in that offset alone,
+    // the filter's own frames equal to the last digit, and nothing said at
+    // which depth frame.
+    const char* registered = "none";
+    if (frame_log_) {
+      std::uint64_t hash = kDigestSeed;
+      for (const Eigen::Vector3d& point : frame.points_body) {
+        mix(hash, point.data(), 3U * sizeof(double));
+      }
+      RCLCPP_INFO(get_logger(),
+                  "VIO_DEPTH stamp_s=%.3f points=%zu digest=%016" PRIx64 " clone=%d",
+                  1.0e-9 * static_cast<double>(frame.stamp_ns),
+                  frame.points_body.size(), hash, pose.has_value() ? 1 : 0);
+    }
     if (!pose.has_value()) {
       map_registration_.countFrameWithoutClone();
       continue;
@@ -48,6 +65,7 @@ void VisualInertialOdometryNode::takeDepthUpTo(const std::int64_t stamp_ns) {
     if (map_registration_.due(frame.stamp_ns)) {
       const StereoMapRegistrationReport report = map_registration_.registerFrame(
           frame.stamp_ns, frame.points_body, *pose, map_registration_act_);
+      registered = report.outcome;
       // Every reading in the measuring mode (roadmap item 40), one a second otherwise.
       if (!map_registration_act_) {
         RCLCPP_INFO(get_logger(), "%s mode=measure",
@@ -62,7 +80,68 @@ void VisualInertialOdometryNode::takeDepthUpTo(const std::int64_t stamp_ns) {
       }
     }
     map_registration_.lay(frame.stamp_ns, std::move(frame.points_body), *pose);
+    if (frame_log_) {
+      const MapFrameOffset target = map_registration_.target();
+      RCLCPP_INFO(get_logger(),
+                  "VIO_DEPTH_LAID stamp_s=%.3f registered=%s target=(%.5f,%.5f,%.5f) "
+                  "target_yaw=%.7f map_points=%zu",
+                  1.0e-9 * static_cast<double>(frame.stamp_ns), registered,
+                  target.translation.x(), target.translation.y(),
+                  target.translation.z(), target.yaw_rad,
+                  map_registration_.mapPointCount());
+    }
   }
+}
+
+// A keyframe's recognition takes tens of milliseconds, and the frame thread
+// holds the filter's lock: the keyframe is read on a thread of its own, from
+// copies of the pair and of the frame's offset, and nothing else touches the
+// keyframes until its reading is taken.
+void VisualInertialOdometryNode::startLoopReading(
+    const std::int64_t stamp_ns, const std::array<cv::Mat, 2>& rectified_pair,
+    const bool healthy) {
+  if (loop_closure_ == nullptr || !healthy) {
+    return;
+  }
+  const std::optional<VisualInertialClonePose> pose = odometry_->clonePose(stamp_ns);
+  if (!pose.has_value() || !loop_closure_->due(*pose)) {
+    return;
+  }
+  loop_reading_ =
+      std::async(std::launch::async, [this, stamp_ns, left = rectified_pair[0].clone(),
+                                      right = rectified_pair[1].clone(), pose = *pose,
+                                      frame = map_registration_.target()] {
+        return loop_closure_->observe(stamp_ns, left, right, pose, frame,
+                                      loop_closure_act_);
+      });
+}
+
+// The reading of the keyframe before, at the frame after it whatever the
+// thread's pace (a flight and its replay take it at the same frame): logged
+// when a place was tried, and an accepted closure's offset becomes the
+// target the published frame follows (item 40's bounded turn and shift).
+void VisualInertialOdometryNode::takeLoopReading() {
+  if (!loop_reading_.valid()) {
+    return;
+  }
+  const StereoLoopClosureReport report = loop_reading_.get();
+  if (report.candidates > 0U) {
+    RCLCPP_INFO(get_logger(), "%s mode=%s", StereoLoopClosure::summary(report).c_str(),
+                loop_closure_act_ ? "act" : "measure");
+  }
+  if (report.accepted && loop_closure_act_) {
+    map_registration_.retarget(report.target);
+  }
+}
+
+// The filter starts again: a reading in flight is finished first, its
+// keyframe was the old filter's.
+void VisualInertialOdometryNode::loopFilterRestarted() {
+  if (loop_closure_ == nullptr) {
+    return;
+  }
+  takeLoopReading();
+  loop_closure_->filterRestarted();
 }
 
 } // namespace drone_city_nav::visual_inertial_odometry_node_internal

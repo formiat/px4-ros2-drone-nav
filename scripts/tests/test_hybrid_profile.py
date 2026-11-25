@@ -64,6 +64,28 @@ class HybridProfileTest(unittest.TestCase):
         node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
         self.assertIn('declare_parameter<std::string>("map_registration", "act") != "measure"', node)
 
+    def test_the_loop_closure_mode_reaches_the_estimator(self) -> None:
+        # Roadmap item 41: LOOP_CLOSURE=act|measure|off reaches the estimator's
+        # parameter through the launch, as the registration's mode does.
+        import importlib.util  # noqa: PLC0415
+        spec = importlib.util.spec_from_file_location(
+            "localization_profile", REPOSITORY / "drone_city_nav/launch/localization_profile.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(module.visual_inertial_overrides("visual_inertial", "", "", "off"),
+                         {"publish_to_autopilot": True, "loop_closure": "off"})
+        self.assertNotIn("loop_closure", module.visual_inertial_overrides("hybrid", "/g", "measure"))
+        self.assertIsNone(module.visual_inertial_overrides("lidar_inertial", "", "", "act"))
+        run = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn('ros_launch_args+=(loop_closure:="${LOOP_CLOSURE}")', run)
+        self.assertIn("  LOOP_CLOSURE\n", (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8"))
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8") + (
+            REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8")
+        self.assertIn('"loop_closure",', launch)
+        self.assertIn("loop_closure.perform(context))", launch)
+        node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
+        self.assertIn('declare_parameter<std::string>("loop_closure", "measure")', node)
+
     def test_the_cave_profiles_subscribe_no_signal(self) -> None:
         # The topic is empty in the configuration: the estimator subscribes
         # nothing and pays nothing; only the hybrid launch names one.

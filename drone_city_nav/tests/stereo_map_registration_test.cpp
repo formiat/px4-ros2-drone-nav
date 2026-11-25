@@ -117,6 +117,59 @@ TEST(StereoMapRegistrationTest, ATurnedAndShiftedFrameIsReadAndTheTargetConverge
   EXPECT_NEAR(estimate.position_ned_m.x(), shift.x(), 0.05);
 }
 
+// A loop closure's offset (roadmap item 41) is the target at once and the
+// published frame's by steps: a metre and five degrees asked for reach the
+// navigation at 0.2 m/s and a degree a second, frame by frame.
+TEST(StereoMapRegistrationTest, AClosuresOffsetIsFollowedAtTheBoundedRates) {
+  StereoMapRegistration registration;
+  MapFrameOffset closure;
+  closure.yaw_rad = 5.0 * std::numbers::pi / 180.0;
+  closure.translation = Eigen::Vector3d{1.0, 0.0, 0.0};
+  VisualInertialEstimate estimate;
+  estimate.body_to_ned = Eigen::Quaterniond::Identity();
+  registration.applyFrame(estimate, 10 * kSecond);
+  registration.retarget(closure);
+  EXPECT_EQ(registration.target().translation.x(), 1.0);
+  EXPECT_EQ(registration.applied().translation.x(), 0.0);
+  const std::int64_t frame_period = kSecond * 2 / 15;
+  double previous_m = 0.0;
+  double previous_yaw_rad = 0.0;
+  for (int frame = 1; frame <= 60; ++frame) {
+    VisualInertialEstimate published;
+    published.body_to_ned = Eigen::Quaterniond::Identity();
+    registration.applyFrame(published, 10 * kSecond + frame * frame_period);
+    const double yaw_rad = registration.applied().yaw_rad;
+    EXPECT_LE(published.position_ned_m.norm() - previous_m,
+              kMapOffsetRateMps * 2.0 / 15.0 + 1.0e-9);
+    EXPECT_LE(yaw_rad - previous_yaw_rad, kMapYawRateRadps * 2.0 / 15.0 + 1.0e-9);
+    previous_m = published.position_ned_m.norm();
+    previous_yaw_rad = yaw_rad;
+  }
+  // Eight seconds on: the metre and the five degrees are there.
+  EXPECT_NEAR(previous_m, 1.0, 1.0e-6);
+  EXPECT_NEAR(previous_yaw_rad, closure.yaw_rad, 1.0e-9);
+}
+
+// The readings taken under the target a closure replaced are let go: three
+// new ones must agree before the registration moves the frame again.
+TEST(StereoMapRegistrationTest, ARetargetedRegistrationSettlesAnew) {
+  StereoMapRegistration registration;
+  registration.lay(0, room(), identityPose(0));
+  const std::vector<Eigen::Vector3d> frame =
+      frameFrom(0.0, Eigen::Vector3d{0.3, 0.0, 0.0});
+  for (int i = 0; i < 3; ++i) {
+    const std::int64_t stamp = 25 * kSecond + i * kSecond;
+    EXPECT_STREQ(
+        registration.registerFrame(stamp, frame, identityPose(stamp), true).outcome,
+        i < 2 ? "unsettled" : "applied");
+  }
+  registration.retarget(registration.target());
+  EXPECT_STREQ(
+      registration.registerFrame(28 * kSecond, frame, identityPose(28 * kSecond), true)
+          .outcome,
+      "unsettled");
+}
+
 TEST(StereoMapRegistrationTest, TheMeasuringModeReadsWithoutMoving) {
   StereoMapRegistration registration;
   registration.lay(0, room(), identityPose(0));

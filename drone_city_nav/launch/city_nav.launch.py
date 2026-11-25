@@ -161,6 +161,7 @@ def generate_launch_description():
     imu_topic_suffix = LaunchConfiguration("imu_topic_suffix")
     gnss_topic = LaunchConfiguration("gnss_topic")
     map_registration = LaunchConfiguration("map_registration")
+    loop_closure = LaunchConfiguration("loop_closure")
     estimator_frame_log = LaunchConfiguration("estimator_frame_log")
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
@@ -256,7 +257,8 @@ def generate_launch_description():
             **LIDAR_PARAMETERS,
         }
         visual_inertial_overrides = compute_visual_inertial_overrides(
-            localization, gnss_topic.perform(context), map_registration.perform(context))
+            localization, gnss_topic.perform(context), map_registration.perform(context),
+            loop_closure.perform(context))
         if visual_inertial_overrides is not None and optional_bool_override(
                 context, estimator_frame_log, "estimator_frame_log") is True:
             visual_inertial_overrides["frame_log"] = True

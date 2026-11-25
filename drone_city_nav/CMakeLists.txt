@@ -56,7 +56,7 @@ if(DRONE_CITY_NAV_ENABLE_SIMULATION)
   find_package(gz-transport13 REQUIRED)
 endif()
 find_package(nav_msgs REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d features2d video)
 find_package(PkgConfig REQUIRED)
 # Roadmap item 28 way B: the MPPI engine's Vulkan compute path builds where
 # the loader and glslc are (the dev image; a board without them leaves it out).
@@ -313,6 +313,7 @@ add_drone_city_nav_layer(drone_city_nav_localization
                          src/gnss_trust.cpp
                          src/lidar_inertial_odometry.cpp
                          src/point_plane_map_3d.cpp
+                         src/pose_graph_4dof.cpp
                          src/visual_inertial_gnss.cpp
                          src/visual_inertial_odometry.cpp
                          src/visual_inertial_odometry_update.cpp
@@ -561,6 +562,7 @@ set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
     include/drone_city_nav/gnss_trust.hpp
     include/drone_city_nav/lidar_inertial_odometry.hpp
     include/drone_city_nav/point_plane_map_3d.hpp
+    include/drone_city_nav/pose_graph_4dof.hpp
     include/drone_city_nav/visual_inertial_odometry.hpp
     include/drone_city_nav/visual_inertial_void.hpp)
 
@@ -1188,6 +1190,7 @@ foreach(stereo_depth_process ${stereo_depth_processes})
                                           src/stereo_depth_node_match.cpp
                                          src/stereo_feature_tracker.cpp
                                          src/stereo_frame_brightness.cpp
+                                         src/stereo_loop_closure.cpp
                                          src/stereo_map_registration.cpp
                                          src/stereo_rectifier.cpp
                                          src/visual_inertial_gnss_input.cpp
@@ -1866,6 +1869,20 @@ if(BUILD_TESTING)
   target_compile_features(stereo_map_registration_test PRIVATE cxx_std_20)
   target_include_directories(stereo_map_registration_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(stereo_map_registration_test drone_city_nav_localization)
+
+  ament_add_gtest(pose_graph_4dof_test tests/pose_graph_4dof_test.cpp)
+  target_compile_features(pose_graph_4dof_test PRIVATE cxx_std_20)
+  target_link_libraries(pose_graph_4dof_test drone_city_nav_localization)
+  enable_project_warnings(pose_graph_4dof_test)
+
+  # The loop closure on a rendered scene: the image side with the graph.
+  ament_add_gtest(stereo_loop_closure_test tests/stereo_loop_closure_test.cpp
+                  src/stereo_loop_closure.cpp src/stereo_map_registration.cpp)
+  target_compile_features(stereo_loop_closure_test PRIVATE cxx_std_20)
+  target_include_directories(stereo_loop_closure_test SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_include_directories(stereo_loop_closure_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(stereo_loop_closure_test drone_city_nav_localization ${OpenCV_LIBS})
+  enable_project_warnings(stereo_loop_closure_test)
   # The trust law and the input that reads it per fix and expires it without one
   # (the input's parameter reading names the node, hence rclcpp).
   ament_add_gtest(gnss_trust_test tests/gnss_trust_test.cpp

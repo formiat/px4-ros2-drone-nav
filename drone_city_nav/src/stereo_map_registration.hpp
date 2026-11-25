@@ -147,6 +147,11 @@ public:
   [[nodiscard]] MapFrameOffset target() const;
   [[nodiscard]] MapFrameOffset applied() const;
 
+  // A loop closure's offset (roadmap item 41, stereo_loop_closure.hpp) becomes
+  // the target: the published frame follows it at the rates above, and the
+  // registration's readings taken under the old target are let go.
+  void retarget(const MapFrameOffset& target);
+
   void countFrameWithoutClone() noexcept {
     ++frames_without_clone_;
   }

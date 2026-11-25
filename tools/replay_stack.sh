@@ -16,9 +16,10 @@ if [[ "${1:-}" != "--inner" ]]; then
   [[ -d "$dir/stack_bag" ]] || { echo "no stack bag in $dir"; exit 1; }
   mkdir -p "log/tools/replay/$run/stack"; touch log/tools/replay/.keep
   # A bag kept outside the repository (a directory under log/ that is a link to another disk): the container
-  # mounts the repository alone, so the bag's own directory is mounted beside it.
+  # mounts the repository alone, so the directory the bag's own lies in is mounted beside it (a variant's directory
+  # links its bag from the flight's next to it, tools/replay_variant.sh).
   inner="/workspace/$dir"; real=$(realpath "$dir")
-  if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="$real"; inner=/datasets; fi
+  if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="${real%/*}"; inner="/datasets/${real##*/}"; fi
   exec ./scripts/container_run.sh bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/install/setup.bash;
     exec bash /workspace/tools/replay_stack.sh --inner $run $inner '$rate'"
 fi
