@@ -31,7 +31,8 @@ jobs:
       # not use go first.
       - name: Free the runner's disk
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          # The tool cache is a mount point under act; its contents go, not the directory.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/*
           df -h /
       - name: The external sources the build needs
         run: ./scripts/setup_px4_ros2_interface_lib.sh
