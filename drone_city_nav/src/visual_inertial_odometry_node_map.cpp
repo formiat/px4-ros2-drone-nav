@@ -117,13 +117,14 @@ void VisualInertialOdometryNode::startLoopReading(
       });
 }
 
-// The reading of a keyframe, two frames after it whatever the thread's pace
+// The reading of a keyframe, four frames after it whatever the thread's pace
 // (a flight and its replay take it at the same frame; the frame thread waits
-// for it only when it is later than that): logged when a place was tried,
-// and an accepted closure's offset becomes the target the published frame
-// follows (item 40's bounded turn and shift).
+// for it only when it is later than that: ten candidates took 171 ms at the
+// median and 421 ms at most on r4234's replay, four frames are 533 ms):
+// logged when a place was tried, and an accepted closure's offset becomes
+// the target the published frame follows (item 40's bounded shift).
 void VisualInertialOdometryNode::takeLoopReading() {
-  constexpr int kReadingFrames{2};
+  constexpr int kReadingFrames{4};
   if (loop_reading_.valid() && ++loop_reading_frames_ >= kReadingFrames) {
     finishLoopReading();
   }

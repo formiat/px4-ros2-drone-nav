@@ -93,14 +93,21 @@ inline constexpr double kLoopPlaneSlackM{0.10};
 // that disagrees with them by more is a wrong one.
 inline constexpr double kLoopAttitudeRad{0.0349};
 // The graph's edges: the odometry between neighbours to a centimetre and a
-// percent of the step and a tenth of a degree; a closure to a decimetre and
-// half a degree (the accepted ones were within 0.18 m and 2 degrees of the
-// truth on r4233 and r4234).
+// percent of the step; a closure's shift to a decimetre (the accepted ones
+// were within 0.21 m of the truth on r4233 and r4234). The heading is the
+// filter's and is left as it was laid: the magnetometer's prior holds it to
+// 0.3 to 0.7 degrees over a flight (K60), and a closure reads it no better
+// (0.35 degrees rms against the estimate over 158 closures, to 1.8 from the
+// truth). Given the closure's half a degree against an odometry that
+// accumulates, the graph took each closure's heading, a degree on the 60 m
+// from the frame's origin moved the rest of the route a metre, and the next
+// closures came 1.6 to 2.2 m from the estimate and were dropped (r4233
+// replayed: 3 closures accepted where 21 were read).
 inline constexpr double kLoopOdometryBaseSigmaM{0.01};
 inline constexpr double kLoopOdometryStepSigma{0.01};
-inline constexpr double kLoopOdometryTurnSigmaRad{0.00175};
+inline constexpr double kLoopOdometryTurnSigmaRad{0.000175};
 inline constexpr double kLoopClosureSigmaM{0.10};
-inline constexpr double kLoopClosureTurnSigmaRad{0.0087};
+inline constexpr double kLoopClosureTurnSigmaRad{0.175};
 // An odometry edge across a restart of the filter says little.
 inline constexpr double kLoopRestartSigmaM{5.0};
 inline constexpr double kLoopRestartTurnSigmaRad{0.175};

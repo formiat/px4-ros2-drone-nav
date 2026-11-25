@@ -530,7 +530,7 @@ private:
   void takeDepthUpTo(std::int64_t stamp_ns);
 
   // Loop closure (roadmap item 41, visual_inertial_odometry_node_map.cpp): a
-  // keyframe is read beside the frame thread and its reading taken two frames
+  // keyframe is read beside the frame thread and its reading taken four frames
   // after it, the same frame in a flight and in its replay.
   void startLoopReading(std::int64_t stamp_ns,
                         const std::array<cv::Mat, 2>& rectified_pair, bool healthy);

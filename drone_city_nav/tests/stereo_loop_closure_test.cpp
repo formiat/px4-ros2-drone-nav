@@ -188,12 +188,13 @@ TEST(StereoLoopClosureTest, APlaceSeenAgainIsRecognisedAndTheFrameIsMovedToIt) {
       << StereoLoopClosure::summary(report);
   EXPECT_LT(report.turn_body.angularDistance(kTruth.body_to_ned), 1.0 * kDegree);
   EXPECT_NEAR(report.innovation_m, 0.37, 0.1);
-  // The frame the graph asks for puts the filter's pose there.
+  // The frame the graph asks for puts the filter's position there, and leaves
+  // its heading, which a closure reads no better than the filter holds it.
   EXPECT_LT(
       (report.target.apply(believed.position_ned_m) - kTruth.position_ned_m).norm(),
       0.1)
       << StereoLoopClosure::summary(report);
-  EXPECT_NEAR(report.target.yaw_rad, -0.5 * kDegree, 0.5 * kDegree);
+  EXPECT_NEAR(report.target.yaw_rad, 0.0, 0.05 * kDegree);
   EXPECT_EQ(report.closures, 1U);
   EXPECT_EQ(report.keyframes, 37U);
 }
