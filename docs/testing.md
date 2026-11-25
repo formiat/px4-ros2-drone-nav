@@ -77,6 +77,37 @@ make format
 Do not run broad formatting over the entire repository unless intentionally
 normalizing the project.
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` (roadmap item 46) runs the gate's checks on
+GitHub's runners, on every push and pull request, read-only, every action
+pinned by its commit.
+
+| Job | Runner | What it checks |
+|---|---|---|
+| `x86-64` | `ubuntu-24.04` | the dev image (`docker/Dockerfile`, stage `dev`, with the layer cache of Actions); the format of every tracked C++ file (`scripts/check_cpp_quality.sh --all --format`); `make build` with the CUDA MPPI compiled; `make test` without `mppi_control_sequence_test_current` and `mppi_engine_parity_test`, which need a CUDA device (`CTEST_EXCLUDE`); `make test-scripts`; clang-tidy and cppcheck on the C++ files the push or the pull request changes (`QUALITY_BASE`) |
+| `arm64` | `ubuntu-24.04-arm` | the onboard image and the package in it without the simulator, its unit tests (`tools/onboard_image.sh --arm64`) |
+
+Every check runs in the image as the runner's user, with a home it may
+write, git told the checkout is safe, CUDA's compiler on the path and ROS and
+`px4_msgs` sourced, as `scripts/container_run.sh` does on the workstation but
+without the GPU no runner has. The runners (GitHub's documentation, read on
+2026-11-25): 4 CPUs, 16 GB, 14 GB of disk, six hours a job, free for a public
+repository on x64 and arm64; the dev image (9.2 GB) and the build tree
+(5.1 GB) are more than the disk, so the x86-64 job removes the runner's
+unused SDKs first.
+
+What CI does not check: the replay of the kept bags (`./tools/gates.sh
+--replay`; the bags are not under git), and every flight (no runner has a
+GPU, and the acceptance series stay on the workstation). One script test
+more skips than on the workstation: the world's magnetic field against the
+autopilot's model tables, which are in `external/PX4-Autopilot`, which the
+jobs do not clone.
+
+Checked locally before any run on GitHub: `actionlint` with `shellcheck`, the
+x86-64 job run by `act` in a clean clone, the arm64 job's command under QEMU
+on the workstation (roadmap item 46).
+
 ## Headless Acceptance Gate
 
 **What fails a flight, and what does not (project owner, 2026-09-19).** The

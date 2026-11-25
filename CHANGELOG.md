@@ -6,6 +6,13 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **Continuous integration, checked locally** (roadmap item 46): `.github/workflows/ci.yml` builds the dev image and runs
+  the gate's checks on x86-64 (the format of the whole tree, the build, the unit tests but the two that need a CUDA
+  device, the script tests, clang-tidy and cppcheck on what a push or a pull request changes) and the onboard build with
+  its unit tests on arm64; read-only, every action pinned by its commit. Not run on GitHub yet. On the way:
+  `scripts/check_cpp_quality.sh` fails where git cannot read the repository instead of checking nothing, and takes
+  `QUALITY_BASE`; `make test` takes `CTEST_EXCLUDE`; `tools/onboard_image.sh` builds `px4_ros2_cpp` apart
+  from the package's options (a CMake warning); the lidar estimator test's ctest timeout is 600 s, for emulation.
 - **A failsafe ladder** (roadmap item 44, specification K90): hover, the landing where the vehicle stands, the landing
   without an estimate, motors off, each rung entered and left by what is measured. A position source heard once and
   silent for half a second is dead reckoning: the lidar's hung estimator had been answered by nothing and a rotor met

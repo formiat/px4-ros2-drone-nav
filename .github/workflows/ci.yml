@@ -1,7 +1,8 @@
 # Roadmap item 46: the workstation's gate on GitHub's runners. The x86-64 job builds the dev image and runs what
-# ./tools/gates.sh runs, by the same Makefile targets: the format check, the build, the unit tests, the script tests,
-# the quality checks. The arm64 job builds the onboard image and the package in it without the simulator, with its
-# unit tests (tools/onboard_image.sh). Not here, and why (docs/testing.md, "Continuous integration"): the replay of
+# ./tools/gates.sh runs: the format check (of the whole tree), the build, the unit tests (but the two that need a CUDA
+# device), the script tests, clang-tidy and cppcheck. The arm64 job builds the onboard image and the package in it
+# without the simulator, with its unit tests (tools/onboard_image.sh). Not here, and why (docs/testing.md,
+# "Continuous Integration"): the replay of
 # the kept bags (6.6 GB, not under git), and every flight (no GPU on the runners; the acceptance stays on the
 # workstation). The runners, read on 2026-11-25: 4 CPUs, 16 GB, 14 GB of disk, six hours a job, free for a public
 # repository on x64 and arm64.

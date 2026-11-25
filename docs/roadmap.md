@@ -2002,6 +2002,36 @@ kept bags; the arm64 build on the free runners (item 27's block 2); then a
 short flight of a minute or two on a GPU runner (AirStack's way). The
 acceptance series stay on the workstation.
 
+**The jobs written and checked locally on 2026-11-25**
+(`.github/workflows/ci.yml`; [`testing.md`](testing.md), "Continuous
+Integration"). Not yet in a release (after v0.8.0). The x86-64 job: the dev
+image, the format of the whole tree, the build, the unit tests but the two
+that need a CUDA device, the script tests, clang-tidy and cppcheck on what a
+push or a pull request changes. The arm64 job: the onboard image and the
+package without the simulator, its unit tests, on GitHub's free arm64 runner.
+Checked: `actionlint` clean; in a clean clone the steps by hand and the x86-64
+job by `act`; the arm64 job's command under QEMU on the workstation. What the
+clean clone and `act` found was repaired: the format and quality checks scoped
+by what differs from HEAD checked nothing in a checkout (now the whole tree's
+format, and tidy and cppcheck by the push's or the pull request's base); two
+tests need a CUDA device; git refused a checkout another user owned and the
+checks passed on nothing (now they fail); under emulation px4_ros2_cpp warned
+of the package's options passed to it (now built apart) and the lidar
+estimator test ran past ctest's 60 s (its timeout now 600 s, as the
+visual-inertial test's). Run locally on 2026-11-25: the x86-64 job by `act` on
+385a48b4, every step passed (the dev image in 17 min without the cache, which
+`act` does not serve; the build; 165 unit tests and the two left out, the
+gate's 167; 552 script tests), clang-tidy and cppcheck by `QUALITY_BASE`
+checked by the step's command on three files; the arm64 job's command under
+QEMU, the onboard image in 81 min, the package in 1 h 34 min on 16 emulated
+threads without a compiler warning, and on 9b5253d6 161 of 163 unit tests: the two left
+are those of 2026-10-26 (block 2 step 3 of item 27: the D* Lite repair's
+states within a 20 ms budget, the first search within its budget), which
+assume the workstation's speed; GitHub's arm64 runner is native.
+
+Left: the first run on GitHub (after a push), the replay gate in CI (its bags
+are not under git), the flight on a GPU runner (no free one).
+
 ## 47. Mission Modules On One Core
 
 **Type:** product, general (the owner's discussion of 2026-11-10; an answer

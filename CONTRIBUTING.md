@@ -102,6 +102,18 @@ Of The Whole Stack"; the owner's decision of 2026-11-05).
   called done; see below. A change of the launch scripts is followed by one
   real flight at once: a contract test does not start a simulator.
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push and pull request
+([`docs/testing.md`](docs/testing.md), "Continuous Integration"): on
+x86-64 the dev image, the format of every tracked C++ file, the build, the
+unit tests (but the two that need a CUDA device), the script tests, and
+clang-tidy and cppcheck on the C++ files the push or the pull request
+changes; on arm64 the onboard image and the package without the simulator,
+with its unit tests. It does not replace the gate above: the replay of the
+kept bags and every flight stay on the workstation, and a change is accepted
+by them, not by CI.
+
 ## Flying
 
 A flight is one simulation run of a scenario, started from the host:
