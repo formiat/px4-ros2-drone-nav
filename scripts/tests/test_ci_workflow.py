@@ -54,6 +54,10 @@ class CiWorkflowTest(unittest.TestCase):
         self.assertIn("./scripts/check_cpp_quality.sh --all --format --no-build --no-test", runs)
         self.assertIn('--env QUALITY_BASE="$BASE"', runs)
         self.assertIn("./scripts/check_cpp_quality.sh --tidy --cppcheck", runs)
+        # git reads the checkout whoever runs the step (under act, root).
+        self.assertEqual(5, runs.count("git config --global --add safe.directory /workspace"))
+        quality = (REPOSITORY / "scripts" / "check_cpp_quality.sh").read_text(encoding="utf-8")
+        self.assertIn('echo "FAIL: git cannot read the repository at $(pwd)" >&2', quality)
         self.assertEqual(0, jobs["x86-64"]["steps"][0]["with"]["fetch-depth"])
         # The two unit tests that need a CUDA device, and no others, are left out on a runner without one.
         self.assertIn(

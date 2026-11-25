@@ -47,7 +47,8 @@ jobs:
           load: true
           cache-from: type=gha,scope=dev
           cache-to: type=gha,scope=dev,mode=max
-      # Every check in the dev image as the runner's user, with a home it may write, CUDA's compiler on the path
+      # Every check in the dev image as the runner's user, with a home it may write (git told the checkout is
+      # safe: under act the steps run as root and git refused the checkout it did not own), CUDA's compiler on the path
       # and the ROS and px4_msgs setup sourced, as scripts/container_run.sh does on the workstation (without its
       # GPU, which no runner has).
       # The format of every tracked C++ file: a clean checkout has nothing changed to scope it by.
@@ -56,6 +57,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
           --workdir /workspace drone-gazebo-dev:ci bash -c
           'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          git config --global --add safe.directory /workspace &&
           source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
           ./scripts/check_cpp_quality.sh --all --format --no-build --no-test'
       - name: Build
@@ -63,6 +65,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
           --workdir /workspace drone-gazebo-dev:ci bash -c
           'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          git config --global --add safe.directory /workspace &&
           source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash && make build'
       # The CUDA MPPI's code is compiled, and its two tests that need a CUDA device are left out: no runner has one.
       - name: Unit tests
@@ -70,6 +73,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
           --workdir /workspace drone-gazebo-dev:ci bash -c
           'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          git config --global --add safe.directory /workspace &&
           source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
           make test CTEST_EXCLUDE="^mppi_control_sequence_test_current|^mppi_engine_parity_test"'
       - name: Script tests
@@ -77,6 +81,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
           --workdir /workspace drone-gazebo-dev:ci bash -c
           'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          git config --global --add safe.directory /workspace &&
           source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash && make test-scripts'
       # clang-tidy and cppcheck (the build and the tests ran above) on the C++ files the push or the pull request
       # changes, as the gate scopes them
@@ -91,6 +96,7 @@ jobs:
           --volume "$GITHUB_WORKSPACE:/workspace"
           --workdir /workspace drone-gazebo-dev:ci bash -c
           'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          git config --global --add safe.directory /workspace &&
           source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
           ./scripts/check_cpp_quality.sh --tidy --cppcheck'
 

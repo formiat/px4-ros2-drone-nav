@@ -179,6 +179,14 @@ collect_changed_cpp_files() {
   done | sort -u
 }
 
+# A repository git refuses to read (a checkout another user owns, in a
+# container) lists no files, and every check below would skip in silence: the
+# CI job run by act formatted nothing and passed (roadmap item 46).
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "FAIL: git cannot read the repository at $(pwd)" >&2
+  exit 2
+fi
+
 mapfile -t cpp_files < <(
   if [[ "${all_files}" == "true" ]]; then
     collect_all_cpp_files
