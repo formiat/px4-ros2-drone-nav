@@ -150,6 +150,15 @@ collect_all_cpp_files() {
 
 collect_changed_cpp_files() {
   {
+    # In CI the checkout is the commit itself: QUALITY_BASE names the commit the
+    # push or the pull request is compared with (roadmap item 46).
+    if [[ -n "${QUALITY_BASE:-}" ]]; then
+      git diff --name-only --diff-filter=ACMRTUXB "${QUALITY_BASE}" HEAD -- \
+        'drone_city_nav/include/*' \
+        'drone_city_nav/src/*' \
+        'drone_city_nav/tests/*' \
+        'drone_city_nav/tools/*'
+    fi
     git diff --name-only --diff-filter=ACMRTUXB HEAD -- \
       'drone_city_nav/include/*' \
       'drone_city_nav/src/*' \

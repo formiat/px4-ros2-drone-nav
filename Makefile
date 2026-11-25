@@ -18,7 +18,7 @@ mppi-benchmark: mppi-benchmark-build
 
 .PHONY: test
 test: build
-	ctest --test-dir $(COLCON_BUILD_BASE)/drone_city_nav --output-on-failure
+	ctest --test-dir $(COLCON_BUILD_BASE)/drone_city_nav --output-on-failure $(if $(CTEST_EXCLUDE),--exclude-regex '$(CTEST_EXCLUDE)')
 
 .PHONY: test-scripts
 test-scripts:

@@ -1,0 +1,105 @@
+# Roadmap item 46: the workstation's gate on GitHub's runners. The x86-64 job builds the dev image and runs what
+# ./tools/gates.sh runs, by the same Makefile targets: the format check, the build, the unit tests, the script tests,
+# the quality checks. The arm64 job builds the onboard image and the package in it without the simulator, with its
+# unit tests (tools/onboard_image.sh). Not here, and why (docs/testing.md, "Continuous integration"): the replay of
+# the kept bags (6.6 GB, not under git), and every flight (no GPU on the runners; the acceptance stays on the
+# workstation). The runners, read on 2026-11-25: 4 CPUs, 16 GB, 14 GB of disk, six hours a job, free for a public
+# repository on x64 and arm64.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  x86-64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The quality checks compare the commit with the push's or the pull request's base.
+          fetch-depth: 0
+      # The dev image is 9 GB and the build tree 5 GB, over the runner's 14 GB: the runner's SDKs the jobs do
+      # not use go first.
+      - name: Free the runner's disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h /
+      - name: The external sources the build needs
+        run: ./scripts/setup_px4_ros2_interface_lib.sh
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: The dev image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: dev
+          tags: drone-gazebo-dev:ci
+          load: true
+          cache-from: type=gha,scope=dev
+          cache-to: type=gha,scope=dev,mode=max
+      # Every check in the dev image as the runner's user, with a home it may write, CUDA's compiler on the path
+      # and the ROS and px4_msgs setup sourced, as scripts/container_run.sh does on the workstation (without its
+      # GPU, which no runner has).
+      # The format of every tracked C++ file: a clean checkout has nothing changed to scope it by.
+      - name: Format check
+        run: >-
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
+          --workdir /workspace drone-gazebo-dev:ci bash -c
+          'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
+          ./scripts/check_cpp_quality.sh --all --format --no-build --no-test'
+      - name: Build
+        run: >-
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
+          --workdir /workspace drone-gazebo-dev:ci bash -c
+          'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash && make build'
+      # The CUDA MPPI's code is compiled, and its two tests that need a CUDA device are left out: no runner has one.
+      - name: Unit tests
+        run: >-
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
+          --workdir /workspace drone-gazebo-dev:ci bash -c
+          'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
+          make test CTEST_EXCLUDE="^mppi_control_sequence_test_current|^mppi_engine_parity_test"'
+      - name: Script tests
+        run: >-
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --volume "$GITHUB_WORKSPACE:/workspace"
+          --workdir /workspace drone-gazebo-dev:ci bash -c
+          'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash && make test-scripts'
+      # clang-tidy and cppcheck (the build and the tests ran above) on the C++ files the push or the pull request
+      # changes, as the gate scopes them
+      # on the workstation (the whole tree takes hours): the base is the pull request's, the push's previous
+      # commit, or the commit's parent for a new branch.
+      - name: Quality checks
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: >-
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then BASE=HEAD~1; fi;
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp --env QUALITY_BASE="$BASE"
+          --volume "$GITHUB_WORKSPACE:/workspace"
+          --workdir /workspace drone-gazebo-dev:ci bash -c
+          'export PATH=/usr/local/cuda/bin:$PATH LD_LIBRARY_PATH=/usr/local/cuda/lib64 &&
+          source /opt/ros/jazzy/setup.bash && source /opt/px4_msgs_ws/install/setup.bash &&
+          ./scripts/check_cpp_quality.sh --tidy --cppcheck'
+
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The external sources the build needs
+        run: ./scripts/setup_px4_ros2_interface_lib.sh
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: The onboard image, the package without the simulator, its unit tests
+        run: tools/onboard_image.sh --arm64
