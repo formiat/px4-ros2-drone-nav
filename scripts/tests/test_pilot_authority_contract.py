@@ -136,17 +136,16 @@ class PilotAuthorityContractTest(unittest.TestCase):
         pilot = PILOT_PATH.read_text(encoding="utf-8")
         self.assertEqual((4, 2), PILOT.MODES["takeoff"])
         self.assertEqual(17, PILOT.TAKEOFF_NAV_STATE)
-        self.assertEqual((1.5, 0.1), (PILOT.TAKEN_OFF_M, PILOT.CLIMB_STOPPED_MPS))
-        # Through Hold: a mode selected while the takeoff wishes to take off
-        # keeps the wish, and the autopilot never disarms on the ground.
-        self.assertEqual((4, 2.0), (PILOT.LOITER_NAV_STATE, PILOT.HOLD_BEFORE_THE_MODE_S))
+        self.assertEqual((2.3, 0.1, 2.0), (PILOT.TAKEN_OFF_M, PILOT.CLIMB_STOPPED_MPS,
+                                           PILOT.WISH_CLEARED_AFTER_S))
+        # A mode selected while the takeoff still wishes to take off keeps
+        # the wish, and the autopilot never disarms on the ground (r4199,
+        # r4201); the takeoff task clears it within 0.2 m of its height.
         self.assertIn(
-            "                elif status.nav_state == LOITER_NAV_STATE:\n"
-            "                    vehicle.hold_since_s = vehicle.hold_since_s or clock_s()\n"
-            "                    if clock_s() - vehicle.hold_since_s >= HOLD_BEFORE_THE_MODE_S:\n"
-            '                        vehicle.set_mode("external")\n'
             "                elif vehicle.taken_off:\n"
-            '                    vehicle.set_mode("hold")\n',
+            "                    vehicle.taken_off_since_s = vehicle.taken_off_since_s or clock_s()\n"
+            "                    if clock_s() - vehicle.taken_off_since_s >= WISH_CLEARED_AFTER_S:\n"
+            '                        vehicle.set_mode("external")\n',
             pilot,
         )
         self.assertIn(
