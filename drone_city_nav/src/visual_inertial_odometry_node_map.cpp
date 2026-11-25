@@ -93,20 +93,21 @@ void VisualInertialOdometryNode::takeDepthUpTo(const std::int64_t stamp_ns) {
   }
 }
 
-// A keyframe's recognition takes tens of milliseconds, and the frame thread
+// A keyframe's recognition takes a tenth of a second, and the frame thread
 // holds the filter's lock: the keyframe is read on a thread of its own, from
-// copies of the pair and of the frame's offset, and nothing else touches the
-// keyframes until its reading is taken.
+// copies of the pair and of the frame's offset, one keyframe at a time, and
+// nothing else touches the keyframes until its reading is taken.
 void VisualInertialOdometryNode::startLoopReading(
     const std::int64_t stamp_ns, const std::array<cv::Mat, 2>& rectified_pair,
     const bool healthy) {
-  if (loop_closure_ == nullptr || !healthy) {
+  if (loop_closure_ == nullptr || !healthy || loop_reading_.valid()) {
     return;
   }
   const std::optional<VisualInertialClonePose> pose = odometry_->clonePose(stamp_ns);
   if (!pose.has_value() || !loop_closure_->due(*pose)) {
     return;
   }
+  loop_reading_frames_ = 0;
   loop_reading_ =
       std::async(std::launch::async, [this, stamp_ns, left = rectified_pair[0].clone(),
                                       right = rectified_pair[1].clone(), pose = *pose,
@@ -116,14 +117,19 @@ void VisualInertialOdometryNode::startLoopReading(
       });
 }
 
-// The reading of the keyframe before, at the frame after it whatever the
-// thread's pace (a flight and its replay take it at the same frame): logged
-// when a place was tried, and an accepted closure's offset becomes the
-// target the published frame follows (item 40's bounded turn and shift).
+// The reading of a keyframe, two frames after it whatever the thread's pace
+// (a flight and its replay take it at the same frame; the frame thread waits
+// for it only when it is later than that): logged when a place was tried,
+// and an accepted closure's offset becomes the target the published frame
+// follows (item 40's bounded turn and shift).
 void VisualInertialOdometryNode::takeLoopReading() {
-  if (!loop_reading_.valid()) {
-    return;
+  constexpr int kReadingFrames{2};
+  if (loop_reading_.valid() && ++loop_reading_frames_ >= kReadingFrames) {
+    finishLoopReading();
   }
+}
+
+void VisualInertialOdometryNode::finishLoopReading() {
   const StereoLoopClosureReport report = loop_reading_.get();
   if (report.candidates > 0U) {
     RCLCPP_INFO(get_logger(), "%s mode=%s", StereoLoopClosure::summary(report).c_str(),
@@ -140,7 +146,9 @@ void VisualInertialOdometryNode::loopFilterRestarted() {
   if (loop_closure_ == nullptr) {
     return;
   }
-  takeLoopReading();
+  if (loop_reading_.valid()) {
+    finishLoopReading();
+  }
   loop_closure_->filterRestarted();
 }
 

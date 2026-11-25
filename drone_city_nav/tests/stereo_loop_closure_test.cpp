@@ -208,14 +208,47 @@ TEST(StereoLoopClosureTest, TheMeasuringModeReadsTheClosureAndMovesNothing) {
 }
 
 TEST(StereoLoopClosureTest, AClosureFartherFromTheEstimateThanItsDriftAllowsIsDropped) {
-  // 71 m of path between the two looks allow 1.2 m; the filter's belief lies
-  // 3 m from where the closure puts the vehicle: one of the two is wrong, and
-  // the closure is not taken on its own word.
+  // The estimate is taken to have drifted 1.5 m at most; the filter's belief
+  // lies 3 m from where the closure puts the vehicle: one of the two is
+  // wrong, and the closure is not taken on its own word.
   const VisualInertialClonePose believed = pose({0.6, 3.4, -0.1}, 8.0 * kDegree);
   const StereoLoopClosureReport report = comeBack(room(), kTruth, believed, true);
   EXPECT_STREQ(report.outcome, "innovation") << StereoLoopClosure::summary(report);
   EXPECT_FALSE(report.accepted);
   EXPECT_NEAR(report.innovation_m, 3.0, 0.2);
+  EXPECT_TRUE(report.target.translation.isZero());
+  EXPECT_EQ(report.closures, 0U);
+}
+
+TEST(StereoLoopClosureTest, APlaceThatAnswersFromTwoKeyframesClosesNoLoop) {
+  // The same view laid at two keyframes 1.2 m apart, as a structure repeated
+  // at that period shows it. At the return both pass every gate, and they put
+  // the vehicle in two places: which of them is the place is not known.
+  StereoLoopClosure closure{config()};
+  const MapFrameOffset frame;
+  const std::vector<Surface> scene = room();
+  const VisualInertialClonePose home = pose(Eigen::Vector3d::Zero(), 0.0);
+  const cv::Mat left = render(scene, home, 0.0);
+  const cv::Mat right = render(scene, home, kBaselineM);
+  EXPECT_STREQ(closure.observe(0, left, right, home, frame, true).outcome, "none");
+  EXPECT_STREQ(
+      closure.observe(kSecond, left, right, pose({0.0, 1.2, 0.0}, 0.0), frame, true)
+          .outcome,
+      "none");
+  const cv::Mat blank(kHeight, kWidth, CV_8U, cv::Scalar{128});
+  for (int step = 1; step <= 35; ++step) {
+    EXPECT_EQ(closure
+                  .observe((step + 1) * kSecond, blank, blank,
+                           pose({-1.0 * step, 0.0, 0.0}, 0.0), frame, true)
+                  .candidates,
+              0U);
+  }
+  const StereoLoopClosureReport report = closure.observe(
+      40 * kSecond, render(scene, kTruth, 0.0), render(scene, kTruth, kBaselineM),
+      pose({0.9, 0.5, -0.05}, 8.5 * kDegree), frame, true);
+  EXPECT_STREQ(report.outcome, "ambiguous") << StereoLoopClosure::summary(report);
+  EXPECT_EQ(report.candidates, 2U);
+  EXPECT_FALSE(report.accepted);
   EXPECT_TRUE(report.target.translation.isZero());
   EXPECT_EQ(report.closures, 0U);
 }

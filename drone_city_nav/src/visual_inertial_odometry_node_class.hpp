@@ -449,8 +449,8 @@ private:
     if (!estimate.healthy) {
       ++frames_without_estimate_;
     }
-    // The last keyframe's closure moves the frame's target before this frame
-    // follows it; this frame, when a keyframe, is read for the next one.
+    // A keyframe's closure moves the frame's target before this frame follows
+    // it; this frame, when a keyframe and none is being read, is read next.
     takeLoopReading();
     startLoopReading(pair.stamp_ns, rectified_pair, estimate.healthy);
     // The pose in the map's frame, as the autopilot receives it.
@@ -530,11 +530,12 @@ private:
   void takeDepthUpTo(std::int64_t stamp_ns);
 
   // Loop closure (roadmap item 41, visual_inertial_odometry_node_map.cpp): a
-  // keyframe is read beside the frame thread and its reading taken at the
-  // frame after it, the same frame in a flight and in its replay.
+  // keyframe is read beside the frame thread and its reading taken two frames
+  // after it, the same frame in a flight and in its replay.
   void startLoopReading(std::int64_t stamp_ns,
                         const std::array<cv::Mat, 2>& rectified_pair, bool healthy);
   void takeLoopReading();
+  void finishLoopReading();
   void loopFilterRestarted();
 
   // Specification K28: a filter lost in a hole of its IMU stream (r720,
@@ -677,6 +678,7 @@ private:
   std::unique_ptr<StereoLoopClosure> loop_closure_;
   bool loop_closure_act_{false};
   std::future<StereoLoopClosureReport> loop_reading_;
+  int loop_reading_frames_{0};
   Eigen::Vector3d left_camera_body_{Eigen::Vector3d::Zero()};
   std::unique_ptr<StereoFeatureTracker> tracker_;
   std::unique_ptr<AutopilotStateSource> autopilot_;

@@ -45,21 +45,30 @@ inline constexpr double kLoopMaximumDepthM{30.0};
 // A keyframe is a candidate when it is old (the window the filter still
 // holds and the path just flown are not a loop), near by the estimate, and
 // faced the same way: a view from within five metres, the drift bound added.
+// The ten nearest are read: with the three nearest alone a tenth fewer
+// keyframes found their closure (r4233: 134 against 156), and a place that
+// answers from two keyframes is known for what it is only when both are read.
 inline constexpr std::int64_t kLoopCandidateAgeNs{30'000'000'000};
 inline constexpr double kLoopCandidatePathM{30.0};
 inline constexpr double kLoopCandidateRadiusM{5.0};
 inline constexpr double kLoopCandidateHeadingRad{0.7854};
-inline constexpr std::size_t kLoopCandidates{3U};
+inline constexpr std::size_t kLoopCandidates{10U};
 // The estimate's own uncertainty, as measured and not as the filter states it
 // (its position sigma is 0.07 m after 500 m, r4223, against drifts of metres):
-// the drift between two passes within half a metre and one percent of the
-// path flown between them (the surveys with item 40's aids: 1.4 m at p95
-// over 1537 m, r4233; without them 2.3 m over 1173 m, r3191; the open sky
-// without the satellite signal 6.0 m over 1599 m, r4235), the heading within
-// five degrees (0.3 to 0.7 with the magnetometer's prior, 1 to 4 without).
-inline constexpr double kLoopDriftBaseM{0.5};
-inline constexpr double kLoopDriftPerPathM{0.01};
-inline constexpr double kLoopDriftHeadingRad{0.0873};
+// a closure farther from the estimate than item 40's registration reaches
+// (kMapCorrectionReachM, 1.5 m) or five degrees of heading is dropped. With
+// the registration acting the estimate stayed within 1.46 m of every right
+// closure over the 1.5 km of r4233, and a repeated structure that is not flat
+// (frames along a passage, 3.6 m apart: fourteen closures with 26 to 69
+// inliers and up to 57 of them off their plane) answered 3.3 to 4.1 m from
+// it. Where the estimate has drifted farther, no closure is taken: neither
+// the right one nor the one a period away.
+inline constexpr double kLoopInnovationM{kMapCorrectionReachM};
+inline constexpr double kLoopInnovationHeadingRad{0.0873};
+// The closures a keyframe reads from its candidates must put the vehicle in
+// one place: two that pass every gate and lie farther apart than this are a
+// place seen twice in the world, and none of them is taken.
+inline constexpr double kLoopAgreementM{0.5};
 // The descriptors: the nearest under 0.8 of the next nearest.
 inline constexpr float kLoopMatchRatio{0.8F};
 inline constexpr std::size_t kLoopMinimumMatches{12U};
@@ -110,7 +119,8 @@ struct StereoLoopClosureConfig {
 // truth (tools/loop_closures.py).
 struct StereoLoopClosureReport {
   // none (no candidate), few_matches, few_inliers, residual, planar, attitude,
-  // innovation, or accepted: the best candidate's.
+  // innovation, ambiguous (closures that disagree), or accepted: the best
+  // candidate's.
   const char* outcome{"none"};
   std::int64_t stamp_ns{0};
   std::int64_t matched_stamp_ns{0};

@@ -121,7 +121,8 @@ def main() -> int:
                   "off_plane": int(match.group(5)), "path_between": float(match.group(6)),
                   "innovation": float(match.group(7)), "ms": float(match.group(10)), "error_m": None,
                   "error_deg": None}
-        if record["inliers"] > 0 and outcome not in ("few_matches", "few_inliers"):
+        # A reading with a pose: every outcome past the inliers' count carries its measurement.
+        if outcome not in ("few_matches", "few_inliers"):
             shift = FLIP @ np.array([float(v) for v in match.group(8).split(",")])
             w, x, y, z = (float(v) for v in match.group(9).split(","))
             turn = FLIP @ rotation(w, x, y, z) @ FLIP

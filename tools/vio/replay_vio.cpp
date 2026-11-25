@@ -1,10 +1,13 @@
 // replay_vio DIR [key=value ...]: runs the stereo feature tracker and the visual-inertial filter over a record of record_vio.py.
 //   imu=px4|gz (default px4)   offset_ms=F  added to every frame stamp   every=N  use every N-th frame   start_s=T first frame not before T
 //   prior=0|1 gyro rotation prior for the tracker (default 1)   scale=1|2 image downscale   features=N   clones=N   noise_px=F
+//   closure=off|measure|act  the loop closures of roadmap item 41 (stereo_loop_closure.hpp): read (a VIO_LOOP_CLOSURE line
+//   a keyframe with a candidate, on stderr) or acted on, the written pose then in the frame the graph asks for (default off)
 // The declared initial pose is the true pose at the first used frame (the vehicle must be at rest there).
 // Output DIR/replay_<tag>.csv: stamp_s,px,py,pz,qw,qx,qy,qz,vx,vy,vz,tx,ty,tz,tqw,tqx,tqy,tqz,tracked,candidates,used,gated,untriangulated,rms,ms_track,ms_filter
 #include "drone_city_nav/visual_inertial_odometry.hpp"
 #include "stereo_feature_tracker.hpp"
+#include "stereo_loop_closure.hpp"
 #include "stereo_rectifier.hpp"
 #include <opencv2/imgproc.hpp>
 #include <chrono>
@@ -29,7 +32,7 @@ static std::vector<std::vector<std::string>> csv(const std::string& path) {
 }
 int main(int argc, char** argv) {
   const std::string dir = argv[1];
-  std::map<std::string, std::string> opt{{"imu", "px4"}, {"offset_ms", "0"}, {"every", "1"}, {"start_s", "0"}, {"prior", "1"}, {"imu_hole_from_s", "-1"}, {"imu_hole_to_s", "-1"}, {"reinit_error_m", "0.3"}, {"scale", "1"}, {"features", "200"}, {"clones", "12"}, {"noise_px", "1.0"}, {"tag", "run"}, {"end_s", "1e9"}, {"dark_from_s", "-1"}, {"dark_to_s", "-1"}, {"baro", "0"}, {"ramp_s", "0"}};
+  std::map<std::string, std::string> opt{{"imu", "px4"}, {"offset_ms", "0"}, {"every", "1"}, {"start_s", "0"}, {"prior", "1"}, {"imu_hole_from_s", "-1"}, {"imu_hole_to_s", "-1"}, {"reinit_error_m", "0.3"}, {"scale", "1"}, {"features", "200"}, {"clones", "12"}, {"noise_px", "1.0"}, {"tag", "run"}, {"end_s", "1e9"}, {"dark_from_s", "-1"}, {"dark_to_s", "-1"}, {"baro", "0"}, {"ramp_s", "0"}, {"closure", "off"}};
   for (int i = 2; i < argc; ++i) { std::string kv = argv[i]; auto eq = kv.find('='); opt[kv.substr(0, eq)] = kv.substr(eq + 1); }
   const double offset_s = std::atof(opt["offset_ms"].c_str()) * 1e-3; const int every = std::atoi(opt["every"].c_str()); const int scale = std::atoi(opt["scale"].c_str());
   // ENU/FLU truth -> NED/FRD
@@ -115,6 +118,11 @@ int main(int argc, char** argv) {
   config.observation_noise = std::atof(opt["noise_px"].c_str()) / focal;
   VisualInertialOdometry odometry{config};
   StereoFeatureTracker tracker{tracker_config};
+  // The loop closures on the pair as the tracker sees it; the frame offset they ask for is taken at once (no navigation follows it here).
+  std::optional<StereoLoopClosure> closure;
+  if (opt["closure"] != "off") closure.emplace(StereoLoopClosureConfig{.focal_px = tracker_config.focal_px, .principal_x_px = tracker_config.principal_x_px, .principal_y_px = tracker_config.principal_y_px,
+                                                                        .baseline_m = (config.right_camera.position_body_m - config.left_camera.position_body_m).norm(), .left_camera = config.left_camera});
+  MapFrameOffset closure_frame;
   std::FILE* left = std::fopen((dir + "/left.bin").c_str(), "rb"); std::FILE* right = std::fopen((dir + "/right.bin").c_str(), "rb");
   std::FILE* out = std::fopen((dir + "/replay_" + opt["tag"] + ".csv").c_str(), "w");
   std::fprintf(out, "stamp_s,px,py,pz,qw,qx,qy,qz,vx,vy,vz,tx,ty,tz,tqw,tqx,tqy,tqz,tracked,candidates,used,gated,untriangulated,rms,ms_track,ms_filter,bgx,bgy,bgz,bax,bay,baz\n");
@@ -169,8 +177,19 @@ int main(int argc, char** argv) {
       odometry.reinitialize(static_cast<std::int64_t>(stamp * 1e9), tr.p + Eigen::Vector3d{std::atof(opt["reinit_error_m"].c_str()), 0.0, 0.0}, tv, tr.q);
       std::fprintf(stderr, "REINITIALIZED t=%.3f\n", f.t);
     }
-    const VisualInertialEstimate e = odometry.addFrame(static_cast<std::int64_t>(stamp * 1e9), observations);
+    VisualInertialEstimate e = odometry.addFrame(static_cast<std::int64_t>(stamp * 1e9), observations);
     const auto t2 = std::chrono::steady_clock::now();
+    if (closure && e.healthy) {
+      const std::optional<VisualInertialClonePose> clone = odometry.clonePose(static_cast<std::int64_t>(stamp * 1e9));
+      if (clone && closure->due(*clone)) {
+        const StereoLoopClosureReport report = closure->observe(static_cast<std::int64_t>(stamp * 1e9), l, r, *clone, closure_frame, opt["closure"] == "act");
+        if (report.candidates > 0U) std::fprintf(stderr, "%s\n", StereoLoopClosure::summary(report).c_str());
+        closure_frame = report.target;
+      }
+    }
+    e.position_ned_m = closure_frame.apply(e.position_ned_m);
+    e.velocity_ned_mps = closure_frame.rotation() * e.velocity_ned_mps;
+    e.body_to_ned = Eigen::Quaterniond{closure_frame.rotation() * e.body_to_ned.toRotationMatrix()}.normalized();
     const Truth t = truthAt(f.t);
     std::fprintf(out, "%.6f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%zu,%zu,%zu,%zu,%zu,%.3f,%.2f,%.2f,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f\n", f.t,
                  e.position_ned_m.x(), e.position_ned_m.y(), e.position_ned_m.z(), e.body_to_ned.w(), e.body_to_ned.x(), e.body_to_ned.y(), e.body_to_ned.z(),

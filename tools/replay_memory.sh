@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# replay_memory.sh RUN TAG [RATE]: the stack of a recorded flight (log/runs/RUN/stack_bag) run again on its bag as
-# tools/replay_stack.sh runs it, with the obstacle memory's raw snapshots captured into
-# log/tools/replay/memory/RUN_TAG (scripts/capture_raw_snapshot_3d.py over the flight's own snapshot bounds): the
-# memory the checked-out code builds from the flight's frames and poses, to read against the memory the flight built
-# (roadmap item 11: the stereo memory's free rays, K72). Host; --inner runs in the container.
+# replay_memory.sh RUN|DIR TAG [RATE]: the stack of a recorded flight (log/runs/RUN/stack_bag, or a directory kept
+# with the bag, the flight's ros_launch_args.txt, its manifest.json and one of its raw snapshots, as a variant of
+# tools/replay_variant.sh with those two beside it) run again on its bag as tools/replay_stack.sh runs it, with the
+# obstacle memory's raw snapshots captured into log/tools/replay/memory/RUN_TAG (scripts/capture_raw_snapshot_3d.py
+# over the flight's own snapshot bounds): the memory the checked-out code builds from the flight's frames and poses,
+# to read against the memory the flight built (roadmap item 11: the stereo memory's free rays, K72; item 41: what a
+# loop closure does to the walls laid twice). A DIR that resolves outside the repository is mounted for the replay.
+# Host; --inner runs in the container.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if [[ "${1:-}" != "--inner" ]]; then
-  run=$1; tag=$2; rate=${3:-0.8}
-  [[ -d "log/runs/$run/stack_bag" ]] || { echo "no stack bag in log/runs/$run"; exit 1; }
+  tag=$2; rate=${3:-0.8}
+  if [[ -d "$1/stack_bag" ]]; then dir=${1%/}; run=$(basename "$dir"); else run=$1; dir="log/runs/$run"; fi
+  [[ -d "$dir/stack_bag" ]] || { echo "no stack bag in $dir"; exit 1; }
   mkdir -p "log/tools/replay/memory/${run}_${tag}"; touch log/tools/replay/.keep
+  inner="/workspace/$dir"; real=$(realpath "$dir")
+  if [[ "$real" != "$(pwd)/"* ]]; then export DATASETS_DIR="${real%/*}"; inner="/datasets/${real##*/}"; fi
   exec ./scripts/container_run.sh bash -lc "source /opt/ros/jazzy/setup.bash; source /workspace/install/setup.bash;
-    exec bash /workspace/tools/replay_memory.sh --inner $run $tag $rate"
+    exec bash /workspace/tools/replay_memory.sh --inner $run $tag $rate $inner"
 fi
 run=$2; tag=$3; rate=$4
-dir="/workspace/log/runs/$run"; bag="$dir/stack_bag"; out="/workspace/log/tools/replay/memory/${run}_${tag}"
+dir=$5; bag="$dir/stack_bag"; out="/workspace/log/tools/replay/memory/${run}_${tag}"
 navigation=stereo_tof; cameras=stereo_tof
 args=()
 while IFS= read -r argument; do

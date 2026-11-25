@@ -253,6 +253,14 @@ Reading StereoLoopClosure::Impl::read(const Keyframe& old, const std::size_t old
     }
   }
   const Eigen::Vector3d shift{shift_vector[0], shift_vector[1], shift_vector[2]};
+  // The new body in the old body's frame, through the camera's mount: the
+  // reading's measurement, whatever the gates below make of it.
+  const Eigen::Matrix3d new_camera_in_old = turn.transpose();
+  const Eigen::Vector3d new_camera_from_old = -turn.transpose() * shift;
+  const Eigen::Vector3d& mount = config_.left_camera.position_body_m;
+  reading.turn_body = camera_to_body_ * new_camera_in_old * camera_to_body_.transpose();
+  reading.shift_body =
+      camera_to_body_ * new_camera_from_old + mount - reading.turn_body * mount;
   // The new keyframe's own points against the old one's moved by the pose.
   reading.outcome = "residual";
   std::vector<double> ratios;
@@ -284,13 +292,6 @@ Reading StereoLoopClosure::Impl::read(const Keyframe& old, const std::size_t old
   if (reading.off_plane < kLoopMinimumOffPlane) {
     return reading;
   }
-  // The new body in the old body's frame, through the camera's mount.
-  const Eigen::Matrix3d new_camera_in_old = turn.transpose();
-  const Eigen::Vector3d new_camera_from_old = -turn.transpose() * shift;
-  const Eigen::Vector3d& mount = config_.left_camera.position_body_m;
-  reading.turn_body = camera_to_body_ * new_camera_in_old * camera_to_body_.transpose();
-  reading.shift_body =
-      camera_to_body_ * new_camera_from_old + mount - reading.turn_body * mount;
   // Roll and pitch by the closure against the filter's own at the new keyframe.
   reading.outcome = "attitude";
   const Eigen::Matrix3d old_attitude = old.pose.body_to_ned.toRotationMatrix();
@@ -305,7 +306,7 @@ Reading StereoLoopClosure::Impl::read(const Keyframe& old, const std::size_t old
     return reading;
   }
   // The edge in the old keyframe's heading frame, and what it disagrees by
-  // with the estimate: within the drift the path between them allows.
+  // with the estimate: within what the estimate may have drifted.
   reading.outcome = "innovation";
   const double old_yaw = yawOf(old_attitude);
   reading.edge = PoseGraphEdge{.from = old_index,
@@ -316,9 +317,8 @@ Reading StereoLoopClosure::Impl::read(const Keyframe& old, const std::size_t old
                                .shift_sigma_m = kLoopClosureSigmaM,
                                .turn_sigma_rad = kLoopClosureTurnSigmaRad};
   reading.innovation = graph_.residual(reading.edge);
-  if (reading.innovation.position.norm() >
-          kLoopDriftBaseM + kLoopDriftPerPathM * (current.path_m - old.path_m) ||
-      std::abs(reading.innovation.yaw_rad) > kLoopDriftHeadingRad) {
+  if (reading.innovation.position.norm() > kLoopInnovationM ||
+      std::abs(reading.innovation.yaw_rad) > kLoopInnovationHeadingRad) {
     return reading;
   }
   reading.outcome = "accepted";
@@ -398,15 +398,13 @@ StereoLoopClosure::observe(const std::int64_t stamp_ns, const cv::Mat& left,
     std::vector<std::pair<double, std::size_t>> near;
     for (std::size_t i = 0U; i < impl.keyframes_.size(); ++i) {
       const Keyframe& old = impl.keyframes_[i];
-      const double path_between = keyframe.path_m - old.path_m;
       if (old.descriptors.empty() || stamp_ns - old.stamp_ns < kLoopCandidateAgeNs ||
-          path_between < kLoopCandidatePathM) {
+          keyframe.path_m - old.path_m < kLoopCandidatePathM) {
         continue;
       }
       const PoseGraphPose& node = impl.graph_.node(i);
       const double distance = (node.position - placed.position).norm();
-      if (distance <= kLoopCandidateRadiusM + kLoopDriftBaseM +
-                          kLoopDriftPerPathM * path_between &&
+      if (distance <= kLoopCandidateRadiusM + kLoopInnovationM &&
           std::abs(wrapped(node.yaw_rad - placed.yaw_rad)) <=
               kLoopCandidateHeadingRad) {
         near.emplace_back(distance, i);
@@ -416,15 +414,28 @@ StereoLoopClosure::observe(const std::int64_t stamp_ns, const cv::Mat& left,
     near.resize(std::min(near.size(), kLoopCandidates));
     report.candidates = near.size();
     bool first = true;
+    // Where each closure puts the vehicle: they must agree (kLoopAgreementM).
+    std::vector<Eigen::Vector3d> places;
     for (const auto& [distance, old_index] : near) {
       const Reading reading =
           impl.read(impl.keyframes_[old_index], old_index, keyframe, index);
+      if (reading.accepted) {
+        const PoseGraphPose& node = impl.graph_.node(old_index);
+        places.emplace_back(node.position +
+                            aboutVertical(node.yaw_rad) * reading.edge.shift);
+      }
       // The closure with the most inliers; without one, the reading with the most.
       if (first || (reading.accepted && !best.accepted) ||
           (reading.accepted == best.accepted && reading.inliers > best.inliers)) {
         best = reading;
         best_index = old_index;
         first = false;
+      }
+    }
+    for (const Eigen::Vector3d& place : places) {
+      if ((place - places.front()).norm() > kLoopAgreementM) {
+        best.outcome = "ambiguous";
+        best.accepted = false;
       }
     }
   }
