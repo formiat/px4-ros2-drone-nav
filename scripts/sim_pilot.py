@@ -5,13 +5,15 @@ the pilot does, with the commands a radio or a ground station sends PX4. At the
 start it puts each vehicle in offboard and arms it once the offboard streams its
 setpoints; afterwards it never arms again. With --external-mode it flies the
 stack's own mode (specification K91) as a pilot flies a mode of PX4's: it arms
-in Takeoff, and once the autopilot has taken off (1.5 m over where it was armed
-and the climb stopped), it selects the stack's mode;
+in Takeoff, holds once the autopilot has taken off (1.5 m over where it was
+armed and the climb stopped), and after two seconds of Hold selects the stack's
+mode;
 an external mode cannot take off by itself (PX4's takeoff is the flight tasks',
 which run in no external mode), and one selected before the autopilot's takeoff
-has ended keeps that takeoff's wish to take off, which the autopilot never
-clears in an external mode: on the ground at the mission's end it spooled up
-again and again and never disarmed (r4199). A flight may carry a schedule of the
+has ended keeps that takeoff's wish to take off (vehicle_constraints, the flight
+tasks'), which the autopilot never clears in an external mode: on the ground at
+the mission's end it spooled up again and again and never disarmed (r4199,
+r4201). Hold, a flight task holding where the vehicle is, publishes no wish. A flight may carry a schedule of the
 pilot's and the operator's actions (PILOT_EVENTS), on the autopilot's clock (the
 simulation's, in lockstep):
 
@@ -51,6 +53,8 @@ TAKEOFF_NAV_STATE = 17
 # up before the climb read as stopped (r4200, the mode selected at 2 s).
 TAKEN_OFF_M = 1.5
 CLIMB_STOPPED_MPS = 0.1
+LOITER_NAV_STATE = 4
+HOLD_BEFORE_THE_MODE_S = 2.0
 # PX4's external modes: nav states 23 to 30, selected as AUTO (4) with the
 # sub modes 11 to 18 (commander px4_custom_mode.h, v1.17.0).
 FIRST_EXTERNAL_NAV_STATE = 23
@@ -177,6 +181,7 @@ def main() -> int:
             self.status: VehicleStatus | None = None
             self.ground_z: float | None = None  # NED, where the vehicle stood
             self.taken_off = False  # over TAKEN_OFF_M above it, the climb stopped
+            self.hold_since_s: float | None = None  # Hold after the takeoff, since
             self.started = False  # armed in offboard once: never armed again
             self.commands = node.create_publisher(
                 VehicleCommand, f"{prefix}/in/vehicle_command", px4_qos)
@@ -274,8 +279,12 @@ def main() -> int:
                     vehicle.set_mode("takeoff")
                 elif not armed:
                     vehicle.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+                elif status.nav_state == LOITER_NAV_STATE:
+                    vehicle.hold_since_s = vehicle.hold_since_s or clock_s()
+                    if clock_s() - vehicle.hold_since_s >= HOLD_BEFORE_THE_MODE_S:
+                        vehicle.set_mode("external")
                 elif vehicle.taken_off:
-                    vehicle.set_mode("external")
+                    vehicle.set_mode("hold")
                 continue
             if status.nav_state != start:
                 vehicle.set_mode("offboard")

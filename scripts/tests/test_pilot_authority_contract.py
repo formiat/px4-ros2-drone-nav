@@ -137,9 +137,16 @@ class PilotAuthorityContractTest(unittest.TestCase):
         self.assertEqual((4, 2), PILOT.MODES["takeoff"])
         self.assertEqual(17, PILOT.TAKEOFF_NAV_STATE)
         self.assertEqual((1.5, 0.1), (PILOT.TAKEN_OFF_M, PILOT.CLIMB_STOPPED_MPS))
+        # Through Hold: a mode selected while the takeoff wishes to take off
+        # keeps the wish, and the autopilot never disarms on the ground.
+        self.assertEqual((4, 2.0), (PILOT.LOITER_NAV_STATE, PILOT.HOLD_BEFORE_THE_MODE_S))
         self.assertIn(
+            "                elif status.nav_state == LOITER_NAV_STATE:\n"
+            "                    vehicle.hold_since_s = vehicle.hold_since_s or clock_s()\n"
+            "                    if clock_s() - vehicle.hold_since_s >= HOLD_BEFORE_THE_MODE_S:\n"
+            '                        vehicle.set_mode("external")\n'
             "                elif vehicle.taken_off:\n"
-            '                    vehicle.set_mode("external")\n',
+            '                    vehicle.set_mode("hold")\n',
             pilot,
         )
         self.assertIn(
