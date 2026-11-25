@@ -132,20 +132,21 @@ class PilotAuthorityContractTest(unittest.TestCase):
         self.assertEqual(25, PILOT.external_nav_state((1 << 25) | (1 << 31)))
         self.assertEqual(11, PILOT.FIRST_EXTERNAL_SUB_MODE)
         # An external mode cannot take off: the pilot arms in Takeoff and
-        # selects the stack's mode once the land detector reads it airborne.
+        # selects the stack's mode once the autopilot's takeoff has ended.
         pilot = PILOT_PATH.read_text(encoding="utf-8")
         self.assertEqual((4, 2), PILOT.MODES["takeoff"])
         self.assertEqual(17, PILOT.TAKEOFF_NAV_STATE)
+        self.assertEqual((1.5, 0.1), (PILOT.TAKEN_OFF_M, PILOT.CLIMB_STOPPED_MPS))
         self.assertIn(
-            "                elif vehicle.airborne and not vehicle.climbing:\n"
+            "                elif vehicle.taken_off:\n"
             '                    vehicle.set_mode("external")\n',
             pilot,
         )
         self.assertIn(
-            "self.airborne = not detected.landed and not detected.maybe_landed", pilot
+            "                              and position.z < self.ground_z - TAKEN_OFF_M\n"
+            "                              and abs(position.vz) < CLIMB_STOPPED_MPS)\n",
+            pilot,
         )
-        self.assertIn("self.climbing = not abs(position.vz) < CLIMB_STOPPED_MPS", pilot)
-        self.assertEqual(0.1, PILOT.CLIMB_STOPPED_MPS)
 
     def test_an_injected_fault_stops_and_resumes_the_named_process_alone(self) -> None:
         # Specification K90: the failsafe ladder's rungs are entered by a hung

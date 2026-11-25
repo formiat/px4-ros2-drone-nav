@@ -5,8 +5,8 @@ the pilot does, with the commands a radio or a ground station sends PX4. At the
 start it puts each vehicle in offboard and arms it once the offboard streams its
 setpoints; afterwards it never arms again. With --external-mode it flies the
 stack's own mode (specification K91) as a pilot flies a mode of PX4's: it arms
-in Takeoff, and once the autopilot has taken off (its land detector reads the
-vehicle off the ground and the climb has stopped), it selects the stack's mode;
+in Takeoff, and once the autopilot has taken off (1.5 m over where it was armed
+and the climb stopped), it selects the stack's mode;
 an external mode cannot take off by itself (PX4's takeoff is the flight tasks',
 which run in no external mode), and one selected before the autopilot's takeoff
 has ended keeps that takeoff's wish to take off, which the autopilot never
@@ -44,8 +44,12 @@ from pathlib import Path
 MODES = {"offboard": (6, 0), "hold": (4, 3), "land": (4, 6), "posctl": (3, 0), "takeoff": (4, 2)}
 OFFBOARD_NAV_STATE = 14
 TAKEOFF_NAV_STATE = 17
-# The climb has stopped: PX4's Takeoff holds at its height (r4198: the wish to
-# take off cleared at 0.26 m/s, the climb under 0.05 m/s 3 s later).
+# The autopilot's takeoff has ended: over the height a climb has begun by and
+# no longer climbing, where PX4's Takeoff holds (MIS_TAKEOFF_ALT, 2.5 m; r4198:
+# the wish to take off cleared at 2.3 m and 0.26 m/s, the climb under 0.05 m/s
+# 3 s later). Off the ground by the land detector alone, the motors spooling
+# up before the climb read as stopped (r4200, the mode selected at 2 s).
+TAKEN_OFF_M = 1.5
 CLIMB_STOPPED_MPS = 0.1
 # PX4's external modes: nav states 23 to 30, selected as AUTO (4) with the
 # sub modes 11 to 18 (commander px4_custom_mode.h, v1.17.0).
@@ -144,8 +148,8 @@ def main() -> int:
     args = parser.parse_args()
     events = parse_events(args.events)
     import rclpy
-    from px4_msgs.msg import (ManualControlSetpoint, VehicleCommand, VehicleLandDetected,
-                              VehicleLocalPosition, VehicleStatus)
+    from px4_msgs.msg import (ManualControlSetpoint, VehicleCommand, VehicleLocalPosition,
+                              VehicleStatus)
     from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -171,8 +175,8 @@ def main() -> int:
             self.name = namespace or "px4"
             self.system = index + 1
             self.status: VehicleStatus | None = None
-            self.airborne = False  # the autopilot's land detector: off the ground
-            self.climbing = True  # the vertical speed over CLIMB_STOPPED_MPS
+            self.ground_z: float | None = None  # NED, where the vehicle stood
+            self.taken_off = False  # over TAKEN_OFF_M above it, the climb stopped
             self.started = False  # armed in offboard once: never armed again
             self.commands = node.create_publisher(
                 VehicleCommand, f"{prefix}/in/vehicle_command", px4_qos)
@@ -181,17 +185,18 @@ def main() -> int:
             node.create_subscription(VehicleStatus, f"{prefix}/out/vehicle_status_v1",
                                      self.on_status, px4_qos)
             if args.external_mode:
-                node.create_subscription(VehicleLandDetected, f"{prefix}/out/vehicle_land_detected",
-                                         self.on_land_detected, px4_qos)
                 node.create_subscription(VehicleLocalPosition,
                                          f"{prefix}/out/vehicle_local_position_v1",
                                          self.on_local_position, px4_qos)
 
         def on_local_position(self, position: VehicleLocalPosition) -> None:
-            self.climbing = not abs(position.vz) < CLIMB_STOPPED_MPS
-
-        def on_land_detected(self, detected: VehicleLandDetected) -> None:
-            self.airborne = not detected.landed and not detected.maybe_landed
+            armed = (self.status is not None
+                     and self.status.arming_state == VehicleStatus.ARMING_STATE_ARMED)
+            if not armed:
+                self.ground_z = position.z
+            self.taken_off = (self.ground_z is not None
+                              and position.z < self.ground_z - TAKEN_OFF_M
+                              and abs(position.vz) < CLIMB_STOPPED_MPS)
 
         def on_status(self, status: VehicleStatus) -> None:
             previous = self.status
@@ -269,7 +274,7 @@ def main() -> int:
                     vehicle.set_mode("takeoff")
                 elif not armed:
                     vehicle.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-                elif vehicle.airborne and not vehicle.climbing:
+                elif vehicle.taken_off:
                     vehicle.set_mode("external")
                 continue
             if status.nav_state != start:
