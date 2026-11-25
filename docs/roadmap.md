@@ -1929,8 +1929,24 @@ analogs ([related_work.md](related_work.md)) and the owner's discussions of
 
 - **An external PX4 mode** (px4-ros2-interface-lib): the stack as a mode the
   pilot switches on and off, known to PX4's failsafes.
+  **Built on 2026-11-24, a flag** (`px4_external_mode`; specification K91; the
+  code of `8eb1f2fe`, the pilot's way of `19531f4b`). Not yet in a release
+  (after v0.8.0). The mode registers ("Drone City Nav", nav state 23), the
+  pilot flies it through PX4's Takeoff and switches it off with any mode of
+  PX4's (r4211: Land, the stack released and silent). The Urban five and five
+  through it (r4212 to r4222): no contact, the lidar 2.278 m/s with every goal
+  within 0.58 m, the stereo set 1.355 with two goals acknowledged 2.2 m off by
+  the estimate's drift: the default stays offboard until an A/B of the stereo
+  set separates the cause (the register).
 - **A staged failsafe**: hover, emergency landing, landing without an
   estimator, motors off; a safety area.
+  **Done on 2026-11-24, but for the safety area** (`7e530521`; specification
+  K90). Not yet in a release (after v0.8.0). One ladder of four rungs, each
+  entered and left by measurement; flown a rung a flight on each set with a
+  planner or an estimator hung (r4204 to r4209), no contact; before it a hung
+  lidar estimator ended in a rotor on the staging area's base at 3.3 m/s
+  (r4196). The safety area is not built: it needs a position the failsafe can
+  trust, the autopilot's geofence's (docs/px4_parameters.md).
 - **A flight supervisor of its own process**: the safety of item 27's block 1
   (arming, the pilot's priority, the battery, the geofence, the lost link, the
   planner's heartbeat) independent of what it watches, speaking MAVLink to the

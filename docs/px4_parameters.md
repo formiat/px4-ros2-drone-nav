@@ -16,6 +16,7 @@ specification K34).
 | `CBRK_SUPPLY_CHK` | 894281 (check off) | 0 (check on) | the simulated vehicle has no power module to check |
 | `COM_RC_IN_MODE` | 1 (joystick only) | 0 (radio) | the simulation has no radio; its evaluation pilot (`scripts/sim_pilot.py`) sends PX4 the commands a radio or a ground station would |
 | `NAV_RCL_ACT`, `NAV_DLL_ACT` | PX4's defaults (the simulation sets `NAV_DLL_ACT 0`, as the default) | PX4's defaults | the stack never overrides the autopilot's own reaction to a lost link: it sees it, reports it and lets PX4 act (K29) |
+| `MIS_TAKEOFF_ALT` | PX4's default, 2.5 m | PX4's default | through the stack's own mode (specification K91) the pilot takes off in PX4's Takeoff to this height and enters the mode two seconds after it is within 0.2 m of it; the stack's own takeoff climbs 2 m in offboard |
 | `COM_OF_LOSS_T` | scaled with the simulation's speed factor by PX4's own startup | 1.0 s | PX4's default |
 | Geofence `GF_*` | off | on, as an example the size of the location, holding at the fence | PX4 evaluates the fence on a global position: in a GNSS-denied flight it is not evaluated, and the mission's own flight envelope bounds the flight |
 | `SIM_BAT_*` | the simulated battery full (`SIM_BAT_MIN_PCT 100`), or drained over `MAIN_BATTERY_DRAIN_S` | none | PX4's battery simulator reports neither current nor time left and drained to its 50 % floor in a minute; the mission's return on the main battery (K32) is flown with it drained on purpose |

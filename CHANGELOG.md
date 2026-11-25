@@ -6,6 +6,19 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A failsafe ladder** (roadmap item 44, specification K90): hover, the landing where the vehicle stands, the landing
+  without an estimate, motors off, each rung entered and left by what is measured. A position source heard once and
+  silent for half a second is dead reckoning: the lidar's hung estimator had been answered by nothing and a rotor met
+  the staging area's base at 3.3 m/s (r4196). A planner lost for five seconds is answered by the mission's own landing,
+  given up if the planner returns, in place of the autopilot's land mode, which left the vehicle armed on the ground.
+  Flown a rung a flight on each set (r4204 to r4209), no contact. The evaluation pilot's schedule hangs an onboard
+  process and lets it go on (`PILOT_EVENTS` `fault:stop:NODE@T`, `fault:resume:NODE@T`).
+- **The stack as a mode of PX4's own, a flag** (roadmap item 44, specification K91; `px4_external_mode`,
+  `PX4_EXTERNAL_MODE=true`): registered through px4-ros2-interface-lib (Auterion, BSD-3-Clause, `b6d52ad1`,
+  `scripts/setup_px4_ros2_interface_lib.sh`, built beside the package), selected and left by the pilot, known to the
+  autopilot's arming checks and failsafe; the stack still commands no mode. The evaluation pilot flies it through
+  PX4's Takeoff. The Urban five and five through it: no contact, the lidar accepted, the stereo set with two goals
+  off by the estimate's drift; the default stays offboard.
 - **A refused commit says why its latest-evidence revalidation refused** (roadmap item 43 point 5; the clauses,
   the function and the test are naipi11's, `b7b2a6d2` in the form of `d7ed1713`). `evidence_not_current` could not
   tell a published path that met new evidence, a stop the world asked for, from a sweep that could not be made,
