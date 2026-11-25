@@ -1698,7 +1698,11 @@ if(BUILD_TESTING)
                         drone_city_nav_ros_adapters)
   enable_project_warnings(execution_horizon_contract_ros_test)
 
-  ament_add_gtest(lidar_inertial_odometry_test tests/lidar_inertial_odometry_test.cpp)
+  # The synthetic flights take 10 s on the development host and over the
+  # default 60 s under arm64 emulation (the CI job's command run under QEMU,
+  # roadmap item 46), as the visual-inertial test's below.
+  ament_add_gtest(lidar_inertial_odometry_test tests/lidar_inertial_odometry_test.cpp
+                  TIMEOUT 600)
   target_compile_features(lidar_inertial_odometry_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_inertial_odometry_test drone_city_nav_localization)
   enable_project_warnings(lidar_inertial_odometry_test)

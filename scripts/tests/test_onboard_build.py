@@ -41,6 +41,9 @@ class OnboardBuildContractTest(unittest.TestCase):
         self.assertIn("--target dev", (REPOSITORY / "scripts/build_dev_image.sh").read_text())
         script = (REPOSITORY / "tools/onboard_image.sh").read_text()
         self.assertIn("-DDRONE_CITY_NAV_ENABLE_SIMULATION=OFF", script)
+        # The package's options reach the package alone: px4_ros2_cpp is built before it without them.
+        self.assertIn("build --packages-select px4_ros2_cpp \\\n", script)
+        self.assertIn("build --packages-select drone_city_nav \\\n", script)
         self.assertIn("--arm64) arch=arm64; platform=linux/arm64; cuda=off", script)
 
 
