@@ -723,10 +723,16 @@ its goal (`NavigationProgress`) and the monitor's events.
   flood's box (`left_domain`): by the planner's own map the cluster lies
   outside the reachable component. There is no list of frontiers tried.
 - **Outside the box** no reading places the vehicle, so none chooses a
-  frontier or ends the survey: the vehicle is called back to where it last
-  stood inside the box, once for each time out (`SURVEY_RECALL`), and the
-  readings go on from there (r4255, r4256: without the call the planner
-  flew on to the last vantage through 1.0 and 1.4 km of a cave's tunnels).
+  frontier or ends the survey: with no cluster chosen, a vehicle outside
+  the box or one the latest reading did not place is called back to the
+  last vantage it reached (before the first one, to where the survey chose
+  its first cluster), once until a reading places it again
+  (`SURVEY_RECALL`), and the readings go on from there (r4255, r4256:
+  without the call the planner flew on to the last vantage through 1.0 and
+  1.4 km of a cave's tunnels). The point is one the vehicle has stood at,
+  off the walls; the last pose inside the box lies on its face and
+  wherever the way crossed it (r4261: a hold of 172 s within a wall's
+  clearance, and a contact).
 - **The end**: a complete reading with no frontier, or three complete
   readings in a row with frontiers but no cluster that has a vantage, is
   `SURVEY_DONE` (a vantage comes and goes with the vehicle's position and

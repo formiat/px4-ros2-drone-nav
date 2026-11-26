@@ -7,9 +7,11 @@ release names the asset tags it was validated with.
 ## Unreleased
 
 - **The survey calls a vehicle back into its box** (specification K59): a vehicle whose way to a vantage led out of the
-  flood's box (the volume and 40 m) had no reading, no end and the last goal to fly to; it is now called back to
-  where it last stood inside, once for each time out (`SURVEY_RECALL`). Found on the cave's lidar surveys r4255 and
-  r4256, which flew 1.0 and 1.4 km of tunnels away from their volume and never ended.
+  flood's box (the volume and 40 m) had no reading, no end and the last goal to fly to; with no cluster chosen it is
+  now called back to the last vantage it reached, once until a reading places it again (`SURVEY_RECALL`). Found on
+  the cave's lidar surveys r4255 and r4256, which flew 1.0 and 1.4 km of tunnels away from their volume and never
+  ended. The first version of the call, to the last pose inside the box, parked r4261 on the box's face within a
+  wall's clearance, where it touched the wall.
 - **A flight whose simulated autopilot lost its IMU stream is void** (specification A15): the mission check prints
   `VOID: autopilot lost its IMU stream in flight` on the autopilot's own `Accel #N fail: TIMEOUT`, and the flight is
   flown again (r4256: a hole of 140 ms, the autopilot's height left the truth and the vehicle sank onto the floor

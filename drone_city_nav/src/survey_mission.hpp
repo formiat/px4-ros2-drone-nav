@@ -242,10 +242,11 @@ private:
   std::size_t looked_cells_{0U};
   Point3 last_passed_position_{};
   bool passed_any_{false};
-  // Where the vehicle last stood inside the flood's box, and whether it has
-  // been called back there since it left.
-  Point3 last_inside_position_{};
-  bool inside_seen_{false};
+  // Where a vehicle no reading places is called back to: the last vantage it
+  // reached, before the first one where it stood when the survey chose its
+  // first cluster; and whether it has been called since a reading placed it.
+  Point3 recall_point_{};
+  bool recall_point_known_{false};
   bool recalled_{false};
   std::size_t recalls_{0U};
   bool done_{false};

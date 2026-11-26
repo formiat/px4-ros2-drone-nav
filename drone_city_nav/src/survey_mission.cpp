@@ -34,11 +34,7 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   position_valid_ = true;
   yaw_rad_ = yaw_rad;
   heading_valid_ = heading_valid;
-  if (insideDomain(position)) {
-    last_inside_position_ = position;
-    inside_seen_ = true;
-    recalled_ = false;
-  } else if (target_.has_value()) {
+  if (target_.has_value() && !insideDomain(position)) {
     target_left_domain_ = true;
   }
   // The body's passage: the cells within its radius of a position a lattice
@@ -171,6 +167,9 @@ void SurveyMission::applyReading(SurveyReading reading) {
     } else {
       largest_component_ = std::max(largest_component_, reading.reachable_voxels);
     }
+  }
+  if (reading.vehicle_placed) {
+    recalled_ = false;
   }
   reading_ = std::move(reading);
   ++readings_;
@@ -313,6 +312,7 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       ++unroutable_;
       finishTarget("unroutable", out);
     } else if (phase_ == Phase::kApproach && reached(target_->vantage)) {
+      recall_point_ = target_->vantage;
       phase_ = Phase::kLook;
       reached_ns_ = now_ns;
     } else if (phase_ == Phase::kLook &&
@@ -351,18 +351,23 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       finishTarget("unreachable", out);
     }
   }
-  if (!target_.has_value() && position_valid_ && inside_seen_ &&
-      !insideDomain(position_)) {
-    // Outside the flood's box no reading places the vehicle: none chooses a
-    // frontier, none ends the survey, and the planner flies on to the last
-    // goal it was given (r4255 and r4256: 1.0 and 1.4 km of a cave's tunnels
-    // away from the volume, the survey never ended). The vehicle is called
-    // back to where it last stood inside the box, once for each time out.
+  if (!target_.has_value() && position_valid_ && recall_point_known_ &&
+      (!insideDomain(position_) || !reading_->vehicle_placed)) {
+    // Outside the flood's box, and wherever a reading does not place the
+    // vehicle, none chooses a frontier and none ends the survey, and the
+    // planner flies on to the last goal it was given (r4255 and r4256: 1.0
+    // and 1.4 km of a cave's tunnels away from the volume, the survey never
+    // ended). The vehicle is called back to the last vantage it reached, or
+    // to where the survey began: a point it has already stood at, off the
+    // walls and inside the box. The last pose inside the box is none: it lies
+    // on the box's face, where the next reading does not place the vehicle
+    // either, and wherever the way happened to cross it (r4261: held there
+    // 172 s within a wall's clearance, and touched the wall).
     if (!recalled_) {
       recalled_ = true;
       ++recalls_;
       out.command = SurveyCommand::kGoal;
-      out.goal = last_inside_position_;
+      out.goal = recall_point_;
       std::array<char, 192U> line{};
       std::snprintf(line.data(), line.size(),
                     "SURVEY_RECALL position=(%.2f,%.2f,%.2f) goal=(%.2f,%.2f,%.2f) "
@@ -376,6 +381,10 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
   if (!target_.has_value()) {
     if (!reading_->frontiers.empty()) {
       readings_without_vantage_ = 0U;
+      if (!recall_point_known_ && position_valid_) {
+        recall_point_ = position_;
+        recall_point_known_ = true;
+      }
       target_ = reading_->frontiers.front();
       phase_ = Phase::kApproach;
       target_looked_ = false;

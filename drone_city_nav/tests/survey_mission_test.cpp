@@ -240,8 +240,7 @@ TEST(SurveyMissionTest,
   EXPECT_LT(passed.frontier_cells, unchosen.frontier_cells);
 }
 
-TEST(SurveyMissionTest,
-     AVehicleOutsideTheFloodsBoxIsCalledBackToWhereItLastStoodInside) {
+TEST(SurveyMissionTest, AVehicleNoReadingPlacesIsCalledBackToItsLastVantage) {
   const ObservedOccupancyGrid3D grid = room(true);
   const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
   ASSERT_EQ(reading.frontiers.size(), 1U);
@@ -250,25 +249,30 @@ TEST(SurveyMissionTest,
   mission.recordPose(kVehicle, 0.0, true, kSecond);
   mission.applyReading(reading);
   ASSERT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
-  // The planner's way led out of the box (the volume and 40 m round it): the
-  // cluster is settled and the vehicle called back to its last pose inside.
-  const Point3 edge{55.0, 6.0, 2.5};
+  // The planner's way led out of the box (the volume and 40 m): the cluster
+  // is settled, and the vehicle, which has reached no vantage yet, is called
+  // back to where the survey chose its first cluster.
   const Point3 outside{60.0, 6.0, 2.5};
-  mission.recordPose(edge, 0.0, true, 30 * kSecond);
   mission.recordPose(outside, 0.0, true, 31 * kSecond);
-  // No reading places a vehicle out there.
-  EXPECT_FALSE(readSurvey(grid, outside, config(), {}, {}).vehicle_placed);
+  const SurveyReading unplaced = readSurvey(grid, outside, config(), {}, {});
+  EXPECT_FALSE(unplaced.vehicle_placed);
   const SurveyStep recalled = mission.step(31 * kSecond);
   EXPECT_EQ(recalled.command, SurveyCommand::kGoal);
-  EXPECT_NEAR(recalled.goal.x, edge.x, 1.0e-9);
+  EXPECT_NEAR(recalled.goal.x, kVehicle.x, 1.0e-9);
+  EXPECT_NEAR(recalled.goal.y, kVehicle.y, 1.0e-9);
   ASSERT_EQ(recalled.events.size(), 2U);
   EXPECT_EQ(recalled.events.front().rfind("SURVEY_FRONTIER left_domain", 0), 0U);
   EXPECT_EQ(recalled.events.back().rfind("SURVEY_RECALL", 0), 0U);
-  // Once, while it stays out; and again after it has been in and out anew.
+  // Once, until a reading places the vehicle again: on the box's face it is
+  // inside by its position and still not placed.
+  mission.applyReading(unplaced);
   EXPECT_EQ(mission.step(32 * kSecond).command, SurveyCommand::kNone);
-  mission.recordPose(edge, 0.0, true, 40 * kSecond);
-  mission.recordPose(outside, 0.0, true, 41 * kSecond);
-  EXPECT_EQ(mission.step(41 * kSecond).command, SurveyCommand::kGoal);
+  mission.recordPose(Point3{55.0, 6.0, 2.5}, 0.0, true, 33 * kSecond);
+  EXPECT_EQ(mission.step(33 * kSecond).command, SurveyCommand::kNone);
+  // Placed again, with nothing left to look at: the survey ends.
+  mission.recordPose(kVehicle, 0.0, true, 60 * kSecond);
+  mission.applyReading(readSurvey(grid, kVehicle, config(), mission.looked(), {}));
+  EXPECT_EQ(mission.step(61 * kSecond).command, SurveyCommand::kHome);
 }
 
 // A 16 x 12 x 14 m box: the room of 8 x 8 x 4 m with its door high up (9 to
