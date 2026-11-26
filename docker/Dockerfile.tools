@@ -35,3 +35,61 @@ RUN mkdir -p /opt/fast_lio_ws/src && cd /opt/fast_lio_ws/src \
     && bash -c "source /opt/ros/jazzy/setup.bash && colcon build --event-handlers console_direct- \
          --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=jazzy -DCMAKE_BUILD_TYPE=Release"
 RUN echo 'source /opt/ros/jazzy/setup.bash; source /opt/fast_lio_ws/install/setup.bash' > /etc/profile.d/tools.sh
+
+# The references that close loops (roadmap item 41 stage 3), each in a stage and an image of its own
+# (drone-gazebo-tools:orbslam3, :kimera; tools/tools_image.sh STAGE) on the Ubuntu its authors build on, beside
+# OpenVINS, which does not close loops. Offline tools: nothing of them is linked into or copied to the package
+# (ORB-SLAM3 is GPLv3; Kimera-VIO and Kimera-RPGO are BSD-licensed).
+#
+# ORB-SLAM3 (UZ-SLAMLab/ORB_SLAM3, V1.0; GPLv3) with Pangolin v0.6, which its viewer links and no run here opens.
+FROM ubuntu:20.04 AS orbslam3
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake git ca-certificates pkg-config \
+      libeigen3-dev libopencv-dev libboost-serialization-dev libboost-dev libssl-dev \
+      libglew-dev libgl1-mesa-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev wayland-protocols \
+      python3 python3-numpy \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch v0.6 https://github.com/stevenlovegrove/Pangolin /opt/Pangolin \
+    && cd /opt/Pangolin && mkdir build && cd build \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF -DBUILD_TOOLS=OFF -DBUILD_TESTS=OFF .. \
+    && make -j"$(nproc)" && make install && ldconfig
+# C++14: Pangolin's headers need it, the project asks for C++11. OpenCV 4.2 is the distribution's; the project asks
+# for 4.4 and builds against 4.2 unchanged.
+RUN git clone --depth 1 https://github.com/UZ-SLAMLab/ORB_SLAM3 /opt/ORB_SLAM3 \
+    && cd /opt/ORB_SLAM3 && git rev-parse HEAD > /opt/orbslam3_commit \
+    && sed -i 's/++11/++14/g' CMakeLists.txt \
+    && sed -i 's/OpenCV 4.4/OpenCV 4.2/' CMakeLists.txt Thirdparty/DBoW2/CMakeLists.txt \
+    && sed -i "s/make -j4/make -j$(nproc)/; s/make -j\$/make -j$(nproc)/" build.sh \
+    && chmod +x build.sh && ./build.sh
+
+# Kimera-VIO (MIT-SPARK/Kimera-VIO; BSD 2-Clause) with its loop closure (Kimera-RPGO), by the steps of its own
+# scripts/docker/Dockerfile: GTSAM 4.2, OpenGV (eight compilers at a time: its templates take gigabytes each), DBoW2
+# with the project's vocabulary patch.
+FROM ubuntu:20.04 AS kimera
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake gfortran git ca-certificates pkg-config \
+      libatlas-base-dev libboost-all-dev libeigen3-dev libgflags-dev libgoogle-glog-dev libmetis-dev \
+      libopencv-dev libopencv-contrib-dev libtbb-dev python3 python3-numpy \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch 4.2 https://github.com/borglab/gtsam.git /opt/gtsam \
+    && cd /opt/gtsam && mkdir build && cd build \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DGTSAM_BUILD_TESTS=OFF \
+         -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF -DCMAKE_BUILD_TYPE=Release -DGTSAM_BUILD_UNSTABLE=ON \
+         -DGTSAM_POSE3_EXPMAP=ON -DGTSAM_ROT3_EXPMAP=ON -DGTSAM_TANGENT_PREINTEGRATION=OFF \
+         -DGTSAM_USE_SYSTEM_EIGEN=ON -DGTSAM_USE_SYSTEM_METIS=ON .. \
+    && make -j"$(nproc)" install && ldconfig
+RUN git clone --depth 1 https://github.com/marcusabate/opengv /opt/opengv \
+    && cd /opt/opengv && git apply march_native_disable.patch && mkdir build && cd build \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .. \
+    && make -j8 install && ldconfig
+RUN git clone --depth 1 https://github.com/MIT-SPARK/Kimera-VIO.git /opt/Kimera-VIO \
+    && cd /opt/Kimera-VIO && git rev-parse HEAD > /opt/kimera_vio_commit
+RUN git clone --depth 1 https://github.com/dorian3d/DBoW2.git /opt/DBoW2 \
+    && cd /opt/DBoW2 && git apply /opt/Kimera-VIO/.patches/fix_vocab.patch && mkdir build && cd build \
+    && cmake .. && make -j"$(nproc)" install && ldconfig
+RUN git clone --depth 1 https://github.com/MIT-SPARK/Kimera-RPGO.git /opt/Kimera-RPGO \
+    && cd /opt/Kimera-RPGO && git rev-parse HEAD > /opt/kimera_rpgo_commit && mkdir build && cd build \
+    && cmake .. && make -j"$(nproc)" install && ldconfig
+RUN cd /opt/Kimera-VIO && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j"$(nproc)"

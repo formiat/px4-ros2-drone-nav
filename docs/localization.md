@@ -598,6 +598,71 @@ pose carrying nearly the same drift, and only cells laid long ago carry the
 difference. The registration lives in `src/stereo_map_registration.cpp` since
 then, unchanged in what it does.
 
+### Loop Closure
+
+Roadmap item 41, stages 1 and 2 (specification K92). The registration above
+reads the drift against the map within its reach of the estimate; what it
+cannot do is know a place again by its look. The estimator keeps a keyframe
+every metre of path or fifteen degrees of heading: up to a thousand ORB
+features of the left rectified image that have a match in the right one
+(descriptor, pixel, the point by the pair's disparity, within 30 m) and the
+filter's pose. Nothing else is remembered of a place.
+
+A new keyframe is read against the ten nearest old ones by the estimate
+(thirty seconds and thirty metres of path old, within 6.5 m, faced within 45
+degrees): the descriptors by the ratio test, the inliers by PnP with RANSAC,
+their pose in closed form from the two keyframes' own points, refined on the
+image. A closure is one measurement, taken or dropped each time anew:
+
+| Gate | Why |
+| --- | --- |
+| 25 inliers | below it the pose is not trusted (20 inliers let a closure 4 m off through) |
+| the new keyframe's own points against the old one's moved by the pose, within a quarter pixel of disparity | a pose the depth itself denies |
+| eight inliers off their common plane | a repeated flat surface answers with a pose shifted along itself by its period: 47 such closures on two recorded surveys, the turn right to a degree, the residual a centimetre, the shift 2.15 or 3.2 to 3.9 m off, every one with all its inliers in one plane |
+| roll and pitch within two degrees of the filter's | both are observed by gravity at both keyframes |
+| within 1.5 m and five degrees of the estimate (item 40's reach) | the estimate's drift as measured, not as the filter states it (0.07 m after 500 m); a structure repeated 3.6 m along a passage that is not flat answered 3.3 to 4.1 m from the estimate, the right closures within 1.46 m |
+| the closures of one keyframe within half a metre of one place | a place that answers from two keyframes is two places that look alike |
+
+A pose graph over the keyframes (four degrees of freedom, a small solver of
+our own on Eigen's sparse Cholesky) takes the closure: a node where the
+published frame put its keyframe, an edge from the keyframe before as the two
+were laid, the closure's edge. Nothing moves before the keyframe the closure
+returns to, where the memory already lies; the route since is brought to
+agree, and the newest node gives the frame offset the published pose then
+follows at the registration's bounded rate (0.2 m/s). The closure moves the
+position and leaves the heading: the magnetometer's prior holds the heading
+to 0.3 to 0.7 degrees over a flight, a closure reads it no better, and a
+graph that took the closures' headings swung the route by a metre.
+
+A keyframe is read on a thread of its own (100 to 180 ms at the median) and
+its reading is taken four frames later, the same frame in a flight and in
+its replay; `LOOP_CLOSURE=measure` reads without acting, `off` keeps no
+keyframe.
+
+On the recorded flights that return, replayed (`tools/replay_variant.sh DIR
+closure_act`, the estimate against the truth in the replay's `compare.txt`;
+the closures against the truth by `tools/loop_closures.py`):
+
+| Flight | Closures accepted | Wrong | Estimate against the truth as flown: median / 95th percentile / at the return | With the closures |
+| --- | --- | --- | --- | --- |
+| r4233, Urban survey, 1537 m | 146 | 0 | 1.02 / 1.37 / 1.10 m | 0.18 / 1.34 / 0.01 m |
+| r4234, Urban survey, 593 m | 13 | 0 | 0.18 / 0.55 / 0.22 m | 0.18 / 0.63 / 0.02 m |
+| r4235, open sky without the satellite signal, 1599 m | 0 | 0 | 2.13 / 6.05 / 2.02 m | the same |
+
+On the long survey the first closure, 1.1 m from the estimate at the 796th
+second, moves the frame and the error along the rest of the route falls from
+1.1 to 1.3 m to 0.1 to 0.3 m. The error gathered before the first return
+(0.7 to 1.0 m over the first 750 m) stays: a closure makes the estimate agree
+with its first pass, not with the truth. The open sky's loop holds no return
+within reach of a view it had (its second goal lies 12.5 m from the start
+and is approached 85 degrees off the take-off's view), and its near ground is
+one plane: nothing is closed there. Of the returns of the two surveys (again
+within 5 m and 45 degrees of a pose held before) 3 of 13 and 2 of 5 are
+covered by a closure; the others share under 25 inliers with what was seen.
+
+What a replay does not show is the obstacle memory: the replayed planner and
+memory read the autopilot's position as the flight recorded it.
+
 ### On Real Recordings (EuRoC MAV)
 
 Roadmap item 25: the camera estimator replayed on real recordings, with no
@@ -653,6 +718,53 @@ Ours is the reference's equal or better on the easy and the medium sequence
 and twice worse on the difficult one, where the reference's tracker holds
 through the motion blur of the dark fast passes. The machine hall sequences
 were not downloaded: the ETH server answered nothing on 2026-10-27.
+
+**The references that close loops (2026-11-26, roadmap item 41 stage 3).**
+ORB-SLAM3 (UZ-SLAMLab/ORB_SLAM3 at 4452a3c4, V1.0, its stereo-inertial EuRoC
+example and settings; GPLv3) and Kimera-VIO (MIT-SPARK/Kimera-VIO at ce8c59b7
+with Kimera-RPGO at d28b4df0, its EuRoC parameters, the loop closure detector
+on; BSD 2-Clause) stand beside ours with its loop closures
+([Loop closure](#loop-closure)), each in an image of its own
+(`tools/tools_image.sh orbslam3`, `tools/tools_image.sh kimera`; Ubuntu 20.04,
+as their authors build them). Nothing of either is linked into or copied to
+the package. `tools/vio/closure_references.sh` runs the three over the same
+three sequences and writes the table; the absolute trajectory error is
+`tools/vio/euroc_report.py`'s. The references start in frames of their own
+(ORB-SLAM3's is its first body frame, not level), so their trajectories are
+first laid on the reference by a rigid fit (`tools/vio/trajectory_csv.py`), a
+six-degree alignment; ours starts on the reference's pose and is aligned
+about the vertical alone, the harder of the two measures.
+
+| Sequence | Ours, closures off | Ours, closures on | ORB-SLAM3 | Kimera-VIO, its odometry | Kimera-VIO, its pose graph |
+| --- | --- | --- | --- | --- | --- |
+| V1_01_easy | 0.050 m | 0.042 m, 13 closures | 0.039 m, no loop detected | 0.059 m | 0.939 m, 31 closures kept of 207 |
+| V1_02_medium | 0.046 m | 0.046 m, 18 closures | 0.019 m, 1 loop closed | 0.058 m | 0.320 m, 36 of 79 |
+| V1_03_difficult | 0.129 m | 0.128 m, 15 closures | 0.025 m, 1 loop detected and refused | 0.090 m | 0.319 m, 9 of 49 |
+
+The room is 8 m across and the paths 59 to 79 m: an odometry drifts a
+decimetre there, and a closure has little to return. Ours takes 13 to 18
+closures a sequence and none moves the estimate off: the error at the end
+of the two easier sequences falls from 0.07 to 0.02 m and from 0.13 to
+0.06 m, the trajectory error by 0.008 m on the first and not at all on the
+others, where the error is the filter's own within a pass (the fast dark
+passes of V1_03). ORB-SLAM3 is the bar: 0.02 to 0.04 m, two to five times
+better than ours on the medium and difficult sequences, by its map and its
+bundle adjustment more than by its loops (none to one a sequence; the count
+differs between runs, the system is threaded). Kimera-VIO's odometry is
+ours' equal on the first two sequences and better on the third; the
+trajectory of its pose graph, with its parameters as shipped, is several
+times worse than its own odometry, the closures its outlier rejection keeps
+included, and is given as measured, not tuned.
+
+NTU VIRAL's eee_01 was turned into the same layout
+(`tools/vio/ntu_viral_to_asl.py`; ORB-SLAM3's settings by
+`tools/vio/orbslam3_settings.py`) and gave no figure: all three systems lose
+the estimate on it (ours tracks 10 to 46 corners where it asks for 200, uses
+features on a quarter of the frames and is restarted sixteen times;
+ORB-SLAM3 builds four maps and ends kilometres away; Kimera-VIO's smoother
+becomes indeterminate). Three unrelated estimators failing on one converted
+record say the conversion or the IMU's stated noise is at fault before any
+of them, and the row is not a measure of the estimators.
 
 ### On A Real Lidar Recording (NTU VIRAL)
 

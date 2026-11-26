@@ -2,7 +2,9 @@
 # build_replay_src.sh TRACKER_CPP OUT: inside the container, builds replay_vio against the repository's filter and the
 # given tracker source (the repository's or a variant); the binary OUT lands in log/tools/vio.
 mkdir -p /workspace/log/tools/vio && cd /workspace/log/tools/vio
-g++ -O2 -std=c++20 -I/workspace/drone_city_nav/src -I/workspace/drone_city_nav/include -I/usr/include/eigen3 $(pkg-config --cflags opencv4) /workspace/tools/vio/replay_vio.cpp /workspace/drone_city_nav/src/visual_inertial_odometry.cpp "$1" \
+g++ -O2 -std=c++20 -I/workspace/drone_city_nav/src -I/workspace/drone_city_nav/include -I/usr/include/eigen3 $(pkg-config --cflags opencv4) /workspace/tools/vio/replay_vio.cpp /workspace/drone_city_nav/src/visual_inertial_odometry.cpp \
+  /workspace/drone_city_nav/src/visual_inertial_odometry_update.cpp /workspace/drone_city_nav/src/visual_inertial_void.cpp \
+  /workspace/drone_city_nav/src/visual_inertial_gnss.cpp "$1" \
   /workspace/drone_city_nav/src/stereo_rectifier.cpp /workspace/drone_city_nav/src/stereo_loop_closure.cpp \
   /workspace/drone_city_nav/src/pose_graph_4dof.cpp -o "$2" \
   -lopencv_core -lopencv_imgproc -lopencv_video -lopencv_calib3d -lopencv_features2d 2>&1 | grep -E "error" | head -20

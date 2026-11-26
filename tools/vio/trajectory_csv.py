@@ -9,7 +9,10 @@ measures it as it measures ours (roadmap item 41 stage 3: the references that cl
 
 --truth is the sequence's reference in the ASL format (mav0/state_groundtruth_estimate0/data.csv: stamp_ns, the
 position, ...), interpolated at the trajectory's stamps; poses outside its span are left out (not needed for
-`replay`, which carries its own). --lever is a point of the body, in the body frame of that estimator, whose
+`replay`, which carries its own). A reference estimator starts in a frame of its own (ORB-SLAM3's is its first body
+frame, not even level): its trajectory is first laid on the reference by the rigid fit of the positions (a rotation
+and a shift, no scale), so that the report's figure for it is the absolute trajectory error after a six-degree
+alignment; ours starts on the reference's pose and is aligned about the vertical alone. --lever is a point of the body, in the body frame of that estimator, whose
 position is written in place of the body origin's: a reference measured at a prism off the body (NTU VIRAL) is
 compared with where the estimator puts the prism. Host.
 
@@ -61,12 +64,18 @@ def main() -> int:
         stamps_ns, positions, quaternions = table[:, 0], table[:, 1:4], table[:, 4:8]
     truth = np.loadtxt(options["truth"], delimiter=",", comments="#", usecols=range(4))
     inside = (stamps_ns >= truth[0, 0]) & (stamps_ns <= truth[-1, 0])
+    points = np.array([position + rotate(quaternion, lever)
+                       for position, quaternion in zip(positions[inside], quaternions[inside])])
+    references = np.column_stack([np.interp(stamps_ns[inside], truth[:, 0], truth[:, axis]) for axis in (1, 2, 3)])
+    # The rigid fit of the estimator's frame to the reference's (Kabsch, no scale).
+    centre, reference_centre = points.mean(axis=0), references.mean(axis=0)
+    u, _, vt = np.linalg.svd((references - reference_centre).T @ (points - centre))
+    turn = u @ np.diag([1.0, 1.0, np.sign(np.linalg.det(u @ vt))]) @ vt
+    points = (points - centre) @ turn.T + reference_centre
     written = 0
     with open(out, "w") as stream:
         stream.write(HEADER + "\n")
-        for stamp, position, quaternion in zip(stamps_ns[inside], positions[inside], quaternions[inside]):
-            point = position + rotate(quaternion, lever)
-            reference = [np.interp(stamp, truth[:, 0], truth[:, axis]) for axis in (1, 2, 3)]
+        for stamp, point, reference, quaternion in zip(stamps_ns[inside], points, references, quaternions[inside]):
             stream.write(f"{(stamp - stamps_ns[inside][0]) * 1.0e-9:.6f}," + ",".join(f"{v:.4f}" for v in point) + ","
                          + ",".join(f"{v:.6f}" for v in quaternion) + ",0,0,0,"
                          + ",".join(f"{v:.4f}" for v in reference) + ",1,0,0,0,0,0,1,0,0,0,0,0\n")
