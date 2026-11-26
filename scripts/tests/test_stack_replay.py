@@ -134,6 +134,9 @@ class ReplayContractTest(unittest.TestCase):
         variant = (REPOSITORY / "tools/replay_variant.sh").read_text(encoding="utf-8")
         self.assertIn('source=${1%/}; run=$(basename "$source"); dir=${source}_${variant}', variant)
         self.assertIn('closure_act | closure_measure | closure_off) echo "loop_closure:=${variant#closure_}"', variant)
+        # The true poses beside the bag: the replay's comparison prints each estimate's error against them.
+        self.assertIn('truth=(); [[ -f "$dir/gz_pose.csv" ]] && truth=("$dir/gz_pose.csv")', replay)
+        self.assertIn('[[ ! -f "$source/gz_pose.csv" ]] || cp "$source/gz_pose.csv" "$dir/gz_pose.csv"', variant)
         gates = (REPOSITORY / "tools/gates.sh").read_text(encoding="utf-8")
         # The gate compiles what differs from HEAD itself: a warning of an earlier build is not in its log otherwise.
         self.assertIn('while IFS= read -r source; do [[ -f "$source" ]] && touch "$source"; done\n(setsid bash -c '

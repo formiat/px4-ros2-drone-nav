@@ -5,7 +5,8 @@
 # launch arguments with the bridges and the simulated image source off, the stack's inputs played on the bag's clock
 # at RATE (unless given, the set's real-time factor of record: 1.0 for the lidar set, 0.8 for the cameras), its
 # outputs recorded to log/tools/replay/RUN/stack/replay_bag and compared with the flight's by tools/replay_compare.py
-# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line; the exit status says which). A DIR
+# (log/tools/replay/RUN/stack/compare.txt, REPLAY PASS or FAIL on its last line; the exit status says which; with the
+# flight's gz_pose.csv beside the bag, each estimate's error against the truth for the flight and for the replay). A DIR
 # that resolves outside the repository (bags kept on another disk behind a link) is mounted for the replay. Host;
 # --inner runs in the container.
 set -u
@@ -61,7 +62,9 @@ sleep 5
 stop() { kill -TERM "$1" 2>/dev/null || true; for _ in $(seq 1 600); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.1; done; kill -KILL "$1" 2>/dev/null || true; }
 stop "$record_pid"
 stop "$launch_pid"
-python3 /workspace/tools/replay_compare.py "$bag" "$out/replay_bag" > "$out/compare.txt" 2>&1
+# The flight's true poses beside the bag (gz_pose.csv): each estimate's error against the truth is printed too.
+truth=(); [[ -f "$dir/gz_pose.csv" ]] && truth=("$dir/gz_pose.csv")
+python3 /workspace/tools/replay_compare.py "$bag" "$out/replay_bag" "${truth[@]}" > "$out/compare.txt" 2>&1
 tail -n 6 "$out/compare.txt" | tee -a "$out/replay.log"
 echo "REPLAY $run end $(date -u +%H:%M:%S)" | tee -a "$out/replay.log"
 grep -q '^REPLAY PASS$' "$out/compare.txt"

@@ -672,8 +672,9 @@ private:
   // (roadmap items 19 and 40); `map_registration` "measure" reads without moving.
   StereoMapRegistration map_registration_;
   bool map_registration_act_{true};
-  // The keyframes and their graph (roadmap item 41); `loop_closure` "measure"
-  // reads the closures without moving the frame, "off" keeps no keyframe. The
+  // The keyframes and their graph (roadmap item 41); `loop_closure` "act" by
+  // default, "measure" reads the closures without moving the frame, "off"
+  // keeps no keyframe. The
   // reading in flight is declared after its owner: it is waited for first.
   std::unique_ptr<StereoLoopClosure> loop_closure_;
   bool loop_closure_act_{false};

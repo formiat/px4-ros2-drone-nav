@@ -84,7 +84,7 @@ class HybridProfileTest(unittest.TestCase):
         self.assertIn('"loop_closure",', launch)
         self.assertIn("loop_closure.perform(context))", launch)
         node = (REPOSITORY / "drone_city_nav/src/visual_inertial_odometry_node.cpp").read_text(encoding="utf-8")
-        self.assertIn('declare_parameter<std::string>("loop_closure", "measure")', node)
+        self.assertIn('declare_parameter<std::string>("loop_closure", "act")', node)
 
     def test_the_cave_profiles_subscribe_no_signal(self) -> None:
         # The topic is empty in the configuration: the estimator subscribes

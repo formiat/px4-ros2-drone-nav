@@ -264,9 +264,9 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
   // The map registration's measuring mode (roadmap item 40): read, not applied.
   map_registration_act_ =
       declare_parameter<std::string>("map_registration", "act") != "measure";
-  // Loop closure (roadmap item 41): measured, acted on, or off.
+  // Loop closure (roadmap item 41): acted on, measured without acting, or off.
   const std::string loop_closure =
-      declare_parameter<std::string>("loop_closure", "measure");
+      declare_parameter<std::string>("loop_closure", "act");
   if (loop_closure != "off") {
     loop_closure_ = std::make_unique<StereoLoopClosure>(
         StereoLoopClosureConfig{.focal_px = rectified.focal_px,
