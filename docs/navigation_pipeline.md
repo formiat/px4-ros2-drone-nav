@@ -722,6 +722,11 @@ its goal (`NavigationProgress`) and the monitor's events.
   vantage for 30 s (`unroutable`), or its way led the vehicle out of the
   flood's box (`left_domain`): by the planner's own map the cluster lies
   outside the reachable component. There is no list of frontiers tried.
+- **Outside the box** no reading places the vehicle, so none chooses a
+  frontier or ends the survey: the vehicle is called back to where it last
+  stood inside the box, once for each time out (`SURVEY_RECALL`), and the
+  readings go on from there (r4255, r4256: without the call the planner
+  flew on to the last vantage through 1.0 and 1.4 km of a cave's tunnels).
 - **The end**: a complete reading with no frontier, or three complete
   readings in a row with frontiers but no cluster that has a vantage, is
   `SURVEY_DONE` (a vantage comes and goes with the vehicle's position and
@@ -744,7 +749,7 @@ content before the first scan, a hit confirms a cell and the free rays of four s
 stays in no-static mode (`./scripts/sim_urban_point_to_point_in_volume_headless.sh`).
 
 Every reading and decision is a log line: `SURVEY_READING`,
-`SURVEY_FRONTIER chosen|observed|looked_at|looked_at_on_pass|looked_at_from_vantage|pass|deferred|unreachable|unroutable|left_domain`,
+`SURVEY_FRONTIER chosen|observed|looked_at|looked_at_on_pass|looked_at_from_vantage|pass|deferred|unreachable|unroutable|left_domain`, `SURVEY_RECALL`,
 `SURVEY_RISE`, `SURVEY_COMMAND sent|accepted`, `SURVEY_DONE`, `SURVEY_STOPPED`.
 
 ## Removed Legacy Stages

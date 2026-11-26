@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The survey calls a vehicle back into its box** (specification K59): a vehicle whose way to a vantage led out of the
+  flood's box (the volume and 40 m) had no reading, no end and the last goal to fly to; it is now called back to
+  where it last stood inside, once for each time out (`SURVEY_RECALL`). Found on the cave's lidar surveys r4255 and
+  r4256, which flew 1.0 and 1.4 km of tunnels away from their volume and never ended.
+- **A flight whose simulated autopilot lost its IMU stream is void** (specification A15): the mission check prints
+  `VOID: autopilot lost its IMU stream in flight` on the autopilot's own `Accel #N fail: TIMEOUT`, and the flight is
+  flown again (r4256: a hole of 140 ms, the autopilot's height left the truth and the vehicle sank onto the floor
+  out of a hover).
 - **Continuous integration, checked locally** (roadmap item 46): `.github/workflows/ci.yml` builds the dev image and runs
   the gate's checks on x86-64 (the format of the whole tree, the build, the unit tests but the two that need a CUDA
   device, the script tests, clang-tidy and cppcheck on what a push or a pull request changes) and the onboard build with

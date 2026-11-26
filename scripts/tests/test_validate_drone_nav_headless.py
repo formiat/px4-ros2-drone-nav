@@ -158,6 +158,34 @@ class ValidatorCliTest(unittest.TestCase):
                 self.assertIn(requirement, failures)
 
 
+class AutopilotImuTimeoutTest(unittest.TestCase):
+    def test_a_flight_whose_autopilot_lost_its_imu_stream_is_void(self) -> None:
+        # r4256: the simulated autopilot's IMU stream stopped for 140 ms, its height left the truth and the
+        # vehicle sank out of a hover onto the floor (specification A15).
+        log = ("INFO  [commander] Takeoff detected\nERROR [sensors] Accel #0 fail:  TIMEOUT!\n"
+               "INFO  [commander] Disarmed by external command\n")
+        for px4_log, void in ((log, True), ("INFO  [commander] Takeoff detected\n", False)):
+            with self.subTest(void=void), tempfile.TemporaryDirectory() as directory:
+                manifest = Path(directory) / "manifest.json"
+                manifest.write_text('{"effective_overrides": {}}', encoding="utf-8")
+                argv = [str(VALIDATOR_PATH), "--ros-log", "ros.log", "--px4-log", "px4.log",
+                        "--runtime-manifest", str(manifest), "--expected-static", "false",
+                        "--lidar-profile", "3d"]
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with (
+                    mock.patch.object(sys, "argv", argv),
+                    mock.patch.object(
+                        VALIDATOR, "read_text", side_effect=lambda path: px4_log if "px4" in str(path) else ""),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    result = VALIDATOR.main()
+                self.assertEqual(void, stdout.getvalue().startswith("VOID: autopilot lost its IMU stream"))
+                if void:
+                    self.assertEqual(result, 1)
+                    self.assertNotIn("FAIL", stdout.getvalue() + stderr.getvalue())
+
+
 class StepControllerBarometerTest(unittest.TestCase):
     def test_the_noiseless_sensors_stale_lines_are_the_step_controllers_alone(self) -> None:
         # Under the step controller the barometer and the magnetometer carry no noise and the autopilot marks

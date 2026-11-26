@@ -34,7 +34,11 @@ void SurveyMission::recordPose(const Point3& position, const double yaw_rad,
   position_valid_ = true;
   yaw_rad_ = yaw_rad;
   heading_valid_ = heading_valid;
-  if (target_.has_value() && !insideDomain(position)) {
+  if (insideDomain(position)) {
+    last_inside_position_ = position;
+    inside_seen_ = true;
+    recalled_ = false;
+  } else if (target_.has_value()) {
     target_left_domain_ = true;
   }
   // The body's passage: the cells within its radius of a position a lattice
@@ -346,6 +350,28 @@ SurveyStep SurveyMission::step(const std::int64_t now_ns) {
       ++unreachable_;
       finishTarget("unreachable", out);
     }
+  }
+  if (!target_.has_value() && position_valid_ && inside_seen_ &&
+      !insideDomain(position_)) {
+    // Outside the flood's box no reading places the vehicle: none chooses a
+    // frontier, none ends the survey, and the planner flies on to the last
+    // goal it was given (r4255 and r4256: 1.0 and 1.4 km of a cave's tunnels
+    // away from the volume, the survey never ended). The vehicle is called
+    // back to where it last stood inside the box, once for each time out.
+    if (!recalled_) {
+      recalled_ = true;
+      ++recalls_;
+      out.command = SurveyCommand::kGoal;
+      out.goal = last_inside_position_;
+      std::array<char, 192U> line{};
+      std::snprintf(line.data(), line.size(),
+                    "SURVEY_RECALL position=(%.2f,%.2f,%.2f) goal=(%.2f,%.2f,%.2f) "
+                    "recalls=%zu",
+                    position_.x, position_.y, position_.z, out.goal.x, out.goal.y,
+                    out.goal.z, recalls_);
+      out.events.emplace_back(line.data());
+    }
+    return out;
   }
   if (!target_.has_value()) {
     if (!reading_->frontiers.empty()) {

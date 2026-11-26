@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""survey_map.py RUN --out DIR [--truth GRID]: the survey's validated obstacle memory persisted as the environment's
-static-map artifact (roadmap item 11). The flight's last raw snapshot of the memory
+"""survey_map.py RUN --out DIR [--truth GRID] [--snapshot FILE]: the survey's validated obstacle memory persisted as
+the environment's static-map artifact (roadmap item 11). The flight's last raw snapshot of the memory
 (log/runs/RUN/raw_snapshot_3d_revision_*.json, the cells of the survey's volume on the memory's 0.25 m lattice,
-observed and occupied alike) becomes
+observed and occupied alike; or the one --snapshot names: the map as it stood at a moment of the flight, for what
+was laid before and after a return, roadmap item 41) becomes
 
   DIR/occupancy.occupancy3d   the occupied cells in the stack's own static format (`DCNOCC3D` v5, 16-cubed chunks of
                               bits; what STATIC_OCCUPANCY_3D_PATH reads; the file carries no "unknown": a cell the
@@ -71,12 +72,12 @@ def write_occupancy3d(path: Path, grid: dict, chunks: list[tuple[tuple[int, int,
     return voxels
 
 
-def build(run: str, out: Path, truth: Path | None) -> dict:
+def build(run: str, out: Path, truth: Path | None, snapshot: Path | None = None) -> dict:
     run_directory = REPOSITORY / "log/runs" / run
     manifest = json.loads((run_directory / "manifest.json").read_text())
     overrides = manifest.get("effective_overrides", {})
     scenario_path = overrides.get("POINT_TO_POINT_SCENARIO_PATH", "")
-    snapshot_path = last_snapshot(run_directory)
+    snapshot_path = snapshot or last_snapshot(run_directory)
     document = json.loads(snapshot_path.read_text())
     grid = document["grid"]
     volume = document["selection"]["bounds_m"]
@@ -144,8 +145,9 @@ def main() -> int:
     parser.add_argument("run")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--truth", type=Path)
+    parser.add_argument("--snapshot", type=Path)
     args = parser.parse_args()
-    record = build(args.run, args.out, args.truth)
+    record = build(args.run, args.out, args.truth, args.snapshot)
     coverage = record["coverage"] or {}
     check = record["check"] or {}
     print(f"{args.run}: {record['occupancy']['occupied_voxels']} occupied voxels, "

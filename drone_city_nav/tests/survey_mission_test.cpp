@@ -240,6 +240,37 @@ TEST(SurveyMissionTest,
   EXPECT_LT(passed.frontier_cells, unchosen.frontier_cells);
 }
 
+TEST(SurveyMissionTest,
+     AVehicleOutsideTheFloodsBoxIsCalledBackToWhereItLastStoodInside) {
+  const ObservedOccupancyGrid3D grid = room(true);
+  const SurveyReading reading = readSurvey(grid, kVehicle, config(), {}, {});
+  ASSERT_EQ(reading.frontiers.size(), 1U);
+  SurveyMission mission{config()};
+  mission.setMemory(std::make_shared<const ObservedOccupancyGrid3D>(grid));
+  mission.recordPose(kVehicle, 0.0, true, kSecond);
+  mission.applyReading(reading);
+  ASSERT_EQ(mission.step(2 * kSecond).command, SurveyCommand::kGoal);
+  // The planner's way led out of the box (the volume and 40 m round it): the
+  // cluster is settled and the vehicle called back to its last pose inside.
+  const Point3 edge{55.0, 6.0, 2.5};
+  const Point3 outside{60.0, 6.0, 2.5};
+  mission.recordPose(edge, 0.0, true, 30 * kSecond);
+  mission.recordPose(outside, 0.0, true, 31 * kSecond);
+  // No reading places a vehicle out there.
+  EXPECT_FALSE(readSurvey(grid, outside, config(), {}, {}).vehicle_placed);
+  const SurveyStep recalled = mission.step(31 * kSecond);
+  EXPECT_EQ(recalled.command, SurveyCommand::kGoal);
+  EXPECT_NEAR(recalled.goal.x, edge.x, 1.0e-9);
+  ASSERT_EQ(recalled.events.size(), 2U);
+  EXPECT_EQ(recalled.events.front().rfind("SURVEY_FRONTIER left_domain", 0), 0U);
+  EXPECT_EQ(recalled.events.back().rfind("SURVEY_RECALL", 0), 0U);
+  // Once, while it stays out; and again after it has been in and out anew.
+  EXPECT_EQ(mission.step(32 * kSecond).command, SurveyCommand::kNone);
+  mission.recordPose(edge, 0.0, true, 40 * kSecond);
+  mission.recordPose(outside, 0.0, true, 41 * kSecond);
+  EXPECT_EQ(mission.step(41 * kSecond).command, SurveyCommand::kGoal);
+}
+
 // A 16 x 12 x 14 m box: the room of 8 x 8 x 4 m with its door high up (9 to
 // 13 m), and a second room below it observed through nothing (0.25 to 0.75
 // m), 8 m of unobserved floors between: its free cells next to unknown make a

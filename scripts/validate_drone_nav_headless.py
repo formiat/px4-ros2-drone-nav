@@ -40,6 +40,13 @@ CRITICAL_PX4_PATTERN = re.compile(
     r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
+# The simulated autopilot's own IMU stream stopped for longer than its sensor
+# validator waits (specification A15): the simulator did not feed it, its
+# estimate of height left the truth and the vehicle sank out of a hover onto
+# the floor under an unchanged setpoint (r4256: a hole of 140 ms after 36
+# minutes of flight, one flight of the 844 kept). A real autopilot's IMU sits
+# on its own board; nothing the vehicle did after the hole is the stack's.
+AUTOPILOT_IMU_TIMEOUT_PATTERN = re.compile(r"ERROR \[sensors\] (?:Accel|Gyro) #\d+ fail:\s+TIMEOUT")
 # Under the step controller every sensor's noise but the IMU's is removed from
 # the vehicle model (roadmap item 36), and the autopilot's validator marks the
 # noiseless barometer and magnetometer stale at rest, their values repeating;
@@ -495,6 +502,9 @@ def main() -> int:
     ros_log = read_text(args.ros_log)
     px4_logs = [read_text(path) for path in args.px4_log]
     px4_log = "\n".join(px4_logs)
+    if AUTOPILOT_IMU_TIMEOUT_PATTERN.search(px4_log):
+        print("VOID: autopilot lost its IMU stream in flight; the flight does not count and is flown again")
+        return 1
     expected_static = parse_bool(args.expected_static)
     expected_memory = parse_bool(args.expected_memory)
     enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
