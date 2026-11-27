@@ -769,10 +769,14 @@ reason.
 
 ## Documentation
 
-The main documentation set starts at `docs/overview.md`.
+The main documentation set starts at `docs/overview.md`. A newcomer's path of six steps starts at
+[`docs/guide/01_basics.md`](docs/guide/01_basics.md), with a map of the architecture beside it
+([`docs/guide/architecture_map.md`](docs/guide/architecture_map.md)); how other open projects solve the same
+problems is in [`docs/related_work.md`](docs/related_work.md).
 
 Key pages:
 
+- `docs/guide/01_basics.md`
 - `docs/missions.md`
 - `docs/scenarios.md`
 - `docs/installation.md`

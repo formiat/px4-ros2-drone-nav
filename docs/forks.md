@@ -195,7 +195,10 @@ and 51).
 
 The idea taken: a short guide in English and a map of the architecture with
 links to the code (roadmap item 49). His text describes the state of
-2026-09-17 and is not copied.
+2026-09-17 and is not copied. Done on 2026-11-26: six steps under
+[`docs/guide/`](guide/01_basics.md) and
+[`docs/guide/architecture_map.md`](guide/architecture_map.md), written on
+that day's code, each naming him as the idea's author.
 
 ### Lotus56
 

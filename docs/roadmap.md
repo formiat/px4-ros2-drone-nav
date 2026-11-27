@@ -2146,16 +2146,6 @@ three kinds of vehicle behind it: the full stack in Gazebo (two), PX4 SIH
 with simplified perception (tens), a light vehicle on the truth grids of
 Urban, Cave and Finals with an ideal lidar (hundreds).
 
-## 49. A Guide In English And A Map Of The Architecture
-
-**Type:** documentation (the idea is hundong2's Korean course,
-[forks.md](forks.md)).
-
-A short path of four to six steps under `docs/guide/` (the basics; the
-installation and a first flight; the mission and the navigation pipeline;
-safety; testing and debugging; extending), written on today's code, and a map
-of the architecture whose every component links to its file.
-
 ## 50. Recognition By An Open Neural Network, As A Hint
 
 **Type:** perception; a proposal for the owner's decision only (the rule of
@@ -6369,3 +6359,28 @@ the lidar set under a roof flies the airframe's dynamics at the base's
 speed, where the acceleration 5 with the caves' former vertical acceleration
 and jerk flew 0.5 m/s faster in two flights.
 
+### 49. A Guide In English And A Map Of The Architecture (Completed)
+
+Not yet in a release (after v0.8.0). Done on 2026-11-26.
+
+**Type:** documentation (the idea is hundong2's Korean course,
+[forks.md](forks.md)).
+
+A short path of four to six steps under `docs/guide/` (the basics; the
+installation and a first flight; the mission and the navigation pipeline;
+safety; testing and debugging; extending), written on today's code, and a map
+of the architecture whose every component links to its file.
+
+Six steps under [`docs/guide/`](guide/01_basics.md) (what this is; the
+installation and a first flight; the mission and the pipeline; safety;
+testing a change and reading a flight; extending) and
+[`docs/guide/architecture_map.md`](guide/architecture_map.md), eight layers
+whose every component links to its files and to the specification's row
+that sets it. The steps explain and lead and leave the numbers to the
+reference documents. Every command of the guide was run while it was
+written, the installation and the first flight in a clean clone; a script
+test (`scripts/tests/test_guide_links.py`) holds every link of the guide to
+a file that exists, every row it names to the specification, and every
+executable of the package and every node of the single-vehicle launch to
+the map. The idea is hundong2's ([forks.md](forks.md)); his text is neither
+translated nor copied.

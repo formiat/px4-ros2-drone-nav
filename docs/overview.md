@@ -11,6 +11,11 @@ MSCKF) or lidar-inertial odometry (LIO) with map-based relocalization (SLAM in
 the broad sense), 3D occupancy mapping, D* Lite path planning and MPPI, a
 sampling-based model predictive controller, for obstacle avoidance.
 
+New to the project? A guide of six steps starts at
+[guide/01_basics.md](guide/01_basics.md), with a
+[map of the architecture](guide/architecture_map.md) whose every component
+links to its code.
+
 The project is a simulation-oriented research system. It is not certified for
 real-aircraft operation.
 

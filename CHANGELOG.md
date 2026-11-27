@@ -6,6 +6,10 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **A guide in English and a map of the architecture** (roadmap item 49; the idea is hundong2's, whose Korean course
+  and architecture map showed the need, `docs/forks.md`): six steps under `docs/guide/`, from what the project is to
+  extending it, and `docs/guide/architecture_map.md`, whose every component links to its files and to the
+  specification's row. Every command was run while the guide was written; a script test holds its links.
 - **The stereo estimate closes loops** (roadmap item 41, stages 1 to 4; specification K92): a keyframe a metre keeps
   ORB features with the pair's depth, a place seen again within the estimate's measured drift is recognised, gated by
   its geometry (a repeated flat surface answers a period away and is refused), and a pose graph of our own moves the
