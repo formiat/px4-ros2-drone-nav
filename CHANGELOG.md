@@ -6,6 +6,10 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The registration's heading stays within what the magnetometer holds** (specification K57): the stereo estimate's
+  registration against its own map no longer turns the frame by more than 0.7 degrees where the magnetometer's prior
+  is on; unbounded it walked to 2.5 degrees on surveys and laid walls twice. A flight that records its stack bag
+  waits for the recorder before it starts the stack (K62).
 - **A guide in English and a map of the architecture** (roadmap item 49; the idea is hundong2's, whose Korean course
   and architecture map showed the need, `docs/forks.md`): six steps under `docs/guide/`, from what the project is to
   extending it, and `docs/guide/architecture_map.md`, whose every component links to its files and to the

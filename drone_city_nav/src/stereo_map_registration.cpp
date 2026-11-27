@@ -36,6 +36,11 @@ MapFrameOffset StereoMapRegistration::applied() const {
   return applied_;
 }
 
+void StereoMapRegistration::boundHeading(const double bound_rad) noexcept {
+  const std::scoped_lock lock{mutex_};
+  heading_bound_rad_ = bound_rad;
+}
+
 void StereoMapRegistration::retarget(const MapFrameOffset& target) {
   const std::scoped_lock lock{mutex_};
   target_ = target;
@@ -141,6 +146,10 @@ StereoMapRegistrationReport StereoMapRegistration::registerFrame(
     if (act) {
       const Eigen::Vector3d mapped = target_.apply(pose.position_ned_m) + correction;
       target_.yaw_rad += yaw_step;
+      if (heading_bound_rad_ > 0.0) {
+        target_.yaw_rad =
+            std::clamp(target_.yaw_rad, -heading_bound_rad_, heading_bound_rad_);
+      }
       target_.translation = mapped - target_.rotation() * pose.position_ned_m;
     }
     report.target = target_;

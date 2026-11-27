@@ -84,6 +84,9 @@ VisualInertialOdometryNode::VisualInertialOdometryNode(
       declare_parameter<bool>("magnetic_heading", config.magnetic_heading);
   odometry_config_ = config;
   odometry_ = std::make_unique<VisualInertialOdometry>(config);
+  // The prior holds the filter's heading; the registration's target heading
+  // stays within what it holds (stereo_map_registration.hpp).
+  map_registration_.boundHeading(config.magnetic_heading ? kMapYawBoundRad : 0.0);
   maximum_unaided_ns_ = static_cast<std::int64_t>(config.maximum_unaided_s * 1.0e9);
 
   // A frame's stamp against the IMU's clock, measured on the rotation both

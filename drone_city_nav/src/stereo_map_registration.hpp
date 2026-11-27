@@ -70,6 +70,14 @@ inline constexpr double kMapYawStepRad{0.0035};
 inline constexpr double kMapYawReachRad{0.087};
 inline constexpr double kMapMinimumYawInformationPerPoint{0.5};
 inline constexpr double kMapYawRateRadps{0.0175};
+// With the magnetometer's prior on the filter's yaw (K60) the heading is held
+// to 0.3 to 0.7 degrees over a flight, and the target heading may not leave
+// that: along the way the registration's reading of the heading carries
+// nothing of its drift (K57), and unbounded it walked to 1.8 and 2.5 degrees
+// on a survey (r4237, with the closures acting and only read alike), to 2.2
+// on r4239, whose frame stood 1.4 degrees off the truth with walls laid
+// twice for it.
+inline constexpr double kMapYawBoundRad{0.0122};
 // Along the way the registration reads the drift accrued since the cells it
 // matches were laid, seconds, under the fit's own scatter (K57); acting on
 // each reading walked r2772's frame 2.3 m in 36 steps whose innovations
@@ -121,6 +129,10 @@ struct StereoMapRegistrationReport {
 class StereoMapRegistration {
 public:
   StereoMapRegistration();
+
+  // The target heading is kept within this of zero (kMapYawBoundRad where
+  // the magnetometer's prior holds the filter's heading); zero is no bound.
+  void boundHeading(double bound_rad) noexcept;
 
   // A registration is due this long after the last one, once the map holds anything.
   [[nodiscard]] bool due(std::int64_t stamp_ns) const noexcept;
@@ -179,6 +191,7 @@ private:
   mutable std::mutex mutex_;
   MapFrameOffset target_;
   MapFrameOffset applied_;
+  double heading_bound_rad_{0.0};
   // The last acting-grade innovations (translation, yaw), oldest first once full.
   std::array<std::pair<Eigen::Vector3d, double>, kMapConsistentReadings> recent_{};
   std::size_t recent_count_{0U};

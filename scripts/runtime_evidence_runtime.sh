@@ -113,6 +113,14 @@ start_runtime_evidence_capture() {
       -o "${runtime_artifact_dir}/stack_bag" --topics "${stack_bag_topics[@]}" \
       > "${runtime_artifact_dir}/stack_bag.log" 2>&1 &
     stack_bag_pid=$!
+    # The recorder listens before the stack starts: one that came up beside
+    # the nodes missed the stack's first depth frames (r4237: 17 of them,
+    # and a replay whose registration read another map from its first frame).
+    local _
+    for _ in $(seq 1 150); do
+      grep -q 'Recording\.\.\.' "${runtime_artifact_dir}/stack_bag.log" 2>/dev/null && break
+      sleep 0.1
+    done
   fi
   # What every process of the flight consumes, for the resource-budget checks
   # and the budget document; every flight records it, whatever it flies.

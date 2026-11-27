@@ -117,6 +117,27 @@ TEST(StereoMapRegistrationTest, ATurnedAndShiftedFrameIsReadAndTheTargetConverge
   EXPECT_NEAR(estimate.position_ned_m.x(), shift.x(), 0.05);
 }
 
+TEST(StereoMapRegistrationTest, ABoundedHeadingStaysWithinWhatTheMagnetometerHolds) {
+  // The frame reads a degree of turn; with the magnetometer's prior holding
+  // the filter's heading the target heading stops at the bound, and the
+  // shift is read as before.
+  StereoMapRegistration registration;
+  registration.boundHeading(kMapYawBoundRad);
+  registration.lay(0, room(), identityPose(0));
+  const double yaw = 1.0 * std::numbers::pi / 180.0;
+  const Eigen::Vector3d shift{0.3, 0.0, 0.0};
+  const std::vector<Eigen::Vector3d> frame = frameFrom(yaw, shift);
+  for (int i = 0; i < 30; ++i) {
+    const std::int64_t stamp = 25 * kSecond + i * kSecond;
+    const StereoMapRegistrationReport report =
+        registration.registerFrame(stamp, frame, identityPose(stamp), true);
+    EXPECT_LE(std::abs(report.target.yaw_rad), kMapYawBoundRad + 1.0e-12);
+  }
+  const MapFrameOffset target = registration.target();
+  EXPECT_NEAR(target.yaw_rad, kMapYawBoundRad, 1.0e-9);
+  EXPECT_NEAR(target.translation.x(), shift.x(), 0.08);
+}
+
 // A loop closure's offset (roadmap item 41) is the target at once and the
 // published frame's by steps: a metre and five degrees asked for reach the
 // navigation at 0.2 m/s and a degree a second, frame by frame.
