@@ -1789,9 +1789,13 @@ NTU VIRAL gave no figure (every system diverged on our conversion). Flown on 202
 No closure was accepted wrongly in flight (188 accepted over five flights with the acceptance's two) or on the
 recordings. The return's error is bounded on the routes that return over seen ground (0.03 to 0.38 m against 0.21
 and 1.11); the first pass is not (r4239: item 40's registration turned the frame a degree before the first
-return, the closures read it and leave the heading). **Not met:** the open sky's loop holds no place seen again
-within reach of a view (its second goal 12.5 m from the start, approached 85 degrees off), no keyframe had a
-candidate in four flights, and the return stays 3.2 to 9.6 m off; the acceptance on Urban stands (r4243 to r4252:
+return, the closures read it and leave the heading). **Not met, and closed as a blocker of the goal:** over the open
+sky's loop no keyframe had a candidate in four flights and the return stays 3.2 to 9.6 m off. The vehicle is again
+within 5 m and 45 degrees of a pose it held over 13 percent of that route (the truth of r4235), but the estimate is
+4.7 m off by then; with the candidates' radius and the innovation's bound widened to 4 percent of the path nothing
+held (a trial of 2026-11-27 on the bag, not kept) 460 keyframes had candidates and none closed: the ground's
+descriptors do not match (9 matches at the median). What holds a return there is not a closure by the forward
+view (the register's row); the acceptance on Urban stands (r4243 to r4252:
 1.434 and 2.443 m/s; on the final code, after the survey's repairs of the day, r4270 to r4274 1.380 m/s and
 r4282 to r4286 2.313 m/s, the lidar five flown twice: r4278 of the first stood at the start for its whole
 flight under the host's load, the register's row). B and back was not flown (the goal forbade it).

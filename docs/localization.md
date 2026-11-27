@@ -653,10 +653,14 @@ On the long survey the first closure, 1.1 m from the estimate at the 796th
 second, moves the frame and the error along the rest of the route falls from
 1.1 to 1.3 m to 0.1 to 0.3 m. The error gathered before the first return
 (0.7 to 1.0 m over the first 750 m) stays: a closure makes the estimate agree
-with its first pass, not with the truth. The open sky's loop holds no return
-within reach of a view it had (its second goal lies 12.5 m from the start
-and is approached 85 degrees off the take-off's view), and its near ground is
-one plane: nothing is closed there. Of the returns of the two surveys (again
+with its first pass, not with the truth. Over the open sky's loop nothing is
+closed: by the truth the vehicle is again within 5 m and 45 degrees of a
+pose it held over 13 percent of the route, but the estimate has drifted
+4.7 m by then, outside the candidates' radius and the innovation's bound;
+and with both widened to 4 percent of the path nothing held (a trial of
+2026-11-27 on r4235's bag, not kept: 460 keyframes had candidates) the
+descriptors of that ground do not match (9 matches at the median, no inlier
+at the median, no closure). Of the returns of the two surveys (again
 within 5 m and 45 degrees of a pose held before) 3 of 13 and 2 of 5 are
 covered by a closure; the others share under 25 inliers with what was seen.
 
@@ -680,7 +684,9 @@ them 44 right. The estimator's frame took 68.0 ms at the median and 81.7 at the 
 registration turned the frame by a degree between the 150th and the 300th second, before the first return; the
 closures read it (1.4 to 1.6 degrees of innovation in heading at the 740th second) and leave the heading, and
 the cells of the first pass were laid: 2.13 m at the 95th percentile and sixteen sheets. Over the open sky no
-keyframe had a candidate: nothing is closed there, and the return stays as the dead reckoning leaves it.
+keyframe had a candidate (the estimate is farther from the places it comes back to than the candidates' radius, and
+their look is not recognised when the radius is widened: the trial above): nothing is closed there, and the return
+stays as the dead reckoning leaves it.
 
 #### Whether The Lidar Set Needs A Loop Closure
 
