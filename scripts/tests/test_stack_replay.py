@@ -225,5 +225,17 @@ class RecorderBeforeTheStackTest(unittest.TestCase):
         arguments = (REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8")
         self.assertIn('"bridge_clock"', arguments)
 
+    def test_the_image_source_holds_its_frames_until_the_recorder_listens(self) -> None:
+        # The stack takes a frame inside the source's process the moment it is published and the recorder subscribes
+        # a second after the topic appears: the bag began after the stack's first depth frames (r4316). With the
+        # frame record on the source publishes nothing until every topic of its has a subscriber outside the
+        # process, and the gain the depth node reads is recorded with the frames.
+        source = (REPOSITORY / "drone_city_nav/src/gazebo_stereo_depth_main.cpp").read_text(encoding="utf-8")
+        self.assertIn('released_{!declare_parameter<bool>("frame_log", false)}', source)
+        self.assertIn("publisher->get_intra_process_subscription_count()", source)
+        self.assertEqual(4, source.count("if (!released()) {"))
+        self.assertEqual(5, source.count("publishers_.push_back("))
+        self.assertIn("/stereo/left/gain", topics.inputs("stereo_tof", "stereo_tof"))
+
 if __name__ == "__main__":
     unittest.main()

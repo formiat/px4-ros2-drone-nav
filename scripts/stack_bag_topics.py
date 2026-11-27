@@ -36,11 +36,13 @@ INPUTS_COMMON = (
     "/drone_city_nav/simulation/gnss",
 )
 TOF_SIDES = ("up", "down", "front", "back", "left", "right")
-# The camera set: the pair's frames as the image source publishes them, the ring, the magnetometer, the thermal
-# frame, the carried light's output the depth node reads.
+# The camera set: the pair's frames as the image source publishes them and the gain its driver applied to them
+# (the depth node reads the light from it), the ring, the magnetometer, the thermal frame, the carried light's
+# output the depth node reads.
 INPUTS_CAMERAS = (
     "/stereo/left/image",
     "/stereo/right/image",
+    "/stereo/left/gain",
     *(f"/tof/{side}/points" for side in TOF_SIDES),
     "/magnetometer/magnetic_field",
     "/thermal/image",

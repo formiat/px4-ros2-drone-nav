@@ -99,7 +99,8 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             description="The satellite fixes the estimator reads on the hybrid profile (item 39).",
         ),
         DeclareLaunchArgument("estimator_frame_log", default_value="false",
-                              description="One line a frame of what the stereo estimator consumed (item 27 block 6)."),
+                              description="One line a frame of what the stereo estimator consumed (item 27 block 6); "
+                              "the simulated image source then holds its frames until a recorder listens."),
         DeclareLaunchArgument("map_registration", default_value="",
                               description="The estimator's map registration: act or measure (item 40)."),
         DeclareLaunchArgument("loop_closure", default_value="",

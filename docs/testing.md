@@ -384,7 +384,8 @@ are the means measured under it, the clean vehicle's means references.
 
 `RECORD_STACK_BAG=true` records, beside the flight, everything the stack reads
 and everything it writes (`scripts/stack_bag_topics.py`: the autopilot's stream
-and states, the pair's frames, the ring, the lidar, the barometer, the
+and states, the pair's frames and the gain their driver applied, the ring,
+the lidar, the barometer, the
 magnetometer, the thermal frame, the operator's commands, the contacts; the
 setpoints and the odometry to the autopilot, the estimators' poses, the
 mission's events, the planner's status and horizon) into

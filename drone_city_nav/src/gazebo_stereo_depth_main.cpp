@@ -40,20 +40,52 @@ class GazeboStereoImageSource final : public rclcpp::Node {
 public:
   explicit GazeboStereoImageSource(const rclcpp::NodeOptions& options)
       : rclcpp::Node{"gazebo_stereo_image_source", options},
-        frame_id_{declare_parameter<std::string>("frame_id", "stereo_left")} {
+        frame_id_{declare_parameter<std::string>("frame_id", "stereo_left")},
+        released_{!declare_parameter<bool>("frame_log", false)} {
     // The gain the driver applied to the left frame, as a real camera's driver
     // reports its gain: the stereo node reads the light from it (K15).
     gain_pub_ = create_publisher<std_msgs::msg::Float64>(
         declare_parameter<std::string>("left_gain_topic", "/stereo/left/gain"),
         rclcpp::SensorDataQoS{}.keep_last(1));
+    publishers_.push_back(gain_pub_);
     subscribe("left");
     subscribe("right");
     relayBarometer();
     relayMagnetometer();
     relayThermal();
+    constructed_.store(true, std::memory_order_release);
   }
 
 private:
+  // With the frame record on (a flight recorded for its replay, K62) nothing
+  // leaves the source until a subscriber outside this process listens to each
+  // of its topics. The stack beside the source takes a frame the moment it is
+  // published; the recorder subscribes to a topic a second after it appears,
+  // and the bag began after the stack's first frames (r4316: the stack's
+  // first depth frame at 10.418 s, the bag's first image at 11.574 s, and the
+  // replayed estimate declared its pose two seconds after the flown one).
+  bool released() {
+    if (released_.load(std::memory_order_relaxed)) {
+      return true;
+    }
+    if (!constructed_.load(std::memory_order_acquire)) {
+      return false;
+    }
+    for (const rclcpp::PublisherBase::SharedPtr& publisher : publishers_) {
+      if (publisher->get_subscription_count() <=
+          publisher->get_intra_process_subscription_count()) {
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "GAZEBO_STEREO_IMAGE held=true unrecorded=%s",
+                             publisher->get_topic_name());
+        return false;
+      }
+    }
+    if (!released_.exchange(true)) {
+      RCLCPP_INFO(get_logger(), "GAZEBO_STEREO_IMAGE held=false");
+    }
+    return true;
+  }
+
   // The thermal core's frame (roadmap item 32), 16 bits a pixel in hundredths
   // of a kelvin, as its driver would publish it.
   void relayThermal() {
@@ -65,8 +97,12 @@ private:
     thermal_pub_ = create_publisher<sensor_msgs::msg::Image>(
         declare_parameter<std::string>("thermal_image_topic", "/thermal/image"),
         rclcpp::SensorDataQoS{}.keep_last(1));
+    publishers_.push_back(thermal_pub_);
     const std::function<void(const gz::msgs::Image&)> callback =
         [this](const gz::msgs::Image& image) {
+          if (!released()) {
+            return;
+          }
           const std::size_t pixels = static_cast<std::size_t>(image.width()) *
                                      static_cast<std::size_t>(image.height());
           if (pixels == 0U ||
@@ -101,6 +137,7 @@ private:
         declare_parameter<std::string>(side + "_image_topic",
                                        "/stereo/" + side + "/image"),
         rclcpp::SensorDataQoS{}.keep_last(1));
+    publishers_.push_back(publisher);
     const std::string gazebo_topic =
         declare_parameter<std::string>(side + "_gazebo_image_topic", "");
     const bool left = side == "left";
@@ -127,8 +164,12 @@ private:
     barometer_pub_ = create_publisher<sensor_msgs::msg::FluidPressure>(
         declare_parameter<std::string>("air_pressure_topic", "/barometer/air_pressure"),
         rclcpp::SensorDataQoS{});
+    publishers_.push_back(barometer_pub_);
     const std::function<void(const gz::msgs::FluidPressure&)> callback =
         [this](const gz::msgs::FluidPressure& pressure) {
+          if (!released()) {
+            return;
+          }
           sensor_msgs::msg::FluidPressure message;
           message.header.stamp.sec =
               static_cast<std::int32_t>(pressure.header().stamp().sec());
@@ -157,8 +198,12 @@ private:
         declare_parameter<std::string>("magnetic_field_topic",
                                        "/magnetometer/magnetic_field"),
         rclcpp::SensorDataQoS{});
+    publishers_.push_back(magnetometer_pub_);
     const std::function<void(const gz::msgs::Magnetometer&)> callback =
         [this](const gz::msgs::Magnetometer& field) {
+          if (!released()) {
+            return;
+          }
           sensor_msgs::msg::MagneticField message;
           message.header.stamp.sec =
               static_cast<std::int32_t>(field.header().stamp().sec());
@@ -181,6 +226,9 @@ private:
 
   void publish(const gz::msgs::Image& image,
                rclcpp::Publisher<sensor_msgs::msg::Image>& publisher, const bool left) {
+    if (!released()) {
+      return;
+    }
     const std::size_t pixels = static_cast<std::size_t>(image.width()) *
                                static_cast<std::size_t>(image.height());
     const bool rgb = image.pixel_format_type() == gz::msgs::PixelFormatType::RGB_INT8;
@@ -291,6 +339,10 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magnetometer_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr thermal_pub_;
   std::string frame_id_;
+  // What the source publishes, and whether it may (the frame record's hold).
+  std::vector<rclcpp::PublisherBase::SharedPtr> publishers_;
+  std::atomic<bool> constructed_{false};
+  std::atomic<bool> released_;
   gz::transport::Node gazebo_;
 };
 
