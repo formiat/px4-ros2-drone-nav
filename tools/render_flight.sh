@@ -6,7 +6,8 @@
 # Urban (item 34: no goal, the frontiers of the memory, home with the map; the stereo set flew its acceptance at a
 # factor of 0.8, which the caller's variable gives), survey-building for the same over the start building whole,
 # finals-survey and cave-survey for the held-out worlds' surveys (the stereo set's surveys of 2026-11 flew at 0.5);
-# the stereo set only) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
+# the stereo set unless the caller's environment names another: NAVIGATION_SENSOR_PROFILE and CAMERA_PROFILE pass
+# through to the flight, as the speed's ceiling does) flown as its ordinary headless flight at a real-time factor of 1.0 (the factor's variable
 # passes through to the flight: the stereo set's smoke flights held 0.8, K25; the smoke scenarios are not flown since
 # 2026-10-24, specification F4)
 # with no window open, through fly_until_valid.sh (two attempts), recording what RViz shows (RENDER_BAG=1); then its
