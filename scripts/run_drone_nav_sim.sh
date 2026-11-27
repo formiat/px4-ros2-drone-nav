@@ -804,7 +804,7 @@ else
   # Item 17 stage 5's stream relay and item 35's imperfections (K52): simulation_resource_runtime.sh.
   append_sensor_relay_launch_args
   [[ -n "${SMOKE_ZONES:-}" ]] && ros_launch_args+=(smoke_zones:="${SMOKE_ZONES}" smoke_seed:="${SMOKE_SEED:-0}")  # item 18 stage 1: smoke, every sensor read through it (the launch starts its relay)
-  bool_is_true "${RECORD_STACK_BAG:-false}" && ros_launch_args+=(estimator_frame_log:=true)  # item 27 block 6: the frames' record beside the stack bag, for its replay
+  bool_is_true "${RECORD_STACK_BAG:-false}" && ros_launch_args+=(estimator_frame_log:=true bridge_clock:=false)  # item 27 block 6: the frames' record beside the stack bag, for its replay; the clock bridged before the recorder (runtime_evidence_runtime.sh)
   [[ -n "${MAP_REGISTRATION:-}" ]] && ros_launch_args+=(map_registration:="${MAP_REGISTRATION}")  # item 40: the estimator's map registration measured without acting
   [[ -n "${LOOP_CLOSURE:-}" ]] && ros_launch_args+=(loop_closure:="${LOOP_CLOSURE}")  # item 41: the stereo estimator's loop closures: act, measure or off
   [[ -n "${HEAT_SOURCES:-}" ]] && ros_launch_args+=(heat_sources:="${HEAT_SOURCES}")  # item 32: the heat sources ride with the smoke (an empty value is a malformed argument, r2267)

@@ -105,6 +105,17 @@ start_runtime_evidence_capture() {
     local -a stack_bag_topics
     mapfile -t stack_bag_topics < <(python3 "${repo_root}/scripts/stack_bag_topics.py" record \
       --navigation-sensor-profile "${navigation_sensor_profile}" --camera-profile "${camera_profile}")
+    # The simulation's clock reaches ROS before the recorder and the stack:
+    # under --use-sim-time the recorder subscribes to nothing until it has
+    # seen /clock, and a clock that came up with the stack's launch left the
+    # bag without the stack's first second (r4299: the recorder's
+    # subscriptions 0.4 s after the launch's bridge, the replayed estimator's
+    # pose declared 2 s after the flown one, sixteen depth frames of 4696
+    # the replay never had). The launch is told not to bridge it again
+    # (bridge_clock:=false).
+    ros2 run ros_gz_bridge parameter_bridge "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock" \
+      --ros-args -r __node:=stack_bag_clock_bridge \
+      > "${runtime_artifact_dir}/stack_bag_clock.log" 2>&1 &
     # The receive stamps on the simulation clock: the player's clock is these
     # (r2874's were the wall's, and the replayed stack read every message as
     # years old).
@@ -113,12 +124,12 @@ start_runtime_evidence_capture() {
       -o "${runtime_artifact_dir}/stack_bag" --topics "${stack_bag_topics[@]}" \
       > "${runtime_artifact_dir}/stack_bag.log" 2>&1 &
     stack_bag_pid=$!
-    # The recorder listens before the stack starts: one that came up beside
-    # the nodes missed the stack's first depth frames (r4237: 17 of them,
-    # and a replay whose registration read another map from its first frame).
+    # The recorder holds its subscriptions before the stack starts: the
+    # autopilot's stream, which is there already, is the sign.
     local _
-    for _ in $(seq 1 150); do
-      grep -q 'Recording\.\.\.' "${runtime_artifact_dir}/stack_bag.log" 2>/dev/null && break
+    for _ in $(seq 1 200); do
+      grep -q "Subscribed to topic '/fmu/out/sensor_combined'" \
+        "${runtime_artifact_dir}/stack_bag.log" 2>/dev/null && break
       sleep 0.1
     done
   fi

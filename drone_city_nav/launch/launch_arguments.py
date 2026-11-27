@@ -65,6 +65,15 @@ def city_nav_launch_arguments(default_params_file, default_rviz_config):
             ),
         ),
         DeclareLaunchArgument(
+            "bridge_clock",
+            default_value="true",
+            description=(
+                "The launch bridges the simulation's clock; false when the flight script "
+                "bridged it before the stack bag's recorder, which subscribes to nothing "
+                "until it has seen the clock (roadmap item 27 block 6, specification K62)."
+            ),
+        ),
+        DeclareLaunchArgument(
             "enable_gazebo_bridge",
             default_value="true",
             description=(

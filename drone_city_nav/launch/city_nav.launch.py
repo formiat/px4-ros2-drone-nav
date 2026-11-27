@@ -13,7 +13,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -166,19 +166,50 @@ def generate_launch_description():
     lidar_scan_topic_suffix = LaunchConfiguration("lidar_scan_topic_suffix")
     budget_relay = LaunchConfiguration("budget_relay")
     step_ack = LaunchConfiguration("step_ack")
+    # The clock is bridged here unless the flight script bridged it already,
+    # before the stack bag's recorder (bridge_clock:=false).
+    bridge_clock = LaunchConfiguration("bridge_clock")
+    contacts_bridge_argument = (
+        f"{contacts_gz_topic}@ros_gz_interfaces/msg/Contacts" "[gz.msgs.Contacts"
+    )
     simulation_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
         name="simulation_bridge",
         output="screen",
-        condition=IfCondition(enable_gazebo_bridge),
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    enable_gazebo_bridge,
+                    "'.lower() == 'true' and '",
+                    bridge_clock,
+                    "'.lower() == 'true'",
+                ]
+            )
+        ),
         arguments=[
-            (
-                f"{contacts_gz_topic}@ros_gz_interfaces/msg/Contacts"
-                "[gz.msgs.Contacts"
-            ),
+            contacts_bridge_argument,
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
         ],
+    )
+    simulation_bridge_without_clock = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        name="simulation_bridge",
+        output="screen",
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    enable_gazebo_bridge,
+                    "'.lower() == 'true' and '",
+                    bridge_clock,
+                    "'.lower() != 'true'",
+                ]
+            )
+        ),
+        arguments=[contacts_bridge_argument],
     )
     def source_nodes(context, *args, **kwargs):
         profile = validate_lidar_profile(lidar_profile.perform(context))
@@ -795,6 +826,7 @@ def generate_launch_description():
         [
             *city_nav_launch_arguments(default_params_file, default_rviz_config),
             simulation_bridge,
+            simulation_bridge_without_clock,
             OpaqueFunction(function=source_nodes),
             collision_crash,
             rviz,

@@ -80,7 +80,7 @@ class ReplayContractTest(unittest.TestCase):
         self.assertIn('printf \'%s\\n\' "${ros_launch_args[@]}" > "${runtime_artifact_dir}/ros_launch_args.txt"', runner)
         container = (REPOSITORY / "scripts/container_run.sh").read_text(encoding="utf-8")
         self.assertIn("  RECORD_STACK_BAG\n", container)
-        self.assertIn("ros_launch_args+=(estimator_frame_log:=true)", runner)
+        self.assertIn("ros_launch_args+=(estimator_frame_log:=true bridge_clock:=false)", runner)
         launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
         self.assertIn('visual_inertial_overrides["frame_log"] = True', launch)
         self.assertIn("--use-sim-time --qos-profile-overrides-path", evidence)
@@ -206,6 +206,24 @@ class ReplayCompareTest(unittest.TestCase):
         self.assertIn("event 2 differs", compare.compare_events(["a", "b"], ["a", "c"]))
         self.assertIn("then the flight has 3 and the replay 2", compare.compare_events(["a", "b", "c"], ["a", "b"]))
 
+
+
+class RecorderBeforeTheStackTest(unittest.TestCase):
+    def test_the_clock_is_bridged_before_the_recorder_and_once(self) -> None:
+        # The recorder subscribes to nothing until it has seen /clock: a clock that came up with the stack's launch
+        # left the bag without the stack's first second (r4299, specification K62).
+        capture = (REPOSITORY / "scripts/runtime_evidence_runtime.sh").read_text(encoding="utf-8")
+        bridge = capture.index('parameter_bridge "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"')
+        recorder = capture.index("ros2 bag record -s mcap")
+        self.assertLess(bridge, recorder)
+        self.assertIn("Subscribed to topic '/fmu/out/sensor_combined'", capture)
+        flight = (REPOSITORY / "scripts/run_drone_nav_sim.sh").read_text(encoding="utf-8")
+        self.assertIn("ros_launch_args+=(estimator_frame_log:=true bridge_clock:=false)", flight)
+        launch = (REPOSITORY / "drone_city_nav/launch/city_nav.launch.py").read_text(encoding="utf-8")
+        self.assertIn("simulation_bridge_without_clock", launch)
+        self.assertEqual(1, launch.count('"/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"'))
+        arguments = (REPOSITORY / "drone_city_nav/launch/launch_arguments.py").read_text(encoding="utf-8")
+        self.assertIn('"bridge_clock"', arguments)
 
 if __name__ == "__main__":
     unittest.main()
