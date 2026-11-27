@@ -840,7 +840,14 @@ features on a quarter of the frames and is restarted sixteen times;
 ORB-SLAM3 builds four maps and ends kilometres away; Kimera-VIO's smoother
 becomes indeterminate). Three unrelated estimators failing on one converted
 record say the conversion or the IMU's stated noise is at fault before any
-of them, and the row is not a measure of the estimators.
+of them, and the row is not a measure of the estimators. A second attempt
+(2026-11-27) found the IMU's samples two to a stamp in the bag and retimed
+them to their period of 2.56 ms; nothing changed (ours 20 restarts and 11
+corners at the median, ORB-SLAM3 189 resets of its map, Kimera-VIO six
+seconds), while the pair itself is sound (the right camera 0.259 m to the
+right, 390 to 670 matches a pair). The recording stays without a figure
+after two attempts; the register names the next step (the dataset's own
+VINS-Fusion configuration, to prove the data's path).
 
 ### On A Real Lidar Recording (NTU VIRAL)
 

@@ -14,7 +14,9 @@ our estimator, and the references of roadmap item 41 stage 3 (ORB-SLAM3, Kimera-
 The dataset's body is forward-right-down; EuRoC's sensor frame has x up, y right and z forward, and
 euroc_to_replay.py turns that one into the vehicle's. Every stream and extrinsic is turned into EuRoC's convention
 here (x_S = -z_B, y_S = y_B, z_S = x_B). The cameras' stamps are moved by the calibration's t_shift (t_imu = t_cam +
-t_shift). The IMU's noise densities are the calibration's standard deviations, as the dataset states them. Reads
+t_shift). The IMU's samples come two to a stamp and are retimed (`retimed`). The IMU's noise densities are the
+calibration's standard deviations, as the dataset states them. Not proven: our estimator, ORB-SLAM3 and Kimera-VIO
+all diverge on the sequence this writes (roadmap item 41 stage 3, two attempts). Reads
 the bag with the rosbags library; logs its progress every 500 frames.
 
   /data/gazebo/tools/bagpy/bin/python -I tools/vio/ntu_viral_to_asl.py /data/gazebo/datasets/ntu_viral/eee_01_unzip/eee_01 \\
@@ -34,6 +36,21 @@ from rosbags.typesys import Stores, get_typestore
 
 # The EuRoC sensor frame from the dataset's body frame (forward-right-down).
 SENSOR_FROM_BODY = np.array([[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
+# The VN-100's samples reach the bag two at a time: half of the stamps' intervals are 10 to 30 microseconds and half
+# 5.06 ms (eee_01: 153 347 samples). The first of a pair is given the moment halfway back to the pair before.
+PAIR_NS = 500_000
+
+
+def retimed(rows: list[tuple]) -> list[tuple]:
+    rows = sorted(rows)
+    stamps = [row[0] for row in rows]
+    out = []
+    for index, row in enumerate(rows):
+        stamp = stamps[index]
+        if 0 < index < len(rows) - 1 and stamps[index + 1] - stamp < PAIR_NS:
+            stamp = stamps[index + 1] - (stamps[index + 1] - stamps[index - 1]) // 2
+        out.append((stamp, *row[1:]))
+    return out
 
 
 def yaml_scalar(path: Path, key: str) -> float:
@@ -138,7 +155,7 @@ def main() -> int:
     with open(out / "imu0" / "data.csv", "w") as index:
         index.write("#timestamp [ns],w_RS_S_x [rad s^-1],w_RS_S_y [rad s^-1],w_RS_S_z [rad s^-1],"
                     "a_RS_S_x [m s^-2],a_RS_S_y [m s^-2],a_RS_S_z [m s^-2]\n")
-        for row in sorted(imu_rows):
+        for row in retimed(imu_rows):
             index.write(f"{row[0]}," + ",".join(f"{v:.9g}" for v in row[1:]) + "\n")
     (out / "state_groundtruth_estimate0").mkdir(parents=True, exist_ok=True)
     count = 0
