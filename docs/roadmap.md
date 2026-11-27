@@ -1798,7 +1798,12 @@ descriptors do not match (9 matches at the median). What holds a return there is
 view (the register's row); the acceptance on Urban stands (r4243 to r4252:
 1.434 and 2.443 m/s; on the final code, after the survey's repairs of the day, r4270 to r4274 1.380 m/s and
 r4282 to r4286 2.313 m/s, the lidar five flown twice: r4278 of the first stood at the start for its whole
-flight under the host's load, the register's row). B and back was not flown (the goal forbade it).
+flight under the host's load, the register's row). B and back was not flown (the goal forbade it). On
+2026-11-27 item 40's registration got its target heading bounded to what the magnetometer holds (K57) and three more
+surveys were flown: 33 closures and none wrong, home 0.25 to 0.81 m from the truth, 8, 9 and 13 displaced sheets
+(r4299 to r4301), the acceptance after them 1.374 and 2.380 m/s (r4302 to r4311). What remains open for the stereo
+set is in the register: the memory is left as laid, so the first pass's sheets stay; the open sky's ground is not
+recognised; a survey's replay does not repeat its flight (K62).
 
 **The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
 bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,

@@ -688,6 +688,19 @@ keyframe had a candidate (the estimate is farther from the places it comes back 
 their look is not recognised when the radius is widened: the trial above): nothing is closed there, and the return
 stays as the dead reckoning leaves it.
 
+With the registration's target heading bounded to 0.7 degrees (K57, 2026-11-27: unbounded it had walked to 2.5,
+1.6 and 2.2 degrees on the three surveys above, with the closures acting and only read alike) three more surveys
+were flown, and the acceptance after them (r4302 to r4311: 1.374 and 2.380 m/s, no check failed):
+
+| Flight | Length, m | Closures accepted / wrong | Estimate's error, p50 / p95 / at the return, m | Home by the truth, m | Displaced sheets |
+| --- | --- | --- | --- | --- | --- |
+| r4299, Urban survey | 597 | 5 / 0 | 0.27 / 0.57 / 0.36 | 0.81 | 8 (1.8 %) |
+| r4300, Urban survey | 1090 | 10 / 0 | 0.64 / 1.66 / 0.07 | 0.42 | 9 (3.8 %) |
+| r4301, Urban survey | 997 | 18 / 0 | 0.63 / 1.05 / 0.04 | 0.25 | 13 (6.7 %) |
+
+The sheets that remain are the first pass's: a closure brings the second pass to the first and leaves the memory
+as it was laid (the register's row).
+
 #### Whether The Lidar Set Needs A Loop Closure
 
 Measured on 2026-11-26 (roadmap item 41), surveys on the lidar set in the two held-out worlds and on Urban:
