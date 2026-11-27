@@ -15,8 +15,9 @@ The dataset's body is forward-right-down; EuRoC's sensor frame has x up, y right
 euroc_to_replay.py turns that one into the vehicle's. Every stream and extrinsic is turned into EuRoC's convention
 here (x_S = -z_B, y_S = y_B, z_S = x_B). The cameras' stamps are moved by the calibration's t_shift (t_imu = t_cam +
 t_shift). The IMU's samples come two to a stamp and are retimed (`retimed`). The IMU's noise densities are the
-calibration's standard deviations, as the dataset states them. Not proven: our estimator, ORB-SLAM3 and Kimera-VIO
-all diverge on the sequence this writes (roadmap item 41 stage 3, two attempts). Reads
+calibration's standard deviations of a sample over the square root of the rate. Our estimator, ORB-SLAM3 and
+Kimera-VIO are all lost on the sequence this writes (roadmap item 41 stage 3, three attempts): the scene is far and
+the dataset's extrinsics leave the rectified pair 1.3 px apart vertically (docs/localization.md). Reads
 the bag with the rosbags library; logs its progress every 500 frames.
 
   /data/gazebo/tools/bagpy/bin/python -I tools/vio/ntu_viral_to_asl.py /data/gazebo/datasets/ntu_viral/eee_01_unzip/eee_01 \\
@@ -39,6 +40,8 @@ SENSOR_FROM_BODY = np.array([[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]
 # The VN-100's samples reach the bag two at a time: half of the stamps' intervals are 10 to 30 microseconds and half
 # 5.06 ms (eee_01: 153 347 samples). The first of a pair is given the moment halfway back to the pair before.
 PAIR_NS = 500_000
+# The calibration states the noise as a sample's standard deviation at this rate; the layout asks for densities.
+IMU_RATE_HZ = 385
 
 
 def retimed(rows: list[tuple]) -> list[tuple]:
@@ -103,9 +106,10 @@ def main() -> int:
     gyro = [float(line.split(":", 1)[1]) for line in imu_yaml if line.strip().startswith("gyro_std:")]
     (out / "imu0" / "sensor.yaml").write_text(
         "sensor_type: imu\ncomment: NTU VIRAL VN-100\nT_BS:\n  cols: 4\n  rows: 4\n  data: "
-        + matrix_text(np.eye(4)) + "\nrate_hz: 385\n"
-        f"gyroscope_noise_density: {gyro[0]!r}\ngyroscope_random_walk: {gyro[1]!r}\n"
-        f"accelerometer_noise_density: {yaml_scalar(sequence / 'imu_v100.yaml', 'accel_std')!r}\n"
+        + matrix_text(np.eye(4)) + f"\nrate_hz: {IMU_RATE_HZ}\n"
+        f"gyroscope_noise_density: {gyro[0] / IMU_RATE_HZ ** 0.5!r}\ngyroscope_random_walk: {gyro[1]!r}\n"
+        f"accelerometer_noise_density: "
+        f"{yaml_scalar(sequence / 'imu_v100.yaml', 'accel_std') / IMU_RATE_HZ ** 0.5!r}\n"
         f"accelerometer_random_walk: {yaml_scalar(sequence / 'imu_v100.yaml', 'accel_rw')!r}\n")
     prism = SENSOR_FROM_BODY @ yaml_matrix(sequence / "leica_prism.yaml", "T_Body_Prism")[:3, 3]
     (out.parent / "prism_in_body.txt").write_text(",".join(f"{v:.6f}" for v in prism) + "\n")

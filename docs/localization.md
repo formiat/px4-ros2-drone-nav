@@ -829,6 +829,7 @@ about the vertical alone, the harder of the two measures.
 | V1_01_easy | 0.050 m | 0.042 m, 13 closures | 0.039 m, no loop detected | 0.059 m | 0.939 m, 31 closures kept of 207 |
 | V1_02_medium | 0.046 m | 0.046 m, 18 closures | 0.019 m, 1 loop closed | 0.058 m | 0.320 m, 36 of 79 |
 | V1_03_difficult | 0.129 m | 0.128 m, 15 closures | 0.025 m, 1 loop detected and refused | 0.090 m | 0.319 m, 9 of 49 |
+| NTU VIRAL eee_01 (237 m, 399 s), lost by every system | 462 m, 21 restarts | 462 m, no closure | 97.9 m over 208 s, 128 resets of its map, no loop | 557 km over 269 s | the same |
 
 The room is 8 m across and the paths 59 to 79 m: an odometry drifts a
 decimetre there, and a closure has little to return. Ours takes 13 to 18
@@ -858,9 +859,22 @@ of them, and the row is not a measure of the estimators. A second attempt
 them to their period of 2.56 ms; nothing changed (ours 20 restarts and 11
 corners at the median, ORB-SLAM3 189 resets of its map, Kimera-VIO six
 seconds), while the pair itself is sound (the right camera 0.259 m to the
-right, 390 to 670 matches a pair). The recording stays without a figure
-after two attempts; the register names the next step (the dataset's own
-VINS-Fusion configuration, to prove the data's path).
+right, 390 to 670 matches a pair). A third attempt gave the IMU's noise as a density (the calibration states the
+standard deviation of a sample) and is the row of the table: every system
+is still lost, and the figures measure no estimator. The cause is the
+recording's stereo geometry against these systems' kind. Its scene is far
+(a disparity of 2 to 7 px at the median after rectification, 15 to 50 m;
+under one point in a hundred within 6.4 m), and the rectification by the
+dataset's extrinsics, each camera calibrated against the IMU by itself,
+leaves the pair 1.3 px apart vertically at the median (2.4 at the 90th
+percentile) and a median disparity of -0.3 px over 41 110 matches of 57
+frames: the cameras' relative turn is known less well than a depth at that
+range asks (a degree of yaw is 7 px). The relative pose read from the
+matches themselves takes the vertical error to 0.07 px and cannot give the
+baseline's direction, which a far scene does not observe. All three
+systems are stereo-inertial on a rectified pair; the dataset's authors run
+VINS-Fusion, which refines the extrinsics as it goes. The recording is not
+a measure of these three, and the register names what would make it one.
 
 ### On A Real Lidar Recording (NTU VIRAL)
 

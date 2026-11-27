@@ -1795,7 +1795,8 @@ within 5 m and 45 degrees of a pose it held over 13 percent of that route (the t
 4.7 m off by then; with the candidates' radius and the innovation's bound widened to 4 percent of the path nothing
 held (a trial of 2026-11-27 on the bag, not kept) 460 keyframes had candidates and none closed: the ground's
 descriptors do not match (9 matches at the median). What holds a return there is not a closure by the forward
-view (the register's row); the acceptance on Urban stands (r4243 to r4252:
+view (the register's row); the group flown once more after the trial (r4312, r4313, r4315) came back 3.59 and
+5.67 m off, and r4315 lost the autopilot's position near its last goal and landed blind, without a contact; the acceptance on Urban stands (r4243 to r4252:
 1.434 and 2.443 m/s; on the final code, after the survey's repairs of the day, r4270 to r4274 1.380 m/s and
 r4282 to r4286 2.313 m/s, the lidar five flown twice: r4278 of the first stood at the start for its whole
 flight under the host's load, the register's row). B and back was not flown (the goal forbade it). On
