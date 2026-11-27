@@ -1767,6 +1767,90 @@ radius of 2.0 m by the truth, or a wall seen twice lies in the memory as two lay
   the return itself is lost: r3211 acknowledged it 2.82 m from the goal by the truth, beyond the radius. Stage 1
   (the recognition) is where the stereo set's work starts.
 
+**Stages 1 to 4 for the stereo set, done on 2026-11-26** (the goal of 2026-11-20, part 5; specification K92;
+[localization.md](localization.md), "Loop Closure", holds the gates, the replays and the references' table). The
+recognition keeps a keyframe a metre (ORB features with the pair's depth) and reads a new one against the ten
+nearest old ones by the estimate; a closure passes six gates (inliers, the points' own residual, eight inliers off
+their common plane, the filter's roll and pitch, 1.5 m and five degrees of the estimate, the agreement of the
+candidates). The graph is a small solver of our own over four degrees of freedom; a closure moves the position and
+leaves the heading, and reaches the navigation as item 40's frame offset does; the memory is left as laid. The
+references on EuRoC V1_01 to V1_03 (absolute trajectory error, m): ours 0.042 / 0.046 / 0.128 with the closures
+(0.050 / 0.046 / 0.129 without), ORB-SLAM3 0.039 / 0.019 / 0.025, Kimera-VIO's odometry 0.059 / 0.058 / 0.090;
+NTU VIRAL gave no figure (every system diverged on our conversion). Flown on 2026-11-26:
+
+| Flight | Length, m | Closures accepted / wrong | Estimate's error, p50 / p95 / at the return, m | Home by the truth, m | Displaced sheets |
+|---|---|---|---|---|---|
+| r4237, Urban survey | 903 | 132 / 0 | 0.43 / 0.64 / 0.06 | 0.04 | 9 (6.1 %) |
+| r4238, Urban survey | 1120 | 41 / 0 | 0.30 / 0.58 / 0.03 | 0.83 | 9 (2.0 %) |
+| r4239, Urban survey | 1100 | 7 / 0 | 1.06 / 2.13 / 0.38 | 0.47 | 16 (11.7 %) |
+| the base without closures: r4233, r4234 | 1537, 593 | | 1.03 / 1.38 / 1.11 and 0.20 / 0.59 / 0.21 | 1.18, 0.44 | 19 (23.2 %), 13 (3.0 %) |
+| r4240 to r4242, open sky without the satellite signal | 1576 to 1651 | 0 | p95 10.79, 4.88, 7.87 | the return 9.62, 3.22, 8.13 | |
+
+No closure was accepted wrongly in flight (188 accepted over five flights with the acceptance's two) or on the
+recordings. The return's error is bounded on the routes that return over seen ground (0.03 to 0.38 m against 0.21
+and 1.11); the first pass is not (r4239: item 40's registration turned the frame a degree before the first
+return, the closures read it and leave the heading). **Not met:** the open sky's loop holds no place seen again
+within reach of a view (its second goal 12.5 m from the start, approached 85 degrees off), no keyframe had a
+candidate in four flights, and the return stays 3.2 to 9.6 m off; the acceptance on Urban stands (r4243 to r4252:
+1.434 and 2.443 m/s; on the final code, after the survey's repairs of the day, r4270 to r4274 1.380 m/s and
+r4282 to r4286 2.313 m/s, the lidar five flown twice: r4278 of the first stood at the start for its whole
+flight under the host's load, the register's row). B and back was not flown (the goal forbade it).
+
+**The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
+bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,
+`tools/ideal_closure.py --turn`, `tools/lio/degenerate_lines.py`, `tools/lio/false_recognition.cpp`):
+
+| World | Run | Commit | Length, m | Estimate's error, p95 / at the end, m | Home by the truth, m | Displaced sheets (share of the occupied cells) | Error's slope, m/km | An ideal closure of pose and heading, p95, m | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| finals | r4253 | 96daec70 | 1751 | 2.81 / 0.88 | 1.04 | 9 (12.4 %; 714 cells 1.0 m off) | +0.94 | 0.43 | one vantage acknowledged 2.63 m off; the heading 2.4 degrees off at p95 |
+| finals | r4254 | 96daec70 | 1818 | 5.85 / 4.89 | not come home in 1800 s | 11 (24.5 %) | +4.60 | 0.38 | 43 vantages acknowledged 4.3 to 5.9 m off after 25.7 s on an unobserved axis, healthy throughout |
+| cave | r4255 | 96daec70 | 1785 | 1.15 / 1.66 | the survey did not end | none in the volume | +0.54 | 0.96 | left its box (K59's repair of the day) |
+| urban | r4257 | 96daec70 | 600 | 0.29 / 0.10 | 0.26 | none | +0.02 | 0.13 | |
+| cave | r4258 | f0477c82 | 2531 | 0.88 / 0.47 | 0.39 | 3 (5.2 %; 113 cells 1.5 m off) | +0.30 | 0.25 | |
+| cave | r4259 | f0477c82 | 1916 | 0.78 / 0.81 | 1.01 | 7 (10.8 %; 430 cells 0.71 m off) | +0.32 | 0.28 | |
+| finals | r4265 | 6507cdfe | 1206 | 0.60 / 0.64 | 0.45 | 1 (3.9 %; 327 cells 1.0 m off) | +0.47 | 0.18 | |
+| finals | r4267 | 6507cdfe | 1531 | 1.07 / 1.05 | not come home in 1800 s | 8 (12.4 %; 377 cells 1.0 m off) | +0.72 | 0.42 | |
+| cave | r4268 | 6507cdfe | 2454 | 0.96 / 0.28 | 0.76 | 2 (2.9 %) | +0.18 | 0.38 | the longest the world gave |
+
+Two more flights of the day are not in the table: r4256 (cave, 2382 m) is void, the simulated autopilot having
+lost its IMU stream (specification A15), and r4261 (finals) met a wall through the first version of the survey's
+recall (K59). What a registration by geometry would take for a place it is not:
+
+| Record | Pairs of different places (10 m apart or more) | Accepted by the estimator's health rule | As good as a true revisit | Pairs of the same place (within 1 m, 30 s apart) | Registered within 0.5 m of the truth |
+|---|---|---|---|---|---|
+| finals, the survey r4267 | 1000 | 953 | 0 | 1000 | 1000 |
+| cave, the survey r4268 | 1000 | 1000 | 0 | 670 | 670 |
+| finals, point to point through its tunnels, r3916 | 5000 | 4975 | 0 (2 of another 1000, the places 14 to 46 m apart) | 232 | 232 |
+
+**The verdict: the lidar set needs a loop closure in the held-out worlds; on Urban it does not on the lengths
+measured (600 m here, 1124 m at stage 0).** By the rule of stage 0: a wall laid twice lies in every finals map and
+every cave map of a survey that ended (one to eleven sheets, up to a quarter of the occupied cells, the truth's own
+surface held beside most of them); the estimate ran 2.8 and 5.9 m off at the 95th percentile on two finals flights
+and 44 vantages were acknowledged beyond the capture radius of 2.0 m; the error grows with the path by 0.2 to 0.9 m
+a kilometre on every flight without a slip, which is 2.0 m after 2.1 to 11 km, and by 4.6 where an unobserved axis
+carried the estimate 5.5 m in 25.7 s (K70 bounds the time, not the place). Home itself was never acknowledged
+beyond the radius. An ideal closure of the pose and the heading at every return (`tools/ideal_closure.py --turn`)
+leaves 0.18 to 0.52 m at the 95th percentile on the flights that returned, and the maps' sheets were laid after
+the first return on every flight (`tools/survey_map.py --snapshot`: none on r4253 before the 950th second, none on
+r4254 before the 670th); a closure of the position alone makes such a flight worse elsewhere (r4255: 1.21 to
+2.05 m), because the lidar estimate's error is a turn of its frame as much as a shift (0.5 to 2.4 degrees).
+
+The risk, measured (`tools/lio/false_recognition.cpp`): the estimator's own health rule is no gate for a
+recognition, it accepts 95 to 100 percent of the pairs of different places (it keeps the estimator alive on a
+floor's two hundred points); a registration "as good as a true revisit" (the matched fraction no less than the
+true revisits' fifth percentile, 0.81 to 0.91, the residual no more than their 95th, 0.053 to 0.065 m) is met by
+none of 7000 pairs of different places and by 2 of another thousand in the finals world's tunnels, where the
+matched fraction of different places comes within a few hundredths of a true revisit's (0.86 at the 95th
+percentile against 0.90 at the fifth) and the residual alone tells them apart, by a factor of two.
+
+Ways to do it safely: (1) a revisit proposed by the estimate, as the stereo set's is (the old keyframes within
+the drift's bound of the pose), registered scan to submap, gated on the residual and the matched fraction of a
+true revisit, on the agreement of several old keyframes and on the innovation against the estimate, into the
+pose graph of stage 2 with the heading taken; (2) Kitware's LidarSlam as a dependency (TEASER++ and g2o; its
+closure not in its ROS 2 wrapper); (3) no closure and the survey kept under a kilometre. Recommended: (1), the
+graph and the gates being in the tree, with the tunnels' gate set from records like r3916 before any flight.
+Not implemented in this goal: the check ends with the verdict.
+
 The navigation invariants hold: a closure is a measurement, never a rule
 about a place; a wrong closure is a crash and is counted as one.
 

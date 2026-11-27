@@ -34,7 +34,10 @@ Iron; images for Humble and Jazzy), takes an IMU, GPS and cameras beside the
 lidar, and closes loops where it is built with TEASER++ and optimises a pose
 graph where it is built with g2o; its README says the loop closure detection
 is not yet supported in the ROS 2 wrapper. A candidate reference for the
-lidar set's half of roadmap item 41.
+lidar set's half of roadmap item 41, and since the measurement of
+2026-11-26 (the lidar set needs a closure in the held-out worlds:
+[localization.md](localization.md)) the second of the three ways named
+there, behind a closure of our own over the graph the stereo set has.
 
 Read on 2026-11-22, by their READMEs, neither built here:
 

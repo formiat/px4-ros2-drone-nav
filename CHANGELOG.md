@@ -6,6 +6,17 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The stereo estimate closes loops** (roadmap item 41, stages 1 to 4; specification K92): a keyframe a metre keeps
+  ORB features with the pair's depth, a place seen again within the estimate's measured drift is recognised, gated by
+  its geometry (a repeated flat surface answers a period away and is refused), and a pose graph of our own moves the
+  estimate's frame by it; `LOOP_CLOSURE=act|measure|off`. On three Urban surveys the estimate came back 0.03 to
+  0.38 m from the truth (0.21 and 1.11 m without), no closure of 188 accepted wrongly. Over the open sky without the
+  satellite signal no place is seen again and nothing is closed. Beside ours on EuRoC: ORB-SLAM3 and Kimera-VIO
+  (`tools/vio/closure_references.sh`).
+- **Whether the lidar set needs a loop closure, measured** (specification K93): it does in the held-out worlds (walls
+  laid twice in every finals and cave survey map, the estimate up to 5.9 m off) and not on Urban; not implemented.
+  Tools: `tools/ideal_closure.py`, `tools/lio/false_recognition.cpp`, `tools/lio/extract_stack_bag.py`,
+  `tools/loop_closures.py`.
 - **The survey calls a vehicle back into its box** (specification K59): a vehicle whose way to a vantage led out of the
   flood's box (the volume and 40 m) had no reading, no end and the last goal to fly to; with no cluster chosen it is
   now called back to the last vantage it reached, once until a reading places it again (`SURVEY_RECALL`). Found on
