@@ -664,6 +664,25 @@ at the median, no closure). Of the returns of the two surveys (again
 within 5 m and 45 degrees of a pose held before) 3 of 13 and 2 of 5 are
 covered by a closure; the others share under 25 inliers with what was seen.
 
+The replays of those two surveys stood 0.09 to 0.35 m from their flights (the
+bag began after the stack's first depth frames, specification K62), and a
+difference between two of their replays under that is no measure. On the code
+of 2026-11-27 a survey's bag replays its flight to the millimetre, and the
+two surveys recorded on it were replayed with the closures off
+(`RATE=0.5 tools/replay_variant.sh DIR closure_off`), the flights themselves
+flown with them:
+
+| Flight | Closures accepted | Wrong | The replay against the flight, 95th percentile / at most | Without the closures: median / 95th percentile / at the return | As flown, with them |
+| --- | --- | --- | --- | --- | --- |
+| r4317, Urban survey, 1087 m | 23 | 0 | 0.000 / 0.008 m | 0.33 / 0.94 / 0.15 m | 0.42 / 0.79 / 0.03 m |
+| r4319, Urban survey, 798 m | 102 | 0 | 0.000 / 0.009 m | 0.28 / 0.95 / 0.32 m | 0.17 / 0.32 / 0.03 m |
+
+The 95th percentile and the return are better with the closures on both; the
+median of the longer one is not (a closure moves the estimate to its first
+pass). Their maps carry 5 and 14 displaced sheets (1.1 and 2.1 percent of the
+occupied cells; the three surveys before them 8, 9 and 13): the count goes
+with the first pass's drift, which a closure does not undo.
+
 What a replay does not show is the obstacle memory: the replayed planner and
 memory read the autopilot's position as the flight recorded it.
 

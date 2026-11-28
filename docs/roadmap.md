@@ -1804,7 +1804,8 @@ flight under the host's load, the register's row). B and back was not flown (the
 surveys were flown: 33 closures and none wrong, home 0.25 to 0.81 m from the truth, 8, 9 and 13 displaced sheets
 (r4299 to r4301), the acceptance after them 1.374 and 2.380 m/s (r4302 to r4311). What remains open for the stereo
 set is in the register: the memory is left as laid, so the first pass's sheets stay; the open sky's ground is not
-recognised; a survey's replay does not repeat its flight (K62).
+recognised. A survey's replay repeats its flight since the same day (K62: the image source holds its frames until
+the recorder listens, the camera's gain is recorded; r4317 and r4319 replay to 0.000 m at the 95th percentile).
 
 **The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
 bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,

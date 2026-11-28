@@ -8,8 +8,14 @@ release names the asset tags it was validated with.
 
 - **The registration's heading stays within what the magnetometer holds** (specification K57): the stereo estimate's
   registration against its own map no longer turns the frame by more than 0.7 degrees where the magnetometer's prior
-  is on; unbounded it walked to 2.5 degrees on surveys and laid walls twice. A flight that records its stack bag
-  waits for the recorder before it starts the stack (K62).
+  is on; unbounded it walked to 2.5 degrees on surveys and laid walls twice.
+- **A survey's stack bag is its flight** (specification K62): a recorded flight bridges the simulation's clock
+  before the recorder and the stack, the simulated image source holds its frames until the recorder listens to
+  them, and the camera's gain is recorded with the frames. A 17-minute survey replays to 0.000 m at the 95th
+  percentile (0.008 m at most); before, a survey's replay stood 0.09 to 0.35 m from its flight.
+- **The replay gate compares the replay it has just run**: `tools/replay_stack.sh` removes an earlier replay's
+  record first. The recorder refused the existing directory, and from 2026-11-06 `./tools/gates.sh --replay`
+  set the kept flights against their first replays; replayed anew the kept bags stand (0.016 and 0.000 m).
 - **A guide in English and a map of the architecture** (roadmap item 49; the idea is hundong2's, whose Korean course
   and architecture map showed the need, `docs/forks.md`): six steps under `docs/guide/`, from what the project is to
   extending it, and `docs/guide/architecture_map.md`, whose every component links to its files and to the

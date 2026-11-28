@@ -48,6 +48,9 @@ echo "REPLAY $run start $(date -u +%H:%M:%S) rate $rate inputs ${#inputs[@]} out
 ros2 launch drone_city_nav city_nav.launch.py "${args[@]}" > "$out/ros_replay.log" 2>&1 &
 launch_pid=$!
 sleep 30
+# An earlier replay's record goes first: the recorder refuses a directory that exists, and the comparison then read
+# the earlier replay (the gate's kept bags were compared with their replays of 2026-11-05 and 06 until 2026-11-27).
+rm -rf "$out/replay_bag"
 ros2 bag record -s mcap --max-cache-size 268435456 --qos-profile-overrides-path /workspace/scripts/stack_bag_qos.yaml \
   -o "$out/replay_bag" --topics "${outputs[@]}" > "$out/replay_bag.log" 2>&1 &
 record_pid=$!

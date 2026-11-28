@@ -118,6 +118,12 @@ class ReplayContractTest(unittest.TestCase):
         # The player's publishers stand before the first message (r2938: the stack lost the bag's first 0.3 s).
         self.assertIn("--delay 5 --topics", replay)
 
+    def test_a_replay_records_anew(self) -> None:
+        # The recorder refuses an output directory that exists: without the removal every replay after a run's
+        # first compared the flight with that first replay's record.
+        replay = (REPOSITORY / "tools/replay_stack.sh").read_text(encoding="utf-8")
+        self.assertLess(replay.index('rm -rf "$out/replay_bag"'), replay.index('-o "$out/replay_bag"'))
+
     def test_the_kept_bags_replay_as_a_gate(self) -> None:
         # The owner's decision of 2026-11-05 (roadmap item 36): the stack's determinism is the replay's contract, and
         # the kept bags replay as a gate after a change to the estimators, the memory or the planner's input path.
