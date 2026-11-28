@@ -11,10 +11,11 @@ from pathlib import Path
 import yaml
 
 EXTRINSICS_PATH = Path(__file__).resolve().parents[1] / "drone_city_nav" / "config" / "sensor_extrinsics.yaml"
-# The stereo block's sensors and the mounts they take (the evaluation depth cameras sit on the pair).
+# The stereo block's sensors and the mounts they take (the evaluation depth cameras sit on the pair, the evaluation camera looking down on the down unit).
 STEREO_SENSOR_MOUNTS = {
     "stereo_left": "stereo_left", "stereo_right": "stereo_right",
     "evaluation_depth_left": "stereo_left", "evaluation_depth_right": "stereo_right",
+    "evaluation_down": "tof_down",
     **{f"tof_{side}": f"tof_{side}" for side in ("up", "down", "front", "back", "left", "right")},
 }
 

@@ -3,7 +3,8 @@
 over gz-transport for specification K7's measurement (tools/stereo_depth_accuracy.sh): every KEEP_EVERY-th frame of
 each stream by the frame number of the pair's 15 Hz clock, the same frames of every stream (left and right as grey
 uint8, the depth as float16 metres), listed in OUT_DIR/index.csv. Run inside the simulation container while a camera
-flight on Urban flies; RECORD_BASE names the sensors' topic prefix."""
+flight on Urban flies; RECORD_BASE names the sensors' topic prefix. RECORD_SENSORS names other sensors of the block
+than those three (the evaluation camera looking down: RECORD_SENSORS=evaluation_down)."""
 import os
 import sys
 import threading
@@ -35,7 +36,7 @@ def image_cb(name):
             counts[name] = counts.get(name, 0) + 1
         if not kept(stamp):
             return
-        if name.startswith('evaluation'):
+        if name.startswith('evaluation_depth'):
             a = np.frombuffer(msg.data, dtype=np.float32).reshape(msg.height, msg.width)
             a = np.where(np.isfinite(a), a, 0).astype(np.float16)
         else:
@@ -50,8 +51,8 @@ def image_cb(name):
 
 
 node = Node()
-for name in ('stereo_left', 'stereo_right', 'evaluation_depth_left'):
-    topic = f'{base}/{name}/' + ('depth_image' if name.startswith('evaluation') else 'image')
+for name in os.environ.get('RECORD_SENSORS', 'stereo_left stereo_right evaluation_depth_left').split():
+    topic = f'{base}/{name}/' + ('depth_image' if name.startswith('evaluation_depth') else 'image')
     print(name, topic, node.subscribe(Image, topic, image_cb(name)), flush=True)
 started = time.time()
 while True:

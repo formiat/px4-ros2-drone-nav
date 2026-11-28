@@ -186,6 +186,37 @@
         <update_rate>7.5</update_rate>
         <visualize>false</visualize>
       </sensor>
+      <!-- Evaluation only: a camera looking down, where the down time-of-flight
+           unit sits, for reading what a place looks like from above (roadmap
+           item 39 stage 3's question, asked of recorded frames before any
+           such camera is built into the stack). Nothing in the perception,
+           planning or control path subscribes to it; a sensor nobody
+           subscribes to is not rendered. -->
+      <sensor name="evaluation_down" type="camera">
+        <gz_frame_id>stereo_tof_link</gz_frame_id>
+        <pose>-0.32 0 -0.12 0 1.5707963267948966 0</pose>
+        <camera>
+          <horizontal_fov>1.5707963267948966</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>120</far>
+          </clip>
+          <visibility_mask>218103807</visibility_mask>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.03</stddev>
+          </noise>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>7.5</update_rate>
+        <visualize>false</visualize>
+      </sensor>
       <sensor name="tof_up" type="gpu_lidar">
         <gz_frame_id>stereo_tof_link</gz_frame_id>
         <pose>-0.42 0 0.10 0 -1.5707963267948966 0</pose>
