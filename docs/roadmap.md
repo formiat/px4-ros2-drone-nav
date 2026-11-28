@@ -1814,7 +1814,13 @@ return, the register's row) and, flown once more, 1.384 m/s with none (r4330 to 
 to r4329); no contact. What lays the sheets was measured on the flights' records the same day (`tools/survey_sheets.py`):
 3 to 9 sheets a map are laid by no estimate (the depth's own, one over the start in every map), the rest on the first
 pass before any return, and an ideal re-anchoring of the memory by the closures would leave 8, 9, 12, 5 and 12 of
-the 8, 9, 13, 5 and 14 (K92: the memory stays as laid, on the numbers).
+the 8, 9, 13, 5 and 14 (K92: the memory stays as laid, on the numbers). The depth's sheets were traced to the
+matcher's two searches and removed the same day (K94, 897b2169: the far search answered for surfaces nearer than its
+reach, the near one for far surfaces): on the frames and poses of r4319 and r4317 the maps hold 4 and 2 sheets
+against 14 and 5 (`tools/replay_memory.sh`), and three surveys flown on the rule hold 7, 8 and 12 (r4335 to r4337:
+92 closures and none wrong, home 0.24 to 0.43 m from the truth, no contact) against 19 and 13 before the closures,
+none of them the sheet over the start; the acceptance after them 1.403 and 2.295 m/s (r4338 to r4347), no check
+failed, no contact.
 
 **The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
 bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,

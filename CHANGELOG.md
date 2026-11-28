@@ -10,7 +10,7 @@ release names the asset tags it was validated with.
   answers for its own depths. The far search's answer stood wherever the near one was silent, and a wall 0.6 m beside
   the vehicle, or the floor under the resting cameras, was returned a metre behind itself; the near search read walls
   4 to 5 m away a pixel short. On the frames and poses of two surveys the maps' displaced sheets fall from 14 to 4
-  and from 5 to 2.
+  and from 5 to 2; three surveys flown on the rule hold 7, 8 and 12 against 19 and 13 before the loop closures.
 - **The registration's heading stays within what the magnetometer holds** (specification K57): the stereo estimate's
   registration against its own map no longer turns the frame by more than 0.7 degrees where the magnetometer's prior
   is on; unbounded it walked to 2.5 degrees on surveys and laid walls twice.

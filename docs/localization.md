@@ -727,6 +727,27 @@ the flight's memory cell for cell):
 
 Every sheet left stands 0.56 m off the truth: the estimate's on its first pass.
 
+Flown on the rule (897b2169, 2026-11-28), three Urban surveys and the
+acceptance after them (r4338 to r4347: 1.403 and 2.295 m/s, no check failed,
+no contact; `tools/survey_map_check.py`, `tools/survey_sheets.py`,
+`tools/loop_closures.py`, `tools/estimate_error.py`):
+
+| Flight | Length, m | Closures accepted / wrong | Estimate's error, p50 / p95 / at the return, m | Home by the truth, m | Displaced sheets | Farther off the truth than the estimate was | With the estimate's whole error taken out |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| r4335, Urban survey | 578 | 8 / 0 | 0.28 / 0.44 / 0.12 | 0.24 | 7 (1.8 %) | 0 | 0 |
+| r4336, Urban survey | 1251 | 25 / 0 | 0.37 / 1.04 / 0.05 | 0.43 | 8 (2.0 %) | 0 | 1 |
+| r4337, Urban survey | 665 | 59 / 0 | 0.37 / 0.76 / 0.03 | 0.28 | 12 (5.1 %) | 1 | 3 |
+
+The maps before the closures held 19 and 13 sheets (r4233, r4234), the three
+before the rule 8, 9 and 13. No map carries the sheet over the start or a
+surface behind a near one. The count now follows the first pass's error alone
+(r4337: the estimate 0.5 to 0.8 m off from the 535th to the 626th second,
+its frame turned 0.86 degrees over the flight). The one sheet the estimate did
+not lay (r4337, 64 cells 0.63 m off, a wall's top seen from 7.7 m at the
+frame's edge during the take-off) is the far search's own error at range: the
+confident depth is a depth along the axis, and at the edge of a 120 degree
+frame 5.2 m of it is 9 m of range.
+
 What a replay does not show is the obstacle memory: the replayed planner and
 memory read the autopilot's position as the flight recorded it.
 
