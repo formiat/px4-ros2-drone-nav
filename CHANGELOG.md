@@ -6,6 +6,11 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The stereo depth no longer lays a surface behind a near one** (specification K94): each of its two searches
+  answers for its own depths. The far search's answer stood wherever the near one was silent, and a wall 0.6 m beside
+  the vehicle, or the floor under the resting cameras, was returned a metre behind itself; the near search read walls
+  4 to 5 m away a pixel short. On the frames and poses of two surveys the maps' displaced sheets fall from 14 to 4
+  and from 5 to 2.
 - **The registration's heading stays within what the magnetometer holds** (specification K57): the stereo estimate's
   registration against its own map no longer turns the frame by more than 0.7 degrees where the magnetometer's prior
   is on; unbounded it walked to 2.5 degrees on surveys and laid walls twice.

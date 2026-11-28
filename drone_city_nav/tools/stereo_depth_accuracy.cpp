@@ -13,12 +13,14 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <map>
 #include <numbers>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
+#include <span>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -52,14 +54,16 @@ std::vector<char> npyPayload(const std::string& path) {
 }
 
 float halfToFloat(const std::uint16_t half) {
-  const int sign = (half >> 15U) & 1U;
-  const int exponent = (half >> 10U) & 31U;
-  const int mantissa = half & 1023U;
-  const float value =
-      exponent == 0    ? std::ldexp(static_cast<float>(mantissa), -24)
-      : exponent == 31 ? INFINITY
-                       : std::ldexp(static_cast<float>(mantissa | 1024), exponent - 25);
-  return sign != 0 ? -value : value;
+  const bool negative = (half >> 15U) != 0U;
+  const int exponent = static_cast<int>((half >> 10U) & 31U);
+  const int mantissa = static_cast<int>(half & 1023U);
+  float value{INFINITY};
+  if (exponent == 0) {
+    value = std::ldexp(static_cast<float>(mantissa), -24);
+  } else if (exponent != 31) {
+    value = std::ldexp(static_cast<float>(mantissa | 1024), exponent - 25);
+  }
+  return negative ? -value : value;
 }
 
 // Copies of StereoDepthNode::rejectMatchesWithinNoise and its brightnessBin.
@@ -97,21 +101,19 @@ double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
   std::vector<std::size_t> histograms(kBrightnessBins * kLaplacianBins, 0U);
   std::array<std::size_t, kBrightnessBins> samples{};
   for (int row = 1; row + 1 < laplacian.rows; row += kNoiseSampleStride) {
-    const float* const values = laplacian.ptr<float>(row);
-    const float* const means = mean.ptr<float>(row);
     for (int column = 1; column + 1 < laplacian.cols; column += kNoiseSampleStride) {
-      const std::size_t bin = brightnessBin(means[column]);
+      const std::size_t bin = brightnessBin(mean.at<float>(row, column));
       ++histograms[bin * kLaplacianBins +
-                   std::min<std::size_t>(
-                       kLaplacianBins - 1U,
-                       static_cast<std::size_t>(std::abs(values[column])))];
-      ++samples[bin];
+                   std::min<std::size_t>(kLaplacianBins - 1U,
+                                         static_cast<std::size_t>(std::abs(
+                                             laplacian.at<float>(row, column))))];
+      ++samples.at(bin);
     }
   }
   const auto noiseOf = [&](const std::size_t first_bin, const std::size_t last_bin) {
     std::size_t count{0U};
     for (std::size_t bin = first_bin; bin <= last_bin; ++bin) {
-      count += samples[bin];
+      count += samples.at(bin);
     }
     std::size_t below{0U};
     for (std::size_t response = 0U; response < kLaplacianBins; ++response) {
@@ -130,20 +132,18 @@ double rejectMatchesWithinNoise(const cv::Mat& grey, cv::Mat& disparity) {
   std::array<float, kBrightnessBins> minimum_variance{};
   double carried = noise;
   for (std::size_t bin = 0U; bin < kBrightnessBins; ++bin) {
-    if (samples[bin] >= kMinimumBinSamples) {
+    if (samples.at(bin) >= kMinimumBinSamples) {
       carried = noiseOf(bin, bin);
     }
-    minimum_variance[bin] = static_cast<float>(
+    minimum_variance.at(bin) = static_cast<float>(
         std::pow(kSignalOverNoise * std::max(carried, kMinimumNoiseLevels), 2.0));
   }
   for (int row = 0; row < disparity.rows; ++row) {
-    const float* const means = mean.ptr<float>(row);
-    const float* const squares = mean_square.ptr<float>(row);
-    std::int16_t* const values = disparity.ptr<std::int16_t>(row);
     for (int column = 0; column < disparity.cols; ++column) {
-      if (squares[column] - means[column] * means[column] <
-          minimum_variance[brightnessBin(means[column])]) {
-        values[column] = std::int16_t{-16};
+      const float local_mean = mean.at<float>(row, column);
+      if (mean_square.at<float>(row, column) - local_mean * local_mean <
+          minimum_variance.at(brightnessBin(local_mean))) {
+        disparity.at<std::int16_t>(row, column) = std::int16_t{-16};
       }
     }
   }
@@ -170,11 +170,12 @@ float percentile(std::vector<float>& values, const double share) {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
+  const std::span<char*> arguments(argv, static_cast<std::size_t>(argc));
+  if (arguments.size() != 2U) {
     std::fprintf(stderr, "usage: stereo_depth_accuracy DIR\n");
     return 2;
   }
-  const std::string directory = argv[1];
+  const std::string directory = arguments[1];
   std::map<std::string, std::map<std::string, std::string>> frames;
   std::ifstream index(directory + "/index.csv");
   std::string line;
@@ -228,22 +229,30 @@ int main(int argc, char** argv) {
     cv::Mat right_half;
     cv::resize(left, left_half, {}, 0.5, 0.5, cv::INTER_AREA);
     cv::resize(right, right_half, {}, 0.5, 0.5, cv::INTER_AREA);
+    cv::copyMakeBorder(left_half, left_half, 0, 0, kNearDisparities, 0,
+                       cv::BORDER_REPLICATE);
+    cv::copyMakeBorder(right_half, right_half, 0, 0, kNearDisparities, 0,
+                       cv::BORDER_REPLICATE);
     cv::Mat near_disparity;
     near_matcher->compute(left_half, right_half, near_disparity);
     const int near_threshold_16 = 16 * (kFarDisparities - 8) / 2;
     for (int row = 0; row < kHeight; ++row) {
       for (int column = 0; column < kWidth; ++column) {
-        const std::int16_t near = near_disparity.at<std::int16_t>(row / 2, column / 2);
+        const int half_column = column / 2;
+        const std::int16_t near =
+            near_disparity.at<std::int16_t>(row / 2, half_column + kNearDisparities);
         auto& far = disparity.at<std::int16_t>(row, column);
-        if (near > near_threshold_16 || far <= 0) {
-          far = near > 0 ? static_cast<std::int16_t>(std::min(32767, 2 * near))
-                         : std::int16_t{-16};
+        if (near <= 0 || near > 16 * half_column) {
+          far = std::int16_t{-16};
+        } else if (near > near_threshold_16) {
+          far = static_cast<std::int16_t>(std::min(32767, 2 * near));
         }
       }
     }
     rejectMatchesWithinNoise(left, disparity);
-    const auto* const depth =
-        reinterpret_cast<const std::uint16_t*>(depth_bytes.data());
+    std::vector<std::uint16_t> depth(static_cast<std::size_t>(kWidth) * kHeight);
+    std::memcpy(depth.data(), depth_bytes.data(),
+                std::min(depth_bytes.size(), depth.size() * sizeof(std::uint16_t)));
     // The node's lone-hit rule: the hits of this frame within the confident
     // depth by 0.25 m voxel of the left camera's frame, at the node's stride.
     std::map<std::tuple<int, int, int>, int> hits_by_voxel;
@@ -266,11 +275,12 @@ int main(int argc, char** argv) {
         }
       }
     }
-    // The left 256 columns have no match in the right image at the near
-    // search's reach.
+    // The left 256 columns, where a surface at the near search's reach has
+    // no match in the right image, are left out as K7 was measured.
     for (int row = 0; row < kHeight; row += 4) {
       for (int column = 256; column < kWidth; column += 4) {
-        const float truth = halfToFloat(depth[row * kWidth + column]);
+        const float truth = halfToFloat(depth.at(
+            static_cast<std::size_t>(row) * kWidth + static_cast<std::size_t>(column)));
         if (!(truth > 0.3F) || !std::isfinite(truth)) {
           continue;
         }
@@ -300,7 +310,9 @@ int main(int argc, char** argv) {
                r2 <= std::min(kHeight - 1, row + radius) && !truth_near; r2 += 2) {
             for (int c2 = std::max(0, column - radius);
                  c2 <= std::min(kWidth - 1, column + radius); c2 += 2) {
-              const float near_truth = halfToFloat(depth[r2 * kWidth + c2]);
+              const float near_truth =
+                  halfToFloat(depth.at(static_cast<std::size_t>(r2) * kWidth +
+                                       static_cast<std::size_t>(c2)));
               if (near_truth > 0.3F && std::isfinite(near_truth)) {
                 const double lateral =
                     std::hypot(r2 - row, c2 - column) * estimate_m / kFocalPx;

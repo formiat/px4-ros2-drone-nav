@@ -712,6 +712,21 @@ none to two sheets. The memory therefore stays as laid (K92), and the count
 of sheets follows the first pass's error and the depth's artefacts, neither
 of which a closure reaches.
 
+The depth's artefacts were traced to their frames the same day and removed
+(specification K94: the far search answered for surfaces nearer than its
+reach, the near one for far surfaces). A replay lays its memory by the
+recorded poses, so the rule is read on a flight's own frames and poses
+(`tools/replay_memory.sh DIR TAG 0.5`, then `tools/survey_map.py` and
+`tools/survey_map_check.py`; on the code before the rule r4319's replay holds
+the flight's memory cell for cell):
+
+| Flight's frames and poses | Sheets as flown | Sheets by K94's rule | Displaced cells as flown | By the rule |
+| --- | --- | --- | --- | --- |
+| r4317 | 5 | 2 | 1093 | 555 |
+| r4319 | 14 | 4 | 2403 | 898 |
+
+Every sheet left stands 0.56 m off the truth: the estimate's on its first pass.
+
 What a replay does not show is the obstacle memory: the replayed planner and
 memory read the autopilot's position as the flight recorded it.
 

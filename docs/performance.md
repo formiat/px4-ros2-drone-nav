@@ -223,7 +223,10 @@ On the default sensor set the perception cost is `stereo_depth_node`: semi-globa
 matching of a 1280 x 960 pair costs 103 ms at full resolution over 128
 disparities on the CPU, so the node matches the far field at full resolution
 over 64 disparities and the near field at half resolution over 128 and merges
-them, 108 to 110 ms a pair on two threads at 7.5 Hz. From exposure to the tick
+them, 108 to 110 ms a pair on two threads at 7.5 Hz (since specification K94
+the near search runs over half frames padded on the left by its 128
+disparities: 8 ms more at the median on a replay of r4319, 144 against 136 ms
+at a real-time factor of 0.5). From exposure to the tick
 that reads the result: 300 to 320 ms at p50 and 464 to 496 ms at p95 (r506 to
 r510), of which 200 to 212 ms are the camera period and the match, 0.1 ms the
 delivery and 76 to 88 ms the wait for the tick. The tick itself is unchanged

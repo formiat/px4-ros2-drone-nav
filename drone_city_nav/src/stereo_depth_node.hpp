@@ -202,6 +202,7 @@ private:
   std::atomic<double> camera_gain_{1.0};
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr gain_sub_;
   int far_disparities_{64};
+  int near_disparities_{128};
   cv::Ptr<cv::StereoSGBM> far_matcher_;
   std::unique_ptr<StepAcknowledger> step_acknowledger_;
   cv::Ptr<cv::StereoSGBM> near_matcher_;

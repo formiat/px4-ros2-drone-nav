@@ -49,7 +49,7 @@ StereoDepthNode::StereoDepthNode(const rclcpp::NodeOptions& options)
   using stereo_depth_node_internal::intParameter;
   cv::setNumThreads(intParameter(*this, "matcher_threads", 2));
   far_disparities_ = intParameter(*this, "far_disparity_px", 64);
-  const int near_disparities = intParameter(*this, "maximum_disparity_px", 256) / 2;
+  near_disparities_ = intParameter(*this, "maximum_disparity_px", 256) / 2;
   const int block_size = intParameter(*this, "block_size_px", 5);
   const int left_right_difference =
       intParameter(*this, "left_right_maximum_difference_px", 1);
@@ -65,8 +65,8 @@ StereoDepthNode::StereoDepthNode(const rclcpp::NodeOptions& options)
         kSpeckleWindowPx, 2, cv::StereoSGBM::MODE_SGBM_3WAY);
   };
   far_matcher_ = matcher(far_disparities_);
-  near_matcher_ = matcher(near_disparities);
-  const int disparities = 2 * near_disparities;
+  near_matcher_ = matcher(near_disparities_);
+  const int disparities = 2 * near_disparities_;
   frame_id_ = declare_parameter<std::string>("frame_id", "stereo_left");
   // The light the frame has left (item 17 stage 7): the gain lifts the frame's 95th
   // percentile to 200 of 255, and at the gain's limit that percentile falls with it.

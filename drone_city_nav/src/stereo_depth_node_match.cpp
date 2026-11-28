@@ -36,20 +36,36 @@ void StereoDepthNode::matchIfPaired() {
   cv::Mat right_half;
   cv::resize(left_grey, left_half, {}, 0.5, 0.5, cv::INTER_AREA);
   cv::resize(right_grey, right_half, {}, 0.5, 0.5, cv::INTER_AREA);
+  // The half frames padded on the left by the near search: unpadded, the matcher
+  // answers nothing in its first 128 columns (256 of the frame's).
+  cv::copyMakeBorder(left_half, left_half, 0, 0, near_disparities_, 0,
+                     cv::BORDER_REPLICATE);
+  cv::copyMakeBorder(right_half, right_half, 0, 0, near_disparities_, 0,
+                     cv::BORDER_REPLICATE);
   cv::Mat near_disparity;
   near_matcher_->compute(left_half, right_half, near_disparity);
-  // Where the near search sees a surface beyond the far search's reach (its doubled
-  // disparity within 8 px of its end) or the far found nothing, the near answer
-  // stands.
+  // Each search answers for its own depths only (specification K94). The far one
+  // cannot answer rightly for a surface nearer than its reach, and what it answered
+  // there was a surface behind the true one: a wall 0.6 m beside the vehicle was
+  // laid 1.3 m off, the floor under the resting vehicle 1.5 m below itself; the
+  // near one, at half the resolution, read a wall 4 to 5 m away a pixel short and
+  // laid it 0.5 m behind itself (r4319's survey map held 14 displaced sheets of
+  // 1270 cells; 4 of 318 by this rule on the same frames and poses). The far
+  // answer stands where the near search answered too and saw nothing nearer than
+  // the far's reach (its doubled disparity within 8 px of the far's end); nearer,
+  // the near answer stands. A near match outside the right frame is none.
   const int near_threshold_16 = 16 * (far_disparities_ - 8) / 2;
   const auto stride = static_cast<int>(returns_config_.pixel_stride);
   for (int row = 0; row < disparity.rows; row += stride) {
     for (int column = 0; column < disparity.cols; column += stride) {
-      const std::int16_t near = near_disparity.at<std::int16_t>(row / 2, column / 2);
+      const int half_column = column / 2;
+      const std::int16_t near =
+          near_disparity.at<std::int16_t>(row / 2, half_column + near_disparities_);
       std::int16_t& far = disparity.at<std::int16_t>(row, column);
-      if (near > near_threshold_16 || far <= 0) {
-        far = near > 0 ? static_cast<std::int16_t>(std::min(32767, 2 * near))
-                       : std::int16_t{-16};
+      if (near <= 0 || near > 16 * half_column) {
+        far = std::int16_t{-16};
+      } else if (near > near_threshold_16) {
+        far = static_cast<std::int16_t>(std::min(32767, 2 * near));
       }
     }
   }

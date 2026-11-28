@@ -56,6 +56,21 @@ the correction is recorded beside it.
   within the frame: the strays on r1476's record fall from 33 a frame to 8
   (9 to 4.4 on the noiseless r782), the coverage stays, and the ordinary
   flight runs 1.464 m/s with no long block (r1482).
+- **Each search answers for its own depths** (specification K94). The far
+  search cannot match a surface nearer than 1.3 m, and where the near one was
+  silent (its first 128 columns, a fifth of the frame; a surface nearer than
+  0.29 m) the far answer stood: a wall 0.6 to 0.9 m beside the vehicle was
+  returned 1.25 to 1.6 m away, the floor under the resting cameras 1.5 m
+  below itself. The near search, at half the resolution, answered for far
+  surfaces the far one had not matched and read them a pixel short, half a
+  metre at 5 m. Since 2026-11-28 the far answer stands where the near search
+  answered too and saw nothing nearer than the far's reach, the near answer
+  only nearer; the near search runs over half frames padded on the left by
+  its search, and a pixel it does not answer returns nothing. On the frames
+  and poses of two surveys (`tools/replay_memory.sh`, `tools/survey_map_check.py`)
+  the maps' displaced sheets fall from 14 to 4 and from 5 to 2 (r4319,
+  r4317); on K7's record the 4 to 6 m band's error is 0.56 px at p90 (0.61)
+  and the strays 1.6 a frame (8.0).
 - **A silent patch on the heading bounds the speed** (roadmap item 18
   stage 0b, specification F13, K36; `stereo_silent_patches.cpp`). The pair's
   silence inside a seeing frame has every cause at once; the stage was
