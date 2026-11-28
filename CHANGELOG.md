@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- **The stereo estimate says how far it may have drifted** (specification K95, R2): its published position sigma
+  carries half a percent of the path flown with no absolute position (its filter's own sigma was 0.44 m after
+  1.6 km, with the estimate 3 to 11 m off), and a flight over the open sky with no satellite signal at all has its
+  goals judged within two sigma plus the capture radius, as a flight whose signal is lost by a fault already was.
+- **CI runs green on GitHub**: the arm64 job's container gets a home its user may write, and two script tests that
+  need a 16-CPU host skip on the runners' four.
+- **A citation file and a configured DeepWiki** (roadmap item 62): `CITATION.cff`, `.devin/wiki.json` with the
+  invariants and the figures the generated wiki left out, the invariants in the README.
 - **The stereo depth no longer lays a surface behind a near one** (specification K94): each of its two searches
   answers for its own depths. The far search's answer stood wherever the near one was silent, and a wall 0.6 m beside
   the vehicle, or the floor under the resting cameras, was returned a metre behind itself; the near search read walls

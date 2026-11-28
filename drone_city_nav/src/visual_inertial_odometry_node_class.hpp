@@ -332,6 +332,7 @@ private:
       odometry_->addAbsoluteVelocity(decision.velocity_ned_mps,
                                      decision.speed_sigma_mps);
       ++gnss_fused_;
+      unaided_path_m_ = 0.0;
     }
     declareGnssTrust(get_logger(), *mission_event_pub_, decision.verdict,
                      decision.position_residual_m, gnss_trusted_declared_);
@@ -434,6 +435,12 @@ private:
         tracker_->track(rectified_pair[0], rectified_pair[1], turn);
     VisualInertialEstimate estimate = odometry_->addFrame(pair.stamp_ns, observations);
     previous_frame_stamp_ns_ = pair.stamp_ns;
+    // The path flown since an absolute position was last fused (K95).
+    const Eigen::Vector2d horizontal = estimate.position_ned_m.head<2>();
+    if (last_frame_horizontal_m_.has_value()) {
+      unaided_path_m_ += (horizontal - *last_frame_horizontal_m_).norm();
+    }
+    last_frame_horizontal_m_ = horizontal;
     aided_ = aided_ || estimate.healthy;
     // Time for its tracks to grow and aid it (a few frames), and no more.
     constexpr std::int64_t kNeverAidedRestartNs{5'000'000'000};
@@ -480,6 +487,11 @@ private:
     publishPose(estimate, pair.left->header.stamp);
     const Point2 map_xy = transform_.localPositionToMap(
         Point2{estimate.position_ned_m.x(), estimate.position_ned_m.y()});
+    // The published horizontal sigma carries the drift the filter's own
+    // covariance does not (specification K95): a share of the path flown with
+    // no absolute position, half of its square to each axis.
+    const double drift_m = kUnaidedDriftSigmaShare * unaided_path_m_;
+    const double drift_variance_m2 = 0.5 * drift_m * drift_m;
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "VISUAL_INERTIAL_ODOMETRY healthy=%s void=%s tracked=%zu candidates=%zu "
@@ -493,7 +505,7 @@ private:
         " position=(%.2f,%.2f,%.2f) yaw=%.3f velocity_sigma_ned=(%.3f,%.3f,%.3f)"
         " accelerometer_bias=(%.3f,%.3f,%.3f) accelerometer_bias_sigma=(%.3f,%.3f,%.3f)"
         " heading_sigma_deg=%.2f position_sigma_m=(%.2f,%.2f,%.2f)"
-        " magnetic_innovation_deg=%.2f magnetic_age_ms=%.1f",
+        " magnetic_innovation_deg=%.2f magnetic_age_ms=%.1f unaided_path_m=%.1f",
         estimate.healthy ? "true" : "false", estimate.in_void ? "true" : "false",
         estimate.tracked_features, estimate.candidate_features, estimate.used_features,
         estimate.gated_features, estimate.untriangulated_features,
@@ -513,11 +525,12 @@ private:
         std::sqrt(estimate.accelerometer_bias_variance_m2ps4.y()),
         std::sqrt(estimate.accelerometer_bias_variance_m2ps4.z()),
         180.0 / M_PI * std::sqrt(estimate.orientation_variance_rad2.z()),
-        std::sqrt(estimate.position_variance_m2.x()),
-        std::sqrt(estimate.position_variance_m2.y()),
+        std::sqrt(estimate.position_variance_m2.x() + drift_variance_m2),
+        std::sqrt(estimate.position_variance_m2.y() + drift_variance_m2),
         std::sqrt(estimate.position_variance_m2.z()),
         180.0 / M_PI * estimate.magnetic_innovation_rad,
-        1.0e-6 * static_cast<double>(estimate.magnetic_reading_age_ns));
+        1.0e-6 * static_cast<double>(estimate.magnetic_reading_age_ns),
+        unaided_path_m_);
     if (frames_ % 8U == 0U) {
       imu_gap_max_ns_ = 0;
       pose_age_max_ns_ = 0;
@@ -727,6 +740,15 @@ private:
   std::unique_ptr<GnssInput> gnss_input_;
   bool gnss_trusted_declared_{false};
   std::uint64_t gnss_fused_{0U};
+  // The estimate's horizontal error against the truth is 0.34 percent of the
+  // path at the median and 0.82 at the 95th percentile over the open sky with
+  // no satellite signal (1184 samples of six flights of 1.6 km), 0.14 and
+  // 0.42 in Urban, while the filter's own sigma is 0.03 percent of the path
+  // (0.44 m after 1.6 km): one sigma is half a percent of the path flown
+  // since an absolute position was fused (tools/drift_share.py; K95).
+  static constexpr double kUnaidedDriftSigmaShare{0.005};
+  double unaided_path_m_{0.0};
+  std::optional<Eigen::Vector2d> last_frame_horizontal_m_;
   std::uint64_t published_poses_{0U};
   sensor_msgs::msg::Image::ConstSharedPtr left_;
   sensor_msgs::msg::Image::ConstSharedPtr right_;

@@ -23,6 +23,7 @@ from resource_budget_evidence import validate_resource_budget  # noqa: E402
 from world_enclosure import validate_scenario_inside  # noqa: E402
 from runtime_manifest import autopilot_exited_in_flight, read_manifest  # noqa: E402
 from headless_runtime_evidence import (
+    OPEN_SKY_WORLDS,
     planner_flight_space_m,
     validate_goal_reached_in_truth,
     VOID_GOAL_SCENARIOS,
@@ -624,7 +625,11 @@ def main() -> int:
             notes if vehicle_intact_expected else errors,
             void_goal=Path(str(manifest_mission.get("scenario", {}).get("path", ""))).name
             in VOID_GOAL_SCENARIOS,
-            faulted_signal=bool(overrides.get("GNSS_FAULTS", "")))
+            faulted_signal=bool(overrides.get("GNSS_FAULTS", "")),
+            # The open sky on the visual-inertial profile: no fix is read at all (R2).
+            without_signal=overrides.get("LOCALIZATION_PROFILE", "") == "visual_inertial"
+            and scenario_world_name(overrides.get("POINT_TO_POINT_SCENARIO_PATH", ""), [])
+            in OPEN_SKY_WORLDS)
         # Dense smoke is never entered, whatever the flight was asked (R7).
         # (The overrides are the manifest's, read above: a flight checked
         # without the acceptance metrics, the held-out worlds' probe, crashed

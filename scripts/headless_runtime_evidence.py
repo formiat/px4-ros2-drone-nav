@@ -681,11 +681,14 @@ VOID_GOAL_SCENARIOS = ("dark_void_mid_point_to_point_scenario.json",)
 def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                                    errors: list[str],
                                    void_goal: bool = False,
-                                   faulted_signal: bool = False) -> None:
+                                   faulted_signal: bool = False,
+                                   without_signal: bool = False) -> None:
     """Every goal within the capture radius of the truth (R2); the goal in the
-    void (roadmap item 31) and every goal of a flight whose satellite signal
-    the relay faulted (roadmap item 39, Р1.6) within the estimator's published
-    uncertainty, two sigma, plus that radius."""
+    void (roadmap item 31), every goal of a flight whose satellite signal
+    the relay faulted (roadmap item 39, Р1.6) and every goal of a flight over
+    the open sky with no satellite signal at all (the owner's word of
+    2026-11-28) within the estimator's published uncertainty, two sigma, plus
+    that radius."""
     acknowledgements = list(GOAL_ACKNOWLEDGED_PATTERN.finditer(ros_log))
     if not acknowledgements:
         errors.append("FAIL: a goal acknowledgement names its goal")
@@ -710,8 +713,9 @@ def validate_goal_reached_in_truth(truth_path: Path, ros_log: str,
                           f"({abs(nearest[0] - at_s):.1f} s apart)")
             continue
         distance_m = math.dist(goal, nearest[1:])
-        if (void_goal and acknowledgement is acknowledgements[-1]) or faulted_signal:
-            where = "in the void" if void_goal and not faulted_signal else "under the signal's faults"
+        if (void_goal and acknowledgement is acknowledgements[-1]) or faulted_signal or without_signal:
+            where = ("under the signal's faults" if faulted_signal
+                     else "without the satellite signal" if without_signal else "in the void")
             sigma_m = published_position_sigma_m(ros_log, at_s)
             if sigma_m is None:
                 errors.append("FAIL: the estimator published its position sigma before "

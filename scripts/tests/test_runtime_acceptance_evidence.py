@@ -569,6 +569,39 @@ class RuntimeManifestTest(unittest.TestCase):
                 validator.validate_goal_reached_in_truth(truth, log, errors, void_goal)
             self.assertEqual(errors == [], passes, (log, void_goal, errors))
 
+    def test_a_goal_over_the_open_sky_without_the_signal_is_reached_within_the_published_uncertainty(self) -> None:
+        # The owner's word of 2026-11-28 (R2): with no satellite signal at all the goal is judged as under the
+        # signal's faults. The true position 3.9 m from the goal; a horizontal sigma of 1.0 m published before
+        # it (two sigma plus 2 m = 4 m) reaches it, 0.5 m does not, and with the signal it is 2 m as always.
+        directory = Path(tempfile.mkdtemp())
+        truth = directory / "gz_pose.csv"
+        truth.write_text("".join(
+            f"{0.02 * index:.3f},{58.0 + 0.025 * index:.3f},24.0,12.3,1,0,0,0,"
+            f"{1000.0 + 0.02 * index:.3f}\n" for index in range(200)), encoding="utf-8")
+        acknowledged = ("[1000.100] [production_mppi_node]: MISSION_WAYPOINT_ACKNOWLEDGED "
+                        "completed_index=0 waypoint_count=3 terminal=false horizon=7 "
+                        "offboard=9 goal=(61.900,24.000,12.300)\n")
+        status = ("[999.500] [visual_inertial_odometry_node]: VISUAL_INERTIAL_ODOMETRY "
+                  "healthy=true void=false tracked=40 heading_sigma_deg=0.10 "
+                  "position_sigma_m=({sx:.2f},{sy:.2f},0.30) unaided_path_m=200.0\n")
+        for sigma, without_signal, passes in ((0.8, True, True), (0.4, True, False), (0.8, False, False)):
+            errors: list[str] = []
+            output = io.StringIO()
+            with redirect_stdout(output):
+                validator.validate_goal_reached_in_truth(
+                    truth, status.format(sx=sigma, sy=0.75 * sigma) + acknowledged, errors,
+                    without_signal=without_signal)
+            self.assertEqual(errors == [], passes, (sigma, without_signal, errors))
+            if passes:
+                self.assertIn("without the satellite signal", output.getvalue())
+        # The estimator's status line carries the drift of the path flown with no absolute position (K95).
+        node = (SCRIPTS.parent / "drone_city_nav/src/visual_inertial_odometry_node_class.hpp").read_text(encoding="utf-8")
+        self.assertIn("static constexpr double kUnaidedDriftSigmaShare{0.005};", node)
+        self.assertIn("std::sqrt(estimate.position_variance_m2.x() + drift_variance_m2)", node)
+        self.assertIn("      ++gnss_fused_;\n      unaided_path_m_ = 0.0;\n", node)
+        check = (SCRIPTS / "validate_drone_nav_headless.py").read_text(encoding="utf-8")
+        self.assertIn('without_signal=overrides.get("LOCALIZATION_PROFILE", "") == "visual_inertial"', check)
+
     def test_the_true_position_never_enters_dense_smoke(self) -> None:
         # A zone west of the origin (its x negative: the option is joined with
         # '=' by the runtime, the check reads the manifest's string), dense
