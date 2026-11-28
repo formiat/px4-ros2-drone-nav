@@ -2,11 +2,14 @@
 the host's CPUs through docker's cpuset, the subsystem masks are derived from the CPUs the container may run on, the
 set is recorded in the manifest, the series fly on it by default and the quiet-host gate reads the set's own CPUs."""
 
+import os
 import pathlib
 import subprocess
 import unittest
 
 REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
+# taskset refuses a CPU the process may not run on: GitHub's runners have four.
+SIXTEEN_CPUS = set(range(16)) <= os.sched_getaffinity(0)
 
 
 def derive(cpu_list: str) -> str:
@@ -34,10 +37,12 @@ class FlightCpusetContract(unittest.TestCase):
         self.assertNotIn('control_cpu_list="${CONTROL_CPU_LIST:-0-$((cpu_count / 2 - 1))}"', launcher)
         self.assertIn("cpuset='$(taskset -pc $$ | sed 's/.*: //')'", launcher)
 
+    @unittest.skipUnless(SIXTEEN_CPUS, "the masks of a 16-CPU host are derived on its CPUs")
     def test_masks_keep_the_whole_host_proportions(self):
         # The masks of a 16-CPU host before the set existed: 0-7, 4-15, 12-15.
         self.assertEqual(derive("0-15"), "0,1,2,3,4,5,6,7 4,5,6,7,8,9,10,11,12,13,14,15 12,13,14,15")
 
+    @unittest.skipUnless(SIXTEEN_CPUS, "the masks of a 16-CPU host are derived on its CPUs")
     def test_masks_follow_a_narrowed_set(self):
         self.assertEqual(derive("4-15"), "4,5,6,7,8,9 7,8,9,10,11,12,13,14,15 13,14,15")
         self.assertEqual(derive("2,3,8,9"), "2,3 3,8,9 9")

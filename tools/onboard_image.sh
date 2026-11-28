@@ -30,7 +30,9 @@ if [[ "${image_only}" == true ]]; then exit 0; fi
 cpuset=(); [[ -n "${ONBOARD_CPUSET:-}" ]] && cpuset=(--cpuset-cpus "${ONBOARD_CPUSET}")
 gpus=(); [[ "${arch}" == amd64 ]] && gpus=(--gpus all)
 cuda_mppi=ON; [[ "${cuda}" == off ]] && cuda_mppi=OFF
-docker run --rm --platform "${platform}" "${gpus[@]}" "${cpuset[@]}" --user "$(id -u):$(id -g)" \
+# A home the caller may write: without one (a user the image does not know, GitHub's runner) ROS cannot open its log
+# directory and every test that starts a node fails in its fixture.
+docker run --rm --platform "${platform}" "${gpus[@]}" "${cpuset[@]}" --user "$(id -u):$(id -g)" --env HOME=/tmp \
   --volume "$(pwd):/workspace" --workdir /workspace "${image}" bash -c "
     set -eo pipefail
     source /opt/ros/jazzy/setup.bash; source /opt/px4_msgs_ws/install/setup.bash
@@ -45,7 +47,7 @@ docker run --rm --platform "${platform}" "${gpus[@]}" "${cpuset[@]}" --user "$(i
       --cmake-args -DDRONE_CITY_NAV_ENABLE_SIMULATION=OFF -DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=${cuda_mppi} \
       --event-handlers console_direct- 2>&1 | tail -3
     echo \"== build end \$(date -u +%H:%M:%S)\"
-    ctest --test-dir build-onboard-${arch}/drone_city_nav --output-on-failure 2>&1 | tail -15
+    ctest --test-dir build-onboard-${arch}/drone_city_nav --output-on-failure 2>&1
     echo \"== tests end \$(date -u +%H:%M:%S)\"
   " 2>&1 | tee -a "${log}"
 echo "== onboard image ${image} end $(date -u +%H:%M:%S)" | tee -a "${log}"

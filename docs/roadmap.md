@@ -2139,8 +2139,16 @@ are those of 2026-10-26 (block 2 step 3 of item 27: the D* Lite repair's
 states within a 20 ms budget, the first search within its budget), which
 assume the workstation's speed; GitHub's arm64 runner is native.
 
-Left: the first run on GitHub (after a push), the replay gate in CI (its bags
-are not under git), the flight on a GPU runner (no free one).
+**The first runs on GitHub (2026-11-25 to 28)** failed on two things the
+local checks could not show, repaired on 2026-11-28: the arm64 job's
+container had no home the runner's user could write, so the three unit tests
+that start a ROS node failed in their fixtures (reproduced in the onboard
+image as a user it does not know; `HOME=/tmp` as the x86-64 steps have it);
+two script tests derived the flight's core masks on the CPUs of a 16-CPU host
+and the runners have four (they skip there).
+
+Left: the replay gate in CI (its bags are not under git), the flight on a GPU
+runner (no free one).
 
 ## 47. Mission Modules On One Core
 

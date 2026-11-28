@@ -99,10 +99,20 @@ unused SDKs first.
 
 What CI does not check: the replay of the kept bags (`./tools/gates.sh
 --replay`; the bags are not under git), and every flight (no runner has a
-GPU, and the acceptance series stay on the workstation). One script test
-more skips than on the workstation: the world's magnetic field against the
+GPU, and the acceptance series stay on the workstation). Three script tests
+more skip than on the workstation: the world's magnetic field against the
 autopilot's model tables, which are in `external/PX4-Autopilot`, which the
-jobs do not clone.
+jobs do not clone, and the two that derive the flight's core masks on the
+CPUs of a 16-CPU host (the runners have four, and `taskset` refuses a CPU
+the process may not run on).
+
+The first runs on GitHub (2026-11-25 to 28) failed on what no local check
+showed. The arm64 job's container had no home its user could write (the
+runner's user is unknown to the image): ROS could not open its log directory
+and the three tests that start a node failed in their fixtures;
+`tools/onboard_image.sh` now gives the container `HOME=/tmp`, as the x86-64
+steps do, and prints the tests' whole output (the last 15 lines hid the
+failures). The x86-64 job failed on the two core-mask tests above.
 
 Checked locally before any run on GitHub: `actionlint` with `shellcheck`, the
 x86-64 job run by `act` in a clean clone, the arm64 job's command under QEMU
