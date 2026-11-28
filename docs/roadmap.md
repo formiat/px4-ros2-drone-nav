@@ -1805,7 +1805,13 @@ surveys were flown: 33 closures and none wrong, home 0.25 to 0.81 m from the tru
 (r4299 to r4301), the acceptance after them 1.374 and 2.380 m/s (r4302 to r4311). What remains open for the stereo
 set is in the register: the memory is left as laid, so the first pass's sheets stay; the open sky's ground is not
 recognised. A survey's replay repeats its flight since the same day (K62: the image source holds its frames until
-the recorder listens, the camera's gain is recorded; r4317 and r4319 replay to 0.000 m at the 95th percentile).
+the recorder listens, the camera's gain is recorded; r4317 and r4319 replay to 0.000 m at the 95th percentile). Replayed
+with the closures off those two surveys stand 0.94 and 0.95 m from the truth at the 95th percentile and 0.15 and
+0.32 m at the return, against 0.79 and 0.32 m, and 0.03 m, as flown (23 and 102 closures, none wrong; 5 and 14
+displaced sheets). The acceptance on that code (901acc9d, 2026-11-28): the cameras 1.389 m/s (r4320 to r4324, one
+goal acknowledged 2.34 m from it in truth, r4323: the estimate's heading 1.4 degrees off on a route without a
+return, the register's row) and, flown once more, 1.384 m/s with none (r4330 to r4334); the lidar 2.243 m/s (r4325
+to r4329); no contact.
 
 **The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
 bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,
