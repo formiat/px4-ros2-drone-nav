@@ -1811,7 +1811,10 @@ with the closures off those two surveys stand 0.94 and 0.95 m from the truth at 
 displaced sheets). The acceptance on that code (901acc9d, 2026-11-28): the cameras 1.389 m/s (r4320 to r4324, one
 goal acknowledged 2.34 m from it in truth, r4323: the estimate's heading 1.4 degrees off on a route without a
 return, the register's row) and, flown once more, 1.384 m/s with none (r4330 to r4334); the lidar 2.243 m/s (r4325
-to r4329); no contact.
+to r4329); no contact. What lays the sheets was measured on the flights' records the same day (`tools/survey_sheets.py`):
+3 to 9 sheets a map are laid by no estimate (the depth's own, one over the start in every map), the rest on the first
+pass before any return, and an ideal re-anchoring of the memory by the closures would leave 8, 9, 12, 5 and 12 of
+the 8, 9, 13, 5 and 14 (K92: the memory stays as laid, on the numbers).
 
 **The lidar set: whether a closure is needed, measured on 2026-11-26** (surveys on the lidar set with the stack's
 bag; `tools/estimate_error.py --segments=250`, `tools/survey_map.py` and `tools/survey_map_check.py`,

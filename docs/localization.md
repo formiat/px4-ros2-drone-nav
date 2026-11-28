@@ -683,6 +683,35 @@ pass). Their maps carry 5 and 14 displaced sheets (1.1 and 2.1 percent of the
 occupied cells; the three surveys before them 8, 9 and 13): the count goes
 with the first pass's drift, which a closure does not undo.
 
+What lays a sheet is read from the flight's own records
+(`tools/survey_sheets.py RUN --truth GRID --reanchored`): a sheet is laid in the
+first of the flight's memory snapshots that holds half of it, and the
+estimate's error against the truth over that time says whether the estimate
+can have laid it.
+
+| Flight | Sheets as laid | Farther off the truth than the estimate was | Re-anchored by ideal closures | With the estimate's whole error taken out |
+| --- | --- | --- | --- | --- |
+| r4233, before the closures, 1537 m | 19 | 2 | 19 | 5 |
+| r4234, before the closures, 593 m | 13 | 6 | 13 | 9 |
+| r4299, 597 m | 8 | 4 | 8 | 5 |
+| r4300, 1090 m | 9 | 2 | 9 | 3 |
+| r4301, 997 m | 13 | 3 | 12 | 4 |
+| r4317, 1087 m | 5 | 3 | 5 | 3 |
+| r4319, 798 m | 14 | 8 | 12 | 8 |
+
+Three to nine sheets of every map, the maps before the closures among them,
+are laid by no estimate: the stereo depth's own returns where no surface
+stands (one over the start in every map, 1.5 to 2.25 m off the truth with the
+estimate 0.05 to 0.09 m off; r4319's largest 4.5 m off with the estimate
+0.35 m off). The others are laid on the first pass before any return (r4300:
+the estimate 1.3 to 2.2 m off from the 435th second, its first closure at the
+735th), and a memory moved with the closures would keep them: with every
+cell moved by the share of an ideal closure's correction that falls on its
+moment, spread over the path between the closure's keyframes, a map loses
+none to two sheets. The memory therefore stays as laid (K92), and the count
+of sheets follows the first pass's error and the depth's artefacts, neither
+of which a closure reaches.
+
 What a replay does not show is the obstacle memory: the replayed planner and
 memory read the autopilot's position as the flight recorded it.
 
