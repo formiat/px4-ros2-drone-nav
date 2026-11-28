@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2317  # the predicates below run through expect()
 # release_check.sh X.Y.Z [--published]: every place a release's version lives, read before the release commit
-# (docs/release_process.md step 4): the package version, the changelog section, the readme's current release, no
+# (docs/release_process.md step 4): the package version, the citation file's, the changelog section, the readme's current release, no
 # roadmap item left "Not yet in a release", no specification row left unstamped, the evidence folder with its .keep,
 # the tree clean on main, the tag absent; with --published, the tag on HEAD and on origin and the GitHub release
 # page present with the changelog entry's text. Prints one line a check, OK or FAIL, and exits non-zero on any FAIL.
@@ -31,6 +31,7 @@ page_carries_entry() {
   [ -n "$first" ] && [ "${body#*"$first"}" != "$body" ]
 }
 expect "package.xml carries <version>$version</version>" grep -q "<version>$version</version>" drone_city_nav/package.xml
+expect "CITATION.cff carries version: $version" grep -q "^version: $version$" CITATION.cff
 expect "CHANGELOG.md has a section '## $tag (date)'" grep -q "^## $tag (" CHANGELOG.md
 expect "README.md names $tag as the current release" grep -q "The current release is \`$tag\`" README.md
 expect "docs/roadmap.md has no 'Not yet in a release' line left" no_line "Not yet in a release" docs/roadmap.md

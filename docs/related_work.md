@@ -39,6 +39,43 @@ lidar set's half of roadmap item 41, and since the measurement of
 [localization.md](localization.md)) the second of the three ways named
 there, behind a closure of our own over the graph the stereo set has.
 
+Read on 2026-11-28, by their pages, none built or run here:
+
+- **lidar_slam** (`rsasaki0109/lidar_slam`; BSD-2-Clause, its default
+  build without GPL parts; C++ with Python entry points; Humble and Jazzy):
+  a bag turned into a point-cloud map. The front end is RKO-LIO (MIT), the
+  back end `graph_based_slam` on g2o with loop closures by descriptors (Scan
+  Context built in; BEV, SOLiD and triangle descriptors; 3D-BBS to verify,
+  optional). Shown on Ouster, Livox and Velodyne bags (HILTI 2022, Oxford
+  Spires, NCLT, KITTI, GEODE's tunnels, where by its page it did not fail
+  and was "not the most accurate"). For this project: a second candidate
+  reference for the lidar set's half of roadmap item 41 beside LidarSlam,
+  and the nearest reading for the recognition such a closure needs: K93
+  found the estimator's own health rule no gate (it accepts 95 to 100
+  percent of pairs of different places), and a scan's descriptor verified
+  by a registration is the usual answer; its licence allows code to be
+  taken.
+- **PteroSim** (PteroLabs; proprietary, by its author free for personal,
+  academic and non-commercial use, sessions of two hours on the free tier;
+  open beta): Unreal Engine 5 with JSBSim's dynamics as a physics and
+  rendering backend for PX4 and ArduPilot SITL (the simulator MAVLink API in
+  lockstep), a Python API over gRPC; IMU, magnetometer, barometer, GPS and
+  a camera, a lidar and a radar "in development" by its author's post; PX4
+  lists it as community supported. Not for this project today: no lidar, no
+  ROS 2 interface named, and a licence under which the worlds and the
+  acceptance could not be published for others to run (roadmap item 57). A
+  renderer to remember if photorealistic frames are ever needed for the
+  estimator.
+- **TFD-SfM** (Chui, Andrade-Loarca, Cremers; arXiv 2505.20858, for WACV
+  2027; code "coming soon"): structure from motion over an unordered,
+  uncalibrated set of pictures from a cold start, every dense match a 3D
+  Gaussian whose variance is optimised with the geometry. Offline (tens of
+  thousands of iterations) and built on learned matchers (LoFTR, DKM). Not
+  for the vehicle: the estimators here are online, calibrated and without a
+  network; a possible offline tool for a map from a recorded flight's
+  pictures, which nothing here needs yet.
+- **ros2_rust** (rclrs 0.8): roadmap item 56.
+
 Read on 2026-11-22, by their READMEs, neither built here:
 
 - **visloc-rs** (`rsasaki0109/visloc-rs`; MIT or Apache-2.0; Rust, begun in

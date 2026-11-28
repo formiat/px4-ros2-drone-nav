@@ -1,0 +1,171 @@
+{
+  "repo_notes": [
+    {
+      "content": "This repository is a simulation-only stack: an autonomous PX4 quadrotor flown in PX4 SITL and Gazebo Harmonic. No real vehicle and no onboard computer has run it; the resource figures are a workstation's (docs/resource_budget.md). Say so on the overview and wherever hardware is discussed. The authoritative source of every requirement, invariant, acceptance rule and number is docs/specification.md: each row is marked as set by the owner or by an agent, and its change log names the commit. Prefer the specification's and the documents' wording and figures to what a structure's field names suggest; when a page describes a configuration structure, give the values the flights run with (drone_city_nav/config/urban_mvp.yaml), not only the field names.",
+      "author": "Project agent, from docs/specification.md"
+    },
+    {
+      "content": "The design invariants (docs/specification.md, rows I1 to I8) are what sets the project apart; state them where they apply and not only on one page. I1: space the sensor has not looked at is traversable at no penalty (no cost, no inflation, no gate); the protection in unknown space is the braking contract, not the map. I2: space is prohibited only by measurement, observed occupied or observed unobservable (the sensor looked and its range stayed short: smoke, darkness, glare); no prohibition comes from configuration, from knowledge of the location or from the vehicle's history. I3: no latch, hold or release gate keyed on the vehicle's history; the vehicle's own position and its observed path are never closed. I4: vertical motion is free in the planner's time model. I5: production code does not adapt to a location (no named world, spawn, opening or passage). I6: safety and the quality of the flight come before speed; a collision is a defect; safety is not bought by a broad reduction of speed. I7: the vehicle does not know how its light will fail; it reads what the light's driver reads. I8: the vehicle has no time limit.",
+      "author": "Project agent, from docs/specification.md"
+    },
+    {
+      "content": "The requirements a flight is judged by (rows R1 to R9): R1 no crash and no contact with any surface (every contact is a crash, analysed and repaired); R2 every goal reached in truth, the true position within the 2.0 m capture radius at the acknowledgement (the truth is read by the check, never by the control loop); R3 the mean flight speed without GNSS, 1.16 m/s on the stereo set and 2.28 m/s on the lidar set; R8 the open-sky profile, 10 m/s at least (measured 10.2); R7 dense smoke is never entered; R9 a survey covers 0.95 of the reachable flyable truth. Nothing else fails a flight (R4). Acceptance is statistical: series of whole flights judged against the simulator's truth (docs/testing.md), five flights a sensor set after every change of flight code.",
+      "author": "Project agent, from docs/specification.md"
+    },
+    {
+      "content": "Key figures to give where the subject comes up. MPPI: 8192 rollouts of 80 steps on the GPU (CUDA, with Vulkan and CPU engines beside it) in 6.4 ms at the median; the planning tick is 20 ms (50 Hz). The braking contract: the speed is bounded so that the vehicle stops inside the range its sensor has actually measured in the frame it brakes on. The default sensor set has no lidar and no GNSS: a forward stereo pair (0.20 m baseline, 120 degrees, depth trusted to 5.2 m), six time-of-flight zone sensors, a thermal core, a carried light; localization is a stereo MSCKF visual-inertial odometry with registration against the vehicle's own map and loop closure. The lidar set uses a 3D lidar (35 m) and lidar-inertial odometry. The obstacle memory is a 0.25 m voxel grid built in flight, with no prior map; the global planner is a persistent, incremental D* Lite on a 3D lattice.",
+      "author": "Project agent, from docs/specification.md"
+    },
+    {
+      "content": "How the project is developed: by coding agents under the owner's rules (docs/autonomous_development.md, docs/goal_writing.md). Decisions are the owner's or an agent's and the specification says which; known gaps are in docs/technical_debt.md with their measured cause; docs/roadmap.md holds the open items and, under 'Completed', the finished ones with their flights. A newcomer's path is docs/guide/01_basics.md to 06_extending.md with docs/guide/architecture_map.md, which links every component to its files and specification rows; reuse that structure.",
+      "author": "Project agent, from docs/specification.md"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "What the project is: an autonomous PX4 quadrotor that navigates GNSS-denied indoor, underground and open-sky spaces with no prior map, in simulation only; the pipeline in one picture; what sets it apart (docs/related_work.md, 'What Sets This Project Apart') and where it lags."
+    },
+    {
+      "title": "Design Invariants And Requirements",
+      "purpose": "The invariants I1 to I8 and the requirements R1 to R9 of docs/specification.md, each with its reason and an example of what it forbids; how a row is marked as the owner's or an agent's and how a change is recorded.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "Name every invariant, not only I1. I2 (prohibition only by measurement) and I3 (no gate on the vehicle's history) are the ones other stacks do not hold.",
+          "author": "Project agent, from docs/specification.md"
+        }
+      ]
+    },
+    {
+      "title": "Getting Started: Container, Build, First Flight",
+      "purpose": "The container workflow (scripts/build.sh, scripts/test.sh, the sim scripts and make targets), bootstrap, the first headless and GUI flights, the sensor and localization profiles; from docs/guide/02_install_first_flight.md, docs/installation.md and docs/build_and_run.md.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "State the resources a flight needs (CPU cores, the GPU for the CUDA MPPI and for rendering the cameras; docs/resource_budget.md) and that everything runs in the dev container.",
+          "author": "Project agent, from docs/specification.md"
+        }
+      ]
+    },
+    {
+      "title": "Resource Budget And Hardware Readiness",
+      "purpose": "What the stack costs on the workstation by process (docs/resource_budget.md, docs/performance.md), the builds without CUDA, the arm64 onboard image, and the candidate onboard computers and cameras (docs/hardware_builds.md); what is not yet proven on hardware.",
+      "parent": "Overview"
+    },
+    {
+      "title": "Repository Layout",
+      "purpose": "The package drone_city_nav (src, include, config, launch, models, worlds, tests, tools), scripts/, tools/, docs/, environments/, docker/; what is flight code and what is simulation only (DRONE_CITY_NAV_ENABLE_SIMULATION).",
+      "parent": "Overview"
+    },
+    {
+      "title": "Navigation Pipeline",
+      "purpose": "From sensors to setpoints: depth or lidar returns, the obstacle memory, the distance field, the persistent D* Lite route, the execution supervisor, the MPPI horizon, the offboard setpoints; the topics between the nodes and the 20 ms tick (docs/navigation_pipeline.md, docs/architecture.md, docs/guide/03_mission_and_pipeline.md)."
+    },
+    {
+      "title": "Obstacle Memory",
+      "purpose": "The voxel occupancy memory built in flight with no prior map (docs/obstacle_mapping.md): what makes a voxel occupied or free, the observed-unobservable layer for smoke and darkness, the moving layer for warm bodies, snapshots and deltas, maps persisted from a survey.",
+      "parent": "Navigation Pipeline",
+      "page_notes": [
+        {
+          "content": "Lead with invariant I1 (unknown space is free and costs nothing) and I2 (a voxel is prohibited only by a measurement). The hit counters are the mechanism, not the idea.",
+          "author": "Project agent, from docs/specification.md"
+        }
+      ]
+    },
+    {
+      "title": "Distance Field And Clearance",
+      "purpose": "The ESDF built from the memory, the body and envelope models, the clearance laws that bound speed near surfaces and the swept-body checks of a horizon.",
+      "parent": "Navigation Pipeline"
+    },
+    {
+      "title": "Persistent D* Lite Planner",
+      "purpose": "The incremental D* Lite on a 3D lattice that keeps its search between replans (docs/replanning.md): the lattice and its edges, the flight-time cost with free vertical motion (I4), repair on a changed world, a goal proven unreachable and the return home.",
+      "parent": "Navigation Pipeline"
+    },
+    {
+      "title": "Route Execution And The Braking Contract",
+      "purpose": "The execution supervisor: horizons certified against the newest world, stops prepared and committed, what happens to a refused stop, and the braking contract that ties speed to the range the sensor measured (docs/drone_control.md, docs/guide/04_safety.md).",
+      "parent": "Navigation Pipeline",
+      "page_notes": [
+        {
+          "content": "Explain the braking contract in numbers: why the stereo set flies about 1.4 m/s on a depth trusted to 5.2 m and the lidar set about 2.3 m/s, and 10 m/s over the open sky.",
+          "author": "Project agent, from docs/specification.md"
+        }
+      ]
+    },
+    {
+      "title": "MPPI Local Planner",
+      "purpose": "The model predictive path integral controller (docs/trajectory_optimization.md): the cost terms, the horizon, how the route and the distance field enter, the contracts with the execution supervisor.",
+      "page_notes": [
+        {
+          "content": "Give the figures: 8192 rollouts of 80 steps in 6.4 ms at the median on the GPU inside a 20 ms tick. No other open flying stack reviewed in docs/related_work.md runs MPPI on a GPU.",
+          "author": "Project agent, from docs/specification.md"
+        }
+      ]
+    },
+    {
+      "title": "MPPI Engines: CUDA, Vulkan, CPU",
+      "purpose": "The three engines behind one interface, their parity tests and benchmarks, and the builds without CUDA (roadmap item 28).",
+      "parent": "MPPI Local Planner"
+    },
+    {
+      "title": "Offboard Control, The External PX4 Mode And The Staged Failsafe",
+      "purpose": "The offboard setpoint stream over uXRCE-DDS, the external PX4 mode a pilot switches on and off (px4-ros2-interface-lib), the four-rung failsafe ladder, the law for a slow computer, and the layers of safety still open (roadmap item 44).",
+      "parent": "MPPI Local Planner"
+    },
+    {
+      "title": "Perception And Localization",
+      "purpose": "The two sensor sets and the localization profiles (visual_inertial, lidar_inertial, gnss, hybrid), what each estimator consumes and publishes, and how the autopilot fuses it (docs/localization.md, docs/camera_perception.md)."
+    },
+    {
+      "title": "Stereo Depth And The Time-Of-Flight Ring",
+      "purpose": "Semi-global matching with a far and a near search, the noise mask, the confident depth, the lone-hit rule, silent patches, and the six time-of-flight zone sensors (specification K7, K35, K94).",
+      "parent": "Perception And Localization"
+    },
+    {
+      "title": "Visual-Inertial Odometry And Loop Closure",
+      "purpose": "The stereo MSCKF, its health rules and declared dead reckoning, the registration of depth against the vehicle's own map, the magnetometer prior, and the loop closure with its geometric gates (roadmap items 16, 40, 41).",
+      "parent": "Perception And Localization"
+    },
+    {
+      "title": "Lidar-Inertial Odometry",
+      "purpose": "The lidar-inertial estimator, the unobserved axis in tunnels, and what the held-out worlds measured about its drift (roadmap items 13, 33, 41).",
+      "parent": "Perception And Localization"
+    },
+    {
+      "title": "GNSS, The Hybrid Profile And Signal Trust",
+      "purpose": "The open sky: the hybrid profile that reads satellite fixes against the estimator's prediction, the faults a relay plays (lost, jammed, spoofed) and how the trust is a measurement with no latch (roadmap item 39, specification K56).",
+      "parent": "Perception And Localization"
+    },
+    {
+      "title": "Degraded Conditions: Darkness, Smoke, Heat, Moving Bodies",
+      "purpose": "The dark world and the carried light and its failures, smoke as observed unobservability, the thermal core and heat sources, warm bodies that walk, the dark void (roadmap items 17, 18, 21, 23, 29, 31, 32).",
+      "parent": "Perception And Localization"
+    },
+    {
+      "title": "Missions And Scenarios",
+      "purpose": "Point to point, the survey that explores a volume and comes home with a map, the return home on a goal proven unreachable, the cooperative traffic of several vehicles; the scenario files and the worlds (docs/missions.md, docs/scenarios.md)."
+    },
+    {
+      "title": "Simulation Runtime",
+      "purpose": "PX4 SITL and Gazebo Harmonic, the worlds (Urban Circuit, the held-out cave and finals worlds, the open sky) and their truth grids, the vehicle and sensor models, the fault relays and the real vehicle's imperfections, the flight scripts and the flight's core set (docs/gazebo_simulation.md, docs/world3d.md)."
+    },
+    {
+      "title": "Testing, Evidence And Flight Acceptance",
+      "purpose": "The gate (format, build, unit and script tests, static analysis), the acceptance by series judged in truth, what voids a flight, the stack bag and its deterministic replay, CI on GitHub (docs/testing.md, docs/guide/05_testing_debugging.md, tools/README.md)."
+    },
+    {
+      "title": "Development Process",
+      "purpose": "How agents develop the project under the owner's rules: the goal file, the specification and its change log, the technical debt register, the flight rules, the reports; the owner's and the agent's decisions (docs/autonomous_development.md, CONTRIBUTING.md)."
+    },
+    {
+      "title": "Roadmap And Related Work",
+      "purpose": "What version 1.0 is to be, the open items and the completed ones (docs/roadmap.md), and the nearest open stacks with what is taken from them and what is not (docs/related_work.md, docs/forks.md)."
+    },
+    {
+      "title": "Glossary",
+      "purpose": "The project's terms: braking contract, observed unobservable, capture radius, sensor set, localization profile, series, counted and void flights, the specification's letters (R, I, F, A, K, V)."
+    }
+  ]
+}

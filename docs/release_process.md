@@ -86,6 +86,7 @@ Every place the version lives:
 | Where | What changes |
 |---|---|
 | `drone_city_nav/package.xml` | `<version>X.Y.Z</version>` (missed in v0.6.0) |
+| `CITATION.cff` | `version: X.Y.Z` and `date-released` (GitHub's "Cite this repository") |
 | `CHANGELOG.md` | a new `## vX.Y.Z (YYYY-MM-DD)` section above the previous release, under `## Unreleased` emptied of what ships: what is in it and why it matters, the laws in force, the series (the code's commit, the runs, the mean speeds against the targets, the true position at the goal, the voided attempts with their causes, the path of the series table), the known limitations, the compatible `environment-assets-*` tags, the package version |
 | `README.md`, "Releases" | "The current release is `vX.Y.Z`: …" rewritten for this release |
 | `docs/roadmap.md` | every item closed since the last release: its pending wording ("Not yet in a release (after vA.B.C)" or a bare "closed on …") becomes "Shipped in [vX.Y.Z](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/vX.Y.Z) on YYYY-MM-DD; closed on …" |

@@ -14,6 +14,21 @@ Prices are the ones found on 2026-10-13, in US dollars unless stated, with
 their source; they move (NVIDIA raised every Jetson price by up to 101 percent
 in July 2026) and are an order of magnitude, not a quote.
 
+The stereo cameras read again by the owner on 2026-11-23 (the makers' and
+distributors' pages, without delivery and duties; not read again by an
+agent but for the OAK-D Pro W, $529 at Luxonis on 2026-11-28): the Orbbec
+Gemini 335L $359 (95 mm, 90 x 65 degrees of depth, global shutter, an IMU to
+1 kHz, USB-C, active infrared stereo at 850 nm), the OAK-D Pro W $529 ($449
+on 2026-10-13), the Arducam OV9281 kit $164.99 (out of stock at RobotShop),
+the ZED X with its capture card $978 (120 mm, GMSL2, a Jetson only). For
+recordings on a bench with a laptop (roadmap item 51) the Gemini 335L is the
+cheapest with everything at once: USB, an IMU, a global shutter, the
+RealSense D455's baseline with a taller field. For the simulated geometry in
+flight the Arducam pair on a 0.20 m bar stays the choice (no IMU, CSI: a
+Jetson, with 120 degree M12 lenses bought apart; its support of the Orin is
+named in the product's title alone and is to be checked before a purchase).
+The ZED 2i has a rolling shutter and is out.
+
 ## What The Stack Asks Of The Hardware
 
 | Need | Measured or modelled in the simulator | What it rules in or out |

@@ -66,12 +66,27 @@ reached when all of the following hold on one commit:
 **Not in 1.0.** These stay items and may land in a 1.x release or later:
 items 15 and 48 (the fleet, a project of its own), 22, 26, 27's later
 blocks, 30, 36, 37, 50, 51, 52 (recurring), 53 (R8's aim of 20 m/s), 54, 55,
-56 and 60.
+56, 60 and 61; item 62 is recurring.
 
 **The order proposed:** item 43's remainder and item 21's look at a body;
 items 45, 44 and 46; item 41; item 49, written after the items that change
 what it describes; then item 47's two modules with item 59, items 57 and 58
 on the release's records, and the whole acceptance.
+
+**The order amended** (the owner's discussion of 2026-11-27, with which the
+agent agrees; recorded on 2026-11-28): item 46's runs on GitHub made green
+before anything else (done on 2026-11-28: a red run teaches people not to
+look, and everything after leans on a build checked at every push); item 43's
+points 3 and 4, both small; item 41 for the lidar set before item 44's
+manager of estimators, which switches between estimators that are sound; the
+supervisor and the manager together, the supervisor reading the health the
+manager states; item 59's stage 0 (the supervisor's interface of commands and
+state) designed with the supervisor and not with the mission modules; item
+57's stage 0 (the licences of the worlds' assets) read early and beside
+everything else, since it is a reading that may forbid the publication; item
+49's guide, written on 2026-11-26, brought up to date at the end; item 51's
+own recordings beside everything once a camera exists, because the estimator
+on real frames may reopen the base before 1.0 is frozen.
 
 **After 1.0:** maintenance (the forks' review, the register, 1.x releases),
 the benchmark's results as others send them, and the hardware when a vehicle
@@ -79,7 +94,12 @@ exists (item 27).
 
 To be decided by the owner: whether item 21's doors and cold bodies are in
 (they matter for a product among people); which two missions; whether the
-lidar set's closure is in when its measurement asks for one.
+lidar set's closure is in when its measurement asks for one (it did, in the
+held-out worlds: K93); whether an intermediate release is cut after item 43
+(much stands unreleased since v0.8.0: the safety layers, the loop closure,
+the one profile, the guide, CI; a release is a whole acceptance, 57 flights
+and 13 to 14 hours, and a stable point before the supervisor's rework);
+whether the external PX4 mode becomes the default.
 
 ## 15. Realistic Cooperative Communication
 
@@ -2216,8 +2236,10 @@ item 39's stages 3 and 4; stereo matching on Middlebury and RGB-NIR pictures
 extrinsics and the time offset estimated online).
 
 Proposed on 2026-11-22 (the owner's discussion): recordings of our own, from
-a stereo camera with an IMU carried by hand through a building (a few
-hundred dollars by the discussion's figure, not read from a price list). The
+a stereo camera with an IMU carried by hand through a building (the Orbbec
+Gemini 335L by the owner's reading of the price lists on 2026-11-23, $359:
+USB for a laptop, a global shutter, an IMU, a 95 mm baseline;
+[hardware_builds.md](hardware_builds.md)). The
 estimator and the memory then run on our own sensors before any vehicle
 exists, as they run on item 25's recordings, and it is the cheapest answer
 to "simulation only". The purchase is the owner's.
@@ -2310,6 +2332,31 @@ supervisor, item 48's fleet layer, item 59's ground station), then the small nod
 with no heavy mathematics (the thermal core, the survey mission, the mission
 monitor), and only then the memory, the estimators and the planner, each
 behind the replay.
+
+**The owner's discussions of 2026-11-25 and 2026-11-27** (recorded on
+2026-11-28). Nothing that exists is rewritten: the estimators, the MPPI, the
+planner, the memory, the distance field and the stereo are a numerical core
+settled by rules and series; the PX4 adapter and the external mode stand on
+a C++ library; item 61's libraries are for people who write C++. Rust is
+for new processes with a clean border: item 44's flight supervisor first,
+then item 59's station and item 48's fleet layer. The supervisor is rebuilt
+as a process whatever its language (the ladder of K90 lives in the offboard
+node today), so its language is a choice a measurement can inform. That
+measurement is a spike and not this item's start: rclrs 0.8 (ros2_rust;
+Apache-2.0; bindings for Jazzy with actions, parameters, timers and async;
+"no stability guarantees for the moment" by its README, lifecycle nodes not
+named) built in the dev image, the Rust bindings generated for `px4_msgs`
+(some two hundred messages) and the package's own messages in the same
+workspace, and a node that reads the autopilot's status and publishes a
+heartbeat. It answers whether the generation works and what it adds to the
+build; if it does not, the supervisor is C++. The first Rust component pays
+for every later one: a second toolchain in the image, `colcon-ros-cargo`,
+the messages' generation, the gate's checks. The simulation's orchestration
+(bash and Python, where the forks found the operational defects of item 43's
+points 6 and 7) is a later candidate, and only if the scripts begin to
+hinder. The fault relays in Python are rewritten only by item 52's
+measurement of their jitter. A contribution to ros2_rust discloses
+generative tools (`Assisted-by:`, its `docs/AI_POLICY.md`).
 
 ## 57. An Open Benchmark: The Worlds And The Acceptance For Any Stack
 
@@ -2531,6 +2578,97 @@ the speed measured rather than set), and the drone's series is unchanged.
 
 To be decided by the owner: whether the item is taken, wheeled or legged,
 and when.
+
+## 61. Exported Libraries: The Planner And The Geometry For Other Stacks
+
+**Type:** contribution and architecture; proposed in the owner's discussion
+of 2026-11-24, recorded on 2026-11-28. Not in 1.0.
+
+Parts of the stack are of use without it and already free of ROS (the
+discussion's count on `34bdb26`, not measured again here): the persistent
+D\* Lite on a 3D lattice (about 8.2 thousand lines, on the standard library
+and some ten of the project's headers), the occupancy grid and the distance
+field (about 4 thousand), the MPPI engines (about 8.9 thousand, bound to the
+stack's contracts: the route's projection and handover, the finite horizon,
+the ability to stop, the cost written into the CUDA kernel). The condition is
+reuse: the stack depends on what is exported and never carries a copy.
+
+- **The way chosen by the owner: packages of plain CMake inside this
+  repository**, without ament and without ROS (`install(EXPORT)`,
+  `find_package`). `drone_city_nav` depends on them as on any package: one
+  source of truth, a library and the stack changed in one commit, the gates
+  and the series as before. Another project builds the one package it needs.
+  A read-only mirror made by `git subtree split` at a release can be added
+  later without rework, if a library needs a face of its own; a repository
+  of its own as the source of truth is not taken (every change two pull
+  requests and a pinned version, A14's series flown for a change elsewhere).
+- **First** the D\* Lite with the geometric core beneath it (the grid and
+  the distance field, of use alone as a distance-field library without ROS):
+  the cleanest border, and the review of the analogs found no open
+  incremental 3D D\* Lite for a flying vehicle.
+- **Second** the MPPI on the GPU, cut so that the kernel depends on the
+  distance field and the route and not on the stack's contracts (in: the
+  field, a reference route with its speeds, the state, the vehicle's limits;
+  out: a horizon of controls). The acceptance of a separation, the handover,
+  the arbitration and the execution's checks stay in the stack. A cost that
+  is wholly pluggable is not proposed: it is a rework of the kernels.
+- **Not exported:** the obstacle memory (it stands on I1 and I3 and on ROS),
+  the safety laws, the estimators (OpenVINS exists), the stereo (a wrapper
+  of OpenCV).
+- **What it costs:** interfaces the agents may no longer change freely
+  (semantic versions, a changelog of their own), the unit tests moved with
+  each library, neutral names, users' questions.
+
+**Stage 0:** the cut measured: which headers leave with the planner, and
+what of the stack has to be untied from them.
+
+## 62. Being Found: Catalogues, A Citation, A Documentation Site
+
+**Type:** engineering, an independent recurring workstream; the owner's
+discussions of 2026-11-24, recorded on 2026-11-28.
+
+People reach the repository through GitHub itself (its trends, its topics);
+on the web nearly nothing describes it in words, and words are what search
+engines and the assistants that search read. The steps are done once and
+then work by themselves.
+
+**Done on 2026-11-28.** `CITATION.cff` (GitHub's "Cite this repository"; its
+version is one of the places `tools/release_check.sh` reads).
+`.devin/wiki.json`: the pages and notes DeepWiki builds its wiki from. The
+wiki it had planned by itself was fresh and well ordered but described
+structures: one invariant of eight named, the MPPI's fields without its 8192
+rollouts or its 20 ms tick, the memory's hit counters without "unknown space
+is free"; the file states the invariants, the requirements, the figures,
+"simulation only" and whose decisions are whose, and lists twenty-five pages
+after the guide's order. The "Ask DeepWiki" badge and the invariants I1 to I6
+in the README, which every other generator and crawler reads too.
+`tools/github_traffic.sh` keeps the views, the clones and the referrers,
+which GitHub holds for 14 days (the first sample: 336 views by 161 visitors
+and 1316 clones by 225 in 14 days; the referrers after GitHub itself are
+Google, LinkedIn, Reddit and the ROS Discourse post).
+
+**Left, by return on effort:**
+
+1. A row in the ROS Aerial working group's list of aerial autonomy stacks
+   (`ROS-Aerial/aerial_robotic_landscape`, `docs/aerial_autonomy_stacks.md`;
+   the row's facts are in [related_work.md](related_work.md)) and one in a
+   curated list or two that fit. A pull request to another project is the
+   owner's to send.
+2. Zenodo linked to the repository: a DOI a release, picked up by the
+   academic indexes. The owner's account.
+3. A documentation site on GitHub Pages built from `docs/`, the repository's
+   homepage set to it, with a sitemap, an `llms.txt` and the comparison of
+   [related_work.md](related_work.md) as a page.
+4. A social preview picture in the repository's settings (every link's
+   preview shows it), and a short clip at the head of the README.
+5. What other items bring: the technical report (item 58), recordings or
+   truth grids on Hugging Face (item 51), a page on ROS Index (rosdistro's
+   rule for an entry without a binary release is to be read first).
+6. `tools/github_traffic.sh` run with the weekly review of the forks, so
+   that a step is read by the referrers it brings.
+
+Never: stars bought or exchanged, automated posting, pull requests to lists
+the project does not belong in.
 
 ## Completed
 

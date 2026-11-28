@@ -1,5 +1,7 @@
 # PX4 ROS 2 Drone Navigation
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/formiat/px4-ros2-drone-nav)
+
 This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
 The main package is `drone_city_nav`, an ament CMake package built with
 `colcon`.
@@ -22,6 +24,24 @@ visual-inertial odometry (VIO), MSCKF, stereo depth, lidar-inertial odometry
 (LIO), SLAM, relocalization, EKF, occupancy mapping, ESDF, path planning,
 D* Lite, MPPI, model predictive control, obstacle avoidance, collision
 avoidance, return to home, DARPA SubT.
+
+## Design Invariants
+
+What the navigation never does, whatever the task
+([`docs/specification.md`](docs/specification.md), rows I1 to I8):
+
+- **Unknown space is free** (I1). Space the sensor has not looked at costs
+  nothing and is closed by nothing: no penalty, no inflation, no gate. The
+  protection there is the braking contract (the vehicle can always stop
+  inside what its sensor has measured), not the map.
+- **A prohibition is a measurement** (I2). Space is closed only where the
+  sensor saw a surface, or looked and could not see (smoke, darkness, glare).
+  Nothing is closed by configuration, by knowledge of the location or by the
+  vehicle's history.
+- **No latch on the vehicle's history** (I3). No hold or release gate; the
+  vehicle's own position and the path it has observed are never closed.
+- Vertical motion is free (I4); the code does not adapt to a location (I5);
+  safety comes before speed and is not bought by flying slowly everywhere (I6).
 
 ## Demo Video
 

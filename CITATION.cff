@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "PX4 ROS 2 Drone Navigation"
+abstract: >-
+  A ROS 2 navigation stack for a PX4 quadrotor in GNSS-denied indoor, underground and open-sky spaces with no prior
+  map: stereo visual-inertial or lidar-inertial odometry with relocalization and loop closure, a 3D voxel obstacle
+  memory built in flight, a persistent D* Lite planner on a 3D lattice and a GPU MPPI local planner under a braking
+  contract tied to the measured sensor range. Developed and accepted in PX4 SITL and Gazebo Harmonic by series of
+  flights judged against the simulator's truth.
+authors:
+  - family-names: Aglerimov
+    given-names: Alexander
+repository-code: "https://github.com/formiat/px4-ros2-drone-nav"
+url: "https://github.com/formiat/px4-ros2-drone-nav"
+license: MIT
+version: 0.8.0
+date-released: "2026-11-20"
+keywords:
+  - UAV
+  - PX4
+  - ROS 2
+  - Gazebo
+  - GNSS-denied navigation
+  - visual-inertial odometry
+  - lidar-inertial odometry
+  - MPPI
+  - D* Lite
+  - obstacle avoidance
