@@ -1556,6 +1556,23 @@ acceptance unchanged on the same code, and R8 is a measured figure.
 fused by the stereo estimate as a prior on its yaw (K60, roadmap item 40's record); the downward camera and the
 rangefinder remain.
 
+**Stage 3's camera looking down, a probe before any is built (2026-11-28, at the owner's word).** The question was
+whether a camera looking down would let the estimate come home over the open sky, where the forward pair does not
+recognise the places it comes back to (item 41). An evaluation camera was added to the model where the down
+time-of-flight unit sits (640 x 480 over 90 degrees; no node reads it) and one loop without the satellite signal was
+flown with it recorded (r4348, 1.6 km, every eighth frame of the 15 Hz clock, 1036 frames;
+`tools/stereo_record_frames.py` with `RECORD_SENSORS=evaluation_down`). Read offline
+(`tools/down_recognition.py`: keyframes a metre apart, ORB with orientation, a similarity by RANSAC): of the 18
+keyframes that came back within 10 m of a place flown before none was recognised (3 inliers at the most), and of 225
+pairs of places out of each other's sight 17 were accepted at 12 inliers and 6 at 30 (52 at the most). Two causes,
+both the route's and the world's: the vehicle crosses its earlier track 9 to 12 m higher or lower than it flew it (a
+scale of five to ten between the two views; within 3 m of height and 20 m of distance 6 of 35 keyframes are
+recognised), and the park's ground is one grass texture laid as tiles, so that places a hundred metres apart are the
+same picture. The camera is not built into the stack: in this world its look at the ground proves nothing and
+would close loops wrongly. What would answer the question is ground that is not tiled: a recorded aerial set with a
+camera looking down (item 51), or a world whose ground carries an orthophoto. Stage 4's absolute correction stays the
+way to 2 m at a goal never seen before (the register).
+
 **Stages 0 to 2 done (2026-11-01, the commits 8c3c4974 to 2d6a5f1c):** the
 open-sky world `open_sky_baylands` (the autopilot's baylands park as a
 fixture of the environment pipeline, its truth grid at 0.5 m, the
